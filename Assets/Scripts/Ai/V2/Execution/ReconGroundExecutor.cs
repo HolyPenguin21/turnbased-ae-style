@@ -25,25 +25,118 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class ReconGroundExecutor
     {
+        internal sealed class StepControl
+        {
+            public bool CanContinue;
+            public bool CommandAttempted;
+            public ExecutionStopReason StopReason;
+
+            public void Reset()
+            {
+                CanContinue = false;
+                CommandAttempted = false;
+                StopReason = ExecutionStopReason.StepCompleted;
+            }
+        }
+
+        private sealed class StepRuntime
+        {
+            public bool OptionalStealthChecked;
+        }
+
+        private sealed class PreparedStep
+        {
+            public ReconMode RequestedMode;
+            public HexCoord StrategicAnchor;
+            public float ExploreScore;
+            public float RefreshScore;
+        }
+
+        // Compatibility adapter for the current flag-off pipeline. It preserves the old bounded
+        // multi-step behaviour, but every iteration now goes through the same one-command core the
+        // mid-turn loop will call.
         public static IEnumerator Run(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisionedMission pm, ExecutionResult result, int apBefore,
             IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot = null)
         {
-            ArmyData army = Resolve(player, pm.MoverArmyId);
-            if (army == null || ctx?.Map == null)
+            if (!TryPrepare(player, root, ctx, pm, result, queue, missionIndex, snapshot,
+                    recordBatchAudit: true, out PreparedStep prepared))
             {
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+                SummarizeIfLast(player, ctx, queue, missionIndex);
                 yield break;
             }
 
-            // Spec §25 — strategic scores for the score-based Explore<->Refresh mode hysteresis in
-            // ReconPatrolStateRegistry. Same raw signals the strategic layer's sub-pressures use.
-            float exploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
-            float refreshScore = ReconIntelSnapshotRegistry.StalePressure(snapshot);
+            ArmyData initialArmy = Resolve(player, pm.MoverArmyId);
+            int iterations = 0;
+            int maxIterations = Math.Max(2, (initialArmy?.CurrentMovement ?? 0) + 4);
+            var runtime = new StepRuntime();
+            var control = new StepControl();
+            ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
+
+            while (true)
+            {
+                if (++iterations > maxIterations)
+                {
+                    stop = ExecutionStopReason.MoveRejected;
+                    break;
+                }
+
+                control.Reset();
+                yield return RunPreparedStep(player, root, ctx, pm, result, queue, missionIndex,
+                    snapshot, prepared, runtime, control);
+                stop = control.StopReason;
+                if (!control.CanContinue)
+                    break;
+            }
+
+            Finish(player, root, ctx, pm, result, apBefore, stop, queue, missionIndex,
+                summarize: true);
+        }
+
+        // One admitted ground-recon task step. It executes at most one canonical capture operation
+        // OR one adjacent MoveArmyRoutine command. It never selects a different mission.
+        public static IEnumerator RunStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, int apBefore,
+            IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot,
+            StepControl control)
+        {
+            control ??= new StepControl();
+            control.Reset();
+
+            if (!TryPrepare(player, root, ctx, pm, result, queue, missionIndex, snapshot,
+                    recordBatchAudit: false, out PreparedStep prepared))
+            {
+                control.StopReason = result.StopReason;
+                Finish(player, root, ctx, pm, result, apBefore, result.StopReason,
+                    queue, missionIndex, summarize: false);
+                yield break;
+            }
+
+            yield return RunPreparedStep(player, root, ctx, pm, result, queue, missionIndex,
+                snapshot, prepared, new StepRuntime(), control);
+            Finish(player, root, ctx, pm, result, apBefore, control.StopReason,
+                queue, missionIndex, summarize: false);
+        }
+
+        private static bool TryPrepare(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, IReadOnlyList<ProvisionedMission> queue,
+            int missionIndex, WorldSnapshot snapshot, bool recordBatchAudit,
+            out PreparedStep prepared)
+        {
+            prepared = null;
+            ArmyData army = Resolve(player, pm?.MoverArmyId ?? -1);
+            if (army == null || ctx?.Map == null || pm == null || result == null)
+            {
+                if (result != null)
+                {
+                    result.StopReason = ExecutionStopReason.MoverLost;
+                    result.ApSpent = 0f;
+                }
+                return false;
+            }
 
             ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-            if (missionIndex == 0)
+            if (recordBatchAudit && missionIndex == 0)
                 ReconAcceptanceAudit.RecordThreeScoutBatch(player, ctx.TurnNumber, queue);
 
             result.StartHex = army.Hex;
@@ -57,299 +150,293 @@ namespace Game.Ai.V2
                 result.ApSpent = 0f;
                 AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] actor=#{army.Id} "
                     + $"unknown Scout kind {(int)pm.ScoutKind}; fail closed before movement");
-                SummarizeIfLast(player, ctx, queue, missionIndex);
-                yield break;
+                return false;
             }
 
-            ReconMode requestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
-                ? ReconMode.Explore
-                : ReconMode.Refresh;
-            // Surveil's FocusHex is the enemy/contact being observed. Provisioning already chose a
-            // safe observation vantage in ExecutionHex; use that as the strategic heading so the
-            // continuous ground planner does not undo the vantage decision by walking at the enemy.
-            HexCoord strategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
-                ? pm.ExecutionHex
-                : pm.FocusHex;
-            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id,
-                army.Hex, strategicAnchor, requestedMode, ctx.TurnNumber, exploreScore, refreshScore);
+            prepared = new PreparedStep
+            {
+                ExploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f,
+                RefreshScore = ReconIntelSnapshotRegistry.StalePressure(snapshot),
+                RequestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
+                    ? ReconMode.Explore
+                    : ReconMode.Refresh,
+                StrategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
+                    ? pm.ExecutionHex
+                    : pm.FocusHex,
+            };
 
-            // A Required-stealth mission must enter before the first activation/move. Do not let
-            // the new continuous loop weaken the existing AP/activation contract.
+            ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
+                prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber,
+                prepared.ExploreScore, prepared.RefreshScore);
+
+            // Required stealth is preparatory state in the same admitted task transaction. The
+            // operation is idempotent when the actor is already hidden and can never be charged
+            // twice after activation.
             if (pm.StealthApReserved)
             {
                 if (!TryEnterRequiredStealth(root, army, out bool entered))
                 {
                     result.StopReason = ExecutionStopReason.RequiredStealthUnavailable;
-                    result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                     AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] actor=#{army.Id} "
                         + "required stealth unavailable; stop before movement");
-                    SummarizeIfLast(player, ctx, queue, missionIndex);
-                    yield break;
+                    return false;
                 }
                 result.EnteredStealth |= entered;
             }
 
-            bool optionalStealthChecked = false;
-            int iterations = 0;
-            int maxIterations = Math.Max(2, army.CurrentMovement + 4); // + bounded reaction actions that do not move
-            ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
+            RefreshObjectiveSatisfied(player, pm, result);
+            return true;
+        }
+
+        private static IEnumerator RunPreparedStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
+            IReadOnlyList<ProvisionedMission> queue, int missionIndex, WorldSnapshot snapshot,
+            PreparedStep prepared, StepRuntime runtime, StepControl control)
+        {
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            if (army == null || army.Owner != player)
+            {
+                control.StopReason = ExecutionStopReason.MoverLost;
+                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost");
+                yield break;
+            }
+            if (!AiArmyRoles.IsSoloRecce(army))
+            {
+                control.StopReason = ExecutionStopReason.MoverLost;
+                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "actor no longer solo Recce");
+                yield break;
+            }
+            if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
+            {
+                control.StopReason = ExecutionStopReason.BattleStarted;
+                if (result.StepsMoved == 0 && !result.EnteredStealth)
+                    result.BlockedBeforeMovement = true;
+                yield break;
+            }
+
+            RefreshObjectiveSatisfied(player, pm, result);
+            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id,
+                army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber,
+                prepared.ExploreScore, prepared.RefreshScore);
+
+            ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
+                player, ctx.Map, army, assignment, ctx.TurnNumber);
+            if (reaction.Action == ReconReactionAction.StopAndReplan)
+            {
+                control.StopReason = ExecutionStopReason.TargetInvalidated;
+                yield break;
+            }
+
+            if (reaction.Action == ReconReactionAction.CaptureOpportunity)
+            {
+                bool captureStartedHidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
+                result.StealthChanged |= ExitArmyStealth(army);
+                VisionSystem.RecomputeFor(player);
+                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                ReconReactionDecision afterDecloak = ReconReactionPolicy.Evaluate(
+                    player, ctx.Map, army, assignment, ctx.TurnNumber);
+                if (afterDecloak.Action == ReconReactionAction.Flee
+                    || afterDecloak.Action == ReconReactionAction.EvadeDetector
+                    || afterDecloak.Action == ReconReactionAction.StopAndReplan)
+                {
+                    AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} cancelled after decloak: {afterDecloak}");
+                    ReconAcceptanceAudit.RecordHiddenFacilityCancel(player, ctx.TurnNumber, army.Id,
+                        army.Hex, captureStartedHidden, afterDecloak.Action);
+                    reaction = afterDecloak;
+                    if (reaction.Action == ReconReactionAction.StopAndReplan)
+                    {
+                        control.StopReason = ExecutionStopReason.TargetInvalidated;
+                        yield break;
+                    }
+                }
+                else
+                {
+                    BuildingData before = BuildingRegistry.FindAt(army.Hex);
+                    PlayerSetupData previousOwner = before?.Owner;
+                    control.CommandAttempted = true;
+                    BuildingRegistry.CaptureOrDestroyIfUndefended(
+                        army.Hex, player, ctx.HexSelection, army);
+                    BuildingData after = BuildingRegistry.FindAt(army.Hex);
+                    bool changed = before != after || (after != null && after.Owner != previousOwner);
+                    ReconAcceptanceAudit.RecordHiddenFacilityCapture(player, ctx.TurnNumber, army.Id,
+                        army.Hex, captureStartedHidden, changed);
+                    if (changed)
+                    {
+                        result.InfrastructureChanged = true;
+                        ReconPatrolStateRegistry.MarkProgress(player, army.Id, ctx.TurnNumber);
+                        AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} resolved structure at "
+                            + $"({army.Hex.Q},{army.Hex.R}); movement={army.CurrentMovement}");
+                        RefreshObjectiveSatisfied(player, pm, result);
+                        control.CanContinue = army.CurrentMovement > 0;
+                        control.StopReason = control.CanContinue
+                            ? ExecutionStopReason.StepCompleted
+                            : ExecutionStopReason.OutOfMovement;
+                        yield break;
+                    }
+
+                    control.StopReason = ExecutionStopReason.TargetInvalidated;
+                    yield break;
+                }
+            }
+
+            if (army.CurrentMovement <= 0)
+            {
+                control.StopReason = ExecutionStopReason.OutOfMovement;
+                yield break;
+            }
+
+            HexCoord? next = null;
+            string actionWhy = null;
+            bool forceDecloakForAttack = false;
+            switch (reaction.Action)
+            {
+                case ReconReactionAction.Flee:
+                    if (reaction.TargetHex.HasValue)
+                        next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
+                    actionWhy = "Flee";
+                    break;
+                case ReconReactionAction.EvadeDetector:
+                    if (reaction.TargetHex.HasValue)
+                        next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
+                    actionWhy = "EvadeDetector";
+                    break;
+                case ReconReactionAction.AttackOpportunity:
+                    if (reaction.TargetHex.HasValue)
+                        next = reaction.TargetHex.Value;
+                    actionWhy = "AttackOpportunity";
+                    forceDecloakForAttack = true;
+                    break;
+                case ReconReactionAction.Continue:
+                default:
+                    ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
+                        player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot);
+                    if (choice.HasValue)
+                        next = choice.Value.Hex;
+                    actionWhy = assignment.Mode.ToString();
+                    break;
+            }
+
+            if (!next.HasValue)
+            {
+                control.StopReason = ExecutionStopReason.NoSafeStep;
+                yield break;
+            }
+
+            if (forceDecloakForAttack)
+            {
+                result.StealthChanged |= ExitArmyStealth(army);
+                VisionSystem.RecomputeFor(player);
+                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, army);
+                if (targetNow == null || !reaction.TargetArmyId.HasValue
+                    || targetNow.Id != reaction.TargetArmyId.Value)
+                {
+                    control.StopReason = ExecutionStopReason.TargetInvalidated;
+                    yield break;
+                }
+            }
+
+            if (!runtime.OptionalStealthChecked && !pm.StealthApReserved
+                && !result.EnteredStealth && !forceDecloakForAttack)
+            {
+                runtime.OptionalStealthChecked = true;
+                float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
+                result.EnteredStealth |= MaybeEnterOptionalStealth(player, root, ctx, army, pm,
+                    next.Value, assignment.StrategicAnchor, mandatoryClaims);
+            }
 
             HashSet<int> knownEnemyIds = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
             HashSet<int> knownNeutralIds = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+            HexCoord beforeHex = army.Hex;
+            ReconAcceptanceAudit.RecordDecision(player, ctx.TurnNumber, army.Id,
+                beforeHex, next.Value, actionWhy);
+            var move = AiDecision.Move(army, next.Value,
+                $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
+                + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f);
+            var trace = new AiMoveExecutionTrace();
+            control.CommandAttempted = true;
+            yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
+            result.EnteredStealth |= trace.EnteredStealthThisStep;
 
-            // The mission-level objective may complete while the actor keeps performing its durable
-            // Explore/Refresh assignment. This flag is ledger truth, not a reason to stop movement.
-            RefreshObjectiveSatisfied(player, pm, result);
-
-            while (true)
+            army = Resolve(player, pm.MoverArmyId);
+            HexCoord endHex = army != null ? army.Hex : trace.EndHex;
+            bool moved = !endHex.Equals(beforeHex);
+            if (moved)
             {
-                if (++iterations > maxIterations)
-                {
-                    stop = ExecutionStopReason.MoveRejected;
-                    break;
-                }
+                result.StepsMoved++;
+                ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
+                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                ReconAcceptanceAudit.RecordStep(player, ctx.TurnNumber, pm.MoverArmyId,
+                    beforeHex, endHex);
+            }
+            result.FinalHex = endHex;
 
-                army = Resolve(player, pm.MoverArmyId);
-                if (army == null || army.Owner != player)
-                {
-                    stop = ExecutionStopReason.MoverLost;
-                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost");
-                    break;
-                }
-                if (!AiArmyRoles.IsSoloRecce(army))
-                {
-                    stop = ExecutionStopReason.MoverLost;
-                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "actor no longer solo Recce");
-                    break;
-                }
-                if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
-                {
-                    stop = ExecutionStopReason.BattleStarted;
-                    // Spec §2 — combat-locked before this Recon movement could take a single step
-                    // and with nothing productive done yet: a recoverable Blocked, not a Failed.
-                    if (result.StepsMoved == 0 && !result.EnteredStealth)
-                        result.BlockedBeforeMovement = true;
-                    break;
-                }
+            if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)
+                ReconAcceptanceAudit.RecordWeakRecceAttack(player, ctx.TurnNumber, pm.MoverArmyId,
+                    reaction.TargetArmyId.Value, trace.BattleOccurred, reaction.WinChance);
 
-                RefreshObjectiveSatisfied(player, pm, result);
-
-                // Re-anchor the durable actor assignment from the newest strategic objective, but
-                // do not recreate it and do not turn the anchor into a fixed route destination.
-                assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
-                    strategicAnchor, requestedMode, ctx.TurnNumber, exploreScore, refreshScore);
-
-                ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
-                    player, ctx.Map, army, assignment, ctx.TurnNumber);
-
-                if (reaction.Action == ReconReactionAction.StopAndReplan)
-                {
-                    stop = ExecutionStopReason.TargetInvalidated;
-                    break;
-                }
-
-                if (reaction.Action == ReconReactionAction.CaptureOpportunity)
-                {
-                    // Hidden entry has already happened. The reaction policy performed the first
-                    // live safety/defender check; now decloak, refresh, and call the authoritative
-                    // capture method which performs its own final defender check again.
-                    bool captureStartedHidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
-                    ExitArmyStealth(army);
-                    VisionSystem.RecomputeFor(player);
-                    AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                    ReconReactionDecision afterDecloak = ReconReactionPolicy.Evaluate(
-                        player, ctx.Map, army, assignment, ctx.TurnNumber);
-                    if (afterDecloak.Action == ReconReactionAction.Flee
-                        || afterDecloak.Action == ReconReactionAction.EvadeDetector
-                        || afterDecloak.Action == ReconReactionAction.StopAndReplan)
-                    {
-                        AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} cancelled after decloak: {afterDecloak}");
-                        ReconAcceptanceAudit.RecordHiddenFacilityCancel(player, ctx.TurnNumber, army.Id,
-                            army.Hex, captureStartedHidden, afterDecloak.Action);
-                        reaction = afterDecloak;
-                    }
-                    else
-                    {
-                        BuildingData before = BuildingRegistry.FindAt(army.Hex);
-                        PlayerSetupData previousOwner = before?.Owner;
-                        BuildingRegistry.CaptureOrDestroyIfUndefended(army.Hex, player, ctx.HexSelection, army);
-                        BuildingData after = BuildingRegistry.FindAt(army.Hex);
-                        bool changed = before != after || (after != null && after.Owner != previousOwner);
-                        ReconAcceptanceAudit.RecordHiddenFacilityCapture(player, ctx.TurnNumber, army.Id,
-                            army.Hex, captureStartedHidden, changed);
-                        if (changed)
-                        {
-                            ReconPatrolStateRegistry.MarkProgress(player, army.Id, ctx.TurnNumber);
-                            AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} resolved structure at "
-                                + $"({army.Hex.Q},{army.Hex.R}); movement={army.CurrentMovement}");
-                            RefreshObjectiveSatisfied(player, pm, result);
-                            if (army.CurrentMovement <= 0)
-                            {
-                                stop = ExecutionStopReason.OutOfMovement;
-                                break;
-                            }
-                            continue; // fresh live reaction + step selection after the world mutation
-                        }
-
-                        stop = ExecutionStopReason.TargetInvalidated;
-                        break;
-                    }
-                }
-
-                if (army.CurrentMovement <= 0)
-                {
-                    stop = ExecutionStopReason.OutOfMovement;
-                    break;
-                }
-
-                HexCoord? next = null;
-                string actionWhy = null;
-                bool forceDecloakForAttack = false;
-
-                switch (reaction.Action)
-                {
-                    case ReconReactionAction.Flee:
-                        if (reaction.TargetHex.HasValue)
-                            next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
-                        actionWhy = "Flee";
-                        break;
-
-                    case ReconReactionAction.EvadeDetector:
-                        if (reaction.TargetHex.HasValue)
-                            next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
-                        actionWhy = "EvadeDetector";
-                        break;
-
-                    case ReconReactionAction.AttackOpportunity:
-                        if (reaction.TargetHex.HasValue)
-                            next = reaction.TargetHex.Value;
-                        actionWhy = "AttackOpportunity";
-                        forceDecloakForAttack = true;
-                        break;
-
-                    case ReconReactionAction.Continue:
-                    default:
-                        ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
-                            player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot);
-                        if (choice.HasValue)
-                            next = choice.Value.Hex;
-                        actionWhy = assignment.Mode.ToString();
-                        break;
-                }
-
-                if (!next.HasValue)
-                {
-                    stop = ExecutionStopReason.NoSafeStep;
-                    break;
-                }
-
-                if (forceDecloakForAttack)
-                {
-                    ExitArmyStealth(army);
-                    VisionSystem.RecomputeFor(player);
-                    AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                    ArmyData targetNow = BattleInitiator.FindEnemyAt(next.Value, army);
-                    if (targetNow == null || !reaction.TargetArmyId.HasValue
-                        || targetNow.Id != reaction.TargetArmyId.Value)
-                    {
-                        stop = ExecutionStopReason.TargetInvalidated;
-                        break;
-                    }
-                }
-
-                if (!optionalStealthChecked && !pm.StealthApReserved && !result.EnteredStealth
-                    && !forceDecloakForAttack)
-                {
-                    optionalStealthChecked = true;
-                    float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
-                    result.EnteredStealth |= MaybeEnterOptionalStealth(player, root, ctx, army, pm,
-                        next.Value, assignment.StrategicAnchor, mandatoryClaims);
-                }
-
-                HexCoord beforeHex = army.Hex;
-                ReconAcceptanceAudit.RecordDecision(player, ctx.TurnNumber, army.Id,
-                    beforeHex, next.Value, actionWhy);
-                var move = AiDecision.Move(army, next.Value,
-                    $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
-                    + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f);
-                var trace = new AiMoveExecutionTrace();
-                yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
-                result.EnteredStealth |= trace.EnteredStealthThisStep;
-
-                army = Resolve(player, pm.MoverArmyId);
-                HexCoord endHex = army != null ? army.Hex : trace.EndHex;
-                bool moved = !endHex.Equals(beforeHex);
-                if (moved)
-                {
-                    result.StepsMoved++;
-                    ReconPatrolStateRegistry.MarkProgress(player, pm.MoverArmyId, ctx.TurnNumber);
-                    // Keep the tactical IntelAge sidecar explicitly current at the authoritative
-                    // transition boundary. This is idempotent with VisionSystem callbacks and does
-                    // NOT mutate the frozen strategic snapshot or ground Visited state.
-                    AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                    ReconAcceptanceAudit.RecordStep(player, ctx.TurnNumber, pm.MoverArmyId,
-                        beforeHex, endHex);
-                }
-                result.FinalHex = endHex;
-
-                if (forceDecloakForAttack && reaction.TargetArmyId.HasValue)
-                    ReconAcceptanceAudit.RecordWeakRecceAttack(player, ctx.TurnNumber, pm.MoverArmyId,
-                        reaction.TargetArmyId.Value, trace.BattleOccurred, reaction.WinChance);
-
-                if (army == null)
-                {
-                    stop = ExecutionStopReason.MoverLost;
-                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost during step");
-                    break;
-                }
-                if (trace.BattleOccurred)
-                {
-                    stop = ExecutionStopReason.BattleStarted;
-                    break;
-                }
-                if (trace.HexEventOccurred)
-                {
-                    stop = ExecutionStopReason.HexEventStarted;
-                    break;
-                }
-                if (!moved)
-                {
-                    stop = ExecutionStopReason.MoveRejected;
-                    break;
-                }
-
-                HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
-                HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
-                int[] newEnemyIds = enemyNow.Where(id => !knownEnemyIds.Contains(id)).ToArray();
-                int[] newNeutralIds = neutralNow.Where(id => !knownNeutralIds.Contains(id)).ToArray();
-                knownEnemyIds = enemyNow;
-                knownNeutralIds = neutralNow;
-
-                if (newEnemyIds.Length > 0)
-                {
-                    StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
-                    AiDebugLog.Write($"[AI][V2][Recon][Discovery] actor=#{army.Id} enemy=[{string.Join(",", newEnemyIds)}] "
-                        + "— next action will be live reaction/replan");
-                }
-                if (newNeutralIds.Length > 0)
-                {
-                    StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newNeutralIds);
-                    AiDebugLog.Write($"[AI][V2][Recon][Discovery] actor=#{army.Id} neutral=[{string.Join(",", newNeutralIds)}] "
-                        + "— next action will be live reaction/replan");
-                }
-
-                RefreshObjectiveSatisfied(player, pm, result);
+            if (army == null)
+            {
+                control.StopReason = ExecutionStopReason.MoverLost;
+                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover lost during step");
+                yield break;
+            }
+            if (trace.BattleOccurred)
+            {
+                control.StopReason = ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+            if (trace.HexEventOccurred)
+            {
+                control.StopReason = ExecutionStopReason.HexEventStarted;
+                yield break;
+            }
+            if (!moved)
+            {
+                control.StopReason = ExecutionStopReason.MoveRejected;
+                yield break;
             }
 
-            result.FinalHex = Resolve(player, pm.MoverArmyId)?.Hex ?? result.FinalHex;
+            HashSet<int> enemyNow = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
+            HashSet<int> neutralNow = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
+            int[] newEnemyIds = enemyNow.Where(id => !knownEnemyIds.Contains(id)).ToArray();
+            int[] newNeutralIds = neutralNow.Where(id => !knownNeutralIds.Contains(id)).ToArray();
+
+            if (newEnemyIds.Length > 0)
+            {
+                StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newEnemyIds);
+                AiDebugLog.Write($"[AI][V2][Recon][Discovery] actor=#{army.Id} enemy=[{string.Join(",", newEnemyIds)}] "
+                    + "— next action will be live reaction/replan");
+            }
+            if (newNeutralIds.Length > 0)
+            {
+                StrategicInterruptRegistry.MarkDiscovery(player, ctx.TurnNumber, newNeutralIds);
+                AiDebugLog.Write($"[AI][V2][Recon][Discovery] actor=#{army.Id} neutral=[{string.Join(",", newNeutralIds)}] "
+                    + "— next action will be live reaction/replan");
+            }
+
+            RefreshObjectiveSatisfied(player, pm, result);
+            control.CanContinue = army.CurrentMovement > 0;
+            control.StopReason = control.CanContinue
+                ? ExecutionStopReason.StepCompleted
+                : ExecutionStopReason.OutOfMovement;
+        }
+
+        private static void Finish(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisionedMission pm, ExecutionResult result, int apBefore, ExecutionStopReason stop,
+            IReadOnlyList<ProvisionedMission> queue, int missionIndex, bool summarize)
+        {
+            if (result == null) return;
+            result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-            AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm.Mission?.AttemptId}] {pm.Key} actor=#{pm.MoverArmyId} "
-                + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} "
+            AiDebugLog.Write($"[AI][V2][Recon][Ground] [{pm?.Mission?.AttemptId}] {pm?.Key} actor=#{pm?.MoverArmyId ?? -1} "
+                + $"kind={(pm != null ? ReconScoutKinds.Name(pm.ScoutKind) : "-")} "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps={result.StepsMoved} ap−{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
                 + $"objective={(result.ReachedGoal ? "met" : "open")} stop={stop}");
-            SummarizeIfLast(player, ctx, queue, missionIndex);
+            if (summarize)
+                SummarizeIfLast(player, ctx, queue, missionIndex);
         }
 
         private static void SummarizeIfLast(PlayerSetupData player, AiTurnContext ctx,
@@ -409,13 +496,18 @@ namespace Game.Ai.V2
             return set;
         }
 
-        private static void ExitArmyStealth(ArmyData army)
+        private static bool ExitArmyStealth(ArmyData army)
         {
             if (army == null)
-                return;
+                return false;
+            bool changed = false;
             foreach (var member in army.Members.ToList())
                 if (member.IsHidden)
+                {
                     StealthSystem.ExitStealth(member);
+                    changed = true;
+                }
+            return changed;
         }
 
         private static bool TryEnterRequiredStealth(PlayerRoot root, ArmyData army, out bool entered)

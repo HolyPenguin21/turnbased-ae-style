@@ -27,6 +27,7 @@ namespace Game.Ai.V2
         MoveRejected,
         RequiredStealthUnavailable,
         ObservationUnavailable,
+        StepCompleted,
     }
 
     public sealed class ExecutionResult : IV2ActionResult
@@ -39,6 +40,8 @@ namespace Game.Ai.V2
         public float ApSpent;
         public ExecutionStopReason StopReason;
         public bool EnteredStealth;
+        public bool StealthChanged;
+        public bool InfrastructureChanged;
 
         // Provisioned mission that produced this execution ledger row.
         public ProvisionedMission Source;
@@ -78,16 +81,17 @@ namespace Game.Ai.V2
         public V2ResourceStamp ResourcesBefore;
         public V2ResourceStamp ResourcesAfter;
 
-        // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor: only a
-        // real movement step or a stealth entry moved the world. Reaching a goal that was already
-        // satisfied (StaleNoOp) is a success but NOT a state change.
+        // ARCH-02 §36 — the common lifecycle projection. StateChanged is the honest floor:
+        // movement, stealth transition, or infrastructure ownership/destruction. Reaching a goal
+        // that was already satisfied (StaleNoOp) is a success but NOT a state change.
         public V2ActionOutcome Outcome
         {
             get
             {
                 bool moved = StepsMoved > 0;
-                bool succeeded = ReachedGoal || moved;
-                bool changed = moved || EnteredStealth;   // NOT ReachedGoal — a stale no-op changed nothing
+                bool succeeded = ReachedGoal || moved || InfrastructureChanged;
+                bool changed = moved || EnteredStealth || StealthChanged || InfrastructureChanged;
+                // ReachedGoal alone remains a stale no-op; capture/ownership mutation is explicit.
                 return new V2ActionOutcome(
                     succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
                     resourcesSpent: null, played: false, generated: false, attached: false,
@@ -361,7 +365,8 @@ namespace Game.Ai.V2
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;
-            if (result.StepsMoved > 0 || result.EnteredStealth)
+            if (result.StepsMoved > 0 || result.EnteredStealth
+                || result.StealthChanged || result.InfrastructureChanged)
                 V2StateVersion.Bump();
             result.StateVersionAfter = V2StateVersion.Current;
         }
