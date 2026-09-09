@@ -636,17 +636,30 @@ namespace Game.Ai.V2
                 TrimSurplusReconLanes(player, active, state, snap, reconObjectives);
 
             // Spec §1/§10 invariant — one physical Recon actor owns at most one active durable
-            // Recon operational role, ACROSS Explore / Refresh / Surveil (Surveil keeps its own
-            // tracked-army key model but not a separate physical claim). ReconcileAfterTurn
-            // re-focuses an actor's existing role rather than creating a second; this check catches
-            // any future regression that breaks that.
+            // role. Prevention lives in ReconAssignmentPlanner, but persisted saves/log replays may
+            // already contain a collision. Repair it here at the continuity boundary: keep the role
+            // most recently reconciled/progressed by the physical actor and unbind the rest. The
+            // objectives remain alive and may acquire another actor; no mission is silently deleted.
             foreach (IGrouping<int, MissionIntent> g in active
                 .Where(i => i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId.HasValue)
                 .GroupBy(i => i.PreferredMoverArmyId.Value))
             {
-                if (g.Count() <= 1) continue;
-                AiV2Trace.CheckError(null, "DuplicateReconActorIntent",
-                    $"actor=#{g.Key} intents=[{string.Join(", ", g.Select(i => i.IntentKey.ToString()))}]");
+                List<MissionIntent> claims = g
+                    .OrderByDescending(i => i.LastReconciledTurn)
+                    .ThenByDescending(i => i.LastProgressTurn)
+                    .ThenByDescending(i => i.Funding)
+                    .ThenBy(i => i.CreatedTurn)
+                    .ThenBy(i => i.IntentKey)
+                    .ToList();
+                if (claims.Count <= 1) continue;
+
+                MissionIntent owner = claims[0];
+                foreach (MissionIntent duplicate in claims.Skip(1))
+                {
+                    duplicate.PreferredMoverArmyId = null;
+                    AiDebugLog.Write($"[AI][V2] continuity — repaired duplicate Recon actor #{g.Key}: "
+                        + $"kept {owner.IntentKey}, unbound {duplicate.IntentKey}");
+                }
             }
             return active;
         }
@@ -950,7 +963,10 @@ namespace Game.Ai.V2
             intent.CumulativeApSpent += o.ApSpent;
             intent.StepsMovedTotal += o.StepsMoved;
             if (o.MoverArmyId.HasValue)
+            {
+                ReleaseOtherReconActorClaims(state, intent, o.MoverArmyId.Value);
                 intent.PreferredMoverArmyId = o.MoverArmyId;
+            }
 
             if (o.HasScoutPayload && intent.Scout != null)
             {
@@ -1014,6 +1030,25 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2] continuity — [{o.Proposal?.AttemptId}] {intent.IntentKey} advanced "
                     + $"({o.Outcome}, progress {(o.MadeProgress ? 1 : 0)}, t{intent.TurnsActive} stall{intent.StallTurns}"
                     + (capabilityUnavailable ? $", suspended CapabilityUnavailable:{o.ProvisionFailureKindValue}" : "") + ")");
+            }
+        }
+
+        private static void ReleaseOtherReconActorClaims(MissionIntentState state,
+            MissionIntent owner, int moverArmyId)
+        {
+            if (state == null || owner == null || owner.Kind != MissionKind.Scout
+                || moverArmyId == 0)
+                return;
+
+            foreach (MissionIntent other in state.All)
+            {
+                if (other == null || object.ReferenceEquals(other, owner)
+                    || other.Kind != MissionKind.Scout || other.Scout == null
+                    || other.PreferredMoverArmyId != moverArmyId)
+                    continue;
+                other.PreferredMoverArmyId = null;
+                AiDebugLog.Write($"[AI][V2] continuity — actor #{moverArmyId} moved to "
+                    + $"{owner.IntentKey}; unbound prior role {other.IntentKey}");
             }
         }
 
