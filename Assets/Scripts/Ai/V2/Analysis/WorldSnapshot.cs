@@ -196,6 +196,9 @@ namespace Game.Ai.V2
         public bool HasActivatedThisTurn;
         public int CurrentMovement;        // MP left THIS turn (MaxMovement minus what's spent)
         public bool IsSoloRecce;           // AiArmyRoles.IsSoloRecce — the cheap dedicated scout shape
+        // Frozen from the canonical AiArmyRoles.IsHeroLed predicate. Economy consumers add only
+        // target/intent/route context; they never re-derive the structural actor shape.
+        public bool IsMobileEconomyBuilder;
         // ARCH-02 §29/§59 — frozen at scan time from the live ArmyData so downstream layers
         // (RaidActorEligibility, CombatOpportunityAnalyzer, CapabilityInventory) read one snapshot
         // fact instead of re-deriving it from live ArmyRegistry state. Own armies only: a raid
@@ -438,6 +441,15 @@ namespace Game.Ai.V2
     // =======================================================================================
     //  ECONOMY STANDING  (replaces V1's binary EcoMature + standalone IncomeBehindBonus)
     // =======================================================================================
+    // Frozen structural route witness for one possible Economy builder. Intent ownership and
+    // loan policy are applied later by Demand; Provisioning revalidates the selected route live.
+    public struct EconomyBuilderRouteSnapshot
+    {
+        public int ArmyId;
+        public int TravelCost;
+        public bool IsOnTarget;
+    }
+
     public struct EconomyExtractionOpportunity
     {
         public HexCoord Hex;
@@ -447,6 +459,7 @@ namespace Game.Ai.V2
         public int MarginalIncomeGain;
         public float BaseNetworkSynergy;
         public float NearbyResourceClusterValue;
+        public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 
     public struct EconomyBaseOpportunity
@@ -456,6 +469,7 @@ namespace Game.Ai.V2
         public float NearbyResourceClusterValue;
         public float LogisticsValue;
         public bool ConvertsOwnedExtractionSite;
+        public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 
     public sealed class EconomyStanding
