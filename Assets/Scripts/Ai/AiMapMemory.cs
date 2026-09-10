@@ -15,10 +15,9 @@ namespace Game.Ai
     // NOT keep (see its own class comment: "Content has no memory either way and re-hides the
     // instant vision leaves"). Subscribes to VisionSystem.VisibilityChanged and, on every
     // recompute, snapshots whatever's on `player`'s own currently-visible hexes into four
-    // permanent-until-corrected stores: which hexes are known to carry a resource bonus (and,
-    // as of the Разведка Задача 2 pass, which ResourceType — reading the type off an already-
-    // VISIBLE hex isn't the cheat AiEconomyPlanner.DominantResourceType's own caller guards
-    // against elsewhere, since a real player would see the bonus icon the moment fog lifts too),
+    // permanent-until-corrected stores: which hexes are known to carry a resource bonus (including
+    // the complete effective resource line last observed there — reading it off an already-visible
+    // hex is no cheat, while reconstructing it later from the live map would be),
     // where an enemy/neutral army was last actually seen, which hexes carry a known active Hex
     // Event with a real guard (see KnownEventGuardDefenseAt), and (2026-08-24, section 3.2) which
     // hexes carry a known building and its own last-observed owner (KnownBuildings). Per the
@@ -32,7 +31,7 @@ namespace Game.Ai
     // it by re-observing the hex later, same as any other correction here.
     //
     // Deliberately narrow in scope — only the slices AiGoalScorer/AiScoutPlanner/AiTurnController/
-    // RaidWeakerArmyTask actually need honesty for right now (resource hexes + type, enemy
+    // RaidWeakerArmyTask actually need honesty for right now (resource hexes + observed yield, enemy
     // armies, event guards). Other players' own resource stockpiles stay the project's own
     // documented cheat exception (see AiGoalScorer's own IncomeBehindBonus) and never route
     // through here.
@@ -174,11 +173,33 @@ namespace Game.Ai
             }
         }
 
-        // HexCoord -> the dominant ResourceType last observed there (see AiEconomyPlanner.
-        // DominantResourceType) — a hex only ever enters this dictionary once its bonus has
-        // actually been seen, same honesty rule as everything else here.
-        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, ResourceType>> KnownResourceHexes =
-            new Dictionary<PlayerSetupData, Dictionary<HexCoord, ResourceType>>();
+        // Full effective resource line last observed while the hex was genuinely visible.  The
+        // dominant type is retained only for legacy display/prioritisation callers; Economy V2
+        // consumes Yield directly and must never reconstruct hidden quantities from the live map.
+        public readonly struct KnownResourceHex
+        {
+            public readonly HexCoord Hex;
+            public readonly ResourceType DominantType;
+            public readonly ResourceYields Yield;
+
+            public KnownResourceHex(HexCoord hex, ResourceType dominantType, ResourceYields yield)
+            {
+                Hex = hex;
+                DominantType = dominantType;
+                // Own the observation instead of retaining a terrain/bonus object's mutable
+                // ResourceYields reference.
+                Yield = new ResourceYields
+                {
+                    human = yield?.human ?? 0,
+                    energy = yield?.energy ?? 0,
+                    materials = yield?.materials ?? 0,
+                    tech = yield?.tech ?? 0,
+                };
+            }
+        }
+
+        private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, KnownResourceHex>> KnownResourceHexes =
+            new Dictionary<PlayerSetupData, Dictionary<HexCoord, KnownResourceHex>>();
         // Keyed by ArmyData.Id, NOT HexCoord (changed 2026-08-23, project owner's own call — see
         // EnemySighting.ArmyId's own comment): a hex-keyed store left a moved army's old-hex
         // sighting orphaned forever (until its own turns-based expiry) alongside a second, fresher
@@ -311,6 +332,7 @@ namespace Game.Ai
             new Dictionary<PlayerSetupData, Dictionary<HexCoord, int>>();
 
         private static bool _subscribed;
+        private static HexMap _map;
         // Global game turn (GameTurnController.TurnNumber, same one AiTurnContext.TurnNumber
         // snapshots) as of the most recent OnTurnStarted call — used only to stamp/expire
         // EnemySighting.SeenTurn (see that field's own comment). Not a live reference, just a
@@ -320,8 +342,10 @@ namespace Game.Ai
 
         // Idempotent — safe to call every new-game setup without risking a doubled subscription
         // (see CitadelSetupController, which calls this alongside VisionSystem.Clear/Configure).
-        public static void EnsureSubscribed()
+        public static void EnsureSubscribed(HexMap map = null)
         {
+            if (map != null)
+                _map = map;
             if (_subscribed)
                 return;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
@@ -364,6 +388,7 @@ namespace Game.Ai
             AirReconTargets.Clear();
             RaidPlanRejected.Clear();
             _currentTurn = 0;
+            _map = null;
         }
 
         // Called once, right at the top of AiTurnController.RunTurn, before that turn's own
@@ -502,9 +527,9 @@ namespace Game.Ai
             if (player == null)
                 return;
 
-            if (!KnownResourceHexes.TryGetValue(player, out Dictionary<HexCoord, ResourceType> resources))
+            if (!KnownResourceHexes.TryGetValue(player, out Dictionary<HexCoord, KnownResourceHex> resources))
             {
-                resources = new Dictionary<HexCoord, ResourceType>();
+                resources = new Dictionary<HexCoord, KnownResourceHex>();
                 KnownResourceHexes[player] = resources;
             }
             if (!EnemySightings.TryGetValue(player, out Dictionary<int, EnemySighting> sightings))
@@ -526,8 +551,13 @@ namespace Game.Ai
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
                 ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
-                if (dominant.HasValue)
-                    resources[hex] = dominant.Value;
+                if (dominant.HasValue && _map != null
+                    && _map.TryGetTerrainAt(hex, out var terrain))
+                {
+                    ResourceYields observed = HexResourceCalculator.GetEffectiveYield(
+                        terrain, HexResourceBonusRegistry.GetBonus(hex));
+                    resources[hex] = new KnownResourceHex(hex, dominant.Value, observed);
+                }
 
                 // IsEngageable(a, player) — a hidden-from-`player` enemy (an army every member
                 // of which is in stealth and undetected) is not a current sighting at all
@@ -719,19 +749,19 @@ namespace Game.Ai
         // already treats discovery (fogged vs visible, not visited vs unvisited).
         public static bool IsResourceHexKnown(PlayerSetupData actor, HexCoord hex)
         {
-            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, ResourceType> set) && set.ContainsKey(hex);
+            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, KnownResourceHex> set) && set.ContainsKey(hex);
         }
 
-        // Every known resource hex and its last-observed dominant type — the whole-map read
+        // Every known resource hex and its complete last-observed effective yield — the whole-map read
         // behind IsResourceHexKnown, for the Strategy V2 WorldAnalysis scan (Game.Ai.V2), which
         // needs the set itself (opportunity map + per-resource economy weighting), not just a
         // per-hex membership test. Same honesty rule as everything else here — only ever hexes
         // this player has actually seen the bonus on.
-        public static IEnumerable<KeyValuePair<HexCoord, ResourceType>> AllKnownResourceHexes(PlayerSetupData actor)
+        public static IEnumerable<KnownResourceHex> AllKnownResourceHexes(PlayerSetupData actor)
         {
-            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, ResourceType> set)
-                ? (IEnumerable<KeyValuePair<HexCoord, ResourceType>>)set
-                : System.Array.Empty<KeyValuePair<HexCoord, ResourceType>>();
+            return KnownResourceHexes.TryGetValue(actor, out Dictionary<HexCoord, KnownResourceHex> set)
+                ? set.Values
+                : System.Array.Empty<KnownResourceHex>();
         }
 
         public static bool HasKnownEnemyWithin(PlayerSetupData actor, HexCoord center, int radius)

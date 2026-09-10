@@ -454,9 +454,9 @@ namespace Game.Ai.V2
         {
             if (snap?.Known?.ResourceHexes == null || hex == null)
                 return null;
-            foreach (KeyValuePair<HexCoord, ResourceType> kv in snap.Known.ResourceHexes)
-                if (kv.Key.Equals(hex.Value))
-                    return kv.Value;
+            foreach (AiMapMemory.KnownResourceHex kv in snap.Known.ResourceHexes)
+                if (kv.Hex.Equals(hex.Value))
+                    return kv.DominantType;
             return null;
         }
 

@@ -84,7 +84,9 @@ namespace Game.Ai.V2
                     Kind = MissionKind.Economy,
                     Target = target,
                     BaseValue = d.Value,
-                    LocalAdmissionScore = d.Value,
+                    // Wait urgency is lane-local: it can overtake repeated Extraction contention
+                    // without inflating cross-axis value above critical Defence/Reaction.
+                    LocalAdmissionScore = d.Value + d.EconomyStrategicUrgency,
                     Requirements = Requirements(target, incumbent, snapshot,
                         d.EconomyTravelCost),
                     PreferredMoverArmyId = incumbent?.PreferredMoverArmyId

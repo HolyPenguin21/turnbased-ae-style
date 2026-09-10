@@ -103,6 +103,7 @@ namespace Game.Ai.V2
                 float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
                     ? AiConfigV2.economySameTurnCompletionBonus : 0f;
                 score = m.EffectiveValue + target.BuildValue + sameTurn
+                    + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue)
                     - AiConfigV2.economyAdmissionCompletionCostWeight * completionCost;
             }
             return AdmissionRank(score, m.FromDurableIntent, m.DurableFundingTier);
