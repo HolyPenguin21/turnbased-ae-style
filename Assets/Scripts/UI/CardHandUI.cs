@@ -321,12 +321,28 @@ namespace Game.UI
 
         private void OnCardDraggingBlockedChanged(bool _) => RefreshDrawButtonInteractable();
 
+        // Advances every card's position/scale tween (see CardUI.TickAnimation) from ONE place
+        // instead of a MonoBehaviour.Update on each card. Each call is a single early-out branch
+        // once that card's tween has settled.
+        private void TickCardAnimations()
+        {
+            float dt = Time.deltaTime;
+            for (int i = 0; i < _cards.Count; i++)
+                if (_cards[i] != null && _cards[i].gameObject.activeSelf)
+                    _cards[i].TickAnimation(dt);
+            for (int i = 0; i < _debugCards.Count; i++)
+                if (_debugCards[i] != null && _debugCards[i].gameObject.activeSelf)
+                    _debugCards[i].TickAnimation(dt);
+        }
+
         // Esc cancels an in-progress equipment attach (see BeginAttachMode) — but only when the
         // Army Viewer isn't open: that modal owns Esc while it's showing and forwards the
         // attach-cancel itself first (see ArmyViewerModalUI.Update), so this would double-fire.
         // Unity's Input System has no key-pressed event, so this is a genuine per-frame poll.
         private void Update()
         {
+            TickCardAnimations();
+
             if (_pendingEquipment == null || Keyboard.current == null || !Keyboard.current.escapeKey.wasPressedThisFrame)
                 return;
             if (armyViewerModal != null && armyViewerModal.IsShowing)

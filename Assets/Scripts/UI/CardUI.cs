@@ -1,4 +1,3 @@
-using System.Collections;
 using Game.Cards;
 using TMPro;
 using UnityEngine;
@@ -79,8 +78,21 @@ namespace Game.UI
         private bool _isHovered;
         private bool _dragAllowed;
         private bool _dragHoverValid;
-        private Coroutine _animRoutine;
         private Canvas _canvas;
+
+        // Frame-driven tween state — replaces the per-Retarget StartCoroutine(AnimateTo/
+        // ScaleRoutine). Ticked from CardHandUI.Update via TickAnimation, so a reorder that
+        // retargets several cards no longer allocates an iterator per card per tick.
+        // _animTweenPos is false while dragging (OnDrag owns anchoredPosition then, only scale
+        // eases). _animDur <= 0 is applied immediately by BeginTween and never ticked.
+        private bool _animActive;
+        private bool _animTweenPos;
+        private Vector2 _animFromPos;
+        private Vector2 _animToPos;
+        private float _animFromScale;
+        private float _animToScale;
+        private float _animElapsed;
+        private float _animDur;
 
         // Scale while being carried — 1 (full/native size) normally, shrunk by
         // dragHoverShrink while poised over a hex this card could actually be dropped on (see
@@ -445,68 +457,55 @@ namespace Game.UI
         {
             Vector2 targetPos = _homePosition + (_isHovered ? new Vector2(0f, _hoverLift) : Vector2.zero);
             float targetScale = _isHovered ? _hoverScale : _restingScale;
-
-            if (_animRoutine != null)
-                StopCoroutine(_animRoutine);
-            _animRoutine = StartCoroutine(AnimateTo(targetPos, targetScale, animated ? _animDuration : 0f));
+            BeginTween(targetPos, targetScale, tweenPos: true, animated ? _animDuration : 0f);
         }
 
-        // Scale-only counterpart to Retarget/AnimateTo — used while dragging, when position is
-        // being driven every frame by OnDrag's own delta accumulation instead of by this
-        // component. Animating position here too (even toward its own current value, via the
-        // position+scale AnimateTo below) would fight that: this coroutine's per-frame Lerp
-        // would overwrite whatever OnDrag just set that same frame. Scale is independent of
-        // position, so it can safely share the same _animRoutine slot as Retarget without any
-        // of that risk.
+        // Scale-only counterpart to Retarget — used while dragging, when position is being
+        // driven every frame by OnDrag's own delta accumulation instead of by this component.
+        // tweenPos:false keeps TickAnimation off anchoredPosition so it can't overwrite what
+        // OnDrag just set that same frame.
         private void AnimateScaleTo(float targetScale, float duration)
         {
-            if (_animRoutine != null)
-                StopCoroutine(_animRoutine);
-            _animRoutine = StartCoroutine(ScaleRoutine(targetScale, duration));
+            BeginTween(rectTransform.anchoredPosition, targetScale, tweenPos: false, duration);
         }
 
-        private IEnumerator ScaleRoutine(float targetScale, float duration)
+        // Records the tween targets for TickAnimation. duration <= 0 snaps immediately and
+        // leaves nothing to tick.
+        private void BeginTween(Vector2 targetPos, float targetScale, bool tweenPos, float duration)
         {
-            float startScale = rectTransform.localScale.x;
             if (duration <= 0f)
             {
+                if (tweenPos)
+                    rectTransform.anchoredPosition = targetPos;
                 rectTransform.localScale = Vector3.one * targetScale;
-                yield break;
+                _animActive = false;
+                return;
             }
-
-            float t = 0f;
-            while (t < duration)
-            {
-                t += Time.deltaTime;
-                float f = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration));
-                rectTransform.localScale = Vector3.one * Mathf.Lerp(startScale, targetScale, f);
-                yield return null;
-            }
-            rectTransform.localScale = Vector3.one * targetScale;
+            _animFromPos = rectTransform.anchoredPosition;
+            _animToPos = targetPos;
+            _animFromScale = rectTransform.localScale.x;
+            _animToScale = targetScale;
+            _animTweenPos = tweenPos;
+            _animElapsed = 0f;
+            _animDur = duration;
+            _animActive = true;
         }
 
-        private IEnumerator AnimateTo(Vector2 targetPos, float targetScale, float duration)
+        // Driven once per frame by CardHandUI.Update — one call site instead of N
+        // MonoBehaviour.Update entries, and no allocation per Retarget. Same SmoothStep easing
+        // the old AnimateTo/ScaleRoutine coroutines used. No-ops the instant the tween settles.
+        public void TickAnimation(float deltaTime)
         {
-            Vector2 startPos = rectTransform.anchoredPosition;
-            float startScale = rectTransform.localScale.x;
-            if (duration <= 0f)
-            {
-                rectTransform.anchoredPosition = targetPos;
-                rectTransform.localScale = Vector3.one * targetScale;
-                yield break;
-            }
-
-            float t = 0f;
-            while (t < duration)
-            {
-                t += Time.deltaTime;
-                float f = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(t / duration));
-                rectTransform.anchoredPosition = Vector2.Lerp(startPos, targetPos, f);
-                rectTransform.localScale = Vector3.one * Mathf.Lerp(startScale, targetScale, f);
-                yield return null;
-            }
-            rectTransform.anchoredPosition = targetPos;
-            rectTransform.localScale = Vector3.one * targetScale;
+            if (!_animActive)
+                return;
+            _animElapsed += deltaTime;
+            bool done = _animElapsed >= _animDur;
+            float f = done ? 1f : Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(_animElapsed / _animDur));
+            if (_animTweenPos)
+                rectTransform.anchoredPosition = Vector2.Lerp(_animFromPos, _animToPos, f);
+            rectTransform.localScale = Vector3.one * Mathf.Lerp(_animFromScale, _animToScale, f);
+            if (done)
+                _animActive = false;
         }
     }
 }
