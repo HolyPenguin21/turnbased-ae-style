@@ -15,8 +15,8 @@ namespace Game.Ai.V2
     //  TraitPreference values are added as later axes need them, without reshaping this contract.
     //
     //  Strategic Manager is NOT a DesireAxis and gets NO radar slice. A demand-driven card play
-    //  is charged to demand.RequestingAxis's AP entitlement (AxisBudgetLedger) — the axis that
-    //  needed the capability pays for it.
+    //  spends the shared AxisBudgetLedger AP pool. RequestingAxis affects value/priority and is
+    //  retained in spend telemetry; it does not own a separate AP or H/E/M/T wallet.
     // ===========================================================================================
 
     public enum CapabilityKind
@@ -65,6 +65,9 @@ namespace Game.Ai.V2
         public float EconomyTravelCost;
         public float EconomyThreatExposure;
         public float EconomyHeroOpportunityCost;
+        public float EconomyAssignmentApCost;
+        public float EconomyPaybackTurns;
+        public int? EconomyPreferredBuilderArmyId;
         // Analysis-owned structural routes for the selected site. Demand applies intent/commitment
         // policy; no downstream stage has to query Provisioning or live registries to rediscover it.
         public IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes;

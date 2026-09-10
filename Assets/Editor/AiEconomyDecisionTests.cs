@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -84,10 +85,307 @@ namespace Game.EditorTests
         [Test]
         public void EconomySiteScore_ThreatCanMakeSaferPeerWin()
         {
-            float safe = DemandLayer.ScoreEconomySite(0.7f, 1f, 0.5f, 0.5f, 2f, 0f, 0.2f);
-            float dangerous = DemandLayer.ScoreEconomySite(0.7f, 1f, 0.5f, 0.5f, 2f, 1f, 0.2f);
+            float safe = DemandLayer.ScoreEconomySite(
+                0.7f, 1f, 0.5f, 0.5f, 2f, 0f, 0.2f, 1f, 1f, 2f);
+            float dangerous = DemandLayer.ScoreEconomySite(
+                0.7f, 1f, 0.5f, 0.5f, 2f, 1f, 0.2f, 1f, 1f, 2f);
 
             Assert.That(safe, Is.GreaterThan(dangerous));
+        }
+
+        [Test]
+        public void EconomyDemand_ProfitableSiteDoesNotRequireRelativeDeficit()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 2),
+            };
+
+            AxisDemand demand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(demand.EconomyResourceType, Is.EqualTo(ResourceType.Materials));
+            Assert.That(demand.Value, Is.GreaterThan(0f));
+        }
+
+        [Test]
+        public void EconomyPayback_RejectsExcessiveConstructionHorizon()
+        {
+            float payback = DemandLayer.EconomyPaybackTurns(
+                expectedIncomeGain: 1f, resourceCost: 7f, assignmentApCost: 3f);
+
+            Assert.That(payback, Is.GreaterThan(AiConfigV2.economyExtractionMaxPaybackTurns));
+        }
+
+        [Test]
+        public void EconomyDemand_ExcessivePaybackSiteIsRejected()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(7, 0), ResourceType.Materials, 1),
+            };
+            Game.Core.GameConfig config = UnityEngine.ScriptableObject
+                .CreateInstance<Game.Core.GameConfig>();
+            config.extractionFacilityCards[(int)ResourceType.Materials] = new CardDefinition
+            {
+                cardType = CardType.Facility,
+                apCost = 3,
+                resourceCost = new ResourceCost { materials = 7 },
+            };
+
+            try
+            {
+                Assert.That(DemandLayer.EconomyDemands(snapshot, new DesireBreakdown(),
+                    null, new Game.Ai.AiTurnContext { GameConfig = config }, null), Is.Empty);
+            }
+            finally
+            {
+                UnityEngine.Object.DestroyImmediate(config);
+            }
+        }
+
+        [Test]
+        public void EconomyDemand_ExtractionCannotStarveBaseCategory()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
+            var baseDef = new CardDefinition
+            {
+                cardType = CardType.Base, authoredKey = "test-base", displayName = "Test Base",
+            };
+            CardData baseCard = new CardData(baseDef);
+            snapshot.Self.Hand = new[] { baseCard };
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Human, 3),
+            };
+            snapshot.Economy.BaseOpportunities = new[]
+            {
+                new EconomyBaseOpportunity
+                {
+                    Hex = new HexCoord(3, 0), CapacityValue = 1f,
+                    InfrastructurePressure = 1f,
+                    NearbyResourceClusterValue = 2f,
+                },
+            };
+
+            List<AxisDemand> demands = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).ToList();
+
+            Assert.That(demands.Count, Is.EqualTo(2));
+            Assert.That(demands.Count(d => d.EconomyResourceType.HasValue), Is.EqualTo(1));
+            Assert.That(demands.Count(d => d.EconomyBuildCard == baseCard), Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EconomyDemand_ActiveBaseCommitmentKeepsItsSite()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.2f, 0.1f, actionable: true);
+            var baseDef = new CardDefinition
+            {
+                cardType = CardType.Base, authoredKey = "base", displayName = "Base",
+            };
+            CardData card = new CardData(baseDef);
+            snapshot.Self.Hand = new[] { card };
+            HexCoord incumbentHex = new HexCoord(3, 0);
+            snapshot.Economy.BaseOpportunities = new[]
+            {
+                new EconomyBaseOpportunity
+                {
+                    Hex = incumbentHex, CapacityValue = 0.5f,
+                },
+                new EconomyBaseOpportunity
+                {
+                    Hex = new HexCoord(6, 0), CapacityValue = 1f,
+                    NearbyResourceClusterValue = 5f,
+                },
+            };
+            var incumbent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Status = IntentStatus.Active,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.FoundBase,
+                    TargetHex = incumbentHex,
+                    BuildCard = card,
+                },
+            };
+
+            AxisDemand selected = DemandLayer.EconomyDemands(snapshot,
+                new DesireBreakdown(), null, null, null, new[] { incumbent }, null).Single();
+
+            Assert.That(selected.TargetHex, Is.EqualTo(incumbentHex));
+        }
+
+        [Test]
+        public void BaseExpansionDirection_UsesFrontBaseAndOnlyForwardRing()
+        {
+            var self = new Game.Players.PlayerSetupData();
+            var enemy = new Game.Players.PlayerSetupData();
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.BaseHexes = new[] { new HexCoord(0, 0), new HexCoord(3, 0) };
+            snapshot.Known.Buildings = new[]
+            {
+                new Game.Ai.AiMapMemory.KnownBuilding(
+                    new HexCoord(9, 0), enemy, true, null),
+            };
+
+            Assert.That(WorldAnalysis.TrySelectBaseExpansionDirection(
+                snapshot, self, out HexCoord target, out HexCoord anchor), Is.True);
+            Assert.That(anchor, Is.EqualTo(new HexCoord(3, 0)));
+            Assert.That(target, Is.EqualTo(new HexCoord(9, 0)));
+            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
+                anchor, target, new HexCoord(6, 0)), Is.True);
+            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
+                anchor, target, new HexCoord(4, 0)), Is.False);
+            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
+                anchor, target, new HexCoord(3, 3)), Is.False);
+        }
+
+        [Test]
+        public void BaseExpansionDirection_TiesEnemyCitadelsByCoordinates()
+        {
+            var self = new Game.Players.PlayerSetupData();
+            var enemyA = new Game.Players.PlayerSetupData();
+            var enemyB = new Game.Players.PlayerSetupData();
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.BaseHexes = new[] { new HexCoord(0, 0) };
+            snapshot.Known.Buildings = new[]
+            {
+                new Game.Ai.AiMapMemory.KnownBuilding(
+                    new HexCoord(6, -3), enemyA, true, null),
+                new Game.Ai.AiMapMemory.KnownBuilding(
+                    new HexCoord(3, 3), enemyB, true, null),
+            };
+
+            Assert.That(WorldAnalysis.TrySelectBaseExpansionDirection(
+                snapshot, self, out HexCoord target, out _), Is.True);
+            Assert.That(target, Is.EqualTo(new HexCoord(3, 3)));
+        }
+
+        [Test]
+        public void ExtractionYield_EnumeratesEveryPositiveResourceOnKnownHex()
+        {
+            var yield = new ResourceBundle { Materials = 2f, Tech = 1f };
+
+            var types = WorldAnalysis.PositiveResourceYields(new HexCoord(2, 1), yield)
+                .ToDictionary(x => x.Type, x => x.Yield);
+
+            Assert.That(types[ResourceType.Materials], Is.EqualTo(2));
+            Assert.That(types[ResourceType.Tech], Is.EqualTo(1));
+            Assert.That(types.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ExtractionDemand_OneFacilitySlotFundsOnlyOneResourceType()
+        {
+            HexCoord hex = new HexCoord(2, 1);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.8f, actionable: true);
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(hex, ResourceType.Materials, 2),
+                ExtractionOpportunity(hex, ResourceType.Tech, 1),
+            };
+
+            List<AxisDemand> demands = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).ToList();
+
+            Assert.That(demands.Count, Is.EqualTo(1));
+            Assert.That(demands[0].EconomyResourceType, Is.EqualTo(ResourceType.Materials));
+        }
+
+        [Test]
+        public void EconomyBuilderSelection_PrefersLowerFullAssignmentCostAndPropagatesId()
+        {
+            HexCoord target = new HexCoord(4, 0);
+            ArmySnapshot solo = EconomyBuilder(11, 1, 3f);
+            ArmySnapshot stack = EconomyBuilder(12, 5, 20f);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
+            snapshot.Self.Armies = new[] { solo, stack };
+            var routes = new[]
+            {
+                BuilderRoute(solo, travel: 4, back: 4, activation: 1),
+                BuilderRoute(stack, travel: 2, back: 2, activation: 5),
+            };
+
+            DemandLayer.EconomyBuilderChoice choice = DemandLayer.SelectEconomyBuilder(
+                snapshot, target, routes, null, null, 50f, 1f, includeReturn: true);
+            Assert.That(choice.Army.ArmyId, Is.EqualTo(11));
+
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = target,
+                EconomyResourceType = ResourceType.Materials,
+                EconomyPreferredBuilderArmyId = choice.Army.ArmyId,
+                EconomyBuilderRoutes = routes,
+                Value = 50f,
+            };
+            MissionProposal mission = EconomyMissionPlanner.Propose(
+                snapshot, new DesireBreakdown(), null, new[] { demand }).Single();
+            Assert.That(mission.PreferredMoverArmyId, Is.EqualTo(11));
+        }
+
+        [Test]
+        public void EconomyBuilderSelection_ActiveEconomyCommitmentWinsContinuity()
+        {
+            HexCoord target = new HexCoord(4, 0);
+            ArmySnapshot incumbent = EconomyBuilder(20, 2, 8f);
+            ArmySnapshot cheaper = EconomyBuilder(21, 1, 2f);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
+            snapshot.Self.Armies = new[] { incumbent, cheaper };
+            EconomyBuilderRouteSnapshot incumbentRoute = BuilderRoute(
+                incumbent, travel: 4, back: 4, activation: 3);
+            incumbentRoute.HasActiveEconomyCommitment = true;
+
+            DemandLayer.EconomyBuilderChoice choice = DemandLayer.SelectEconomyBuilder(
+                snapshot, target,
+                new[] { incumbentRoute, BuilderRoute(cheaper, 1, 1, 1) },
+                null, null, 50f, 1f, includeReturn: true);
+
+            Assert.That(choice.Army.ArmyId, Is.EqualTo(20));
+        }
+
+        [Test]
+        public void EconomyArmyLightening_RetainsEscortForKnownRouteThreat()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Known.EnemySightings = new[]
+            {
+                new Game.Ai.AiMapMemory.KnownEnemySighting(
+                    new HexCoord(2, 0), new Game.Players.PlayerSetupData(), "enemy", 2,
+                    defenseSum: 3f, attackSum: 5f, defenders: null),
+            };
+
+            float required = ProvisioningManager.EconomyRouteEscortPower(
+                snapshot, new HexCoord(0, 0), new HexCoord(4, 0));
+
+            Assert.That(required, Is.EqualTo(8f * AiConfigV2.defenceReserveMargin).Within(0.001f));
+        }
+
+        [Test]
+        public void EconomyReservation_ReducesSharedPhysicalStockWithoutAxisWallet()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            StrategicResourceReservationLedger.BeginTurn(player, 3);
+            StrategicResourceReservationLedger.Upsert(player, 3,
+                new StrategicResourceReservation
+                {
+                    Owner = "Economy:test",
+                    Reason = StrategicReservationReason.EconomyBuildFollowup,
+                    Resource = StrategicReservedResource.Human,
+                    Amount = 2f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                });
+
+            Assert.That(StrategicResourceReservationLedger.Spendable(
+                player, 3, StrategicReservedResource.Human, 5f), Is.EqualTo(3f));
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, 3, StrategicReservedResource.Human), Is.EqualTo(2f));
+            StrategicResourceReservationLedger.BeginTurn(player, 4);
         }
 
         [Test]
@@ -228,7 +526,7 @@ namespace Game.EditorTests
                 {
                     ArmyId = 11, Hex = new HexCoord(1, 1), HasHero = true,
                     IsGarrison = false, IsPrison = false, IsAir = false,
-                    IsAirfield = false, MemberCount = 2,
+                    IsAirfield = false, IsMobileEconomyBuilder = true, MemberCount = 2,
                 },
             };
             snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
@@ -642,6 +940,32 @@ namespace Game.EditorTests
             MarginalIncomeGain = gain,
             BaseNetworkSynergy = 1f,
             NearbyResourceClusterValue = 0f,
+        };
+
+        private static ArmySnapshot EconomyBuilder(int id, int size, float power) =>
+            new ArmySnapshot
+            {
+                ArmyId = id,
+                Hex = new HexCoord(0, 0),
+                HasHero = true,
+                IsMobileEconomyBuilder = true,
+                MemberCount = size,
+                EffectiveArmyPower = power,
+                CurrentMovement = 3,
+                MaxMovement = 3,
+            };
+
+        private static EconomyBuilderRouteSnapshot BuilderRoute(ArmySnapshot army,
+            int travel, int back, int activation) => new EconomyBuilderRouteSnapshot
+        {
+            ArmyId = army.ArmyId,
+            TravelCost = travel,
+            ReturnTravelCost = back,
+            CurrentMovement = army.CurrentMovement,
+            MaxMovement = army.MaxMovement,
+            ActivationApCost = activation,
+            ArmySize = army.MemberCount,
+            EffectiveArmyPower = army.EffectiveArmyPower,
         };
 
         private static MissionIntent ScoutDonor(CommitmentTier funding, ScoutTargetKind kind) =>

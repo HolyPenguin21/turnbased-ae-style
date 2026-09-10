@@ -10,7 +10,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  STRATEGIC RESOURCE RESERVATION  (Strategy V2 — AI-MGR-02, spec §6/§7/§8)
     // ===========================================================================================
-    //  An EXPLICIT, owner + reason tagged hold on the shared resource pool. It replaces every
+    //  An EXPLICIT, owner + reason + resource tagged hold on the shared physical pool. DesireAxis
+    //  never keys a row and therefore never creates an Economy/Recon/etc. resource wallet. It replaces every
     //  hidden "Phase B just returns early and N AP are silently preserved" path. After this change
     //  a resource is in exactly one of three states:
     //    · really spent,
@@ -203,8 +204,9 @@ namespace Game.Ai.V2
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn
                 || e.Reservations.Count == 0)
-                return "none";
-            return string.Join(", ", e.Reservations.Select(r => r.ToString()));
+                return "ownerAwarePhysical=none";
+            return "ownerAwarePhysical=[" + string.Join(", ",
+                e.Reservations.Select(r => r.ToString())) + "]";
         }
 
         private static Entry GetOrReset(PlayerSetupData player, int turn)

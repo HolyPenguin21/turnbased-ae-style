@@ -73,6 +73,8 @@ namespace Game.Ai.V2
                     BuildApCost = d.EconomyBuildApCost,
                     BuildValue = d.EconomySiteValue > 0f ? d.EconomySiteValue : d.Value,
                     MinimumFollowupAp = d.MinimumFollowupAp,
+                    BuilderArmyId = d.EconomyPreferredBuilderArmyId,
+                    BuilderRoutes = d.EconomyBuilderRoutes,
                 };
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Kind == MissionKind.Economy && i.Economy != null
@@ -85,7 +87,8 @@ namespace Game.Ai.V2
                     LocalAdmissionScore = d.Value,
                     Requirements = Requirements(target, incumbent, snapshot,
                         d.EconomyTravelCost),
-                    PreferredMoverArmyId = incumbent?.PreferredMoverArmyId,
+                    PreferredMoverArmyId = incumbent?.PreferredMoverArmyId
+                        ?? d.EconomyPreferredBuilderArmyId,
                     FromDurableIntent = incumbent != null,
                     DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
                     Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) site={target.BuildValue:0.0}",
@@ -120,7 +123,8 @@ namespace Game.Ai.V2
             }
 
             float activation = 0f;
-            if (incumbent?.PreferredMoverArmyId is int id)
+            int? preferredId = incumbent?.PreferredMoverArmyId ?? t.BuilderArmyId;
+            if (preferredId is int id)
             {
                 ArmySnapshot a = snapshot?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
                 activation = a != null && !a.HasActivatedThisTurn ? a.ActivationApCost : 0f;
@@ -129,7 +133,7 @@ namespace Game.Ai.V2
                 + UnityEngine.Mathf.Max(t.BuildApCost, t.MinimumFollowupAp));
             var r = new MissionRequirements
             {
-                RequiresArmy = true, RequiresHero = true, MoverKnown = incumbent != null,
+                RequiresArmy = true, RequiresHero = true, MoverKnown = preferredId.HasValue,
                 ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
             };
             List<ArmySnapshot> heroes = snapshot?.Self?.Armies?
@@ -137,7 +141,10 @@ namespace Game.Ai.V2
                     || (a.IsGarrison && a.HasHero && a.Hex.Equals(t.TargetHex)))).ToList();
             if (heroes != null && heroes.Count > 0)
             {
-                ArmySnapshot nearest = heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
+                ArmySnapshot nearest = preferredId.HasValue
+                    ? heroes.FirstOrDefault(a => a.ArmyId == preferredId.Value)
+                    : null;
+                nearest ??= heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
                     .ThenBy(a => a.ArmyId).First();
                 int distance = witnessedTravelCost >= 0f
                     ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)

@@ -153,15 +153,15 @@ namespace Game.Ai.V2
 
             // --- Infrastructure pre-pass. DEF/ECO/DEV EconomicInfrastructure / DevelopmentInfra
             //     demands are fulfilled by BuildingPlayExecutor through the authoritative gameplay
-            //     API, NOT the Unit/Hero materialization chain below. Charged to the requesting
-            //     axis exactly like a card play. Handled here once, then blocked so the generic
+            //     API, NOT the Unit/Hero materialization chain below. The requesting axis labels
+            //     value/telemetry; AP comes from the shared pool. Handled here once, then blocked so the generic
             //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
             foreach (DemandState istate in states.Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability)))
             {
                 istate.Blocked = true;
                 result.InfrastructureAttempts++;
                 // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
-                // checks the requesting axis's discrete entitlement and live affordability, and
+                // checks the shared AP pool and live affordability, and
                 // only then runs the authoritative build. A shortfall => nothing spent, not built.
                 // §2.4 — independent controlled-state snapshot around the op (building count,
                 // filled facility slots, army movement, resources), NOT derived from the op's own
@@ -557,6 +557,9 @@ namespace Game.Ai.V2
                 EconomyTravelCost = d.EconomyTravelCost,
                 EconomyThreatExposure = d.EconomyThreatExposure,
                 EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
+                EconomyAssignmentApCost = d.EconomyAssignmentApCost,
+                EconomyPaybackTurns = d.EconomyPaybackTurns,
+                EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,
