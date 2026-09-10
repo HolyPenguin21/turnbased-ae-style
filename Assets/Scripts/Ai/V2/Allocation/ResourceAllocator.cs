@@ -805,8 +805,8 @@ namespace Game.Ai.V2
             //    model #1a: the radar does not size an AP budget here at all (one shared pool). Tie-
             //    break: EffectiveValue DESC, then StableMissionKey ASC — deterministic regardless of
             //    Dictionary iteration order. Per candidate: conflict -> capacity -> AP budget ->
-            //    global physical (atomic H/E/M/T). A proposal that is ALSO an active commitment is
-            //    funded through the commitment loop above only.
+            //    global physical (atomic H/E/M/T). Protected commitments are removed here because
+            //    they were handled above; ordinary Soft commitments remain competitive.
             var protectedCommitmentKeys = new HashSet<StableMissionKey>(_commitments
                 .Where(IsProtectedCommitment)
                 .Select(c => StableMissionKey.For(c.Mission)));
