@@ -1444,7 +1444,7 @@ namespace Game.EditorTests
             var player = new Game.Players.PlayerSetupData();
             AiAllocatorStateRegistry.Clear();
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
-            snapshot.Self.ActionPoints = 1f;
+            snapshot.Self.ActionPoints = 1;
             MissionProposal scout = AllocatorMission(
                 MissionKind.Scout, 20f, DesireAxis.Recon, armyId: 7);
             MissionProposal economy = AllocatorMission(
@@ -1468,7 +1468,7 @@ namespace Game.EditorTests
             var player = new Game.Players.PlayerSetupData();
             AiAllocatorStateRegistry.Clear();
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
-            snapshot.Self.ActionPoints = 1f;
+            snapshot.Self.ActionPoints = 1;
             MissionProposal scout = AllocatorMission(
                 MissionKind.Scout, 20f, DesireAxis.Recon, armyId: 7);
             MissionProposal economy = AllocatorMission(
