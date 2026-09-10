@@ -402,8 +402,9 @@ namespace Game.Ai.V2
 
         // Step 7.1 — this proposal is an active MissionIntent re-materialised this turn, not a
         // fresh candidate. DurableFundingTier is that intent's funding policy (None for Explore /
-        // short Surveil; Soft/Hard reach the allocator as pre-bound Commitments, never through the
-        // fresh loop). Together they let MissionAdmissionPolicy.AdmissionRank apply the retarget
+        // short Surveil; Soft/Hard reach the allocator as pre-bound Commitments. Hard and critical
+        // Surveil are protected first; ordinary Soft work competes in the shared merge). Together
+        // they let MissionAdmissionPolicy.AdmissionRank apply the retarget
         // hysteresis at the allocator's K-cut, not just inside the beam.
         public bool FromDurableIntent;
         public CommitmentTier DurableFundingTier;
@@ -451,8 +452,10 @@ namespace Game.Ai.V2
         public float EstimatedDistance;
     }
 
-    // --- Stage 7: an in-flight mission the allocator must fund BEFORE fresh decisions and may not
-    //     drop over a small Radar move. It is a FUNDING POLICY on a durable MissionIntent, not the
+    // --- Stage 7: an in-flight mission with explicit funding continuity. Hard and critical
+    //     Surveil commitments fund before fresh decisions; ordinary Soft commitments compete with
+    //     fresh work using ProtectedValue as their intrinsic floor. It is a FUNDING POLICY on a
+    //     durable MissionIntent, not the
     //     intent itself (Intent != Commitment). ContinuationValue / SwitchingCost are forward-
     //     looking — the value of FINISHING and the cost of ABANDONING — and are recorded for a
     //     future pre-emption pass. Sunk AP / turns invested are telemetry on MissionIntent and are
