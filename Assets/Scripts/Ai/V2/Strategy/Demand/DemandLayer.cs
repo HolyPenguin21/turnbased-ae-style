@@ -644,11 +644,13 @@ namespace Game.Ai.V2
             {
                 if (!standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs))
                     continue;
+                float resourcePriority = EconomyResourcePriority(rs);
                 CardDefinition def = ExtractionDefinition(ctx, site.ResourceType);
                 if (ctx?.GameConfig != null && def == null)
                     continue;
                 float starvation = Mathf.Max(rs.StarvationPressure,
                     ResourceStarvationRegistry.Pressure(player, site.ResourceType));
+                resourcePriority = Mathf.Max(resourcePriority, starvation);
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
@@ -656,7 +658,7 @@ namespace Game.Ai.V2
                 float preliminaryPayback = EconomyPaybackTurns(
                     gain, resourceCost, def?.apCost ?? 0f);
                 float preliminaryValue = ScoreEconomySite(
-                    Mathf.Max(rs.DeficitScore, starvation), gain,
+                    resourcePriority, gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
                     0f, 0f, 0f, resourceCost, def?.apCost ?? 0f,
                     preliminaryPayback);
@@ -671,10 +673,20 @@ namespace Game.Ai.V2
                 float payback = EconomyPaybackTurns(gain, resourceCost, assignmentAp);
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
                     continue;
-                float value = ScoreEconomySite(Mathf.Max(rs.DeficitScore, starvation), gain,
+                float strategicValue = ScoreEconomySite(
+                    resourcePriority, gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
-                    travel, exposure, opportunity, resourceCost, assignmentAp, payback);
-                if (value <= AiConfigV2.allocatorSliceEpsilon)
+                    0f, exposure, 0f, resourceCost, def?.apCost ?? 0f,
+                    preliminaryPayback);
+                float deliveryApCost = Mathf.Max(0f,
+                    assignmentAp - (def?.apCost ?? 0f));
+                float value = strategicValue
+                    - AiConfigV2.economyBuildApPenalty * deliveryApCost
+                    - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travel)
+                    - AiConfigV2.economySiteHeroOpportunityPenalty
+                        * Mathf.Max(0f, opportunity);
+                if (strategicValue <= AiConfigV2.allocatorSliceEpsilon
+                    || value <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 candidates.Add(new AxisDemand
                 {
@@ -687,7 +699,7 @@ namespace Game.Ai.V2
                     EconomyBuildApCost = def?.apCost ?? 0,
                     MinimumFollowupAp = def?.apCost ?? 0,
                     EconomyExpectedIncomeGain = gain,
-                    EconomySiteValue = value,
+                    EconomySiteValue = strategicValue,
                     EconomyTravelCost = travel,
                     EconomyThreatExposure = exposure,
                     EconomyHeroOpportunityCost = opportunity,
@@ -697,17 +709,37 @@ namespace Game.Ai.V2
                     EconomyBuilderRoutes = site.BuilderRoutes,
                     Value = value,
                     Explain = $"{site.ResourceType} deficit={rs.DeficitScore:0.##} "
-                        + $"marginalGain={gain:0.#} effectiveYield={site.EffectiveYield} "
+                        + $"resourcePriority={resourcePriority:0.##} marginalGain={gain:0.#} effectiveYield={site.EffectiveYield} "
                         + $"alreadyCollected={site.CurrentBuildingCollection} "
                         + $"network={site.BaseNetworkSynergy:0.##} "
-                        + $"cluster={site.NearbyResourceClusterValue:0.##} travel={travel:0.#} "
-                        + $"exposure={exposure:0.##} heroCost={opportunity:0.##}",
+                        + $"cluster={site.NearbyResourceClusterValue:0.##} "
+                        + $"site={strategicValue:0.##} delivery={value:0.##} "
+                        + $"travel={travel:0.#} exposure={exposure:0.##} "
+                        + $"heroCost={opportunity:0.##}",
                 });
             }
 
             string baseSummary = AddBaseCandidates(
                 s, candidates, player, ctx, activeIntents, commitments);
-            IOrderedEnumerable<AxisDemand> ranked = candidates
+            // Resource need is a strategic decision; builder convenience chooses a site only
+            // after a resource has survived feasibility/payback filtering. This prevents a scout
+            // standing on a low-priority resource from silently replacing the hand bottleneck.
+            IOrderedEnumerable<AxisDemand> extractionRanked = candidates
+                .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
+                    && x.EconomyResourceType.HasValue)
+                .OrderByDescending(x => standings.TryGetValue(
+                        x.EconomyResourceType.Value, out EconomyResourceStanding rs)
+                    ? Mathf.Max(EconomyResourcePriority(rs),
+                        ResourceStarvationRegistry.Pressure(
+                            player, x.EconomyResourceType.Value))
+                    : 0f)
+                .ThenByDescending(x => x.EconomySiteValue)
+                .ThenByDescending(x => x.EconomyExpectedIncomeGain)
+                .ThenBy(x => x.EconomyTravelCost)
+                .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
+            IOrderedEnumerable<AxisDemand> baseRanked = candidates
+                .Where(x => x.Capability == CapabilityKind.EconomicExpansionBase)
                 .OrderByDescending(x => IsActiveBaseCommitment(
                     activeIntents, x.TargetHex, x.EconomyBuildCard))
                 .ThenByDescending(x => x.EconomySiteValue)
@@ -715,11 +747,10 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.EconomyTravelCost)
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
-            List<AxisDemand> selected = ranked
-                .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure)
+            List<AxisDemand> selected = extractionRanked
                 .Take(Mathf.Max(0, AiConfigV2.economyMaxInfrastructureDemandsPerTurn))
-                .Concat(ranked.Where(x => x.Capability == CapabilityKind.EconomicExpansionBase)
-                    .Take(Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
+                .Concat(baseRanked.Take(
+                    Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
                 .ToList();
             foreach (AxisDemand demand in selected)
             {
@@ -953,6 +984,22 @@ namespace Game.Ai.V2
                 : (Mathf.Max(0f, resourceCost) + Mathf.Max(0f, assignmentApCost))
                     / expectedIncomeGain;
 
+        private static float EconomyResourcePriority(EconomyResourceStanding standing)
+        {
+            float handShortfall = standing.HandResourceNeed <= AiConfigV2.allocatorSliceEpsilon
+                ? 0f
+                : Mathf.Clamp01((standing.HandResourceNeed - standing.SpendableStockpile)
+                    / standing.HandResourceNeed);
+            float operationalShortfall =
+                standing.ReservedOperationalNeed <= AiConfigV2.allocatorSliceEpsilon
+                    ? 0f
+                    : Mathf.Clamp01((standing.ReservedOperationalNeed
+                            - standing.SpendableStockpile)
+                        / standing.ReservedOperationalNeed);
+            return Mathf.Max(standing.DeficitScore, standing.StarvationPressure,
+                handShortfall, operationalShortfall);
+        }
+
         internal static float ScoreEconomySite(float deficit, float expectedIncomeGain,
             float baseNetworkSynergy, float nearbyResourceClusterValue, float travelCost,
             float threatExposure, float heroOpportunityCost, float resourceCost,
@@ -1005,6 +1052,8 @@ namespace Game.Ai.V2
                         + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
                         + AiConfigV2.economyBaseAirfieldValue * airfield
                         + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
+                        + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
+                        + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
                         + AiConfigV2.economyBaseGlobalEffectValue * global;
                     if (site.NearbyResourceClusterValue <= 0f
                         && site.NetworkExpansionValue <= 0f && hexYield <= 0f
@@ -1020,21 +1069,32 @@ namespace Game.Ai.V2
                     float heroCost = builder?.Route.EffectiveArmyPower ?? 0f;
                     float assignmentAp = builder?.TotalAssignmentApCost
                         ?? card.EffectivePlayApCost;
-                    float buildCost = assignmentAp * AiConfigV2.economyBuildApPenalty
+                    float intrinsicBuildCost = card.EffectivePlayApCost
+                            * AiConfigV2.economyBuildApPenalty
                         + ResourceCostSum(card.EffectivePlayResourceCost)
                             * AiConfigV2.economyBuildResourcePenalty;
-                    float value = reasonValue - buildCost
+                    float deliveryApCost = Mathf.Max(0f,
+                            assignmentAp - card.EffectivePlayApCost)
+                        * AiConfigV2.economyBuildApPenalty;
+                    // Site quality is independent of whichever hero happens to be closest
+                    // this pass. Delivery cost still controls Demand admission, while
+                    // EconomySiteValue keeps target and cross-lane merit stable across replans.
+                    float strategicValue = reasonValue - intrinsicBuildCost
+                        - AiConfigV2.economySiteThreatPenalty * exposure;
+                    float value = strategicValue - deliveryApCost
                         - AiConfigV2.economySiteTravelPenalty * travel
-                        - AiConfigV2.economySiteThreatPenalty * exposure
                         - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
-                    bool valuable = value > 0f || committed;
+                    bool valuable = strategicValue > 0f || committed;
                     string decision = valuable ? "valuable" : "value_reject";
                     AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
                         + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
                         + $"yield={hexYield:0.##} cluster={site.NearbyResourceClusterValue:0.##} "
                         + $"network={site.NetworkExpansionValue:0.##} pressure={site.InfrastructurePressure:0.##} "
-                        + $"airfield={airfield:0.##} global={global:0.##} cost={buildCost:0.##} "
-                        + $"value={value:0.##} committed={committed} decision={decision}");
+                        + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
+                        + $"corridor={site.CorridorAlignmentValue:0.##} airfield={airfield:0.##} "
+                        + $"global={global:0.##} buildCost={intrinsicBuildCost:0.##} "
+                        + $"deliveryApCost={deliveryApCost:0.##} site={strategicValue:0.##} "
+                        + $"delivery={value:0.##} committed={committed} decision={decision}");
                     if (!valuable)
                         continue;
                     var demand = new AxisDemand
@@ -1048,7 +1108,7 @@ namespace Game.Ai.V2
                         EconomyBuildApCost = card.EffectivePlayApCost,
                         MinimumFollowupAp = card.EffectivePlayApCost,
                         EconomyExpectedIncomeGain = site.HexYield.Sum,
-                        EconomySiteValue = value,
+                        EconomySiteValue = strategicValue,
                         EconomyTravelCost = travel,
                         EconomyThreatExposure = exposure,
                         EconomyHeroOpportunityCost = heroCost,
@@ -1060,8 +1120,9 @@ namespace Game.Ai.V2
                             + $"cluster={site.NearbyResourceClusterValue:0.##} "
                             + $"network={site.NetworkExpansionValue:0.##} "
                             + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
-                            + $"logistics={site.LogisticsValue:0.##} global={global:0.##} "
-                            + $"cost={buildCost:0.##}",
+                            + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
+                            + $"corridor={site.CorridorAlignmentValue:0.##} global={global:0.##} "
+                            + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##}",
                     };
                     valuableDemands.Add(demand);
                 }

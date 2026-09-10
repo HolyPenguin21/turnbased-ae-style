@@ -83,7 +83,11 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy,
                     Target = target,
-                    BaseValue = d.Value,
+                    // Cross-lane ordering represents the strategic return of the chosen site.
+                    // Builder travel/opportunity cost already controls Demand admission and the
+                    // concrete AP/resource envelope below; folding it into BaseValue again lets a
+                    // routine one-step Recon refresh permanently outrank an admitted economy plan.
+                    BaseValue = target.BuildValue,
                     // Wait urgency is lane-local: it can overtake repeated Extraction contention
                     // without inflating cross-axis value above critical Defence/Reaction.
                     LocalAdmissionScore = d.Value + d.EconomyStrategicUrgency,

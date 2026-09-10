@@ -1253,6 +1253,28 @@ namespace Game.Ai.V2
                             && knownBuilding.Owner == player && !knownBuilding.IsBase;
                         if (hasBuilding && !convertsOwnedExtraction)
                             continue;
+
+                        int supportDistance = snap.Self.BaseHexes
+                            .Min(baseHex => HexGridMath.Distance(baseHex, hex));
+                        float logistics = 1f - Mathf.Clamp01(
+                            (supportDistance - AiConfigV2.economyBaseMinSpacing)
+                            / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
+                        float forwardProgress = 0f;
+                        float corridorAlignment = 0f;
+                        if (hasDirection)
+                        {
+                            int directDistance = HexGridMath.Distance(anchor, targetCitadel);
+                            int candidateDistance = HexGridMath.Distance(hex, targetCitadel);
+                            forwardProgress = Mathf.Clamp01(
+                                (directDistance - candidateDistance)
+                                / Mathf.Max(1f, directDistance));
+                            int routedDistance = HexGridMath.Distance(anchor, hex)
+                                + candidateDistance;
+                            int detour = Mathf.Max(0, routedDistance - directDistance);
+                            corridorAlignment = 1f - Mathf.Clamp01(
+                                detour / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
+                        }
+
                         baseOpportunities.Add(new EconomyBaseOpportunity
                         {
                             Hex = hex,
@@ -1264,9 +1286,9 @@ namespace Game.Ai.V2
                             NetworkExpansionValue = EconomyBaseNetworkExpansionValue(
                                 snap, hex, standings),
                             InfrastructurePressure = infrastructurePressure,
-                            LogisticsValue = Mathf.Clamp01(snap.Self.BaseHexes
-                                .Min(baseHex => HexGridMath.Distance(baseHex, hex))
-                                / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius)),
+                            LogisticsValue = logistics,
+                            ForwardProgressValue = forwardProgress,
+                            CorridorAlignmentValue = corridorAlignment,
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
                             BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, hex),
                         });
@@ -1434,7 +1456,8 @@ namespace Game.Ai.V2
             if (snap?.Self?.BaseHexes == null || snap.Self.BaseHexes.Count == 0)
                 return 0f;
             int distance = snap.Self.BaseHexes.Min(h => HexGridMath.Distance(h, target));
-            return 1f / Mathf.Max(1f, distance);
+            return 1f - Mathf.Clamp01((distance - 1f)
+                / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
         }
 
         private static float EconomyResourceClusterValue(WorldSnapshot snap,
