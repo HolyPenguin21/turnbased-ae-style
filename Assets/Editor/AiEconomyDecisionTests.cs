@@ -634,7 +634,7 @@ namespace Game.EditorTests
                 Assert.That(mission.BaseValue, Is.EqualTo(second.Value));
                 Assert.That(mission.LocalAdmissionScore, Is.GreaterThan(mission.BaseValue));
                 MissionIntentRegistry.GetOrCreate(player)
-                    .MarkBaseExpansionCandidate(2, structurallyEligible: false);
+                    .MarkBaseExpansionCandidate(2, null, null, structurallyEligible: false);
                 Assert.That(MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns,
                     Is.Zero);
             }
@@ -729,14 +729,18 @@ namespace Game.EditorTests
         {
             var player = new Game.Players.PlayerSetupData();
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            var baseDef = new CardDefinition
+                { cardType = CardType.Base, authoredKey = "base", displayName = "Base" };
+            CardData baseCard = new CardData(baseDef);
+            var baseHex = new HexCoord(4, 0);
             try
             {
-                state.MarkBaseExpansionCandidate(1, structurallyEligible: true);
+                state.MarkBaseExpansionCandidate(1, baseCard, baseHex, structurallyEligible: true);
                 state.ReconcileBaseExpansionWait(1,
                     System.Array.Empty<MissionTurnOutcome>());
                 Assert.That(state.BaseExpansionWaitTurns, Is.EqualTo(1));
 
-                state.MarkBaseExpansionCandidate(2, structurallyEligible: true);
+                state.MarkBaseExpansionCandidate(2, baseCard, baseHex, structurallyEligible: true);
                 state.ReconcileBaseExpansionWait(2, new[]
                 {
                     new MissionTurnOutcome
@@ -744,7 +748,7 @@ namespace Game.EditorTests
                         MissionKind = MissionKind.Economy,
                         HasEconomyPayload = true,
                         EconomyTarget = new EconomyMissionTarget
-                            { Kind = EconomyTaskKind.FoundBase },
+                            { Kind = EconomyTaskKind.FoundBase, TargetHex = baseHex, BuildCard = baseCard },
                         EconomyBuildCompleted = true,
                     },
                 });
@@ -762,12 +766,16 @@ namespace Game.EditorTests
         {
             var player = new Game.Players.PlayerSetupData();
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            var baseDef = new CardDefinition
+                { cardType = CardType.Base, authoredKey = "base", displayName = "Base" };
+            CardData baseCard = new CardData(baseDef);
+            var baseHex = new HexCoord(4, 0);
             try
             {
-                state.MarkBaseExpansionCandidate(1, structurallyEligible: true);
+                state.MarkBaseExpansionCandidate(1, baseCard, baseHex, structurallyEligible: true);
                 state.ReconcileBaseExpansionWait(1,
                     System.Array.Empty<MissionTurnOutcome>());
-                state.MarkBaseExpansionCandidate(2, structurallyEligible: true);
+                state.MarkBaseExpansionCandidate(2, baseCard, baseHex, structurallyEligible: true);
                 state.ReconcileBaseExpansionWait(2, new[]
                 {
                     new MissionTurnOutcome
@@ -777,7 +785,7 @@ namespace Game.EditorTests
                         {
                             Kind = MissionKind.Economy,
                             Target = new EconomyMissionTarget
-                                { Kind = EconomyTaskKind.FoundBase },
+                                { Kind = EconomyTaskKind.FoundBase, TargetHex = baseHex, BuildCard = baseCard },
                         },
                         StructuralFailure = true,
                     },
@@ -800,7 +808,7 @@ namespace Game.EditorTests
                 new StrategicResourceReservation
                 {
                     Owner = "Economy:test",
-                    Reason = StrategicReservationReason.EconomyBuildFollowup,
+                    Reason = StrategicReservationReason.EconomyDeferredBuild,
                     Resource = StrategicReservedResource.Human,
                     Amount = 2f,
                     ExpirationStage = StrategicReservationExpiry.EndOfTurn,
