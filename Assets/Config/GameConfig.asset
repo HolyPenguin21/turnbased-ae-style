@@ -58,6 +58,7 @@ MonoBehaviour:
     resistanceGain: 1
   extractionFacilityCards:
   - id: 0
+    authoredKey: 
     displayName: Human Extractor
     art: {fileID: 21300000, guid: 5ab14e76d3b386738f273dcc7c919c5c, type: 3}
     detailArt: {fileID: 21300000, guid: 5ab14e76d3b386738f273dcc7c919c5c, type: 3}
@@ -101,6 +102,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 0
+    authoredKey: 
     displayName: Energy Extractor
     art: {fileID: 21300000, guid: 8cbbd7646e9efa7d7fb43fa99721f593, type: 3}
     detailArt: {fileID: 21300000, guid: 8cbbd7646e9efa7d7fb43fa99721f593, type: 3}
@@ -144,6 +146,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 0
+    authoredKey: 
     displayName: Materials Extractor
     art: {fileID: 21300000, guid: c864e1260c463be03cc54088a3a5f74b, type: 3}
     detailArt: {fileID: 21300000, guid: c864e1260c463be03cc54088a3a5f74b, type: 3}
@@ -187,6 +190,7 @@ MonoBehaviour:
       addAbilities: []
       statChanges: []
   - id: 0
+    authoredKey: 
     displayName: Tech Extractor
     art: {fileID: 21300000, guid: fd44463b3abcbeacb38aa9359c80737c, type: 3}
     detailArt: {fileID: 21300000, guid: fd44463b3abcbeacb38aa9359c80737c, type: 3}
@@ -236,7 +240,7 @@ MonoBehaviour:
       energy: 1
       materials: 1
       tech: 1
-    defenseGain: 1
+    defenseGain: 0
     resistanceGain: 1
   - apCost: 4
     cost:
@@ -244,7 +248,7 @@ MonoBehaviour:
       energy: 2
       materials: 2
       tech: 2
-    defenseGain: 1
+    defenseGain: 0
     resistanceGain: 1
   resourceActionButtonPrefab: {fileID: 1960000000000010006, guid: d9be805d2651fbd9d4f84b4d48ee002c, type: 3}
   facilityMarkerPrefab: {fileID: 100002, guid: 94145d62198a4254392b0bc4953c1006, type: 3}
@@ -267,6 +271,12 @@ MonoBehaviour:
     abbreviation: Hyper +2
   - ability: Pyrokinetic
     abbreviation: Pyro +2
+  - ability: Splash
+    abbreviation: 
+  - ability: Scorcher
+    abbreviation: 
+  - ability: RaiseTheRots
+    abbreviation: 
   - ability: r1s0
     abbreviation: r1s0
   - ability: r1s4
@@ -299,6 +309,16 @@ MonoBehaviour:
     abbreviation: cM
   - ability: CollectTech
     abbreviation: cT
+  - ability: Regeneration
+    abbreviation: 
+  - ability: ProduceHuman
+    abbreviation: pH
+  - ability: ProduceEnergy
+    abbreviation: pE
+  - ability: ProduceMaterials
+    abbreviation: pM
+  - ability: ProduceTech
+    abbreviation: pT
   abilityCatalog: {fileID: 11400000, guid: 6e705f7b3c6f020d8c4d74ff73de66f1, type: 2}
   maxEdgeDistance: 1
   minCityRuinsDistance: 2

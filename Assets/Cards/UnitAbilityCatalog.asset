@@ -68,13 +68,13 @@ MonoBehaviour:
   - tag: Regeneration
     description: 
   - tag: ProduceHuman
-    description: 
+    description: 'Passive: +1 H/turn'
   - tag: ProduceEnergy
-    description: 
+    description: 'Passive: +1 E/turn'
   - tag: ProduceMaterials
-    description: 
+    description: 'Passive: +1 M/turn'
   - tag: ProduceTech
-    description: 
+    description: 'Passive: +1 T/turn'
   criticalDamageMultiplier: 2
   ceramicArmorReduction: 1
   berserkAttackGain: 1
