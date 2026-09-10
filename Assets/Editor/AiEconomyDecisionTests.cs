@@ -1415,7 +1415,7 @@ namespace Game.EditorTests
             {
                 Hex = new HexCoord(3, 1), CapacityValue = 0.5f,
                 InfrastructurePressure = 1f, LogisticsValue = 1f,
-                SupportValue = 1f, ForwardProgressValue = 0.3f,
+                ForwardProgressValue = 0.3f,
                 CorridorAlignmentValue = 0.5f,
                 BuilderRoutes = new[] { BuilderRoute(builder, 0, 3, 1) },
             };
@@ -1425,7 +1425,7 @@ namespace Game.EditorTests
                 HexYield = new ResourceBundle { Energy = 1f, Materials = 1f },
                 NearbyResourceClusterValue = 0.5f,
                 NetworkExpansionValue = 0.5f, LogisticsValue = 0.5f,
-                SupportValue = 0.3f, ForwardProgressValue = 1f,
+                ForwardProgressValue = 1f,
                 CorridorAlignmentValue = 1f,
                 BuilderRoutes = new[] { BuilderRoute(builder, 4, 3, 1) },
             };
