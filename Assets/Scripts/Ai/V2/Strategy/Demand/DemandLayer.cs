@@ -1053,15 +1053,19 @@ namespace Game.Ai.V2
                     float heroCost = builder?.Route.EffectiveArmyPower ?? 0f;
                     float assignmentAp = builder?.TotalAssignmentApCost
                         ?? card.EffectivePlayApCost;
-                    float buildCost = assignmentAp * AiConfigV2.economyBuildApPenalty
+                    float intrinsicBuildCost = card.EffectivePlayApCost
+                            * AiConfigV2.economyBuildApPenalty
                         + ResourceCostSum(card.EffectivePlayResourceCost)
                             * AiConfigV2.economyBuildResourcePenalty;
+                    float deliveryApCost = Mathf.Max(0f,
+                            assignmentAp - card.EffectivePlayApCost)
+                        * AiConfigV2.economyBuildApPenalty;
                     // Site quality is independent of whichever hero happens to be closest
                     // this pass. Delivery cost still controls admission/cross-lane value, while
                     // EconomySiteValue keeps the strategic target stable across replans.
-                    float strategicValue = reasonValue - buildCost
+                    float strategicValue = reasonValue - intrinsicBuildCost
                         - AiConfigV2.economySiteThreatPenalty * exposure;
-                    float value = strategicValue
+                    float value = strategicValue - deliveryApCost
                         - AiConfigV2.economySiteTravelPenalty * travel
                         - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
                     bool valuable = strategicValue > 0f || committed;
@@ -1072,7 +1076,8 @@ namespace Game.Ai.V2
                         + $"network={site.NetworkExpansionValue:0.##} pressure={site.InfrastructurePressure:0.##} "
                         + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
                         + $"corridor={site.CorridorAlignmentValue:0.##} airfield={airfield:0.##} "
-                        + $"global={global:0.##} cost={buildCost:0.##} site={strategicValue:0.##} "
+                        + $"global={global:0.##} buildCost={intrinsicBuildCost:0.##} "
+                        + $"deliveryApCost={deliveryApCost:0.##} site={strategicValue:0.##} "
                         + $"delivery={value:0.##} committed={committed} decision={decision}");
                     if (!valuable)
                         continue;
@@ -1101,7 +1106,7 @@ namespace Game.Ai.V2
                             + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
                             + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
                             + $"corridor={site.CorridorAlignmentValue:0.##} global={global:0.##} "
-                            + $"cost={buildCost:0.##}",
+                            + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##}",
                     };
                     valuableDemands.Add(demand);
                 }
