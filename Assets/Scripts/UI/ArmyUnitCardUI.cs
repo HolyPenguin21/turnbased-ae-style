@@ -31,6 +31,9 @@ namespace Game.UI
     {
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
+        // Sprite shown in an empty capacity slot (Unit == null) in place of a real unit's art.
+        // Rendered at solid white (no tint / no alpha fade). Leave unset for a plain white box.
+        [SerializeField] private Sprite emptySlotSprite;
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text moveText;
         [SerializeField] private GameObject commandBadgeRoot;
@@ -108,11 +111,6 @@ namespace Game.UI
             _canvas = GetComponentInParent<Canvas>();
         }
 
-        // Faint translucent box (no sprite, just this tint) — Image with no sprite still
-        // renders as a plain colour rect, so an empty capacity slot reads as "a droppable spot
-        // is here" instead of just being invisible dead space in the grid.
-        private static readonly Color EmptySlotColor = new Color(1f, 1f, 1f, 0.12f);
-
         public void Setup(ArmyViewerModalUI modal, UnitData unit)
         {
             _modal = modal;
@@ -120,8 +118,10 @@ namespace Game.UI
 
             if (artImage != null)
             {
-                artImage.sprite = unit != null ? unit.Art : null;
-                artImage.color = unit != null ? Color.white : EmptySlotColor;
+                // Empty capacity slot falls back to emptySlotSprite (a real unit uses its own
+                // art). Always solid white — no alpha fade on the empty slot any more.
+                artImage.sprite = unit != null ? unit.Art : emptySlotSprite;
+                artImage.color = Color.white;
             }
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;

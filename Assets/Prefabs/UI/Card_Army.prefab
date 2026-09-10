@@ -335,7 +335,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 5869d931a97503147aec338ae4116c6c, type: 3}
+  m_Sprite: {fileID: 21300000, guid: bf52cb7dbe468d2428d0a1af6d1370be, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -359,6 +359,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.ArmyUnitCardUI
   rectTransform: {fileID: 1980000000000010002}
   artImage: {fileID: 1980000000000010004}
+  emptySlotSprite: {fileID: 21300000, guid: bf52cb7dbe468d2428d0a1af6d1370be, type: 3}
   nameText: {fileID: 1980000000000010014}
   moveText: {fileID: 1980000000000010024}
   commandBadgeRoot: {fileID: 0}

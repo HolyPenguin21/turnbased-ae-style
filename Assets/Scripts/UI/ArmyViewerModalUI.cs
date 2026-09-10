@@ -210,7 +210,7 @@ namespace Game.UI
 
         private void Awake()
         {
-            armyButtonRow?.SetMaxVisible(8);
+            armyButtonRow?.SetMaxVisible(7);
             _canvas = GetComponentInParent<Canvas>();
             if (closeButton != null)
                 closeButton.onClick.AddListener(Hide);
