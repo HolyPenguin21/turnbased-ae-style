@@ -295,6 +295,15 @@ namespace Game.Ai.V2
         // a bare "I have units worth improving" appetite. Only applies when DevPathViable.
         public const float devLatentPotential = 0.5f;
 
+        // Production is an amplifier: Economy creates the spendable runway and Attack/Defence
+        // provide the reason to mint. Optional Production stays weak below the readiness ramp;
+        // a concrete high-value demand may lift it only to the emergency floor, never erase cost.
+        public const float productionSupportReadinessLo = 0.25f;
+        public const float productionSupportReadinessHi = 0.75f;
+        public const float productionSupportMin = 0.30f;
+        public const float productionSupportMax = 1.15f;
+        public const float productionSupportEmergencyFloor = 0.70f;
+
         // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). Tuned against
         // AiDebug.log 2026-09-07: with the old values (apValue 3, margin 0.5, full alt-cost) a
         // p=0.77 offering scored EV = 0.77*G - ~8 - 3, so equipment upgrades (single-item G ~2..10)

@@ -571,32 +571,36 @@ namespace Game.Ai.V2
                         $"loan rejected donor={donor.IntentKey} distance={distance} move={hero.CurrentMovement} net={loanNet:0.##}"));
             }
 
+            bool travelNeeded = !hero.Hex.Equals(target.TargetHex);
+            bool completionThisTurn = distance <= hero.CurrentMovement;
+            ResourceCost stageCost = completionThisTurn ? target.BuildResourceCost : null;
             List<UnitData> lighteningPlan = PlanEconomyArmyLightening(
                 player, hero, target.TargetHex, session.Snapshot, ctx, out ArmyData garrison);
             float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
-                target.MinimumFollowupAp, lighteningPlan);
+                target.MinimumFollowupAp, lighteningPlan, travelNeeded, completionThisTurn);
             if (realAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
-                    $"economy hero #{hero.Id} needs {realAp:0.##} AP including completion"));
+                    $"economy hero #{hero.Id} needs {realAp:0.##} AP for "
+                    + (completionThisTurn ? "delivery + completion" : "this travel stage")));
             if (realAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended("economy AP no longer available"));
 
             string owner = EconomyMissionPlanner.OwnerKey(key);
             if (!StrategicSpendability.FitsSpendableResources(player, root, ctx,
-                    target.BuildResourceCost, owner))
+                    stageCost, owner))
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
-                    new ProvisionRequirement(realAp, CostVector(target.BuildResourceCost)),
+                    new ProvisionRequirement(realAp, CostVector(stageCost)),
                     "economy completion resources no longer spendable"));
             int unloadedMembers = ApplyEconomyArmyLightening(
                 hero, garrison, lighteningPlan, ctx);
             // Atomic transfer failure leaves the original roster intact, so claim its real live AP
             // rather than the projected lighter value.
             realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
-                target.MinimumFollowupAp, null);
+                target.MinimumFollowupAp, null, travelNeeded, completionThisTurn);
             if (realAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
                     "economy army could not be lightened within the funded AP envelope"));
-            if (distance <= hero.CurrentMovement)
+            if (completionThisTurn)
                 InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, owner,
                     target.BuildResourceCost, target.BuildApCost);
 
@@ -613,7 +617,7 @@ namespace Game.Ai.V2
                 Mission = m, Key = key, Kind = MissionKind.Economy,
                 MoverArmyId = hero.Id, FocusHex = target.TargetHex,
                 ExecutionHex = target.TargetHex, EconomyTarget = target,
-                ClaimedAp = realAp, ClaimedPhysical = CostVector(target.BuildResourceCost),
+                ClaimedAp = realAp, ClaimedPhysical = CostVector(stageCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
             }, unloadedMembers);
@@ -774,14 +778,22 @@ namespace Game.Ai.V2
         }
 
         internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
-            float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded)
+            float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded) =>
+            EconomyMissionClaimedAp(builder, buildApCost, minimumFollowupAp, unloaded,
+                travelNeeded: true, completionThisTurn: true);
+
+        internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
+            float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded,
+            bool travelNeeded, bool completionThisTurn)
         {
             float activation = 0f;
-            if (builder != null && !builder.HasActivatedThisTurn)
+            if (travelNeeded && builder != null && !builder.HasActivatedThisTurn)
                 activation = builder.Members
                     .Where(u => u != null && (unloaded == null || !unloaded.Contains(u)))
                     .Sum(u => u.ActivationApCost);
-            return activation + Mathf.Max(buildApCost, minimumFollowupAp);
+            float completion = completionThisTurn
+                ? Mathf.Max(buildApCost, minimumFollowupAp) : 0f;
+            return activation + completion;
         }
 
         private static ProvisioningResult ProvisionEconomyRecovery(

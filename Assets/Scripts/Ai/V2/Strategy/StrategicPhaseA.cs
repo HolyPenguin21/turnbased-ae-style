@@ -156,6 +156,7 @@ namespace Game.Ai.V2
             //     API, NOT the Unit/Hero materialization chain below. The requesting axis labels
             //     value/telemetry; AP comes from the shared pool. Handled here once, then blocked so the generic
             //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
+            var deferredEconomyBuilds = new List<AxisDemand>();
             foreach (DemandState istate in states.Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability)))
             {
                 istate.Blocked = true;
@@ -211,10 +212,29 @@ namespace Game.Ai.V2
                     // cannot lock the Human needed to create that hero.
                     if (istate.Demand.Capability == CapabilityKind.EconomicInfrastructure
                         || istate.Demand.Capability == CapabilityKind.EconomicExpansionBase)
-                        InfrastructureFulfillment.ReserveDeferredEconomyResources(
-                            snap, player, ctx.TurnNumber, istate.Demand);
+                        deferredEconomyBuilds.Add(istate.Demand);
                     AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
                 }
+            }
+
+            // Protect exactly one economy build vector. Extraction and Base demands may coexist as
+            // alternatives, but reserving both would manufacture a second resource-allocation layer
+            // inside Economy. The highest admitted local priority owns the hold for this pass.
+            AxisDemand protectedEconomyBuild = deferredEconomyBuilds
+                .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
+                .OrderByDescending(d => d.Value + d.EconomyStrategicUrgency)
+                .ThenByDescending(d => d.Capability == CapabilityKind.EconomicExpansionBase ? 1 : 0)
+                .ThenByDescending(d => d.EconomySiteValue)
+                .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
+                .FirstOrDefault();
+            if (protectedEconomyBuild != null)
+            {
+                InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                    snap, player, ctx.TurnNumber, protectedEconomyBuild);
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
+                    + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
+                    + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
             }
 
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate

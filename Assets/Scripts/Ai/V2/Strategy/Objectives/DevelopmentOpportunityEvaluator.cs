@@ -64,6 +64,7 @@ namespace Game.Ai.V2
         public float Ev;
         public float ExpectedApCost;
         public float ResourceCostValue;
+        public float ProductionSupport = 1f;
         public float BaseValue;
         public string Explain = "";
     }
@@ -119,7 +120,8 @@ namespace Game.Ai.V2
                 string verdict = best.Ev > AiConfigV2.devEvMargin ? "ACCEPT" : "REJECT ev<=margin";
                 AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} A={best.AlternativeValue:0.0} "
-                    + $"resCost={best.ResourceCostValue:0.##} apCost={best.ExpectedApCost:0.##} EV={best.Ev:0.00} "
+                    + $"resCost={best.ResourceCostValue:0.##} apCost={best.ExpectedApCost:0.##} "
+                    + $"prodSupport={best.ProductionSupport:0.00} EV={best.Ev:0.00} "
                     + $"(margin {AiConfigV2.devEvMargin:0.00}) => {verdict}");
                 if (best.Ev <= AiConfigV2.devEvMargin)
                     continue;
@@ -178,7 +180,11 @@ namespace Game.Ai.V2
             // lifetime strategic value only at the EV boundary.
             float persistentExpectedGain = op.SuccessChance * op.ExpectedGain
                 * AiConfigV2.devEquipmentPersistenceMultiplier;
-            op.Ev = persistentExpectedGain - aTotal - op.ResourceCostValue
+            op.ProductionSupport = op.Mode == ResearchProductionMode.Production
+                ? snap?.Development?.ProductionSupport ?? AiConfigV2.productionSupportMin
+                : 1f;
+            op.Ev = persistentExpectedGain * op.ProductionSupport
+                - aTotal - op.ResourceCostValue
                 - op.ExpectedApCost * AiConfigV2.devApValue;
             op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
         }

@@ -50,6 +50,8 @@ namespace Game.Ai.V2
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
+            snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
+                snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
             LogSnapshot(player, snap);
             return snap;
@@ -71,6 +73,8 @@ namespace Game.Ai.V2
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
+            snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
+                snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             SelfSnapshot s = snap.Self;
@@ -95,6 +99,8 @@ namespace Game.Ai.V2
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
+            snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
+                snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             AiDebugLog.WriteVerbose($"[AI][V2] {player?.Nickname} knowledge-refresh — "
@@ -434,7 +440,8 @@ namespace Game.Ai.V2
                 DevelopmentReadiness rd = s.Development;
                 AiDebugLog.Write($"[AI][V2]   dev.readiness facilities={rd.Facilities.Count} "
                     + $"withHero={(rd.AnyFacilityWithHero ? 1 : 0)} offerings={rd.Offerings.Count} "
-                    + $"bestP={P(rd.BestSuccessChance)} surplus={P(rd.SurplusFraction)} targets={rd.UpgradeTargetCount}"
+                    + $"bestP={P(rd.BestSuccessChance)} surplus={P(rd.SurplusFraction)} "
+                    + $"prodSupport={F(rd.ProductionSupport)} targets={rd.UpgradeTargetCount}"
                     + $"{(rd.Facilities.Any(f => f.Contested) ? " [contested]" : "")}");
             }
             AiDebugLog.Write($"[AI][V2]   self.stock H/E/M/T={F(self.Stockpile.Human)}/{F(self.Stockpile.Energy)}/"

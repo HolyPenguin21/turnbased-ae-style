@@ -79,6 +79,7 @@ namespace Game.Ai.V2
         public float HoldValue;               // value of deliberately NOT playing it now (separate; NetScore subtracts it)
         public float ResourcePressureBenefit; // stranded AP / near-cap resource makes spending now better
         public float HandPressureBenefit;     // a full hand makes materialising now better
+        public float ProductionSupportAdjustment; // economy-backed amplifier/drag for Production-generated value
 
         public float Total;
 
@@ -94,7 +95,8 @@ namespace Game.Ai.V2
                  + $"gap {F(CapabilityGapValue)} grow {F(ForceGrowthValue)} threat {F(ThreatResponseValue)} "
                  + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(Deployability)} "
                  + $"scarce {F(ScarcityValue)} redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
-                 + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} hold {F(HoldValue)} "
+                 + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} "
+                 + $"prod {F(ProductionSupportAdjustment)} hold {F(HoldValue)} "
                  + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}"
                  + (string.IsNullOrEmpty(EffectDetail) ? "" : $"  || {EffectDetail}");
         }
@@ -305,6 +307,18 @@ namespace Game.Ai.V2
                 + ec.CapabilityGap + ec.GlobalCapabilityGap;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
 
+            // Production amplifies a concrete mission need; it does not manufacture its own reason
+            // to spend. Equipment CardUpgrade was already economy-gated by its authoritative
+            // DevelopmentOpportunityEvaluator and must not be damped a second time here.
+            float productionDemandFloor = demand.Capability == CapabilityKind.CardUpgrade
+                ? 0f
+                : Mathf.Lerp(AiConfigV2.productionSupportMin,
+                    AiConfigV2.productionSupportEmergencyFloor,
+                    Curves.Ramp(demand.Value, AiConfigV2.stratHoldUrgencyRampLo,
+                        AiConfigV2.stratHoldUrgencyRampHi));
+            bd.ProductionSupportAdjustment = demand.Capability == CapabilityKind.CardUpgrade
+                ? 0f
+                : ProductionSupportAdjustment(bd, plan, snap, productionDemandFloor);
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource);
 
             bd.RedundancyPenalty = -(GarrisonSaturationPenalty(plan, demand, snap)
@@ -424,6 +438,9 @@ namespace Game.Ai.V2
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
             bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy + ec.GlobalSynergy;
+            // Phase B is optional surplus work: no mission urgency may lift the economy-derived
+            // Production support. Direct cards from hand have no Generation step and remain neutral.
+            bd.ProductionSupportAdjustment = ProductionSupportAdjustment(bd, plan, snap, 0f);
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
             bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
@@ -567,6 +584,11 @@ namespace Game.Ai.V2
             bd.SynergyValue += ncEc.Synergy + ncEc.GlobalSynergy;
             bd.EffectDetail = ncEffDetail;
 
+            // A generated Base is Economy itself and must remain able to create future runway.
+            // Other optional Production-generated non-combat assets are amplifiers and use the
+            // same support adjustment as generated Unit/Hero plans.
+            bd.ProductionSupportAdjustment = kind == NonCombatRole.Base
+                ? 0f : ProductionSupportAdjustment(bd, generation, snap, 0f);
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * apCost
@@ -608,7 +630,30 @@ namespace Game.Ai.V2
             b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.CapabilityGapValue
             + b.ForceGrowthValue + b.ThreatResponseValue + b.ResourceEfficiency + b.SynergyValue
             + b.Deployability + b.ScarcityValue + b.RedundancyPenalty + b.AlternativeUseValue
-            + b.ResourcePressureBenefit + b.HandPressureBenefit;
+            + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment;
+
+        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
+            MaterializationPlan plan, WorldSnapshot snap, float demandFloor) =>
+            ProductionSupportAdjustment(b, plan?.Generation, snap, demandFloor);
+
+        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
+            GenerationStep generation, WorldSnapshot snap, float demandFloor)
+        {
+            if (b == null || generation == null
+                || generation.Mode != ResearchProductionMode.Production)
+                return 0f;
+            float support = snap?.Development?.ProductionSupport ?? 1f;
+            support = Mathf.Max(support, demandFloor);
+            float amplifiable = Mathf.Max(0f, b.RoleFit)
+                + Mathf.Max(0f, b.ImmediateTempo)
+                + Mathf.Max(0f, b.NextTurnPotential)
+                + Mathf.Max(0f, b.CapabilityGapValue)
+                + Mathf.Max(0f, b.ForceGrowthValue)
+                + Mathf.Max(0f, b.ThreatResponseValue)
+                + Mathf.Max(0f, b.SynergyValue)
+                + Mathf.Max(0f, b.ScarcityValue);
+            return amplifiable * (support - 1f);
+        }
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
@@ -632,7 +677,8 @@ namespace Game.Ai.V2
             float contingent = b.RoleFit + b.ImmediateTempo + b.NextTurnPotential
                 + b.CapabilityGapValue + b.ForceGrowthValue + b.ThreatResponseValue
                 + b.SynergyValue + b.ScarcityValue + b.RedundancyPenalty
-                + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit;
+                + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit
+                + b.ProductionSupportAdjustment;
             return -(1f - Mathf.Clamp01(chance)) * Mathf.Max(0f, contingent);
         }
 
