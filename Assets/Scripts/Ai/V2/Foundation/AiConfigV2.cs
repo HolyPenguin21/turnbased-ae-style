@@ -109,6 +109,8 @@ namespace Game.Ai.V2
         public const float economyBaseDemandMinValue = 12f;
         public const int economyResourceClusterRadius = 2;
         public const int economyBaseFoundScanRadius = 3;
+        public const int economyBaseMinSpacing = 3;
+        public const float economyBaseUrgencyPerDeferredTurn = 12f;
         public const float economySameTurnCompletionBonus = 8f;
         public const float economyAdmissionCompletionCostWeight = 1f;
         public const float economyLoanHysteresisThreshold = 8f;

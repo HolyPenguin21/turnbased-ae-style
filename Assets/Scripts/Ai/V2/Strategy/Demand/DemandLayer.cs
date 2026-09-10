@@ -756,6 +756,7 @@ namespace Game.Ai.V2
             EconomyHeroOpportunityCost = source.EconomyHeroOpportunityCost,
             EconomyAssignmentApCost = source.EconomyAssignmentApCost,
             EconomyPaybackTurns = source.EconomyPaybackTurns,
+            EconomyStrategicUrgency = source.EconomyStrategicUrgency,
             EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
             EconomyBuilderRoutes = source.EconomyBuilderRoutes,
             Value = source.Value,
@@ -977,11 +978,16 @@ namespace Game.Ai.V2
                 .OrderBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
                 .ToList();
             if (baseCards.Count == 0 || s.Economy?.BaseOpportunities == null)
+            {
+                MissionIntentRegistry.GetOrCreate(player)
+                    .MarkBaseExpansionCandidate(s.TurnNumber, structurallyEligible: false);
                 return "considered=0 kept=0 reason=no_base_card_or_opportunity";
+            }
 
             int considered = 0;
             int kept = 0;
             AxisDemand best = null;
+            var keptDemands = new List<AxisDemand>();
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
@@ -1057,14 +1063,25 @@ namespace Game.Ai.V2
                             + $"cost={buildCost:0.##}",
                     };
                     output.Add(demand);
+                    keptDemands.Add(demand);
                     kept++;
                     if (best == null || demand.EconomySiteValue > best.EconomySiteValue)
                         best = demand;
                 }
+            bool urgencyEligible = keptDemands.Any(d => d.EconomyPreferredBuilderArmyId.HasValue);
+            float urgency = MissionIntentRegistry.GetOrCreate(player)
+                .MarkBaseExpansionCandidate(s.TurnNumber, urgencyEligible);
+            foreach (AxisDemand demand in keptDemands)
+            {
+                demand.EconomyStrategicUrgency = urgency;
+                if (urgency > 0f)
+                    demand.Explain += $" urgency={urgency:0.##}";
+            }
             return best == null
                 ? $"considered={considered} kept={kept} best=none"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
-                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##}";
+                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
+                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
 
         private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,

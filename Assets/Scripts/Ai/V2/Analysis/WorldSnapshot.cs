@@ -338,7 +338,7 @@ namespace Game.Ai.V2
         public IReadOnlyList<AiMapMemory.KnownEnemySighting> NeutralSightings;
         public IReadOnlyList<AiMapMemory.KnownBuilding> Buildings;
         public IReadOnlyList<HexCoord> EventGuardHexes;
-        public IReadOnlyList<KeyValuePair<HexCoord, ResourceType>> ResourceHexes;
+        public IReadOnlyList<AiMapMemory.KnownResourceHex> ResourceHexes;
 
         // Aggregates ported verbatim from AiStrategyDirector.Evaluate's own "shared readings".
         public float EnemyKnownStrength;
@@ -418,6 +418,11 @@ namespace Game.Ai.V2
         // frontier scan, exposed so the step-7 continuity layer can tell whether a durable Explore
         // intent's focus hex is still unvisited without a live VisionSystem read.
         public ISet<HexCoord> VisitedHexSet;
+
+        // Every hex whose content has ever entered this player's real vision. Base expansion may
+        // plan across these known hexes without requiring a physical visit; exact resource yields
+        // still come only from AiMapMemory's observation snapshot.
+        public ISet<HexCoord> EverSeenHexSet;
     }
 
     // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.

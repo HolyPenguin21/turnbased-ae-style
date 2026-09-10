@@ -6,6 +6,7 @@ using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -220,7 +221,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void BaseExpansionDirection_UsesFrontBaseAndOnlyForwardRing()
+        public void BaseExpansionDirection_UsesFrontBaseAndAcceptsKnownForwardHexBeyondMinimum()
         {
             var self = new Game.Players.PlayerSetupData();
             var enemy = new Game.Players.PlayerSetupData();
@@ -239,9 +240,43 @@ namespace Game.EditorTests
             Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
                 anchor, target, new HexCoord(6, 0)), Is.True);
             Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
+                anchor, target, new HexCoord(7, 0)), Is.True,
+                "Distance 4 from the front Base must not be cut off by the minimum-spacing rule.");
+            Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
                 anchor, target, new HexCoord(4, 0)), Is.False);
             Assert.That(WorldAnalysis.IsForwardBaseCandidate(snapshot.Self.BaseHexes,
                 anchor, target, new HexCoord(3, 3)), Is.False);
+        }
+
+        [Test]
+        public void BaseExpansionDirection_UsesSanctionedCitadelCoordinateBeforeReconFindsIt()
+        {
+            var self = new Game.Players.PlayerSetupData();
+            var enemy = new Game.Players.PlayerSetupData();
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.BaseHexes = new[] { new HexCoord(0, 0) };
+            snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>();
+            snapshot.TrueWorld.AllBuildings = new[]
+            {
+                new BuildingSnapshot
+                {
+                    Hex = new HexCoord(10, -2), Owner = enemy, IsStartingCitadel = true,
+                },
+            };
+
+            Assert.That(WorldAnalysis.TrySelectBaseExpansionDirection(
+                snapshot, self, out HexCoord target, out HexCoord anchor), Is.True);
+            Assert.That(target, Is.EqualTo(new HexCoord(10, -2)));
+            Assert.That(anchor, Is.EqualTo(new HexCoord(0, 0)));
+        }
+
+        [Test]
+        public void BaseExpansionSpacing_AppliesToActiveCommitmentToo()
+        {
+            IReadOnlyList<HexCoord> bases = new[] { new HexCoord(0, 0), new HexCoord(5, 0) };
+
+            Assert.That(WorldAnalysis.MeetsBaseSpacing(bases, new HexCoord(6, 0)), Is.False);
+            Assert.That(WorldAnalysis.MeetsBaseSpacing(bases, new HexCoord(8, 0)), Is.True);
         }
 
         [Test]
@@ -276,6 +311,24 @@ namespace Game.EditorTests
             Assert.That(types[ResourceType.Materials], Is.EqualTo(2));
             Assert.That(types[ResourceType.Tech], Is.EqualTo(1));
             Assert.That(types.Count, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void ExtractionYield_ReadsCompleteObservedMemoryWithoutLiveMap()
+        {
+            HexCoord hex = new HexCoord(2, 1);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Known.ResourceHexes = new[]
+            {
+                KnownResource(hex, ResourceType.Materials,
+                    new ResourceBundle { Materials = 2f, Tech = 1f }),
+            };
+
+            var types = WorldAnalysis.KnownExtractionYields(snapshot)
+                .ToDictionary(x => x.Type, x => x.Yield);
+
+            Assert.That(types[ResourceType.Materials], Is.EqualTo(2));
+            Assert.That(types[ResourceType.Tech], Is.EqualTo(1));
         }
 
         [Test]
@@ -350,20 +403,311 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyArmyLightening_RetainsEscortForKnownRouteThreat()
+        public void EconomyArmyLightening_RefusesIncompleteThreatInsteadOfUsingFlatPower()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
-            snapshot.Known.EnemySightings = new[]
+            var builder = new Game.Map.ArmyData();
+            builder.Members.Add(Hero("Builder"));
+            UnitData escort = Body("Escort", attack: 6, defense: 6);
+            builder.Members.Add(escort);
+            var threats = new[]
             {
                 new Game.Ai.AiMapMemory.KnownEnemySighting(
                     new HexCoord(2, 0), new Game.Players.PlayerSetupData(), "enemy", 2,
                     defenseSum: 3f, attackSum: 5f, defenders: null),
             };
 
-            float required = ProvisioningManager.EconomyRouteEscortPower(
-                snapshot, new HexCoord(0, 0), new HexCoord(4, 0));
+            IReadOnlyList<UnitData> retained = ProvisioningManager.SelectEconomyEscort(
+                builder, new[] { escort }, threats);
 
-            Assert.That(required, Is.EqualTo(8f * AiConfigV2.defenceReserveMargin).Within(0.001f));
+            Assert.That(retained, Is.Null);
+        }
+
+        [Test]
+        public void EconomyArmyLightening_TransfersBodiesPreservesHeroAndRecalculatesAp()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(0, 0);
+            var builder = new ArmyData { Owner = player, Hex = home, Name = "Builder" };
+            UnitData hero = Hero("Builder hero", activation: 1);
+            UnitData heavy = Body("Heavy", 8, 8, activation: 3);
+            UnitData light = Body("Light", 3, 3, activation: 2);
+            builder.Members.AddRange(new[] { hero, heavy, light });
+            var garrison = new ArmyData
+                { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
+            var baseBuilding = new BuildingData
+                { Owner = player, Hex = home, Name = "Base", IsBase = true };
+            ArmyRegistry.Register(builder);
+            ArmyRegistry.Register(garrison);
+            BuildingRegistry.Register(home, baseBuilding);
+            try
+            {
+                float before = ProvisioningManager.EconomyMissionClaimedAp(
+                    builder, 1f, 1f, null);
+                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                    new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
+                    new Game.Ai.AiTurnContext());
+                float after = ProvisioningManager.EconomyMissionClaimedAp(
+                    builder, 1f, 1f, null);
+
+                Assert.That(moved, Is.EqualTo(2));
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero }));
+                Assert.That(garrison.Members, Is.EquivalentTo(new[] { heavy, light }));
+                Assert.That(after, Is.LessThan(before));
+                Assert.That(after, Is.EqualTo(2f));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyArmyLightening_FullGarrisonLeavesBothRostersUntouched()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(0, 0);
+            var builder = new ArmyData { Owner = player, Hex = home, Name = "Builder" };
+            UnitData hero = Hero("Hero");
+            UnitData escort = Body("Escort", 5, 5);
+            builder.Members.AddRange(new[] { hero, escort });
+            var garrison = new ArmyData
+                { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
+            for (int i = 0; i < 4; i++)
+                garrison.Members.Add(Body("G" + i, 1, 1));
+            ArmyRegistry.Register(builder);
+            ArmyRegistry.Register(garrison);
+            BuildingRegistry.Register(home, new BuildingData
+                { Owner = player, Hex = home, Name = "Base", IsBase = true });
+            try
+            {
+                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                    new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
+                    new Game.Ai.AiTurnContext());
+
+                Assert.That(moved, Is.Zero);
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero, escort }));
+                Assert.That(garrison.Members, Has.Count.EqualTo(4));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyArmyLightening_DoesNotRunOutsideOwnBaseOrCitadel()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var builder = new ArmyData
+                { Owner = player, Hex = new HexCoord(0, 0), Name = "Builder" };
+            UnitData hero = Hero("Hero");
+            UnitData escort = Body("Escort", 5, 5);
+            builder.Members.AddRange(new[] { hero, escort });
+            var garrison = new ArmyData
+                { Owner = player, Hex = builder.Hex, Name = "Garrison", IsGarrison = true };
+            ArmyRegistry.Register(builder);
+            ArmyRegistry.Register(garrison);
+            try
+            {
+                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                    new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
+                    new Game.Ai.AiTurnContext());
+
+                Assert.That(moved, Is.Zero);
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero, escort }));
+                Assert.That(garrison.Members, Is.Empty);
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyArmyLightening_PreservesRosterOwnedByDurableMission()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(0, 0);
+            var builder = new ArmyData { Owner = player, Hex = home, Name = "Builder" };
+            UnitData hero = Hero("Hero");
+            UnitData escort = Body("Escort", 5, 5);
+            builder.Members.AddRange(new[] { hero, escort });
+            var garrison = new ArmyData
+                { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
+            ArmyRegistry.Register(builder);
+            ArmyRegistry.Register(garrison);
+            BuildingRegistry.Register(home, new BuildingData
+                { Owner = player, Hex = home, Name = "Base", IsBase = true });
+            MissionIntentRegistry.GetOrCreate(player).Put(new MissionIntent
+            {
+                Kind = MissionKind.Scout,
+                Status = IntentStatus.Active,
+                PreferredMoverArmyId = builder.Id,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+            });
+            try
+            {
+                int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
+                    new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
+                    new Game.Ai.AiTurnContext());
+
+                Assert.That(moved, Is.Zero);
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero, escort }));
+                Assert.That(garrison.Members, Is.Empty);
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyArmyLightening_KeepsMinimalSkillAwareSafeEscort()
+        {
+            var builder = new ArmyData { Name = "Builder" };
+            UnitData hero = Hero("Hero");
+            UnitData counter = Body("Counter", 20, 20);
+            counter.Abilities.Add(Game.Cards.UnitAbilities.Hyperkinetic);
+            UnitData spare = Body("Spare", 2, 2);
+            builder.Members.AddRange(new[] { hero, counter, spare });
+            var enemyProfile = new Game.Combat.WorthIt.DefenderProfile(
+                defense: 5f, hasCeramicArmor: false,
+                typeTags: new[] { Game.Cards.UnitTypeTag.Armored },
+                attack: 5f, hitPoints: 5f, initiative: 1);
+            var threats = new[]
+            {
+                new Game.Ai.AiMapMemory.KnownEnemySighting(
+                    new HexCoord(2, 0), new Game.Players.PlayerSetupData(), "enemy", 1,
+                    defenseSum: 5f, attackSum: 5f, defenders: new[] { enemyProfile }),
+            };
+
+            IReadOnlyList<UnitData> retained = ProvisioningManager.SelectEconomyEscort(
+                builder, new[] { counter, spare }, threats);
+
+            Assert.That(retained, Is.Not.Null);
+            Assert.That(retained, Has.Count.EqualTo(1));
+            Assert.That(retained[0], Is.SameAs(counter));
+        }
+
+        [Test]
+        public void BaseExpansionUrgency_GrowsAfterDeferralButStaysLaneLocal()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var baseDef = new CardDefinition
+                { cardType = CardType.Base, authoredKey = "base", displayName = "Base" };
+            CardData card = new CardData(baseDef);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.2f, 0.1f, actionable: true);
+            snapshot.Self.Hand = new[] { card };
+            ArmySnapshot builder = EconomyBuilder(31, 1, 1f);
+            snapshot.Self.Armies = new[] { builder };
+            snapshot.Economy.BaseOpportunities = new[]
+            {
+                new EconomyBaseOpportunity
+                {
+                    Hex = new HexCoord(4, 0), CapacityValue = 1f,
+                    InfrastructurePressure = 1f,
+                    BuilderRoutes = new[] { BuilderRoute(builder, 4, 0, 1) },
+                },
+            };
+            try
+            {
+                AxisDemand first = DemandLayer.EconomyDemands(snapshot,
+                    new DesireBreakdown(), player, null, null).Single();
+                MissionIntentRegistry.GetOrCreate(player)
+                    .ReconcileBaseExpansionWait(1, System.Array.Empty<MissionTurnOutcome>());
+                snapshot.TurnNumber = 2;
+                AxisDemand second = DemandLayer.EconomyDemands(snapshot,
+                    new DesireBreakdown(), player, null, null).Single();
+                MissionProposal mission = EconomyMissionPlanner.Propose(snapshot,
+                    new DesireBreakdown(), null, new[] { second }).Single();
+
+                Assert.That(first.EconomyStrategicUrgency, Is.Zero);
+                Assert.That(second.EconomyStrategicUrgency,
+                    Is.EqualTo(AiConfigV2.economyBaseUrgencyPerDeferredTurn));
+                Assert.That(mission.BaseValue, Is.EqualTo(second.Value));
+                Assert.That(mission.LocalAdmissionScore, Is.GreaterThan(mission.BaseValue));
+                MissionIntentRegistry.GetOrCreate(player)
+                    .MarkBaseExpansionCandidate(2, structurallyEligible: false);
+                Assert.That(MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns,
+                    Is.Zero);
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void BaseExpansionUrgency_ResetsWhenBaseBuildCompletes()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            try
+            {
+                state.MarkBaseExpansionCandidate(1, structurallyEligible: true);
+                state.ReconcileBaseExpansionWait(1,
+                    System.Array.Empty<MissionTurnOutcome>());
+                Assert.That(state.BaseExpansionWaitTurns, Is.EqualTo(1));
+
+                state.MarkBaseExpansionCandidate(2, structurallyEligible: true);
+                state.ReconcileBaseExpansionWait(2, new[]
+                {
+                    new MissionTurnOutcome
+                    {
+                        MissionKind = MissionKind.Economy,
+                        HasEconomyPayload = true,
+                        EconomyTarget = new EconomyMissionTarget
+                            { Kind = EconomyTaskKind.FoundBase },
+                        EconomyBuildCompleted = true,
+                    },
+                });
+
+                Assert.That(state.BaseExpansionWaitTurns, Is.Zero);
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void BaseExpansionUrgency_ResetsOnPreProvisionStructuralInvalidation()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            try
+            {
+                state.MarkBaseExpansionCandidate(1, structurallyEligible: true);
+                state.ReconcileBaseExpansionWait(1,
+                    System.Array.Empty<MissionTurnOutcome>());
+                state.MarkBaseExpansionCandidate(2, structurallyEligible: true);
+                state.ReconcileBaseExpansionWait(2, new[]
+                {
+                    new MissionTurnOutcome
+                    {
+                        MissionKind = MissionKind.Economy,
+                        Proposal = new MissionProposal
+                        {
+                            Kind = MissionKind.Economy,
+                            Target = new EconomyMissionTarget
+                                { Kind = EconomyTaskKind.FoundBase },
+                        },
+                        StructuralFailure = true,
+                    },
+                });
+
+                Assert.That(state.BaseExpansionWaitTurns, Is.Zero);
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
         }
 
         [Test]
@@ -399,10 +743,10 @@ namespace Game.EditorTests
                 new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.1f },
                 new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = 0.9f },
             };
-            snapshot.Known.ResourceHexes = new List<KeyValuePair<HexCoord, ResourceType>>
+            snapshot.Known.ResourceHexes = new List<Game.Ai.AiMapMemory.KnownResourceHex>
             {
-                new KeyValuePair<HexCoord, ResourceType>(new HexCoord(-5, -5), ResourceType.Human),
-                new KeyValuePair<HexCoord, ResourceType>(new HexCoord(4, 4), ResourceType.Tech),
+                KnownResource(new HexCoord(-5, -5), ResourceType.Human, new ResourceBundle { Human = 1f }),
+                KnownResource(new HexCoord(4, 4), ResourceType.Tech, new ResourceBundle { Tech = 1f }),
             };
             snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>();
             snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
@@ -423,9 +767,9 @@ namespace Game.EditorTests
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
             HexCoord site = new HexCoord(2, 1);
-            snapshot.Known.ResourceHexes = new List<KeyValuePair<HexCoord, ResourceType>>
+            snapshot.Known.ResourceHexes = new List<Game.Ai.AiMapMemory.KnownResourceHex>
             {
-                new KeyValuePair<HexCoord, ResourceType>(site, ResourceType.Human),
+                KnownResource(site, ResourceType.Human, new ResourceBundle { Human = 1f }),
             };
             snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>
             {
@@ -441,9 +785,9 @@ namespace Game.EditorTests
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
             HexCoord site = new HexCoord(2, 1);
-            snapshot.Known.ResourceHexes = new List<KeyValuePair<HexCoord, ResourceType>>
+            snapshot.Known.ResourceHexes = new List<Game.Ai.AiMapMemory.KnownResourceHex>
             {
-                new KeyValuePair<HexCoord, ResourceType>(site, ResourceType.Human),
+                KnownResource(site, ResourceType.Human, new ResourceBundle { Human = 1f }),
             };
             snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>
             {
@@ -942,6 +1286,42 @@ namespace Game.EditorTests
             NearbyResourceClusterValue = 0f,
         };
 
+        private static Game.Ai.AiMapMemory.KnownResourceHex KnownResource(
+            HexCoord hex, ResourceType dominant, ResourceBundle yield) =>
+            new Game.Ai.AiMapMemory.KnownResourceHex(hex, dominant,
+                new ResourceYields
+                {
+                    human = (int)yield.Human,
+                    energy = (int)yield.Energy,
+                    materials = (int)yield.Materials,
+                    tech = (int)yield.Tech,
+                });
+
+        private static UnitData Hero(string name, int activation = 1) => new UnitData
+        {
+            Name = name,
+            IsHero = true,
+            CommandRating = 8,
+            ActivationApCost = activation,
+            Attack = 1,
+            Defense = 1,
+            HitPointsMax = 2,
+            HitPointsCurrent = 2,
+            Initiative = 1,
+        };
+
+        private static UnitData Body(string name, int attack, int defense,
+            int activation = 1) => new UnitData
+        {
+            Name = name,
+            ActivationApCost = activation,
+            Attack = attack,
+            Defense = defense,
+            HitPointsMax = 5,
+            HitPointsCurrent = 5,
+            Initiative = 2,
+        };
+
         private static ArmySnapshot EconomyBuilder(int id, int size, float power) =>
             new ArmySnapshot
             {
@@ -1016,7 +1396,7 @@ namespace Game.EditorTests
                     EnemySightings = new List<Game.Ai.AiMapMemory.KnownEnemySighting>(),
                     NeutralSightings = new List<Game.Ai.AiMapMemory.KnownEnemySighting>(),
                     Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>(),
-                    ResourceHexes = new List<KeyValuePair<HexCoord, ResourceType>>(),
+                    ResourceHexes = new List<Game.Ai.AiMapMemory.KnownResourceHex>(),
                 },
                 TrueWorld = new TrueWorldSnapshot { Opponents = new List<OpponentSnapshot>() },
                 MapKnowledge = new MapKnowledgeSnapshot

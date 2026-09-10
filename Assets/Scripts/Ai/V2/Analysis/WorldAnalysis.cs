@@ -393,8 +393,8 @@ namespace Game.Ai.V2
         {
             var old = new HashSet<HexCoord>();
             if (before?.Known?.ResourceHexes != null)
-                foreach (KeyValuePair<HexCoord, ResourceType> site in before.Known.ResourceHexes)
-                    old.Add(site.Key);
+                foreach (AiMapMemory.KnownResourceHex site in before.Known.ResourceHexes)
+                    old.Add(site.Hex);
 
             var result = new HashSet<HexCoord>();
             if (after?.Known?.ResourceHexes == null || after.Economy == null)
@@ -970,11 +970,13 @@ namespace Game.Ai.V2
             HexMap map = ctx.Map;
             var all = new List<HexCoord>();
             var visitedSet = new HashSet<HexCoord>();
+            var everSeenSet = new HashSet<HexCoord>();
             int visited = 0, visible = 0;
             foreach (HexCoord c in map.AllCoords)
             {
                 all.Add(c);
                 if (VisionSystem.IsVisited(player, c)) { visited++; visitedSet.Add(c); }
+                if (VisionSystem.HasEverSeen(player, c)) everSeenSet.Add(c);
                 if (VisionSystem.IsVisible(player, c)) visible++;
             }
             int total = all.Count;
@@ -1097,6 +1099,7 @@ namespace Game.Ai.V2
                 ScoutHardBlockedHexes = new HashSet<HexCoord>(all.Where(HardBlocked)),
                 NeutralOccupiedHexes = new HashSet<HexCoord>(all.Where(NeutralAt)),
                 VisitedHexSet = visitedSet,
+                EverSeenHexSet = everSeenSet,
             };
         }
 
@@ -1162,7 +1165,7 @@ namespace Game.Ai.V2
                 .GroupBy(x => x.Hex).ToDictionary(g => g.Key, g => g.First());
             var extraction = new List<EconomyExtractionOpportunity>();
             foreach ((HexCoord Hex, ResourceType Type, int Yield) site
-                     in KnownExtractionYields(snap, ctx))
+                     in KnownExtractionYields(snap))
             {
                 ResourceType resourceType = site.Type;
                 int effectiveYield = site.Yield;
@@ -1198,7 +1201,7 @@ namespace Game.Ai.V2
                     MarginalIncomeGain = marginal,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
                     NearbyResourceClusterValue = EconomyResourceClusterValue(
-                        snap, ctx, site.Hex, standings),
+                        snap, site.Hex, standings),
                     BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, site.Hex),
                 });
             }
@@ -1214,10 +1217,10 @@ namespace Game.Ai.V2
             {
                 var occupied = knownBuildings;
                 var knownSites = new HashSet<HexCoord>((snap.Known?.ResourceHexes
-                    ?? System.Array.Empty<KeyValuePair<HexCoord, ResourceType>>()).Select(x => x.Key));
-                var knownMapHexes = snap.MapKnowledge?.VisitedHexSet != null
-                    ? new HashSet<HexCoord>(snap.MapKnowledge.VisitedHexSet)
-                    : new HashSet<HexCoord>(snap.MapKnowledge?.AllHexes
+                    ?? System.Array.Empty<AiMapMemory.KnownResourceHex>()).Select(x => x.Hex));
+                var knownMapHexes = snap.MapKnowledge?.EverSeenHexSet != null
+                    ? new HashSet<HexCoord>(snap.MapKnowledge.EverSeenHexSet)
+                    : new HashSet<HexCoord>(snap.MapKnowledge?.VisitedHexSet
                         ?? System.Array.Empty<HexCoord>());
                 int ownedExtractionSites = knownBuildings.Values.Count(b => b.Owner == player
                     && !b.IsBase && knownSites.Contains(b.Hex));
@@ -1233,16 +1236,16 @@ namespace Game.Ai.V2
                 bool hasDirection = TrySelectBaseExpansionDirection(snap, player,
                     out HexCoord targetCitadel, out HexCoord anchor);
                 if (hasDirection)
-                    directionalSites.UnionWith(HexGridMath.HexesInRange(
-                        anchor, AiConfigV2.economyBaseFoundScanRadius));
+                    directionalSites.UnionWith(knownMapHexes);
                 directionalSites.UnionWith(activeBaseTargets);
                 foreach (HexCoord hex in directionalSites.OrderBy(x => x.Q).ThenBy(x => x.R))
                     {
                         bool continuing = activeBaseTargets.Contains(hex);
-                        if ((!continuing && (!hasDirection
+                        if (!knownMapHexes.Contains(hex)
+                            || !MeetsBaseSpacing(snap.Self.BaseHexes, hex)
+                            || (!continuing && (!hasDirection
                                 || !IsForwardBaseCandidate(snap.Self.BaseHexes, anchor,
-                                    targetCitadel, hex)))
-                            || !knownMapHexes.Contains(hex))
+                                    targetCitadel, hex))))
                             continue;
                         bool hasBuilding = occupied.TryGetValue(hex,
                             out AiMapMemory.KnownBuilding knownBuilding);
@@ -1254,12 +1257,12 @@ namespace Game.Ai.V2
                         {
                             Hex = hex,
                             HexYield = knownSites.Contains(hex)
-                                ? EconomyKnownHexYield(ctx, hex) : default(ResourceBundle),
+                                ? EconomyKnownHexYield(snap, hex) : default(ResourceBundle),
                             CapacityValue = convertsOwnedExtraction ? 1f : 0.5f,
                             NearbyResourceClusterValue = EconomyResourceClusterValue(
-                                snap, ctx, hex, standings),
+                                snap, hex, standings),
                             NetworkExpansionValue = EconomyBaseNetworkExpansionValue(
-                                snap, ctx, hex, standings),
+                                snap, hex, standings),
                             InfrastructurePressure = infrastructurePressure,
                             LogisticsValue = Mathf.Clamp01(snap.Self.BaseHexes
                                 .Min(baseHex => HexGridMath.Distance(baseHex, hex))
@@ -1278,19 +1281,20 @@ namespace Game.Ai.V2
             return eco;
         }
 
-        // The memory table keeps one display/dominant type per known hex. Economy decisions must
-        // instead enumerate the complete already-known terrain yield, once per positive type.
+        // AiMapMemory owns the complete last-observed resource line. Economy enumerates that
+        // frozen knowledge once per positive type and never reconstructs it from the live map.
         internal static IReadOnlyList<(HexCoord Hex, ResourceType Type, int Yield)>
-            KnownExtractionYields(WorldSnapshot snap, AiTurnContext ctx)
+            KnownExtractionYields(WorldSnapshot snap)
         {
             var result = new List<(HexCoord, ResourceType, int)>();
-            if (ctx?.Map == null || snap?.Known?.ResourceHexes == null)
+            if (snap?.Known?.ResourceHexes == null)
                 return result;
-            foreach (HexCoord hex in snap.Known.ResourceHexes.Select(x => x.Key).Distinct()
-                         .OrderBy(x => x.Q).ThenBy(x => x.R))
+            foreach (AiMapMemory.KnownResourceHex known in snap.Known.ResourceHexes
+                         .GroupBy(x => x.Hex).Select(g => g.First())
+                         .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R))
             {
-                ResourceBundle yield = EconomyKnownHexYield(ctx, hex);
-                result.AddRange(PositiveResourceYields(hex, yield));
+                result.AddRange(PositiveResourceYields(known.Hex,
+                    ObservedResourceBundle(known.Yield)));
             }
             return result;
         }
@@ -1313,18 +1317,32 @@ namespace Game.Ai.V2
         {
             targetCitadel = default;
             anchor = default;
-            if (snap?.Self?.BaseHexes == null || snap.Self.BaseHexes.Count == 0
-                || snap.Known?.Buildings == null)
+            if (snap?.Self?.BaseHexes == null || snap.Self.BaseHexes.Count == 0)
                 return false;
-            List<AiMapMemory.KnownBuilding> targets = snap.Known.Buildings
+            List<HexCoord> targets = (snap.Known?.Buildings
+                    ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Where(b => b.IsStartingCitadel && b.Owner != null && b.Owner != player
                     && !b.Owner.IsNeutral && !b.Owner.IsEliminated)
-                .OrderBy(b => snap.Self.BaseHexes.Min(h => HexGridMath.Distance(h, b.Hex)))
-                .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
+                .Select(b => b.Hex)
                 .ToList();
             if (targets.Count == 0)
+            {
+                // Explicit Economy knowledge exception: initial expansion must not be disabled
+                // until Recon happens to find a distant opponent. TrueWorld already isolates the
+                // sanctioned cheat; only starting-citadel coordinates cross this boundary.
+                targets = (snap.TrueWorld?.AllBuildings
+                        ?? System.Array.Empty<BuildingSnapshot>())
+                    .Where(b => b != null && b.IsStartingCitadel && b.Owner != null
+                        && b.Owner != player && !b.Owner.IsNeutral && !b.Owner.IsEliminated)
+                    .Select(b => b.Hex)
+                    .ToList();
+            }
+            if (targets.Count == 0)
                 return false;
-            targetCitadel = targets[0].Hex;
+            targetCitadel = targets
+                .OrderBy(b => snap.Self.BaseHexes.Min(h => HexGridMath.Distance(h, b)))
+                .ThenBy(b => b.Q).ThenBy(b => b.R)
+                .First();
             anchor = snap.Self.BaseHexes
                 .OrderBy(h => HexGridMath.Distance(h, targetCitadel))
                 .ThenBy(h => h.Q).ThenBy(h => h.R).First();
@@ -1336,11 +1354,15 @@ namespace Game.Ai.V2
         {
             if (ownBases == null || ownBases.Count == 0)
                 return false;
-            int nearestOwnBase = ownBases.Min(h => HexGridMath.Distance(h, candidate));
-            return nearestOwnBase >= AiConfigV2.economyBaseFoundScanRadius
+            return MeetsBaseSpacing(ownBases, candidate)
                 && HexGridMath.Distance(candidate, targetCitadel)
                     < HexGridMath.Distance(anchor, targetCitadel);
         }
+
+        internal static bool MeetsBaseSpacing(IReadOnlyList<HexCoord> ownBases,
+            HexCoord candidate) => ownBases != null && ownBases.Count > 0
+            && ownBases.Min(h => HexGridMath.Distance(h, candidate))
+                >= AiConfigV2.economyBaseMinSpacing;
 
         private static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
             WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target)
@@ -1414,18 +1436,18 @@ namespace Game.Ai.V2
             return 1f / Mathf.Max(1f, distance);
         }
 
-        private static float EconomyResourceClusterValue(WorldSnapshot snap, AiTurnContext ctx,
+        private static float EconomyResourceClusterValue(WorldSnapshot snap,
             HexCoord target,
             IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings)
         {
             if (snap?.Known?.ResourceHexes == null)
                 return 0f;
             float value = 0f;
-            foreach (HexCoord site in snap.Known.ResourceHexes.Select(x => x.Key).Distinct())
+            foreach (HexCoord site in snap.Known.ResourceHexes.Select(x => x.Hex).Distinct())
             {
                 if (HexGridMath.Distance(target, site) > AiConfigV2.economyResourceClusterRadius)
                     continue;
-                ResourceBundle yield = EconomyKnownHexYield(ctx, site);
+                ResourceBundle yield = EconomyKnownHexYield(snap, site);
                 foreach (ResourceType type in ResourceBundle.All)
                     if (yield.Get(type) > 0f
                         && standings.TryGetValue(type, out EconomyResourceStanding standing))
@@ -1434,19 +1456,19 @@ namespace Game.Ai.V2
             return value;
         }
 
-        private static float EconomyBaseNetworkExpansionValue(WorldSnapshot snap, AiTurnContext ctx,
+        private static float EconomyBaseNetworkExpansionValue(WorldSnapshot snap,
             HexCoord target, IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings)
         {
             if (snap?.Known?.ResourceHexes == null || snap.Self?.BaseHexes == null)
                 return 0f;
             float value = 0f;
-            foreach (HexCoord site in snap.Known.ResourceHexes.Select(x => x.Key).Distinct())
+            foreach (HexCoord site in snap.Known.ResourceHexes.Select(x => x.Hex).Distinct())
             {
                 if (HexGridMath.Distance(target, site) > AiConfigV2.economyBaseFoundScanRadius
                     || snap.Self.BaseHexes.Any(baseHex => HexGridMath.Distance(baseHex, site)
                         <= AiConfigV2.economyBaseFoundScanRadius))
                     continue;
-                ResourceBundle yield = EconomyKnownHexYield(ctx, site);
+                ResourceBundle yield = EconomyKnownHexYield(snap, site);
                 foreach (ResourceType type in ResourceBundle.All)
                     if (standings.TryGetValue(type, out EconomyResourceStanding standing))
                         value += yield.Get(type) * Mathf.Max(0.25f, standing.DeficitScore);
@@ -1454,20 +1476,22 @@ namespace Game.Ai.V2
             return value;
         }
 
-        private static ResourceBundle EconomyKnownHexYield(AiTurnContext ctx, HexCoord hex)
-        {
-            if (ctx?.Map == null || !ctx.Map.TryGetTerrainAt(hex, out var terrain))
-                return default(ResourceBundle);
-            ResourceYields yield = HexResourceCalculator.GetEffectiveYield(
-                terrain, HexResourceBonusRegistry.GetBonus(hex));
-            return new ResourceBundle
+        private static ResourceBundle EconomyKnownHexYield(WorldSnapshot snap, HexCoord hex) =>
+            snap?.Known?.ResourceHexes == null
+                ? default(ResourceBundle)
+                : snap.Known.ResourceHexes
+                    .Where(x => x.Hex.Equals(hex))
+                    .Select(x => ObservedResourceBundle(x.Yield))
+                    .FirstOrDefault();
+
+        private static ResourceBundle ObservedResourceBundle(ResourceYields yield) =>
+            yield == null ? default(ResourceBundle) : new ResourceBundle
             {
                 Human = yield.Get(ResourceType.Human),
                 Energy = yield.Get(ResourceType.Energy),
                 Materials = yield.Get(ResourceType.Materials),
                 Tech = yield.Get(ResourceType.Tech),
             };
-        }
 
         private static void AccumulateCardCosts(IEnumerable<CardData> cards, ref ResourceBundle need)
         {

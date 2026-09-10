@@ -67,6 +67,9 @@ namespace Game.Ai.V2
         public float EconomyHeroOpportunityCost;
         public float EconomyAssignmentApCost;
         public float EconomyPaybackTurns;
+        // Continuity-owned, pre-intent wait pressure. It affects only Economy's within-lane
+        // admission order; BaseValue remains intrinsic so critical Defence/Reaction is untouched.
+        public float EconomyStrategicUrgency;
         public int? EconomyPreferredBuilderArmyId;
         // Analysis-owned structural routes for the selected site. Demand applies intent/commitment
         // policy; no downstream stage has to query Provisioning or live registries to rediscover it.

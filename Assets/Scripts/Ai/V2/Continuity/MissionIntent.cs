@@ -171,12 +171,70 @@ namespace Game.Ai.V2
     {
         private readonly Dictionary<MissionIntentKey, MissionIntent> _intents =
             new Dictionary<MissionIntentKey, MissionIntent>();
+        private int _baseExpansionEligibleTurn = -1;
+        private int _baseExpansionLastReconciledTurn = -1;
 
         public IReadOnlyCollection<MissionIntent> All => _intents.Values;
         public int Count => _intents.Count;
         public bool TryGet(MissionIntentKey k, out MissionIntent i) => _intents.TryGetValue(k, out i);
         public void Put(MissionIntent i) => _intents[i.IntentKey] = i;
         public void Remove(MissionIntentKey k) => _intents.Remove(k);
+
+        public int BaseExpansionWaitTurns { get; private set; }
+
+        // Pre-intent continuity for a legal Base opportunity. A Base mission cannot own a durable
+        // actor before winning allocation, but repeated portfolio deferral must still survive into
+        // the next turn. Kept in the existing continuity state rather than a second manager.
+        internal float MarkBaseExpansionCandidate(int turn, bool structurallyEligible)
+        {
+            if (!structurallyEligible)
+            {
+                ResetBaseExpansionWait();
+                return 0f;
+            }
+            _baseExpansionEligibleTurn = turn;
+            return BaseExpansionWaitTurns * AiConfigV2.economyBaseUrgencyPerDeferredTurn;
+        }
+
+        internal void ReconcileBaseExpansionWait(int turn,
+            IReadOnlyList<MissionTurnOutcome> outcomes)
+        {
+            bool completed = (outcomes ?? System.Array.Empty<MissionTurnOutcome>()).Any(o =>
+                IsBaseExpansionOutcome(o)
+                && (o.EconomyBuildCompleted
+                    || (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)));
+            bool invalidated = (outcomes ?? System.Array.Empty<MissionTurnOutcome>()).Any(o =>
+                IsBaseExpansionOutcome(o)
+                && (o.StructuralFailure
+                    || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated));
+            if (completed || invalidated || _baseExpansionEligibleTurn != turn)
+            {
+                ResetBaseExpansionWait();
+                return;
+            }
+            if (_baseExpansionLastReconciledTurn == turn)
+                return;
+            _baseExpansionLastReconciledTurn = turn;
+            BaseExpansionWaitTurns++;
+        }
+
+        private static bool IsBaseExpansionOutcome(MissionTurnOutcome outcome)
+        {
+            if (outcome == null || outcome.MissionKind != MissionKind.Economy)
+                return false;
+            if (outcome.HasEconomyPayload
+                && outcome.EconomyTarget.Kind == EconomyTaskKind.FoundBase)
+                return true;
+            return outcome.Proposal?.Target is EconomyMissionTarget proposed
+                && proposed.Kind == EconomyTaskKind.FoundBase;
+        }
+
+        private void ResetBaseExpansionWait()
+        {
+            BaseExpansionWaitTurns = 0;
+            _baseExpansionEligibleTurn = -1;
+            _baseExpansionLastReconciledTurn = -1;
+        }
     }
 
     public static class MissionIntentRegistry
@@ -1151,6 +1209,7 @@ namespace Game.Ai.V2
                         + $"age {intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
                 }
             }
+            state.ReconcileBaseExpansionWait(turn, outcomes);
         }
 
         private static void ReconcileOutcome(MissionIntentState state,

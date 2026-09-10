@@ -356,9 +356,9 @@ namespace Game.Ai.V2
                 }
 
             if (snap.Known?.ResourceHexes != null)
-                foreach (KeyValuePair<HexCoord, Game.Economy.ResourceType> r in snap.Known.ResourceHexes)
+                foreach (Game.Ai.AiMapMemory.KnownResourceHex r in snap.Known.ResourceHexes)
                 {
-                    int d = HexGridMath.Distance(r.Key, hex);
+                    int d = HexGridMath.Distance(r.Hex, hex);
                     if (d == 0) relevance = Mathf.Max(relevance, 0.75f);
                     else if (d == 1) relevance = Mathf.Max(relevance, 0.40f);
                 }
