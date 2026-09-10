@@ -1204,9 +1204,13 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyResourceReserve_OpensOnlyInsideOneTurnBuilderHorizon()
+        public void EconomyResourceReserve_PersistsWhileConfirmedBuilderRouteIsMultiTurn()
         {
-            var builder = new ArmySnapshot { ArmyId = 7, MaxMovement = 3 };
+            var builder = new ArmySnapshot
+            {
+                ArmyId = 7, MaxMovement = 3, CurrentMovement = 3,
+                HasHero = true, IsMobileEconomyBuilder = true,
+            };
             var snap = new WorldSnapshot
             {
                 Self = new SelfSnapshot { Armies = new List<ArmySnapshot> { builder } },
@@ -1215,6 +1219,7 @@ namespace Game.EditorTests
             {
                 RequestingAxis = DesireAxis.Economy,
                 Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(4, 0),
                 EconomyBuilderRoutes = new[]
                 {
                     new EconomyBuilderRouteSnapshot
@@ -1225,17 +1230,119 @@ namespace Game.EditorTests
             };
 
             Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
-                snap, demand), Is.False);
+                snap, demand), Is.True,
+                "A valid multi-turn delivery must protect its build vector before Phase B.");
 
             demand.EconomyBuilderRoutes = new[]
             {
                 new EconomyBuilderRouteSnapshot
                 {
-                    ArmyId = 7, TravelCost = 3, IsOnTarget = false,
+                    ArmyId = 7, TravelCost = int.MaxValue, IsOnTarget = false,
                 },
             };
             Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
-                snap, demand), Is.True);
+                snap, demand), Is.False);
+        }
+
+        [Test]
+        public void EconomyMission_MultiTurnTravelFundsOnlyCurrentActivationStage()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            ArmySnapshot builder = EconomyBuilder(7, 1, 3f);
+            builder.CurrentMovement = builder.MaxMovement = 3;
+            builder.ActivationApCost = 2;
+            builder.HasActivatedThisTurn = false;
+            snapshot.Self.Armies = new[] { builder };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(4, 0),
+                EconomyResourceType = ResourceType.Materials,
+                EconomyPreferredBuilderArmyId = 7,
+                EconomyBuilderRoutes = new[] { BuilderRoute(builder, 4, 4, 2) },
+                EconomyTravelCost = 4,
+                EconomyBuildApCost = 1,
+                MinimumFollowupAp = 1,
+                EconomyBuildResourceCost = new ResourceCost { human = 3, materials = 4 },
+                Value = 40f,
+            };
+
+            MissionProposal mission = EconomyMissionPlanner.Propose(
+                snapshot, new DesireBreakdown(), null, new[] { demand }).Single();
+
+            Assert.That(mission.Requirements.ApMinimum, Is.EqualTo(2f));
+            Assert.That(mission.Requirements.HumanMinimum, Is.Zero);
+            Assert.That(mission.Requirements.MaterialsMinimum, Is.Zero);
+            Assert.That(mission.Requirements.EtaTurns, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EconomyMission_ReachableTargetFundsCompletionAndBuildResources()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            ArmySnapshot builder = EconomyBuilder(7, 1, 3f);
+            builder.CurrentMovement = builder.MaxMovement = 3;
+            builder.ActivationApCost = 2;
+            builder.HasActivatedThisTurn = false;
+            snapshot.Self.Armies = new[] { builder };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(2, 0),
+                EconomyResourceType = ResourceType.Materials,
+                EconomyPreferredBuilderArmyId = 7,
+                EconomyBuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 2) },
+                EconomyTravelCost = 2,
+                EconomyBuildApCost = 1,
+                MinimumFollowupAp = 1,
+                EconomyBuildResourceCost = new ResourceCost { human = 3, materials = 4 },
+                Value = 40f,
+            };
+
+            MissionProposal mission = EconomyMissionPlanner.Propose(
+                snapshot, new DesireBreakdown(), null, new[] { demand }).Single();
+
+            Assert.That(mission.Requirements.ApMinimum, Is.EqualTo(3f));
+            Assert.That(mission.Requirements.HumanMinimum, Is.EqualTo(3f));
+            Assert.That(mission.Requirements.MaterialsMinimum, Is.EqualTo(4f));
+            Assert.That(mission.Requirements.EtaTurns, Is.Zero);
+        }
+
+        [Test]
+        public void EconomyMissionClaimedAp_DoesNotChargeBuildDuringRemoteTravel()
+        {
+            var builder = new ArmyData();
+            builder.Members.Add(Hero("Builder", activation: 2));
+
+            float travel = ProvisioningManager.EconomyMissionClaimedAp(
+                builder, 1f, 1f, null, travelNeeded: true, completionThisTurn: false);
+            float arrived = ProvisioningManager.EconomyMissionClaimedAp(
+                builder, 1f, 1f, null, travelNeeded: false, completionThisTurn: true);
+
+            Assert.That(travel, Is.EqualTo(2f));
+            Assert.That(arrived, Is.EqualTo(1f));
+        }
+
+        [Test]
+        public void ProductionSupport_TracksWeakestEconomicConstraint()
+        {
+            var secure = new EconomyStanding
+            {
+                EconomicSecurity = 1f, BottleneckPressure = 0f, MaxDeficitScore = 0f,
+            };
+            var blocked = new EconomyStanding
+            {
+                EconomicSecurity = 0.2f, BottleneckPressure = 0.8f, MaxDeficitScore = 0.8f,
+            };
+
+            float high = DevelopmentReadiness.CalculateProductionSupport(secure, 1f);
+            float low = DevelopmentReadiness.CalculateProductionSupport(blocked, 1f);
+
+            Assert.That(high, Is.EqualTo(AiConfigV2.productionSupportMax).Within(0.001f));
+            Assert.That(low, Is.EqualTo(AiConfigV2.productionSupportMin).Within(0.001f));
+            Assert.That(low, Is.LessThan(high));
         }
 
         [Test]
