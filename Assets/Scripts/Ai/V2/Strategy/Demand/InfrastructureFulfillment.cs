@@ -156,8 +156,10 @@ namespace Game.Ai.V2
         }
 
         // A selected infrastructure demand already has a valuable legal site and a snapshot-witnessed
-        // builder route. Protect its persistent build vector before Phase B; a Hero prerequisite
-        // never reaches this method, so saving cannot block creation of the missing builder.
+        // builder route. Protect its persistent build vector before Phase B for the whole delivery,
+        // not only once the actor enters a one-turn movement radius. The reservation is turn-scoped,
+        // so the fresh Demand/Analysis pass must prove this route again every turn; a missing-builder
+        // Hero prerequisite never reaches this method and therefore cannot lock its own creation cost.
         internal static bool ShouldReserveDeferredEconomyResources(
             WorldSnapshot snap, AxisDemand demand)
         {
@@ -166,9 +168,10 @@ namespace Game.Ai.V2
             foreach (EconomyBuilderRouteSnapshot route in demand.EconomyBuilderRoutes)
             {
                 ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
-                    && a.ArmyId == route.ArmyId && a.HasHero && !a.IsPrison && !a.IsAir);
-                if (actor != null && (route.IsOnTarget
-                    || route.TravelCost <= UnityEngine.Mathf.Max(0, actor.MaxMovement)))
+                    && a.ArmyId == route.ArmyId && a.HasHero && !a.IsPrison && !a.IsAir
+                    && (a.IsMobileEconomyBuilder
+                        || (a.IsGarrison && a.Hex.Equals(demand.TargetHex ?? a.Hex))));
+                if (actor != null && route.TravelCost >= 0 && route.TravelCost < int.MaxValue)
                     return true;
             }
             return false;
