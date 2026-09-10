@@ -729,7 +729,10 @@ namespace Game.Ai.V2
                     && x.EconomyResourceType.HasValue)
                 .OrderByDescending(x => standings.TryGetValue(
                         x.EconomyResourceType.Value, out EconomyResourceStanding rs)
-                    ? EconomyResourcePriority(rs) : 0f)
+                    ? Mathf.Max(EconomyResourcePriority(rs),
+                        ResourceStarvationRegistry.Pressure(
+                            player, x.EconomyResourceType.Value))
+                    : 0f)
                 .ThenByDescending(x => x.EconomySiteValue)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
                 .ThenBy(x => x.EconomyTravelCost)
