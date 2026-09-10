@@ -1365,6 +1365,24 @@ namespace Game.EditorTests
 
             Assert.That(selected.EconomyResourceType, Is.EqualTo(ResourceType.Energy));
             Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
+
+            snapshot.Self.ActionPoints = 1;
+            MissionProposal economy = EconomyMissionPlanner.Propose(
+                snapshot, new DesireBreakdown(), null, new[] { selected }).Single();
+            MissionProposal refresh = AllocatorMission(
+                MissionKind.Scout, 56.6f, DesireAxis.Recon, armyId: 8);
+            Radar radar = Radar.Even();
+            radar.Weight[DesireAxis.Recon] = 0.56f;
+            radar.Weight[DesireAxis.Economy] = 0.13f;
+            refresh.EffectiveValue = refresh.BaseValue * RadarValueScale.For(radar, refresh);
+            economy.EffectiveValue = economy.BaseValue * RadarValueScale.For(radar, economy);
+
+            TentativeAllocation allocation = ResourceAllocator.BeginTurn(
+                snapshot, radar, new List<MissionProposal> { refresh, economy },
+                new List<Commitment>(), new Game.Players.PlayerSetupData()).Pack();
+
+            Assert.That(allocation.Funded.First().Mission, Is.SameAs(economy),
+                "Immediate hand shortage must beat routine Refresh even under the captured turn-3 radar.");
         }
 
         [Test]
