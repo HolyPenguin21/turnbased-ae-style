@@ -87,7 +87,29 @@ namespace Game.Ai.V2
         public bool AnyFacilityWithHero;   // a facility exists AND carries a qualifying hero (execution-ready)
         public float BestSuccessChance;    // max p over Offerings (0 if none)
         public float SurplusFraction;      // [0..1] resource headroom above the reservation floors
+        // Economy-backed appetite for optional Production. This is an Analysis fact, not a source
+        // eligibility gate: Production can still answer a critical Attack/Defence demand, while
+        // surplus minting is damped until the weakest resource can sustain it.
+        public float ProductionSupport = 1f;
         public int UpgradeTargetCount;     // rough count of own units / hand Unit cards worth improving
+
+        public static float CalculateProductionSupport(EconomyStanding economy, float surplusFraction)
+        {
+            if (economy == null)
+                return AiConfigV2.productionSupportMin;
+            float readiness = Mathf.Min(
+                Mathf.Clamp01(surplusFraction),
+                Mathf.Clamp01(economy.EconomicSecurity),
+                1f - Mathf.Clamp01(economy.BottleneckPressure),
+                1f - Mathf.Clamp01(economy.MaxDeficitScore));
+            float t = Mathf.InverseLerp(
+                AiConfigV2.productionSupportReadinessLo,
+                AiConfigV2.productionSupportReadinessHi,
+                readiness);
+            t = t * t * (3f - 2f * t);
+            return Mathf.Lerp(AiConfigV2.productionSupportMin,
+                AiConfigV2.productionSupportMax, t);
+        }
 
         // --- staging signals (radar is no longer gated on facility+hero; DemandLayer stages them) --
         public bool AnyOperatorlessFacility; // a built facility with no qualifying hero and no enemy on the hex
