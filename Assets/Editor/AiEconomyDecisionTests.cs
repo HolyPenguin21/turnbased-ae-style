@@ -1445,7 +1445,7 @@ namespace Game.EditorTests
                 NetworkExpansionValue = 0.5f, LogisticsValue = 0.5f,
                 ForwardProgressValue = 1f,
                 CorridorAlignmentValue = 1f,
-                BuilderRoutes = new[] { BuilderRoute(builder, 4, 3, 1) },
+                BuilderRoutes = new[] { BuilderRoute(builder, 5, 3, 1) },
             };
             snapshot.Economy.BaseOpportunities = new[] { convenient, strategic };
 
