@@ -155,6 +155,13 @@ namespace Game.Ai.V2
                 CardDefinition def = card?.Definition;
                 if (def == null)
                     continue;
+                // Economy owns the exact physical Base card it selected. Phase B may still consider
+                // duplicate copies, but cannot consume this one through generic non-combat scoring.
+                if (reservation != null && reservation.ClaimsEconomyBuildCard(card))
+                {
+                    blocked.Add($"{def.displayName}:reservedForEconomyBuild");
+                    continue;
+                }
                 // A non-aviation Unit / Hero / solo-Recce card is the materialization chain's job.
                 if (!def.isAviation
                     && (def.cardType == CardType.Unit || def.cardType == CardType.Hero
