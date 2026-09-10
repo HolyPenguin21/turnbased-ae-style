@@ -623,10 +623,9 @@ namespace Game.Ai.V2
         }
 
         // ---------------------------------------------------------------------------------------
-        //  ECO — a resource type whose recurring income is BELOW the sustainable target AND a
-        //  known unbuilt resource hex exists for it. The target combines own deck/card cadence
-        //  with opponent income; this layer only emits work when a concrete site is actionable.
-        //  One demand at a time.
+        //  ECO — a known extraction site with positive marginal income and acceptable payback.
+        //  Deficit/starvation remain urgency multipliers, but are not admission prerequisites.
+        //  Extraction and Base expansion each expose at most one demand to the shared allocator.
         // ---------------------------------------------------------------------------------------
         internal static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b,
             PlayerSetupData player, AiTurnContext ctx, PlayerRoot root,
@@ -650,20 +649,31 @@ namespace Game.Ai.V2
                     continue;
                 float starvation = Mathf.Max(rs.StarvationPressure,
                     ResourceStarvationRegistry.Pressure(player, site.ResourceType));
-                if (rs.DeficitScore <= AiConfigV2.allocatorSliceEpsilon
-                    && starvation < AiConfigV2.starvationEconomyTrigger)
-                    continue;
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
-                float travel = EconomyActorTravelCost(
-                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments);
+                float resourceCost = ResourceCostSum(def?.resourceCost);
+                float preliminaryPayback = EconomyPaybackTurns(
+                    gain, resourceCost, def?.apCost ?? 0f);
+                float preliminaryValue = ScoreEconomySite(
+                    Mathf.Max(rs.DeficitScore, starvation), gain,
+                    site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
+                    0f, 0f, 0f, resourceCost, def?.apCost ?? 0f,
+                    preliminaryPayback);
+                EconomyBuilderChoice builder = SelectEconomyBuilder(
+                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
+                    preliminaryValue, def?.apCost ?? 0f, includeReturn: true);
+                float travel = builder?.Route.TravelCost
+                    ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
                 float exposure = ThreatExposure(s, site.Hex);
-                float opportunity = EconomyHeroOpportunityCost(
-                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments);
+                float opportunity = builder?.Route.EffectiveArmyPower ?? 0f;
+                float assignmentAp = builder?.TotalAssignmentApCost ?? (def?.apCost ?? 0f);
+                float payback = EconomyPaybackTurns(gain, resourceCost, assignmentAp);
+                if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
+                    continue;
                 float value = ScoreEconomySite(Mathf.Max(rs.DeficitScore, starvation), gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
-                    travel, exposure, opportunity);
+                    travel, exposure, opportunity, resourceCost, assignmentAp, payback);
                 if (value <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 candidates.Add(new AxisDemand
@@ -681,6 +691,9 @@ namespace Game.Ai.V2
                     EconomyTravelCost = travel,
                     EconomyThreatExposure = exposure,
                     EconomyHeroOpportunityCost = opportunity,
+                    EconomyAssignmentApCost = assignmentAp,
+                    EconomyPaybackTurns = payback,
+                    EconomyPreferredBuilderArmyId = builder?.Army.ArmyId,
                     EconomyBuilderRoutes = site.BuilderRoutes,
                     Value = value,
                     Explain = $"{site.ResourceType} deficit={rs.DeficitScore:0.##} "
@@ -694,21 +707,23 @@ namespace Game.Ai.V2
 
             string baseSummary = AddBaseCandidates(
                 s, candidates, player, ctx, activeIntents, commitments);
-            List<AxisDemand> selected = candidates
+            IOrderedEnumerable<AxisDemand> ranked = candidates
                 .OrderByDescending(x => IsActiveBaseCommitment(
                     activeIntents, x.TargetHex, x.EconomyBuildCard))
                 .ThenByDescending(x => x.EconomySiteValue)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
                 .ThenBy(x => x.EconomyTravelCost)
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
-                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue)
-                .Take(Mathf.Max(0, AiConfigV2.economyMaxDemandsPerTurn))
+                .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
+            List<AxisDemand> selected = ranked
+                .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure)
+                .Take(Mathf.Max(0, AiConfigV2.economyMaxInfrastructureDemandsPerTurn))
+                .Concat(ranked.Where(x => x.Capability == CapabilityKind.EconomicExpansionBase)
+                    .Take(Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
                 .ToList();
             foreach (AxisDemand demand in selected)
             {
-                AxisDemand emitted = HasEconomyBuilder(
-                        s, demand.TargetHex.Value, demand.EconomyBuilderRoutes,
-                        activeIntents, commitments, demand.EconomySiteValue)
+                AxisDemand emitted = demand.EconomyPreferredBuilderArmyId.HasValue
                     ? demand
                     : EconomyHeroPrerequisite(demand);
                 AiDebugLog.Write($"[AI][V2][Economy][Demand] selected={emitted.Capability} "
@@ -739,49 +754,73 @@ namespace Game.Ai.V2
             EconomyTravelCost = source.EconomyTravelCost,
             EconomyThreatExposure = source.EconomyThreatExposure,
             EconomyHeroOpportunityCost = source.EconomyHeroOpportunityCost,
+            EconomyAssignmentApCost = source.EconomyAssignmentApCost,
+            EconomyPaybackTurns = source.EconomyPaybackTurns,
+            EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
+            EconomyBuilderRoutes = source.EconomyBuilderRoutes,
             Value = source.Value,
             Explain = source.Explain + "; prerequisite=mobile_hero",
         };
 
-        private static bool HasEconomyBuilder(WorldSnapshot snap, HexCoord target,
-            IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
+        internal sealed class EconomyBuilderChoice
+        {
+            public EconomyBuilderRouteSnapshot Route;
+            public ArmySnapshot Army;
+            public float TotalAssignmentApCost;
+        }
+
+        internal static EconomyBuilderChoice SelectEconomyBuilder(WorldSnapshot snap,
+            HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            float buildValue)
+            float buildValue, float buildApCost, bool includeReturn)
         {
-            List<(EconomyBuilderRouteSnapshot route, ArmySnapshot army)> candidates =
-                EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments).ToList();
-            if (candidates.Any(x => x.route.IsOnTarget))
-                return true;
-            foreach (var candidate in candidates)
-            {
-                MissionIntent assignment = ActiveAssignment(activeIntents, candidate.army.ArmyId);
-                if (assignment != null && assignment.Kind != MissionKind.Economy
-                    && !EconomyLoanAllowed(assignment, buildValue, candidate.route.TravelCost,
-                        candidate.army.CurrentMovement, out _))
-                    continue;
-                return true;
-            }
-            return false;
+            return RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
+                buildValue, buildApCost, includeReturn).FirstOrDefault();
         }
 
-        private static float EconomyActorTravelCost(WorldSnapshot snap, HexCoord target,
-            IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        internal static IReadOnlyList<EconomyBuilderChoice> RankEconomyBuilders(WorldSnapshot snap,
+            HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            float buildValue, float buildApCost, bool includeReturn)
         {
-            List<(EconomyBuilderRouteSnapshot route, ArmySnapshot army)> candidates =
-                EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments).ToList();
-            return candidates.Count > 0
-                ? candidates.Min(x => (float)x.route.TravelCost)
-                : AiConfigV2.economyBaseFoundScanRadius + 4f;
+            return EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments)
+                .Where(x => x.route.IsOnTarget || ActiveAssignment(activeIntents, x.army.ArmyId) == null
+                    || ActiveAssignment(activeIntents, x.army.ArmyId).Kind == MissionKind.Economy
+                    || EconomyLoanAllowed(ActiveAssignment(activeIntents, x.army.ArmyId), buildValue,
+                        x.route.TravelCost, x.army.CurrentMovement, out _))
+                .Select(x => new EconomyBuilderChoice
+                {
+                    Route = x.route,
+                    Army = x.army,
+                    TotalAssignmentApCost = EstimateEconomyAssignmentAp(
+                        x.route, buildApCost, includeReturn),
+                })
+                .OrderByDescending(x => x.Route.HasActiveEconomyCommitment
+                    || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
+                .ThenBy(x => x.TotalAssignmentApCost)
+                .ThenBy(x => x.Route.EffectiveArmyPower)
+                .ThenBy(x => x.Route.ArmySize)
+                .ThenBy(x => x.Route.TravelCost + (includeReturn ? x.Route.ReturnTravelCost : 0))
+                .ThenBy(x => x.Route.ArmyId)
+                .ToList();
         }
 
-        private static float EconomyHeroOpportunityCost(WorldSnapshot snap, HexCoord target,
-            IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        internal static float EstimateEconomyAssignmentAp(EconomyBuilderRouteSnapshot route,
+            float buildApCost, bool includeReturn)
         {
-            List<(EconomyBuilderRouteSnapshot route, ArmySnapshot army)> candidates =
-                EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments).ToList();
-            return candidates.Count > 0 ? candidates.Min(x => x.army.EffectiveArmyPower) : 0f;
+            int move = Mathf.Max(1, route.MaxMovement);
+            int outboundTurns = route.TravelCost <= 0 ? 0
+                : route.CurrentMovement > 0
+                    ? 1 + Mathf.CeilToInt(Mathf.Max(0,
+                        route.TravelCost - route.CurrentMovement) / (float)move)
+                    : Mathf.CeilToInt(route.TravelCost / (float)move);
+            int paidOutboundActivations = Mathf.Max(0,
+                outboundTurns - (route.HasActivatedThisTurn && outboundTurns > 0 ? 1 : 0));
+            if (route.IsOnTarget) paidOutboundActivations = 0;
+            int returnTurns = includeReturn && route.ReturnTravelCost > 0
+                ? Mathf.CeilToInt(route.ReturnTravelCost / (float)move) : 0;
+            return Mathf.Max(0f, buildApCost)
+                + (paidOutboundActivations + returnTurns) * Mathf.Max(0, route.ActivationApCost);
         }
 
         private static IEnumerable<(EconomyBuilderRouteSnapshot route, ArmySnapshot army)>
@@ -843,7 +882,11 @@ namespace Game.Ai.V2
                     if (army.HasHero && army.Hex.Equals(target))
                         result.Add(new EconomyBuilderRouteSnapshot
                         {
-                            ArmyId = army.ArmyId, TravelCost = 0, IsOnTarget = true,
+                            ArmyId = army.ArmyId, TravelCost = 0, ReturnTravelCost = 0,
+                            CurrentMovement = army.CurrentMovement, MaxMovement = army.MaxMovement,
+                            ActivationApCost = army.ActivationApCost, ArmySize = army.MemberCount,
+                            HasActivatedThisTurn = army.HasActivatedThisTurn,
+                            EffectiveArmyPower = army.EffectiveArmyPower, IsOnTarget = true,
                         });
                     continue;
                 }
@@ -853,6 +896,14 @@ namespace Game.Ai.V2
                 {
                     ArmyId = army.ArmyId,
                     TravelCost = HexGridMath.Distance(army.Hex, target),
+                    ReturnTravelCost = snap?.Self?.BaseHexes?.Count > 0
+                        ? snap.Self.BaseHexes.Min(h => HexGridMath.Distance(target, h)) : 0,
+                    CurrentMovement = army.CurrentMovement,
+                    MaxMovement = army.MaxMovement,
+                    ActivationApCost = army.ActivationApCost,
+                    HasActivatedThisTurn = army.HasActivatedThisTurn,
+                    ArmySize = army.MemberCount,
+                    EffectiveArmyPower = army.EffectiveArmyPower,
                     IsOnTarget = army.Hex.Equals(target),
                 });
             }
@@ -895,13 +946,24 @@ namespace Game.Ai.V2
         internal static float EconomyRecoveryThreatExposure(WorldSnapshot snap, HexCoord hex) =>
             ThreatExposure(snap, hex);
 
+        internal static float EconomyPaybackTurns(float expectedIncomeGain,
+            float resourceCost, float assignmentApCost) => expectedIncomeGain <= 0f
+                ? float.PositiveInfinity
+                : (Mathf.Max(0f, resourceCost) + Mathf.Max(0f, assignmentApCost))
+                    / expectedIncomeGain;
+
         internal static float ScoreEconomySite(float deficit, float expectedIncomeGain,
             float baseNetworkSynergy, float nearbyResourceClusterValue, float travelCost,
-            float threatExposure, float heroOpportunityCost) =>
+            float threatExposure, float heroOpportunityCost, float resourceCost,
+            float assignmentApCost, float paybackTurns) =>
             AiConfigV2.economySiteDeficitValue * Mathf.Clamp01(deficit)
             + AiConfigV2.economySiteIncomeGainValue * Mathf.Max(0f, expectedIncomeGain)
             + AiConfigV2.economySiteBaseSynergyValue * Mathf.Clamp01(baseNetworkSynergy)
             + AiConfigV2.economySiteClusterValue * Mathf.Max(0f, nearbyResourceClusterValue)
+            + AiConfigV2.economyExtractionPaybackValue
+                * Mathf.Clamp01(1f - paybackTurns / AiConfigV2.economyExtractionMaxPaybackTurns)
+            - AiConfigV2.economyBuildResourcePenalty * Mathf.Max(0f, resourceCost)
+            - AiConfigV2.economyBuildApPenalty * Mathf.Max(0f, assignmentApCost)
             - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travelCost)
             - AiConfigV2.economySiteThreatPenalty * Mathf.Clamp01(threatExposure)
             - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
@@ -942,12 +1004,16 @@ namespace Game.Ai.V2
                         && site.InfrastructurePressure <= 0f && airfield <= 0f
                         && !site.ConvertsOwnedExtractionSite && global <= 0f && !committed)
                         continue;
-                    float travel = EconomyActorTravelCost(
-                        s, site.Hex, site.BuilderRoutes, activeIntents, commitments);
+                    EconomyBuilderChoice builder = SelectEconomyBuilder(
+                        s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
+                        reasonValue, card.EffectivePlayApCost, includeReturn: false);
+                    float travel = builder?.Route.TravelCost
+                        ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
                     float exposure = ThreatExposure(s, site.Hex);
-                    float heroCost = EconomyHeroOpportunityCost(
-                        s, site.Hex, site.BuilderRoutes, activeIntents, commitments);
-                    float buildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
+                    float heroCost = builder?.Route.EffectiveArmyPower ?? 0f;
+                    float assignmentAp = builder?.TotalAssignmentApCost
+                        ?? card.EffectivePlayApCost;
+                    float buildCost = assignmentAp * AiConfigV2.economyBuildApPenalty
                         + ResourceCostSum(card.EffectivePlayResourceCost)
                             * AiConfigV2.economyBuildResourcePenalty;
                     float value = reasonValue - buildCost
@@ -979,6 +1045,8 @@ namespace Game.Ai.V2
                         EconomyTravelCost = travel,
                         EconomyThreatExposure = exposure,
                         EconomyHeroOpportunityCost = heroCost,
+                        EconomyAssignmentApCost = assignmentAp,
+                        EconomyPreferredBuilderArmyId = builder?.Army.ArmyId,
                         EconomyBuilderRoutes = site.BuilderRoutes,
                         Value = value,
                         Explain = $"Base capacity={site.CapacityValue:0.##} yield={hexYield:0.##} "

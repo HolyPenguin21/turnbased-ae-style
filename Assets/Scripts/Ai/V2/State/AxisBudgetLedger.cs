@@ -89,8 +89,8 @@ namespace Game.Ai.V2
             string reserve = ReservedFollowup() > AiConfigV2.allocatorSliceEpsilon
                 ? $" reserved {ReservedFollowup().ToString("0.00", CultureInfo.InvariantCulture)}"
                 : "";
-            return $"pool {_pool.ToString("0.00", CultureInfo.InvariantCulture)}"
-                + $"/{_initialPool.ToString("0.00", CultureInfo.InvariantCulture)}{reserve}";
+            return $"sharedAP {_pool.ToString("0.00", CultureInfo.InvariantCulture)}"
+                + $"/{_initialPool.ToString("0.00", CultureInfo.InvariantCulture)}{reserve} axis=value-only";
         }
     }
 }

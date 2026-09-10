@@ -111,8 +111,8 @@ namespace Game.Ai.V2
         public bool Success;
         public ProvisionedMission Provisioned;
         public ProvisionFailure Failure;
-        // Provisioning is normally pure binding. Raid assembly is the one transactional exception:
-        // successful member transfers are one authoritative mutation and are versioned once only
+        // Provisioning is normally pure binding. Raid assembly and Economy's same-hex builder
+        // lightening are the transactional exceptions: successful member transfers are versioned once only
         // after the whole transaction commits. A complete rollback reports no mutation.
         public bool StateChanged;
         public int StateVersionAfter = -1;
@@ -534,21 +534,26 @@ namespace Game.Ai.V2
             List<MissionIntent> standingIntents = MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
             MissionIntentKey currentIntentKey = MissionIntentKey.For(m);
-            List<ArmyData> heroes = ArmyRegistry.AllForOwner(player)
-                .Where(a => IsMobileEconomyHero(a, player)
+            ActorCommitments actorCommitments = ActorCommitments.FromIntents(
+                standingIntents, session.Snapshot, null);
+            IReadOnlyList<DemandLayer.EconomyBuilderChoice> rankedBuilders =
+                DemandLayer.RankEconomyBuilders(session.Snapshot, target.TargetHex,
+                    target.BuilderRoutes, standingIntents, actorCommitments,
+                    target.BuildValue, target.BuildApCost,
+                    includeReturn: target.Kind == EconomyTaskKind.BuildExtraction);
+            ArmyData hero = rankedBuilders
+                .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
+                .Select(x => ResolveArmy(player, x.Route.ArmyId))
+                .FirstOrDefault(a => a != null && IsMobileEconomyHero(a, player)
                     && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
                     && !session.ClaimedArmyIds.Contains(a.Id)
                     && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
                         && !i.IntentKey.Equals(currentIntentKey)
-                        && !DemandLayer.EconomyDonorStructurallyEligible(i)))
-                .OrderBy(a => m.PreferredMoverArmyId == a.Id ? 0
-                    : standingIntents.Any(i => i.PreferredMoverArmyId == a.Id) ? 2 : 1)
-                .ThenBy(a => a.HasActivatedThisTurn ? 1 : 0)
-                .ThenBy(a => HexGridMath.Distance(a.Hex, target.TargetHex))
-                .ThenBy(a => a.Id).ToList();
-            ArmyData hero = heroes.FirstOrDefault(a => a.Hex.Equals(target.TargetHex)
-                || (a.CurrentMovement > 0
-                    && SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex).HasValue));
+                        && !DemandLayer.EconomyDonorStructurallyEligible(i))
+                    && (a.Hex.Equals(target.TargetHex)
+                        || (a.CurrentMovement > 0
+                            && SafeStepPathing.FindNextSafeStep(
+                                ctx.Map, a, target.TargetHex).HasValue)));
             if (hero == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists("no free hero can advance toward economy site"));
 
@@ -584,6 +589,12 @@ namespace Game.Ai.V2
                 InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, owner,
                     target.BuildResourceCost, target.BuildApCost);
 
+            int unloadedMembers = TryLightenEconomyArmy(
+                player, hero, target.TargetHex, session.Snapshot, ctx);
+            if (unloadedMembers > 0)
+                realAp = (hero.HasActivatedThisTurn ? 0f : hero.ActivationApCost)
+                    + Mathf.Max(target.BuildApCost, target.MinimumFollowupAp);
+
             MissionIntent loan = donor;
             if (loan != null)
             {
@@ -600,7 +611,83 @@ namespace Game.Ai.V2
                 ClaimedAp = realAp, ClaimedPhysical = CostVector(target.BuildResourceCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
-            });
+            }, unloadedMembers);
+        }
+
+        // Economy-specific, same-hex preparation belongs here because the target and its route are
+        // already selected. The canonical atomic batch transfer guarantees an all-or-nothing
+        // roster change; a failed preflight simply leaves the original army usable.
+        internal static int TryLightenEconomyArmy(PlayerSetupData player, ArmyData builder,
+            HexCoord target, WorldSnapshot snapshot, AiTurnContext ctx)
+        {
+            if (player == null || builder == null || ctx == null || builder.IsGarrison
+                || builder.IsPrison || builder.IsAirfield || builder.IsAirArmy
+                || builder.Hex.Equals(target) || !builder.Members.Any(u => u != null && u.IsHero))
+                return 0;
+            BuildingData home = BuildingRegistry.FindAt(builder.Hex);
+            bool isCitadel = player.CitadelHexQ == builder.Hex.Q
+                && player.CitadelHexR == builder.Hex.R;
+            if ((home == null || home.Owner != player || (!home.IsBase && !isCitadel)))
+                return 0;
+            ArmyData garrison = ArmyRegistry.FindGarrisonAt(builder.Hex, player);
+            if (garrison == null || garrison == builder || garrison.HasActivatedThisTurn)
+                return 0;
+
+            float requiredEscortPower = EconomyRouteEscortPower(snapshot, builder.Hex, target);
+            List<UnitData> bodies = builder.Members
+                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .OrderByDescending(RaidDonorPolicy.UnitCombatValue)
+                .ThenBy(u => u.Name).ToList();
+            var keep = new HashSet<UnitData>();
+            float keptPower = 0f;
+            foreach (UnitData body in bodies)
+            {
+                if (keptPower + AiConfigV2.allocatorSliceEpsilon >= requiredEscortPower)
+                    break;
+                keep.Add(body);
+                keptPower += RaidDonorPolicy.UnitCombatValue(body);
+            }
+            if (keptPower + AiConfigV2.allocatorSliceEpsilon < requiredEscortPower)
+                return 0;
+
+            List<UnitData> extras = bodies.Where(u => !keep.Contains(u))
+                .OrderByDescending(u => u.ActivationApCost)
+                .ThenBy(RaidDonorPolicy.UnitCombatValue)
+                .ThenBy(u => u.Name).ToList();
+            if (extras.Count == 0)
+                return 0;
+            while (extras.Count > 0
+                   && !ArmyActions.CanTransferMembers(extras, builder, garrison, out _))
+                extras.RemoveAt(extras.Count - 1);
+            if (extras.Count == 0)
+                return 0;
+            if (!ArmyActions.TransferMembersAtomic(
+                    extras, builder, garrison, ctx.HexSelection, out string why))
+            {
+                if (!string.IsNullOrEmpty(why))
+                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder lighten skipped: {why}");
+                return 0;
+            }
+            AiDebugLog.Write($"[AI][V2][Economy] builder #{builder.Id} left {extras.Count} escort(s) "
+                + $"in garrison #{garrison.Id}; retainedPower={keptPower:0.##} required={requiredEscortPower:0.##}");
+            return extras.Count;
+        }
+
+        internal static float EconomyRouteEscortPower(WorldSnapshot snapshot,
+            HexCoord from, HexCoord target)
+        {
+            int direct = HexGridMath.Distance(from, target);
+            float required = 0f;
+            foreach (AiMapMemory.KnownEnemySighting enemy in snapshot?.Known?.EnemySightings
+                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+            {
+                int corridor = HexGridMath.Distance(from, enemy.Hex)
+                    + HexGridMath.Distance(enemy.Hex, target);
+                if (corridor <= direct + 2)
+                    required = Mathf.Max(required,
+                        (enemy.AttackSum + enemy.DefenseSum) * AiConfigV2.defenceReserveMargin);
+            }
+            return required;
         }
 
         private static ProvisioningResult ProvisionEconomyRecovery(

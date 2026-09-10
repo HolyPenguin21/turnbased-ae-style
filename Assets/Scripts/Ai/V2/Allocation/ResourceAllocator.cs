@@ -431,10 +431,9 @@ namespace Game.Ai.V2
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
 
-        // Strategy V2 Strategic Manager — the shared per-turn AP entitlement split. When present,
-        // per-axis slice size comes from this (already net of Phase-A demand-fulfilment spend)
-        // instead of re-splitting current AP by the radar (NO second radar split). Null in a bare
-        // unit test / sim -> fall back to radar * pool as before.
+        // Strategy V2 Strategic Manager — the shared per-turn AP pool, already net of Phase-A
+        // demand-fulfilment spend. Radar changes objective value, not physical/AP ownership.
+        // Null in a bare unit test / sim falls back to the supplied pool.
         private readonly AxisBudgetLedger _ledger;
 
         // AI-RECON-01 — AP / Energy the Recon Air Reservation Prepass has set aside for a

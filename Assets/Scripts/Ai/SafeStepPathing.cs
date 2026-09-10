@@ -35,14 +35,28 @@ namespace Game.Ai
         {
             if (map == null || army == null)
                 return int.MaxValue;
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, targetHex,
-                blockHex: SafeRouteBlocker(army, targetHex));
+            return FindSafePathCost(map, army.Owner, army.Hex, targetHex);
+        }
+
+        // Same canonical blocker for a projected leg whose mover is not physically standing at
+        // `from` yet (Economy uses it for the post-build return leg). This keeps outbound and
+        // return costing on the exact route policy execution already uses.
+        public static int FindSafePathCost(HexMap map, PlayerSetupData owner,
+            HexCoord from, HexCoord targetHex)
+        {
+            if (map == null || owner == null)
+                return int.MaxValue;
+            HexPath path = HexPathfinder.FindPath(map, from, targetHex,
+                blockHex: SafeRouteBlocker(owner, targetHex));
             return path?.TotalCost ?? int.MaxValue;
         }
 
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            ArmyData army, HexCoord targetHex) => hex => !hex.Equals(targetHex)
-                && (AiMapMemory.KnownEnemySightingAt(army.Owner, hex).HasValue
-                    || AiMapMemory.IsScoutDangerous(army.Owner, hex));
+            ArmyData army, HexCoord targetHex) => SafeRouteBlocker(army.Owner, targetHex);
+
+        private static System.Func<HexCoord, bool> SafeRouteBlocker(
+            PlayerSetupData owner, HexCoord targetHex) => hex => !hex.Equals(targetHex)
+                && (AiMapMemory.KnownEnemySightingAt(owner, hex).HasValue
+                    || AiMapMemory.IsScoutDangerous(owner, hex));
     }
 }

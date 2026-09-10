@@ -330,6 +330,7 @@ namespace Game.Ai.V2
         public float BuildApCost;
         public float BuildValue;
         public float MinimumFollowupAp;
+        public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 
     // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
@@ -574,10 +575,9 @@ namespace Game.Ai.V2
                 devOpportunities, radar);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
-            // S2. The ONE per-turn AP entitlement split: allocatable AP (real AP minus the
-            //     HousekeepingManager reserve) sliced by the 5-axis radar. Strategic Manager Phase A
-            //     debits the requesting axis here; the mission allocator then seeds its slices from
-            //     this same ledger — NO second radar split. Round 3 — no recon-air AP carve-out any
+            // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
+            //     HousekeepingManager reserve). Radar scales objective value only; Strategic Manager
+            //     Phase A and the mission allocator spend the same scalar ledger. Round 3 — no recon-air AP carve-out any
             //     more: Recon Air no longer gets a pre-funding reservation Phase A can't touch.
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
                 UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));

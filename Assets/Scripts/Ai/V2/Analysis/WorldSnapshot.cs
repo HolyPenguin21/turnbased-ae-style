@@ -447,6 +447,14 @@ namespace Game.Ai.V2
     {
         public int ArmyId;
         public int TravelCost;
+        public int ReturnTravelCost;
+        public int CurrentMovement;
+        public int MaxMovement;
+        public int ActivationApCost;
+        public bool HasActivatedThisTurn;
+        public int ArmySize;
+        public float EffectiveArmyPower;
+        public bool HasActiveEconomyCommitment;
         public bool IsOnTarget;
     }
 

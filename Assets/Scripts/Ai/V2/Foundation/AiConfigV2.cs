@@ -104,6 +104,8 @@ namespace Game.Ai.V2
         public const float economyBaseGlobalEffectValue = 6f;
         public const float economyBuildResourcePenalty = 1.5f;
         public const float economyBuildApPenalty = 4f;
+        public const float economyExtractionMaxPaybackTurns = 8f;
+        public const float economyExtractionPaybackValue = 8f;
         public const float economyBaseDemandMinValue = 12f;
         public const int economyResourceClusterRadius = 2;
         public const int economyBaseFoundScanRadius = 3;
@@ -314,8 +316,8 @@ namespace Game.Ai.V2
         //  Deterministic thresholds, not combat simulation. A DEF demand is raised ONLY when a
         //  Citadel/Base is under real threat AND its committed defence is below requirement (see
         //  the saturation gate in DemandLayer.DefenceDemands); ECO/DEV only when a genuine
-        //  structural gap exists (starved resource with an unbuilt site, or no development
-        //  facility). None of the three fire merely because resources are free.
+        //  structural gap exists (a positive-payback extraction site, acute starvation, or no
+        //  development facility). Free stock alone still does not create a demand.
         // =======================================================================================
         public const float defenceSeverityTrigger = 0.18f;    // AssetThreatSnapshot.Severity at/above this raises DEF
         public const float defencePerBodyPowerEstimate = 6f;   // ~power one garrison body adds, for sizing DesiredAmount
@@ -323,7 +325,8 @@ namespace Game.Ai.V2
         public const int defenceMaxDemandsPerTurn = 2;         // anti-spam cap across all threatened assets
         public const float defenceReserveMargin = 1.15f;       // requiredDefence = threateningPower * this
 
-        public const int economyMaxDemandsPerTurn = 1;         // one extraction-infrastructure demand at a time
+        public const int economyMaxInfrastructureDemandsPerTurn = 1;
+        public const int economyMaxExpansionBaseDemandsPerTurn = 1;
         public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
 
         // Garrison saturation / composition-diversity modifier in MaterializationCandidateBuilder

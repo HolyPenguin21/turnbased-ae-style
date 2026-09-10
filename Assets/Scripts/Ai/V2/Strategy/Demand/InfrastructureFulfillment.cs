@@ -15,7 +15,7 @@ namespace Game.Ai.V2
     //  demands, BEFORE the Unit/Hero MaterializationCandidateBuilder loop.
     //
     //  ADMISSION ORDER (spec §1): build a candidate WITHOUT touching game state -> compute its
-    //  complete cost -> check the requesting axis's AxisBudgetLedger entitlement -> check live
+    //  complete cost -> check the one shared AxisBudgetLedger AP pool -> check live
     //  gameplay affordability -> ONLY THEN run the authoritative BuildingPlayExecutor transaction
     //  -> the caller debits the actual confirmed AP. A budget or affordability shortfall means the
     //  demand stays OPEN (nothing played, nothing spent) — Debit() is never used as after-the-fact
@@ -95,17 +95,16 @@ namespace Game.Ai.V2
                 return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
             string economyOwner = EconomyReservationOwner(demand);
 
-            // --- budget admission BEFORE any gameplay mutation (spec §1). A building is a large
-            //     discrete commitment: require the requesting axis's OWN unreserved entitlement to
-            //     cover it (Balance, not the cross-axis discrete-borrow headroom) so an infra build
-            //     can never push an axis entitlement negative. ---
+            // --- budget admission BEFORE any gameplay mutation (spec §1). Radar already affected
+            //     demand value/priority; this admission reads the ONE unreserved AP pool. The axis
+            //     argument is telemetry only and does not create a separate wallet. ---
             if (ledger != null)
             {
                 float axisRoom = ledger.Balance(demand.RequestingAxis)
                                  - ledger.ReservedFollowup(demand.RequestingAxis);
                 if (cand.ApCost > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return InfraFulfillResult.No(
-                        $"{DesireAxes.Abbrev(demand.RequestingAxis)} axis entitlement {axisRoom:0.##} < cost {cand.ApCost:0.##}");
+                        $"shared AP pool {axisRoom:0.##} < {DesireAxes.Abbrev(demand.RequestingAxis)} demand cost {cand.ApCost:0.##}");
             }
             // Respect the same strategic + legacy persistent-resource reservations as every
             // materialization path. Raw gameplay affordability is still rechecked below.
@@ -247,7 +246,8 @@ namespace Game.Ai.V2
                 return null;
             var candidates = snap.Self.Armies.Where(a => a != null && a.HasHero
                     && !a.IsPrison && !a.IsAir && a.Hex.Equals(target))
-                .OrderBy(a => demand?.EconomyBuilderRoutes != null
+                .OrderBy(a => demand?.EconomyPreferredBuilderArmyId == a.ArmyId ? 0 : 1)
+                .ThenBy(a => demand?.EconomyBuilderRoutes != null
                     && demand.EconomyBuilderRoutes.Any(r => r.ArmyId == a.ArmyId && r.IsOnTarget)
                         ? 0 : 1)
                 .ThenBy(a => a.ArmyId)
