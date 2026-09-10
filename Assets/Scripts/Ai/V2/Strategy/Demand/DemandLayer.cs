@@ -650,6 +650,7 @@ namespace Game.Ai.V2
                     continue;
                 float starvation = Mathf.Max(rs.StarvationPressure,
                     ResourceStarvationRegistry.Pressure(player, site.ResourceType));
+                resourcePriority = Mathf.Max(resourcePriority, starvation);
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
