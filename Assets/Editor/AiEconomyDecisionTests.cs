@@ -6,6 +6,7 @@ using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
+using Game.UI;
 using Game.Units;
 using NUnit.Framework;
 
@@ -641,6 +642,86 @@ namespace Game.EditorTests
             {
                 MissionIntentRegistry.Clear();
             }
+        }
+
+        [Test]
+        public void BaseExpansionUrgency_CanAdmitPositiveSiteInitiallyBelowDemandThreshold()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var baseDef = new CardDefinition
+                { cardType = CardType.Base, authoredKey = "base", displayName = "Base" };
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.TurnNumber = 1;
+            snapshot.Self.Hand = new[] { new CardData(baseDef) };
+            ArmySnapshot builder = EconomyBuilder(32, 1, 1f);
+            snapshot.Self.Armies = new[] { builder };
+            snapshot.Economy.BaseOpportunities = new[]
+            {
+                new EconomyBaseOpportunity
+                {
+                    Hex = new HexCoord(3, 0), CapacityValue = 1f,
+                    BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
+                },
+            };
+            try
+            {
+                Assert.That(DemandLayer.EconomyDemands(snapshot,
+                    new DesireBreakdown(), player, null, null), Is.Empty,
+                    "A merely positive site may remain below the normal admission threshold initially.");
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.ReconcileBaseExpansionWait(1, System.Array.Empty<MissionTurnOutcome>());
+
+                snapshot.TurnNumber = 2;
+                AxisDemand admitted = DemandLayer.EconomyDemands(snapshot,
+                    new DesireBreakdown(), player, null, null).Single();
+
+                Assert.That(admitted.Value, Is.GreaterThan(0f));
+                Assert.That(admitted.Value, Is.LessThan(AiConfigV2.economyBaseDemandMinValue));
+                Assert.That(admitted.EconomyStrategicUrgency,
+                    Is.EqualTo(AiConfigV2.economyBaseUrgencyPerDeferredTurn));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyActorInvalidation_ReadmitsExistingInfrastructureOwner()
+        {
+            Assert.That(DesireAxes.InvalidationMaskFor(DesireAxis.Economy)
+                .HasFlag(StrategicInvalidationReason.Actor), Is.True);
+        }
+
+        [Test]
+        public void ExtractionBuilderConsequences_RevealHeroButNotHiddenEscort()
+        {
+            var army = new ArmyData();
+            UnitData hero = Hero("Builder");
+            UnitData escort = Body("Escort", 2, 2);
+            hero.MoveCurrent = 2;
+            escort.MoveCurrent = 2;
+            hero.IsHidden = true;
+            escort.IsHidden = true;
+            army.Members.AddRange(new[] { hero, escort });
+
+            HexSelectionController.ApplyExtractionBuilderConsequences(army);
+
+            Assert.That(hero.MoveCurrent, Is.Zero);
+            Assert.That(escort.MoveCurrent, Is.Zero);
+            Assert.That(hero.IsHidden, Is.False);
+            Assert.That(escort.IsHidden, Is.True);
+        }
+
+        [TestCase(true, true, false, true)]
+        [TestCase(false, true, false, false)]
+        [TestCase(true, false, false, false)]
+        [TestCase(true, true, true, false)]
+        public void ResearchProductionAutoAcceptDelay_OnlyFollowsFinalAutorollSpend(
+            bool autoroll, bool spent, bool declined, bool expected)
+        {
+            Assert.That(BattleAttackPopupUI.NeedsResearchProductionAutoAcceptDelay(
+                autoroll, spent, declined), Is.EqualTo(expected));
         }
 
         [Test]

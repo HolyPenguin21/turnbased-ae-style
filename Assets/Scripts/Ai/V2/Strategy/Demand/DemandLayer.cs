@@ -987,6 +987,7 @@ namespace Game.Ai.V2
             int considered = 0;
             int kept = 0;
             AxisDemand best = null;
+            var valuableDemands = new List<AxisDemand>();
             var keptDemands = new List<AxisDemand>();
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
@@ -1026,15 +1027,15 @@ namespace Game.Ai.V2
                         - AiConfigV2.economySiteTravelPenalty * travel
                         - AiConfigV2.economySiteThreatPenalty * exposure
                         - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
-                    string decision = value < AiConfigV2.economyBaseDemandMinValue && !committed
-                        ? "below_min" : "keep";
+                    bool valuable = value > 0f || committed;
+                    string decision = valuable ? "valuable" : "value_reject";
                     AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
                         + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
                         + $"yield={hexYield:0.##} cluster={site.NearbyResourceClusterValue:0.##} "
                         + $"network={site.NetworkExpansionValue:0.##} pressure={site.InfrastructurePressure:0.##} "
                         + $"airfield={airfield:0.##} global={global:0.##} cost={buildCost:0.##} "
                         + $"value={value:0.##} committed={committed} decision={decision}");
-                    if (decision != "keep")
+                    if (!valuable)
                         continue;
                     var demand = new AxisDemand
                     {
@@ -1062,20 +1063,41 @@ namespace Game.Ai.V2
                             + $"logistics={site.LogisticsValue:0.##} global={global:0.##} "
                             + $"cost={buildCost:0.##}",
                     };
-                    output.Add(demand);
-                    keptDemands.Add(demand);
-                    kept++;
-                    if (best == null || demand.EconomySiteValue > best.EconomySiteValue)
-                        best = demand;
+                    valuableDemands.Add(demand);
                 }
-            bool urgencyEligible = keptDemands.Any(d => d.EconomyPreferredBuilderArmyId.HasValue);
+
+            // Eligibility is a structural fact (legal known site + safe route + actual builder),
+            // not the current score threshold. Otherwise a Base just below the threshold is never
+            // recorded as deferred, so its continuity urgency remains permanently zero and cannot
+            // solve the very starvation it was introduced for.
+            bool urgencyEligible = valuableDemands.Any(d =>
+                HasStructuralEconomyBuilderRoute(
+                    s, d.TargetHex.Value, d.EconomyBuilderRoutes));
             float urgency = MissionIntentRegistry.GetOrCreate(player)
                 .MarkBaseExpansionCandidate(s.TurnNumber, urgencyEligible);
-            foreach (AxisDemand demand in keptDemands)
+            foreach (AxisDemand demand in valuableDemands)
             {
                 demand.EconomyStrategicUrgency = urgency;
                 if (urgency > 0f)
                     demand.Explain += $" urgency={urgency:0.##}";
+
+                bool committed = IsActiveBaseCommitment(
+                    activeIntents, demand.TargetHex, demand.EconomyBuildCard);
+                bool admitted = committed
+                    || demand.Value + urgency >= AiConfigV2.economyBaseDemandMinValue;
+                AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseAdmission] "
+                    + $"card={demand.EconomyBuildCard?.Definition?.displayName} "
+                    + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
+                    + $"value={demand.Value:0.##} urgency={urgency:0.##} "
+                    + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
+                if (!admitted)
+                    continue;
+
+                output.Add(demand);
+                keptDemands.Add(demand);
+                kept++;
+                if (best == null || demand.EconomySiteValue > best.EconomySiteValue)
+                    best = demand;
             }
             return best == null
                 ? $"considered={considered} kept={kept} best=none"
@@ -1093,6 +1115,18 @@ namespace Game.Ai.V2
                 && i.Kind == MissionKind.Economy && i.Economy?.Kind == EconomyTaskKind.FoundBase
                 && i.Economy.TargetHex.Equals(target.Value)
                 && (i.Economy.BuildCard == null || i.Economy.BuildCard == card));
+        }
+
+        private static bool HasStructuralEconomyBuilderRoute(WorldSnapshot snap, HexCoord target,
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes)
+        {
+            IReadOnlyList<EconomyBuilderRouteSnapshot> witnessed = routes
+                ?? SnapshotFallbackRoutes(snap, target);
+            return witnessed.Any(route => route.TravelCost < int.MaxValue
+                && (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(army =>
+                    army != null && army.ArmyId == route.ArmyId
+                    && (army.IsMobileEconomyBuilder
+                        || (route.IsOnTarget && army.IsGarrison && army.HasHero))));
         }
 
         private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield)

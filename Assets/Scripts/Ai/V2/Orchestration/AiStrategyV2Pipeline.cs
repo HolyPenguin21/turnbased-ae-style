@@ -199,6 +199,17 @@ namespace Game.Ai.V2
                 case DesireAxis.Defence:
                     return StrategicInvalidationReason.Threat;
                 case DesireAxis.Economy:
+                    // Economy feasibility depends on where a Hero-led builder is NOW, not only
+                    // on newly discovered resources. A Recon step can deliver that builder onto
+                    // an already-known extraction hex; without Actor here the settled-step loop
+                    // re-admits Recon alone and immediately walks the Hero away before the
+                    // existing Phase-A infrastructure owner gets another chance to build.
+                    return StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.Resources
+                        | StrategicInvalidationReason.Infrastructure
+                        | StrategicInvalidationReason.Hand
+                        | StrategicInvalidationReason.Capability
+                        | StrategicInvalidationReason.ResourceSite;
                 case DesireAxis.Development:
                     return StrategicInvalidationReason.Resources
                         | StrategicInvalidationReason.Infrastructure

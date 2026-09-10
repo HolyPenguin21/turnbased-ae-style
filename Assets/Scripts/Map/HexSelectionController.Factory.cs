@@ -330,6 +330,16 @@ namespace Game.Map
                 return false;
             }
 
+            // Resolve the acting Hero army before the spend as part of the same authoritative
+            // action. HasOwnHeroArmyAt above guarantees one exists; the deterministic lowest-MP
+            // choice is shared by the movement charge and the post-commit stealth consequence.
+            ArmyData actingHeroArmy = ArmyRegistry.AllAt(hex)
+                .Where(army => army != null && army.Owner == owner
+                    && army.Members.Exists(member => member != null && member.IsHero))
+                .OrderBy(army => army.CurrentMovement)
+                .ThenBy(army => army.Id)
+                .FirstOrDefault();
+
             // Build the Facility object BEFORE the spend: FacilityData.FromDefinition is the only
             // step from here to the return that can throw (a malformed grantedAbilities list).
             // Everything after the spend — slot assignment, the hero's move-point cost, and (for a
@@ -340,23 +350,6 @@ namespace Game.Map
             root.SpendActionPoints(definition.apCost);
             definition.resourceCost.PayFrom(root);
             building.FacilitySlots[slotIndex] = facility;
-
-            // Building a facility is that hero's whole action for the turn — it costs whatever
-            // move points its army had left, same as spending a full move order rather than just
-            // the AP cost above. With 2+ of the owner's own hero-armies stacked on this hex
-            // (nothing here picks which one actually acted), the one already lowest on move
-            // points is the one charged — it has the least left to lose either way.
-            ArmyData actingHeroArmy = null;
-            foreach (ArmyData army in ArmyRegistry.AllAt(hex))
-            {
-                if (army.Owner != owner || !army.Members.Exists(m => m.IsHero))
-                    continue;
-                if (actingHeroArmy == null || army.CurrentMovement < actingHeroArmy.CurrentMovement)
-                    actingHeroArmy = army;
-            }
-            if (actingHeroArmy != null)
-                foreach (UnitData member in actingHeroArmy.Members)
-                    member.MoveCurrent = 0;
 
             if (isNewSite)
             {
@@ -374,7 +367,30 @@ namespace Game.Map
             // Stealth trigger B (see Game.Map.StealthSystem) — covers a facility card that
             // itself carries an r1sX vision tag.
             StealthSystem.RunChecksForNewVisionSource(building, facility);
+
+            // Building a facility is that hero's whole action for the turn — it costs whatever
+            // move points its army had left and reveals the acting Hero. Keep this after every
+            // other build-side effect so a thrown/rolled-back transaction cannot leak a reveal.
+            ApplyExtractionBuilderConsequences(actingHeroArmy);
             return true;
+        }
+
+        // The post-commit consequence of the authoritative extraction build. Kept beside the
+        // action (rather than in AI/UI callers) so both entry paths reveal and exhaust the same
+        // acting Hero, while failed validation never reaches it.
+        internal static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)
+        {
+            if (actingHeroArmy == null)
+                return;
+            foreach (UnitData member in actingHeroArmy.Members)
+                if (member != null)
+                    member.MoveCurrent = 0;
+
+            // A directed Hero action reveals only the participating Hero(s), just like Research;
+            // a hidden escort sharing the army did not perform the construction action.
+            foreach (UnitData member in actingHeroArmy.Members)
+                if (member != null && member.IsHero)
+                    StealthSystem.ExitStealth(member);
         }
     }
 }

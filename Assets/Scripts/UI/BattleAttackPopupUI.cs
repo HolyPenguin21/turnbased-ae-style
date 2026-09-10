@@ -556,6 +556,7 @@ namespace Game.UI
         private IEnumerator RunResearchProductionChallenge()
         {
             defenderRow?.SetFixedSuccesses(_rpRequiredSuccesses);
+            bool spentAtLeastOnce = false;
 
             _rpDice = ChallengeResolver.RollDice(ResearchProductionSystem.DicePoolSize);
             bool animDone = attackerRow == null;
@@ -593,10 +594,24 @@ namespace Game.UI
                 // OnResearchProductionSpend already mutated _rpDice + Fate and kicked the anim —
                 // wait for it to land before re-offering Spend/Accept (same gate as the duel).
                 yield return new WaitUntil(() => _rerollAnimDone);
+                spentAtLeastOnce = true;
             }
+
+            // Autoroll can make the last Spend exhaust Fate (or remove the last useful reroll),
+            // so the loop has no next decision window and used to replace the landed die with the
+            // result screen immediately. Preserve one readable half-second acceptance beat after
+            // that final animation. Manual Accept and challenges with no Spend remain immediate.
+            if (NeedsResearchProductionAutoAcceptDelay(
+                    IsAutorollEnabled, spentAtLeastOnce, _humanDeclined)
+                && aiAcceptDelay > 0f)
+                yield return new WaitForSeconds(aiAcceptDelay);
 
             ResolveResearchProduction();
         }
+
+        internal static bool NeedsResearchProductionAutoAcceptDelay(
+            bool autorollEnabled, bool spentAtLeastOnce, bool humanDeclined) =>
+            autorollEnabled && spentAtLeastOnce && !humanDeclined;
 
         // The attacker's Spend for a Research/Production Challenge — reached from OnAttackerSpend,
         // which forks here on _kind. Miss present → single reroll (RerollOneMiss, shared/unchanged).
