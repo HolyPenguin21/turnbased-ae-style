@@ -128,26 +128,20 @@ namespace Game.Ai.V2
                 };
             }
 
-            float activation = 0f;
             int? preferredId = incumbent?.PreferredMoverArmyId ?? t.BuilderArmyId;
-            if (preferredId is int id)
-            {
-                ArmySnapshot a = snapshot?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
-                activation = a != null && !a.HasActivatedThisTurn ? a.ActivationApCost : 0f;
-            }
-            float ap = UnityEngine.Mathf.Max(0f, activation
-                + UnityEngine.Mathf.Max(t.BuildApCost, t.MinimumFollowupAp));
             var r = new MissionRequirements
             {
                 RequiresArmy = true, RequiresHero = true, MoverKnown = preferredId.HasValue,
-                ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
             };
             List<ArmySnapshot> heroes = snapshot?.Self?.Armies?
                 .Where(a => a != null && (a.IsMobileEconomyBuilder
                     || (a.IsGarrison && a.HasHero && a.Hex.Equals(t.TargetHex)))).ToList();
+            ArmySnapshot nearest = null;
+            bool completionThisTurn = true; // Conservative fallback when Analysis has no actor witness.
+            float activation = 0f;
             if (heroes != null && heroes.Count > 0)
             {
-                ArmySnapshot nearest = preferredId.HasValue
+                nearest = preferredId.HasValue
                     ? heroes.FirstOrDefault(a => a.ArmyId == preferredId.Value)
                     : null;
                 nearest ??= heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
@@ -155,17 +149,34 @@ namespace Game.Ai.V2
                 int distance = witnessedTravelCost >= 0f
                     ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)
                     : HexGridMath.Distance(nearest.Hex, t.TargetHex);
+                bool travelNeeded = distance > 0;
+                completionThisTurn = distance <= nearest.CurrentMovement;
+                activation = travelNeeded && !nearest.HasActivatedThisTurn
+                    ? nearest.ActivationApCost : 0f;
                 r.EstimatedDistance = distance;
-                r.EtaTurns = distance <= nearest.CurrentMovement ? 0
-                    : UnityEngine.Mathf.CeilToInt(distance / (float)UnityEngine.Mathf.Max(1, nearest.MaxMovement));
+                r.EtaTurns = completionThisTurn ? 0
+                    : UnityEngine.Mathf.CeilToInt(
+                        UnityEngine.Mathf.Max(0, distance - nearest.CurrentMovement)
+                        / (float)UnityEngine.Mathf.Max(1, nearest.MaxMovement));
             }
-            ResourceCost c = t.BuildResourceCost;
-            if (c != null)
+
+            float ap = UnityEngine.Mathf.Max(0f, activation
+                + (completionThisTurn
+                    ? UnityEngine.Mathf.Max(t.BuildApCost, t.MinimumFollowupAp)
+                    : 0f));
+            r.ApMinimum = r.ApDesired = r.ApMaximum = ap;
+
+            // A multi-turn delivery is funded for the step it can execute now. Full build resources
+            // and follow-up AP enter the envelope only when the witnessed actor can reach the target
+            // this turn; InfrastructureFulfillment protects the persistent H/E/M/T vector between
+            // turns so Phase B cannot spend it meanwhile.
+            ResourceCost cost = completionThisTurn ? t.BuildResourceCost : null;
+            if (cost != null)
             {
-                r.HumanMinimum = r.HumanDesired = r.HumanMaximum = c.Get(ResourceType.Human);
-                r.EnergyMinimum = r.EnergyDesired = r.EnergyMaximum = c.Get(ResourceType.Energy);
-                r.MaterialsMinimum = r.MaterialsDesired = r.MaterialsMaximum = c.Get(ResourceType.Materials);
-                r.TechMinimum = r.TechDesired = r.TechMaximum = c.Get(ResourceType.Tech);
+                r.HumanMinimum = r.HumanDesired = r.HumanMaximum = cost.Get(ResourceType.Human);
+                r.EnergyMinimum = r.EnergyDesired = r.EnergyMaximum = cost.Get(ResourceType.Energy);
+                r.MaterialsMinimum = r.MaterialsDesired = r.MaterialsMaximum = cost.Get(ResourceType.Materials);
+                r.TechMinimum = r.TechDesired = r.TechMaximum = cost.Get(ResourceType.Tech);
             }
             return r;
         }
