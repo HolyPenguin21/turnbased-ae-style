@@ -698,7 +698,8 @@ namespace Game.Ai.V2
                 laneUsed[lane] = u + 1;
             }
 
-            // 3. Hard commitments first. Sticky/pre-paid: they MAY drive the one AP pool negative (that
+            // 3. Hard and critical Surveil commitments first. Sticky/pre-paid: they MAY drive the
+            //    one AP pool negative (that
             //    is the point — a funding protection against Radar noise). Step-7 guards:
             //      · skip a key already provisioned this turn (_lockedClaims — its provenance is
             //        already applied to the slices) or already failed this turn (_rejectedThisTurn),
@@ -708,13 +709,19 @@ namespace Game.Ai.V2
             //        borrow another axis's budget; it can never conjure AP that isn't there
             //        (invariant for step 9's multi-raid case). Overflow -> deferred +
             //        CommitmentsStarveFreshDecisions.
+            bool IsProtectedCommitment(Commitment commitment) =>
+                commitment?.Mission != null
+                && (commitment.Tier == CommitmentTier.Hard
+                    || (commitment.Mission.Kind == MissionKind.Scout
+                        && commitment.Mission.Target is ScoutMissionTarget scoutTarget
+                        && scoutTarget.Kind == ScoutTargetKind.Surveil));
             var softCommitmentsByKey = _commitments
-                .Where(c => c?.Mission != null && c.Tier == CommitmentTier.Soft)
+                .Where(c => c?.Mission != null && c.Tier == CommitmentTier.Soft
+                    && !IsProtectedCommitment(c))
                 .GroupBy(c => StableMissionKey.For(c.Mission))
                 .ToDictionary(g => g.Key, g => g.First());
             float committedApSoFar = 0f;
-            foreach (Commitment c in _commitments
-                .Where(x => x?.Mission != null && x.Tier == CommitmentTier.Hard))
+            foreach (Commitment c in _commitments.Where(IsProtectedCommitment))
             {
                 MissionProposal m = c?.Mission;
                 if (m == null)
@@ -730,9 +737,9 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // Only Hard commitments consume capacity before the competitive merge. Soft
-                // continuity remains visible below, but cannot monopolise AP/capacity merely
-                // because it was admitted on an earlier turn.
+                // Only Hard and critical Surveil commitments consume capacity before the
+                // competitive merge. Ordinary Soft continuity remains visible below, but cannot
+                // monopolise AP/capacity merely because it was admitted on an earlier turn.
                 ExecutionLane clane = MissionAdmissionPolicy.LaneFor(m);
                 if (AtCapacity(clane))
                 {
@@ -788,7 +795,8 @@ namespace Game.Ai.V2
 
             // 4. Fresh missions plus Soft commitments — TRUE CROSS-LANE k-way MERGE (spec §21).
             //    Soft continuity keeps its intrinsic ProtectedValue floor, but competes for the same
-            //    AP/capacity as new work; only Hard commitments were protected above. Per-lane queues are each
+            //    AP/capacity as new work; Hard and critical Surveil commitments were protected
+            //    above. Per-lane queues are each
             //    ordered by MissionAdmissionPolicy.AdmissionRank (the None lane by EffectiveValue)
             //    so the WITHIN-lane balance (Recon Explore-vs-Surveil, Raid feasibility ordering)
             //    survives the N>K beam. Then, repeatedly, the queue HEAD with the highest
@@ -800,7 +808,7 @@ namespace Game.Ai.V2
             //    global physical (atomic H/E/M/T). A proposal that is ALSO an active commitment is
             //    funded through the commitment loop above only.
             var protectedCommitmentKeys = new HashSet<StableMissionKey>(_commitments
-                .Where(c => c?.Mission != null && c.Tier == CommitmentTier.Hard)
+                .Where(IsProtectedCommitment)
                 .Select(c => StableMissionKey.For(c.Mission)));
             List<MissionProposal> freshPool = _missions
                 .Where(m => m != null
