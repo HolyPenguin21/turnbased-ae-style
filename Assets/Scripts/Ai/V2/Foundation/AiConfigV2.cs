@@ -89,7 +89,9 @@ namespace Game.Ai.V2
         public const float economyLatentMultiplier = 0.25f;
         public const float economySiteDeficitValue = 60f;
         public const float economySiteIncomeGainValue = 10f;
-        public const float economySiteBaseSynergyValue = 8f;
+        // A protected extraction hex may beat a modest raw-yield advantage farther outside the
+        // support radius; resource priority is still decided separately in DemandLayer.
+        public const float economySiteBaseSynergyValue = 14f;
         public const float economySiteClusterValue = 6f;
         public const float economySiteTravelPenalty = 2.5f;
         public const float economySiteThreatPenalty = 18f;
@@ -101,6 +103,8 @@ namespace Game.Ai.V2
         public const float economyBaseInfrastructurePressureValue = 10f;
         public const float economyBaseAirfieldValue = 8f;
         public const float economyBaseLogisticsValue = 5f;
+        public const float economyBaseForwardProgressValue = 8f;
+        public const float economyBaseCorridorAlignmentValue = 8f;
         public const float economyBaseGlobalEffectValue = 6f;
         public const float economyBuildResourcePenalty = 1.5f;
         public const float economyBuildApPenalty = 4f;

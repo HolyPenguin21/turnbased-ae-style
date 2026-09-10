@@ -1331,6 +1331,224 @@ namespace Game.EditorTests
                 "Player-global production must not become a placement/role-local contribution.");
         }
 
+        [Test]
+        public void EconomyDemand_ImmediateHandBottleneckBeatsConvenientDeckResource()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.65f, 0.1f, actionable: true);
+            snapshot.Economy.PerType = new[]
+            {
+                new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = 0.1f },
+                new EconomyResourceStanding
+                {
+                    Type = ResourceType.Energy, DeficitScore = 0.5f,
+                    HandResourceNeed = 8f, SpendableStockpile = 0f,
+                },
+                new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.1f },
+                new EconomyResourceStanding
+                {
+                    Type = ResourceType.Tech, DeficitScore = 0.65f,
+                    RemainingDeckResourceNeed = 8f, SpendableStockpile = 0f,
+                },
+            };
+            ArmySnapshot builder = EconomyBuilder(7, 1, 3f);
+            snapshot.Self.Armies = new[] { builder };
+            EconomyExtractionOpportunity energy = ExtractionOpportunity(
+                new HexCoord(2, 0), ResourceType.Energy, 1);
+            energy.BuilderRoutes = new[] { BuilderRoute(builder, 2, 2, 1) };
+            EconomyExtractionOpportunity tech = ExtractionOpportunity(
+                new HexCoord(0, 0), ResourceType.Tech, 1);
+            tech.BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) };
+            snapshot.Economy.ExtractionOpportunities = new[] { energy, tech };
+
+            AxisDemand selected = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(selected.EconomyResourceType, Is.EqualTo(ResourceType.Energy));
+            Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
+
+            snapshot.Self.ActionPoints = 1;
+            MissionProposal economy = EconomyMissionPlanner.Propose(
+                snapshot, new DesireBreakdown(), null, new[] { selected }).Single();
+            MissionProposal refresh = AllocatorMission(
+                MissionKind.Scout, 56.6f, DesireAxis.Recon, armyId: 8);
+            Radar radar = Radar.Even();
+            radar.Weight[DesireAxis.Recon] = 0.56f;
+            radar.Weight[DesireAxis.Economy] = 0.13f;
+            refresh.EffectiveValue = refresh.BaseValue * RadarValueScale.For(radar, refresh);
+            economy.EffectiveValue = economy.BaseValue * RadarValueScale.For(radar, economy);
+
+            TentativeAllocation allocation = ResourceAllocator.BeginTurn(
+                snapshot, radar, new List<MissionProposal> { refresh, economy },
+                new List<Commitment>(), new Game.Players.PlayerSetupData()).Pack();
+
+            Assert.That(allocation.Funded.First().Mission, Is.SameAs(economy),
+                "Immediate hand shortage must beat routine Refresh even under the captured turn-3 radar.");
+        }
+
+        [Test]
+        public void EconomyDemand_ProtectedExtractionCanBeatHigherYieldExposedPeer()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.7f, 0.1f, actionable: true);
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                new EconomyExtractionOpportunity
+                {
+                    Hex = new HexCoord(2, 0), ResourceType = ResourceType.Human,
+                    EffectiveYield = 1, MarginalIncomeGain = 1, BaseNetworkSynergy = 1f,
+                },
+                new EconomyExtractionOpportunity
+                {
+                    Hex = new HexCoord(7, 0), ResourceType = ResourceType.Human,
+                    EffectiveYield = 2, MarginalIncomeGain = 2, BaseNetworkSynergy = 0f,
+                },
+            };
+
+            AxisDemand selected = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(2, 0)));
+        }
+
+        [Test]
+        public void EconomyBaseDemand_StrategicResourceCorridorBeatsBuilderConvenience()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            snapshot.Economy.PerType = new[]
+            {
+                new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = 0.2f },
+                new EconomyResourceStanding { Type = ResourceType.Energy, DeficitScore = 0.8f },
+                new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.8f },
+                new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = 0.2f },
+            };
+            var baseDef = new CardDefinition
+            {
+                cardType = CardType.Base, authoredKey = "base", displayName = "Base",
+            };
+            snapshot.Self.Hand = new[] { new CardData(baseDef) };
+            ArmySnapshot builder = EconomyBuilder(9, 1, 3f);
+            builder.Hex = new HexCoord(3, 1);
+            snapshot.Self.Armies = new[] { builder };
+
+            EconomyBaseOpportunity convenient = new EconomyBaseOpportunity
+            {
+                Hex = new HexCoord(3, 1), CapacityValue = 0.5f,
+                InfrastructurePressure = 1f, LogisticsValue = 1f,
+                ForwardProgressValue = 0.3f,
+                CorridorAlignmentValue = 0.5f,
+                BuilderRoutes = new[] { BuilderRoute(builder, 0, 3, 1) },
+            };
+            EconomyBaseOpportunity strategic = new EconomyBaseOpportunity
+            {
+                Hex = new HexCoord(6, 0), CapacityValue = 0.5f,
+                HexYield = new ResourceBundle { Energy = 1f, Materials = 1f },
+                NearbyResourceClusterValue = 0.5f,
+                NetworkExpansionValue = 0.5f, LogisticsValue = 0.5f,
+                ForwardProgressValue = 1f,
+                CorridorAlignmentValue = 1f,
+                BuilderRoutes = new[] { BuilderRoute(builder, 5, 3, 1) },
+            };
+            snapshot.Economy.BaseOpportunities = new[] { convenient, strategic };
+
+            AxisDemand selected = DemandLayer.EconomyDemands(
+                    snapshot, new DesireBreakdown(), null, null, null)
+                .Single(x => x.EconomyBuildCard != null);
+
+            Assert.That(selected.TargetHex, Is.EqualTo(new HexCoord(6, 0)));
+        }
+
+        [Test]
+        public void EconomyExtraction_StrategicSiteValueIsIndependentOfBuilderDelivery()
+        {
+            WorldSnapshot near = SnapshotWithDeficits(0.75f, 0.1f, actionable: true);
+            ArmySnapshot nearBuilder = EconomyBuilder(31, 1, 4f);
+            near.Self.Armies = new[] { nearBuilder };
+            EconomyExtractionOpportunity nearSite = ExtractionOpportunity(
+                new HexCoord(2, 0), ResourceType.Human, 1);
+            nearSite.BuilderRoutes = new[] { BuilderRoute(nearBuilder, 0, 0, 1) };
+            near.Economy.ExtractionOpportunities = new[] { nearSite };
+
+            WorldSnapshot far = SnapshotWithDeficits(0.75f, 0.1f, actionable: true);
+            ArmySnapshot farBuilder = EconomyBuilder(32, 1, 4f);
+            far.Self.Armies = new[] { farBuilder };
+            EconomyExtractionOpportunity farSite = ExtractionOpportunity(
+                new HexCoord(2, 0), ResourceType.Human, 1);
+            farSite.BuilderRoutes = new[] { BuilderRoute(farBuilder, 4, 4, 1) };
+            far.Economy.ExtractionOpportunities = new[] { farSite };
+
+            AxisDemand nearDemand = DemandLayer.EconomyDemands(
+                near, new DesireBreakdown(), null, null, null).Single();
+            AxisDemand farDemand = DemandLayer.EconomyDemands(
+                far, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(farDemand.EconomySiteValue,
+                Is.EqualTo(nearDemand.EconomySiteValue).Within(0.001f),
+                "Builder delivery must affect admission cost, not the strategic value of the site.");
+            Assert.That(farDemand.Value, Is.LessThan(nearDemand.Value));
+        }
+
+        [Test]
+        public void EconomyMission_StrategicSiteValueOrdersAheadOfRoutineRefresh()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            AiAllocatorStateRegistry.Clear();
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            snapshot.Self.ActionPoints = 1;
+            AxisDemand demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(2, 0),
+                EconomyResourceType = ResourceType.Energy,
+                EconomySiteValue = 52f,
+                EconomyTravelCost = 3f,
+                Value = 24f,
+                MinimumFollowupAp = 1f,
+            };
+            MissionProposal economy = EconomyMissionPlanner.Propose(
+                snapshot, new DesireBreakdown(), null, new[] { demand }).Single();
+            MissionProposal refresh = AllocatorMission(
+                MissionKind.Scout, 45f, DesireAxis.Recon, armyId: 7);
+
+            Assert.That(economy.BaseValue, Is.EqualTo(52f),
+                "Cross-lane value must represent strategic return; delivery cost is enforced by requirements.");
+            economy.EffectiveValue = economy.BaseValue;
+            TentativeAllocation allocation = ResourceAllocator.BeginTurn(
+                snapshot, Radar.Even(), new List<MissionProposal> { refresh, economy },
+                new List<Commitment>(), player).Pack();
+
+            Assert.That(allocation.Funded.Select(x => x.Mission), Is.EqualTo(new[] { economy }));
+        }
+
+        private static MissionProposal AllocatorMission(
+            MissionKind kind, float value, DesireAxis axis, int armyId)
+        {
+            object target = kind == MissionKind.Scout
+                ? (object)new ScoutMissionTarget
+                {
+                    Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(1, 0),
+                }
+                : new EconomyMissionTarget
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = new HexCoord(2, 0),
+                    ResourceType = ResourceType.Energy,
+                };
+            var mission = new MissionProposal
+            {
+                Kind = kind, Target = target,
+                BaseValue = value, EffectiveValue = value,
+                LocalAdmissionScore = value,
+                PreferredMoverArmyId = armyId,
+                Requirements = new MissionRequirements
+                {
+                    MoverKnown = true,
+                    ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
+                },
+            };
+            mission.Axes.Value[axis] = 1f;
+            return mission;
+        }
+
         private static WorldSnapshot SnapshotForRecurringResource(ResourceType scarce)
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.05f, actionable: true);
