@@ -155,8 +155,7 @@ namespace Game.Ai.V2
                     if (provSession.AlreadyProvisioned(key)) continue;
                     // A capability pool proven pool-wide unable stays exhausted across the reaction
                     // round boundary; it is only re-tried if revalidation now finds an actor (spec §7).
-                    if (!CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(player,
-                            CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot))
+                    if (!CapabilityPoolExhaustionRegistry.CanAttempt(player, fe.Mission, snapshot))
                         continue;
 
                     ProvisioningResult provision = ProvisioningManager.Provision(
@@ -176,6 +175,8 @@ namespace Game.Ai.V2
                     else
                     {
                         anyFailure = true;
+                        CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
+                            player, fe.Mission, provision.Failure);
                         bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
                             snapshot, player, fe.Mission, provision.Failure);
                         if (poolWide)

@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Linq;
-using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -22,8 +21,7 @@ namespace Game.Aviation
 
         public static bool IsAirfieldBuilding(BuildingData building, PlayerSetupData owner)
         {
-            return building != null && building.Owner == owner && building.AirfieldCapacity > 0
-                && building.HasAbility(UnitAbilities.Barracks);
+            return building != null && building.Owner == owner && building.AirfieldCapacity > 0;
         }
 
         public static ArmyData FindAirfieldAt(HexCoord hex, PlayerSetupData owner)

@@ -60,9 +60,8 @@ namespace Game.Map
         // anywhere; kept for whenever a real use for a building's own Fate turns up.
         public int Fate;
 
-        // Design-time capacity copied from CardDefinition.  A positive capacity matters only
-        // while this owned building also has Barracks; this leaves room for future cards that
-        // grant an airfield without teaching every caller new building-name rules.
+        // Design-time capacity copied from CardDefinition. A positive capacity is the complete
+        // data-driven airfield rule; ground Barracks capability remains independent.
         public int AirfieldCapacity;
 
         // Fixed at construction — index i is locked until UnlockedFacilitySlots > i, empty while
@@ -116,14 +115,16 @@ namespace Game.Map
             return false;
         }
 
-        // How much of `type` this building collects per turn on its own — 1 for its own
-        // baked-in CollectX ability (e.g. the citadel) plus 1 + UpgradeLevel for every placed
-        // Facility with that ability. Doesn't know about the hex's actual yield — callers cap
-        // against that themselves. Shared by GameTurnController's actual per-turn collection AND
-        // HexSelectionController's resource-action button visibility, so the two can never
-        // disagree about how much is already being collected (see UnitAbilities.CollectAbilities).
+        // How much of `type` this building can collect per turn. A Base works the entire yield of
+        // its hex for every resource type; the high sentinel expresses uncapped capacity because
+        // this data object deliberately does not know terrain yield and every caller already caps
+        // it against the real hex amount. It deliberately leaves headroom for marginal-capacity
+        // arithmetic. Non-Base extraction sites keep their ability/facility capacity. Shared by
+        // actual income, projections, memory and UI so they cannot disagree.
         public int CollectedAmount(ResourceType type)
         {
+            if (IsBase)
+                return int.MaxValue / 2;
             string ability = UnitAbilities.CollectAbilityFor(type);
             int amount = HasAbility(ability) ? 1 : 0;
             foreach (FacilityData facility in FacilitySlots)

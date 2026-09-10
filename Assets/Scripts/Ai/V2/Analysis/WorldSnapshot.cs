@@ -465,8 +465,11 @@ namespace Game.Ai.V2
     public struct EconomyBaseOpportunity
     {
         public HexCoord Hex;
+        public ResourceBundle HexYield;
         public float CapacityValue;
         public float NearbyResourceClusterValue;
+        public float NetworkExpansionValue;
+        public float InfrastructurePressure;
         public float LogisticsValue;
         public bool ConvertsOwnedExtractionSite;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;

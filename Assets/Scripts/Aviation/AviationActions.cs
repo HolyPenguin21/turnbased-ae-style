@@ -44,7 +44,7 @@ namespace Game.Aviation
             ArmyData airfield = EnsureAirfield(hexSelection, owner, hex);
             if (airfield == null)
             {
-                failReason = "Aircraft can only be deployed to your Barracks airfield.";
+                failReason = "Aircraft can only be deployed to your airfield.";
                 return false;
             }
             return ArmyActions.DeployUnitFromCard(definition, owner, airfield, root, hexSelection, out failReason, attachedEquipment, sourceCard);

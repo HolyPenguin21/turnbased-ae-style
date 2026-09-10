@@ -95,7 +95,11 @@ namespace Game.Ai.V2
         public const float economySiteThreatPenalty = 18f;
         public const float economySiteHeroOpportunityPenalty = 0.35f;
         public const float economyBaseCapacityValue = 12f;
+        public const float economyBaseHexYieldValue = 10f;
         public const float economyBaseClusterValue = 8f;
+        public const float economyBaseNetworkExpansionValue = 6f;
+        public const float economyBaseInfrastructurePressureValue = 10f;
+        public const float economyBaseAirfieldValue = 8f;
         public const float economyBaseLogisticsValue = 5f;
         public const float economyBaseGlobalEffectValue = 6f;
         public const float economyBuildResourcePenalty = 1.5f;

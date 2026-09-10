@@ -25,12 +25,17 @@ namespace Game.Ai.V2
     public static class AiAirSortiePlanner
     {
         // Every one of this player's own owned, airfield-CAPABLE hexes (citadel + every later
-        // Base) — NOT simply every garrison hex (AiTurnController.OwnGarrisonHexes), since a Base's
-        // own airfieldCapacity is data-driven per card and can be zero (see AviationRules.
-        // IsAirfieldBuilding). "Any owned airfield with free capacity" per the spec is always
-        // filtered from this set, never hard-coded to the citadel or the launch airfield.
+        // Base) — selected from the building registry by the shared AirfieldCapacity rule, not
+        // indirectly through Barracks/garrison presence. "Any owned airfield with free capacity"
+        // is always filtered from this set, never hard-coded to one building name.
         public static IEnumerable<HexCoord> OwnedAirfieldHexes(PlayerSetupData player) =>
-            AiTurnController.OwnGarrisonHexes(player).Where(hex => AviationRules.IsOwnedAirfieldAt(hex, player));
+            BuildingRegistry.AllBuildings()
+                .Where(building => AviationRules.IsAirfieldBuilding(building, player))
+                .OrderByDescending(building => building.IsStartingCitadel)
+                .ThenBy(building => building.Hex.Q)
+                .ThenBy(building => building.Hex.R)
+                .Select(building => building.Hex)
+                .Distinct();
 
         // Coarse route-risk read — every known-AA-tagged enemy sighting (AiMapMemory.
         // KnownEnemySighting.HasAntiAir, see that field's own comment) within raidThreatRadius of

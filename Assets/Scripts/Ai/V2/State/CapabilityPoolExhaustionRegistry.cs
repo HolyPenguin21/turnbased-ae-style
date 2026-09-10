@@ -43,6 +43,8 @@ namespace Game.Ai.V2
             public int Round;                       // 0 == main pipeline, >=1 == reaction round
             public readonly Dictionary<CapabilityPoolKind, string> Exhausted =
                 new Dictionary<CapabilityPoolKind, string>();
+            public readonly Dictionary<StableMissionKey, string> DeferredMissions =
+                new Dictionary<StableMissionKey, string>();
         }
 
         private static readonly Dictionary<PlayerSetupData, Scope> ByPlayer =
@@ -62,6 +64,7 @@ namespace Game.Ai.V2
             s.Turn = turn;
             s.Round = 0;
             s.Exhausted.Clear();
+            s.DeferredMissions.Clear();
         }
 
         // A bounded reaction round does NOT, by itself, change capability state — so it does NOT
@@ -72,7 +75,10 @@ namespace Game.Ai.V2
         {
             Scope s = Get(player);
             if (s.Turn != turn)
+            {
                 s.Exhausted.Clear();
+                s.DeferredMissions.Clear();
+            }
             s.Turn = turn;
             s.Round = round;
         }
@@ -103,6 +109,34 @@ namespace Game.Ai.V2
                 return true;
             }
             return false;
+        }
+
+        // NoExecutableStep already means RetryNextTurn. Keep that exact stable mission out of
+        // later main/reaction re-packs this turn; pool recovery remains a separate concern.
+        public static bool CanAttempt(PlayerSetupData player, MissionProposal mission,
+            WorldSnapshot snap)
+        {
+            if (player == null || mission == null)
+                return false;
+            Scope s = Get(player);
+            if (s.DeferredMissions.ContainsKey(StableMissionKey.For(mission)))
+                return false;
+            return RevalidateAndClearIfRecovered(player, PoolFor(mission), snap);
+        }
+
+        public static void DeferNoExecutableStep(PlayerSetupData player, MissionProposal mission,
+            ProvisionFailure failure)
+        {
+            if (player == null || mission == null
+                || failure.Kind != ProvisionFailureKind.NoExecutableStep)
+                return;
+            Scope s = Get(player);
+            StableMissionKey key = StableMissionKey.For(mission);
+            if (s.DeferredMissions.ContainsKey(key))
+                return;
+            s.DeferredMissions[key] = failure.Detail ?? "no executable step";
+            AiDebugLog.Write($"[AI][V2] mission deferred until next turn — {key}: "
+                + s.DeferredMissions[key]);
         }
 
         private static bool PoolHasEligibleActor(WorldSnapshot snap, PlayerSetupData player, CapabilityPoolKind pool)

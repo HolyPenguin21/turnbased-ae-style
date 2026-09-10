@@ -410,13 +410,20 @@ namespace Game.Map
         public static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex,
             string checkSource = null, ArmyData hiddenArmy = null)
         {
+            int spot = SpotPoolAgainst(observer, hex, out SpotSource spotSource);
+            return ResolveDetection(unit, observer, hex, spotSource, checkSource, hiddenArmy);
+        }
+
+        private static bool ResolveDetection(UnitData unit, PlayerSetupData observer, HexCoord hex,
+            SpotSource spotSource, string checkSource = null, ArmyData hiddenArmy = null)
+        {
             if (unit == null || !unit.IsHidden || observer == null || observer == unit.Owner)
                 return false;
             if (IsDetectedBy(unit, observer))
                 return true; // already personally visible to this observer — no re-roll
 
             (int col, int row) = hex.ToOffset();
-            int spot = SpotPoolAgainst(observer, hex, out SpotSource spotSource);
+            int spot = spotSource.Pool;
             // §4 diagnostics — name the trigger ("arrival" / "new vision" / "hidden action"),
             // the hidden unit (plus its army id where the caller knows it — UnitData has no id
             // of its own), and, for a rolled challenge, which observer source won the spot pool.
@@ -469,17 +476,17 @@ namespace Game.Map
 
         // A. An army finished arriving on `arrivalHex`. Both directions:
         //   - each hidden member of the moved army vs every enemy whose vision covers the hex;
-        //   - each enemy hidden unit now inside the moved army's vision vs the mover's owner.
+        //   - each enemy hidden unit reached by this moved army's own detection source.
         //
         // `moveEventSeen` (2026-08-27, стелс §3) — a dedupe set the CALLER owns for the whole
         // movement event, keyed (hidden unit, observer, hex). A multi-hex order calls this once
         // per hex entered (HexSelectionController.Movement): for the mover's own hidden members
         // the hex is `arrivalHex`, which changes every step, so they're still challenged by every
         // observer along the route (deliberate — a hidden unit must not slip past a mid-route
-        // observer). But the SECOND loop re-scans every enemy hidden unit the mover can see on
-        // EVERY step; without an event-spanning set each of those (enemy unit, mover owner,
-        // enemyHex) pairs got a fresh roll per step — several bites at one atomic event, against
-        // §3. Passing the same set to all per-hex calls collapses those to one. Falls back to a
+        // observer). The SECOND loop follows only this mover's own hex/radius; without an
+        // event-spanning set an enemy that stays inside it over multiple steps would get a fresh
+        // roll per step — several bites at one atomic event, against §3. Passing the same set to
+        // all per-hex calls collapses those to one. Falls back to a
         // local per-call set (retreat landing, stealth-sim) when null.
         public static void RunChecksForArrival(ArmyData movedArmy, HexCoord arrivalHex,
             HashSet<(UnitData, PlayerSetupData, HexCoord)> moveEventSeen = null)
@@ -497,34 +504,83 @@ namespace Game.Map
                         ResolveDetection(member, observer, arrivalHex, "arrival", movedArmy);
             }
 
-            foreach (HexCoord hex in VisionSystem.VisibleHexesFor(movedArmy.Owner))
+            HexCoord sourceHex = movedArmy.Controller != null
+                ? movedArmy.Controller.CurrentHex : arrivalHex;
+            int sourceSpot = AbilityParams.GetBestRecceSpotStrength(movedArmy);
+            bool sourceHasRadius = AbilityParams.GetBestRecceRadius(movedArmy) > 0;
+            var source = new SpotSource(0, $"army #{movedArmy.Id} \"{movedArmy.Name}\"");
+            foreach (HexCoord hex in DetectionHexes(sourceHex, sourceHasRadius))
                 foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                 {
                     if (other.Owner == null || other.Owner == movedArmy.Owner)
                         continue;
                     foreach (UnitData member in other.Members)
                         if (member.IsHidden && seen.Add((member, movedArmy.Owner, hex)))
-                            ResolveDetection(member, movedArmy.Owner, hex, "arrival", other);
+                            ResolveDetection(member, movedArmy.Owner, hex,
+                                new SpotSource(SourcePool(sourceHex, hex, sourceSpot, sourceHasRadius), source.Label),
+                                "arrival", other);
                 }
         }
 
-        // B. `owner` just played a card that created or widened a vision source. Every enemy
-        //    hidden unit on a hex `owner` now sees (a base/citadel hex included) is checked
-        //    against `owner`.
-        public static void RunChecksForNewVisionSource(PlayerSetupData owner)
+        // B. A concrete card just created or widened one vision source. Detection belongs to
+        //    that event source only: an unrelated Recce army elsewhere on the map must not lend
+        //    its dice or turn every already-visible enemy into a fresh challenge.
+        public static void RunChecksForNewVisionSource(ArmyData army, UnitData unit)
         {
-            if (owner == null)
+            if (army?.Owner == null || unit == null)
                 return;
-            var done = new HashSet<(UnitData, PlayerSetupData)>();
-            foreach (HexCoord hex in VisionSystem.VisibleHexesFor(owner))
+            HexCoord sourceHex = army.Controller != null ? army.Controller.CurrentHex : army.Hex;
+            RunChecksForNewVisionSource(army.Owner, sourceHex,
+                AbilityParams.GetBestRecceSpotStrength(unit),
+                AbilityParams.GetBestRecceRadius(unit) > 0,
+                $"unit \"{unit.Name}\" in army #{army.Id}");
+        }
+
+        public static void RunChecksForNewVisionSource(BuildingData building)
+        {
+            if (building?.Owner == null)
+                return;
+            RunChecksForNewVisionSource(building.Owner, building.Hex,
+                AbilityParams.GetBestRecceSpotStrength(building.Abilities),
+                AbilityParams.GetBestRecceRadius(building.Abilities) > 0,
+                $"building \"{building.Name}\"");
+        }
+
+        public static void RunChecksForNewVisionSource(BuildingData building, FacilityData facility)
+        {
+            if (building?.Owner == null || facility == null)
+                return;
+            RunChecksForNewVisionSource(building.Owner, building.Hex,
+                AbilityParams.GetBestRecceSpotStrength(facility.Abilities),
+                AbilityParams.GetBestRecceRadius(facility.Abilities) > 0,
+                $"facility \"{facility.Name}\" in \"{building.Name}\"");
+        }
+
+        private static void RunChecksForNewVisionSource(PlayerSetupData owner, HexCoord sourceHex,
+            int spotStrength, bool hasRadius, string label)
+        {
+            var done = new HashSet<UnitData>();
+            SpotSource source = new SpotSource(0, label);
+            foreach (HexCoord hex in DetectionHexes(sourceHex, hasRadius))
                 foreach (ArmyData other in ArmyRegistry.AllAt(hex))
                 {
                     if (other.Owner == null || other.Owner == owner)
                         continue;
                     foreach (UnitData member in other.Members)
-                        if (member.IsHidden && done.Add((member, owner)))
-                            ResolveDetection(member, owner, hex, "new vision", other);
+                        if (member.IsHidden && done.Add(member))
+                            ResolveDetection(member, owner, hex,
+                                new SpotSource(SourcePool(sourceHex, hex, spotStrength, hasRadius), source.Label),
+                                "new vision", other);
                 }
+        }
+
+        private static IEnumerable<HexCoord> DetectionHexes(HexCoord sourceHex, bool hasRadius)
+        {
+            yield return sourceHex;
+            if (!hasRadius)
+                yield break;
+            foreach (HexCoord neighbour in HexGridMath.Neighbors(sourceHex))
+                yield return neighbour;
         }
 
         // C. A hidden unit finished an active action from the shared hex action menu (a

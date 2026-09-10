@@ -110,19 +110,19 @@ namespace Game.Map
         // own membership-change handling — that runs for every membership change on a hex,
         // including a brand-new army that was just created and hasn't received its first member
         // yet (see CreateArmyMarker), which must stay merely invisible, not be torn down for it.
-        // Any army — garrison or named — sitting empty on its own owner's Barracks hex is left
-        // alone indefinitely instead: a Barracks hex is a safe place to stage/empty an army, not
-        // just the specific garrison building's own permanent landing pad.
+        // Any army sitting empty on its own owner's Barracks hex is left alone indefinitely; an
+        // airfield container is likewise retained by its independent AirfieldCapacity rule.
         public void DeleteArmyIfEmptied(ArmyData army)
         {
             if (army == null || army.Members.Count > 0)
                 return;
 
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            // Every empty army on its owner's Barracks hex remains as a reusable container.
-            // This is deliberately shared by ground and air armies; air composition must not
-            // make a formerly airborne stack an exception after its last card is destroyed.
-            if (building != null && building.Owner == army.Owner && building.HasAbility(UnitAbilities.Barracks))
+            // Ground staging belongs to Barracks; the dedicated aviation container belongs to
+            // AirfieldCapacity. Neither capability is silently made dependent on the other.
+            if (building != null && building.Owner == army.Owner
+                && (building.HasAbility(UnitAbilities.Barracks)
+                    || (army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner))))
                 return;
 
             ArmyRegistry.Unregister(army);
@@ -177,6 +177,12 @@ namespace Game.Map
             // no-ops unless the card's own grantedAbilities actually include it.
             BuildingRegistry.EnsureGarrisonForBuilding(building, this);
 
+            // AirfieldCapacity is authored on the Base card just like its garrison capability.
+            // Materialize the shared aviation container at the same lifecycle boundary so a Base
+            // founded underneath an existing air army is immediately a complete airfield.
+            if (building.AirfieldCapacity > 0)
+                AviationActions.EnsureAirfield(this, owner, hex);
+
             // A "Concord Citadel" card played from hand is otherwise identical to the starting
             // citadel (same abilities, same stats) but per the user's own spec does NOT get the
             // permanent hex resource bonus — that belongs only to the hex the player chose at
@@ -191,7 +197,7 @@ namespace Game.Map
 
             // Stealth trigger B (see Game.Map.StealthSystem): a newly founded building is a
             // fresh vision source — check enemy hidden units on hexes `owner` now sees.
-            StealthSystem.RunChecksForNewVisionSource(owner);
+            StealthSystem.RunChecksForNewVisionSource(building);
             return building;
         }
 
@@ -367,7 +373,7 @@ namespace Game.Map
 
             // Stealth trigger B (see Game.Map.StealthSystem) — covers a facility card that
             // itself carries an r1sX vision tag.
-            StealthSystem.RunChecksForNewVisionSource(owner);
+            StealthSystem.RunChecksForNewVisionSource(building, facility);
             return true;
         }
     }

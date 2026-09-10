@@ -692,9 +692,12 @@ namespace Game.Ai.V2
                 });
             }
 
-            AddBaseCandidates(s, candidates, player, ctx, activeIntents, commitments);
+            string baseSummary = AddBaseCandidates(
+                s, candidates, player, ctx, activeIntents, commitments);
             List<AxisDemand> selected = candidates
-                .OrderByDescending(x => x.EconomySiteValue)
+                .OrderByDescending(x => IsActiveBaseCommitment(
+                    activeIntents, x.TargetHex, x.EconomyBuildCard))
+                .ThenByDescending(x => x.EconomySiteValue)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
                 .ThenBy(x => x.EconomyTravelCost)
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
@@ -714,6 +717,7 @@ namespace Game.Ai.V2
                     + $"rejected={Mathf.Max(0, candidates.Count - selected.Count)}");
                 yield return emitted;
             }
+            AiDebugLog.Write($"[AI][V2][Economy][BaseCandidates] {baseSummary}");
             if (selected.Count == 0)
                 AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={candidates.Count} "
                     + "reason=no_legal_valuable_site_or_base");
@@ -902,7 +906,7 @@ namespace Game.Ai.V2
             - AiConfigV2.economySiteThreatPenalty * Mathf.Clamp01(threatExposure)
             - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
 
-        private static void AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
+        private static string AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
             PlayerSetupData player, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
         {
@@ -911,19 +915,32 @@ namespace Game.Ai.V2
                 .OrderBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
                 .ToList();
             if (baseCards.Count == 0 || s.Economy?.BaseOpportunities == null)
-                return;
+                return "considered=0 kept=0 reason=no_base_card_or_opportunity";
+
+            int considered = 0;
+            int kept = 0;
+            AxisDemand best = null;
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
                 {
-                    float global = card.Definition.grantedAbilities != null
-                        && card.Definition.grantedAbilities.Count > 0 ? 1f : 0f;
+                    considered++;
+                    bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
+                    float hexYield = BaseHexYieldValue(s, site.HexYield);
+                    float global = BaseGlobalEffectValue(s, card.Definition);
+                    float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
                     float reasonValue = AiConfigV2.economyBaseCapacityValue * site.CapacityValue
+                        + AiConfigV2.economyBaseHexYieldValue * hexYield
                         + AiConfigV2.economyBaseClusterValue * site.NearbyResourceClusterValue
+                        + AiConfigV2.economyBaseNetworkExpansionValue * site.NetworkExpansionValue
+                        + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
+                        + AiConfigV2.economyBaseAirfieldValue * airfield
                         + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
                         + AiConfigV2.economyBaseGlobalEffectValue * global;
                     if (site.NearbyResourceClusterValue <= 0f
-                        && !site.ConvertsOwnedExtractionSite && global <= 0f)
+                        && site.NetworkExpansionValue <= 0f && hexYield <= 0f
+                        && site.InfrastructurePressure <= 0f && airfield <= 0f
+                        && !site.ConvertsOwnedExtractionSite && global <= 0f && !committed)
                         continue;
                     float travel = EconomyActorTravelCost(
                         s, site.Hex, site.BuilderRoutes, activeIntents, commitments);
@@ -937,9 +954,17 @@ namespace Game.Ai.V2
                         - AiConfigV2.economySiteTravelPenalty * travel
                         - AiConfigV2.economySiteThreatPenalty * exposure
                         - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
-                    if (value < AiConfigV2.economyBaseDemandMinValue)
+                    string decision = value < AiConfigV2.economyBaseDemandMinValue && !committed
+                        ? "below_min" : "keep";
+                    AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
+                        + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
+                        + $"yield={hexYield:0.##} cluster={site.NearbyResourceClusterValue:0.##} "
+                        + $"network={site.NetworkExpansionValue:0.##} pressure={site.InfrastructurePressure:0.##} "
+                        + $"airfield={airfield:0.##} global={global:0.##} cost={buildCost:0.##} "
+                        + $"value={value:0.##} committed={committed} decision={decision}");
+                    if (decision != "keep")
                         continue;
-                    output.Add(new AxisDemand
+                    var demand = new AxisDemand
                     {
                         RequestingAxis = DesireAxis.Economy,
                         Capability = CapabilityKind.EconomicExpansionBase,
@@ -949,19 +974,82 @@ namespace Game.Ai.V2
                         EconomyBuildResourceCost = card.EffectivePlayResourceCost,
                         EconomyBuildApCost = card.EffectivePlayApCost,
                         MinimumFollowupAp = card.EffectivePlayApCost,
-                        EconomyExpectedIncomeGain = site.NearbyResourceClusterValue,
+                        EconomyExpectedIncomeGain = site.HexYield.Sum,
                         EconomySiteValue = value,
                         EconomyTravelCost = travel,
                         EconomyThreatExposure = exposure,
                         EconomyHeroOpportunityCost = heroCost,
                         EconomyBuilderRoutes = site.BuilderRoutes,
                         Value = value,
-                        Explain = $"Base capacity={site.CapacityValue:0.##} "
+                        Explain = $"Base capacity={site.CapacityValue:0.##} yield={hexYield:0.##} "
                             + $"cluster={site.NearbyResourceClusterValue:0.##} "
+                            + $"network={site.NetworkExpansionValue:0.##} "
+                            + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
                             + $"logistics={site.LogisticsValue:0.##} global={global:0.##} "
                             + $"cost={buildCost:0.##}",
-                    });
+                    };
+                    output.Add(demand);
+                    kept++;
+                    if (best == null || demand.EconomySiteValue > best.EconomySiteValue)
+                        best = demand;
                 }
+            return best == null
+                ? $"considered={considered} kept={kept} best=none"
+                : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
+                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##}";
+        }
+
+        private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,
+            HexCoord? target, CardData card)
+        {
+            if (!target.HasValue || intents == null)
+                return false;
+            return intents.Any(i => i != null && i.Status == IntentStatus.Active
+                && i.Kind == MissionKind.Economy && i.Economy?.Kind == EconomyTaskKind.FoundBase
+                && i.Economy.TargetHex.Equals(target.Value)
+                && (i.Economy.BuildCard == null || i.Economy.BuildCard == card));
+        }
+
+        private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield)
+        {
+            if (s?.Economy?.PerType == null)
+                return 0f;
+            var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
+            float value = 0f;
+            foreach (ResourceType type in ResourceBundle.All)
+                if (standings.TryGetValue(type, out EconomyResourceStanding standing))
+                    value += yield.Get(type) * Mathf.Max(0.25f, standing.DeficitScore);
+            return value;
+        }
+
+        private static float BaseGlobalEffectValue(WorldSnapshot s, CardDefinition definition)
+        {
+            if (definition?.grantedAbilities == null)
+                return 0f;
+            EffectContribution contribution = StrategicEffectRegistry.Contributions(
+                IntendedRole.Economy, definition.grantedAbilities, 0,
+                new EffectEvaluationContext(s));
+            return contribution.GlobalRoleFit + contribution.GlobalImmediateTempo
+                + contribution.GlobalThreatResponse + contribution.GlobalCapabilityGap
+                + contribution.GlobalForceGrowth + contribution.GlobalSynergy;
+        }
+
+        private static float BaseAirfieldValue(WorldSnapshot s, CardDefinition definition,
+            HexCoord target)
+        {
+            if (definition == null || definition.airfieldCapacity <= 0 || s?.Self == null)
+                return 0f;
+            bool aviationRelevant = (s.Self.Hand ?? System.Array.Empty<CardData>())
+                    .Any(c => c?.Definition?.isAviation == true)
+                || (s.Self.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null && a.IsAir);
+            if (!aviationRelevant)
+                return 0f;
+            List<ArmySnapshot> airfields = (s.Self.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.IsAirfield).ToList();
+            if (airfields.Count == 0)
+                return 1f;
+            int distance = airfields.Min(a => HexGridMath.Distance(a.Hex, target));
+            return Mathf.Clamp01(distance / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
         }
 
         private static CardDefinition ExtractionDefinition(AiTurnContext ctx, ResourceType type)

@@ -183,7 +183,7 @@ namespace Game.Map
             // vision, base/citadel hexes included.
             if (AbilityParams.GetBestRecceRadius(spawned) > 0)
                 VisionSystem.RecomputeFor(owner);
-            StealthSystem.RunChecksForNewVisionSource(owner);
+            StealthSystem.RunChecksForNewVisionSource(targetArmy, spawned);
             return true;
         }
 

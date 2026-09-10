@@ -100,8 +100,8 @@ namespace Game.Cards
         // number avoids inventing one ability tag per range and keeps the inspector dropdown
         // useful to content authors.
         public int antiAirRadius = 1;
-        // A Barracks-capable Base with a positive value is also an airfield.  Kept on the Base
-        // card so Citadel/Base capacities are data, not a hard-coded building-name table.
+        // A Base with a positive value is an airfield. Kept on the Base card so Citadel/Base
+        // capacities are data, not a hard-coded building-name or Barracks rule.
         public int airfieldCapacity;
 
         // Classification tags (Bio/Mechanical/Armored/...) — only meaningful for Hero/Unit

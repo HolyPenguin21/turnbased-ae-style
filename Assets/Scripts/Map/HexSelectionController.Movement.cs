@@ -574,13 +574,9 @@ namespace Game.Map
                     if (!lastStealthCheckedHex.HasValue || !lastStealthCheckedHex.Value.Equals(actualHex))
                         StealthSystem.RunChecksForArrival(army, actualHex, stealthMoveEventSeen);
 
-                    // No container is created here. Landing is only the end-turn refuel condition
-                    // (see AviationTurnLifecycle.ResolveEndOfTurn) and nothing merges aircraft into
-                    // a container in the current model, so creating one on arrival would only leave
-                    // a permanent empty IsAirfield army on the base hex (kept by DeleteArmyIfEmptied's
-                    // Barracks-hex exemption) that shows up as an extra, unmovable pick in the
-                    // hex-side army button row. The real container is made on demand by
-                    // AviationActions.TryDeployFromCard / the AI launch-abort path.
+                    // No container is created by movement. The Base lifecycle owns creation of its
+                    // persistent airfield container; landing only resets this formed air army in
+                    // place and never transfers its aircraft.
 
                     // The origin hex's own layout (a building recentring once the last army
                     // actually leaves, in particular) only reads correctly once MoveArmy above

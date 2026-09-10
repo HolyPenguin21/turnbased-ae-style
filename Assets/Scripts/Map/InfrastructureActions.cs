@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
 using Game.Economy;
@@ -116,6 +117,7 @@ namespace Game.Map
             FacilityData[] carriedOver = existing?.FacilitySlots;
             MapObjectVisual oldVisual = existing?.Visual;
             bool ownerGarrisonExistedBefore = ArmyRegistry.AllAt(hex).Any(a => a != null && a.IsGarrison && a.Owner == owner);
+            bool ownerAirfieldExistedBefore = AviationRules.FindAirfieldAt(hex, owner) != null;
 
             // --- reversible spend FIRST ---
             int apBefore = root.ActionPoints;
@@ -138,7 +140,8 @@ namespace Game.Map
             if (building == null)
             {
                 if (threw)
-                    RollbackPartialSpawn(hexSelection, hex, owner, existing, ownerGarrisonExistedBefore);
+                    RollbackPartialSpawn(hexSelection, hex, owner, existing,
+                        ownerGarrisonExistedBefore, ownerAirfieldExistedBefore);
                 root.ActionPoints = apBefore;
                 Refund(root, resourceCost);
                 return InfrastructureBuildOutcome.Fail(threw
@@ -167,7 +170,8 @@ namespace Game.Map
 
         // Best-effort undo of a SpawnBuilding that partially mutated the world before throwing.
         private static void RollbackPartialSpawn(HexSelectionController hexSelection, HexCoord hex,
-            PlayerSetupData owner, BuildingData siteBefore, bool ownerGarrisonExistedBefore)
+            PlayerSetupData owner, BuildingData siteBefore, bool ownerGarrisonExistedBefore,
+            bool ownerAirfieldExistedBefore)
         {
             BuildingData now = BuildingRegistry.FindAt(hex);
             if (now != null && now != siteBefore)
@@ -183,6 +187,17 @@ namespace Game.Map
             {
                 ArmyData orphan = ArmyRegistry.AllAt(hex)
                     .FirstOrDefault(a => a != null && a.IsGarrison && a.Owner == owner && a.Members.Count == 0);
+                if (orphan != null)
+                {
+                    if (orphan.Controller != null)
+                        UnityEngine.Object.Destroy(orphan.Controller.gameObject);
+                    ArmyRegistry.Unregister(orphan);
+                }
+            }
+            if (!ownerAirfieldExistedBefore)
+            {
+                ArmyData orphan = ArmyRegistry.AllAt(hex)
+                    .FirstOrDefault(a => a != null && a.IsAirfield && a.Owner == owner && a.Members.Count == 0);
                 if (orphan != null)
                 {
                     if (orphan.Controller != null)

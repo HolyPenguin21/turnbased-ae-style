@@ -793,8 +793,8 @@ namespace Game.Ai.V2
                             cycleProvisioning, allocation, actorCommitments);
                         FundedEntry selectedFunding = allocation.Funded.FirstOrDefault(fe =>
                             fe?.Mission != null
-                            && CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(
-                                player, CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot));
+                            && CapabilityPoolExhaustionRegistry.CanAttempt(
+                                player, fe.Mission, snapshot));
                         if (selectedFunding == null)
                             break;
 
@@ -819,6 +819,8 @@ namespace Game.Ai.V2
                         provisioningFailures.TryGetValue(provisionResult.Failure.Kind,
                             out int failureCount);
                         provisioningFailures[provisionResult.Failure.Kind] = failureCount + 1;
+                        CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
+                            player, selectedFunding.Mission, provisionResult.Failure);
                         bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
                             snapshot, player, selectedFunding.Mission, provisionResult.Failure);
                         if (poolWide)
@@ -1058,8 +1060,7 @@ namespace Game.Ai.V2
                             continue; // locked by an earlier pass this turn
                         // A capability pool proven pool-wide unable is not asked again UNLESS a cheap
                         // revalidation now finds an eligible actor (spec §7).
-                        if (!CapabilityPoolExhaustionRegistry.RevalidateAndClearIfRecovered(player,
-                                CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission), snapshot))
+                        if (!CapabilityPoolExhaustionRegistry.CanAttempt(player, fe.Mission, snapshot))
                             continue;
     
                         ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
@@ -1081,6 +1082,8 @@ namespace Game.Ai.V2
                             anyFailure = true;
                             provisioningFailures.TryGetValue(result.Failure.Kind, out int failureCount);
                             provisioningFailures[result.Failure.Kind] = failureCount + 1;
+                            CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
+                                player, fe.Mission, result.Failure);
                             bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
                                 snapshot, player, fe.Mission, result.Failure);
                             if (poolWide)
@@ -1253,6 +1256,8 @@ namespace Game.Ai.V2
 
             // AI-MGR-02 §8 — no strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
+            StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
+                StrategicReservationExpiry.EndOfTurn);
             StrategicResourceReservationLedger.AssertClearAtTurnEnd(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);

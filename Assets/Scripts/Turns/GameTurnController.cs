@@ -691,11 +691,10 @@ namespace Game.Turns
         // this turn's income, not last turn's. A hex's total yield already folds in whatever
         // permanent bonus was stamped onto it (see HexResourceBonusRegistry — a citadel's own
         // bonus belongs to the hex the player chose, not to the citadel's continued presence);
-        // every building (citadel or a hero-built extraction Facility/resource site) only ever
-        // COLLECTS 1 unit per resource type it has a matching CollectX ability for, capped by
-        // whatever the hex actually offers — a rich hex needs real extraction Facilities built
-        // on it to be fully exploited (see BuildingData.CollectedAmount). Whatever headroom is
-        // left after the building's own cut then goes to any army SITTING on the hex with a
+        // a Base collects the full yield of every resource type on its hex; a hero-built
+        // extraction site collects only its matching CollectX capacity (see BuildingData.
+        // CollectedAmount). Whatever headroom is left after the building's cut then goes to an
+        // army SITTING on the hex with a
         // matching CollectX unit (see CollectArmyIncomeAt) — so a hex needs no building at all
         // for an army alone to work it, and iterates every occupied hex too, not just built ones.
         private void CollectResourceIncome()
