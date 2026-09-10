@@ -33,9 +33,12 @@ namespace Game.UI
         [SerializeField] private RectTransform handContainer;
         [SerializeField] private CardUI cardPrefab;
         [SerializeField] private Button drawButton;
-        // "Cards" on the first line, the remaining draw-pile count on the second — see
+        // "Deck" on the first line, the remaining draw-pile count on the second — see
         // RefreshDeckCountText/SetDeckCountText.
         [SerializeField] private TMP_Text deckCountText;
+        // "Cards" on the first line, "<cards in hand>/<max hand size>" on the second — see
+        // RefreshHandCountText/SetHandCountText.
+        [SerializeField] private TMP_Text handCountText;
         [SerializeField] private Button scrollLeftButton;
         [SerializeField] private Button scrollRightButton;
         [SerializeField] private GameTurnController turnController;
@@ -74,7 +77,7 @@ namespace Game.UI
         // Purely cosmetic — the slot background rects (see CreateSlotBackgrounds) can be sized
         // independently of the actual cards/slot spacing (still driven by cardSize below), so
         // this can be tuned without touching any layout math.
-        [SerializeField] private Vector2 slotVisualSize = new Vector2(85f, 120f);
+        [SerializeField] private Vector2 slotVisualSize = new Vector2(96f, 140f);
         [Range(0f, 0.3f)]
         [SerializeField] private float overlapFraction = 0.08f;
         [SerializeField] private float restingScale = 0.9f;
@@ -88,7 +91,7 @@ namespace Game.UI
         // Not exposed as a setting — purely a rendering-window size, not a hand rule (see
         // maxHandSize below for the actual gameplay cap), so it stays a fixed constant rather
         // than something that needs tuning per game.
-        private const int MaxVisible = 7;
+        private const int MaxVisible = 6;
         // How far (in HandContainer-local pixels) a dragged card can be lifted above/below the
         // hand row and still trigger live reordering — beyond this, it reads as "being taken
         // somewhere else" (e.g. toward the map to play it) and the rest of the hand stops
@@ -167,6 +170,8 @@ namespace Game.UI
         // draw, not every frame, so re-formatting and re-assigning the string when nothing
         // changed was pure waste.
         private int _lastDisplayedDeckCount = -1;
+        // Same no-op-if-unchanged guard for handCountText (see RefreshHandCountText).
+        private int _lastDisplayedHandCount = -1;
 
         private void Awake()
         {
@@ -200,14 +205,11 @@ namespace Game.UI
             }
         }
 
-        // Faint translucent boxes, one per MaxVisible slot, permanently in place behind
-        // wherever cards currently sit (same "a droppable spot is here" look as
-        // ArmyUnitCardUI's own empty-capacity placeholders) — makes it obvious the hand has
-        // fixed slots to land in rather than a row that just centres on however many cards
-        // happen to be held. Created once, never destroyed/rebuilt — unlike _cards, these don't
-        // correspond to any particular card and never need to change.
-        private static readonly Color SlotBackgroundColor = new Color(1f, 1f, 1f, 0.12f);
-
+        // One empty RectTransform per MaxVisible slot, permanently in place at the position a
+        // card in that slot sits — a purely positional anchor, no visual of its own. Makes the
+        // hand a fixed set of slots to land in rather than a row that just centres on however
+        // many cards happen to be held. Created once, never destroyed/rebuilt — unlike _cards,
+        // these don't correspond to any particular card and never need to change.
         private void CreateSlotBackgrounds()
         {
             if (handContainer == null)
@@ -215,7 +217,7 @@ namespace Game.UI
 
             for (int i = 0; i < MaxVisible; i++)
             {
-                var go = new GameObject($"Slot{i}", typeof(RectTransform), typeof(Image));
+                var go = new GameObject($"Slot{i}", typeof(RectTransform));
                 var rt = (RectTransform)go.transform;
                 rt.SetParent(handContainer, false);
                 rt.anchorMin = rt.anchorMax = new Vector2(0.5f, 0.5f);
@@ -226,10 +228,6 @@ namespace Game.UI
                 // these (see AddCard), so later siblings (the actual cards) always render on
                 // top without needing any extra sorting-order bookkeeping here.
                 rt.SetSiblingIndex(i);
-
-                var image = go.GetComponent<Image>();
-                image.color = SlotBackgroundColor;
-                image.raycastTarget = false;
             }
         }
 
@@ -302,6 +300,7 @@ namespace Game.UI
                 turnController.TurnChanging += CancelAttachMode;
             }
             RefreshDeckCountText();
+            RefreshHandCountText();
             RefreshDrawButtonInteractable();
         }
 
@@ -351,7 +350,26 @@ namespace Game.UI
             if (deckCountText == null)
                 return;
             _lastDisplayedDeckCount = count;
-            deckCountText.text = $"Cards\n{count}";
+            deckCountText.text = $"Deck\n{count}";
+        }
+
+        // "Cards" + "<in hand>/<max>" on the next line. Guarded like RefreshDeckCountText —
+        // the count only moves when a card enters or leaves the hand.
+        private void RefreshHandCountText()
+        {
+            if (handCountText == null || _cards.Count == _lastDisplayedHandCount)
+                return;
+            SetHandCountText(_cards.Count, maxHandSize);
+        }
+
+        // Unconditional write, for switching to a DIFFERENT player's numbers (AI hand debug
+        // view) where the guard can't tell "already correct" from "coincidentally equal".
+        private void SetHandCountText(int count, int max)
+        {
+            if (handCountText == null)
+                return;
+            _lastDisplayedHandCount = count;
+            handCountText.text = $"Cards\n{count}/{max}";
         }
 
         private void RefreshDrawButtonInteractable()
@@ -422,6 +440,7 @@ namespace Game.UI
             // user's own report: the deck count doesn't update, including when the turn passes
             // to a different AI player while this debug view is following it).
             SetDeckCountText(hand?.RemainingDeckCount ?? 0);
+            SetHandCountText(hand?.Hand.Count ?? 0, hand?.Capacity ?? maxHandSize);
 
             if (hand == null)
                 return;
@@ -452,9 +471,10 @@ namespace Game.UI
                 Destroy(card.gameObject);
             _debugCards.Clear();
 
-            // Force the counter back to the human's own real count — ShowAiHandDebug may have
-            // just overwritten it with an AI player's number.
+            // Force the counters back to the human's own real numbers — ShowAiHandDebug may
+            // have just overwritten them with an AI player's.
             SetDeckCountText(_remainingDeck.Count);
+            SetHandCountText(_cards.Count, maxHandSize);
             Relayout(animated: false);
         }
 
@@ -1151,6 +1171,7 @@ namespace Game.UI
                     _cards[i].SetHome(new Vector2(SlotX(visibleIndex), 0f), animated);
             }
             UpdateScrollButtons();
+            RefreshHandCountText();
         }
 
         private void ClampScroll()
