@@ -672,10 +672,20 @@ namespace Game.Ai.V2
                 float payback = EconomyPaybackTurns(gain, resourceCost, assignmentAp);
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
                     continue;
-                float value = ScoreEconomySite(Mathf.Max(rs.DeficitScore, starvation), gain,
+                float strategicValue = ScoreEconomySite(
+                    Mathf.Max(rs.DeficitScore, starvation), gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
-                    travel, exposure, opportunity, resourceCost, assignmentAp, payback);
-                if (value <= AiConfigV2.allocatorSliceEpsilon)
+                    0f, exposure, 0f, resourceCost, def?.apCost ?? 0f,
+                    preliminaryPayback);
+                float deliveryApCost = Mathf.Max(0f,
+                    assignmentAp - (def?.apCost ?? 0f));
+                float value = strategicValue
+                    - AiConfigV2.economyBuildApPenalty * deliveryApCost
+                    - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travel)
+                    - AiConfigV2.economySiteHeroOpportunityPenalty
+                        * Mathf.Max(0f, opportunity);
+                if (strategicValue <= AiConfigV2.allocatorSliceEpsilon
+                    || value <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 candidates.Add(new AxisDemand
                 {
@@ -688,7 +698,7 @@ namespace Game.Ai.V2
                     EconomyBuildApCost = def?.apCost ?? 0,
                     MinimumFollowupAp = def?.apCost ?? 0,
                     EconomyExpectedIncomeGain = gain,
-                    EconomySiteValue = value,
+                    EconomySiteValue = strategicValue,
                     EconomyTravelCost = travel,
                     EconomyThreatExposure = exposure,
                     EconomyHeroOpportunityCost = opportunity,
@@ -701,8 +711,10 @@ namespace Game.Ai.V2
                         + $"resourcePriority={resourcePriority:0.##} marginalGain={gain:0.#} effectiveYield={site.EffectiveYield} "
                         + $"alreadyCollected={site.CurrentBuildingCollection} "
                         + $"network={site.BaseNetworkSynergy:0.##} "
-                        + $"cluster={site.NearbyResourceClusterValue:0.##} travel={travel:0.#} "
-                        + $"exposure={exposure:0.##} heroCost={opportunity:0.##}",
+                        + $"cluster={site.NearbyResourceClusterValue:0.##} "
+                        + $"site={strategicValue:0.##} delivery={value:0.##} "
+                        + $"travel={travel:0.#} exposure={exposure:0.##} "
+                        + $"heroCost={opportunity:0.##}",
                 });
             }
 
