@@ -584,6 +584,11 @@ namespace Game.Ai.V2
             bd.SynergyValue += ncEc.Synergy + ncEc.GlobalSynergy;
             bd.EffectDetail = ncEffDetail;
 
+            // A generated Base is Economy itself and must remain able to create future runway.
+            // Other optional Production-generated non-combat assets are amplifiers and use the
+            // same support adjustment as generated Unit/Hero plans.
+            bd.ProductionSupportAdjustment = kind == NonCombatRole.Base
+                ? 0f : ProductionSupportAdjustment(bd, generation, snap, 0f);
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * apCost
@@ -628,10 +633,14 @@ namespace Game.Ai.V2
             + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment;
 
         private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
-            MaterializationPlan plan, WorldSnapshot snap, float demandFloor)
+            MaterializationPlan plan, WorldSnapshot snap, float demandFloor) =>
+            ProductionSupportAdjustment(b, plan?.Generation, snap, demandFloor);
+
+        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
+            GenerationStep generation, WorldSnapshot snap, float demandFloor)
         {
-            if (b == null || plan?.Generation == null
-                || plan.Generation.Mode != ResearchProductionMode.Production)
+            if (b == null || generation == null
+                || generation.Mode != ResearchProductionMode.Production)
                 return 0f;
             float support = snap?.Development?.ProductionSupport ?? 1f;
             support = Mathf.Max(support, demandFloor);
