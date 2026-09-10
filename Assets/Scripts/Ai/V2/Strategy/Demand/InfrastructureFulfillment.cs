@@ -183,22 +183,40 @@ namespace Game.Ai.V2
             string owner = EconomyReservationOwner(demand);
             if (owner == null || !ShouldReserveDeferredEconomyResources(snap, demand))
                 return;
-            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f);
+            StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                StrategicReservationReason.EconomyDeferredBuild, owner);
+            if (StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
+                    StrategicReservationReason.EconomyBuildCompletion))
+                return;
+            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f,
+                StrategicReservationReason.EconomyDeferredBuild);
         }
+
+        internal static void ClearDeferredEconomyResources(PlayerSetupData player, int turn) =>
+            StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                StrategicReservationReason.EconomyDeferredBuild, null);
 
         // One canonical writer for direct, deferred and provisioned Economy build reservations.
         // Provisioning adds AP only when completion is reachable this turn; Phase A protects only
         // persistent H/E/M/T while a confirmed route is still being delivered.
         internal static void ReserveEconomyCost(PlayerSetupData player, int turn, string owner,
-            ResourceCost cost, float buildAp)
+            ResourceCost cost, float buildAp,
+            StrategicReservationReason reason = StrategicReservationReason.EconomyBuildCompletion)
         {
             if (player == null || string.IsNullOrEmpty(owner))
                 return;
+            if (reason == StrategicReservationReason.EconomyBuildCompletion)
+            {
+                StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                    StrategicReservationReason.EconomyDeferredBuild, null);
+                StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                    StrategicReservationReason.EconomyBuildCompletion, owner);
+            }
             if (buildAp > 0f)
                 StrategicResourceReservationLedger.Upsert(player, turn,
                     new StrategicResourceReservation
                     {
-                        Owner = owner, Reason = StrategicReservationReason.EconomyBuildFollowup,
+                        Owner = owner, Reason = reason,
                         Resource = StrategicReservedResource.ActionPoints, Amount = buildAp,
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });
@@ -212,7 +230,7 @@ namespace Game.Ai.V2
                 StrategicResourceReservationLedger.Upsert(player, turn,
                     new StrategicResourceReservation
                     {
-                        Owner = owner, Reason = StrategicReservationReason.EconomyBuildFollowup,
+                        Owner = owner, Reason = reason,
                         Resource = StrategicResourceReservationLedger.Map(type), Amount = amount,
                         ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                     });

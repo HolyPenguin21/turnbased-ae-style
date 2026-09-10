@@ -1027,7 +1027,8 @@ namespace Game.Ai.V2
             if (baseCards.Count == 0 || s.Economy?.BaseOpportunities == null)
             {
                 MissionIntentRegistry.GetOrCreate(player)
-                    .MarkBaseExpansionCandidate(s.TurnNumber, structurallyEligible: false);
+                    .MarkBaseExpansionCandidate(s.TurnNumber, null, null,
+                        structurallyEligible: false);
                 return "considered=0 kept=0 reason=no_base_card_or_opportunity";
             }
 
@@ -1131,25 +1132,40 @@ namespace Game.Ai.V2
             // not the current score threshold. Otherwise a Base just below the threshold is never
             // recorded as deferred, so its continuity urgency remains permanently zero and cannot
             // solve the very starvation it was introduced for.
-            bool urgencyEligible = valuableDemands.Any(d =>
-                HasStructuralEconomyBuilderRoute(
-                    s, d.TargetHex.Value, d.EconomyBuilderRoutes));
+            AxisDemand stagedBase = valuableDemands
+                .OrderByDescending(d => IsActiveBaseCommitment(
+                    activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
+                .ThenByDescending(d => d.Value)
+                .ThenByDescending(d => d.EconomySiteValue)
+                .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
+                .FirstOrDefault();
+            bool urgencyEligible = stagedBase?.TargetHex != null
+                && HasStructuralEconomyBuilderRoute(
+                    s, stagedBase.TargetHex.Value, stagedBase.EconomyBuilderRoutes);
             float urgency = MissionIntentRegistry.GetOrCreate(player)
-                .MarkBaseExpansionCandidate(s.TurnNumber, urgencyEligible);
+                .MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
+                    stagedBase?.TargetHex, urgencyEligible);
             foreach (AxisDemand demand in valuableDemands)
             {
-                demand.EconomyStrategicUrgency = urgency;
-                if (urgency > 0f)
-                    demand.Explain += $" urgency={urgency:0.##}";
+                bool staged = stagedBase != null
+                    && demand.EconomyBuildCard == stagedBase.EconomyBuildCard
+                    && demand.TargetHex.Equals(stagedBase.TargetHex);
+                float candidateUrgency = staged ? urgency : 0f;
+                demand.EconomyStrategicUrgency = candidateUrgency;
+                if (candidateUrgency > 0f)
+                    demand.Explain += $" urgency={candidateUrgency:0.##}";
 
                 bool committed = IsActiveBaseCommitment(
                     activeIntents, demand.TargetHex, demand.EconomyBuildCard);
                 bool admitted = committed
-                    || demand.Value + urgency >= AiConfigV2.economyBaseDemandMinValue;
+                    || (demand.Value >= 0f
+                        && demand.Value + candidateUrgency
+                            >= AiConfigV2.economyBaseDemandMinValue);
                 AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseAdmission] "
                     + $"card={demand.EconomyBuildCard?.Definition?.displayName} "
                     + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
-                    + $"value={demand.Value:0.##} urgency={urgency:0.##} "
+                    + $"value={demand.Value:0.##} urgency={candidateUrgency:0.##} "
                     + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
                 if (!admitted)
                     continue;

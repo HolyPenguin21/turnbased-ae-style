@@ -195,9 +195,11 @@ namespace Game.Ai.V2
                         | StrategicInvalidationReason.Actor;
                 case DesireAxis.Aggression:
                     return StrategicInvalidationReason.Contact
+                        | StrategicInvalidationReason.Actor
                         | StrategicInvalidationReason.EventState;
                 case DesireAxis.Defence:
-                    return StrategicInvalidationReason.Threat;
+                    return StrategicInvalidationReason.Threat
+                        | StrategicInvalidationReason.Actor;
                 case DesireAxis.Economy:
                     // Economy feasibility depends on where a Hero-led builder is NOW, not only
                     // on newly discovered resources. A Recon step can deliver that builder onto
@@ -627,12 +629,12 @@ namespace Game.Ai.V2
             ActorCommitments postCommitments = null;
             bool phaseBHandled = false;
 
-            // The typed mid-turn architecture is canonical for the current focus scope. The
+            // The typed mid-turn architecture is canonical for every runtime scope. The
             // initial Phase A settles before operational admission; a later factual Development
             // invalidation may re-enter that same manager through the shared ledger. Each Recon
-            // admission still settles exactly one task command. Full/Aggression remains a
-            // compatibility branch until that family is explicitly migrated.
-            if (AiStrategyV2Scope.IsFocusScoped)
+            // admission still settles exactly one task command. Full therefore uses the same
+            // bounded settle -> observe -> typed re-admission path as focused diagnostics.
+            if (AiStrategyV2Scope.UsesTypedLoop)
             {
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
@@ -643,29 +645,75 @@ namespace Game.Ai.V2
                 // opportunity). Snapshot the aggregate once, derive every in-scope family, and
                 // only then consume the shared reasons so family order cannot erase a sibling's
                 // trigger.
-                void TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
-                    out StrategicInvalidationReason capabilityReasons)
+                bool EconomyBuilderReadyForCompletion()
+                {
+                    foreach (MissionIntent intent in activeIntents ?? new List<MissionIntent>())
+                    {
+                        if (intent?.Kind != MissionKind.Economy
+                            || intent.Status != IntentStatus.Active
+                            || intent.Economy == null
+                            || intent.Economy.Kind == EconomyTaskKind.ReturnBuilder
+                            || !intent.PreferredMoverArmyId.HasValue)
+                            continue;
+                        ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                            && a.ArmyId == intent.PreferredMoverArmyId.Value);
+                        if (actor != null && actor.Hex.Equals(intent.Economy.TargetHex))
+                            return true;
+                    }
+                    return false;
+                }
+
+                void TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
+                    out StrategicInvalidationReason strategicReasons,
+                    out HashSet<DesireAxis> dirtyStrategicAxes)
                 {
                     StrategicInvalidation pending =
                         StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
-                    reconReasons = pending.Reasons
-                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
-                    capabilityReasons = pending.Reasons
-                        & (DesireAxes.InvalidationMaskFor(DesireAxis.Economy)
-                            | DesireAxes.InvalidationMaskFor(DesireAxis.Development));
+                    operationalReasons = pending.Reasons
+                        & (DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
+                            | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression));
+                    strategicReasons = StrategicInvalidationReason.None;
+                    dirtyStrategicAxes = new HashSet<DesireAxis>();
+                    foreach (DesireAxis axis in new[]
+                             {
+                                 DesireAxis.Aggression, DesireAxis.Defence,
+                                 DesireAxis.Economy, DesireAxis.Development,
+                             })
+                    {
+                        StrategicInvalidationReason axisReasons = pending.Reasons
+                            & DesireAxes.InvalidationMaskFor(axis);
+                        // Actor movement alone must not re-run every Economy infrastructure
+                        // candidate. It becomes actionable only when continuity's committed
+                        // builder actually reached its build hex; factual resource/site changes
+                        // still re-admit Economy normally.
+                        if (axis == DesireAxis.Economy
+                            && axisReasons == StrategicInvalidationReason.Actor
+                            && !EconomyBuilderReadyForCompletion())
+                            continue;
+                        if (axisReasons == StrategicInvalidationReason.None)
+                            continue;
+                        dirtyStrategicAxes.Add(axis);
+                        strategicReasons |= axisReasons;
+                    }
                     StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                        reconReasons | capabilityReasons);
+                        operationalReasons | strategicReasons);
                 }
 
-                // Development re-admission uses the existing Phase-A owner, shared AP ledger and
+                // Typed strategic re-admission uses the existing Phase-A owner, shared AP ledger and
                 // carried reservation. This is deliberately local orchestration, not a second
                 // manager or a new vertical layer.
-                bool ReenterCapabilityAxes(StrategicInvalidationReason reasons)
+                bool ReenterStrategicAxes(StrategicInvalidationReason reasons,
+                    HashSet<DesireAxis> dirtyAxes)
                 {
-                    if (reasons == StrategicInvalidationReason.None)
+                    if (reasons == StrategicInvalidationReason.None
+                        || dirtyAxes == null || dirtyAxes.Count == 0)
                         return false;
 
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                        ? AggressionObjectiveEvaluator.Enumerate(
+                            snapshot, assessment.Breakdown.OpportunityReport)
+                        : new List<AggressionObjective>();
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives);
                     activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
@@ -679,11 +727,19 @@ namespace Game.Ai.V2
                         reconObjectives, aggressionObjectives, activeIntents,
                         actorCommitments, player, ctx, root, devOpportunities, radar);
                     demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+                    List<AxisDemand> dirtyDemands = demands
+                        .Where(d => d != null && dirtyAxes.Contains(d.RequestingAxis)).ToList();
+                    if (dirtyAxes.Contains(DesireAxis.Economy)
+                        && !dirtyDemands.Any(d => d.RequestingAxis == DesireAxis.Economy
+                            && (d.Capability == CapabilityKind.EconomicInfrastructure
+                                || d.Capability == CapabilityKind.EconomicExpansionBase)))
+                        InfrastructureFulfillment.ClearDeferredEconomyResources(
+                            player, ctx.TurnNumber);
 
                     WorldAnalysis.StepObservationStamp beforeCapabilities =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     StrategicPhaseResult followup = StrategicManager.FulfillDemands(
-                        snapshot, player, root, hand, ctx, apLedger, demands,
+                        snapshot, player, root, hand, ctx, apLedger, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
                         phaseB.Reservation ?? phaseA.Reservation);
                     phaseA.Accumulate(followup);
@@ -694,14 +750,15 @@ namespace Game.Ai.V2
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeCapabilities, afterCapabilities, null);
-                    AiDebugLog.Write($"[AI][V2][Loop] capability-axis re-admission "
-                        + $"triggers={reasons} changed={(followup.StateChanged ? 1 : 0)}");
+                    AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission "
+                        + $"axes={string.Join(",", dirtyAxes)} triggers={reasons} "
+                        + $"changed={(followup.StateChanged ? 1 : 0)}");
                     return followup.StateChanged;
                 }
 
-                IEnumerator RunFocusAdmissions()
+                IEnumerator RunTypedAdmissions()
                 {
-                    AiDebugLog.Write("[AI][V2][Loop] begin — typed Recon local admission");
+                    AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
 
                     while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
                         && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
@@ -711,6 +768,10 @@ namespace Game.Ai.V2
                     // re-enter the existing manager immediately after the settled task boundary.
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                        ? AggressionObjectiveEvaluator.Enumerate(
+                            snapshot, assessment.Breakdown.OpportunityReport)
+                        : new List<AggressionObjective>();
                     activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
                     activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
@@ -768,20 +829,24 @@ namespace Game.Ai.V2
                         settledSteps++;
                         bool recoveryProgress = recoveryResult.Mutated;
                         noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
-                        TakeFocusTriggers(out StrategicInvalidationReason recoveryReconReasons,
-                            out StrategicInvalidationReason recoveryDevelopmentReasons);
-                        ReenterCapabilityAxes(recoveryDevelopmentReasons);
-                        StrategicInvalidation recoveryDevelopmentReconTriggers =
+                        TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
+                            out StrategicInvalidationReason recoveryStrategicReasons,
+                            out HashSet<DesireAxis> recoveryDirtyAxes);
+                        bool recoveryStrategicChanged = ReenterStrategicAxes(
+                            recoveryStrategicReasons, recoveryDirtyAxes);
+                        StrategicInvalidation recoveryFollowupTriggers =
                             StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
-                        recoveryReconReasons |= recoveryDevelopmentReconTriggers.Reasons;
+                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
+                                | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression));
+                        recoveryOperationalReasons |= recoveryFollowupTriggers.Reasons;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
                             + $"progress={(recoveryProgress ? 1 : 0)} "
-                            + $"reconTriggers={recoveryReconReasons} "
-                            + $"developmentTriggers={recoveryDevelopmentReasons}");
-                        if (recoveryReconReasons == StrategicInvalidationReason.None)
+                            + $"operationalTriggers={recoveryOperationalReasons} "
+                            + $"strategicTriggers={recoveryStrategicReasons}");
+                        if (recoveryOperationalReasons == StrategicInvalidationReason.None
+                            && !recoveryStrategicChanged)
                         {
-                            AiDebugLog.Write("[AI][V2][Loop] stop — recovery produced no Recon invalidation");
+                            AiDebugLog.Write("[AI][V2][Loop] stop — recovery produced no typed invalidation");
                             break;
                         }
                         continue;
@@ -789,7 +854,7 @@ namespace Game.Ai.V2
 
                     if (allocation.Funded.Count == 0)
                     {
-                        AiDebugLog.Write("[AI][V2][Loop] stop — no funded focus-scope mission");
+                        AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");
                         break;
                     }
 
@@ -914,25 +979,25 @@ namespace Game.Ai.V2
                     settledSteps++;
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
-                    TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
-                        out StrategicInvalidationReason developmentReasons);
-                    bool economyContinuation = selected.Kind == MissionKind.Economy;
-                    if (economyContinuation)
-                        developmentReasons |= StrategicInvalidationReason.ResourceSite;
-                    bool capabilityChanged = ReenterCapabilityAxes(developmentReasons);
-                    progressed |= capabilityChanged;
+                    TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
+                        out StrategicInvalidationReason strategicReasons,
+                        out HashSet<DesireAxis> dirtyStrategicAxes);
+                    bool strategicChanged = ReenterStrategicAxes(
+                        strategicReasons, dirtyStrategicAxes);
+                    progressed |= strategicChanged;
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
-                    StrategicInvalidation developmentReconTriggers =
+                    StrategicInvalidation followupOperationalTriggers =
                         StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
-                    reconReasons |= developmentReconTriggers.Reasons;
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
+                            | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression));
+                    operationalReasons |= followupOperationalTriggers.Reasons;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
-                        + $"reconTriggers={reconReasons} developmentTriggers={developmentReasons} "
+                        + $"operationalTriggers={operationalReasons} strategicTriggers={strategicReasons} "
                         + $"noProgress={noProgressCycles}");
-                    if (reconReasons == StrategicInvalidationReason.None && !economyContinuation)
+                    if (operationalReasons == StrategicInvalidationReason.None && !strategicChanged)
                     {
-                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no Recon invalidation");
+                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
                         break;
                     }
                     }
@@ -946,7 +1011,7 @@ namespace Game.Ai.V2
 
                 }
 
-                yield return RunFocusAdmissions();
+                yield return RunTypedAdmissions();
 
                 // Management/Development is another bounded task family, not the owner of the
                 // operational loop. Phase B settles until it either exhausts its candidates or
@@ -977,30 +1042,32 @@ namespace Game.Ai.V2
                         beforeManagement, afterManagement, null);
                     phaseB.Accumulate(phaseBRound);
 
-                    TakeFocusTriggers(out StrategicInvalidationReason reconReasons,
-                        out StrategicInvalidationReason developmentReasons);
-                    bool reconDirty = reconReasons != StrategicInvalidationReason.None;
-                    bool developmentDirty =
-                        developmentReasons != StrategicInvalidationReason.None;
-                    bool developmentChanged = ReenterCapabilityAxes(developmentReasons);
-                    reconDirty |= StrategicInterruptRegistry.Consume(
+                    TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
+                        out StrategicInvalidationReason strategicReasons,
+                        out HashSet<DesireAxis> dirtyStrategicAxes);
+                    bool operationalDirty = operationalReasons != StrategicInvalidationReason.None;
+                    bool strategicDirty = strategicReasons != StrategicInvalidationReason.None;
+                    bool strategicChanged = ReenterStrategicAxes(
+                        strategicReasons, dirtyStrategicAxes);
+                    operationalDirty |= StrategicInterruptRegistry.Consume(
                         player, ctx.TurnNumber,
-                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
+                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
+                        | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression)).Any;
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
-                        + $"developmentTriggers={developmentReasons} "
-                        + $"reconTriggers={reconReasons} "
-                        + $"reconReadmit={(reconDirty ? 1 : 0)}");
+                        + $"strategicTriggers={strategicReasons} "
+                        + $"operationalTriggers={operationalReasons} "
+                        + $"operationalReadmit={(operationalDirty ? 1 : 0)}");
 
-                    if (reconDirty)
+                    if (operationalDirty)
                     {
                         noProgressCycles = 0;
-                        yield return RunFocusAdmissions();
+                        yield return RunTypedAdmissions();
                     }
 
-                    if (!phaseBRound.StateChanged && !developmentChanged)
+                    if (!phaseBRound.StateChanged && !strategicChanged)
                         break;
-                    if (!reconDirty && !developmentDirty)
+                    if (!operationalDirty && !strategicDirty)
                         break;
                 }
                 phaseBHandled = true;

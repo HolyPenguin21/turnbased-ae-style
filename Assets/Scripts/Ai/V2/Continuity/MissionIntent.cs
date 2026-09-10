@@ -173,6 +173,8 @@ namespace Game.Ai.V2
             new Dictionary<MissionIntentKey, MissionIntent>();
         private int _baseExpansionEligibleTurn = -1;
         private int _baseExpansionLastReconciledTurn = -1;
+        private CardData _baseExpansionCard;
+        private HexCoord? _baseExpansionTarget;
 
         public IReadOnlyCollection<MissionIntent> All => _intents.Values;
         public int Count => _intents.Count;
@@ -185,12 +187,21 @@ namespace Game.Ai.V2
         // Pre-intent continuity for a legal Base opportunity. A Base mission cannot own a durable
         // actor before winning allocation, but repeated portfolio deferral must still survive into
         // the next turn. Kept in the existing continuity state rather than a second manager.
-        internal float MarkBaseExpansionCandidate(int turn, bool structurallyEligible)
+        internal float MarkBaseExpansionCandidate(int turn, CardData card,
+            HexCoord? target, bool structurallyEligible)
         {
-            if (!structurallyEligible)
+            if (!structurallyEligible || card == null || !target.HasValue)
             {
                 ResetBaseExpansionWait();
                 return 0f;
+            }
+            if (_baseExpansionCard != card
+                || !_baseExpansionTarget.HasValue
+                || !_baseExpansionTarget.Value.Equals(target.Value))
+            {
+                ResetBaseExpansionWait();
+                _baseExpansionCard = card;
+                _baseExpansionTarget = target;
             }
             _baseExpansionEligibleTurn = turn;
             return BaseExpansionWaitTurns * AiConfigV2.economyBaseUrgencyPerDeferredTurn;
@@ -200,11 +211,11 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionTurnOutcome> outcomes)
         {
             bool completed = (outcomes ?? System.Array.Empty<MissionTurnOutcome>()).Any(o =>
-                IsBaseExpansionOutcome(o)
+                IsStagedBaseExpansionOutcome(o)
                 && (o.EconomyBuildCompleted
                     || (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)));
             bool invalidated = (outcomes ?? System.Array.Empty<MissionTurnOutcome>()).Any(o =>
-                IsBaseExpansionOutcome(o)
+                IsStagedBaseExpansionOutcome(o)
                 && (o.StructuralFailure
                     || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated));
             if (completed || invalidated || _baseExpansionEligibleTurn != turn)
@@ -229,11 +240,28 @@ namespace Game.Ai.V2
                 && proposed.Kind == EconomyTaskKind.FoundBase;
         }
 
+        private bool IsStagedBaseExpansionOutcome(MissionTurnOutcome outcome)
+        {
+            if (!IsBaseExpansionOutcome(outcome) || !_baseExpansionTarget.HasValue)
+                return false;
+            EconomyMissionTarget target;
+            if (outcome.HasEconomyPayload)
+                target = outcome.EconomyTarget;
+            else if (outcome.Proposal?.Target is EconomyMissionTarget proposed)
+                target = proposed;
+            else
+                return false;
+            return target.TargetHex.Equals(_baseExpansionTarget.Value)
+                && (_baseExpansionCard == null || target.BuildCard == _baseExpansionCard);
+        }
+
         private void ResetBaseExpansionWait()
         {
             BaseExpansionWaitTurns = 0;
             _baseExpansionEligibleTurn = -1;
             _baseExpansionLastReconciledTurn = -1;
+            _baseExpansionCard = null;
+            _baseExpansionTarget = null;
         }
     }
 
@@ -790,6 +818,14 @@ namespace Game.Ai.V2
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
             var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
+            MissionIntent primaryEconomyBuild = state.All
+                .Where(i => i?.Kind == MissionKind.Economy && i.Economy != null
+                    && i.Economy.Kind != EconomyTaskKind.ReturnBuilder)
+                .OrderByDescending(i => i.StepsMovedTotal)
+                .ThenByDescending(i => i.CumulativeApSpent)
+                .ThenBy(i => i.CreatedTurn)
+                .ThenBy(i => i.IntentKey)
+                .FirstOrDefault();
             var liveLoanSources = new HashSet<MissionIntentKey>(state.All
                 .Where(i => i?.Kind == MissionKind.Economy && i.Economy?.Loaned == true)
                 .Select(i => i.Economy.LoanSource));
@@ -814,6 +850,21 @@ namespace Game.Ai.V2
                 if (intent.Kind == MissionKind.Economy)
                 {
                     EconomyIntent ei = intent.Economy;
+                    if (ei?.Kind != EconomyTaskKind.ReturnBuilder
+                        && !object.ReferenceEquals(intent, primaryEconomyBuild))
+                    {
+                        MissionIntent duplicateLender = null;
+                        if (ei?.Loaned == true)
+                            state.TryGet(ei.LoanSource, out duplicateLender);
+                        ResumeEconomyLender(duplicateLender);
+                        StrategicResourceReservationLedger.ReleaseByOwner(player,
+                            snap?.TurnNumber ?? 0,
+                            EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+                        dead.Add(intent.IntentKey);
+                        AiDebugLog.Write($"[AI][V2][Economy] retire alternative {intent.IntentKey} "
+                            + $"committed={primaryEconomyBuild?.IntentKey}");
+                        continue;
+                    }
                     ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                         && a.ArmyId == intent.PreferredMoverArmyId && a.HasHero && !a.IsPrison && !a.IsAir);
                     if (ei?.Kind == EconomyTaskKind.ReturnBuilder)
@@ -1361,7 +1412,13 @@ namespace Game.Ai.V2
             if (o.MoverArmyId.HasValue)
             {
                 ReleaseOtherReconActorClaims(state, intent, o.MoverArmyId.Value);
-                intent.PreferredMoverArmyId = o.MoverArmyId;
+                // Economy actor ownership is durable. A replacement may only happen after
+                // ResolveActive retires a structurally invalid intent; an ordinary retry cannot
+                // atomically rewrite the mover behind continuity's back.
+                if (intent.Kind != MissionKind.Economy
+                    || !intent.PreferredMoverArmyId.HasValue
+                    || intent.PreferredMoverArmyId.Value == o.MoverArmyId.Value)
+                    intent.PreferredMoverArmyId = o.MoverArmyId;
             }
 
             if (o.HasScoutPayload && intent.Scout != null)
@@ -1390,7 +1447,7 @@ namespace Game.Ai.V2
             if (o.HasEconomyPayload && intent.Economy != null)
             {
                 intent.Economy.TargetHex = o.EconomyTarget.TargetHex;
-                intent.Economy.BuilderArmyId = o.EconomyTarget.BuilderArmyId;
+                intent.Economy.BuilderArmyId = intent.PreferredMoverArmyId;
                 if (o.EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
             }
 
@@ -1578,7 +1635,7 @@ namespace Game.Ai.V2
                 Objective = new EconomyIntent
                 {
                     Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
-                    BuilderArmyId = t.BuilderArmyId,
+                    BuilderArmyId = o.MoverArmyId,
                     BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
                     BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
                     MinimumFollowupAp = t.MinimumFollowupAp,

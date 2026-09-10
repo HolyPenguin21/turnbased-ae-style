@@ -541,7 +541,11 @@ namespace Game.Ai.V2
                     target.BuilderRoutes, standingIntents, actorCommitments,
                     target.BuildValue, target.BuildApCost,
                     includeReturn: target.Kind == EconomyTaskKind.BuildExtraction);
-            ArmyData hero = rankedBuilders
+            IEnumerable<DemandLayer.EconomyBuilderChoice> eligibleBuilders = rankedBuilders;
+            if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
+                eligibleBuilders = eligibleBuilders.Where(
+                    x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
+            ArmyData hero = eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .Select(x => ResolveArmy(player, x.Route.ArmyId))
                 .FirstOrDefault(a => a != null && IsMobileEconomyHero(a, player)
@@ -555,7 +559,13 @@ namespace Game.Ai.V2
                             && SafeStepPathing.FindNextSafeStep(
                                 ctx.Map, a, target.TargetHex).HasValue)));
             if (hero == null)
-                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists("no free hero can advance toward economy site"));
+            {
+                if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"committed economy builder #{m.PreferredMoverArmyId.Value} cannot advance this turn"));
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    "no free hero can advance toward economy site"));
+            }
 
             MissionIntent donor = standingIntents.FirstOrDefault(i => i != null
                 && i.Kind != MissionKind.Economy && i.PreferredMoverArmyId == hero.Id

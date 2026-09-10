@@ -15,30 +15,39 @@ namespace Game.Ai.V2
             IReadOnlyList<AxisDemand> demands)
         {
             var result = new List<MissionProposal>();
-            foreach (MissionIntent recovery in activeIntents ?? System.Array.Empty<MissionIntent>())
+            foreach (MissionIntent intent in activeIntents ?? System.Array.Empty<MissionIntent>())
             {
-                if (recovery?.Kind != MissionKind.Economy
-                    || recovery.Status != IntentStatus.Active
-                    || recovery.Economy?.Kind != EconomyTaskKind.ReturnBuilder
-                    || !recovery.PreferredMoverArmyId.HasValue)
+                if (intent?.Kind != MissionKind.Economy
+                    || intent.Status != IntentStatus.Active
+                    || intent.Economy == null
+                    || !intent.PreferredMoverArmyId.HasValue)
                     continue;
-                EconomyIntent e = recovery.Economy;
+                EconomyIntent e = intent.Economy;
                 var target = new EconomyMissionTarget
                 {
-                    Kind = EconomyTaskKind.ReturnBuilder,
+                    Kind = e.Kind,
                     TargetHex = e.TargetHex,
-                    ObjectiveId = $"ReturnBuilder:{recovery.PreferredMoverArmyId.Value}",
-                    BuilderArmyId = recovery.PreferredMoverArmyId,
+                    ResourceType = e.ResourceType,
+                    ObjectiveId = e.Kind == EconomyTaskKind.ReturnBuilder
+                        ? $"ReturnBuilder:{intent.PreferredMoverArmyId.Value}"
+                        : $"{e.Kind}:{e.TargetHex.Q},{e.TargetHex.R}",
+                    // PreferredMoverArmyId is the continuity-owned actor identity. The payload is
+                    // kept synchronized with it so provisioning never sees two competing builders.
+                    BuilderArmyId = intent.PreferredMoverArmyId,
+                    BuildCard = e.BuildCard,
+                    BuildResourceCost = e.BuildResourceCost,
+                    BuildApCost = e.BuildApCost,
                     BuildValue = e.BuildValue,
+                    MinimumFollowupAp = e.MinimumFollowupAp,
                 };
                 var mission = new MissionProposal
                 {
                     Kind = MissionKind.Economy, Target = target,
                     BaseValue = e.BuildValue, LocalAdmissionScore = e.BuildValue,
-                    Requirements = Requirements(target, recovery, snapshot, -1f),
-                    PreferredMoverArmyId = recovery.PreferredMoverArmyId,
-                    FromDurableIntent = true, DurableFundingTier = recovery.Funding,
-                    Explain = $"economy ReturnBuilder #{recovery.PreferredMoverArmyId.Value} "
+                    Requirements = Requirements(target, intent, snapshot, -1f),
+                    PreferredMoverArmyId = intent.PreferredMoverArmyId,
+                    FromDurableIntent = true, DurableFundingTier = intent.Funding,
+                    Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
                         + $"@({target.TargetHex.Q},{target.TargetHex.R})",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
@@ -79,6 +88,11 @@ namespace Game.Ai.V2
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Kind == MissionKind.Economy && i.Economy != null
                     && i.Economy.Kind == kind && i.Economy.TargetHex.Equals(target.TargetHex));
+                // Active Economy work was materialized above from continuity itself. A fresh
+                // demand may describe the same site with a newly ranked builder, but it cannot
+                // replace or duplicate the committed operation.
+                if (incumbent != null)
+                    continue;
                 var m = new MissionProposal
                 {
                     Kind = MissionKind.Economy,

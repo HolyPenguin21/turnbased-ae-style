@@ -51,6 +51,10 @@ namespace Game.Ai.V2
 
             if (pm.Kind == MissionKind.Economy)
             {
+                if (pm.Mission?.FromDurableIntent == true
+                    && pm.Mission.PreferredMoverArmyId.HasValue
+                    && pm.Mission.PreferredMoverArmyId.Value != mover.Id)
+                    return MissionValidity.StaleMoverLost;
                 if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, pm.EconomyTarget))
                     return MissionValidity.StaleGoalMet;
                 if (pm.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder)

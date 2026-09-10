@@ -26,19 +26,20 @@ namespace Game.Ai.V2
 
     public static class AiStrategyV2Scope
     {
-        // Radar model #1a bring-up — isolated to Recon + Development (+ StrategicManager /
-        // HousekeepingManager, which run in every mode). DEF / ECO / AGG desire, demand, intents
-        // and missions are dropped so the one-AP-pool allocator and the EffectiveValue scaling can
-        // be validated without the full competing set. Change this one value to widen scope again;
-        // do not add local "disable aggression" booleans elsewhere. Test/runtime selection, not a
-        // production default.
-        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconEconomyDevelopment;
+        // Production runs all axes. Narrower modes remain available only for focused diagnostics;
+        // do not add local "disable aggression" booleans elsewhere.
+        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.Full;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 
         // Any non-Full mode is a focus scope: it restricts which desire axes may reach Phase A /
         // mission planning and suppresses the legacy strategic reaction path.
         public static bool IsFocusScoped => Mode != AiStrategyV2Mode.Full;
+
+        // The bounded typed loop is now the production execution path for every scope, including
+        // Full. Scope remains useful for isolated diagnostics, but no longer selects the legacy
+        // batch orchestrator or disables production axes by default.
+        public static bool UsesTypedLoop => true;
 
         private static readonly DesireAxis[] AllAxes =
         {

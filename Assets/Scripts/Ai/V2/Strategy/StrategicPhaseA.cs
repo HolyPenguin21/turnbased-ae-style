@@ -222,7 +222,8 @@ namespace Game.Ai.V2
             // inside Economy. The highest admitted local priority owns the hold for this pass.
             AxisDemand protectedEconomyBuild = deferredEconomyBuilds
                 .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
-                .OrderByDescending(d => d.Value + d.EconomyStrategicUrgency)
+                .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
+                .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
                 .ThenByDescending(d => d.Capability == CapabilityKind.EconomicExpansionBase ? 1 : 0)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
@@ -235,6 +236,13 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
                     + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
+            }
+            else if (demands.Any(d => d != null && d.RequestingAxis == DesireAxis.Economy
+                         && (d.Capability == CapabilityKind.EconomicInfrastructure
+                             || d.Capability == CapabilityKind.EconomicExpansionBase)))
+            {
+                InfrastructureFulfillment.ClearDeferredEconomyResources(
+                    player, ctx.TurnNumber);
             }
 
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
@@ -549,6 +557,20 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2] strat.A — residual demands "
                     + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
             return result;
+        }
+
+        private static bool IsCommittedEconomyBuild(
+            IReadOnlyList<MissionIntent> activeIntents, AxisDemand demand)
+        {
+            if (activeIntents == null || demand?.TargetHex == null)
+                return false;
+            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
+                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            return activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
+                && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
+                && i.Economy.TargetHex.Equals(demand.TargetHex.Value)
+                && (kind != EconomyTaskKind.FoundBase || i.Economy.BuildCard == null
+                    || i.Economy.BuildCard == demand.EconomyBuildCard));
         }
 
         private static AxisDemand CloneResidualDemand(DemandState state)

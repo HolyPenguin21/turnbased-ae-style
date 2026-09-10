@@ -32,10 +32,14 @@ namespace Game.Ai.V2
 
     public enum StrategicReservedResource { ActionPoints, Human, Energy, Materials, Tech }
 
-    // Why a resource is being held back. Extension point — StrategicReactionPass is the only
-    // current owner. A future late AP/Energy-costing V2 stage adds its reason here instead of
-    // reviving a hidden fixed floor (see the retired surplus*Reserve note in AiConfigV2).
-    public enum StrategicReservationReason { StrategicReactionPass, EconomyBuildFollowup }
+    // Why a resource is being held back. Economy distinguishes a replaceable deferred choice from
+    // a provisioned completion, so changing sites cannot stack alternatives or erase committed AP.
+    public enum StrategicReservationReason
+    {
+        StrategicReactionPass,
+        EconomyDeferredBuild,
+        EconomyBuildCompletion,
+    }
 
     // The stage by which the reservation is guaranteed gone in the normal (non-aborted) flow.
     public enum StrategicReservationExpiry { EndOfPhaseB, EndOfReaction, EndOfTurn }
@@ -157,6 +161,26 @@ namespace Game.Ai.V2
                     + $"active [{DebugLine(player, turn)}]");
             return removed > 0;
         }
+
+        // Deferred Economy alternatives are mutually exclusive. Replacing their owner is one
+        // ledger mutation and deliberately leaves a provisioned completion hold untouched.
+        public static void ReplaceReasonOwner(PlayerSetupData player, int turn,
+            StrategicReservationReason reason, string owner)
+        {
+            if (player == null) return;
+            Entry e = GetOrReset(player, turn);
+            int removed = e.Reservations.RemoveAll(r => r.Reason == reason
+                && (string.IsNullOrEmpty(owner) || r.Owner != owner));
+            if (removed > 0)
+                AiDebugLog.Write($"[AI][V2] reservation - replaced {removed} ({reason}) "
+                    + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
+        }
+
+        public static bool HasOwnerReason(PlayerSetupData player, int turn, string owner,
+            StrategicReservationReason reason) =>
+            player != null && !string.IsNullOrEmpty(owner)
+            && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            && e.Reservations.Any(r => r.Owner == owner && r.Reason == reason);
 
         public static bool ReleaseByOwner(PlayerSetupData player, int turn, string owner)
         {
