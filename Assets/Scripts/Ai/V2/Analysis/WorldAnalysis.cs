@@ -1218,10 +1218,10 @@ namespace Game.Ai.V2
                 var occupied = knownBuildings;
                 var knownSites = new HashSet<HexCoord>((snap.Known?.ResourceHexes
                     ?? System.Array.Empty<AiMapMemory.KnownResourceHex>()).Select(x => x.Hex));
-                var knownMapHexes = snap.MapKnowledge?.EverSeenHexSet != null
-                    ? new HashSet<HexCoord>(snap.MapKnowledge.EverSeenHexSet)
-                    : new HashSet<HexCoord>(snap.MapKnowledge?.VisitedHexSet
-                        ?? System.Array.Empty<HexCoord>());
+                var knownMapHexes = new HashSet<HexCoord>(
+                    snap.MapKnowledge?.EverSeenHexSet
+                    ?? snap.MapKnowledge?.VisitedHexSet
+                    ?? (ISet<HexCoord>)new HashSet<HexCoord>());
                 int ownedExtractionSites = knownBuildings.Values.Count(b => b.Owner == player
                     && !b.IsBase && knownSites.Contains(b.Hex));
                 float infrastructurePressure = Mathf.Clamp01(ownedExtractionSites
@@ -1339,12 +1339,13 @@ namespace Game.Ai.V2
             }
             if (targets.Count == 0)
                 return false;
-            targetCitadel = targets
+            HexCoord citadel = targets
                 .OrderBy(b => snap.Self.BaseHexes.Min(h => HexGridMath.Distance(h, b)))
                 .ThenBy(b => b.Q).ThenBy(b => b.R)
                 .First();
+            targetCitadel = citadel;
             anchor = snap.Self.BaseHexes
-                .OrderBy(h => HexGridMath.Distance(h, targetCitadel))
+                .OrderBy(h => HexGridMath.Distance(h, citadel))
                 .ThenBy(h => h.Q).ThenBy(h => h.R).First();
             return true;
         }
