@@ -1077,8 +1077,8 @@ namespace Game.Ai.V2
                             assignmentAp - card.EffectivePlayApCost)
                         * AiConfigV2.economyBuildApPenalty;
                     // Site quality is independent of whichever hero happens to be closest
-                    // this pass. Delivery cost still controls admission/cross-lane value, while
-                    // EconomySiteValue keeps the strategic target stable across replans.
+                    // this pass. Delivery cost still controls Demand admission, while
+                    // EconomySiteValue keeps target and cross-lane merit stable across replans.
                     float strategicValue = reasonValue - intrinsicBuildCost
                         - AiConfigV2.economySiteThreatPenalty * exposure;
                     float value = strategicValue - deliveryApCost
