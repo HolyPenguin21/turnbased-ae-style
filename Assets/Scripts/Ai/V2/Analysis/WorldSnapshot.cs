@@ -483,7 +483,11 @@ namespace Game.Ai.V2
         public float NearbyResourceClusterValue;
         public float NetworkExpansionValue;
         public float InfrastructurePressure;
+        // Ease of reinforcing/supplying the candidate from the existing Base network. This is
+        // intentionally the inverse of expansion distance; forward reach is represented below.
         public float LogisticsValue;
+        public float ForwardProgressValue;
+        public float CorridorAlignmentValue;
         public bool ConvertsOwnedExtractionSite;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
