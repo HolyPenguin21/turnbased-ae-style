@@ -657,7 +657,7 @@ namespace Game.Ai.V2
                 float preliminaryPayback = EconomyPaybackTurns(
                     gain, resourceCost, def?.apCost ?? 0f);
                 float preliminaryValue = ScoreEconomySite(
-                    Mathf.Max(rs.DeficitScore, starvation), gain,
+                    resourcePriority, gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
                     0f, 0f, 0f, resourceCost, def?.apCost ?? 0f,
                     preliminaryPayback);
@@ -673,7 +673,7 @@ namespace Game.Ai.V2
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
                     continue;
                 float strategicValue = ScoreEconomySite(
-                    Mathf.Max(rs.DeficitScore, starvation), gain,
+                    resourcePriority, gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
                     0f, exposure, 0f, resourceCost, def?.apCost ?? 0f,
                     preliminaryPayback);
