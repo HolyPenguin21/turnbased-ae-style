@@ -698,7 +698,7 @@ namespace Game.Ai.V2
                 laneUsed[lane] = u + 1;
             }
 
-            // 3. Commitments first. Sticky/pre-paid: they MAY drive the one AP pool negative (that
+            // 3. Hard commitments first. Sticky/pre-paid: they MAY drive the one AP pool negative (that
             //    is the point — a funding protection against Radar noise). Step-7 guards:
             //      · skip a key already provisioned this turn (_lockedClaims — its provenance is
             //        already applied to the slices) or already failed this turn (_rejectedThisTurn),
@@ -708,8 +708,13 @@ namespace Game.Ai.V2
             //        borrow another axis's budget; it can never conjure AP that isn't there
             //        (invariant for step 9's multi-raid case). Overflow -> deferred +
             //        CommitmentsStarveFreshDecisions.
+            var softCommitmentsByKey = _commitments
+                .Where(c => c?.Mission != null && c.Tier == CommitmentTier.Soft)
+                .GroupBy(c => StableMissionKey.For(c.Mission))
+                .ToDictionary(g => g.Key, g => g.First());
             float committedApSoFar = 0f;
-            foreach (Commitment c in _commitments)
+            foreach (Commitment c in _commitments
+                .Where(x => x?.Mission != null && x.Tier == CommitmentTier.Hard))
             {
                 MissionProposal m = c?.Mission;
                 if (m == null)
@@ -725,10 +730,9 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // Commitments consume K before any fresh mission — but they get NO magic extra
-                // slot. Two Soft commitments on a K=2 lane leave zero fresh capacity; a third
-                // commitment defers on ExecutionCapacity (ordered Hard->Soft->older by
-                // ResolveActive, so which one loses is deterministic).
+                // Only Hard commitments consume capacity before the competitive merge. Soft
+                // continuity remains visible below, but cannot monopolise AP/capacity merely
+                // because it was admitted on an earlier turn.
                 ExecutionLane clane = MissionAdmissionPolicy.LaneFor(m);
                 if (AtCapacity(clane))
                 {
@@ -782,7 +786,9 @@ namespace Game.Ai.V2
                 alloc.PhysicalFunded += cPhys;
             }
 
-            // 4. Fresh missions — TRUE CROSS-LANE k-way MERGE (spec §21). Per-lane queues are each
+            // 4. Fresh missions plus Soft commitments — TRUE CROSS-LANE k-way MERGE (spec §21).
+            //    Soft continuity keeps its intrinsic ProtectedValue floor, but competes for the same
+            //    AP/capacity as new work; only Hard commitments were protected above. Per-lane queues are each
             //    ordered by MissionAdmissionPolicy.AdmissionRank (the None lane by EffectiveValue)
             //    so the WITHIN-lane balance (Recon Explore-vs-Surveil, Raid feasibility ordering)
             //    survives the N>K beam. Then, repeatedly, the queue HEAD with the highest
@@ -793,14 +799,23 @@ namespace Game.Ai.V2
             //    Dictionary iteration order. Per candidate: conflict -> capacity -> AP budget ->
             //    global physical (atomic H/E/M/T). A proposal that is ALSO an active commitment is
             //    funded through the commitment loop above only.
-            var commitmentKeys = new HashSet<StableMissionKey>(_commitments
-                .Where(c => c?.Mission != null)
+            var protectedCommitmentKeys = new HashSet<StableMissionKey>(_commitments
+                .Where(c => c?.Mission != null && c.Tier == CommitmentTier.Hard)
                 .Select(c => StableMissionKey.For(c.Mission)));
             List<MissionProposal> freshPool = _missions
                 .Where(m => m != null
                     && !_lockedClaims.ContainsKey(StableMissionKey.For(m))
-                    && !commitmentKeys.Contains(StableMissionKey.For(m)))
+                    && !protectedCommitmentKeys.Contains(StableMissionKey.For(m)))
                 .ToList();
+
+            float CompetitiveRankValue(MissionProposal mission)
+            {
+                float value = RankValue(mission);
+                return softCommitmentsByKey.TryGetValue(
+                        StableMissionKey.For(mission), out Commitment soft)
+                    ? Mathf.Max(value, soft.ProtectedValue)
+                    : value;
+            }
 
             var laneQueues = new Dictionary<ExecutionLane, Queue<MissionProposal>>();
             foreach (IGrouping<ExecutionLane, MissionProposal> g in freshPool
@@ -826,8 +841,9 @@ namespace Game.Ai.V2
                     // Radar model #1a — cross-lane ordering is by EffectiveValue (BaseValue scaled
                     // by radar weight). Within-lane order is already baked into the queue above.
                     if (m == null
-                        || RankValue(head) > RankValue(m) + eps
-                        || (Mathf.Abs(RankValue(head) - RankValue(m)) <= eps
+                        || CompetitiveRankValue(head) > CompetitiveRankValue(m) + eps
+                        || (Mathf.Abs(CompetitiveRankValue(head)
+                                - CompetitiveRankValue(m)) <= eps
                             && StableMissionKey.For(head).CompareTo(StableMissionKey.For(m)) < 0))
                     {
                         m = head;
@@ -937,7 +953,7 @@ namespace Game.Ai.V2
                         Priority = priority++,
                         Tentative = v,
                         StrictAp = fundAp,
-                        IsCommitment = false,
+                        IsCommitment = softCommitmentsByKey.ContainsKey(key),
                         Stage = FundingStage.Strict,
                         PhysicalDraw = physDraw,
                     };
@@ -1011,7 +1027,8 @@ namespace Game.Ai.V2
                     Mission = m,
                     Priority = priority++,
                     Tentative = v,
-                    IsCommitment = false,
+                    IsCommitment = softCommitmentsByKey.ContainsKey(
+                        StableMissionKey.For(m)),
                     Stage = FundingStage.Remainder,
                     RemainderTopUp = v,
                     PhysicalDraw = physMin,
