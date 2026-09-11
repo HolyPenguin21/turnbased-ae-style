@@ -128,7 +128,7 @@ namespace Game.EditorTests
             var intent = new MissionIntent
             {
                 Kind = MissionKind.Scout,
-                Scout = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore },
                 PreferredMoverArmyId = 17,
                 LastProgressTurn = 8,
             };
