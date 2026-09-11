@@ -165,12 +165,12 @@ namespace Game.Ai.V2
         // Deferred Economy alternatives are mutually exclusive. Replacing their owner is one
         // ledger mutation and deliberately leaves a provisioned completion hold untouched.
         public static void ReplaceReasonOwner(PlayerSetupData player, int turn,
-            StrategicReservationReason reason, string owner)
+            StrategicReservationReason reason, string owner, bool replaceOwnerRows = false)
         {
             if (player == null) return;
             Entry e = GetOrReset(player, turn);
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason
-                && (string.IsNullOrEmpty(owner) || r.Owner != owner));
+                && (string.IsNullOrEmpty(owner) || r.Owner != owner || replaceOwnerRows));
             if (removed > 0)
                 AiDebugLog.Write($"[AI][V2] reservation - replaced {removed} ({reason}) "
                     + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
@@ -181,6 +181,38 @@ namespace Game.Ai.V2
             player != null && !string.IsNullOrEmpty(owner)
             && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Any(r => r.Owner == owner && r.Reason == reason);
+
+        public static bool HasReason(PlayerSetupData player, int turn,
+            StrategicReservationReason reason) => player != null
+            && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+            && e.Reservations.Any(r => r.Reason == reason);
+
+        public static bool OwnerReasonMatches(PlayerSetupData player, int turn, string owner,
+            StrategicReservationReason reason, Game.Cards.ResourceCost cost, float ap)
+        {
+            if (player == null || string.IsNullOrEmpty(owner)
+                || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return false;
+            List<StrategicResourceReservation> rows = e.Reservations
+                .Where(r => r.Owner == owner && r.Reason == reason).ToList();
+            float Expected(StrategicReservedResource resource) => resource switch
+            {
+                StrategicReservedResource.ActionPoints => Mathf.Max(0f, ap),
+                StrategicReservedResource.Human => Mathf.Max(0, cost?.Get(ResourceType.Human) ?? 0),
+                StrategicReservedResource.Energy => Mathf.Max(0, cost?.Get(ResourceType.Energy) ?? 0),
+                StrategicReservedResource.Materials => Mathf.Max(0, cost?.Get(ResourceType.Materials) ?? 0),
+                _ => Mathf.Max(0, cost?.Get(ResourceType.Tech) ?? 0),
+            };
+            foreach (StrategicReservedResource resource in System.Enum.GetValues(
+                         typeof(StrategicReservedResource)))
+            {
+                float expected = Expected(resource);
+                float actual = rows.Where(r => r.Resource == resource).Sum(r => r.Amount);
+                if (!Mathf.Approximately(expected, actual))
+                    return false;
+            }
+            return rows.Count == rows.Select(r => r.Resource).Distinct().Count();
+        }
 
         public static bool ReleaseByOwner(PlayerSetupData player, int turn, string owner)
         {

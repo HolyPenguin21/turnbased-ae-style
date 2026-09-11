@@ -344,6 +344,8 @@ namespace Game.Ai.V2
         public float BuildValue;
         public float MinimumFollowupAp;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
+        public int ProjectedActivationApCost;
+        public int ProjectedMaxMovement;
     }
 
     // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
@@ -490,6 +492,12 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class Pipeline
     {
+        internal static bool StrategicAdmissionNeeded(
+            IReadOnlyDictionary<DesireAxis, string> lastHandled,
+            DesireAxis axis, string fingerprint) => lastHandled == null
+            || !lastHandled.TryGetValue(axis, out string previous)
+            || previous != fingerprint;
+
         public static IEnumerator RunTurn(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             AiDebugLog.Write($"[AI][V2] === {player?.Nickname} — Strategy V2 pipeline owns this turn "
@@ -581,11 +589,12 @@ namespace Game.Ai.V2
             //     ReconAssignmentPlanner.MeasureAirCapacity (the same canonical capacity owner
             //     ground already uses), recomputed fresh every call — no cross-call registry.
 
-            // S1. Demand Layer — capability SHORTAGES (no card selection). The centralized scope is
-            //     applied after generation so no DEF/ECO/DEV/AGG demand can reach Phase A in ReconOnly.
+            // S1. Demand Layer — capability SHORTAGES (no card selection). Pass the centralized
+            //     scope into the owner itself so suppressed axes do not even emit demand telemetry.
+            var scopedDemandAxes = new HashSet<DesireAxis>(AiStrategyV2Scope.AxesInScope);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                devOpportunities, radar);
+                devOpportunities, radar, scopedDemandAxes);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
@@ -617,6 +626,17 @@ namespace Game.Ai.V2
                 activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                 actorCommitments = ActorCommitments.FromIntents(
                     activeIntents, snapshot, reconObjectives);
+                // Phase A changed the settled facts behind the initial demand frame. Refresh that
+                // frame once here; the first operational admission consumes it without another
+                // full Generate call.
+                devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                    ? DevelopmentOpportunityEvaluator.Enumerate(
+                        snapshot, player, root, hand, aggressionObjectives)
+                    : new List<DevelopmentOpportunity>();
+                demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
+                    reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
+                    player, ctx, root, devOpportunities, radar, scopedDemandAxes);
+                demands = AiStrategyV2Scope.ApplyDemandScope(demands);
             }
 
             List<MissionProposal> missions;
@@ -639,6 +659,50 @@ namespace Game.Ai.V2
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
                 int noProgressCycles = 0;
+                var lastStrategicAdmissionFingerprint = new Dictionary<DesireAxis, string>();
+                bool ownershipFreshAfterPhaseA = phaseA.StateChanged;
+
+                string StrategicAdmissionFingerprint(DesireAxis axis)
+                {
+                    string resources = root == null ? "-" : string.Join(",",
+                        ResourceBundle.All.Select(t => root.GetResource(t).ToString("0.###",
+                            CultureInfo.InvariantCulture)));
+                    string armies = string.Join(";", (snapshot?.Self?.Armies
+                            ?? System.Array.Empty<ArmySnapshot>())
+                        .Where(a => a != null).OrderBy(a => a.ArmyId)
+                        .Select(a => $"{a.ArmyId}:{a.Hex.Q},{a.Hex.R}:{a.MemberCount}:"
+                            + $"{a.CurrentMovement}:{a.ActivationApCost}:{(a.HasHero ? 1 : 0)}"));
+                    string economyFacts = axis == DesireAxis.Economy
+                        ? "|sites=" + string.Join(";", (snapshot?.Economy?.ExtractionOpportunities
+                                ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                            .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+                            .ThenBy(x => (int)x.ResourceType)
+                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{(int)x.ResourceType}:{x.MarginalIncomeGain}"))
+                          + "|bases=" + string.Join(";", (snapshot?.Economy?.BaseOpportunities
+                                ?? System.Array.Empty<EconomyBaseOpportunity>())
+                            .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.CapacityValue:0.###}"))
+                          + "|threats=" + string.Join(";", (snapshot?.Known?.EnemySightings
+                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                            .Concat(snapshot?.Known?.NeutralSightings
+                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                            .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.SeenTurn}:{x.Defenders?.Count ?? 0}"))
+                          + "|owners=" + string.Join(";", (activeIntents
+                                ?? new List<MissionIntent>())
+                            .Where(i => i?.Kind == MissionKind.Economy)
+                            .OrderBy(i => i.IntentKey)
+                            .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"))
+                        : string.Empty;
+                    return $"v={V2StateVersion.Current}|axis={axis}|ap={root?.ActionPoints ?? 0}"
+                        + $"|res={resources}|hand={hand?.MutationVersion ?? -1}|armies={armies}"
+                        + economyFacts;
+                }
+
+                foreach (DesireAxis axis in scopedDemandAxes.Where(a =>
+                             a == DesireAxis.Economy || a == DesireAxis.Development))
+                    lastStrategicAdmissionFingerprint[axis] =
+                        StrategicAdmissionFingerprint(axis);
 
                 // One factual flag may invalidate more than one family (for example, discovering
                 // a deficient ResourceSite changes both Recon knowledge and Development
@@ -670,16 +734,16 @@ namespace Game.Ai.V2
                     StrategicInvalidation pending =
                         StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
                     operationalReasons = pending.Reasons
-                        & (DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
-                            | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression));
+                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
                     strategicReasons = StrategicInvalidationReason.None;
                     dirtyStrategicAxes = new HashSet<DesireAxis>();
                     foreach (DesireAxis axis in new[]
                              {
-                                 DesireAxis.Aggression, DesireAxis.Defence,
                                  DesireAxis.Economy, DesireAxis.Development,
                              })
                     {
+                        if (!AiStrategyV2Scope.AxisInScope(axis))
+                            continue;
                         StrategicInvalidationReason axisReasons = pending.Reasons
                             & DesireAxes.InvalidationMaskFor(axis);
                         // Actor movement alone must not re-run every Economy infrastructure
@@ -709,6 +773,21 @@ namespace Game.Ai.V2
                         || dirtyAxes == null || dirtyAxes.Count == 0)
                         return false;
 
+                    dirtyAxes.RemoveWhere(axis =>
+                    {
+                        string fingerprint = StrategicAdmissionFingerprint(axis);
+                        bool unchanged = !StrategicAdmissionNeeded(
+                            lastStrategicAdmissionFingerprint, axis, fingerprint);
+                        if (unchanged)
+                            AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission skipped "
+                                + $"axis={axis} reason=settled_state_unchanged fingerprint={fingerprint}");
+                        return unchanged;
+                    });
+                    if (dirtyAxes.Count == 0)
+                        return false;
+                    Dictionary<DesireAxis, string> admittedFingerprints = dirtyAxes
+                        .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
+
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                         ? AggressionObjectiveEvaluator.Enumerate(
@@ -723,12 +802,15 @@ namespace Game.Ai.V2
                         ? DevelopmentOpportunityEvaluator.Enumerate(
                             snapshot, player, root, hand, aggressionObjectives)
                         : new List<DevelopmentOpportunity>();
-                    demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
+                    List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
-                        actorCommitments, player, ctx, root, devOpportunities, radar);
-                    demands = AiStrategyV2Scope.ApplyDemandScope(demands);
-                    List<AxisDemand> dirtyDemands = demands
-                        .Where(d => d != null && dirtyAxes.Contains(d.RequestingAxis)).ToList();
+                        actorCommitments, player, ctx, root, devOpportunities, radar,
+                        dirtyAxes);
+                    regenerated = AiStrategyV2Scope.ApplyDemandScope(regenerated);
+                    List<AxisDemand> dirtyDemands = regenerated;
+                    demands = demands.Where(d => d != null
+                            && !dirtyAxes.Contains(d.RequestingAxis))
+                        .Concat(regenerated).ToList();
                     if (dirtyAxes.Contains(DesireAxis.Economy)
                         && !dirtyDemands.Any(d => d.RequestingAxis == DesireAxis.Economy
                             && (d.Capability == CapabilityKind.EconomicInfrastructure
@@ -744,12 +826,24 @@ namespace Game.Ai.V2
                         phaseB.Reservation ?? phaseA.Reservation);
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
+                    {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
+                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        activeIntents = MissionContinuityLayer.ResolveActive(
+                            player, snapshot, reconObjectives);
+                        activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                        actorCommitments = ActorCommitments.FromIntents(
+                            activeIntents, snapshot, reconObjectives);
+                        ownershipFreshAfterPhaseA = true;
+                    }
                     WorldAnalysis.StepObservationStamp afterCapabilities =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                         beforeCapabilities, afterCapabilities, null);
+                    foreach (DesireAxis axis in dirtyAxes)
+                        lastStrategicAdmissionFingerprint[axis] =
+                            admittedFingerprints[axis];
                     AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission "
                         + $"axes={string.Join(",", dirtyAxes)} triggers={reasons} "
                         + $"changed={(followup.StateChanged ? 1 : 0)}");
@@ -766,24 +860,25 @@ namespace Game.Ai.V2
                     // Every admission reads a settled world. Strategic observations are refreshed
                     // here. The radar frame stays stable for this turn; typed Development facts
                     // re-enter the existing manager immediately after the settled task boundary.
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    if (!ownershipFreshAfterPhaseA)
+                    {
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
+                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    }
                     aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                         ? AggressionObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport)
                         : new List<AggressionObjective>();
-                    activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
-                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
-                    actorCommitments = ActorCommitments.FromIntents(
-                        activeIntents, snapshot, reconObjectives);
-                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                        ? DevelopmentOpportunityEvaluator.Enumerate(
-                            snapshot, player, root, hand, aggressionObjectives)
-                        : new List<DevelopmentOpportunity>();
-                    demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                        reconObjectives, aggressionObjectives, activeIntents,
-                        actorCommitments, player, ctx, root, devOpportunities, radar);
-                    demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+                    if (!ownershipFreshAfterPhaseA)
+                    {
+                        activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
+                        activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                        actorCommitments = ActorCommitments.FromIntents(
+                            activeIntents, snapshot, reconObjectives);
+                    }
+                    ownershipFreshAfterPhaseA = false;
+                    // Demand families persist across settled admissions. Only
+                    // ReenterStrategicAxes replaces dirty families after a factual invalidation.
 
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace);
@@ -836,8 +931,7 @@ namespace Game.Ai.V2
                             recoveryStrategicReasons, recoveryDirtyAxes);
                         StrategicInvalidation recoveryFollowupTriggers =
                             StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
-                                | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression));
+                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
                         recoveryOperationalReasons |= recoveryFollowupTriggers.Reasons;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
                             + $"progress={(recoveryProgress ? 1 : 0)} "
@@ -867,6 +961,53 @@ namespace Game.Ai.V2
                     {
                         ProvisioningManager.PreparePass(player, root, ctx,
                             cycleProvisioning, allocation, actorCommitments);
+                        IReadOnlyList<(FundedEntry Funded, ProvisionFailure Failure)> scoutFailures =
+                            ProvisioningManager.ScoutAssignmentFailures(cycleProvisioning, allocation);
+                        if (scoutFailures.Count > 0)
+                        {
+                            foreach ((FundedEntry failedFunding, ProvisionFailure failure) in scoutFailures)
+                            {
+                                StableMissionKey failedKey = StableMissionKey.For(failedFunding.Mission);
+                                attemptedKeys.Add(failedKey);
+                                provisioningFailures.TryGetValue(failure.Kind, out int failureCount);
+                                provisioningFailures[failure.Kind] = failureCount + 1;
+                                CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
+                                    player, failedFunding.Mission, failure);
+                                cycleSession.RegisterProvisionFailure(failedFunding, failure);
+                                cycleLedger.RecordProvisionFailure(failedFunding.Mission, failure);
+                                AiDebugLog.Write($"[AI][V2][Loop] assignment-batch "
+                                    + $"[{failedFunding.Mission.AttemptId}] {failedKey} — FAIL "
+                                    + $"{failure.Kind} [{failure.Disposition}] {failure.Detail}");
+                            }
+
+                            List<FundedEntry> openScouts = allocation.Funded.Where(fe =>
+                                fe?.Mission?.Kind == MissionKind.Scout
+                                && !cycleProvisioning.AlreadyProvisioned(
+                                    StableMissionKey.For(fe.Mission))).ToList();
+                            bool scoutPoolExhausted = openScouts.Count > 0
+                                && openScouts.All(fe => scoutFailures.Any(f =>
+                                    StableMissionKey.For(f.Funded.Mission).Equals(
+                                        StableMissionKey.For(fe.Mission))));
+                            if (scoutPoolExhausted)
+                                foreach (CapabilityPoolKind pool in openScouts
+                                             .Select(fe => CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission))
+                                             .Where(p => p != CapabilityPoolKind.None).Distinct())
+                                    CapabilityPoolExhaustionRegistry.MarkExhausted(player, pool,
+                                        $"assignment batch rejected all {openScouts.Count} funded Scout mission(s)");
+
+                            // One batch means one re-pack. The allocator now sees every impossible
+                            // Scout at once, so released AP can admit Economy/Development immediately.
+                            if (cycleSession.HasNewFailures && !cycleSession.Converged
+                                && reallocPass < AiConfigV2.maxReallocIterations)
+                            {
+                                reallocPass++;
+                                allocation = cycleSession.Pack();
+                                foreach (FundedEntry fe in allocation.Funded)
+                                    if (fe?.Mission != null)
+                                        fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
+                                continue;
+                            }
+                        }
                         FundedEntry selectedFunding = allocation.Funded.FirstOrDefault(fe =>
                             fe?.Mission != null
                             && CapabilityPoolExhaustionRegistry.CanAttempt(
@@ -988,8 +1129,7 @@ namespace Game.Ai.V2
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
                     StrategicInvalidation followupOperationalTriggers =
                         StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
-                            | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression));
+                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
                     operationalReasons |= followupOperationalTriggers.Reasons;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
@@ -1051,8 +1191,7 @@ namespace Game.Ai.V2
                         strategicReasons, dirtyStrategicAxes);
                     operationalDirty |= StrategicInterruptRegistry.Consume(
                         player, ctx.TurnNumber,
-                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)
-                        | DesireAxes.InvalidationMaskFor(DesireAxis.Aggression)).Any;
+                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
                         + $"strategicTriggers={strategicReasons} "

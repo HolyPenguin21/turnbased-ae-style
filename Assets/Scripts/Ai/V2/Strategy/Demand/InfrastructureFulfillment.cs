@@ -183,9 +183,14 @@ namespace Game.Ai.V2
             string owner = EconomyReservationOwner(demand);
             if (owner == null || !ShouldReserveDeferredEconomyResources(snap, demand))
                 return;
+            if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
+                    StrategicReservationReason.EconomyDeferredBuild,
+                    demand.EconomyBuildResourceCost, 0f))
+                return;
             StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
-                StrategicReservationReason.EconomyDeferredBuild, owner);
-            if (StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
+                StrategicReservationReason.EconomyDeferredBuild, owner,
+                replaceOwnerRows: true);
+            if (StrategicResourceReservationLedger.HasReason(player, turn,
                     StrategicReservationReason.EconomyBuildCompletion))
                 return;
             ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f,
@@ -209,8 +214,12 @@ namespace Game.Ai.V2
             {
                 StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
                     StrategicReservationReason.EconomyDeferredBuild, null);
+                if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
+                        reason, cost, buildAp))
+                    return;
                 StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
-                    StrategicReservationReason.EconomyBuildCompletion, owner);
+                    StrategicReservationReason.EconomyBuildCompletion, owner,
+                    replaceOwnerRows: true);
             }
             if (buildAp > 0f)
                 StrategicResourceReservationLedger.Upsert(player, turn,

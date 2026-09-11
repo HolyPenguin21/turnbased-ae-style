@@ -813,6 +813,13 @@ namespace Game.Ai.V2
                 OccupiedBattleSlots = a.Members.Count,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
+                NonHeroActivationApCosts = nonHero.Select(u => u.ActivationApCost).ToList(),
+                NonHeroMoveMax = nonHero.Select(u => u.MoveMax).ToList(),
+                NonHeroIsAviation = nonHero.Select(u => u.IsAviation).ToList(),
+                HeroActivationApCost = a.Members.Where(u => u.IsHero)
+                    .Sum(u => u.ActivationApCost),
+                HeroMoveMax = a.Members.Where(u => u.IsHero)
+                    .Select(u => u.MoveMax).DefaultIfEmpty(a.MaxMovement).Min(),
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
@@ -1233,32 +1240,35 @@ namespace Game.Ai.V2
                     && !b.IsBase && knownSites.Contains(b.Hex));
                 float infrastructurePressure = Mathf.Clamp01(ownedExtractionSites
                     / Mathf.Max(1f, snap.Self.BaseHexes.Count * 3f));
-                var activeBaseTargets = new HashSet<HexCoord>(
-                    MissionIntentRegistry.GetOrCreate(player).All
-                        .Where(i => i != null && i.Status == IntentStatus.Active
-                            && i.Kind == MissionKind.Economy
-                            && i.Economy?.Kind == EconomyTaskKind.FoundBase)
-                        .Select(i => i.Economy.TargetHex));
                 var directionalSites = new HashSet<HexCoord>();
                 bool hasDirection = TrySelectBaseExpansionDirection(snap, player,
                     out HexCoord targetCitadel, out HexCoord anchor);
                 if (hasDirection)
                     directionalSites.UnionWith(knownMapHexes);
-                directionalSites.UnionWith(activeBaseTargets);
                 foreach (HexCoord hex in directionalSites.OrderBy(x => x.Q).ThenBy(x => x.R))
                     {
-                        bool continuing = activeBaseTargets.Contains(hex);
                         if (!knownMapHexes.Contains(hex)
                             || !MeetsBaseSpacing(snap.Self.BaseHexes, hex)
-                            || (!continuing && (!hasDirection
-                                || !IsForwardBaseCandidate(snap.Self.BaseHexes, anchor,
-                                    targetCitadel, hex))))
+                            || !hasDirection
+                            || !IsForwardBaseCandidate(snap.Self.BaseHexes, anchor,
+                                targetCitadel, hex))
                             continue;
                         bool hasBuilding = occupied.TryGetValue(hex,
                             out AiMapMemory.KnownBuilding knownBuilding);
                         bool convertsOwnedExtraction = hasBuilding && knownSites.Contains(hex)
                             && knownBuilding.Owner == player && !knownBuilding.IsBase;
                         if (hasBuilding && !convertsOwnedExtraction)
+                            continue;
+                        bool knownHostileAtTarget = (snap.Known?.EnemySightings
+                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                            .Concat(snap.Known?.NeutralSightings
+                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                            .Any(contact => contact.Hex.Equals(hex));
+                        if (knownHostileAtTarget)
+                            continue;
+                        if (ctx?.Map != null && !snap.Self.BaseHexes.Any(home =>
+                                SafeStepPathing.FindSafePathCost(
+                                    ctx.Map, player, home, hex) < int.MaxValue))
                             continue;
 
                         int supportDistance = snap.Self.BaseHexes

@@ -139,6 +139,8 @@ namespace Game.Ai.V2
         public float BuildApCost;
         public float BuildValue;
         public float MinimumFollowupAp;
+        public int ProjectedActivationApCost;
+        public int ProjectedMaxMovement;
         public bool Loaned;
         public MissionIntentKey LoanSource;
     }
@@ -709,6 +711,68 @@ namespace Game.Ai.V2
                 && lender.Scout.Kind != ScoutTargetKind.Surveil && !underImmediateThreat)
                 return false;
             return true;
+        }
+
+        // Phase A has materialized the missing Hero for one concrete Economy prerequisite. The
+        // transaction-local capability lease ends at this handoff; Continuity immediately becomes
+        // the sole owner of the actor and exact build objective.
+        internal static MissionIntent BeginEconomyDelivery(PlayerSetupData player,
+            AxisDemand demand, int builderArmyId, int turn)
+        {
+            if (player == null || demand?.TargetHex == null || builderArmyId == 0
+                || demand.RequestingAxis != DesireAxis.Economy
+                || demand.Capability != CapabilityKind.Hero)
+                return null;
+
+            EconomyTaskKind kind = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            var objective = new EconomyIntent
+            {
+                Kind = kind,
+                TargetHex = demand.TargetHex.Value,
+                ResourceType = demand.EconomyResourceType,
+                BuilderArmyId = builderArmyId,
+                BuildCard = demand.EconomyBuildCard,
+                BuildResourceCost = demand.EconomyBuildResourceCost,
+                BuildApCost = demand.EconomyBuildApCost,
+                BuildValue = demand.EconomySiteValue > 0f
+                    ? demand.EconomySiteValue : demand.Value,
+                MinimumFollowupAp = demand.MinimumFollowupAp,
+                ProjectedActivationApCost = demand.EconomyProjectedActivationApCost,
+                ProjectedMaxMovement = demand.EconomyProjectedMaxMovement,
+            };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Funding = CommitmentTier.Soft,
+                Status = IntentStatus.Active,
+                Suspended = SuspendReason.None,
+                Objective = objective,
+                CreatedTurn = turn,
+                TurnsActive = 1,
+                LastReconciledTurn = turn,
+                LastProgressTurn = turn,
+                PreferredMoverArmyId = builderArmyId,
+            };
+            intent.IntentKey = MissionIntentKey.For(intent);
+            intent.LastAttemptKey = new StableMissionKey(MissionKind.Economy,
+                (int)kind,
+                kind == EconomyTaskKind.ReturnBuilder ? builderArmyId
+                    : demand.EconomyResourceType.HasValue
+                        ? (int)demand.EconomyResourceType.Value + 1 : 0,
+                objective.TargetHex.Q, objective.TargetHex.R);
+
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            foreach (MissionIntent stale in state.All.Where(i => i != null
+                         && i.Kind == MissionKind.Economy
+                         && i.Economy?.Kind != EconomyTaskKind.ReturnBuilder
+                         && (!i.IntentKey.Equals(intent.IntentKey)
+                             || i.PreferredMoverArmyId != builderArmyId)).ToList())
+                state.Remove(stale.IntentKey);
+            state.Put(intent);
+            AiDebugLog.Write($"[AI][V2][Economy] PhaseA handoff {intent.IntentKey} "
+                + $"actor=#{builderArmyId} funding=Soft");
+            return intent;
         }
 
         internal static void BeginEconomyBuilderRecovery(PlayerSetupData player,
@@ -1639,6 +1703,8 @@ namespace Game.Ai.V2
                     BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
                     BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
                     MinimumFollowupAp = t.MinimumFollowupAp,
+                    ProjectedActivationApCost = t.ProjectedActivationApCost,
+                    ProjectedMaxMovement = t.ProjectedMaxMovement,
                     Loaned = o.EconomyLoanSource.HasValue,
                     LoanSource = o.EconomyLoanSource ?? default,
                 },

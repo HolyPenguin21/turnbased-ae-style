@@ -33,7 +33,8 @@ namespace Game.Ai.V2
     internal static class PlacementSelector
     {
         public static List<PlacementOption> BuildOptions(WorldSnapshot snap, PlayerSetupData player,
-            CardDefinition def, ActorCommitments commitments, bool soloOnly)
+            CardDefinition def, ActorCommitments commitments, bool soloOnly,
+            bool phaseBSurplus = false)
         {
             var opts = new List<PlacementOption>();
             if (def == null || snap?.Self?.BaseHexes == null || player == null)
@@ -49,7 +50,8 @@ namespace Game.Ai.V2
                     continue;
 
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, commitments);
-                if (shell != null)
+                if (shell != null && (!phaseBSurplus
+                    || !IsProtectedFromPhaseBSurplus(player, shell, commitments)))
                     opts.Add(new PlacementOption(hex, DeploymentKind.ReusableShell, shell));
                 opts.Add(new PlacementOption(hex, DeploymentKind.NewArmy, null));
 
@@ -67,6 +69,9 @@ namespace Game.Ai.V2
                             opts.Add(new PlacementOption(hex, DeploymentKind.Garrison, a));
                         continue;
                     }
+                    if (phaseBSurplus && IsProtectedFromPhaseBSurplus(
+                            player, a, commitments))
+                        continue;
                     // Projected capacity, not pre-join HasRoom: a first hero may legally turn a
                     // full 2/2 body formation into 3/N and is exactly the placement a live Hero
                     // strategic demand needs. CardPlayExecutor/ArmyActions enforce the same rule.
@@ -90,6 +95,11 @@ namespace Game.Ai.V2
             }
             return opts;
         }
+
+        internal static bool IsProtectedFromPhaseBSurplus(PlayerSetupData player,
+            ArmyData army, ActorCommitments commitments) => army != null
+            && ((commitments?.IsArmyClaimed(army.Id) ?? false)
+                || StrategicCapabilityLeaseRegistry.IsLeased(player, army.Id));
     }
 
     public sealed class MaterializationReservation

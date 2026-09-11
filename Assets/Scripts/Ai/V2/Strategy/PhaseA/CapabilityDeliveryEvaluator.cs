@@ -49,6 +49,37 @@ namespace Game.Ai.V2
         internal static bool IsOperationalForDemand(ArmySnapshot army, AxisDemand demand)
             => MaterializationDeliveryPolicy.IsArmyOperationalForDemand(army, demand);
 
+        // After an Economy Hero materializes, bind the new actor back through DemandLayer's one
+        // canonical whole-army ranking. The refreshed Economy snapshot owns route feasibility;
+        // this evaluator only identifies the just-delivered actor and returns that ranked result.
+        internal static DemandLayer.EconomyBuilderChoice EconomyDeliveryChoice(
+            WorldSnapshot after, AxisDemand demand, int builderArmyId,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            out IReadOnlyList<EconomyBuilderRouteSnapshot> builderRoutes)
+        {
+            builderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>();
+            if (after?.Economy == null || demand?.TargetHex == null || builderArmyId == 0)
+                return null;
+            bool foundBase = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base;
+            IReadOnlyList<EconomyBuilderRouteSnapshot> witnessed = foundBase
+                ? (after.Economy.BaseOpportunities
+                    ?? System.Array.Empty<EconomyBaseOpportunity>()).FirstOrDefault(
+                    x => x.Hex.Equals(demand.TargetHex.Value)).BuilderRoutes
+                : (after.Economy.ExtractionOpportunities
+                    ?? System.Array.Empty<EconomyExtractionOpportunity>()).FirstOrDefault(x =>
+                    x.Hex.Equals(demand.TargetHex.Value)
+                    && demand.EconomyResourceType.HasValue
+                    && x.ResourceType == demand.EconomyResourceType.Value).BuilderRoutes;
+            builderRoutes = (witnessed ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                .Where(x => x.ArmyId == builderArmyId).ToList();
+            if (builderRoutes.Count == 0)
+                return null;
+            return DemandLayer.SelectEconomyBuilder(after, demand.TargetHex.Value,
+                builderRoutes, activeIntents, commitments,
+                demand.EconomySiteValue > 0f ? demand.EconomySiteValue : demand.Value,
+                demand.EconomyBuildApCost, includeReturn: !foundBase);
+        }
+
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after)
             => demand == null
@@ -96,7 +127,12 @@ namespace Game.Ai.V2
                 : DeliveredCapabilityAmount(demand, before, after);
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
                 return false;
-            StrategicCapabilityLeaseRegistry.Mark(player, ctx.TurnNumber, demand.Capability, leased);
+            // Economy Hero delivery is handed synchronously to MissionContinuityLayer by Phase A;
+            // persisting the generic through-Housekeeping lease as well would leave two owners.
+            // Other capabilities still need the turn-local barrier until their normal handoff.
+            if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
+                StrategicCapabilityLeaseRegistry.Mark(
+                    player, ctx.TurnNumber, demand.Capability, leased);
             return true;
         }
 

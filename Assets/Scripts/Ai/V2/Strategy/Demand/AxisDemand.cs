@@ -71,6 +71,8 @@ namespace Game.Ai.V2
         // admission order; BaseValue remains intrinsic so critical Defence/Reaction is untouched.
         public float EconomyStrategicUrgency;
         public int? EconomyPreferredBuilderArmyId;
+        public int EconomyProjectedActivationApCost;
+        public int EconomyProjectedMaxMovement;
         // Analysis-owned structural routes for the selected site. Demand applies intent/commitment
         // policy; no downstream stage has to query Provisioning or live registries to rediscover it.
         public IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes;

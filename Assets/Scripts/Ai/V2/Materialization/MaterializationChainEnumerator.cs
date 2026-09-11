@@ -165,7 +165,8 @@ namespace Game.Ai.V2
                 bool soloOnly = cap == CapabilityKind.ScoutCapability;
                 IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
 
-                foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
+                foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments,
+                             soloOnly, phaseBSurplus: true))
                 {
                     MaterializationPlan direct = MaterializationPlanFactory.MakeExistingPlan(MaterializationChainKind.Direct, null,
                         card, i, null, -1, opt, baseAbilities);
@@ -224,7 +225,8 @@ namespace Game.Ai.V2
                                 : hero ? CapabilityKind.Hero : CapabilityKind.FieldCombatPower;
                             bool soloOnly = cap == CapabilityKind.ScoutCapability;
 
-                            foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments, soloOnly))
+                            foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, hd, commitments,
+                                         soloOnly, phaseBSurplus: true))
                             {
                                 MaterializationPlan genEq = MaterializationPlanFactory.MakeGeneratedPlan(
                                     MaterializationChainKind.GenerateAttachDeploy, null, g,
@@ -246,7 +248,8 @@ namespace Game.Ai.V2
                     bool genSoloOnly = genCap == CapabilityKind.ScoutCapability;
                     IReadOnlyList<string> genAbilities = MaterializationChainMatching.EffectiveAbilities(gd, null);
 
-                    foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments, genSoloOnly))
+                    foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, gd, commitments,
+                                 genSoloOnly, phaseBSurplus: true))
                     {
                         MaterializationPlan gen = MaterializationPlanFactory.MakeGeneratedPlan(MaterializationChainKind.GenerateDeploy,
                             null, g, baseInHand: null, baseIdx: -1, generatedIsEquipment: false, opt: opt,
