@@ -969,8 +969,8 @@ namespace Game.Ai.V2
                             {
                                 StableMissionKey failedKey = StableMissionKey.For(failedFunding.Mission);
                                 attemptedKeys.Add(failedKey);
-                                provisioningFailures.TryGetValue(failure.Kind, out int failureCount);
-                                provisioningFailures[failure.Kind] = failureCount + 1;
+                                provisioningFailures.TryGetValue(failure.Kind, out int scoutFailureCount);
+                                provisioningFailures[failure.Kind] = scoutFailureCount + 1;
                                 CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
                                     player, failedFunding.Mission, failure);
                                 cycleSession.RegisterProvisionFailure(failedFunding, failure);
