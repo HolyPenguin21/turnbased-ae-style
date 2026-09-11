@@ -515,6 +515,52 @@ namespace Game.Ai.V2
                 bool operationallyDelivered = CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(player, ctx, snap, plan,
                     chosenDemand, inv, afterInv, armyIdsBefore, out float delivered);
 
+                if (operationallyDelivered
+                    && MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand))
+                {
+                    int builderArmyId = CapabilityDeliveryEvaluator.OperationalLeaseArmyIds(
+                            armyIdsBefore, snap, plan, chosenDemand)
+                        .OrderBy(id => id).FirstOrDefault();
+                    if (builderArmyId != 0)
+                    {
+                        DemandLayer.EconomyBuilderChoice delivery =
+                            CapabilityDeliveryEvaluator.EconomyDeliveryChoice(
+                                snap, chosenDemand, builderArmyId, activeIntents,
+                                commitments, out IReadOnlyList<EconomyBuilderRouteSnapshot> routes);
+                        if (delivery != null)
+                        {
+                            chosenDemand.EconomyPreferredBuilderArmyId = builderArmyId;
+                            chosenDemand.EconomyBuilderRoutes = routes;
+                            chosenDemand.EconomyProjectedActivationApCost =
+                                delivery.ProjectedActivationApCost;
+                            chosenDemand.EconomyProjectedMaxMovement =
+                                delivery.ProjectedMaxMovement;
+                            chosenDemand.EconomyAssignmentApCost =
+                                delivery.TotalAssignmentApCost;
+                        }
+                        MissionContinuityLayer.BeginEconomyDelivery(
+                            player, chosenDemand, builderArmyId, ctx.TurnNumber);
+                        // Continuity owns the actor from this point. Mirror that handoff into the
+                        // current Phase-A view as well, so a later chain in this same bounded pass
+                        // cannot treat the freshly delivered Economy army as a free recipient.
+                        commitments?.Claim(builderArmyId);
+                        if (delivery != null)
+                            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                                snap, player, ctx.TurnNumber, new AxisDemand
+                                {
+                                    RequestingAxis = DesireAxis.Economy,
+                                    Capability = chosenDemand.EconomyBuildCard?.Definition?.cardType
+                                        == CardType.Base
+                                            ? CapabilityKind.EconomicExpansionBase
+                                            : CapabilityKind.EconomicInfrastructure,
+                                    TargetHex = chosenDemand.TargetHex,
+                                    EconomyResourceType = chosenDemand.EconomyResourceType,
+                                    EconomyBuildResourceCost = chosenDemand.EconomyBuildResourceCost,
+                                    EconomyBuilderRoutes = routes,
+                                });
+                    }
+                }
+
                 float borrowed = 0f;
                 if (operationallyDelivered)
                 {
@@ -602,6 +648,8 @@ namespace Game.Ai.V2
                 EconomyAssignmentApCost = d.EconomyAssignmentApCost,
                 EconomyPaybackTurns = d.EconomyPaybackTurns,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
+                EconomyProjectedActivationApCost = d.EconomyProjectedActivationApCost,
+                EconomyProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 Explain = d.Explain,

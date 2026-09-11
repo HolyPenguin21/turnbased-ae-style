@@ -202,6 +202,9 @@ namespace Game.Ai.V2
         internal bool TryGetAssignmentRejection(StableMissionKey k, out ScoutAssignmentFailureReason reason) =>
             _assignmentRejections.TryGetValue(k, out reason);
 
+        internal IReadOnlyDictionary<StableMissionKey, ScoutAssignmentFailureReason>
+            AssignmentRejections => _assignmentRejections;
+
         internal void SetRaidAssignment(Dictionary<StableMissionKey, int> a)
         {
             _raidAssignment.Clear();
@@ -228,6 +231,29 @@ namespace Game.Ai.V2
         {
             PrepareScoutAssignments(player, root, ctx, session, allocation, durableCommitments);
             PrepareRaidAssignments(session, allocation);
+        }
+
+        // Assignment is solved for the whole funded Scout set. Expose every negative result as one
+        // batch so orchestration can return all impossible jobs to the existing allocator before it
+        // chooses the next mission. This is vocabulary translation only; ReconAssignmentPlanner
+        // remains the sole owner of assignment feasibility and rejection reasons.
+        internal static IReadOnlyList<(FundedEntry Funded, ProvisionFailure Failure)>
+            ScoutAssignmentFailures(ProvisioningSession session, TentativeAllocation allocation)
+        {
+            var failures = new List<(FundedEntry, ProvisionFailure)>();
+            if (session == null || allocation?.Funded == null)
+                return failures;
+            foreach (FundedEntry funded in allocation.Funded)
+            {
+                if (funded?.Mission?.Kind != MissionKind.Scout
+                    || !(funded.Mission.Target is ScoutMissionTarget target))
+                    continue;
+                StableMissionKey key = StableMissionKey.For(funded.Mission);
+                if (!session.AssignmentRejections.ContainsKey(key))
+                    continue;
+                failures.Add((funded, AssignmentFailure(session, key, target)));
+            }
+            return failures;
         }
 
         // Delegates the actual actor<->job matching to ReconAssignmentPlanner (the ONE canonical
@@ -545,10 +571,12 @@ namespace Game.Ai.V2
             if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
                 eligibleBuilders = eligibleBuilders.Where(
                     x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
-            ArmyData hero = eligibleBuilders
+            DemandLayer.EconomyBuilderChoice builderChoice = eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
-                .Select(x => ResolveArmy(player, x.Route.ArmyId))
-                .FirstOrDefault(a => a != null && IsMobileEconomyHero(a, player)
+                .FirstOrDefault(x =>
+                {
+                    ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                    return a != null && IsMobileEconomyHero(a, player)
                     && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
                     && !session.ClaimedArmyIds.Contains(a.Id)
                     && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
@@ -557,7 +585,10 @@ namespace Game.Ai.V2
                     && (a.Hex.Equals(target.TargetHex)
                         || (a.CurrentMovement > 0
                             && SafeStepPathing.FindNextSafeStep(
-                                ctx.Map, a, target.TargetHex).HasValue)));
+                                ctx.Map, a, target.TargetHex).HasValue));
+                });
+            ArmyData hero = builderChoice == null
+                ? null : ResolveArmy(player, builderChoice.Route.ArmyId);
             if (hero == null)
             {
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
@@ -585,9 +616,16 @@ namespace Game.Ai.V2
             bool completionThisTurn = distance <= hero.CurrentMovement;
             ResourceCost stageCost = completionThisTurn ? target.BuildResourceCost : null;
             List<UnitData> lighteningPlan = PlanEconomyArmyLightening(
-                player, hero, target.TargetHex, session.Snapshot, ctx, out ArmyData garrison);
+                player, hero, target.TargetHex, session.Snapshot, ctx,
+                builderChoice.MinimumEscortCount, out ArmyData garrison,
+                out List<UnitData> reinforcementPlan);
+            if (builderChoice.Suitability == DemandLayer.EconomyArmySuitability.ReinforceAtBase
+                && reinforcementPlan.Count == 0)
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                    $"economy builder #{hero.Id} no longer has its planned minimum escort"));
             float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
-                target.MinimumFollowupAp, lighteningPlan, travelNeeded, completionThisTurn);
+                target.MinimumFollowupAp, lighteningPlan, reinforcementPlan,
+                travelNeeded, completionThisTurn);
             if (realAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
                     $"economy hero #{hero.Id} needs {realAp:0.##} AP for "
@@ -601,8 +639,12 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(realAp, CostVector(stageCost)),
                     "economy completion resources no longer spendable"));
-            int unloadedMembers = ApplyEconomyArmyLightening(
-                hero, garrison, lighteningPlan, ctx);
+            int preparedMembers = ApplyEconomyArmyLightening(
+                hero, garrison, lighteningPlan, reinforcementPlan, ctx);
+            int plannedTransfers = lighteningPlan.Count + reinforcementPlan.Count;
+            if (preparedMembers != plannedTransfers)
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                    $"economy builder #{hero.Id} composition transaction did not commit"));
             // Atomic transfer failure leaves the original roster intact, so claim its real live AP
             // rather than the projected lighter value.
             realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
@@ -630,7 +672,7 @@ namespace Game.Ai.V2
                 ClaimedAp = realAp, ClaimedPhysical = CostVector(stageCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
-            }, unloadedMembers);
+            }, preparedMembers);
         }
 
         // Economy-specific, same-hex preparation belongs here because the target and its route are
@@ -638,21 +680,31 @@ namespace Game.Ai.V2
         // roster change; a failed preflight simply leaves the original army usable.
         internal static int TryLightenEconomyArmy(PlayerSetupData player, ArmyData builder,
             HexCoord target, WorldSnapshot snapshot, AiTurnContext ctx)
+            => TryLightenEconomyArmy(player, builder, target, snapshot, ctx,
+                minimumEscort: 0);
+
+        internal static int TryLightenEconomyArmy(PlayerSetupData player, ArmyData builder,
+            HexCoord target, WorldSnapshot snapshot, AiTurnContext ctx, int minimumEscort)
         {
             List<UnitData> plan = PlanEconomyArmyLightening(
-                player, builder, target, snapshot, ctx, out ArmyData garrison);
-            return ApplyEconomyArmyLightening(builder, garrison, plan, ctx);
+                player, builder, target, snapshot, ctx, minimumEscort,
+                out ArmyData garrison, out List<UnitData> reinforcement);
+            return ApplyEconomyArmyLightening(
+                builder, garrison, plan, reinforcement, ctx);
         }
 
         private static List<UnitData> PlanEconomyArmyLightening(PlayerSetupData player,
             ArmyData builder, HexCoord target, WorldSnapshot snapshot, AiTurnContext ctx,
-            out ArmyData garrison)
+            int minimumEscort, out ArmyData garrison,
+            out List<UnitData> reinforcement)
         {
             garrison = null;
+            reinforcement = new List<UnitData>();
+            var unload = new List<UnitData>();
             if (player == null || builder == null || ctx == null || builder.IsGarrison
                 || builder.IsPrison || builder.IsAirfield || builder.IsAirArmy
-                || builder.Hex.Equals(target) || !builder.Members.Any(u => u != null && u.IsHero))
-                return new List<UnitData>();
+                || !builder.Members.Any(u => u != null && u.IsHero))
+                return unload;
             // A loan may temporarily redirect an Explore/early-Raid actor, but it must not also
             // rewrite that durable mission's roster behind Continuity's back. Hard Defence,
             // Surveil and started Raid are already excluded at assignment; this preserves the
@@ -660,68 +712,89 @@ namespace Game.Ai.V2
             if (MissionIntentRegistry.GetOrCreate(player).All.Any(i => i != null
                 && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
                 && i.PreferredMoverArmyId == builder.Id))
-                return new List<UnitData>();
+                return unload;
             BuildingData home = BuildingRegistry.FindAt(builder.Hex);
             bool isCitadel = player.CitadelHexQ == builder.Hex.Q
                 && player.CitadelHexR == builder.Hex.R;
             if ((home == null || home.Owner != player || (!home.IsBase && !isCitadel)))
-                return new List<UnitData>();
+                return unload;
             garrison = ArmyRegistry.FindGarrisonAt(builder.Hex, player);
-            if (garrison == null || garrison == builder || garrison.HasActivatedThisTurn)
-                return new List<UnitData>();
+            if (garrison == null || garrison == builder
+                || garrison.HasActivatedThisTurn)
+                return unload;
 
             List<UnitData> bodies = builder.Members
                 .Where(u => u != null && !u.IsHero && !u.IsAviation)
                 .OrderByDescending(u => AiPower.ToPowerUnit(u).BasePower)
                 .ThenBy(u => u.Name).ToList();
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
+                DemandLayer.EconomyRouteThreats(snapshot, builder.Hex, target);
             IReadOnlyList<UnitData> retained = SelectEconomyEscort(
-                builder, bodies, EconomyRouteThreats(snapshot, builder.Hex, target));
-            // Null means a corridor contact exists but the remembered roster is too incomplete
-            // for WorthIt's skill-aware coverage/win evaluation. Conservatively keep everything.
-            if (retained == null)
-                return new List<UnitData>();
-            var keep = new HashSet<UnitData>(retained);
+                builder, bodies, threats, minimumEscort);
+            if (retained != null)
+            {
+                var keep = new HashSet<UnitData>(retained);
+                unload.AddRange(bodies.Where(u => !keep.Contains(u))
+                    .OrderByDescending(u => u.ActivationApCost)
+                    .ThenBy(u => AiPower.ToPowerUnit(u).BasePower)
+                    .ThenBy(u => u.Name));
+                while (unload.Count > 0
+                       && !ArmyActions.CanTransferMembers(
+                           unload, builder, garrison, out _))
+                    unload.RemoveAt(unload.Count - 1);
+                return unload;
+            }
 
-            List<UnitData> extras = bodies.Where(u => !keep.Contains(u))
-                .OrderByDescending(u => u.ActivationApCost)
-                .ThenBy(u => AiPower.ToPowerUnit(u).BasePower)
+            // The field roster is deficient. At a Base/Citadel add only the smallest garrison
+            // subset that makes the whole hero-led formation safe; do not add surplus beyond it.
+            List<UnitData> reserve = garrison.Members
+                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .OrderBy(u => u.ActivationApCost)
+                .ThenByDescending(u => AiPower.ToPowerUnit(u).BasePower)
                 .ThenBy(u => u.Name).ToList();
-            if (extras.Count == 0)
-                return extras;
-            while (extras.Count > 0
-                   && !ArmyActions.CanTransferMembers(extras, builder, garrison, out _))
-                extras.RemoveAt(extras.Count - 1);
-            return extras;
+            for (int count = 1; count <= reserve.Count; count++)
+                foreach (List<UnitData> subset in Combinations(reserve, count))
+                {
+                    var projected = bodies.Concat(subset)
+                        .Select(WorthIt.FromLiveUnit).ToList();
+                    if (!DemandLayer.EconomyRosterSafe(
+                            projected, threats, minimumEscort))
+                        continue;
+                    if (!ArmyActions.CanTransferMembers(
+                            subset, garrison, builder, out _))
+                        continue;
+                    reinforcement.AddRange(subset);
+                    return unload;
+                }
+            return unload;
         }
 
-        private static int ApplyEconomyArmyLightening(ArmyData builder, ArmyData garrison,
-            IReadOnlyList<UnitData> extras, AiTurnContext ctx)
+        private static int ApplyEconomyArmyLightening(ArmyData builder,
+            ArmyData garrison, IReadOnlyList<UnitData> unload,
+            IReadOnlyList<UnitData> reinforcement, AiTurnContext ctx)
         {
-            if (builder == null || garrison == null || extras == null || extras.Count == 0)
+            if (builder == null || garrison == null)
                 return 0;
-            if (!ArmyActions.TransferMembersAtomic(
-                    extras, builder, garrison, ctx.HexSelection, out string why))
+            if (unload.Count > 0 && !ArmyActions.TransferMembersAtomic(
+                    unload, builder, garrison, ctx.HexSelection, out string whyUnload))
             {
-                if (!string.IsNullOrEmpty(why))
-                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder lighten skipped: {why}");
+                if (!string.IsNullOrEmpty(whyUnload))
+                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder lighten skipped: {whyUnload}");
                 return 0;
             }
-            AiDebugLog.Write($"[AI][V2][Economy] builder #{builder.Id} left {extras.Count} escort(s) "
-                + $"in garrison #{garrison.Id}; retainedPower={AiPower.EffectiveArmyPower(builder.Members):0.##}");
-            return extras.Count;
-        }
-
-        private static IReadOnlyList<AiMapMemory.KnownEnemySighting> EconomyRouteThreats(
-            WorldSnapshot snapshot,
-            HexCoord from, HexCoord target)
-        {
-            int direct = HexGridMath.Distance(from, target);
-            return (snapshot?.Known?.EnemySightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(enemy => HexGridMath.Distance(from, enemy.Hex)
-                    + HexGridMath.Distance(enemy.Hex, target)
-                    <= direct + 2)
-                .ToList();
+            if (reinforcement.Count > 0 && !ArmyActions.TransferMembersAtomic(
+                    reinforcement, garrison, builder, ctx.HexSelection, out string whyAdd))
+            {
+                if (!string.IsNullOrEmpty(whyAdd))
+                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder reinforce skipped: {whyAdd}");
+                return unload.Count;
+            }
+            int changed = unload.Count + reinforcement.Count;
+            if (changed > 0)
+                AiDebugLog.Write($"[AI][V2][Economy] builder #{builder.Id} prepared "
+                    + $"unload={unload.Count} add={reinforcement.Count} "
+                    + $"garrison=#{garrison.Id} power={AiPower.EffectiveArmyPower(builder.Members):0.##}");
+            return changed;
         }
 
         // Composition selection only; combat truth remains WorthIt (coverage + full-roster Monte
@@ -731,34 +804,53 @@ namespace Game.Ai.V2
         internal static IReadOnlyList<UnitData> SelectEconomyEscort(ArmyData builder,
             IReadOnlyList<UnitData> bodies,
             IReadOnlyList<AiMapMemory.KnownEnemySighting> threats)
+            => SelectEconomyEscort(builder, bodies, threats, minimumEscort: 0);
+
+        internal static IReadOnlyList<UnitData> SelectEconomyEscort(ArmyData builder,
+            IReadOnlyList<UnitData> bodies,
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> threats, int minimumEscort)
         {
             if (builder == null)
                 return null;
             if (threats == null || threats.Count == 0)
-                return System.Array.Empty<UnitData>();
+                return (bodies ?? System.Array.Empty<UnitData>())
+                    .Where(u => u != null)
+                    .OrderBy(u => u.ActivationApCost)
+                    .ThenByDescending(u => u.MoveMax)
+                    .ThenBy(u => u.Name)
+                    .Take(Mathf.Max(0, minimumEscort)).ToList();
             if (threats.Any(t => t.Defenders == null || t.Defenders.Count == 0))
                 return null;
 
             List<UnitData> pool = (bodies ?? System.Array.Empty<UnitData>())
                 .Where(u => u != null).Distinct().ToList();
-            for (int count = 0; count <= pool.Count; count++)
+            for (int count = Mathf.Max(0, minimumEscort); count <= pool.Count; count++)
             {
                 List<UnitData> best = null;
+                int bestAp = int.MaxValue;
+                int bestMove = int.MinValue;
                 float bestPower = float.MinValue;
                 foreach (List<UnitData> subset in Combinations(pool, count))
                 {
                     // Heroes travel with the builder but do not participate in ground combat;
                     // WorthIt's ArmyData overloads apply the same non-hero boundary.
                     var roster = subset.Select(WorthIt.FromLiveUnit).ToList();
-                    bool safe = threats.All(t => WorthIt.CanDamageAll(roster, t.Defenders)
-                        && WorthIt.WinChance(roster, t.Defenders, 0f)
-                            >= AiConfig.defenceActiveWinChance);
+                    bool safe = DemandLayer.EconomyRosterSafe(
+                        roster, threats, minimumEscort);
                     if (!safe)
                         continue;
+                    int ap = subset.Sum(u => u.ActivationApCost);
+                    int move = subset.Count == 0 ? builder.MaxMovement
+                        : subset.Min(u => u.MoveMax);
                     float power = AiPower.EffectiveArmyPower(subset);
-                    if (best == null || power > bestPower + AiConfigV2.allocatorSliceEpsilon)
+                    if (best == null || ap < bestAp
+                        || (ap == bestAp && move > bestMove)
+                        || (ap == bestAp && move == bestMove
+                            && power > bestPower + AiConfigV2.allocatorSliceEpsilon))
                     {
                         best = subset;
+                        bestAp = ap;
+                        bestMove = move;
                         bestPower = power;
                     }
                 }
@@ -795,12 +887,19 @@ namespace Game.Ai.V2
         internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
             float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded,
             bool travelNeeded, bool completionThisTurn)
+            => EconomyMissionClaimedAp(builder, buildApCost, minimumFollowupAp,
+                unloaded, added: null, travelNeeded, completionThisTurn);
+
+        internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
+            float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded,
+            IReadOnlyCollection<UnitData> added, bool travelNeeded, bool completionThisTurn)
         {
             float activation = 0f;
             if (travelNeeded && builder != null && !builder.HasActivatedThisTurn)
                 activation = builder.Members
                     .Where(u => u != null && (unloaded == null || !unloaded.Contains(u)))
-                    .Sum(u => u.ActivationApCost);
+                    .Concat(added ?? System.Array.Empty<UnitData>())
+                    .Distinct().Sum(u => u.ActivationApCost);
             float completion = completionThisTurn
                 ? Mathf.Max(buildApCost, minimumFollowupAp) : 0f;
             return activation + completion;
@@ -1101,29 +1200,33 @@ namespace Game.Ai.V2
         // owner, ReconAssignmentPlanner, and this is just its vocabulary mapped onto Provisioning's.
         private static ProvisioningResult ClassifyNoAssignment(ProvisioningSession session,
             StableMissionKey key, ScoutMissionTarget target)
+            => ProvisioningResult.Fail(AssignmentFailure(session, key, target));
+
+        private static ProvisionFailure AssignmentFailure(ProvisioningSession session,
+            StableMissionKey key, ScoutMissionTarget target)
         {
             bool needStealth = target.Stealth == StealthRequirement.Required;
             if (!session.TryGetAssignmentRejection(key, out ScoutAssignmentFailureReason reason))
                 // Should not happen — AssignFunded rejects or accepts every mission it is handed.
                 // Fail safe rather than re-deriving anything ourselves.
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"{key} had no assignment result this pass (assignment/provisioning desync)"));
+                return ProvisionFailure.MoverContended(
+                    $"{key} had no assignment result this pass (assignment/provisioning desync)");
 
             switch (reason)
             {
                 case ScoutAssignmentFailureReason.NoMoverExists:
-                    return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
-                        "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map"));
+                    return ProvisionFailure.NoMoverExists(
+                        "no solo Recce" + (needStealth ? " with stealth capability" : "") + " on the map");
                 case ScoutAssignmentFailureReason.NoObservationVantage:
-                    return ProvisioningResult.Fail(ProvisionFailure.NoObservationVantage(
-                        $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})"));
+                    return ProvisionFailure.NoObservationVantage(
+                        $"no on-map vantage within any scout's vision of ({target.FocusHex.Q},{target.FocusHex.R})");
                 case ScoutAssignmentFailureReason.NoExecutableStep:
-                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    return ProvisionFailure.NoExecutableStep(
                         $"eligible scout(s)/vantage exist but none reachable this turn toward "
-                        + $"({target.FocusHex.Q},{target.FocusHex.R})"));
+                        + $"({target.FocusHex.Q},{target.FocusHex.R})");
                 default:
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        "a capable solo Recce exists but is spent / activated / claimed this cycle"));
+                    return ProvisionFailure.MoverContended(
+                        "a capable solo Recce exists but is spent / activated / claimed this cycle");
             }
         }
 

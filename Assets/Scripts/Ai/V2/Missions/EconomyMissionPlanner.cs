@@ -23,6 +23,12 @@ namespace Game.Ai.V2
                     || !intent.PreferredMoverArmyId.HasValue)
                     continue;
                 EconomyIntent e = intent.Economy;
+                AxisDemand refreshed = demands?.FirstOrDefault(d => d != null
+                    && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
+                    && d.TargetHex.Value.Equals(e.TargetHex)
+                    && d.EconomyResourceType == e.ResourceType
+                    && (d.Capability == CapabilityKind.EconomicInfrastructure
+                        || d.Capability == CapabilityKind.EconomicExpansionBase));
                 var target = new EconomyMissionTarget
                 {
                     Kind = e.Kind,
@@ -34,11 +40,17 @@ namespace Game.Ai.V2
                     // PreferredMoverArmyId is the continuity-owned actor identity. The payload is
                     // kept synchronized with it so provisioning never sees two competing builders.
                     BuilderArmyId = intent.PreferredMoverArmyId,
-                    BuildCard = e.BuildCard,
-                    BuildResourceCost = e.BuildResourceCost,
-                    BuildApCost = e.BuildApCost,
-                    BuildValue = e.BuildValue,
-                    MinimumFollowupAp = e.MinimumFollowupAp,
+                    BuildCard = refreshed?.EconomyBuildCard ?? e.BuildCard,
+                    BuildResourceCost = refreshed?.EconomyBuildResourceCost ?? e.BuildResourceCost,
+                    BuildApCost = refreshed?.EconomyBuildApCost ?? e.BuildApCost,
+                    BuildValue = refreshed != null && refreshed.EconomySiteValue > 0f
+                        ? refreshed.EconomySiteValue : e.BuildValue,
+                    MinimumFollowupAp = refreshed?.MinimumFollowupAp ?? e.MinimumFollowupAp,
+                    BuilderRoutes = refreshed?.EconomyBuilderRoutes,
+                    ProjectedActivationApCost = refreshed?.EconomyProjectedActivationApCost
+                        ?? e.ProjectedActivationApCost,
+                    ProjectedMaxMovement = refreshed?.EconomyProjectedMaxMovement
+                        ?? e.ProjectedMaxMovement,
                 };
                 var mission = new MissionProposal
                 {
@@ -65,10 +77,6 @@ namespace Game.Ai.V2
                      .OrderByDescending(x => x.Value).ThenBy(x => x.TargetHex.Value.Q)
                      .ThenBy(x => x.TargetHex.Value.R))
             {
-                if (snapshot?.Self?.Armies != null && snapshot.Self.Armies.Any(a => a != null
-                    && a.HasHero && !a.IsPrison && !a.IsAir && !a.IsAirfield
-                    && a.Hex.Equals(d.TargetHex.Value)))
-                    continue; // direct Phase-A fulfillment owns an already-delivered build
                 EconomyTaskKind kind = d.Capability == CapabilityKind.EconomicExpansionBase
                     ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
                 var target = new EconomyMissionTarget
@@ -84,6 +92,8 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = d.MinimumFollowupAp,
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
+                    ProjectedActivationApCost = d.EconomyProjectedActivationApCost,
+                    ProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 };
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Kind == MissionKind.Economy && i.Economy != null
@@ -165,13 +175,17 @@ namespace Game.Ai.V2
                     : HexGridMath.Distance(nearest.Hex, t.TargetHex);
                 bool travelNeeded = distance > 0;
                 completionThisTurn = distance <= nearest.CurrentMovement;
+                int projectedActivation = t.ProjectedActivationApCost > 0
+                    ? t.ProjectedActivationApCost : nearest.ActivationApCost;
+                int projectedMove = t.ProjectedMaxMovement > 0
+                    ? t.ProjectedMaxMovement : nearest.MaxMovement;
                 activation = travelNeeded && !nearest.HasActivatedThisTurn
-                    ? nearest.ActivationApCost : 0f;
+                    ? projectedActivation : 0f;
                 r.EstimatedDistance = distance;
                 r.EtaTurns = completionThisTurn ? 0
                     : UnityEngine.Mathf.CeilToInt(
                         UnityEngine.Mathf.Max(0, distance - nearest.CurrentMovement)
-                        / (float)UnityEngine.Mathf.Max(1, nearest.MaxMovement));
+                            / (float)UnityEngine.Mathf.Max(1, projectedMove));
             }
 
             float ap = UnityEngine.Mathf.Max(0f, activation

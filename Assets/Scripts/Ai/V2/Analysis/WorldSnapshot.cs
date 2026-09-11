@@ -193,6 +193,13 @@ namespace Game.Ai.V2
         // candidate -> army direction (an aura buffing "Armored" must see an Armored HERO ally too;
         // `Members` above is deliberately non-hero for WorthIt combat estimates).
         public IReadOnlyList<WorthIt.DefenderProfile> MembersWithHeroes = System.Array.Empty<WorthIt.DefenderProfile>();
+        // Parallel factual arrays for own non-hero Members. Demand uses them to price the exact
+        // minimal Economy escort before Allocation; Provisioning only executes that decision.
+        public IReadOnlyList<int> NonHeroActivationApCosts = System.Array.Empty<int>();
+        public IReadOnlyList<int> NonHeroMoveMax = System.Array.Empty<int>();
+        public IReadOnlyList<bool> NonHeroIsAviation = System.Array.Empty<bool>();
+        public int HeroActivationApCost;
+        public int HeroMoveMax;
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero

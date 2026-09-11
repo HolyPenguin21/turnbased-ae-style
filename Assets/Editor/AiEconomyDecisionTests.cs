@@ -181,7 +181,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyDemand_ActiveBaseCommitmentKeepsItsSite()
+        public void EconomyDemand_ActiveBaseCommitmentCannotReviveNegativeSite()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.2f, 0.1f, actionable: true);
             var baseDef = new CardDefinition
@@ -195,12 +195,7 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    Hex = incumbentHex, CapacityValue = 0.5f,
-                },
-                new EconomyBaseOpportunity
-                {
-                    Hex = new HexCoord(6, 0), CapacityValue = 1f,
-                    NearbyResourceClusterValue = 5f,
+                    Hex = incumbentHex, CapacityValue = -1f,
                 },
             };
             var incumbent = new MissionIntent
@@ -215,10 +210,9 @@ namespace Game.EditorTests
                 },
             };
 
-            AxisDemand selected = DemandLayer.EconomyDemands(snapshot,
-                new DesireBreakdown(), null, null, null, new[] { incumbent }, null).Single();
-
-            Assert.That(selected.TargetHex, Is.EqualTo(incumbentHex));
+            Assert.That(DemandLayer.EconomyDemands(snapshot,
+                new DesireBreakdown(), null, null, null, new[] { incumbent }, null),
+                Is.Empty);
         }
 
         [Test]
@@ -354,7 +348,7 @@ namespace Game.EditorTests
         public void EconomyBuilderSelection_PrefersLowerFullAssignmentCostAndPropagatesId()
         {
             HexCoord target = new HexCoord(4, 0);
-            ArmySnapshot solo = EconomyBuilder(11, 1, 3f);
+            ArmySnapshot solo = EconomyBuilder(11, 2, 3f);
             ArmySnapshot stack = EconomyBuilder(12, 5, 20f);
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
             snapshot.Self.Armies = new[] { solo, stack };
@@ -388,7 +382,7 @@ namespace Game.EditorTests
         {
             HexCoord target = new HexCoord(4, 0);
             ArmySnapshot incumbent = EconomyBuilder(20, 2, 8f);
-            ArmySnapshot cheaper = EconomyBuilder(21, 1, 2f);
+            ArmySnapshot cheaper = EconomyBuilder(21, 2, 2f);
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
             snapshot.Self.Armies = new[] { incumbent, cheaper };
             EconomyBuilderRouteSnapshot incumbentRoute = BuilderRoute(
@@ -575,17 +569,23 @@ namespace Game.EditorTests
             UnitData hero = Hero("Hero");
             UnitData counter = Body("Counter", 20, 20);
             counter.Abilities.Add(Game.Cards.UnitAbilities.Hyperkinetic);
+            counter.Abilities.Add(Game.Cards.UnitAbilities.AntiAir);
             UnitData spare = Body("Spare", 2, 2);
             builder.Members.AddRange(new[] { hero, counter, spare });
             var enemyProfile = new Game.Combat.WorthIt.DefenderProfile(
                 defense: 5f, hasCeramicArmor: false,
                 typeTags: new[] { Game.Cards.UnitTypeTag.Armored },
                 attack: 5f, hitPoints: 5f, initiative: 1);
+            var aircraftProfile = new Game.Combat.WorthIt.DefenderProfile(
+                defense: 5f, hasCeramicArmor: false,
+                typeTags: new[] { Game.Cards.UnitTypeTag.Aircraft },
+                attack: 5f, hitPoints: 5f, initiative: 1);
             var threats = new[]
             {
                 new Game.Ai.AiMapMemory.KnownEnemySighting(
                     new HexCoord(2, 0), new Game.Players.PlayerSetupData(), "enemy", 1,
-                    defenseSum: 5f, attackSum: 5f, defenders: new[] { enemyProfile }),
+                    defenseSum: 10f, attackSum: 10f,
+                    defenders: new[] { enemyProfile, aircraftProfile }),
             };
 
             IReadOnlyList<UnitData> retained = ProvisioningManager.SelectEconomyEscort(
@@ -605,7 +605,7 @@ namespace Game.EditorTests
             CardData card = new CardData(baseDef);
             WorldSnapshot snapshot = SnapshotWithDeficits(0.2f, 0.1f, actionable: true);
             snapshot.Self.Hand = new[] { card };
-            ArmySnapshot builder = EconomyBuilder(31, 1, 1f);
+            ArmySnapshot builder = EconomyBuilder(31, 2, 1f);
             snapshot.Self.Armies = new[] { builder };
             snapshot.Economy.BaseOpportunities = new[]
             {
@@ -653,7 +653,7 @@ namespace Game.EditorTests
             WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
             snapshot.TurnNumber = 1;
             snapshot.Self.Hand = new[] { new CardData(baseDef) };
-            ArmySnapshot builder = EconomyBuilder(32, 1, 1f);
+            ArmySnapshot builder = EconomyBuilder(32, 2, 1f);
             snapshot.Self.Armies = new[] { builder };
             snapshot.Economy.BaseOpportunities = new[]
             {
@@ -960,6 +960,18 @@ namespace Game.EditorTests
                     ArmyId = 11, Hex = new HexCoord(1, 1), HasHero = true,
                     IsGarrison = false, IsPrison = false, IsAir = false,
                     IsAirfield = false, IsMobileEconomyBuilder = true, MemberCount = 2,
+                    Members = new[]
+                    {
+                        new Game.Combat.WorthIt.DefenderProfile(
+                            defense: 5f, hasCeramicArmor: false,
+                            attack: 5f, hitPoints: 5f, initiative: 2),
+                    },
+                    NonHeroActivationApCosts = new[] { 1 },
+                    NonHeroMoveMax = new[] { 3 },
+                    HeroActivationApCost = 1,
+                    HeroMoveMax = 3,
+                    MaxMovement = 3,
+                    CurrentMovement = 3,
                 },
             };
             snapshot.Economy.ExtractionOpportunities = new List<EconomyExtractionOpportunity>
@@ -979,6 +991,7 @@ namespace Game.EditorTests
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
             HexCoord local = new HexCoord(3, 1);
+            snapshot.Self.BaseHexes = new[] { local };
             snapshot.Self.Armies = new List<ArmySnapshot>
             {
                 new ArmySnapshot
@@ -1058,6 +1071,416 @@ namespace Game.EditorTests
             {
                 AiStrategyV2Scope.Mode = previous;
             }
+        }
+
+        [Test]
+        public void ReconEconomyDevelopmentScope_IsProductionDefault()
+        {
+            Assert.That(AiStrategyV2Scope.Mode,
+                Is.EqualTo(AiStrategyV2Mode.ReconEconomyDevelopment));
+            Assert.That(AiStrategyV2Scope.UsesTypedLoop, Is.True);
+            Assert.That(AiStrategyV2Scope.AxisInScope(DesireAxis.Defence), Is.False);
+        }
+
+        [Test]
+        public void StrategicReadmission_SameEconomyFingerprintIsProcessedOnlyOnce()
+        {
+            var handled = new Dictionary<DesireAxis, string>
+            {
+                [DesireAxis.Economy] = "state:17",
+            };
+
+            Assert.That(Pipeline.StrategicAdmissionNeeded(
+                handled, DesireAxis.Economy, "state:17"), Is.False);
+            Assert.That(Pipeline.StrategicAdmissionNeeded(
+                handled, DesireAxis.Economy, "state:18"), Is.True);
+            Assert.That(Pipeline.StrategicAdmissionNeeded(
+                handled, DesireAxis.Development, "state:17"), Is.True);
+        }
+
+        [Test]
+        public void ScoutAssignmentBatch_ReleasesAllFiveAndFundsEconomyInSamePack()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            AiAllocatorStateRegistry.Clear();
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            snapshot.Self.ActionPoints = 1;
+            var scouts = new List<MissionProposal>();
+            var funded = new TentativeAllocation();
+            var rejected = new ReconAssignmentResult();
+            for (int i = 0; i < 5; i++)
+            {
+                MissionProposal scout = AllocatorMission(
+                    MissionKind.Scout, 100f - i, DesireAxis.Recon, 100 + i);
+                ((ScoutMissionTarget)scout.Target).FocusHex = new HexCoord(i + 1, 0);
+                scouts.Add(scout);
+                FundedEntry entry = new FundedEntry
+                {
+                    Mission = scout, Priority = i,
+                    Tentative = new ResourceVector(1f),
+                };
+                funded.Funded.Add(entry);
+                rejected.Rejected[StableMissionKey.For(scout)] =
+                    ScoutAssignmentFailureReason.NoMoverExists;
+            }
+            var provisioning = new ProvisioningSession(snapshot);
+            provisioning.SetAssignment(rejected);
+
+            IReadOnlyList<(FundedEntry Funded, ProvisionFailure Failure)> failures =
+                ProvisioningManager.ScoutAssignmentFailures(provisioning, funded);
+            Assert.That(failures, Has.Count.EqualTo(5));
+
+            MissionProposal economy = AllocatorMission(
+                MissionKind.Economy, 10f, DesireAxis.Economy, 77);
+            AllocationSession session = ResourceAllocator.BeginTurn(snapshot, Radar.Even(),
+                scouts.Concat(new[] { economy }).ToList(), new List<Commitment>(), player);
+            foreach ((FundedEntry failedFunding, ProvisionFailure failure) in failures)
+                session.RegisterProvisionFailure(failedFunding, failure);
+
+            TentativeAllocation repacked = session.Pack();
+            Assert.That(repacked.Funded.Select(x => x.Mission), Does.Contain(economy));
+            Assert.That(repacked.Funded.Any(x => x.Mission.Kind == MissionKind.Scout), Is.False);
+        }
+
+        [Test]
+        public void PhaseAEconomyHeroHandoff_CreatesSoftTargetSpecificCommitment()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var buildDef = new CardDefinition { cardType = CardType.Facility, apCost = 2 };
+            var buildCard = new CardData(buildDef);
+            var cost = new ResourceCost { materials = 3 };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.Hero,
+                TargetHex = new HexCoord(4, -1),
+                EconomyResourceType = ResourceType.Materials,
+                EconomyBuildCard = buildCard,
+                EconomyBuildResourceCost = cost,
+                EconomyBuildApCost = 2,
+                MinimumFollowupAp = 2,
+                EconomySiteValue = 42f,
+            };
+            try
+            {
+                MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+                    player, demand, builderArmyId: 91, turn: 7);
+                var snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+                snapshot.Self.Armies = new[]
+                {
+                    new ArmySnapshot { ArmyId = 91, HasHero = true,
+                        IsMobileEconomyBuilder = true },
+                };
+                ActorCommitments commitments = ActorCommitments.FromIntents(
+                    new[] { intent }, snapshot, null);
+                MissionProposal mission = EconomyMissionPlanner.Propose(snapshot,
+                    new DesireBreakdown(), new[] { intent }, null).Single();
+
+                Assert.That(intent.Funding, Is.EqualTo(CommitmentTier.Soft));
+                Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(91));
+                Assert.That(intent.Economy.TargetHex, Is.EqualTo(demand.TargetHex.Value));
+                Assert.That(intent.Economy.BuildCard, Is.SameAs(buildCard));
+                Assert.That(intent.Economy.BuildResourceCost, Is.SameAs(cost));
+                Assert.That(commitments.IsArmyClaimed(91), Is.True);
+                Assert.That(mission.PreferredMoverArmyId, Is.EqualTo(91));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void PhaseBSurplus_ExcludesEconomyMissionOwnedArmy()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(0, 0);
+            var army = new ArmyData
+                { Owner = player, Hex = home, Name = "Elena economy army" };
+            if (army.Id == 0)
+                army = new ArmyData
+                    { Owner = player, Hex = home, Name = "Elena economy army" };
+            army.Members.Add(Hero("Elena"));
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                PreferredMoverArmyId = army.Id,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = new HexCoord(3, 0), BuilderArmyId = army.Id,
+                },
+            };
+            var snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            snapshot.Self.Armies = new[]
+            {
+                new ArmySnapshot { ArmyId = army.Id, HasHero = true,
+                    IsMobileEconomyBuilder = true },
+            };
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                new[] { intent }, snapshot, null);
+            ArmyRegistry.Register(army);
+            BuildingRegistry.Register(home, new BuildingData
+                { Owner = player, Hex = home, Name = "Base", IsBase = true });
+            try
+            {
+                List<PlacementOption> options = PlacementSelector.BuildOptions(
+                    snapshot, player,
+                    new CardDefinition { cardType = CardType.Unit }, commitments,
+                    soloOnly: false, phaseBSurplus: true);
+
+                Assert.That(PlacementSelector.IsProtectedFromPhaseBSurplus(
+                    player, army, commitments), Is.True);
+                Assert.That(options.Any(x => x.Army == army), Is.False);
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyArmySuitability_AllowsSafeSoloButRequiresCentralEscort()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            ArmySnapshot solo = EconomyBuilder(41, 1, 1f);
+            snapshot.Self.Armies = new[] { solo };
+
+            DemandLayer.EconomyBuilderChoice rear = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(1, 0),
+                new[] { BuilderRoute(solo, 1, 1, 1) }, null, null,
+                30f, 1f, includeReturn: true);
+            DemandLayer.EconomyBuilderChoice central = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(3, 0),
+                new[] { BuilderRoute(solo, 3, 3, 1) }, null, null,
+                30f, 1f, includeReturn: true);
+
+            Assert.That(rear, Is.Not.Null);
+            Assert.That(rear.MinimumEscortCount, Is.Zero);
+            Assert.That(central, Is.Null);
+
+            var garrison = new ArmySnapshot
+            {
+                ArmyId = 43, Hex = solo.Hex, IsGarrison = true, MemberCount = 2,
+                Members = new[]
+                {
+                    new Game.Combat.WorthIt.DefenderProfile(
+                        defense: 4f, hasCeramicArmor: false,
+                        attack: 4f, hitPoints: 5f, initiative: 2),
+                    new Game.Combat.WorthIt.DefenderProfile(
+                        defense: 8f, hasCeramicArmor: false,
+                        attack: 8f, hitPoints: 5f, initiative: 2),
+                },
+                NonHeroActivationApCosts = new[] { 1, 4 },
+                NonHeroMoveMax = new[] { 3, 2 },
+                MaxMovement = 2,
+            };
+            snapshot.Self.Armies = new[] { solo, garrison };
+            DemandLayer.EconomyBuilderChoice reinforced = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(3, 0),
+                new[] { BuilderRoute(solo, 3, 3, 1) }, null, null,
+                30f, 1f, includeReturn: true);
+            Assert.That(reinforced, Is.Not.Null);
+            Assert.That(reinforced.Suitability,
+                Is.EqualTo(DemandLayer.EconomyArmySuitability.ReinforceAtBase));
+            Assert.That(reinforced.MinimumEscortCount, Is.EqualTo(1));
+            Assert.That(reinforced.ProjectedActivationApCost, Is.EqualTo(2));
+
+            ArmySnapshot escorted = EconomyBuilder(42, 2, 5f);
+            snapshot.Self.Armies = new[] { escorted };
+            DemandLayer.EconomyBuilderChoice frontier = DemandLayer.SelectEconomyBuilder(
+                snapshot, new HexCoord(3, 0),
+                new[] { BuilderRoute(escorted, 3, 3, 2) }, null, null,
+                30f, 1f, includeReturn: true);
+            Assert.That(frontier, Is.Not.Null);
+            Assert.That(frontier.MinimumEscortCount, Is.EqualTo(1));
+        }
+
+        [Test]
+        public void EconomyArmyPreparation_AddsMinimumEscortAndMatchesProjectedActivation()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(0, 0);
+            HexCoord target = new HexCoord(3, 0);
+            var builder = new ArmyData { Owner = player, Hex = home, Name = "Builder" };
+            if (builder.Id == 0)
+                builder = new ArmyData { Owner = player, Hex = home, Name = "Builder" };
+            UnitData hero = Hero("Elena", activation: 1);
+            hero.MoveMax = 3;
+            builder.Members.Add(hero);
+            var garrison = new ArmyData
+                { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
+            UnitData cheap = Body("Cheap escort", 4, 4, activation: 1);
+            cheap.MoveMax = 3;
+            UnitData expensive = Body("Expensive escort", 8, 8, activation: 4);
+            expensive.MoveMax = 2;
+            garrison.Members.AddRange(new[] { cheap, expensive });
+
+            ArmySnapshot solo = EconomyBuilder(builder.Id, 1, 1f);
+            ArmySnapshot reserve = new ArmySnapshot
+            {
+                ArmyId = garrison.Id, Hex = home, IsGarrison = true,
+                Members = new[]
+                {
+                    Game.Combat.WorthIt.FromLiveUnit(cheap),
+                    Game.Combat.WorthIt.FromLiveUnit(expensive),
+                },
+                NonHeroActivationApCosts = new[] { 1, 4 },
+                NonHeroMoveMax = new[] { 3, 2 },
+                MaxMovement = 2,
+            };
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            snapshot.Self.Armies = new[] { solo, reserve };
+            DemandLayer.EconomyBuilderChoice projected = DemandLayer.SelectEconomyBuilder(
+                snapshot, target, new[] { BuilderRoute(solo, 3, 3, 1) },
+                null, null, 30f, 1f, includeReturn: true);
+
+            ArmyRegistry.Register(builder);
+            ArmyRegistry.Register(garrison);
+            BuildingRegistry.Register(home, new BuildingData
+                { Owner = player, Hex = home, Name = "Base", IsBase = true });
+            try
+            {
+                int moved = ProvisioningManager.TryLightenEconomyArmy(
+                    player, builder, target, snapshot, new Game.Ai.AiTurnContext(),
+                    projected.MinimumEscortCount);
+                float liveActivation = ProvisioningManager.EconomyMissionClaimedAp(
+                    builder, 0f, 0f, null, travelNeeded: true,
+                    completionThisTurn: false);
+
+                Assert.That(moved, Is.EqualTo(1));
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero, cheap }));
+                Assert.That(garrison.Members, Is.EquivalentTo(new[] { expensive }));
+                Assert.That(liveActivation,
+                    Is.EqualTo(projected.ProjectedActivationApCost));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void EconomyActorSelection_UsesSuitableFieldArmyAndSkipsUnsafeSolo()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
+            HexCoord target = new HexCoord(4, 0);
+            ArmySnapshot unsafeSolo = EconomyBuilder(51, 1, 1f);
+            unsafeSolo.Hex = new HexCoord(1, 0);
+            ArmySnapshot suitable = EconomyBuilder(52, 2, 6f);
+            suitable.Hex = new HexCoord(2, 0);
+            snapshot.Self.Armies = new[] { unsafeSolo, suitable };
+            EconomyExtractionOpportunity opportunity = ExtractionOpportunity(
+                target, ResourceType.Human, 1);
+            opportunity.BuilderRoutes = new[]
+            {
+                BuilderRoute(unsafeSolo, 3, 3, 1),
+                BuilderRoute(suitable, 2, 2, 2),
+            };
+            snapshot.Economy.ExtractionOpportunities = new[] { opportunity };
+
+            AxisDemand demand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(demand.Capability,
+                Is.EqualTo(CapabilityKind.EconomicInfrastructure));
+            Assert.That(demand.EconomyPreferredBuilderArmyId, Is.EqualTo(52));
+        }
+
+        [Test]
+        public void EconomyContinuity_DoesNotRequestSecondHeroForSameOwnedTarget()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
+            HexCoord target = new HexCoord(4, 0);
+            ArmySnapshot unsafeSolo = EconomyBuilder(53, 1, 1f);
+            unsafeSolo.Hex = new HexCoord(1, 0);
+            snapshot.Self.Armies = new[] { unsafeSolo };
+            EconomyExtractionOpportunity opportunity = ExtractionOpportunity(
+                target, ResourceType.Human, 1);
+            opportunity.BuilderRoutes = new[]
+            {
+                BuilderRoute(unsafeSolo, 3, 3, 1),
+            };
+            snapshot.Economy.ExtractionOpportunities = new[] { opportunity };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Status = IntentStatus.Active,
+                PreferredMoverArmyId = unsafeSolo.ArmyId,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = target,
+                    ResourceType = ResourceType.Human,
+                    BuilderArmyId = unsafeSolo.ArmyId,
+                },
+            };
+
+            AxisDemand withoutContinuity = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+            IReadOnlyList<AxisDemand> withContinuity = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null,
+                new[] { intent }, null).ToList();
+
+            Assert.That(withoutContinuity.Capability, Is.EqualTo(CapabilityKind.Hero));
+            Assert.That(withContinuity, Is.Empty,
+                "Continuity must retry or defer its actor instead of creating another Hero.");
+        }
+
+        [Test]
+        public void DeferredEconomyReservation_ReplacesAlternativeAsOneOperation()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            StrategicResourceReservationLedger.BeginTurn(player, 12);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            ArmySnapshot builder = EconomyBuilder(61, 2, 5f);
+            snapshot.Self.Armies = new[] { builder };
+            AxisDemand first = DeferredEconomyDemand(
+                builder, new HexCoord(3, 0), ResourceType.Human, human: 2, materials: 0);
+            AxisDemand winner = DeferredEconomyDemand(
+                builder, new HexCoord(4, 0), ResourceType.Materials, human: 0, materials: 3);
+
+            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                snapshot, player, 12, first);
+            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                snapshot, player, 12, winner);
+
+            string winnerOwner = InfrastructureFulfillment.EconomyReservationOwner(winner);
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, 12, StrategicReservedResource.Human), Is.Zero);
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, 12, StrategicReservedResource.Materials), Is.EqualTo(3f));
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(
+                player, 12, winnerOwner, StrategicReservationReason.EconomyDeferredBuild,
+                winner.EconomyBuildResourceCost, 0f), Is.True);
+        }
+
+        [Test]
+        public void DeferredEconomyAlternative_DoesNotEraseCompletionReservation()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            StrategicResourceReservationLedger.BeginTurn(player, 13);
+            var completionCost = new ResourceCost { human = 2 };
+            InfrastructureFulfillment.ReserveEconomyCost(player, 13,
+                "Economy:completion", completionCost, 1f);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
+            ArmySnapshot builder = EconomyBuilder(62, 2, 5f);
+            snapshot.Self.Armies = new[] { builder };
+            AxisDemand alternative = DeferredEconomyDemand(
+                builder, new HexCoord(4, 0), ResourceType.Materials,
+                human: 0, materials: 3);
+
+            InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                snapshot, player, 13, alternative);
+
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(
+                player, 13, "Economy:completion",
+                StrategicReservationReason.EconomyBuildCompletion,
+                completionCost, 1f), Is.True);
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, 13, StrategicReservedResource.Materials), Is.Zero);
         }
 
         [Test]
@@ -1190,8 +1613,9 @@ namespace Game.EditorTests
 
             Assert.That(prerequisite.Capability, Is.EqualTo(CapabilityKind.Hero));
             Assert.That(prerequisite.EconomyBuildCard, Is.SameAs(committedCard));
-            Assert.That(prerequisite.EconomyBuildResourceCost, Is.Null,
-                "Missing-builder stage must claim the card instance without reserving H/E/M/T.");
+            Assert.That(prerequisite.EconomyBuildResourceCost,
+                Is.SameAs(source.EconomyBuildResourceCost),
+                "The completion vector must survive the Hero handoff; reservation still waits for a route.");
         }
 
         [Test]
@@ -1256,7 +1680,7 @@ namespace Game.EditorTests
         public void EconomyMission_MultiTurnTravelFundsOnlyCurrentActivationStage()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
-            ArmySnapshot builder = EconomyBuilder(7, 1, 3f);
+            ArmySnapshot builder = EconomyBuilder(7, 2, 3f);
             builder.CurrentMovement = builder.MaxMovement = 3;
             builder.ActivationApCost = 2;
             builder.HasActivatedThisTurn = false;
@@ -1289,7 +1713,7 @@ namespace Game.EditorTests
         public void EconomyMission_ReachableTargetFundsCompletionAndBuildResources()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
-            ArmySnapshot builder = EconomyBuilder(7, 1, 3f);
+            ArmySnapshot builder = EconomyBuilder(7, 2, 3f);
             builder.CurrentMovement = builder.MaxMovement = 3;
             builder.ActivationApCost = 2;
             builder.HasActivatedThisTurn = false;
@@ -1465,7 +1889,7 @@ namespace Game.EditorTests
                     RemainingDeckResourceNeed = 8f, SpendableStockpile = 0f,
                 },
             };
-            ArmySnapshot builder = EconomyBuilder(7, 1, 3f);
+            ArmySnapshot builder = EconomyBuilder(7, 2, 3f);
             snapshot.Self.Armies = new[] { builder };
             EconomyExtractionOpportunity energy = ExtractionOpportunity(
                 new HexCoord(2, 0), ResourceType.Energy, 1);
@@ -1540,7 +1964,7 @@ namespace Game.EditorTests
                 cardType = CardType.Base, authoredKey = "base", displayName = "Base",
             };
             snapshot.Self.Hand = new[] { new CardData(baseDef) };
-            ArmySnapshot builder = EconomyBuilder(9, 1, 3f);
+            ArmySnapshot builder = EconomyBuilder(9, 2, 3f);
             builder.Hex = new HexCoord(3, 1);
             snapshot.Self.Armies = new[] { builder };
 
@@ -1575,7 +1999,7 @@ namespace Game.EditorTests
         public void EconomyExtraction_StrategicSiteValueIsIndependentOfBuilderDelivery()
         {
             WorldSnapshot near = SnapshotWithDeficits(0.75f, 0.1f, actionable: true);
-            ArmySnapshot nearBuilder = EconomyBuilder(31, 1, 4f);
+            ArmySnapshot nearBuilder = EconomyBuilder(31, 2, 4f);
             near.Self.Armies = new[] { nearBuilder };
             EconomyExtractionOpportunity nearSite = ExtractionOpportunity(
                 new HexCoord(2, 0), ResourceType.Human, 1);
@@ -1583,7 +2007,7 @@ namespace Game.EditorTests
             near.Economy.ExtractionOpportunities = new[] { nearSite };
 
             WorldSnapshot far = SnapshotWithDeficits(0.75f, 0.1f, actionable: true);
-            ArmySnapshot farBuilder = EconomyBuilder(32, 1, 4f);
+            ArmySnapshot farBuilder = EconomyBuilder(32, 2, 4f);
             far.Self.Armies = new[] { farBuilder };
             EconomyExtractionOpportunity farSite = ExtractionOpportunity(
                 new HexCoord(2, 0), ResourceType.Human, 1);
@@ -1736,8 +2160,12 @@ namespace Game.EditorTests
             Initiative = 2,
         };
 
-        private static ArmySnapshot EconomyBuilder(int id, int size, float power) =>
-            new ArmySnapshot
+        private static ArmySnapshot EconomyBuilder(int id, int size, float power)
+        {
+            int bodyCount = UnityEngine.Mathf.Max(0, size - 1);
+            float bodyStat = bodyCount > 0
+                ? UnityEngine.Mathf.Max(3f, power / bodyCount) : 0f;
+            return new ArmySnapshot
             {
                 ArmyId = id,
                 Hex = new HexCoord(0, 0),
@@ -1747,7 +2175,37 @@ namespace Game.EditorTests
                 EffectiveArmyPower = power,
                 CurrentMovement = 3,
                 MaxMovement = 3,
+                ActivationApCost = size,
+                HeroActivationApCost = 1,
+                HeroMoveMax = 3,
+                Members = Enumerable.Range(0, bodyCount)
+                    .Select(_ => new Game.Combat.WorthIt.DefenderProfile(
+                        defense: bodyStat, hasCeramicArmor: false,
+                        attack: bodyStat, hitPoints: 5f, initiative: 2))
+                    .ToList(),
+                NonHeroActivationApCosts = Enumerable.Repeat(1, bodyCount).ToList(),
+                NonHeroMoveMax = Enumerable.Repeat(3, bodyCount).ToList(),
             };
+        }
+
+        private static AxisDemand DeferredEconomyDemand(ArmySnapshot builder,
+            HexCoord target, ResourceType type, int human, int materials) => new AxisDemand
+        {
+            RequestingAxis = DesireAxis.Economy,
+            Capability = CapabilityKind.EconomicInfrastructure,
+            TargetHex = target,
+            EconomyResourceType = type,
+            EconomyBuildResourceCost = new ResourceCost
+            {
+                human = human,
+                materials = materials,
+            },
+            EconomyBuilderRoutes = new[]
+            {
+                BuilderRoute(builder, HexGridMath.Distance(builder.Hex, target), 0,
+                    builder.ActivationApCost),
+            },
+        };
 
         private static EconomyBuilderRouteSnapshot BuilderRoute(ArmySnapshot army,
             int travel, int back, int activation) => new EconomyBuilderRouteSnapshot

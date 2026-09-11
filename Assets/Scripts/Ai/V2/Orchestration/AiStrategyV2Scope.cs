@@ -26,9 +26,10 @@ namespace Game.Ai.V2
 
     public static class AiStrategyV2Scope
     {
-        // Production runs all axes. Narrower modes remain available only for focused diagnostics;
-        // do not add local "disable aggression" booleans elsewhere.
-        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.Full;
+        // Focused production bring-up: Recon -> Economy -> Development/Production support.
+        // Aggression/Defence are disabled only here so radar, demand, proposals, continuity and
+        // typed admission all observe the same boundary. Phase B and Housekeeping are unaffected.
+        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconEconomyDevelopment;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 
@@ -146,7 +147,7 @@ namespace Game.Ai.V2
                 || (economy && m.Kind == MissionKind.Economy)).ToList();
         }
 
-        // Spec §5/§13 — a focus scope isolates which operational MISSIONS execute (Recon only). It is
+        // Spec §5/§13 — a focus scope isolates which operational missions execute. It is
         // NOT a hand-management scope: StrategicManager Phase B (UseSurplus) must keep running so
         // every legally playable card is still deployed or drawn regardless of its card type. Card
         // type alone is never a reason a legal card is left in hand.
