@@ -51,6 +51,20 @@ namespace Game.Ai
             return path?.TotalCost ?? int.MaxValue;
         }
 
+        // Same canonical route as FindSafePathCost, but returns the actual hex sequence so a
+        // caller can check per-hex terrain cost against a specific mover's MaxMovement — a
+        // finite TotalCost only proves a route exists over however many turns it takes; it says
+        // nothing about whether any single hex on it costs more to enter than the mover can ever
+        // have in one turn (impassable for that mover regardless of turns banked).
+        public static HexPath FindSafePath(HexMap map, PlayerSetupData owner,
+            HexCoord from, HexCoord targetHex)
+        {
+            if (map == null || owner == null)
+                return null;
+            return HexPathfinder.FindPath(map, from, targetHex,
+                blockHex: SafeRouteBlocker(owner, targetHex));
+        }
+
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
             ArmyData army, HexCoord targetHex) => SafeRouteBlocker(army.Owner, targetHex);
 

@@ -7,6 +7,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
 using Game.Units;
 using UnityEngine;
 
@@ -1439,8 +1440,24 @@ namespace Game.Ai.V2
                 if (!army.IsMobileEconomyBuilder
                     || !liveById.TryGetValue(army.ArmyId, out ArmyData live))
                     continue;
-                int cost = SafeStepPathing.FindSafePathCost(ctx.Map, live, target);
-                if (cost == int.MaxValue)
+                HexPath route = SafeStepPathing.FindSafePath(ctx.Map, live.Owner, live.Hex, target);
+                if (route == null)
+                    continue;
+                int cost = route.TotalCost;
+                // A finite TotalCost only proves hexes exist all the way to the target — it says
+                // nothing about whether any single hex on the route costs more to enter than this
+                // army can ever have in one turn. That hex is impassable for this mover no matter
+                // how many turns it waits, so the whole route is not actually a candidate.
+                bool everyStepAffordable = true;
+                for (int i = 1; i < route.Hexes.Count && everyStepAffordable; i++)
+                {
+                    if (!ctx.Map.TryGetTerrainAt(route.Hexes[i], out TerrainTypeEntry stepEntry))
+                        continue;
+                    int stepCost = Mathf.Max(1, stepEntry.moveCost);
+                    if (stepCost > army.MaxMovement)
+                        everyStepAffordable = false;
+                }
+                if (!everyStepAffordable)
                     continue;
                 int returnCost = int.MaxValue;
                 foreach (HexCoord home in snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
