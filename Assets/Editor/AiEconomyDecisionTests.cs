@@ -112,12 +112,142 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyPayback_RejectsExcessiveConstructionHorizon()
+        public void EconomyPayback_UsesOnlyPersistentResourceCost()
         {
             float payback = DemandLayer.EconomyPaybackTurns(
-                expectedIncomeGain: 1f, resourceCost: 7f, assignmentApCost: 3f);
+                expectedIncomeGain: 1f, resourceCost: 7f, assignmentApCost: 30f);
 
-            Assert.That(payback, Is.GreaterThan(AiConfigV2.economyExtractionMaxPaybackTurns));
+            Assert.That(payback, Is.EqualTo(7f));
+            Assert.That(payback, Is.LessThanOrEqualTo(
+                AiConfigV2.economyExtractionMaxPaybackTurns));
+        }
+
+        [Test]
+        public void MissionContinuity_ProductiveCommittedReconLaneIsProtectedThisTurn()
+        {
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Scout,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+                PreferredMoverArmyId = 17,
+                LastProgressTurn = 8,
+            };
+
+            Assert.That(MissionContinuityLayer.IsProductiveReconLaneThisTurn(intent, 8), Is.True);
+            Assert.That(MissionContinuityLayer.IsProductiveReconLaneThisTurn(intent, 9), Is.False);
+        }
+
+        [Test]
+        public void ReconAssignment_ObservationKeepsAirLaneWhenAirRouteExists()
+        {
+            var target = new ScoutMissionTarget
+            {
+                Kind = ScoutTargetKind.Refresh,
+                FocusHex = new HexCoord(4, 0),
+            };
+            var ground = new ScoutExecutionCandidate(
+                new ArmySnapshot { ArmyId = 14 }, target.FocusHex,
+                1, 0, 0, 0f, 0, false, 1f);
+            var air = new ScoutExecutionCandidate(
+                new ArmySnapshot { ArmyId = 31, IsAir = true }, target.FocusHex,
+                2, 0, 0, 0f, 0, false, 2f,
+                ScoutExecutorKind.AirExisting, requiredEnergy: 1f, routeScore: 2f);
+
+            Assert.That(ReconAssignmentPlanner.ShouldReserveObservationForAir(
+                target, ground, new[] { ground, air }), Is.True);
+            Assert.That(ReconAssignmentPlanner.ShouldReserveObservationForAir(
+                target, air, new[] { ground, air }), Is.False);
+        }
+
+        [Test]
+        public void DevelopmentDemand_UpgradeWithoutAxisWitnessIsRejected()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.HasDevFacility = true;
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition
+                {
+                    cardType = CardType.Equipment,
+                    displayName = "Heavy MG",
+                    equipment = new EquipmentGrant
+                    {
+                        statChanges = new List<EquipmentStatChange>
+                        {
+                            new EquipmentStatChange
+                                { stat = EquipmentStat.Attack, amount = 3 },
+                        },
+                    },
+                },
+                RecipientKind = DevRecipientKind.FieldUnit,
+                RecipientUnit = Body("ordinary fighter", 2, 2),
+                RecipientLabel = "ordinary fighter",
+                BaseValue = 10f,
+            };
+
+            List<AxisDemand> demands = DemandLayer.Generate(
+                snapshot, new DesireBreakdown(),
+                System.Array.Empty<ReconObjective>(),
+                System.Array.Empty<AggressionObjective>(),
+                System.Array.Empty<MissionIntent>(), null, null,
+                devOpportunities: new[] { opportunity },
+                dirtyAxes: new HashSet<DesireAxis> { DesireAxis.Development });
+
+            Assert.That(demands.Any(d => d.Capability == CapabilityKind.CardUpgrade), Is.False);
+        }
+
+        [Test]
+        public void DevelopmentDemand_ReconEquipmentRequiresAndAcceptsReconWitness()
+        {
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit,
+                grantedAbilities = new List<string> { "r1s0" },
+            });
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition
+                {
+                    cardType = CardType.Equipment,
+                    equipment = new EquipmentGrant
+                    {
+                        addAbilities = new List<string> { "r2s1" },
+                    },
+                },
+                RecipientKind = DevRecipientKind.HandCard,
+                RecipientCard = host,
+                BaseValue = 10f,
+            };
+            var recon = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Recon,
+                Capability = CapabilityKind.ScoutCapability,
+            };
+
+            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
+                opportunity, new[] { recon },
+                System.Array.Empty<MissionIntent>(), null), Is.True);
+            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
+                opportunity, System.Array.Empty<AxisDemand>(),
+                System.Array.Empty<MissionIntent>(), null), Is.False);
+        }
+
+        [Test]
+        public void EconomyDemand_IdleStrongHeroHasNoCombatPowerOpportunityCost()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            ArmySnapshot builder = EconomyBuilder(34, 2, 200f);
+            snapshot.Self.Armies = new[] { builder };
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 3),
+            };
+
+            AxisDemand demand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(demand.EconomyPreferredBuilderArmyId, Is.EqualTo(34));
+            Assert.That(demand.EconomyHeroOpportunityCost, Is.Zero);
         }
 
         [Test]
@@ -134,7 +264,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Facility,
                 apCost = 3,
-                resourceCost = new ResourceCost { materials = 7 },
+                resourceCost = new ResourceCost { materials = 9 },
             };
 
             try
@@ -679,6 +809,58 @@ namespace Game.EditorTests
                 Assert.That(admitted.Value, Is.LessThan(AiConfigV2.economyBaseDemandMinValue));
                 Assert.That(admitted.EconomyStrategicUrgency,
                     Is.EqualTo(AiConfigV2.economyBaseUrgencyPerDeferredTurn));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
+        public void BaseExpansionUrgency_CanAdmitMeaningfulNegativeDeliveryValue()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var baseDef = new CardDefinition
+            {
+                cardType = CardType.Base,
+                authoredKey = "costly-base",
+                displayName = "Costly Base",
+                apCost = 4,
+                resourceCost = new ResourceCost
+                    { human = 1, energy = 4, materials = 4, tech = 2 },
+            };
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.Hand = new[] { new CardData(baseDef) };
+            ArmySnapshot builder = EconomyBuilder(33, 2, 1f);
+            snapshot.Self.Armies = new[] { builder };
+            snapshot.Economy.BaseOpportunities = new[]
+            {
+                new EconomyBaseOpportunity
+                {
+                    Hex = new HexCoord(3, 0),
+                    CapacityValue = 1f,
+                    BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
+                },
+            };
+
+            try
+            {
+                AxisDemand admitted = null;
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                for (int turn = 1; turn <= 8 && admitted == null; turn++)
+                {
+                    snapshot.TurnNumber = turn;
+                    admitted = DemandLayer.EconomyDemands(snapshot,
+                        new DesireBreakdown(), player, null, null).SingleOrDefault();
+                    if (admitted == null)
+                        state.ReconcileBaseExpansionWait(
+                            turn, System.Array.Empty<MissionTurnOutcome>());
+                }
+
+                Assert.That(admitted, Is.Not.Null);
+                Assert.That(admitted.Value, Is.LessThan(0f));
+                Assert.That(admitted.Value + admitted.EconomyStrategicUrgency,
+                    Is.GreaterThanOrEqualTo(AiConfigV2.economyBaseDemandMinValue));
             }
             finally
             {
