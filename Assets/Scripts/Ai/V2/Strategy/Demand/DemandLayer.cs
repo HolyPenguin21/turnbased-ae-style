@@ -34,7 +34,8 @@ namespace Game.Ai.V2
                 demands.AddRange(EconomyDemands(snap, breakdown, player, ctx, root,
                     activeIntents, commitments));
             if (GenerateAxis(DesireAxis.Development))
-                demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar));
+                demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar,
+                    demands, activeIntents, player));
             // AI-MGR-01 — radar-independent standing-force pull. Emitted LAST so it can see whether
             // an Aggression / Defence combat demand already covers the same ground this pass.
             if (GenerateAxis(DesireAxis.Defence))
@@ -647,6 +648,10 @@ namespace Game.Ai.V2
 
             var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
             var candidates = new List<AxisDemand>();
+            int rejectedNoBuilder = 0;
+            int rejectedPayback = 0;
+            int rejectedStrategicValue = 0;
+            int rejectedDeliveryValue = 0;
             foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities
                 ?? System.Array.Empty<EconomyExtractionOpportunity>())
             {
@@ -676,11 +681,14 @@ namespace Game.Ai.V2
                 float travel = builder?.Route.TravelCost
                     ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
                 float exposure = ThreatExposure(s, site.Hex);
-                float opportunity = builder?.Route.EffectiveArmyPower ?? 0f;
+                float opportunity = EconomyMissionOpportunityCost(builder, activeIntents);
                 float assignmentAp = builder?.TotalAssignmentApCost ?? (def?.apCost ?? 0f);
                 float payback = EconomyPaybackTurns(gain, resourceCost, assignmentAp);
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
+                {
+                    rejectedPayback++;
                     continue;
+                }
                 float strategicValue = ScoreEconomySite(
                     resourcePriority, gain,
                     site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
@@ -693,9 +701,17 @@ namespace Game.Ai.V2
                     - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travel)
                     - AiConfigV2.economySiteHeroOpportunityPenalty
                         * Mathf.Max(0f, opportunity);
-                if (strategicValue <= AiConfigV2.allocatorSliceEpsilon
-                    || value <= AiConfigV2.allocatorSliceEpsilon)
+                if (strategicValue <= AiConfigV2.allocatorSliceEpsilon)
+                {
+                    rejectedStrategicValue++;
                     continue;
+                }
+                if (value <= AiConfigV2.allocatorSliceEpsilon)
+                {
+                    if (builder == null) rejectedNoBuilder++;
+                    else rejectedDeliveryValue++;
+                    continue;
+                }
                 candidates.Add(new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,
@@ -786,6 +802,9 @@ namespace Game.Ai.V2
                 yield return emitted;
             }
             AiDebugLog.Write($"[AI][V2][Economy][BaseCandidates] {baseSummary}");
+            AiDebugLog.Write($"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder} "
+                + $"payback={rejectedPayback} strategic_value={rejectedStrategicValue} "
+                + $"delivery_value={rejectedDeliveryValue} {baseSummary}");
             if (selected.Count == 0)
                 AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={candidates.Count} "
                     + "reason=no_legal_valuable_site_or_base");
@@ -1198,6 +1217,19 @@ namespace Game.Ai.V2
             activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                 && i.PreferredMoverArmyId == armyId);
 
+        // Economy borrows an actor, not its entire combat value. Idle/current-Economy builders
+        // lose no active mission; a permitted Recon/Raid loan pays the existing continuation loss.
+        private static float EconomyMissionOpportunityCost(EconomyBuilderChoice builder,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (builder?.Army == null)
+                return 0f;
+            MissionIntent assignment = ActiveAssignment(activeIntents, builder.Army.ArmyId);
+            return assignment == null || assignment.Kind == MissionKind.Economy
+                ? 0f
+                : AiConfigV2.economyLoanContinuationLoss;
+        }
+
         internal static bool EconomyDonorStructurallyEligible(MissionIntent donor)
         {
             if (donor == null || (donor.Funding != CommitmentTier.None
@@ -1232,8 +1264,7 @@ namespace Game.Ai.V2
         internal static float EconomyPaybackTurns(float expectedIncomeGain,
             float resourceCost, float assignmentApCost) => expectedIncomeGain <= 0f
                 ? float.PositiveInfinity
-                : (Mathf.Max(0f, resourceCost) + Mathf.Max(0f, assignmentApCost))
-                    / expectedIncomeGain;
+                : Mathf.Max(0f, resourceCost) / expectedIncomeGain;
 
         private static float EconomyResourcePriority(EconomyResourceStanding standing)
         {
@@ -1280,14 +1311,17 @@ namespace Game.Ai.V2
                 MissionIntentRegistry.GetOrCreate(player)
                     .MarkBaseExpansionCandidate(s.TurnNumber, null, null,
                         structurallyEligible: false);
-                return "considered=0 kept=0 reason=no_base_card_or_opportunity";
+                return "considered=0 kept=0 no_builder=0 payback=0 strategic_value=0 delivery_value=0 threshold=0 reason=no_base_card_or_opportunity";
             }
 
             int considered = 0;
             int kept = 0;
+            int noBuilder = 0;
+            int strategicValueRejected = 0;
+            int deliveryValueRejected = 0;
+            int thresholdRejected = 0;
             AxisDemand best = null;
-            var valuableDemands = new List<AxisDemand>();
-            var keptDemands = new List<AxisDemand>();
+            var meaningfulDemands = new List<AxisDemand>();
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
@@ -1307,18 +1341,28 @@ namespace Game.Ai.V2
                         + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
                         + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
                         + AiConfigV2.economyBaseGlobalEffectValue * global;
-                    if (site.NearbyResourceClusterValue <= 0f
-                        && site.NetworkExpansionValue <= 0f && hexYield <= 0f
-                        && site.InfrastructurePressure <= 0f && airfield <= 0f
-                        && !site.ConvertsOwnedExtractionSite && global <= 0f && !committed)
+                    bool meaningful = reasonValue > AiConfigV2.allocatorSliceEpsilon || committed;
+                    if (!meaningful)
+                    {
+                        strategicValueRejected++;
                         continue;
+                    }
+
                     EconomyBuilderChoice builder = SelectEconomyBuilder(
                         s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
                         reasonValue, card.EffectivePlayApCost, includeReturn: false);
+                    bool structuralRoute = HasStructuralEconomyBuilderRoute(
+                        s, site.Hex, site.BuilderRoutes);
+                    if (!structuralRoute)
+                    {
+                        noBuilder++;
+                        continue;
+                    }
+
                     float travel = builder?.Route.TravelCost
                         ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
                     float exposure = ThreatExposure(s, site.Hex);
-                    float heroCost = builder?.Route.EffectiveArmyPower ?? 0f;
+                    float heroCost = EconomyMissionOpportunityCost(builder, activeIntents);
                     float assignmentAp = builder?.TotalAssignmentApCost
                         ?? card.EffectivePlayApCost;
                     float intrinsicBuildCost = card.EffectivePlayApCost
@@ -1328,28 +1372,18 @@ namespace Game.Ai.V2
                     float deliveryApCost = Mathf.Max(0f,
                             assignmentAp - card.EffectivePlayApCost)
                         * AiConfigV2.economyBuildApPenalty;
-                    // Site quality is independent of whichever hero happens to be closest
-                    // this pass. Delivery cost still controls Demand admission, while
-                    // EconomySiteValue keeps target and cross-lane merit stable across replans.
                     float strategicValue = reasonValue - intrinsicBuildCost
                         - AiConfigV2.economySiteThreatPenalty * exposure;
                     float value = strategicValue - deliveryApCost
                         - AiConfigV2.economySiteTravelPenalty * travel
                         - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
-                    bool valuable = strategicValue > 0f;
-                    string decision = valuable ? "valuable" : "value_reject";
                     AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
                         + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
-                        + $"yield={hexYield:0.##} cluster={site.NearbyResourceClusterValue:0.##} "
-                        + $"network={site.NetworkExpansionValue:0.##} pressure={site.InfrastructurePressure:0.##} "
-                        + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
-                        + $"corridor={site.CorridorAlignmentValue:0.##} airfield={airfield:0.##} "
-                        + $"global={global:0.##} buildCost={intrinsicBuildCost:0.##} "
+                        + $"reason={reasonValue:0.##} buildCost={intrinsicBuildCost:0.##} "
                         + $"deliveryApCost={deliveryApCost:0.##} site={strategicValue:0.##} "
-                        + $"delivery={value:0.##} committed={committed} decision={decision}");
-                    if (!valuable)
-                        continue;
-                    var demand = new AxisDemand
+                        + $"delivery={value:0.##} committed={committed} decision=stage");
+
+                    meaningfulDemands.Add(new AxisDemand
                     {
                         RequestingAxis = DesireAxis.Economy,
                         Capability = CapabilityKind.EconomicExpansionBase,
@@ -1370,22 +1404,19 @@ namespace Game.Ai.V2
                         EconomyProjectedMaxMovement = builder?.ProjectedMaxMovement ?? 0,
                         EconomyBuilderRoutes = site.BuilderRoutes,
                         Value = value,
-                        Explain = $"Base capacity={site.CapacityValue:0.##} yield={hexYield:0.##} "
-                            + $"cluster={site.NearbyResourceClusterValue:0.##} "
+                        Explain = $"Base reason={reasonValue:0.##} capacity={site.CapacityValue:0.##} "
+                            + $"yield={hexYield:0.##} cluster={site.NearbyResourceClusterValue:0.##} "
                             + $"network={site.NetworkExpansionValue:0.##} "
                             + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
                             + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
                             + $"corridor={site.CorridorAlignmentValue:0.##} global={global:0.##} "
                             + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##}",
-                    };
-                    valuableDemands.Add(demand);
+                    });
                 }
 
-            // Eligibility is a structural fact (legal known site + safe route + actual builder),
-            // not the current score threshold. Otherwise a Base just below the threshold is never
-            // recorded as deferred, so its continuity urgency remains permanently zero and cannot
-            // solve the very starvation it was introduced for.
-            AxisDemand stagedBase = valuableDemands
+            // Stage the best meaningful, legal and safely-routable Base before value admission.
+            // This is what lets the existing continuity urgency accumulate from a negative score.
+            AxisDemand stagedBase = meaningfulDemands
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
                 .ThenByDescending(d => d.Value)
@@ -1399,7 +1430,8 @@ namespace Game.Ai.V2
             float urgency = MissionIntentRegistry.GetOrCreate(player)
                 .MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
                     stagedBase?.TargetHex, urgencyEligible);
-            foreach (AxisDemand demand in valuableDemands)
+
+            foreach (AxisDemand demand in meaningfulDemands)
             {
                 bool staged = stagedBase != null
                     && demand.EconomyBuildCard == stagedBase.EconomyBuildCard
@@ -1411,29 +1443,40 @@ namespace Game.Ai.V2
 
                 bool committed = IsActiveBaseCommitment(
                     activeIntents, demand.TargetHex, demand.EconomyBuildCard);
-                bool admitted = demand.EconomySiteValue > 0f
-                    && demand.Value >= 0f
-                    && (committed || demand.Value + candidateUrgency
-                        >= AiConfigV2.economyBaseDemandMinValue);
+                bool admitted = committed || demand.Value + candidateUrgency
+                    >= AiConfigV2.economyBaseDemandMinValue;
                 AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseAdmission] "
                     + $"card={demand.EconomyBuildCard?.Definition?.displayName} "
                     + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
                     + $"value={demand.Value:0.##} urgency={candidateUrgency:0.##} "
                     + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
                 if (!admitted)
+                {
+                    if (demand.EconomySiteValue <= AiConfigV2.allocatorSliceEpsilon)
+                        strategicValueRejected++;
+                    else if (demand.Value <= AiConfigV2.allocatorSliceEpsilon)
+                        deliveryValueRejected++;
+                    else
+                        thresholdRejected++;
                     continue;
+                }
 
                 output.Add(demand);
-                keptDemands.Add(demand);
                 kept++;
-                if (best == null || demand.EconomySiteValue > best.EconomySiteValue)
+                if (best == null || demand.Value + demand.EconomyStrategicUrgency
+                    > best.Value + best.EconomyStrategicUrgency)
                     best = demand;
             }
+
+            string reasons = $"no_builder={noBuilder} payback=0 strategic_value={strategicValueRejected} "
+                + $"delivery_value={deliveryValueRejected} threshold={thresholdRejected}";
             return best == null
-                ? $"considered={considered} kept={kept} best=none"
+                ? $"considered={considered} kept={kept} best=none {reasons} "
+                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
-                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}";
+                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##} "
+                    + reasons;
         }
 
         private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,
@@ -1551,7 +1594,9 @@ namespace Game.Ai.V2
         //      carrying its opportunity handle. Phase A runs the carried opportunity verbatim.
         // ---------------------------------------------------------------------------------------
         private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b,
-            IReadOnlyList<DevelopmentOpportunity> devOpportunities, Radar radar)
+            IReadOnlyList<DevelopmentOpportunity> devOpportunities, Radar radar,
+            IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
+            PlayerSetupData player)
         {
             float devScale = radar != null ? RadarValueScale.For(radar, DesireAxis.Development) : 1f;
             if (s?.Self == null)
@@ -1637,6 +1682,14 @@ namespace Game.Ai.V2
                 foreach (DevelopmentOpportunity op in devOpportunities)
                 {
                     if (op == null || op.BaseValue <= 0f) continue;
+                    if (!HasSupportedDevelopmentAxisDemand(
+                        op, formedDemands, activeIntents, player))
+                    {
+                        AiDebugLog.Write($"[AI][V2][Demand][Development] decision=REJECT "
+                            + $"card={op.Card?.displayName ?? "?"} recipient={op.RecipientLabel ?? "?"} "
+                            + "reason=no_supported_axis_demand");
+                        continue;
+                    }
                     emitted++;
                     yield return new AxisDemand
                     {
@@ -1658,6 +1711,106 @@ namespace Game.Ai.V2
             else if (operatorPrerequisites == 0)
                 AiDebugLog.Write("[AI][V2][Demand][Development] decision=SATISFIED "
                     + "reason=facility_ready_no_worthwhile_upgrade");
+        }
+
+
+        // Production amplifies an already-owned need; it never originates one. In the current
+        // scope only a real Recon capability delta or the exact builder of an Economy obligation
+        // is a valid witness. Attack/Defence matching remains with WorthIt when those axes return.
+        internal static bool HasSupportedDevelopmentAxisDemand(DevelopmentOpportunity op,
+            IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
+            PlayerSetupData player)
+        {
+            if (op == null)
+                return false;
+
+            bool hasReconDemand = formedDemands?.Any(d => d != null
+                && d.RequestingAxis == DesireAxis.Recon
+                && d.Capability == CapabilityKind.ScoutCapability) == true;
+            if (op.RecipientKind == DevRecipientKind.HandCard)
+                return hasReconDemand && ImprovesReconCapability(op);
+
+            if (op.RecipientUnit == null || player == null)
+                return false;
+            ArmyData army = ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => a?.Members != null && a.Members.Contains(op.RecipientUnit));
+            if (army == null)
+                return false;
+
+            bool economyWitness = formedDemands?.Any(d => d != null
+                    && d.RequestingAxis == DesireAxis.Economy
+                    && d.EconomyPreferredBuilderArmyId == army.ArmyId) == true
+                || activeIntents?.Any(i => i != null && i.Status == IntentStatus.Active
+                    && i.Kind == MissionKind.Economy
+                    && (i.PreferredMoverArmyId == army.ArmyId
+                        || i.Economy?.BuilderArmyId == army.ArmyId)) == true;
+            if (economyWitness)
+                return true;
+
+            bool reconWitness = activeIntents?.Any(i => i != null
+                && i.Status == IntentStatus.Active && i.Kind == MissionKind.Scout
+                && i.PreferredMoverArmyId == army.ArmyId) == true;
+            return reconWitness && ImprovesReconCapability(op);
+        }
+
+        private static bool ImprovesReconCapability(DevelopmentOpportunity op)
+        {
+            EquipmentGrant grant = op?.Card?.equipment;
+            if (grant == null)
+                return false;
+
+            IEnumerable<string> beforeAbilities;
+            int beforeMove;
+            int beforeActivation;
+            if (op.RecipientKind == DevRecipientKind.HandCard)
+            {
+                CardDefinition host = op.RecipientCard?.Definition;
+                if (host == null)
+                    return false;
+                beforeAbilities = EquipmentSystem.EffectiveAbilities(
+                    host.grantedAbilities, op.RecipientCard.Equipment?.equipment);
+                beforeMove = host.moveMax;
+                beforeActivation = host.activationApCost;
+            }
+            else
+            {
+                if (op.RecipientUnit == null)
+                    return false;
+                beforeAbilities = op.RecipientUnit.Abilities;
+                beforeMove = op.RecipientUnit.MoveMax;
+                beforeActivation = op.RecipientUnit.ActivationApCost;
+            }
+
+            var beforeStats = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.MoveMax] = beforeMove,
+                [EquipmentStat.ActivationApCost] = beforeActivation,
+            };
+            PredictedEquipmentState after = EquipmentSystem.Predict(
+                grant, beforeStats, beforeAbilities);
+            int afterMove = after.Stats.TryGetValue(EquipmentStat.MoveMax, out int move)
+                ? move : beforeMove;
+            int afterActivation = after.Stats.TryGetValue(
+                EquipmentStat.ActivationApCost, out int activation)
+                ? activation : beforeActivation;
+            return AbilityParams.GetBestRecceRadius(after.Abilities)
+                    > AbilityParams.GetBestRecceRadius(beforeAbilities)
+                || AbilityParams.GetBestRecceSpotStrength(after.Abilities)
+                    > AbilityParams.GetBestRecceSpotStrength(beforeAbilities)
+                || BestStealthLevel(after.Abilities) > BestStealthLevel(beforeAbilities)
+                || afterMove > beforeMove
+                || afterActivation < beforeActivation;
+        }
+
+        private static int BestStealthLevel(IEnumerable<string> abilities)
+        {
+            int best = 0;
+            if (abilities == null)
+                return best;
+            foreach (string ability in abilities)
+                if (AbilityParams.TryGetStealthLevel(ability, out int level))
+                    best = System.Math.Max(best, level);
+            return best;
         }
 
     }
