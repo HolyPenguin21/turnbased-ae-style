@@ -525,7 +525,24 @@ namespace Game.Ai
             // owner's own report). flatCost makes the search itself rank routes the same way an
             // aircraft actually pays for them.
             bool isAirArmy = AviationRules.IsAirArmy(army);
-            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, blockHex: blockHex, flatCost: isAirArmy);
+            // A ground hex whose entry cost exceeds this mover's MaxMovement can never be
+            // entered in a single step no matter how many turns it waits — hard-block it so
+            // the search itself finds a usable detour. Without this, Dijkstra still returns
+            // whatever route is globally cheapest by total cost (e.g. straight through an
+            // expensive mountain) even when a longer-but-affordable detour exists, and this
+            // method then has no way to reject just that one hex and keep searching — it can
+            // only report the whole step unaffordable (see WorldAnalysis's own per-hex
+            // MaxMovement check, bd283fb, which caught this same class of route only after
+            // the fact, once already returned).
+            System.Func<HexCoord, bool> effectiveBlock = blockHex;
+            if (!isAirArmy)
+            {
+                int maxMovement = army.MaxMovement;
+                effectiveBlock = hex => (blockHex != null && blockHex(hex))
+                    || (map.TryGetTerrainAt(hex, out TerrainTypeEntry stepEntry)
+                        && Mathf.Max(1, stepEntry.moveCost) > maxMovement);
+            }
+            HexPath path = HexPathfinder.FindPath(map, army.Hex, destination, blockHex: effectiveBlock, flatCost: isAirArmy);
             if (path == null || path.Hexes.Count < 2)
                 return null;
             HexCoord step = path.Hexes[1];

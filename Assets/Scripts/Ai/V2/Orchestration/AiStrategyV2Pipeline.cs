@@ -973,7 +973,13 @@ namespace Game.Ai.V2
                     ProvisionedMission selected = null;
                     StableMissionKey selectedKey = default;
                     var attemptedKeys = new HashSet<StableMissionKey>();
-                    int reallocPass = 0;
+                    // Two independent bounded budgets, not one shared counter: a Scout batch that
+                    // keeps failing (assignmentReallocPass) must not be able to consume every
+                    // realloc this cycle had, starving the single-mission repack
+                    // (repriceReallocPass) that a mandatory Economy EnvelopeTooSmall/
+                    // RepriceThisTurn depends on to ever see a corrected envelope this turn.
+                    int assignmentReallocPass = 0;
+                    int repriceReallocPass = 0;
                     bool provisioningSettled = false;
                     while (!provisioningSettled)
                     {
@@ -1009,23 +1015,43 @@ namespace Game.Ai.V2
                                 fe?.Mission?.Kind == MissionKind.Scout
                                 && !cycleProvisioning.AlreadyProvisioned(
                                     StableMissionKey.For(fe.Mission))).ToList();
-                            bool scoutPoolExhausted = openScouts.Count > 0
-                                && openScouts.All(fe => scoutFailures.Any(f =>
-                                    StableMissionKey.For(f.Funded.Mission).Equals(
-                                        StableMissionKey.For(fe.Mission))));
-                            if (scoutPoolExhausted)
-                                foreach (CapabilityPoolKind pool in openScouts
-                                             .Select(fe => CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission))
-                                             .Where(p => p != CapabilityPoolKind.None).Distinct())
+                            Dictionary<StableMissionKey, ProvisionFailure> scoutFailureByKey =
+                                scoutFailures.ToDictionary(
+                                    f => StableMissionKey.For(f.Funded.Mission), f => f.Failure);
+                            // Exhaustion is a claim about the whole physical pool, not about this
+                            // batch's session contention: only mark a pool exhausted when every
+                            // still-open mission drawing on it failed AND each failure is proven
+                            // pool-wide (ProvenPoolWideUnable), and no mission in that same pool
+                            // already succeeded this batch (a scout that got a mover is live proof
+                            // the pool is not exhausted).
+                            foreach (CapabilityPoolKind pool in openScouts
+                                         .Select(fe => CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission))
+                                         .Where(p => p != CapabilityPoolKind.None).Distinct())
+                            {
+                                List<FundedEntry> poolOpenScouts = openScouts.Where(fe =>
+                                    CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission) == pool).ToList();
+                                bool poolHasSuccessThisBatch = cycleProvisioning.Successful.Values.Any(m =>
+                                    m?.Mission != null
+                                    && CapabilityPoolExhaustionRegistry.PoolFor(m.Mission) == pool);
+                                if (poolHasSuccessThisBatch)
+                                    continue;
+                                bool poolWideExhausted = poolOpenScouts.Count > 0 && poolOpenScouts.All(fe =>
+                                    scoutFailureByKey.TryGetValue(StableMissionKey.For(fe.Mission),
+                                        out ProvisionFailure fail)
+                                    && CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
+                                        snapshot, player, fe.Mission, fail));
+                                if (poolWideExhausted)
                                     CapabilityPoolExhaustionRegistry.MarkExhausted(player, pool,
-                                        $"assignment batch rejected all {openScouts.Count} funded Scout mission(s)");
+                                        $"assignment batch rejected all {poolOpenScouts.Count} funded "
+                                        + $"Scout mission(s) in pool {pool}, proven pool-wide unable");
+                            }
 
                             // One batch means one re-pack. The allocator now sees every impossible
                             // Scout at once, so released AP can admit Economy/Development immediately.
                             if (cycleSession.HasNewFailures && !cycleSession.Converged
-                                && reallocPass < AiConfigV2.maxReallocIterations)
+                                && assignmentReallocPass < AiConfigV2.maxReallocIterations)
                             {
-                                reallocPass++;
+                                assignmentReallocPass++;
                                 allocation = cycleSession.Pack();
                                 foreach (FundedEntry fe in allocation.Funded)
                                     if (fe?.Mission != null)
@@ -1080,7 +1106,7 @@ namespace Game.Ai.V2
                             + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
 
                         if (poolWide || !cycleSession.HasNewFailures || cycleSession.Converged
-                            || ++reallocPass >= AiConfigV2.maxReallocIterations)
+                            || ++repriceReallocPass >= AiConfigV2.maxReallocIterations)
                         {
                             provisioningSettled = true;
                             break;

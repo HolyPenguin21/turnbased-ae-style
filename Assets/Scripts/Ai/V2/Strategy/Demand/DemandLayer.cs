@@ -1755,6 +1755,10 @@ namespace Game.Ai.V2
                     && d.EconomyPreferredBuilderArmyId == army.Id) == true
                 || activeIntents?.Any(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.Economy
+                    // A builder already walking home (ReturnBuilder) has no outstanding build
+                    // obligation left — it cannot justify a fresh Production/CardUpgrade demand.
+                    && (i.Economy?.Kind == EconomyTaskKind.BuildExtraction
+                        || i.Economy?.Kind == EconomyTaskKind.FoundBase)
                     && (i.PreferredMoverArmyId == army.Id
                         || i.Economy?.BuilderArmyId == army.Id)) == true;
             if (economyWitness)

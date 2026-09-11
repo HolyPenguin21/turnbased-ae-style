@@ -1440,14 +1440,15 @@ namespace Game.Ai.V2
                 if (!army.IsMobileEconomyBuilder
                     || !liveById.TryGetValue(army.ArmyId, out ArmyData live))
                     continue;
-                HexPath route = SafeStepPathing.FindSafePath(ctx.Map, live.Owner, live.Hex, target);
+                // maxMovement hard-blocks any hex this army could never enter in one step (see
+                // SafeStepPathing.FindSafePath, generalising the old post-hoc bd283fb reject into
+                // the search itself), so the route returned — if any — is already guaranteed
+                // usable; the per-hex re-check below is now just a defensive safety net.
+                HexPath route = SafeStepPathing.FindSafePath(
+                    ctx.Map, live.Owner, live.Hex, target, army.MaxMovement);
                 if (route == null)
                     continue;
                 int cost = route.TotalCost;
-                // A finite TotalCost only proves hexes exist all the way to the target — it says
-                // nothing about whether any single hex on the route costs more to enter than this
-                // army can ever have in one turn. That hex is impassable for this mover no matter
-                // how many turns it waits, so the whole route is not actually a candidate.
                 bool everyStepAffordable = true;
                 for (int i = 1; i < route.Hexes.Count && everyStepAffordable; i++)
                 {
@@ -1462,7 +1463,8 @@ namespace Game.Ai.V2
                 int returnCost = int.MaxValue;
                 foreach (HexCoord home in snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
                 {
-                    int candidate = SafeStepPathing.FindSafePathCost(ctx.Map, player, target, home);
+                    int candidate = SafeStepPathing.FindSafePathCost(
+                        ctx.Map, player, target, home, army.MaxMovement);
                     if (candidate < returnCost) returnCost = candidate;
                 }
                 if (returnCost == int.MaxValue)

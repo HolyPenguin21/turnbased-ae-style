@@ -1,6 +1,8 @@
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Terrain;
+using UnityEngine;
 
 namespace Game.Ai
 {
@@ -35,19 +37,26 @@ namespace Game.Ai
         {
             if (map == null || army == null)
                 return int.MaxValue;
-            return FindSafePathCost(map, army.Owner, army.Hex, targetHex);
+            return FindSafePathCost(map, army.Owner, army.Hex, targetHex, army.MaxMovement);
         }
 
         // Same canonical blocker for a projected leg whose mover is not physically standing at
         // `from` yet (Economy uses it for the post-build return leg). This keeps outbound and
         // return costing on the exact route policy execution already uses.
+        //
+        // `maxMovement` — when given, hard-blocks any hex whose entry cost exceeds it, the same
+        // way a known sighting is hard-blocked: such a hex is impassable for this mover no
+        // matter how many turns it waits, so the search itself must route around it instead of
+        // returning the globally-cheapest route (which may run straight through it) for the
+        // caller to reject only after the fact (see WorldAnalysis's own per-hex MaxMovement
+        // check, bd283fb — this generalises that guard into the search).
         public static int FindSafePathCost(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null)
         {
             if (map == null || owner == null)
                 return int.MaxValue;
             HexPath path = HexPathfinder.FindPath(map, from, targetHex,
-                blockHex: SafeRouteBlocker(owner, targetHex));
+                blockHex: SafeRouteBlocker(map, owner, targetHex, maxMovement));
             return path?.TotalCost ?? int.MaxValue;
         }
 
@@ -55,22 +64,35 @@ namespace Game.Ai
         // caller can check per-hex terrain cost against a specific mover's MaxMovement — a
         // finite TotalCost only proves a route exists over however many turns it takes; it says
         // nothing about whether any single hex on it costs more to enter than the mover can ever
-        // have in one turn (impassable for that mover regardless of turns banked).
+        // have in one turn (impassable for that mover regardless of turns banked). Passing
+        // `maxMovement` makes the search itself honour that instead of leaving it to the caller.
         public static HexPath FindSafePath(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null)
         {
             if (map == null || owner == null)
                 return null;
             return HexPathfinder.FindPath(map, from, targetHex,
-                blockHex: SafeRouteBlocker(owner, targetHex));
+                blockHex: SafeRouteBlocker(map, owner, targetHex, maxMovement));
         }
 
+        // No map/maxMovement here — FindNextSafeStep's own caller, AiTurnController.
+        // FindAffordableStep, already hard-blocks any hex over this army's MaxMovement itself.
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            ArmyData army, HexCoord targetHex) => SafeRouteBlocker(army.Owner, targetHex);
+            ArmyData army, HexCoord targetHex) =>
+            SafeRouteBlocker(null, army.Owner, targetHex, null);
 
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            PlayerSetupData owner, HexCoord targetHex) => hex => !hex.Equals(targetHex)
+            HexMap map, PlayerSetupData owner, HexCoord targetHex, int? maxMovement) => hex =>
+        {
+            if (!hex.Equals(targetHex)
                 && (AiMapMemory.KnownEnemySightingAt(owner, hex).HasValue
-                    || AiMapMemory.IsScoutDangerous(owner, hex));
+                    || AiMapMemory.IsScoutDangerous(owner, hex)))
+                return true;
+            if (maxMovement.HasValue && map != null
+                && map.TryGetTerrainAt(hex, out TerrainTypeEntry entry)
+                && Mathf.Max(1, entry.moveCost) > maxMovement.Value)
+                return true;
+            return false;
+        };
     }
 }
