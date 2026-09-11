@@ -1112,7 +1112,9 @@ namespace Game.EditorTests
             {
                 MissionProposal scout = AllocatorMission(
                     MissionKind.Scout, 100f - i, DesireAxis.Recon, 100 + i);
-                ((ScoutMissionTarget)scout.Target).FocusHex = new HexCoord(i + 1, 0);
+                var scoutTarget = (ScoutMissionTarget)scout.Target;
+                scoutTarget.FocusHex = new HexCoord(i + 1, 0);
+                scout.Target = scoutTarget;
                 scouts.Add(scout);
                 FundedEntry entry = new FundedEntry
                 {
