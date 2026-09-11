@@ -174,6 +174,24 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EconomyDemand_IdleStrongHeroHasNoCombatPowerOpportunityCost()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
+            ArmySnapshot builder = EconomyBuilder(34, 2, 200f);
+            snapshot.Self.Armies = new[] { builder };
+            snapshot.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 3),
+            };
+
+            AxisDemand demand = DemandLayer.EconomyDemands(
+                snapshot, new DesireBreakdown(), null, null, null).Single();
+
+            Assert.That(demand.EconomyPreferredBuilderArmyId, Is.EqualTo(34));
+            Assert.That(demand.EconomyHeroOpportunityCost, Is.Zero);
+        }
+
+        [Test]
         public void EconomyDemand_ExcessivePaybackSiteIsRejected()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
