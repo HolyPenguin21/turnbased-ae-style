@@ -427,7 +427,7 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 5146f4b2d378d034c927b9175f79eefe, type: 3}
     faction: 0
     cardType: 0
-    apCost: 2
+    apCost: 1
     resourceCost:
       human: 1
       energy: 0
