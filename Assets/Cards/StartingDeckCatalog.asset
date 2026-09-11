@@ -103,6 +103,8 @@ MonoBehaviour:
       count: 1
     - cardKey: Iron Concord/Lira Sable
       count: 1
+    - cardKey: Iron Concord/Tessa Rourke
+      count: 1
     - cardKey: Iron Concord/Scout
       count: 1
     - cardKey: Iron Concord/RC Vehicle
@@ -113,8 +115,6 @@ MonoBehaviour:
       count: 1
     - cardKey: Iron Concord/Light Infantry
       count: 2
-    - cardKey: Iron Concord/Iron guards
-      count: 0
     - cardKey: Iron Concord/Medium infantry
       count: 0
     - cardKey: Iron Concord/Flamer
@@ -122,12 +122,6 @@ MonoBehaviour:
     - cardKey: Iron Concord/AT Infantry
       count: 0
     - cardKey: Iron Concord/Heavy Infantry
-      count: 0
-    - cardKey: Iron Concord/BS Melee
-      count: 0
-    - cardKey: Iron Concord/BS Ranged
-      count: 0
-    - cardKey: Iron Concord/BS Plasma
       count: 0
     - cardKey: Iron Concord/Light Tank
       count: 1
