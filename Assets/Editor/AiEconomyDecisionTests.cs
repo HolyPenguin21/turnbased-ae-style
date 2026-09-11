@@ -187,7 +187,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Facility,
                 apCost = 3,
-                resourceCost = new ResourceCost { materials = 7 },
+                resourceCost = new ResourceCost { materials = 9 },
             };
 
             try
