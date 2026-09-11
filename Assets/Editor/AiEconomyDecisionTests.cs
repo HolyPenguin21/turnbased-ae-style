@@ -162,15 +162,23 @@ namespace Game.EditorTests
         [Test]
         public void DevelopmentDemand_UpgradeWithoutAxisWitnessIsRejected()
         {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.HasDevFacility = true;
             var opportunity = new DevelopmentOpportunity
             {
                 RecipientKind = DevRecipientKind.FieldUnit,
                 BaseValue = 10f,
             };
 
-            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
-                opportunity, System.Array.Empty<AxisDemand>(),
-                System.Array.Empty<MissionIntent>(), null), Is.False);
+            List<AxisDemand> demands = DemandLayer.Generate(
+                snapshot, new DesireBreakdown(),
+                System.Array.Empty<ReconObjective>(),
+                System.Array.Empty<AggressionObjective>(),
+                System.Array.Empty<MissionIntent>(), null, null,
+                devOpportunities: new[] { opportunity },
+                dirtyAxes: new HashSet<DesireAxis> { DesireAxis.Development });
+
+            Assert.That(demands.Any(d => d.Capability == CapabilityKind.CardUpgrade), Is.False);
         }
 
         [Test]
