@@ -1136,6 +1136,13 @@ namespace Game.Ai.V2
             return active;
         }
 
+        // A mover that already advanced this turn owns its lane through the productive typed loop.
+        // Reconciliation may run repeatedly after each step; trimming it here would manufacture
+        // surplus churn and immediately recreate effectively the same intent.
+        internal static bool IsProductiveReconLaneThisTurn(MissionIntent intent, int turn) =>
+            intent != null && intent.Kind == MissionKind.Scout && intent.Scout != null
+            && intent.PreferredMoverArmyId.HasValue && intent.LastProgressTurn == turn;
+
         // §P1 — GRADUAL contraction of durable Scout lanes toward desired concurrency: at most
         // maxReconLaneTrimPerTurn shed per turn, only Soft/None-funded lanes, and the target floor
         // already accounts for any Hard-funded lanes that are being kept regardless.
@@ -1160,7 +1167,8 @@ namespace Game.Ai.V2
             int desired = System.Math.Max(1, ReconConcurrencyPolicy.DesiredTotal(snap, runnable));
 
             var shedable = scoutLanes
-                .Where(i => i.Funding < CommitmentTier.Hard)
+                .Where(i => i.Funding < CommitmentTier.Hard
+                    && !IsProductiveReconLaneThisTurn(i, snap.TurnNumber))
                 .OrderBy(i => (int)i.Funding)
                 .ThenByDescending(i => i.CreatedTurn)
                 .ThenByDescending(i => i.StallTurns)
