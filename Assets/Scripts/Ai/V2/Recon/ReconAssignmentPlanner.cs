@@ -702,7 +702,7 @@ namespace Game.Ai.V2
         internal static bool ShouldReserveObservationForAir(ScoutMissionTarget target,
             ScoutExecutionCandidate selected, IEnumerable<ScoutExecutionCandidate> candidates)
         {
-            if (target == null || selected.ExecutorKind != ScoutExecutorKind.Ground)
+            if (selected.ExecutorKind != ScoutExecutorKind.Ground)
                 return false;
             bool observationClass = ReconScoutKinds.IsRefresh(target.Kind)
                 || ReconScoutKinds.IsSurveil(target.Kind);
