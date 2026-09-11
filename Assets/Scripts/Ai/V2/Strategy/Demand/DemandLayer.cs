@@ -1416,6 +1416,7 @@ namespace Game.Ai.V2
             // Stage the best meaningful, legal and safely-routable Base before value admission.
             // This is what lets the existing continuity urgency accumulate from a negative score.
             AxisDemand stagedBase = meaningfulDemands
+                .Where(d => d.EconomyPreferredBuilderArmyId.HasValue)
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
                 .ThenByDescending(d => d.Value)
@@ -1451,7 +1452,9 @@ namespace Game.Ai.V2
                     + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
                 if (!admitted)
                 {
-                    if (demand.EconomySiteValue <= AiConfigV2.allocatorSliceEpsilon)
+                    if (!demand.EconomyPreferredBuilderArmyId.HasValue)
+                        noBuilder++;
+                    else if (demand.EconomySiteValue <= AiConfigV2.allocatorSliceEpsilon)
                         strategicValueRejected++;
                     else if (demand.Value <= AiConfigV2.allocatorSliceEpsilon)
                         deliveryValueRejected++;
