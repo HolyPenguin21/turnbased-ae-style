@@ -914,9 +914,10 @@ namespace Game.Ai.V2
             List<AiMapMemory.KnownEnemySighting> threats = EconomyRouteThreats(
                 snap, army.Hex, target);
             bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
-            bool safeRear = threats.Count == 0 && snap?.Self?.BaseHexes != null
-                && snap.Self.BaseHexes.Any(h => HexGridMath.Distance(h, army.Hex) <= 1)
-                && snap.Self.BaseHexes.Any(h => HexGridMath.Distance(h, target) <= 1);
+            // EconomyRouteThreats already scans the whole corridor (direct + detour buffer) against
+            // honestly-witnessed sightings — a clean route reported here is not a proximity guess,
+            // it is the fog-honest answer. No separate base-adjacency requirement on top of it.
+            bool safeRear = threats.Count == 0;
             int minimumEscort = safeRear ? 0 : 1;
             choice.MinimumEscortCount = minimumEscort;
 
@@ -969,6 +970,12 @@ namespace Game.Ai.V2
                 return choice;
             ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a != null
                 && a.IsGarrison && a.Hex.Equals(army.Hex));
+            // Mirror ProvisioningManager.PlanEconomyArmyLightening's hard gate here: a garrison
+            // already activated this turn cannot actually hand over an escort, so do not score
+            // ReinforceAtBase as viable and let Provisioning discover that as AssemblyInfeasible
+            // (which also burns a 2-turn structural cooldown on the whole delivery for nothing).
+            if (garrison == null || garrison == army || garrison.HasActivatedThisTurn)
+                return choice;
             List<WorthIt.DefenderProfile> reserve =
                 garrison?.Members?.ToList() ?? new List<WorthIt.DefenderProfile>();
             List<int> reserveIndices = Enumerable.Range(0, reserve.Count)

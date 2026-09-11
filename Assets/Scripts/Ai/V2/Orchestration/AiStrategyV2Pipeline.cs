@@ -854,6 +854,16 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
 
+                    // Scout jobs rejected as MoverContended already carry ProvisionDisposition
+                    // .RetryNextTurn ("out of the running THIS turn" — ResourceAllocator.cs:172),
+                    // but nothing enforced that across settled steps: BuildMissionSet re-proposed
+                    // the same losing job every micro-step, re-running the full batch solve only to
+                    // reach the identical rejection again (same busy movers, nothing changed). This
+                    // remembers a job's key only once ITS settled step has fully finished (so the
+                    // existing intra-step realloc "chance within the batch" is untouched), and skips
+                    // re-proposing it in later settled steps this admission pass.
+                    var contendedThisPass = new HashSet<StableMissionKey>();
+
                     while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
                         && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
                     {
@@ -882,6 +892,9 @@ namespace Game.Ai.V2
 
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace);
+                    if (contendedThisPass.Count > 0)
+                        missions = missions.Where(m => m == null || m.Kind != MissionKind.Scout
+                            || !contendedThisPass.Contains(StableMissionKey.For(m))).ToList();
                     List<Commitment> cycleCommitments =
                         MissionContinuityLayer.BindFunding(activeIntents, missions);
                     var cycleLedger = new MissionOutcomeLedger();
@@ -1062,6 +1075,14 @@ namespace Game.Ai.V2
                             if (fe?.Mission != null)
                                 fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
                     }
+
+                    // This settled step is done re-packing (intra-step realloc chances are spent) —
+                    // freeze its final Scout rejections so the next settled step does not re-propose
+                    // and re-lose the identical job against the identical busy movers.
+                    foreach (KeyValuePair<StableMissionKey, ScoutAssignmentFailureReason> kv
+                                 in cycleProvisioning.AssignmentRejections)
+                        if (kv.Value == ScoutAssignmentFailureReason.MoverContended)
+                            contendedThisPass.Add(kv.Key);
 
                     if (selected == null)
                     {
