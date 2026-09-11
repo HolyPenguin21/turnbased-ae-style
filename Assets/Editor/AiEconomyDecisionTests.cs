@@ -112,12 +112,65 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyPayback_RejectsExcessiveConstructionHorizon()
+        public void EconomyPayback_UsesOnlyPersistentResourceCost()
         {
             float payback = DemandLayer.EconomyPaybackTurns(
-                expectedIncomeGain: 1f, resourceCost: 7f, assignmentApCost: 3f);
+                expectedIncomeGain: 1f, resourceCost: 7f, assignmentApCost: 30f);
 
-            Assert.That(payback, Is.GreaterThan(AiConfigV2.economyExtractionMaxPaybackTurns));
+            Assert.That(payback, Is.EqualTo(7f));
+            Assert.That(payback, Is.LessThanOrEqualTo(
+                AiConfigV2.economyExtractionMaxPaybackTurns));
+        }
+
+        [Test]
+        public void MissionContinuity_ProductiveCommittedReconLaneIsProtectedThisTurn()
+        {
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Scout,
+                Scout = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+                PreferredMoverArmyId = 17,
+                LastProgressTurn = 8,
+            };
+
+            Assert.That(MissionContinuityLayer.IsProductiveReconLaneThisTurn(intent, 8), Is.True);
+            Assert.That(MissionContinuityLayer.IsProductiveReconLaneThisTurn(intent, 9), Is.False);
+        }
+
+        [Test]
+        public void ReconAssignment_ObservationKeepsAirLaneWhenAirRouteExists()
+        {
+            var target = new ScoutMissionTarget
+            {
+                Kind = ScoutTargetKind.Refresh,
+                FocusHex = new HexCoord(4, 0),
+            };
+            var ground = new ScoutExecutionCandidate(
+                new ArmySnapshot { ArmyId = 14 }, target.FocusHex,
+                1, 0, 0, 0f, 0, false, 1f);
+            var air = new ScoutExecutionCandidate(
+                new ArmySnapshot { ArmyId = 31, IsAir = true }, target.FocusHex,
+                2, 0, 0, 0f, 0, false, 2f,
+                ScoutExecutorKind.AirExisting, requiredEnergy: 1f, routeScore: 2f);
+
+            Assert.That(ReconAssignmentPlanner.ShouldReserveObservationForAir(
+                target, ground, new[] { ground, air }), Is.True);
+            Assert.That(ReconAssignmentPlanner.ShouldReserveObservationForAir(
+                target, air, new[] { ground, air }), Is.False);
+        }
+
+        [Test]
+        public void DevelopmentDemand_UpgradeWithoutAxisWitnessIsRejected()
+        {
+            var opportunity = new DevelopmentOpportunity
+            {
+                RecipientKind = DevRecipientKind.FieldUnit,
+                BaseValue = 10f,
+            };
+
+            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
+                opportunity, System.Array.Empty<AxisDemand>(),
+                System.Array.Empty<MissionIntent>(), null), Is.False);
         }
 
         [Test]
