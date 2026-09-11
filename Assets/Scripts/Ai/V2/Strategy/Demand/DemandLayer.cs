@@ -699,8 +699,7 @@ namespace Game.Ai.V2
                 float value = strategicValue
                     - AiConfigV2.economyBuildApPenalty * deliveryApCost
                     - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travel)
-                    - AiConfigV2.economySiteHeroOpportunityPenalty
-                        * Mathf.Max(0f, opportunity);
+                    - Mathf.Max(0f, opportunity);
                 if (strategicValue <= AiConfigV2.allocatorSliceEpsilon)
                 {
                     rejectedStrategicValue++;
@@ -1376,7 +1375,7 @@ namespace Game.Ai.V2
                         - AiConfigV2.economySiteThreatPenalty * exposure;
                     float value = strategicValue - deliveryApCost
                         - AiConfigV2.economySiteTravelPenalty * travel
-                        - AiConfigV2.economySiteHeroOpportunityPenalty * heroCost;
+                        - Mathf.Max(0f, heroCost);
                     AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
                         + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
                         + $"reason={reasonValue:0.##} buildCost={intrinsicBuildCost:0.##} "
@@ -1739,17 +1738,17 @@ namespace Game.Ai.V2
 
             bool economyWitness = formedDemands?.Any(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy
-                    && d.EconomyPreferredBuilderArmyId == army.ArmyId) == true
+                    && d.EconomyPreferredBuilderArmyId == army.Id) == true
                 || activeIntents?.Any(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.Economy
-                    && (i.PreferredMoverArmyId == army.ArmyId
-                        || i.Economy?.BuilderArmyId == army.ArmyId)) == true;
+                    && (i.PreferredMoverArmyId == army.Id
+                        || i.Economy?.BuilderArmyId == army.Id)) == true;
             if (economyWitness)
                 return true;
 
             bool reconWitness = activeIntents?.Any(i => i != null
                 && i.Status == IntentStatus.Active && i.Kind == MissionKind.Scout
-                && i.PreferredMoverArmyId == army.ArmyId) == true;
+                && i.PreferredMoverArmyId == army.Id) == true;
             return reconWitness && ImprovesReconCapability(op);
         }
 
