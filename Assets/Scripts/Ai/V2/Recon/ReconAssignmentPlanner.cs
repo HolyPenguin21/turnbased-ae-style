@@ -696,12 +696,30 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // An observation job with a real, mission-specific air route belongs to the independent
+        // aviation lane. Ground remains eligible as a fallback, but must not consume that lane
+        // merely because its AP envelope is cheaper.
+        internal static bool ShouldReserveObservationForAir(ScoutMissionTarget target,
+            ScoutExecutionCandidate selected, IEnumerable<ScoutExecutionCandidate> candidates)
+        {
+            if (target == null || selected.ExecutorKind != ScoutExecutorKind.Ground)
+                return false;
+            bool observationClass = ReconScoutKinds.IsRefresh(target.Kind)
+                || ReconScoutKinds.IsSurveil(target.Kind);
+            bool compatible = observationClass
+                && target.Stealth != StealthRequirement.Required
+                && target.DetectionRisk <= 0f;
+            return compatible && candidates != null
+                && candidates.Any(c => c.ExecutorKind != ScoutExecutorKind.Ground);
+        }
+
         private static long[] ScoreScoutAssignment(List<FundedEntry> open,
             List<List<ScoutExecutionCandidate>> cands, int[] chosen)
         {
             int n = open.Count;
             int covered = 0;
             long priorityCoverage = 0;
+            int observationAirMisses = 0;
             int envelopeViolations = 0;
             long envelopeOverflow = 0;
             int actorDiscontinuity = 0;
@@ -730,6 +748,8 @@ namespace Game.Ai.V2
                     actorDiscontinuity++;
 
                 var target = (ScoutMissionTarget)open[i].Mission.Target;
+                if (ShouldReserveObservationForAir(target, cand, cands[i]))
+                    observationAirMisses++;
                 bool needStealth = target.Stealth == StealthRequirement.Required;
                 if (!needStealth && cand.IsStealthCapableMover
                     && cands[i].Any(alt => !alt.IsStealthCapableMover))
@@ -742,24 +762,25 @@ namespace Game.Ai.V2
                 dist += cand.Distance;
             }
 
-            var key = new long[11 + 3 * n];
+            var key = new long[12 + 3 * n];
             key[0] = -covered;
             key[1] = -priorityCoverage;
-            // Prefer an actor that fits the envelope already funded for this mission. This keeps a
-            // feasible ground candidate from being displaced by an air candidate that Provisioning
-            // must immediately reject/repack, without making Assignment a second funding authority.
-            key[2] = envelopeViolations;
-            key[3] = envelopeOverflow;
-            key[4] = actorDiscontinuity;
-            key[5] = wastedStealth;
-            key[6] = risk;
-            key[7] = -standOff;
-            key[8] = requiredAp;
-            key[9] = eta;
-            key[10] = dist;
+            // Preserve the separately provisioned observation lane before comparing delivery
+            // cost. Every air alternative counted here already passed AppendAirCandidates' real
+            // target-route checks; funding remains Provisioning/Allocator authority.
+            key[2] = observationAirMisses;
+            key[3] = envelopeViolations;
+            key[4] = envelopeOverflow;
+            key[5] = actorDiscontinuity;
+            key[6] = wastedStealth;
+            key[7] = risk;
+            key[8] = -standOff;
+            key[9] = requiredAp;
+            key[10] = eta;
+            key[11] = dist;
             for (int i = 0; i < n; i++)
             {
-                int b = 11 + 3 * i;
+                int b = 12 + 3 * i;
                 if (chosen[i] < 0)
                     key[b] = key[b + 1] = key[b + 2] = long.MaxValue;
                 else
