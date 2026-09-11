@@ -745,7 +745,9 @@ namespace Game.Ai.V2
             }
 
             string baseSummary = AddBaseCandidates(
-                s, candidates, player, ctx, activeIntents, commitments);
+                s, candidates, player, ctx, activeIntents, commitments,
+                out int baseNoBuilder, out int baseStrategicValue,
+                out int baseDeliveryValue, out int baseThreshold);
             // Resource need is a strategic decision; builder convenience chooses a site only
             // after a resource has survived feasibility/payback filtering. This prevents a scout
             // standing on a low-priority resource from silently replacing the hand bottleneck.
@@ -801,11 +803,14 @@ namespace Game.Ai.V2
                 yield return emitted;
             }
             AiDebugLog.Write($"[AI][V2][Economy][BaseCandidates] {baseSummary}");
-            AiDebugLog.Write($"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder} "
-                + $"payback={rejectedPayback} strategic_value={rejectedStrategicValue} "
-                + $"delivery_value={rejectedDeliveryValue} {baseSummary}");
+            int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback
+                + rejectedStrategicValue + baseStrategicValue
+                + rejectedDeliveryValue + baseDeliveryValue + baseThreshold;
+            AiDebugLog.Write($"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
+                + $"payback={rejectedPayback} strategic_value={rejectedStrategicValue + baseStrategicValue} "
+                + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} threshold={baseThreshold}");
             if (selected.Count == 0)
-                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={candidates.Count} "
+                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
                     + "reason=no_legal_valuable_site_or_base");
         }
 
@@ -1299,8 +1304,14 @@ namespace Game.Ai.V2
 
         private static string AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
             PlayerSetupData player, AiTurnContext ctx,
-            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            out int noBuilder, out int strategicValueRejected,
+            out int deliveryValueRejected, out int thresholdRejected)
         {
+            noBuilder = 0;
+            strategicValueRejected = 0;
+            deliveryValueRejected = 0;
+            thresholdRejected = 0;
             List<CardData> baseCards = (s.Self.Hand ?? System.Array.Empty<CardData>())
                 .Where(c => c?.Definition?.cardType == CardType.Base)
                 .OrderBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
@@ -1310,15 +1321,11 @@ namespace Game.Ai.V2
                 MissionIntentRegistry.GetOrCreate(player)
                     .MarkBaseExpansionCandidate(s.TurnNumber, null, null,
                         structurallyEligible: false);
-                return "considered=0 kept=0 no_builder=0 payback=0 strategic_value=0 delivery_value=0 threshold=0 reason=no_base_card_or_opportunity";
+                return "considered=0 kept=0 reason=no_base_card_or_opportunity";
             }
 
             int considered = 0;
             int kept = 0;
-            int noBuilder = 0;
-            int strategicValueRejected = 0;
-            int deliveryValueRejected = 0;
-            int thresholdRejected = 0;
             AxisDemand best = null;
             var meaningfulDemands = new List<AxisDemand>();
 
@@ -1470,15 +1477,12 @@ namespace Game.Ai.V2
                     best = demand;
             }
 
-            string reasons = $"no_builder={noBuilder} payback=0 strategic_value={strategicValueRejected} "
-                + $"delivery_value={deliveryValueRejected} threshold={thresholdRejected}";
             return best == null
-                ? $"considered={considered} kept={kept} best=none {reasons} "
+                ? $"considered={considered} kept={kept} best=none "
                     + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
-                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##} "
-                    + reasons;
+                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
 
         private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,
