@@ -360,6 +360,7 @@ MonoBehaviour:
   rectTransform: {fileID: 1980000000000010002}
   artImage: {fileID: 1980000000000010004}
   emptySlotSprite: {fileID: 21300000, guid: bf52cb7dbe468d2428d0a1af6d1370be, type: 3}
+  emptySlotAlpha: 0.39215688
   nameText: {fileID: 1980000000000010014}
   moveText: {fileID: 1980000000000010024}
   commandBadgeRoot: {fileID: 0}

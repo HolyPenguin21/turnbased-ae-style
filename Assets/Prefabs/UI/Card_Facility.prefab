@@ -95,6 +95,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.BaseSlotCardUI
   artImage: {fileID: 1970000000000010004}
+  emptySlotSprite: {fileID: 21300000, guid: bf52cb7dbe468d2428d0a1af6d1370be, type: 3}
+  emptySlotAlpha: 0.39215688
   nameText: {fileID: 1970000000000010014}
   statusText: {fileID: 1970000000000010024}
   improveButton: {fileID: 1970000000000010045}

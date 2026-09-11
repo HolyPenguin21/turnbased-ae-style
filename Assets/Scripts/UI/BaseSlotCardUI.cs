@@ -21,6 +21,12 @@ namespace Game.UI
     public class BaseSlotCardUI : MonoBehaviour, IPointerClickHandler, IPointerEnterHandler, IPointerExitHandler
     {
         [SerializeField] private Image artImage;
+        // Sprite shown in an empty/locked Facility slot in place of a real Facility's art.
+        // Tinted by emptySlotAlpha below. Leave unset for a plain tinted box.
+        [SerializeField] private Sprite emptySlotSprite;
+        // Alpha (0-1) applied to emptySlotSprite/EmptySlotColor's white tint for an unoccupied
+        // slot — same knob as ArmyUnitCardUI.emptySlotAlpha, tune per prefab in the inspector.
+        [SerializeField] [Range(0f, 1f)] private float emptySlotAlpha = 100f / 255f;
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text statusText;
         [SerializeField] private Button improveButton;
@@ -45,9 +51,6 @@ namespace Game.UI
         [SerializeField] private TMP_Text hpStatText;
         [SerializeField] private TMP_Text moveStatText;
         [SerializeField] private TMP_Text rangeStatText;
-
-        // Same faint-box convention as ArmyUnitCardUI's own empty-slot placeholder.
-        private static readonly Color EmptySlotColor = new Color(1f, 1f, 1f, 0.12f);
 
         private BaseViewerModalUI _modal;
         private BuildingData _building;
@@ -97,8 +100,9 @@ namespace Game.UI
                 nameText.text = _defaultNameText;
             if (artImage != null)
             {
-                artImage.sprite = isBaseCell ? building.Art : _facility != null ? _facility.Art : null;
-                artImage.color = _occupied ? Color.white : EmptySlotColor;
+                Sprite occupiedArt = isBaseCell ? building.Art : _facility != null ? _facility.Art : null;
+                artImage.sprite = _occupied ? occupiedArt : emptySlotSprite;
+                artImage.color = _occupied ? Color.white : new Color(1f, 1f, 1f, emptySlotAlpha);
             }
 
             RefreshStatsRow(isBaseCell, building);

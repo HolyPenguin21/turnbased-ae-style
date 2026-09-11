@@ -32,8 +32,11 @@ namespace Game.UI
         [SerializeField] private RectTransform rectTransform;
         [SerializeField] private Image artImage;
         // Sprite shown in an empty capacity slot (Unit == null) in place of a real unit's art.
-        // Rendered at solid white (no tint / no alpha fade). Leave unset for a plain white box.
+        // Tinted by emptySlotAlpha below. Leave unset for a plain tinted box.
         [SerializeField] private Sprite emptySlotSprite;
+        // Alpha (0-1) applied to emptySlotSprite's white tint for an empty slot — same knob as
+        // BaseSlotCardUI.emptySlotAlpha, tune per prefab in the inspector.
+        [SerializeField] [Range(0f, 1f)] private float emptySlotAlpha = 100f / 255f;
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text moveText;
         [SerializeField] private GameObject commandBadgeRoot;
@@ -119,9 +122,9 @@ namespace Game.UI
             if (artImage != null)
             {
                 // Empty capacity slot falls back to emptySlotSprite (a real unit uses its own
-                // art). Always solid white — no alpha fade on the empty slot any more.
+                // art), tinted down by emptySlotAlpha so it reads as a placeholder.
                 artImage.sprite = unit != null ? unit.Art : emptySlotSprite;
-                artImage.color = Color.white;
+                artImage.color = unit != null ? Color.white : new Color(1f, 1f, 1f, emptySlotAlpha);
             }
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;
