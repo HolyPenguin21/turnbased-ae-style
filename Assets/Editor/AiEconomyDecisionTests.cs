@@ -740,6 +740,58 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void BaseExpansionUrgency_CanAdmitMeaningfulNegativeDeliveryValue()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var baseDef = new CardDefinition
+            {
+                cardType = CardType.Base,
+                authoredKey = "costly-base",
+                displayName = "Costly Base",
+                apCost = 4,
+                resourceCost = new ResourceCost
+                    { human = 1, energy = 4, materials = 4, tech = 2 },
+            };
+            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
+            snapshot.Self.Hand = new[] { new CardData(baseDef) };
+            ArmySnapshot builder = EconomyBuilder(33, 2, 1f);
+            snapshot.Self.Armies = new[] { builder };
+            snapshot.Economy.BaseOpportunities = new[]
+            {
+                new EconomyBaseOpportunity
+                {
+                    Hex = new HexCoord(3, 0),
+                    CapacityValue = 1f,
+                    BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
+                },
+            };
+
+            try
+            {
+                AxisDemand admitted = null;
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                for (int turn = 1; turn <= 8 && admitted == null; turn++)
+                {
+                    snapshot.TurnNumber = turn;
+                    admitted = DemandLayer.EconomyDemands(snapshot,
+                        new DesireBreakdown(), player, null, null).SingleOrDefault();
+                    if (admitted == null)
+                        state.ReconcileBaseExpansionWait(
+                            turn, System.Array.Empty<MissionTurnOutcome>());
+                }
+
+                Assert.That(admitted, Is.Not.Null);
+                Assert.That(admitted.Value, Is.LessThan(0f));
+                Assert.That(admitted.Value + admitted.EconomyStrategicUrgency,
+                    Is.GreaterThanOrEqualTo(AiConfigV2.economyBaseDemandMinValue));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
+        [Test]
         public void EconomyActorInvalidation_ReadmitsExistingInfrastructureOwner()
         {
             Assert.That(DesireAxes.InvalidationMaskFor(DesireAxis.Economy)
