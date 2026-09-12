@@ -217,11 +217,27 @@ namespace Game.Ai.V2
                 }
             }
 
-            // Protect exactly one economy build vector. Extraction and Base demands may coexist as
-            // alternatives, but reserving both would manufacture a second resource-allocation layer
-            // inside Economy. The highest admitted local priority owns the hold for this pass.
-            AxisDemand protectedEconomyBuild = deferredEconomyBuilds
+            // Protect exactly one economy build vector — collected ONCE, before any per-round
+            // reservation writer runs, from BOTH direct-build obligations (infra/expansion demands
+            // that just failed TryFulfill) AND Hero-prerequisite obligations (an accepted Economy
+            // build target with no Hero to send yet). Picking a single owner here up front means
+            // the old per-round Hero-prerequisite writer inside the materialization loop below
+            // cannot silently outbid (or be outbid by, in foreach order) this hold — there is only
+            // ever one writer of StrategicReservationReason.EconomyDeferredBuild per FulfillDemands
+            // call. Extraction and Base demands may coexist as alternatives, but reserving both
+            // would manufacture a second resource-allocation layer inside Economy. The highest
+            // admitted local priority owns the hold for this pass.
+            var economyBuildObligations = deferredEconomyBuilds
                 .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
+                .Concat(allStates
+                    .Where(s => s.Demand != null
+                        && s.Demand.RequestingAxis == DesireAxis.Economy
+                        && s.Demand.Capability == CapabilityKind.Hero
+                        && s.Demand.TargetHex.HasValue
+                        && s.Demand.EconomyBuildResourceCost != null)
+                    .Select(s => s.Demand))
+                .ToList();
+            AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
                 .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
                 .ThenByDescending(d => d.Capability == CapabilityKind.EconomicExpansionBase ? 1 : 0)
@@ -231,15 +247,21 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (protectedEconomyBuild != null)
             {
-                InfrastructureFulfillment.ReserveDeferredEconomyResources(
-                    snap, player, ctx.TurnNumber, protectedEconomyBuild);
+                if (protectedEconomyBuild.Capability == CapabilityKind.Hero)
+                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
+                        player, ctx.TurnNumber, protectedEconomyBuild);
+                else
+                    InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                        snap, player, ctx.TurnNumber, protectedEconomyBuild);
                 AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
                     + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
             }
             else if (demands.Any(d => d != null && d.RequestingAxis == DesireAxis.Economy
                          && (d.Capability == CapabilityKind.EconomicInfrastructure
-                             || d.Capability == CapabilityKind.EconomicExpansionBase)))
+                             || d.Capability == CapabilityKind.EconomicExpansionBase
+                             || (d.Capability == CapabilityKind.Hero && d.TargetHex.HasValue
+                                 && d.EconomyBuildResourceCost != null))))
             {
                 InfrastructureFulfillment.ClearDeferredEconomyResources(
                     player, ctx.TurnNumber);
@@ -328,19 +350,6 @@ namespace Game.Ai.V2
                     if (top.Count > 0)
                         options[state] = top;
                 }
-
-                // An EconomyHeroPrerequisite demand (Capability.Hero) with no deliverable chain
-                // this round means Economy has an accepted build target but no Hero to send yet.
-                // Reserve that build's H/E/M/T now — see ReserveDeferredEconomyResourcesForPendingHero
-                // — so Phase B cannot spend it out from under the still-open commitment while the
-                // Hero remains unavailable. Re-asserted every round the demand stays unresolved;
-                // superseded by the witnessed-route/delivered reservations once a builder exists.
-                foreach (DemandState state in active)
-                    if (state.Demand.RequestingAxis == DesireAxis.Economy
-                        && state.Demand.Capability == CapabilityKind.Hero
-                        && !options.ContainsKey(state))
-                        InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
-                            player, ctx.TurnNumber, state.Demand);
 
                 Dictionary<DemandState, DemandCandidate> assigned =
                     options.Count > 0
@@ -630,13 +639,27 @@ namespace Game.Ai.V2
         {
             if (activeIntents == null || demand?.TargetHex == null)
                 return false;
-            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
-                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            EconomyTaskKind kind = ResolveEconomyTaskKind(demand);
             return activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
                 && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
                 && i.Economy.TargetHex.Equals(demand.TargetHex.Value)
                 && (kind != EconomyTaskKind.FoundBase || i.Economy.BuildCard == null
                     || i.Economy.BuildCard == demand.EconomyBuildCard));
+        }
+
+        // A Base-founding EconomyHeroPrerequisite demand (Capability.Hero) carries no
+        // EconomicExpansionBase capability of its own — it is only distinguishable from an
+        // extraction-facility Hero prerequisite through the underlying build card's cardType.
+        // Falling back to BuildExtraction for every Hero demand here would make a Base-founding
+        // pending Hero invisible to the active-commitment tie-break above.
+        private static EconomyTaskKind ResolveEconomyTaskKind(AxisDemand demand)
+        {
+            if (demand.Capability == CapabilityKind.EconomicExpansionBase)
+                return EconomyTaskKind.FoundBase;
+            if (demand.Capability == CapabilityKind.Hero
+                && demand.EconomyBuildCard?.Definition?.cardType == CardType.Base)
+                return EconomyTaskKind.FoundBase;
+            return EconomyTaskKind.BuildExtraction;
         }
 
         private static AxisDemand CloneResidualDemand(DemandState state)

@@ -45,10 +45,6 @@ namespace Game.Ai.V2
             public GenerationStep Generation;
         }
 
-        // Base founding is scanned within this radius of each owned base/citadel — an AI surplus
-        // Base card expands adjacent to held territory, never across the map.
-        private const int BaseFoundScanRadius = 3;
-
         // AI-MGR-01 P0.1 — every non-combat card is scored through the shared StrategicCardEvaluator
         // (same breakdown / NetScore band as a Unit/Hero chain), so Phase B can compare the two
         // lanes directly instead of the old incomparable 55/45/40/24 fixed scale.
@@ -283,13 +279,19 @@ namespace Game.Ai.V2
 
             if (def.cardType == CardType.Base)
             {
+                // Base targeting has exactly one owner: WorldAnalysis.Economy's structural
+                // BaseOpportunities list (spacing/direction-to-Citadel/threat/occupied-site/safe-
+                // route already applied there). Phase B never rescans the map on its own — it only
+                // runs the final gameplay-legality check (CanFoundBaseAt) per candidate hex, same as
+                // Generated Base below reuses this exact method.
                 HexCoord? at = null;
                 string why = "noLegalFoundHex";
-                foreach (HexCoord h in BaseFoundCandidates(snap, player, ownBaseHexes))
+                foreach (EconomyBaseOpportunity site in snap?.Economy?.BaseOpportunities
+                             ?? System.Array.Empty<EconomyBaseOpportunity>())
                 {
-                    if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, h, out string r,
+                    if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, site.Hex, out string r,
                             requireCardInHand: generation == null))
-                    { at = h; break; }
+                    { at = site.Hex; break; }
                     if (r != null) why = r;
                 }
                 if (at == null)
@@ -490,22 +492,6 @@ namespace Game.Ai.V2
             if (snap?.Self != null)
                 set.Add(snap.Self.Citadel);
             return set.OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
-        }
-
-        private static IEnumerable<HexCoord> BaseFoundCandidates(WorldSnapshot snap, PlayerSetupData player,
-            List<HexCoord> ownBaseHexes)
-        {
-            var seen = new HashSet<HexCoord>();
-            foreach (HexCoord anchor in ownBaseHexes)
-                foreach (HexCoord h in HexGridMath.HexesInRange(anchor, BaseFoundScanRadius)
-                    .OrderBy(x => HexGridMath.Distance(anchor, x)).ThenBy(x => x.Q).ThenBy(x => x.R))
-                    // Same economyBaseMinSpacing rule Analysis/WorldAnalysis enforces for its own
-                    // EconomicExpansionBase candidates (WorldAnalysis.MeetsBaseSpacing) — this scan
-                    // used to skip it entirely, letting Phase B found a base right next to an
-                    // existing one while Economy's own demand still targeted a properly-spaced hex.
-                    if (seen.Add(h) && !ownBaseHexes.Contains(h)
-                        && WorldAnalysis.MeetsBaseSpacing(ownBaseHexes, h))
-                        yield return h;
         }
 
         // review-r2 — the legal (host) that maximises the REAL predicted equipment delta on that

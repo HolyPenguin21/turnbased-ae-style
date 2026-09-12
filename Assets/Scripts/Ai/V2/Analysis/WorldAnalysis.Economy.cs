@@ -127,11 +127,16 @@ namespace Game.Ai.V2
 
             // Base opportunities are structural site facts only. Card-specific value/cost remains
             // Strategy/Demand's responsibility, but Analysis owns the one legal candidate set so
-            // the desire gate and demand emission cannot disagree.
+            // the desire gate and demand emission cannot disagree. Built independently of whether a
+            // physical Base card is currently in hand — a Generated Base (built via Challenge, with
+            // no card in hand yet at analysis time) and a hand-played Base must target from the same
+            // structural set (Task: unify Base targeting — Phase B no longer rescans the map itself).
+            // Actionability (HasActionableOpportunity below) still requires a real playable carrier,
+            // so storage and actionable-availability are checked separately here on purpose.
             var baseOpportunities = new List<EconomyBaseOpportunity>();
             List<CardData> baseCards = (snap.Self.Hand ?? System.Array.Empty<CardData>())
                 .Where(c => c?.Definition?.cardType == CardType.Base).ToList();
-            if (baseCards.Count > 0 && snap.Self.BaseHexes != null)
+            if (snap.Self.BaseHexes != null)
             {
                 var occupied = knownBuildings;
                 var knownSites = new HashSet<HexCoord>((snap.Known?.ResourceHexes
@@ -221,7 +226,9 @@ namespace Game.Ai.V2
                     }
             }
             eco.BaseOpportunities = baseOpportunities;
-            bool baseActionable = baseOpportunities.Count > 0;
+            // Unchanged semantics: a structural site with no playable Base carrier in hand must not
+            // by itself raise Economy desire — actionable-availability still requires a real card.
+            bool baseActionable = baseOpportunities.Count > 0 && baseCards.Count > 0;
             bool extractionActionable = extraction.Any(site =>
                 site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
             eco.HasActionableOpportunity = extractionActionable || baseActionable;
