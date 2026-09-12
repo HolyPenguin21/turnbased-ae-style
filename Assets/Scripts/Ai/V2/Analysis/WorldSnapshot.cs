@@ -518,6 +518,10 @@ namespace Game.Ai.V2
         public float ForwardProgressValue;
         public float CorridorAlignmentValue;
         public bool ConvertsOwnedExtractionSite;
+        // Total per-turn income (summed across all ResourceType) the currently-owned extraction
+        // facility at this hex is actually collecting. Zero unless ConvertsOwnedExtractionSite.
+        // This is what Base would destroy, not what the hex could yield.
+        public float LostExtractionIncome;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 

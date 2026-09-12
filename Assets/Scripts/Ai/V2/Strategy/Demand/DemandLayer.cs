@@ -792,6 +792,34 @@ namespace Game.Ai.V2
                 .Concat(baseRanked.Take(
                     Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
                 .ToList();
+            // Fresh-vs-fresh cross-family conflict: the per-list filters above only exclude a
+            // candidate that collides with an ACTIVE intent of the other family. On the very
+            // first admission for a hex — before either family has an active intent yet — both
+            // an extraction and a base candidate can independently pass and land in `selected`
+            // together. Keep exactly one per hex: an active intent for either family wins
+            // outright (should already be excluded above, kept as a defensive tie-break);
+            // otherwise the higher-Value candidate wins.
+            if (selected.Count > 1)
+            {
+                var hexConflicts = selected.Where(d => d.TargetHex.HasValue)
+                    .GroupBy(d => d.TargetHex.Value)
+                    .Where(g => g.Count() > 1);
+                var losers = new HashSet<AxisDemand>();
+                foreach (var group in hexConflicts)
+                {
+                    AxisDemand winner = group
+                        .OrderByDescending(d => HasActiveEconomyIntentAtHexOfKind(activeIntents,
+                            d.TargetHex, d.Capability == CapabilityKind.EconomicExpansionBase
+                                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction) ? 1 : 0)
+                        .ThenByDescending(d => d.Value)
+                        .First();
+                    foreach (AxisDemand d in group)
+                        if (!ReferenceEquals(d, winner))
+                            losers.Add(d);
+                }
+                if (losers.Count > 0)
+                    selected = selected.Where(d => !losers.Contains(d)).ToList();
+            }
             foreach (AxisDemand demand in selected)
             {
                 // A Phase-A Hero handoff already has one concrete actor and target owned by
@@ -1398,15 +1426,20 @@ namespace Game.Ai.V2
                     float deliveryApCost = Mathf.Max(0f,
                             assignmentAp - card.EffectivePlayApCost)
                         * AiConfigV2.economyBuildApPenalty;
+                    float extractionLossPenalty = site.ConvertsOwnedExtractionSite
+                        ? AiConfigV2.economyBaseExtractionLossPenalty * site.LostExtractionIncome
+                        : 0f;
                     float strategicValue = reasonValue - intrinsicBuildCost
-                        - AiConfigV2.economySiteThreatPenalty * exposure;
+                        - AiConfigV2.economySiteThreatPenalty * exposure
+                        - extractionLossPenalty;
                     float value = strategicValue - deliveryApCost
                         - AiConfigV2.economySiteTravelPenalty * travel
                         - Mathf.Max(0f, heroCost);
                     AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
                         + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
                         + $"reason={reasonValue:0.##} buildCost={intrinsicBuildCost:0.##} "
-                        + $"deliveryApCost={deliveryApCost:0.##} site={strategicValue:0.##} "
+                        + $"deliveryApCost={deliveryApCost:0.##} extractionLoss={extractionLossPenalty:0.##} "
+                        + $"site={strategicValue:0.##} "
                         + $"delivery={value:0.##} committed={committed} decision=stage");
 
                     meaningfulDemands.Add(new AxisDemand
@@ -1436,7 +1469,8 @@ namespace Game.Ai.V2
                             + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
                             + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
                             + $"corridor={site.CorridorAlignmentValue:0.##} global={global:0.##} "
-                            + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##}",
+                            + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##} "
+                            + $"extractionLoss={extractionLossPenalty:0.##}",
                     });
                 }
 

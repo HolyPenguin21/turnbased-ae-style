@@ -106,6 +106,9 @@ namespace Game.Ai.V2
         public const float economyBaseForwardProgressValue = 8f;
         public const float economyBaseCorridorAlignmentValue = 8f;
         public const float economyBaseGlobalEffectValue = 6f;
+        // Symmetric to economyBaseHexYieldValue: a Base converting an already-productive owned
+        // extraction site destroys real, currently-collected income, not potential yield.
+        public const float economyBaseExtractionLossPenalty = 10f;
         public const float economyBuildResourcePenalty = 1.5f;
         public const float economyBuildApPenalty = 4f;
         public const float economyExtractionMaxPaybackTurns = 8f;

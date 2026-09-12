@@ -1271,6 +1271,10 @@ namespace Game.Ai.V2
                             && knownBuilding.Owner == player && !knownBuilding.IsBase;
                         if (hasBuilding && !convertsOwnedExtraction)
                             continue;
+                        float lostExtractionIncome = 0f;
+                        if (convertsOwnedExtraction)
+                            foreach (ResourceType lostType in ResourceBundle.All)
+                                lostExtractionIncome += knownBuilding.CollectedAmount(lostType);
                         bool knownHostileAtTarget = (snap.Known?.EnemySightings
                                 ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                             .Concat(snap.Known?.NeutralSightings
@@ -1319,6 +1323,7 @@ namespace Game.Ai.V2
                             ForwardProgressValue = forwardProgress,
                             CorridorAlignmentValue = corridorAlignment,
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
+                            LostExtractionIncome = lostExtractionIncome,
                             BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, hex),
                         });
                     }
