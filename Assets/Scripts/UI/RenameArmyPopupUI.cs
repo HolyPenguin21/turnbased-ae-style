@@ -53,6 +53,14 @@ namespace Game.UI
         {
             if (panelRoot != null)
                 panelRoot.SetActive(false);
+            // Same "closing resets cached fields" rule every other modal in this project follows
+            // (see ArmyViewerModalUI/BaseViewerModalUI) — without this, a value-changed event that
+            // fires after Hide (e.g. a framework flushing a pending edit on deactivation) would
+            // still silently rename the just-closed army via OnValueChanged below.
+            if (nameField != null)
+                nameField.onValueChanged.RemoveListener(OnValueChanged);
+            _army = null;
+            _onRenamed = null;
             VisibilityChanged?.Invoke();
         }
 

@@ -18,6 +18,7 @@ namespace Game.Map
         public static void Clear()
         {
             ByHex.Clear();
+            ArmyData.ResetIdentitySequence();
         }
 
         public static void Register(ArmyData army)

@@ -114,6 +114,15 @@ namespace Game.Setup
             ArmyRegistry.Clear();
             PlayerRootRegistry.Clear();
             AntiAirState.Clear();
+            // Coordinate-keyed (not object-reference-keyed like the registries above) — a leftover
+            // entry here would misreport a pending battle at that hex in a BRAND NEW game, and
+            // GameTurnController's own end-of-turn drain could resolve it against destroyed
+            // previous-session armies/players. Found missing during the same audit that caught
+            // AntiAirState above.
+            Game.Combat.DelayedBattleRegistry.Clear();
+            AiHandRegistry.Clear();
+            Game.Ai.V2.StrategicCapabilityLeaseRegistry.ClearAll();
+            Game.Ai.V2.ReconCapacityDeficitRegistry.ClearAll();
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
             // army or building — both registries recompute vision the moment something is
             // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii

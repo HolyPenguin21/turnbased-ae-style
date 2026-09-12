@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
 using Game.Units;
@@ -251,13 +252,21 @@ namespace Game.Map
 
             PlayerRoot targetRoot = null;
             bool requiresCharge = target.RequiresActivationCharge(unit);
+            // Aircraft joining an already-activated air army owes its own LaunchEnergyCost too —
+            // the sibling cost to ActivationApCost that HexSelectionController.Movement's own
+            // first-move charge (ArmyData.ActivationEnergyCost) already treats as part of getting
+            // an air army moving. `unit.IsAviation` joining here always results in an air army
+            // (CanContain above only ever let it through into one that's already all-aviation or
+            // still empty), so this never misfires against a ground/garrison target.
+            int energyCost = requiresCharge && unit.IsAviation ? unit.LaunchEnergyCost : 0;
             if (requiresCharge)
             {
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
-                if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost))
+                if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost)
+                    || targetRoot.GetResource(ResourceType.Energy) < energyCost)
                 {
                     failReason = $"Not enough action points to add {unit.Name} to {target.Name} "
-                        + $"({unit.ActivationApCost} AP needed — it already moved this turn).";
+                        + $"({unit.ActivationApCost} AP, {energyCost} Energy needed — it already moved this turn).";
                     return false;
                 }
             }
@@ -267,7 +276,11 @@ namespace Game.Map
                 target.IsAirArmy = true;
             target.AddMemberSorted(unit);
             if (requiresCharge)
+            {
                 targetRoot?.SpendActionPoints(unit.ActivationApCost);
+                if (energyCost > 0)
+                    targetRoot?.AddResource(ResourceType.Energy, -energyCost);
+            }
             // Marks unit covered for THIS army regardless of whether a charge was actually due
             // just now — a join into a not-yet-activated army is pre-covered here for free
             // (MarkActivated would sweep it in anyway once the army first moves), so either way
@@ -291,14 +304,16 @@ namespace Game.Map
         // combined activated-destination AP charge before any member is removed.
         public static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, out string failReason)
-            => CanTransferMembers(units, source, target, out _, out _, out failReason);
+            => CanTransferMembers(units, source, target, out _, out _, out _, out failReason);
 
         private static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
-            ArmyData target, out PlayerRoot targetRoot, out int totalApCost, out string failReason)
+            ArmyData target, out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost,
+            out string failReason)
         {
             failReason = null;
             targetRoot = null;
             totalApCost = 0;
+            totalEnergyCost = 0;
             if (units == null || units.Count == 0 || source == null || target == null
                 || source == target || source.IsPrison || target.IsPrison)
             {
@@ -360,11 +375,17 @@ namespace Game.Map
             if (chargeable.Count > 0)
             {
                 totalApCost = chargeable.Sum(u => u.ActivationApCost);
+                // Same sibling Energy cost TransferMember now charges per-unit — see its own
+                // comment. A batch transfer only ever carries aircraft when `target` is/becomes
+                // an air army (CanContain above already enforced that), so this is 0 for every
+                // ordinary ground/garrison batch.
+                totalEnergyCost = chargeable.Where(u => u.IsAviation).Sum(u => u.LaunchEnergyCost);
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
-                if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost))
+                if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost)
+                    || targetRoot.GetResource(ResourceType.Energy) < totalEnergyCost)
                 {
                     failReason = $"Not enough action points to add the batch to {target.Name} "
-                        + $"({totalApCost} AP needed — it already moved this turn).";
+                        + $"({totalApCost} AP, {totalEnergyCost} Energy needed — it already moved this turn).";
                     return false;
                 }
             }
@@ -378,7 +399,7 @@ namespace Game.Map
             ArmyData target, HexSelectionController hexSelectionController, out string failReason)
         {
             if (!CanTransferMembers(units, source, target,
-                    out PlayerRoot targetRoot, out int totalApCost, out failReason))
+                    out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out failReason))
                 return false;
 
             foreach (UnitData unit in units)
@@ -386,6 +407,8 @@ namespace Game.Map
             foreach (UnitData unit in units)
                 target.AddMemberSorted(unit);
             targetRoot?.SpendActionPoints(totalApCost);
+            if (totalEnergyCost > 0)
+                targetRoot?.AddResource(ResourceType.Energy, -totalEnergyCost);
             // Every transferred unit is now covered for `target` for the rest of the turn — see
             // TransferMember's own comment on why this is unconditional, not just for the ones
             // CanTransferMembers actually charged.

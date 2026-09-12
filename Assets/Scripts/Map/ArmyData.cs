@@ -29,6 +29,13 @@ namespace Game.Map
         public readonly int Id;
         public ArmyData() : this(assignIdentity: true) { }
         private ArmyData(bool assignIdentity) => Id = assignIdentity ? _nextId++ : -1;
+
+        // Brand-new game/session (see ArmyRegistry.Clear, called from CitadelSetupController.
+        // Start alongside every other registry wipe) — without this the id sequence just kept
+        // climbing across sessions in the same process. Never compared across sessions today, so
+        // purely cosmetic, but kept in sync with ArmyRegistry.Clear for the same reason every
+        // other static registry gets a full wipe there.
+        internal static void ResetIdentitySequence() => _nextId = 0;
         // A last-seen roster is display-only and never enters ArmyRegistry, so it must not burn
         // a live identity merely because a human observer refreshed the same sighting.
         internal static ArmyData CreateVisualSnapshot() => new ArmyData(assignIdentity: false);
