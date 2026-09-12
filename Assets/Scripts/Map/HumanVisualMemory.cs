@@ -92,13 +92,18 @@ namespace Game.Map
             // airfield can be empty, so it must be copied explicitly or a remembered one would
             // read back as a plain empty army.
             snapshot.IsAirfield = source.IsAirfield;
-            snapshot.HasActivatedThisTurn = source.HasActivatedThisTurn;
             // Individual stealth (see Game.Map.StealthSystem): the "last seen" roster only
             // remembers the members this viewer could actually see — a member still hidden
             // from them was never part of what they observed.
             foreach (UnitData member in source.Members)
                 if (!StealthSystem.IsHiddenFrom(member, viewer))
                     snapshot.Members.Add(SnapshotUnit(member));
+            // HasActivatedThisTurn has no public setter any more (see ArmyData's own per-unit
+            // activation ledger) — MarkActivated is the read-only display equivalent here: this
+            // snapshot is never fed through ArmyActions, so the per-unit coverage it also seeds
+            // is inert, only the flag itself is ever read back off a "last seen" army.
+            if (source.HasActivatedThisTurn)
+                snapshot.MarkActivated();
             return snapshot;
         }
 

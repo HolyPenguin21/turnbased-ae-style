@@ -1124,8 +1124,9 @@ namespace Game.Turns
                         unit.HasAirAttackedThisTurn = false;
                 }
                 // Activation is tracked per-ARMY, not per-unit (see ArmyData.
-                // HasActivatedThisTurn) — a unit never moves on its own.
-                army.HasActivatedThisTurn = false;
+                // HasActivatedThisTurn) — a unit never moves on its own. Also clears the
+                // per-unit activation-coverage ledger (see ArmyData.ResetActivationForNewTurn).
+                army.ResetActivationForNewTurn();
             }
         }
 

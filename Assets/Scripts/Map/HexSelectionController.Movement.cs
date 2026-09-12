@@ -517,7 +517,7 @@ namespace Game.Map
                 ownerRoot.SpendActionPoints(army.ActivationApCost);
                 if (energyCost > 0)
                     ownerRoot.AddResource(ResourceType.Energy, -energyCost);
-                army.HasActivatedThisTurn = true;
+                army.MarkActivated();
             }
 
             HexCoord originHex = army.Hex;

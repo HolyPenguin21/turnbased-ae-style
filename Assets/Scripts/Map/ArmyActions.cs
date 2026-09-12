@@ -250,7 +250,8 @@ namespace Game.Map
             }
 
             PlayerRoot targetRoot = null;
-            if (target.HasActivatedThisTurn)
+            bool requiresCharge = target.RequiresActivationCharge(unit);
+            if (requiresCharge)
             {
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(unit.ActivationApCost))
@@ -265,7 +266,15 @@ namespace Game.Map
             if (promoteToAirArmy)
                 target.IsAirArmy = true;
             target.AddMemberSorted(unit);
-            targetRoot?.SpendActionPoints(unit.ActivationApCost);
+            if (requiresCharge)
+                targetRoot?.SpendActionPoints(unit.ActivationApCost);
+            // Marks unit covered for THIS army regardless of whether a charge was actually due
+            // just now — a join into a not-yet-activated army is pre-covered here for free
+            // (MarkActivated would sweep it in anyway once the army first moves), so either way
+            // `unit` can leave and return to `target` later this same turn without being
+            // charged again (see ArmyData.RequiresActivationCharge's own comment — the bug this
+            // whole ledger fixes).
+            target.MarkUnitActivationPaid(unit);
             // Neither army has a marker of its own that follows individual units around (see
             // ArmyController) — only whichever is each owner's visible representative on the
             // shared hex does, and this move can flip either army between empty and non-empty,
@@ -343,9 +352,14 @@ namespace Game.Map
                 return false;
             }
 
-            if (target.HasActivatedThisTurn)
+            // Same per-unit ledger TransferMember uses (see ArmyData.RequiresActivationCharge) —
+            // only units NOT already covered for `target` this turn actually cost anything, so a
+            // batch that includes a unit cycling back into an army it already paid into earlier
+            // this turn isn't charged for that one twice.
+            var chargeable = distinct.Where(target.RequiresActivationCharge).ToList();
+            if (chargeable.Count > 0)
             {
-                totalApCost = distinct.Sum(u => u.ActivationApCost);
+                totalApCost = chargeable.Sum(u => u.ActivationApCost);
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost))
                 {
@@ -372,6 +386,11 @@ namespace Game.Map
             foreach (UnitData unit in units)
                 target.AddMemberSorted(unit);
             targetRoot?.SpendActionPoints(totalApCost);
+            // Every transferred unit is now covered for `target` for the rest of the turn — see
+            // TransferMember's own comment on why this is unconditional, not just for the ones
+            // CanTransferMembers actually charged.
+            foreach (UnitData unit in units)
+                target.MarkUnitActivationPaid(unit);
 
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (!target.Hex.Equals(source.Hex))
@@ -459,15 +478,20 @@ namespace Game.Map
             // PlayerRoot.SpendActionPoints silently no-ops on an overdraft rather than throwing,
             // so SwapMembers would have gone on to mutate both rosters while only ever actually
             // paying for one side (project owner's own report).
-            PlayerRoot rootA = armyA.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
-            PlayerRoot rootB = armyB.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
-            if (armyA.HasActivatedThisTurn && rootA == null)
+            // Same per-unit ledger TransferMember uses (see ArmyData.RequiresActivationCharge) —
+            // an incoming unit this army already covered earlier this turn (e.g. it's swapping
+            // back into an army it left a moment ago) isn't charged for again.
+            bool chargeAIncoming = armyA.RequiresActivationCharge(unitB);
+            bool chargeBIncoming = armyB.RequiresActivationCharge(unitA);
+            PlayerRoot rootA = chargeAIncoming ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
+            PlayerRoot rootB = chargeBIncoming ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
+            if (chargeAIncoming && rootA == null)
             {
                 failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
                     + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
                 return false;
             }
-            if (armyB.HasActivatedThisTurn && rootB == null)
+            if (chargeBIncoming && rootB == null)
             {
                 failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
                     + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
@@ -475,8 +499,8 @@ namespace Game.Map
             }
             if (rootA != null && rootA == rootB)
             {
-                int combinedCost = (armyA.HasActivatedThisTurn ? unitB.ActivationApCost : 0)
-                    + (armyB.HasActivatedThisTurn ? unitA.ActivationApCost : 0);
+                int combinedCost = (chargeAIncoming ? unitB.ActivationApCost : 0)
+                    + (chargeBIncoming ? unitA.ActivationApCost : 0);
                 if (!rootA.CanSpendActionPoints(combinedCost))
                 {
                     failReason = $"Not enough action points for \"{armyA.Owner.Nickname}\" to swap {unitB.Name} "
@@ -486,13 +510,13 @@ namespace Game.Map
             }
             else
             {
-                if (armyA.HasActivatedThisTurn && !rootA.CanSpendActionPoints(unitB.ActivationApCost))
+                if (chargeAIncoming && !rootA.CanSpendActionPoints(unitB.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitB.Name} to {armyA.Name} "
                         + $"({unitB.ActivationApCost} AP needed — it already moved this turn).";
                     return false;
                 }
-                if (armyB.HasActivatedThisTurn && !rootB.CanSpendActionPoints(unitA.ActivationApCost))
+                if (chargeBIncoming && !rootB.CanSpendActionPoints(unitA.ActivationApCost))
                 {
                     failReason = $"Not enough action points to add {unitA.Name} to {armyB.Name} "
                         + $"({unitA.ActivationApCost} AP needed — it already moved this turn).";
@@ -509,8 +533,14 @@ namespace Game.Map
             if (!CanSwapMembers(unitA, armyA, unitB, armyB, out failReason))
                 return false;
 
-            PlayerRoot rootA = armyA.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
-            PlayerRoot rootB = armyB.HasActivatedThisTurn ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
+            // Resolved BEFORE either roster changes, same as CanSwapMembers — and must ask the
+            // exact same question CanSwapMembers already answered (RequiresActivationCharge
+            // against the PRE-swap membership), not re-derive it after AddMemberSorted below has
+            // already mutated who's a "current member".
+            bool chargeAIncoming = armyA.RequiresActivationCharge(unitB);
+            bool chargeBIncoming = armyB.RequiresActivationCharge(unitA);
+            PlayerRoot rootA = chargeAIncoming ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
+            PlayerRoot rootB = chargeBIncoming ? PlayerRootRegistry.FindFor(armyB.Owner) : null;
 
             armyA.Members.Remove(unitA);
             armyB.Members.Remove(unitB);
@@ -521,8 +551,8 @@ namespace Game.Map
             // headroom the same way two separate CanSpendActionPoints checks did.
             if (rootA != null && rootA == rootB)
             {
-                int combinedCost = (armyA.HasActivatedThisTurn ? unitB.ActivationApCost : 0)
-                    + (armyB.HasActivatedThisTurn ? unitA.ActivationApCost : 0);
+                int combinedCost = (chargeAIncoming ? unitB.ActivationApCost : 0)
+                    + (chargeBIncoming ? unitA.ActivationApCost : 0);
                 rootA.SpendActionPoints(combinedCost);
             }
             else
@@ -530,6 +560,10 @@ namespace Game.Map
                 rootA?.SpendActionPoints(unitB.ActivationApCost);
                 rootB?.SpendActionPoints(unitA.ActivationApCost);
             }
+            // Both incoming units are now covered for their new army for the rest of the turn —
+            // unconditional, same reasoning as TransferMember's own MarkUnitActivationPaid call.
+            armyA.MarkUnitActivationPaid(unitB);
+            armyB.MarkUnitActivationPaid(unitA);
 
             hexSelectionController?.RestackArmiesOn(armyA.Hex, null);
             if (!armyB.Hex.Equals(armyA.Hex))

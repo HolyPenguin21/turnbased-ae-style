@@ -72,7 +72,57 @@ namespace Game.Map
         // same reason: "has this army already spent its first-move AP this turn" is a
         // per-army question now, not a per-unit one. Reset alongside every member's own
         // MoveCurrent at the start of a turn (see GameTurnController.ReplenishMoveForOwner).
-        public bool HasActivatedThisTurn;
+        // Private setter — mutate only through MarkActivated/ResetActivationForNewTurn below,
+        // which keep this flag and _activationCoveredUnits (the actual per-unit ledger) in sync.
+        public bool HasActivatedThisTurn { get; private set; }
+
+        // Which members' own ActivationApCost has already been paid FOR THIS ARMY this turn —
+        // either in bulk, when the army itself first activated (MarkActivated covers every
+        // current member at once), or individually, when a unit joined an already-activated
+        // army and paid its own share on the way in (see ArmyActions.TransferMember/
+        // TransferMembersAtomic/SwapMembers, all now via MarkUnitActivationPaid). Consulted by
+        // RequiresActivationCharge so a unit that leaves this army and comes back later THE
+        // SAME TURN is never charged its ActivationApCost twice — the original bug report
+        // (project owner, 2026-09-12): cycling a hero A→B→A "collapsed" AP because the old code
+        // only ever checked the coarse HasActivatedThisTurn flag on the destination, with no
+        // memory of which specific units its lump activation payment already covered.
+        private readonly HashSet<UnitData> _activationCoveredUnits = new HashSet<UnitData>();
+
+        // Whether `unit` joining this army RIGHT NOW would need to pay its own ActivationApCost
+        // again. False whenever the army hasn't activated yet this turn (its eventual first
+        // move order will sweep `unit` into that lump payment for free, same as any other
+        // current member — see MarkActivated) OR `unit` is already in the covered ledger above
+        // (it — or this exact join — already paid for a spot in THIS army earlier this turn).
+        public bool RequiresActivationCharge(UnitData unit)
+            => HasActivatedThisTurn && !_activationCoveredUnits.Contains(unit);
+
+        // Called once, the moment this army is actually given its first move order of the turn
+        // (see HexSelectionController.Movement.TryIssueMoveOrder) — the lump ActivationApCost
+        // payment made right then already covers every CURRENT member, so all of them become
+        // ledger-covered together instead of each needing an individual charge later.
+        public void MarkActivated()
+        {
+            HasActivatedThisTurn = true;
+            foreach (UnitData member in Members)
+                _activationCoveredUnits.Add(member);
+        }
+
+        // Records that `unit`'s own activation share has now been paid for THIS army — call
+        // right after actually charging it for a fresh join into an already-activated army (see
+        // ArmyActions.TransferMember and friends). Idempotent and safe to call unconditionally
+        // on every successful join (a join into a not-yet-activated army just pre-marks a unit
+        // MarkActivated would have covered anyway): once set, this unit can leave and return to
+        // THIS SAME army as many times as the player likes for the rest of the turn without ever
+        // being charged again.
+        public void MarkUnitActivationPaid(UnitData unit) => _activationCoveredUnits.Add(unit);
+
+        // Start of a fresh turn (see GameTurnController.ReplenishMoveForOwner) — both the flag
+        // and the per-unit coverage ledger reset together; nothing paid last turn carries over.
+        public void ResetActivationForNewTurn()
+        {
+            HasActivatedThisTurn = false;
+            _activationCoveredUnits.Clear();
+        }
 
         // Repeat-strike bookkeeping (2026-08-26 follow-up) — which hex, and whether it actually
         // landed a strike, the most recent AviationCombatPresenter.ResolveAirStrikeAtCurrentHex
