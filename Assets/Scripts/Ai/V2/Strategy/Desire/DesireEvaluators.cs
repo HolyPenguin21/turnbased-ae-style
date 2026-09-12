@@ -267,6 +267,29 @@ namespace Game.Ai.V2
             return new RadarAssessment { Desires = desires, Breakdown = breakdown, Radar = radar };
         }
 
+        // Recon lane pressures are the only sub-terms MissionLayer needs on every settled step
+        // (ReconMissionPlanner.Propose runs mid-turn against a LIVE snapshot while the rest of
+        // DesireBreakdown/Radar stays frozen from the turn's single Evaluate() — recomputing the
+        // whole radar mid-turn would re-introduce the oscillation that decision explicitly
+        // avoided). This mutates ONLY the Explore/Refresh/Surveillance/Blindness fields in place
+        // on the already-frozen breakdown, from the current snapshot, so a frontier completion
+        // mid-turn is reflected before the next mission is proposed. No smoothing, no radar
+        // renormalization, no other axis touched.
+        public static void RefreshReconLanePressures(WorldSnapshot snapshot, DesireBreakdown breakdown)
+        {
+            if (snapshot?.Self == null || snapshot.MapKnowledge == null || breakdown == null)
+                return;
+            float exploration = ReconExploration(snapshot);
+            float surveillance = ReconSurveillance(snapshot);
+            float blindness = ReconEnemyBlindness(snapshot);
+            float refreshPressure = ReconRefreshPressure(snapshot, surveillance);
+            breakdown.ReconExploration = exploration;
+            breakdown.ReconSurveillance = surveillance;
+            breakdown.ReconEnemyBlindness = blindness;
+            breakdown.ReconExplorePressure = exploration;
+            breakdown.ReconRefreshPressure = refreshPressure;
+        }
+
         private static float ReconExploration(WorldSnapshot snap)
         {
             float explorable = snap.MapKnowledge != null ? snap.MapKnowledge.ExplorableUnknownFrac : 0f;
