@@ -716,13 +716,17 @@ namespace Game.Ai.V2
                         if (intent?.Kind != MissionKind.Economy
                             || intent.Status != IntentStatus.Active
                             || intent.Economy == null
-                            || intent.Economy.Kind == EconomyTaskKind.ReturnBuilder
                             || !intent.PreferredMoverArmyId.HasValue)
                             continue;
                         ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
                             && a.ArmyId == intent.PreferredMoverArmyId.Value);
-                        if (actor != null && actor.Hex.Equals(intent.Economy.TargetHex))
-                            return true;
+                        if (actor == null || !actor.Hex.Equals(intent.Economy.TargetHex))
+                            continue;
+                        // A ReturnBuilder that just reached home is about to be retired by the next
+                        // MissionContinuityLayer.ResolveActive pass, freeing its builder for a new
+                        // Economy demand this same turn — that is exactly as actionable as a builder
+                        // arriving at a fresh build hex.
+                        return true;
                     }
                     return false;
                 }
@@ -902,7 +906,7 @@ namespace Game.Ai.V2
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace);
                     if (retryNextTurnThisPass.Count > 0)
-                        missions = missions.Where(m => m == null || m.Kind != MissionKind.Scout
+                        missions = missions.Where(m => m == null
                             || !retryNextTurnThisPass.Contains(StableMissionKey.For(m))).ToList();
                     List<Commitment> cycleCommitments =
                         MissionContinuityLayer.BindFunding(activeIntents, missions);
@@ -1102,8 +1106,7 @@ namespace Game.Ai.V2
                         cycleSession.RegisterProvisionFailure(selectedFunding, provisionResult.Failure);
                         cycleLedger.RecordProvisionFailure(selectedFunding.Mission,
                             provisionResult.Failure);
-                        if (selectedFunding.Mission?.Kind == MissionKind.Scout
-                            && provisionResult.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
+                        if (provisionResult.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
                             retryNextTurnThisPass.Add(selectedKey);
                         AiDebugLog.Write($"[AI][V2][Loop] provision [{selectedFunding.Mission.AttemptId}] "
                             + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
