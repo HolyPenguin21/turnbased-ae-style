@@ -33,7 +33,7 @@ Recall phrase: "продолжаем file-split рефакторинг V2 — с
 | 1 | Extend `AiV2Trace` correlation format into downstream logs | Done |
 | 2 | Split `AiConfigV2.cs` into `partial` sections (pilot) | Done |
 | 3 | Split `MissionIntent.cs` into its 15 existing types | Done |
-| 4 | Split `DemandLayer.cs` into `partial` per axis | Pending |
+| 4 | Split `DemandLayer.cs` into `partial` per axis | Done |
 | 5 | Split `WorldAnalysis.cs` into `partial` per snapshot family | Pending |
 
 Do them in this order — each is independent of the others, but this order goes
