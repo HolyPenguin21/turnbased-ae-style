@@ -34,7 +34,7 @@ Recall phrase: "продолжаем file-split рефакторинг V2 — с
 | 2 | Split `AiConfigV2.cs` into `partial` sections (pilot) | Done |
 | 3 | Split `MissionIntent.cs` into its 15 existing types | Done |
 | 4 | Split `DemandLayer.cs` into `partial` per axis | Done |
-| 5 | Split `WorldAnalysis.cs` into `partial` per snapshot family | Pending |
+| 5 | Split `WorldAnalysis.cs` into `partial` per snapshot family | Done |
 
 Do them in this order — each is independent of the others, but this order goes
 lowest-risk/highest-value first and saves the most sensitive file (WorldAnalysis) for last,
