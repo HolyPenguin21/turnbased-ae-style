@@ -329,6 +329,19 @@ namespace Game.Ai.V2
                         options[state] = top;
                 }
 
+                // An EconomyHeroPrerequisite demand (Capability.Hero) with no deliverable chain
+                // this round means Economy has an accepted build target but no Hero to send yet.
+                // Reserve that build's H/E/M/T now — see ReserveDeferredEconomyResourcesForPendingHero
+                // — so Phase B cannot spend it out from under the still-open commitment while the
+                // Hero remains unavailable. Re-asserted every round the demand stays unresolved;
+                // superseded by the witnessed-route/delivered reservations once a builder exists.
+                foreach (DemandState state in active)
+                    if (state.Demand.RequestingAxis == DesireAxis.Economy
+                        && state.Demand.Capability == CapabilityKind.Hero
+                        && !options.ContainsKey(state))
+                        InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
+                            player, ctx.TurnNumber, state.Demand);
+
                 Dictionary<DemandState, DemandCandidate> assigned =
                     options.Count > 0
                         ? MaterializationPortfolioSolver.BestInjectiveAssignment(options, root, player, ctx, hand,

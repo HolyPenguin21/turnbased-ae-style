@@ -183,6 +183,39 @@ namespace Game.Ai.V2
             string owner = EconomyReservationOwner(demand);
             if (owner == null || !ShouldReserveDeferredEconomyResources(snap, demand))
                 return;
+            ReserveDeferredEconomyResourcesCore(player, turn, owner, demand);
+        }
+
+        // A bare EconomyHeroPrerequisite demand (Capability.Hero, no builder identified yet) can
+        // never satisfy ShouldReserveDeferredEconomyResources above — there is no army/route to
+        // witness. That left the accepted build's H/E/M/T free for however many turns Economy
+        // spent waiting for a deliverable Hero, during which Phase B could spend the exact
+        // resources the build still needs. The Hero-prerequisite payload (EconomyBuildResourceCost)
+        // already carries the target build's real cost (see DemandLayer.EconomyHeroPrerequisite);
+        // this reserves it the instant that demand is the accepted Economy target for this pass,
+        // whether or not a builder route exists yet. Same owner key and same EconomyDeferredBuild
+        // reason as the witnessed-route path above, so EconomyBuildCompletion transitions it
+        // exactly the same way once a builder actually starts moving/building.
+        internal static void ReserveDeferredEconomyResourcesForPendingHero(
+            PlayerSetupData player, int turn, AxisDemand heroPrerequisiteDemand)
+        {
+            string owner = EconomyReservationOwner(new AxisDemand
+            {
+                Capability = heroPrerequisiteDemand?.EconomyBuildCard?.Definition?.cardType
+                    == CardType.Base
+                        ? CapabilityKind.EconomicExpansionBase
+                        : CapabilityKind.EconomicInfrastructure,
+                TargetHex = heroPrerequisiteDemand?.TargetHex,
+                EconomyResourceType = heroPrerequisiteDemand?.EconomyResourceType,
+            });
+            if (owner == null)
+                return;
+            ReserveDeferredEconomyResourcesCore(player, turn, owner, heroPrerequisiteDemand);
+        }
+
+        private static void ReserveDeferredEconomyResourcesCore(
+            PlayerSetupData player, int turn, string owner, AxisDemand demand)
+        {
             if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                     StrategicReservationReason.EconomyDeferredBuild,
                     demand.EconomyBuildResourceCost, 0f))
