@@ -56,12 +56,10 @@ namespace Game.Ai.V2
 
             IReadOnlyList<ReconObjective> objectives = frozenObjectives ?? ReconObjectiveEvaluator.Enumerate(snap);
 
-            // Recon lane pressures are refreshed from the LIVE snapshot on every call (mid-turn
-            // frontier completions change snap.MapKnowledge well before the next full radar
-            // Evaluate()) — see StrategyLayer.RefreshReconLanePressures. Only this lane; the rest
-            // of the frozen breakdown/radar is untouched.
-            StrategyLayer.RefreshReconLanePressures(snap, breakdown);
-
+            // Mid-turn pressure freshness is an Orchestration-owned sequencing concern (each caller
+            // refreshes breakdown via StrategyLayer.RefreshReconLanePressures before calling here) —
+            // Missions only turns already-current pressures into MissionProposals, it does not
+            // trigger Strategy/Desire recomputation itself.
             // Acceptance is about the STRATEGIC lane pressures, not whichever single objective has
             // the highest BaseValue. MissionLayer is the first place where the frozen objectives
             // and the corresponding DesireBreakdown meet, so record the authoritative comparison

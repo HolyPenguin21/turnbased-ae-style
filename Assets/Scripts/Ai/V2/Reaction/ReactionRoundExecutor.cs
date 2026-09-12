@@ -110,6 +110,9 @@ namespace Game.Ai.V2
             if (phaseA.StateChanged)
                 snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
 
+            // Same Orchestration-owned refresh as the main pass (AiStrategyV2Pipeline.BuildMissionSet)
+            // — Missions must receive current Recon pressures, not trigger their recomputation.
+            StrategyLayer.RefreshReconLanePressures(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,

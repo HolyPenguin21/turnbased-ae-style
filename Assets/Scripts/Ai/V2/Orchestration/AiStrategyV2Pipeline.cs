@@ -1548,6 +1548,11 @@ namespace Game.Ai.V2
             IReadOnlyList<AggressionObjective> aggressionObjectives, Radar radar,
             IReadOnlyList<AxisDemand> demands, V2TraceScope trace)
         {
+            // Orchestration owns mid-turn sequencing: refresh only the Recon lane pressures from
+            // the current snapshot right before Missions consumes them, so a frontier completion
+            // earlier this same settled pass is reflected without Missions itself triggering
+            // Strategy/Desire recomputation.
+            StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives);
             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
