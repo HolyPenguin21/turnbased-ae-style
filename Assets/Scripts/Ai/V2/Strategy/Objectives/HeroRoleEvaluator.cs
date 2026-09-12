@@ -10,8 +10,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  ONE place that answers "is this hero better used commanding a field force, or kept for
     //  base / research / production support?". Reads ONLY canonical data already on the unit —
-    //  CommandRating, Attack/Defense/HitPoints/Initiative, Fate, and the granted Researcher /
-    //  Assembler support abilities. Never a card or display name.
+    //  CommandRating, Attack/Defense/HitPoints/Initiative, Fate, MoveMax, and the granted
+    //  Researcher / Assembler / ApBonus support abilities. Never a card or display name.
     //
     //  The result is a PREFERENCE, not a prohibition: RaidAssembly / Housekeeping fall back to a
     //  SupportOperator rather than deadlock when it is the only usable hero.
@@ -43,10 +43,16 @@ namespace Game.Ai.V2
             return staticLeadership * mobility;
         }
 
-        // A canonical production/research vocation granted by the hero's own abilities.
+        // A "home" hero: either a canonical production/research vocation granted by the hero's own
+        // abilities, an AP-generating vocation (ApBonus — a hero built to boost the owner's turn,
+        // not to travel), or simply too slow to keep pace with a field force at all
+        // (homeHeroMoveMaxThreshold). The MoveMax floor applies regardless of ability tags — a
+        // slow hero with no support abilities is still a home hero by design.
         public static bool HasSupportVocation(UnitData hero) =>
             hero != null && hero.IsHero
-            && (hero.HasAbility(UnitAbilities.Researcher) || hero.HasAbility(UnitAbilities.Assembler));
+            && (hero.HasAbility(UnitAbilities.Researcher) || hero.HasAbility(UnitAbilities.Assembler)
+                || hero.HasAbility(UnitAbilities.ApBonus)
+                || hero.MoveMax <= AiConfigV2.homeHeroMoveMaxThreshold);
 
         public static HeroOperationalRole Classify(UnitData hero)
         {

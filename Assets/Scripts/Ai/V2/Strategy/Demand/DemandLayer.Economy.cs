@@ -309,6 +309,14 @@ namespace Game.Ai.V2
                     || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
                 .ThenBy(x => x.Suitability == EconomyArmySuitability.Ready ? 0
                     : x.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
+                // A home-vocation hero (HeroRoleEvaluator — low MoveMax / Researcher / Assembler /
+                // ApBonus) is worth more standing garrison duty than travelling to build; only send
+                // one when no better-suited army qualifies. Preference, not a filter — placed before
+                // the AP-cost/travel tiebreakers below so a small cost/distance edge cannot silently
+                // override it, but still falls back to the home hero when it is the only candidate.
+                // Gated on !IsOnTarget: a home hero building right on its own garrison hex isn't
+                // travelling anywhere, so there is nothing here to protect it from.
+                .ThenBy(x => !x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true ? 1 : 0)
                 .ThenBy(x => x.TotalAssignmentApCost)
                 .ThenBy(x => x.Route.EffectiveArmyPower)
                 .ThenBy(x => x.Route.ArmySize)

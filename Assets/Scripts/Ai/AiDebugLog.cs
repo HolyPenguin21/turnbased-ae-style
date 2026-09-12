@@ -15,6 +15,13 @@ namespace Game.Ai
     {
         private const string RelativePath = "Logs/AiDebug.log";
         private static string _path;
+        // Kept open for the whole session instead of open/append/close per line (see WriteCore) —
+        // a single AI turn can log hundreds of lines, and re-opening the file for every one of them
+        // was a measured source of main-thread stalls at turn start/end that got worse as the game
+        // went on (more armies/heroes -> more lines per turn). AutoFlush still pushes every line to
+        // disk immediately (this log exists to survive a crash), it just skips the OS-level
+        // open/close overhead of AppendAllText.
+        private static StreamWriter _writer;
 
         // Full candidate/allocation/snapshot diagnostics are useful while tuning one subsystem,
         // but make the normal whole-game trace hard to read. This is the single verbosity owner
@@ -29,6 +36,10 @@ namespace Game.Ai
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         private static void BeginSession()
         {
+            // Without domain reload (Editor "Enter Play Mode Options"), statics survive across
+            // Play sessions in the same process — close whatever the previous session left open
+            // first, or re-opening the same path below can fail while the old handle lingers.
+            CloseSession();
             try
             {
                 // Application.dataPath is "<project>/Assets" in the Editor, "<build>_Data" in a
@@ -37,13 +48,23 @@ namespace Game.Ai
                 string root = Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath;
                 _path = Path.Combine(root, RelativePath);
                 Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? root);
-                File.WriteAllText(_path, $"=== AI debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ==={Environment.NewLine}");
+                _writer = new StreamWriter(_path, append: false) { AutoFlush = true };
+                _writer.WriteLine($"=== AI debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                Application.quitting += CloseSession;
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"AiDebugLog: couldn't open log file — {e.Message}");
                 _path = null;
+                _writer = null;
             }
+        }
+
+        private static void CloseSession()
+        {
+            try { _writer?.Dispose(); }
+            catch { /* best-effort on shutdown */ }
+            _writer = null;
         }
 
         // Still shows up live in the Console (same as every call site used before this existed),
@@ -86,15 +107,16 @@ namespace Game.Ai
             // whatever gameplay path happened to log.
             try { Debug.Log(tagged); }
             catch { /* no Unity log sink available */ }
-            if (_path == null)
+            if (_writer == null)
                 return;
             try
             {
-                File.AppendAllText(_path, $"[{DateTime.Now:HH:mm:ss}] {tagged}{Environment.NewLine}");
+                _writer.WriteLine($"[{DateTime.Now:HH:mm:ss}] {tagged}");
             }
             catch (Exception e)
             {
                 Debug.LogWarning($"AiDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
+                _writer = null;
                 _path = null;
             }
         }

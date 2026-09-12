@@ -225,6 +225,8 @@ namespace Game.Ai.V2
                     .Sum(u => u.ActivationApCost),
                 HeroMoveMax = a.Members.Where(u => u.IsHero)
                     .Select(u => u.MoveMax).DefaultIfEmpty(a.MaxMovement).Min(),
+                HeroIsHomeVocation = a.Members.Where(u => u.IsHero)
+                    .Any(HeroRoleEvaluator.HasSupportVocation),
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,

@@ -200,6 +200,11 @@ namespace Game.Ai.V2
         public IReadOnlyList<bool> NonHeroIsAviation = System.Array.Empty<bool>();
         public int HeroActivationApCost;
         public int HeroMoveMax;
+        // True when a hero in this army is HeroRoleEvaluator's SupportOperator/"home" vocation
+        // (low MoveMax, Researcher/Assembler, or ApBonus) — the one canonical hero-suitability
+        // read, projected here because Demand/RankEconomyBuilders only ever sees this snapshot,
+        // never the live UnitData. Own armies only in practice.
+        public bool HeroIsHomeVocation;
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero

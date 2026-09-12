@@ -42,8 +42,10 @@ namespace Game.Ai.V2
         //     AiPower.ToPowerUnit contribution, scaled by movement fitness against the canonical
         //     MobileCombat MoveMax line (HitPoints / Initiative / Resistance / Fate —
         //     heroes carry NO Attack/Defense). Never card or display names. A hero carrying a
-        //     Researcher/Assembler support vocation whose score is below heroRoleFlexibleCombatFloor
-        //     is a SupportOperator (preserve it for base/research/production duty); a non-support
+        //     Researcher/Assembler/ApBonus support vocation (or too slow to keep pace with a field
+        //     force at all — see homeHeroMoveMaxThreshold) whose score is below
+        //     heroRoleFlexibleCombatFloor is a SupportOperator (preserve it for base/research/
+        //     production/Economy duty); a non-support
         //     hero at or above heroRoleCombatLeaderFloor is a CombatLeader; everything else is
         //     Flexible. The classification is a PREFERENCE, never an absolute bar — an urgent raid
         //     may still take a SupportOperator.
@@ -51,6 +53,10 @@ namespace Game.Ai.V2
         public const float heroRoleCombatContributionWeight = 0.6f;
         public const float heroRoleCombatLeaderFloor = 7f;
         public const float heroRoleFlexibleCombatFloor = 8f;
+        // A hero this slow is a "home" hero by design regardless of ability tags — it cannot keep
+        // pace with a field force (see mobileCombatMoveMax=5) and is worth more standing garrison
+        // duty. Read only by HeroRoleEvaluator.HasSupportVocation.
+        public const int homeHeroMoveMaxThreshold = 2;
 
     }
 }
