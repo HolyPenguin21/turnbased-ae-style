@@ -1444,6 +1444,20 @@ namespace Game.Ai.V2
                     intent.StallTurns = 0;
                     return;
                 }
+                // A transient capability shortage (mover contended / no free hero this turn) is
+                // not mission failure — AdvanceIntent already suspends+preserves the intent for
+                // exactly this case (SuspendReason.CapabilityUnavailable, ShouldReap skipped) and
+                // still reaps it once StallTurns/TurnsActive age out. Retiring it HERE instead let
+                // a fresh materialization hand a second builder the same target next admission
+                // pass while the first was still mid-route.
+                bool transientCapability = intent != null
+                    && (o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
+                        || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended);
+                if (transientCapability)
+                {
+                    AdvanceIntent(intent, o, turn, state, allocState);
+                    return;
+                }
                 RepayEconomyLoan(state, intent, o);
                 if (intent != null) state.Remove(intent.IntentKey);
                 return;

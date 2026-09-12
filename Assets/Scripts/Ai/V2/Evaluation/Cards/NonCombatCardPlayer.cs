@@ -499,7 +499,12 @@ namespace Game.Ai.V2
             foreach (HexCoord anchor in ownBaseHexes)
                 foreach (HexCoord h in HexGridMath.HexesInRange(anchor, BaseFoundScanRadius)
                     .OrderBy(x => HexGridMath.Distance(anchor, x)).ThenBy(x => x.Q).ThenBy(x => x.R))
-                    if (seen.Add(h) && !ownBaseHexes.Contains(h))
+                    // Same economyBaseMinSpacing rule Analysis/WorldAnalysis enforces for its own
+                    // EconomicExpansionBase candidates (WorldAnalysis.MeetsBaseSpacing) — this scan
+                    // used to skip it entirely, letting Phase B found a base right next to an
+                    // existing one while Economy's own demand still targeted a properly-spaced hex.
+                    if (seen.Add(h) && !ownBaseHexes.Contains(h)
+                        && WorldAnalysis.MeetsBaseSpacing(ownBaseHexes, h))
                         yield return h;
         }
 

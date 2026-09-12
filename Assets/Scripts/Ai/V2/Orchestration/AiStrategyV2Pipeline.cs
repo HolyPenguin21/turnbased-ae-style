@@ -854,12 +854,16 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
 
-                    // Scout jobs rejected as MoverContended already carry ProvisionDisposition
-                    // .RetryNextTurn ("out of the running THIS turn" — ResourceAllocator.cs:172),
-                    // but nothing enforced that across settled steps: BuildMissionSet re-proposed
-                    // the same losing job every micro-step, re-running the full batch solve only to
-                    // reach the identical rejection again (same busy movers, nothing changed).
-                    // Recorded live as each MoverContended failure is seen below (NOT by reading
+                    // Scout jobs rejected with ProvisionDisposition.RetryNextTurn ("out of the
+                    // running THIS turn" — ResourceAllocator.cs:172, covers MoverContended AND
+                    // NoExecutableStep alike) carry that verdict, but nothing enforced it across
+                    // settled steps: BuildMissionSet re-proposed the same losing job every
+                    // micro-step, re-running the full batch solve only to reach the identical
+                    // rejection again (same busy/unreachable movers, nothing changed). Originally
+                    // this set only recorded MoverContended, so a NoExecutableStep rejection (a
+                    // scout physically can't reach its target this turn) kept re-entering the
+                    // batch solve every settled step for no reason — same churn, different kind.
+                    // Recorded live as each RetryNextTurn failure is seen below (NOT by reading
                     // ProvisioningSession.AssignmentRejections after the step settles — a later
                     // intra-step realloc pass drops an already-rejected mission out of Funded
                     // entirely, and ProvisioningSession.SetAssignment clears+refills that dict on
@@ -867,7 +871,7 @@ namespace Game.Ai.V2
                     // almost always empty). Consumed only at the NEXT settled step's BuildMissionSet
                     // filter below, so this step's own remaining realloc passes still see the full
                     // candidate set — the existing intra-step "chance within the batch" is untouched.
-                    var contendedThisPass = new HashSet<StableMissionKey>();
+                    var retryNextTurnThisPass = new HashSet<StableMissionKey>();
 
                     while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
                         && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
@@ -897,9 +901,9 @@ namespace Game.Ai.V2
 
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace);
-                    if (contendedThisPass.Count > 0)
+                    if (retryNextTurnThisPass.Count > 0)
                         missions = missions.Where(m => m == null || m.Kind != MissionKind.Scout
-                            || !contendedThisPass.Contains(StableMissionKey.For(m))).ToList();
+                            || !retryNextTurnThisPass.Contains(StableMissionKey.For(m))).ToList();
                     List<Commitment> cycleCommitments =
                         MissionContinuityLayer.BindFunding(activeIntents, missions);
                     var cycleLedger = new MissionOutcomeLedger();
@@ -999,13 +1003,13 @@ namespace Game.Ai.V2
                                     player, failedFunding.Mission, failure);
                                 cycleSession.RegisterProvisionFailure(failedFunding, failure);
                                 cycleLedger.RecordProvisionFailure(failedFunding.Mission, failure);
-                                // Record MoverContended here (during the pass, before the next
-                                // realloc's repack can drop this mission out of Funded entirely and
-                                // erase it from cycleProvisioning.AssignmentRejections) — reading the
-                                // rejection dict only after the whole step settles was catching just
-                                // the last realloc pass's leftovers, near-always empty by then.
-                                if (failure.Kind == ProvisionFailureKind.MoverContended)
-                                    contendedThisPass.Add(failedKey);
+                                // Record any RetryNextTurn failure here (during the pass, before the
+                                // next realloc's repack can drop this mission out of Funded entirely
+                                // and erase it from cycleProvisioning.AssignmentRejections) — reading
+                                // the rejection dict only after the whole step settles was catching
+                                // just the last realloc pass's leftovers, near-always empty by then.
+                                if (failure.Disposition == ProvisionDisposition.RetryNextTurn)
+                                    retryNextTurnThisPass.Add(failedKey);
                                 AiDebugLog.Write($"[AI][V2][Loop] assignment-batch "
                                     + $"[{failedFunding.Mission.AttemptId}] {failedKey} — FAIL "
                                     + $"{failure.Kind} [{failure.Disposition}] {failure.Detail}");
@@ -1099,8 +1103,8 @@ namespace Game.Ai.V2
                         cycleLedger.RecordProvisionFailure(selectedFunding.Mission,
                             provisionResult.Failure);
                         if (selectedFunding.Mission?.Kind == MissionKind.Scout
-                            && provisionResult.Failure.Kind == ProvisionFailureKind.MoverContended)
-                            contendedThisPass.Add(selectedKey);
+                            && provisionResult.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
+                            retryNextTurnThisPass.Add(selectedKey);
                         AiDebugLog.Write($"[AI][V2][Loop] provision [{selectedFunding.Mission.AttemptId}] "
                             + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
                             + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");

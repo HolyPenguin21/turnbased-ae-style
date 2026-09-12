@@ -45,6 +45,12 @@ namespace Game.Ai.V2
         public bool CombatChanged;
         public bool RaidOperationStarted;
 
+        // Set when an Economy builder reaches its BuildExtraction/FoundBase target this step but
+        // the infrastructure itself is not up yet (that's Phase A's job next admission). Nothing in
+        // WorldSnapshot changed yet, so without this explicit fact PublishStepObservationDelta sees
+        // no typed invalidation and the typed loop stops before Phase A ever gets a chance to build.
+        public bool EconomyDeliveryReady;
+
         // Provisioned mission that produced this execution ledger row.
         public ProvisionedMission Source;
 
@@ -581,7 +587,10 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Economy][Recovery] builder #{army.Id} protected at "
                         + $"({army.Hex.Q},{army.Hex.R})");
                 else
+                {
+                    result.EconomyDeliveryReady = true;
                     AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                }
                 yield break;
             }
             if (army.CurrentMovement <= 0)

@@ -754,7 +754,11 @@ namespace Game.Ai.V2
             IOrderedEnumerable<AxisDemand> extractionRanked = candidates
                 .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
                     && x.EconomyResourceType.HasValue)
-                .OrderByDescending(x => standings.TryGetValue(
+                // A builder already committed and en route (or standing) on this target must not
+                // lose its slot to .Take(N) just because some other resource's priority ticked up
+                // this pass — mirrors baseRanked's IsActiveBaseCommitment precedence below.
+                .OrderByDescending(x => HasActiveEconomyBuildIntent(activeIntents, x) ? 1 : 0)
+                .ThenByDescending(x => standings.TryGetValue(
                         x.EconomyResourceType.Value, out EconomyResourceStanding rs)
                     ? Mathf.Max(EconomyResourcePriority(rs),
                         ResourceStarvationRegistry.Pressure(

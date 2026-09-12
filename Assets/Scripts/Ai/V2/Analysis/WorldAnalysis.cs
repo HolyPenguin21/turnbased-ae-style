@@ -206,6 +206,17 @@ namespace Game.Ai.V2
                 StrategicInterruptRegistry.Mark(
                     player, turn, StrategicInvalidationReason.Resources);
 
+            // A builder settling onto its BuildExtraction/FoundBase hex changes nothing else this
+            // step (no InfrastructureChanged, no Actor delta) — without an explicit fact here the
+            // typed loop sees "no invalidation" and stops before Phase A gets to build on it.
+            if (execution != null && execution.EconomyDeliveryReady)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ResourceSite | StrategicInvalidationReason.Actor,
+                    actorIds: execution.ActualActorArmyId.HasValue
+                        ? new[] { execution.ActualActorArmyId.Value }
+                        : null,
+                    hexes: new[] { execution.FinalHex });
+
             if (before.Hand != after.Hand
                 || before.HandVersion != after.HandVersion)
                 StrategicInterruptRegistry.Mark(player, turn,
