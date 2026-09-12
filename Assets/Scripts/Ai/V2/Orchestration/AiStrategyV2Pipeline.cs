@@ -1015,7 +1015,7 @@ namespace Game.Ai.V2
                                 if (failure.Disposition == ProvisionDisposition.RetryNextTurn)
                                     retryNextTurnThisPass.Add(failedKey);
                                 AiDebugLog.Write($"[AI][V2][Loop] assignment-batch "
-                                    + $"[{failedFunding.Mission.AttemptId}] {failedKey} — FAIL "
+                                    + $"[{AiV2Trace.FormatCorrelation(failedFunding.Mission)}] {failedKey} — FAIL "
                                     + $"{failure.Kind} [{failure.Disposition}] {failure.Detail}");
                             }
 
@@ -1108,7 +1108,7 @@ namespace Game.Ai.V2
                             provisionResult.Failure);
                         if (provisionResult.Failure.Disposition == ProvisionDisposition.RetryNextTurn)
                             retryNextTurnThisPass.Add(selectedKey);
-                        AiDebugLog.Write($"[AI][V2][Loop] provision [{selectedFunding.Mission.AttemptId}] "
+                        AiDebugLog.Write($"[AI][V2][Loop] provision [{AiV2Trace.FormatCorrelation(selectedFunding.Mission)}] "
                             + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
                             + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
 
@@ -1350,7 +1350,7 @@ namespace Game.Ai.V2
                             provisioned.Add(result.Provisioned);
                             AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
                                 result.Provisioned.ClaimedAp, fe.Tentative.Ap);
-                            AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — OK mover #{result.Provisioned.MoverArmyId} "
+                            AiDebugLog.Write($"[AI][V2]   provision [{AiV2Trace.FormatCorrelation(fe.Mission)}] {key} — OK mover #{result.Provisioned.MoverArmyId} "
                                 + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
                                 + $"(envelope {fe.Tentative.Ap.ToString("0.#", CultureInfo.InvariantCulture)}) "
                                 + $"stealthReserve {(result.Provisioned.StealthApReserved ? 1 : 0)}");
@@ -1371,7 +1371,7 @@ namespace Game.Ai.V2
                             allFailuresArePoolWide &= poolWide;
                             session.RegisterProvisionFailure(fe, result.Failure);
                             ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                            AiDebugLog.Write($"[AI][V2]   provision [{fe.Mission.AttemptId}] {key} — FAIL {result.Failure.Kind} "
+                            AiDebugLog.Write($"[AI][V2]   provision [{AiV2Trace.FormatCorrelation(fe.Mission)}] {key} — FAIL {result.Failure.Kind} "
                                 + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
                         }
                     }

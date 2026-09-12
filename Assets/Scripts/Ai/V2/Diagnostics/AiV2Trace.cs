@@ -174,6 +174,15 @@ namespace Game.Ai.V2
             }
         }
 
+        // Human-readable correlation summary for a mission, e.g.
+        // "attempt=T7-P1-M-M03 causeDemand=[T7-P1-M-D02]" — used by downstream logs (Allocation,
+        // Provisioning, Execution, Continuity) so one strategic decision can be followed by grepping
+        // a single TraceId/AttemptId end to end (spec §1.6).
+        public static string FormatCorrelation(MissionProposal mission) =>
+            mission == null
+                ? "attempt=? causeDemand=none"
+                : $"attempt={mission.AttemptId} causeDemand={mission.CauseDemandTrace}";
+
         private static bool TryMissionFocus(MissionProposal m, out HexCoord focus)
         {
             focus = default;

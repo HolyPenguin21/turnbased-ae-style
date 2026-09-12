@@ -124,7 +124,9 @@ namespace Game.Ai.V2
                     Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) site={target.BuildValue:0.0}",
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
-                if (!string.IsNullOrEmpty(d.TraceId)) m.CauseDemandTraceIds.Add(d.TraceId);
+                // CauseDemandTraceIds is computed once, downstream, by
+                // AiV2Trace.CorrelateDemandsToMissions — do not write it here (single-owner rule,
+                // spec §1.6 / file-split Task 1).
                 result.Add(m);
             }
             return result;

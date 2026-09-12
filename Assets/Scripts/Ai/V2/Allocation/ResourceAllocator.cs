@@ -1224,7 +1224,7 @@ namespace Game.Ai.V2
                     .Where(ax => fe.Mission.Axes.Value.TryGetValue(ax, out float v) && v > 0f)
                     .Select(DesireAxes.Abbrev));
                 AiDebugLog.Write($"[AI][V2]   {(fe.IsCommitment ? "commit" : "fund  ")} "
-                    + $"[{fe.Mission.AttemptId}] {StableMissionKey.For(fe.Mission)} "
+                    + $"[{AiV2Trace.FormatCorrelation(fe.Mission)}] {StableMissionKey.For(fe.Mission)} "
                     + $"base {LogNum(fe.Mission.BaseValue)} eff {LogNum(fe.Mission.EffectiveValue)} "
                     + $"ap {LogNum(fe.Tentative.Ap)} (strict {LogNum(fe.StrictAp)}) axes[{axes}] "
                     + $"rem+ {LogNum(fe.RemainderTopUp.Ap)} {fe.Stage.ToString().ToLowerInvariant()}");
@@ -1240,7 +1240,7 @@ namespace Game.Ai.V2
                             ? $"reason={d.CooldownReason ?? "StructuralFailure"} start=t{d.CooldownStartedTurn} "
                               + $"until=t{d.CooldownUntilTurn} remaining={Mathf.Max(0, d.CooldownUntilTurn - turn + 1)}"
                             : "";
-                AiDebugLog.Write($"[AI][V2]   defer [{d.Mission?.AttemptId}] {StableMissionKey.For(d.Mission)} "
+                AiDebugLog.Write($"[AI][V2]   defer [{AiV2Trace.FormatCorrelation(d.Mission)}] {StableMissionKey.For(d.Mission)} "
                     + $"base {LogNum(d.Mission.BaseValue)} eff {LogNum(d.Mission.EffectiveValue)} — {d.Reason} {why}");
             }
 

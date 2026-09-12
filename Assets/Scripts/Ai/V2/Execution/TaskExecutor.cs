@@ -168,7 +168,7 @@ namespace Game.Ai.V2
                     CompleteResult(result, root);
                     results.Add(result);
                     ReleaseEconomyReservation(player, ctx, pm);
-                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — stale plan "
+                    AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — stale plan "
                         + $"planned@v{pm.PlannedAtStateVersion}, current=v{V2StateVersion.Current}; no command issued");
                     continue;
                 }
@@ -186,7 +186,7 @@ namespace Game.Ai.V2
                     results.Add(result);
                     ReleaseEconomyReservation(player, ctx, pm);
                     ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before execution");
-                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
+                    AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
                     continue;
                 }
 
@@ -220,7 +220,7 @@ namespace Game.Ai.V2
                     ReleaseEconomyReservation(player, ctx, pm);
                     if (validity == MissionValidity.StaleMoverLost)
                         ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mission revalidation lost mover");
-                    AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — revalidation: {validity}; "
+                    AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — revalidation: {validity}; "
                         + "no movement, 0 AP");
                     continue;
                 }
@@ -266,7 +266,7 @@ namespace Game.Ai.V2
                 CompleteResult(result, root);
                 results.Add(result);
                 ReleaseEconomyReservation(player, ctx, pm);
-                AiDebugLog.Write($"[AI][V2] exec [{pm.Mission?.AttemptId}] {pm.Key} — unsupported mission kind {pm.Kind}");
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — unsupported mission kind {pm.Kind}");
             }
 
             // TaskExecutor owns the batch lifecycle, so the summary is still written when the last
@@ -641,7 +641,7 @@ namespace Game.Ai.V2
             result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
             result.StopReason = stop;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-            AiDebugLog.Write($"[AI][V2] exec [{pm?.Mission?.AttemptId}] {pm?.Key} — raid "
+            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm?.Mission)}] {pm?.Key} — raid "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps {result.StepsMoved} ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
                 + $"stop {stop}" + (result.ReachedGoal ? " (target gone)" : ""));
