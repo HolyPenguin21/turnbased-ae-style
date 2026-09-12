@@ -348,7 +348,7 @@ MonoBehaviour:
     requiredBuildingAbility: Barracks
     moveMax: 3
     activationApCost: 1
-    commandRating: 8
+    commandRating: 7
     fate: 4
     attack: 0
     defenseRating: 0

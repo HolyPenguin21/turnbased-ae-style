@@ -187,8 +187,7 @@ MonoBehaviour:
     antiAirRadius: 1
     airfieldCapacity: 0
     unitTypeTags: 08000000
-    grantedAbilities:
-    - ApBonus
+    grantedAbilities: []
     resourceYield:
       human: 0
       energy: 0
@@ -422,6 +421,50 @@ MonoBehaviour:
       statChanges: []
   - id: 9
     authoredKey: 
+    displayName: Iri Vane
+    art: {fileID: 21300000, guid: 2436afe4b26d04045b6f955eaae3d63a, type: 3}
+    detailArt: {fileID: 21300000, guid: ed3b5e4e87142f24e8fab85d467c7b25, type: 3}
+    faction: 4
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 1
+      energy: 0
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 8
+    fate: 2
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 08000000
+    grantedAbilities:
+    - ApBonus
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 10
+    authoredKey: 
     displayName: Hooded
     art: {fileID: 21300000, guid: d76728da71291f046a090e5cb0b83cbb, type: 3}
     detailArt: {fileID: 21300000, guid: d8148ceee197ac949b4f7a314f174a68, type: 3}
@@ -466,7 +509,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 10
+  - id: 11
     authoredKey: 
     displayName: Dust Runner
     art: {fileID: 21300000, guid: c89f9e169a628084e9ba04c7270a331b, type: 3}
@@ -510,7 +553,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 11
+  - id: 12
     authoredKey: 
     displayName: Tech Scrapper
     art: {fileID: 21300000, guid: 62291ed7674a410439a8a9dad2893dd1, type: 3}
@@ -554,7 +597,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 12
+  - id: 13
     authoredKey: 
     displayName: AA Rad Hunter
     art: {fileID: 21300000, guid: db09506f895008949a636cec77987fc4, type: 3}
@@ -598,7 +641,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 13
+  - id: 14
     authoredKey: ashen.unit.ashdrifter
     displayName: Ash Drifter
     art: {fileID: 21300000, guid: 35502c57463bbbd4c836f03743e0660e, type: 3}
@@ -641,7 +684,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 14
+  - id: 15
     authoredKey: 
     displayName: LI Ash Runner
     art: {fileID: 21300000, guid: c444629f40212004e81035a5446669ce, type: 3}
@@ -684,7 +727,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 15
+  - id: 16
     authoredKey: 
     displayName: MI Iron Husk
     art: {fileID: 21300000, guid: de870665bcb908d41bbb2fa1c4f0162e, type: 3}
@@ -727,7 +770,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 16
+  - id: 17
     authoredKey: 
     displayName: Scav Carrier
     art: {fileID: 21300000, guid: 7c353224512ec5342a538ea957adfdb5, type: 3}
@@ -771,7 +814,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 17
+  - id: 18
     authoredKey: 
     displayName: Rad Brute
     art: {fileID: 21300000, guid: 9033fed8d61a1214c83844a0b618ad62, type: 3}
@@ -816,7 +859,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 18
+  - id: 19
     authoredKey: 
     displayName: HI Ash Walker
     art: {fileID: 21300000, guid: 6ed8570f1fe48a440893bb9dd4af5b3c, type: 3}
@@ -860,7 +903,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 19
+  - id: 20
     authoredKey: 
     displayName: BS Grave Engine
     art: {fileID: 21300000, guid: e8c4d9a01faeee9449e49c1e9fd8ab6d, type: 3}
@@ -903,7 +946,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 20
+  - id: 21
     authoredKey: 
     displayName: MT Rust Tank
     art: {fileID: 21300000, guid: b9746bf4a9b039749b2ec4a2f07dcf0e, type: 3}
@@ -946,7 +989,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 21
+  - id: 22
     authoredKey: 
     displayName: Leviathan
     art: {fileID: 21300000, guid: 1a7bc8a88297fdc4781e5f4053ba411f, type: 3}
@@ -989,7 +1032,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 22
+  - id: 23
     authoredKey: 
     displayName: Scrap Mortar
     art: {fileID: 21300000, guid: efa5fad9a47aefc448acd94b7659be69, type: 3}
@@ -1032,7 +1075,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 23
+  - id: 24
     authoredKey: 
     displayName: Colossus
     art: {fileID: 21300000, guid: adb2a86f5ba326b49916a3783aacc613, type: 3}
@@ -1076,7 +1119,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 24
+  - id: 25
     authoredKey: 
     displayName: Ash Howitzer
     art: {fileID: 21300000, guid: f5dcd42f65057d84b8ab7c19dc945cd3, type: 3}
@@ -1121,7 +1164,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 25
+  - id: 26
     authoredKey: 
     displayName: Striker
     art: {fileID: 21300000, guid: d4a121c31ae111744ba193cd95d401e0, type: 3}
@@ -1165,7 +1208,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 26
+  - id: 27
     authoredKey: 
     displayName: Scrapwing
     art: {fileID: 21300000, guid: 26c9f88c50c9c4842930f5d8e37bf87f, type: 3}
@@ -1209,7 +1252,7 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 27
+  - id: 28
     authoredKey: 
     displayName: HT Boomstick
     art: {fileID: 21300000, guid: d5a53f2a6c4b76441a0946bea6253378, type: 3}
