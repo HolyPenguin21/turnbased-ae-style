@@ -371,15 +371,31 @@ namespace Game.Turns
             foreach (UnitData hero in new List<UnitData>(prison.Members))
             {
                 PlayerSetupData originalOwner = hero.CapturedFrom;
-                prison.Members.Remove(hero);
                 if (originalOwner == null || !originalOwner.CitadelHexQ.HasValue || !originalOwner.CitadelHexR.HasValue)
+                {
+                    prison.Members.Remove(hero);
                     continue;
+                }
 
                 var originalCitadelHex = new HexCoord(originalOwner.CitadelHexQ.Value, originalOwner.CitadelHexR.Value);
                 ArmyData garrison = ArmyRegistry.FindGarrisonAt(originalCitadelHex, originalOwner);
                 if (garrison == null)
+                {
+                    prison.Members.Remove(hero);
+                    continue;
+                }
+
+                // Same projected-roster capacity rule every other join path enforces (see
+                // ArmyActions.TransferMember) — a garrison already at its (possibly
+                // hero-reduced) cap must not silently take a member over EffectiveCapacity.
+                // Left imprisoned rather than released into an invariant violation; it'll be
+                // reconsidered the next time ReleasePrisoners runs (e.g. after the garrison
+                // frees up room some other way).
+                var projected = new List<UnitData>(garrison.Members) { hero };
+                if (ArmyData.ComputeCapacity(projected, garrison.IsGarrison) < projected.Count)
                     continue;
 
+                prison.Members.Remove(hero);
                 hero.Owner = originalOwner;
                 hero.IsPrisoner = false;
                 hero.CapturedFrom = null;

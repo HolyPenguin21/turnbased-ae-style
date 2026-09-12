@@ -47,5 +47,18 @@ namespace Game.Aviation
             FiredThisTurn.RemoveWhere(unit => unit.Owner == owner);
             PromptedThisTurn.RemoveWhere(entry => entry.aaUnit.Owner == owner);
         }
+
+        // Full wipe for a brand-new game/session — same "static registry, explicit Clear on
+        // fresh setup" convention ArmyRegistry/StealthSystem/VisionSystem/AiMapMemory already
+        // follow (see CitadelSetupController.Start). Without this, these two static sets — keyed
+        // by UnitData reference, not by owner — would otherwise carry stale entries from a
+        // previous game session for as long as the process lives (harmless today since a fresh
+        // game's UnitData instances never collide with the old references, but a session-lifetime
+        // leak of every AA unit that ever fired anywhere).
+        public static void Clear()
+        {
+            FiredThisTurn.Clear();
+            PromptedThisTurn.Clear();
+        }
     }
 }

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
+using Game.Aviation;
 using Game.Cameras;
 using Game.Cards;
 using Game.Core;
@@ -112,6 +113,7 @@ namespace Game.Setup
             HexEventRegistry.Clear();
             ArmyRegistry.Clear();
             PlayerRootRegistry.Clear();
+            AntiAirState.Clear();
             // Configure before AssignStartingHexes/the per-player loop below ever registers an
             // army or building — both registries recompute vision the moment something is
             // registered (see ArmyRegistry.Register/BuildingRegistry.Register), so the radii
