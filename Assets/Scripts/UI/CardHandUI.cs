@@ -80,6 +80,9 @@ namespace Game.UI
         [SerializeField] private Vector2 slotVisualSize = new Vector2(96f, 140f);
         [Range(0f, 0.3f)]
         [SerializeField] private float overlapFraction = 0.08f;
+        // Extra gap added on top of the overlap-derived step, so slots aren't flush/overlapping
+        // even at the full MaxVisible=6 width.
+        [SerializeField] private float cardSpacing = 2f;
         [SerializeField] private float restingScale = 0.9f;
         [SerializeField] private float hoverScale = 1.2f;
         [SerializeField] private float hoverLift = 20f;
@@ -1155,7 +1158,7 @@ namespace Game.UI
                 if (c != dragged && c.gameObject.activeSelf)
                     _scratchVisible.Add(c);
 
-            float step = cardSize.x * (1f - overlapFraction);
+            float step = cardSize.x * (1f - overlapFraction) + cardSpacing;
             if (step <= 0f)
                 return _scrollOffset + _scratchVisible.Count;
 
@@ -1211,7 +1214,7 @@ namespace Game.UI
         // container's own pivot (x=0), just never on a per-card-count basis any more.
         private float SlotX(int index)
         {
-            float step = cardSize.x * (1f - overlapFraction);
+            float step = cardSize.x * (1f - overlapFraction) + cardSpacing;
             float totalWidth = MaxVisible > 0 ? (MaxVisible - 1) * step : 0f;
             return -totalWidth * 0.5f + index * step;
         }
