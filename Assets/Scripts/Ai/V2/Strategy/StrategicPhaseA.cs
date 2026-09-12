@@ -79,12 +79,20 @@ namespace Game.Ai.V2
     // shared AxisBudgetLedger. Body is unchanged from the former StrategicManager.FulfillDemands.
     public static class StrategicPhaseA
     {
+        // economyAxisAuthoritative — true when `demands` reflects Economy's COMPLETE current view
+        // (the Main pass, a reaction round's fresh DemandLayer.Generate, or an orchestration
+        // reconciliation that actually re-evaluated Economy this round). False when `demands` is a
+        // dirty-axis SUBSET that deliberately excludes Economy because Economy itself was not
+        // re-evaluated this call (AiStrategyV2Pipeline.ReenterStrategicAxes) — there, an absent
+        // Economy demand means "not looked at", not "resolved", and must never be read as license
+        // to drop the deferred-build hold. Defaults to true: both full-list callers rely on it.
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
-            MaterializationReservation carriedReservation = null)
+            MaterializationReservation carriedReservation = null,
+            bool economyAxisAuthoritative = true)
         {
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
@@ -96,7 +104,15 @@ namespace Game.Ai.V2
                 Reservation = carriedReservation ?? new MaterializationReservation()
             };
             if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
+            {
+                // No demand at all this call. When Economy WAS authoritatively re-evaluated (not
+                // just a non-Economy dirty-axis subset), an empty demand set really does mean
+                // Economy has nothing left to protect — a stale hold from an earlier pass this turn
+                // must not survive to block Phase B on a target that no longer exists.
+                if (economyAxisAuthoritative && player != null && ctx != null)
+                    InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
                 return result;
+            }
 
             foreach (AxisDemand economyDemand in demands.Where(d => d != null
                          && d.RequestingAxis == DesireAxis.Economy
@@ -149,7 +165,11 @@ namespace Game.Ai.V2
             var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred).ToList();
             var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred).ToList();
             if (states.Count == 0 && deferredStates.Count == 0)
+            {
+                if (economyAxisAuthoritative)
+                    InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
                 return result;
+            }
 
             // --- Infrastructure pre-pass. DEF/ECO/DEV EconomicInfrastructure / DevelopmentInfra
             //     demands are fulfilled by BuildingPlayExecutor through the authoritative gameplay
@@ -240,7 +260,7 @@ namespace Game.Ai.V2
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
                 .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
-                .ThenByDescending(d => d.Capability == CapabilityKind.EconomicExpansionBase ? 1 : 0)
+                .ThenByDescending(d => ResolveEconomyTaskKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
@@ -257,12 +277,12 @@ namespace Game.Ai.V2
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
                     + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
             }
-            else if (demands.Any(d => d != null && d.RequestingAxis == DesireAxis.Economy
-                         && (d.Capability == CapabilityKind.EconomicInfrastructure
-                             || d.Capability == CapabilityKind.EconomicExpansionBase
-                             || (d.Capability == CapabilityKind.Hero && d.TargetHex.HasValue
-                                 && d.EconomyBuildResourceCost != null))))
+            else if (economyAxisAuthoritative)
             {
+                // No obligation survived selection — but only clear when this call actually had
+                // Economy's authoritative view. A dirty-axis subset that never included Economy
+                // (economyAxisAuthoritative == false) says nothing about whether Economy's build
+                // target still exists; the hold must be left exactly as it was.
                 InfrastructureFulfillment.ClearDeferredEconomyResources(
                     player, ctx.TurnNumber);
             }

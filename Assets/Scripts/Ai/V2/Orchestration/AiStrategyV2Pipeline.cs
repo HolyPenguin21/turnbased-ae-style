@@ -815,19 +815,19 @@ namespace Game.Ai.V2
                     demands = demands.Where(d => d != null
                             && !dirtyAxes.Contains(d.RequestingAxis))
                         .Concat(regenerated).ToList();
-                    if (dirtyAxes.Contains(DesireAxis.Economy)
-                        && !dirtyDemands.Any(d => d.RequestingAxis == DesireAxis.Economy
-                            && (d.Capability == CapabilityKind.EconomicInfrastructure
-                                || d.Capability == CapabilityKind.EconomicExpansionBase)))
-                        InfrastructureFulfillment.ClearDeferredEconomyResources(
-                            player, ctx.TurnNumber);
-
+                    // Economy deferred-hold reconciliation now lives entirely inside
+                    // StrategicPhaseA (economyAxisAuthoritative) — a single canonical writer
+                    // instead of this call duplicating the same existence check right before it.
+                    // dirtyAxes.Contains(Economy) is the exact "was Economy actually re-evaluated
+                    // this round" signal Phase A needs to tell "Economy resolved" apart from
+                    // "Economy wasn't part of this dirty-axis subset".
                     WorldAnalysis.StepObservationStamp beforeCapabilities =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     StrategicPhaseResult followup = StrategicManager.FulfillDemands(
                         snapshot, player, root, hand, ctx, apLedger, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
-                        phaseB.Reservation ?? phaseA.Reservation);
+                        phaseB.Reservation ?? phaseA.Reservation,
+                        economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy));
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
                     {
