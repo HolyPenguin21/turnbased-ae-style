@@ -753,7 +753,11 @@ namespace Game.Ai.V2
             // standing on a low-priority resource from silently replacing the hand bottleneck.
             IOrderedEnumerable<AxisDemand> extractionRanked = candidates
                 .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
-                    && x.EconomyResourceType.HasValue)
+                    && x.EconomyResourceType.HasValue
+                    // A FoundBase intent already owns this hex — extraction must not propose a
+                    // competing build on the same target.
+                    && !HasActiveEconomyIntentAtHexOfKind(
+                        activeIntents, x.TargetHex, EconomyTaskKind.FoundBase))
                 // A builder already committed and en route (or standing) on this target must not
                 // lose its slot to .Take(N) just because some other resource's priority ticked up
                 // this pass — mirrors baseRanked's IsActiveBaseCommitment precedence below.
@@ -770,7 +774,12 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
             IOrderedEnumerable<AxisDemand> baseRanked = candidates
-                .Where(x => x.Capability == CapabilityKind.EconomicExpansionBase)
+                .Where(x => x.Capability == CapabilityKind.EconomicExpansionBase
+                    // An active BuildExtraction intent already owns this hex — a fresh Base
+                    // candidate must not propose converting/competing for the same target while
+                    // that extraction is still in flight.
+                    && !HasActiveEconomyIntentAtHexOfKind(
+                        activeIntents, x.TargetHex, EconomyTaskKind.BuildExtraction))
                 .OrderByDescending(x => IsActiveBaseCommitment(
                     activeIntents, x.TargetHex, x.EconomyBuildCard))
                 .ThenByDescending(x => x.EconomySiteValue)
@@ -1494,6 +1503,20 @@ namespace Game.Ai.V2
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
                     + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}";
+        }
+
+        // Cross-family guard: extraction and base candidates are ranked/selected independently
+        // (see EconomyDemands), so nothing else stops a fresh candidate of one family from
+        // targeting a hex already owned by an active intent of the OTHER family. This is the
+        // only place that checks across EconomyTaskKind.
+        private static bool HasActiveEconomyIntentAtHexOfKind(IReadOnlyList<MissionIntent> intents,
+            HexCoord? target, EconomyTaskKind kind)
+        {
+            if (!target.HasValue || intents == null)
+                return false;
+            return intents.Any(i => i != null && i.Status == IntentStatus.Active
+                && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
+                && i.Economy.TargetHex.Equals(target.Value));
         }
 
         private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,
