@@ -639,8 +639,17 @@ namespace Game.Ai.V2
         private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
             GenerationStep generation, WorldSnapshot snap, float demandFloor)
         {
-            if (b == null || generation == null
-                || generation.Mode != ResearchProductionMode.Production)
+            // Economy support amplifies whatever concrete capability a generation step actually
+            // produces (a deployable Unit/Hero body, or an Equipment attachment) — the
+            // originating facility's Research/Production mode is not the signal. A Unit minted
+            // through a Research offering (e.g. Ash Drifter) needs the same economic backing as
+            // one minted through Production; gating on Mode let it bypass Economy-support scoring
+            // entirely.
+            if (b == null || generation?.CardDef == null)
+                return 0f;
+            CardType producedType = generation.CardDef.cardType;
+            if (producedType != CardType.Unit && producedType != CardType.Hero
+                && producedType != CardType.Equipment)
                 return 0f;
             float support = snap?.Development?.ProductionSupport ?? 1f;
             support = Mathf.Max(support, demandFloor);
