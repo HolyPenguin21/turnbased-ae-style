@@ -13,8 +13,8 @@ namespace Game.Ai.V2
     //  NON-COMBAT SURPLUS CARD PLAY  (Strategy V2 — Strategic Manager Phase B, spec §5/§13)
     // ===========================================================================================
     //  RankedSurplus owns Unit / Hero / solo-Recce materialization (and chained Equipment).
-    //  This peer lane owns Aviation, Facility and standalone Equipment. Base founding belongs
-    //  to the target-specific Economy pipeline. Both surplus lanes enumerate their complete
+    //  This peer lane owns Aviation, surplus Facilities and standalone Equipment. Base founding
+    //  belongs to Economy; Research/Production facilities require a supported Development demand. Both surplus lanes enumerate their complete
     //  admissible alternatives before the common Phase-B arbiter ranks them.
     //
     //  It enumerates every hand/generated card through a pure type router and checks it against
@@ -22,7 +22,7 @@ namespace Game.Ai.V2
     //  InfrastructureActions, AviationActions.TryDeployFromCard, EquipmentSystem), then hands
     //  StrategicPhaseB the complete preflighted candidate set.
     //  Rejections report gameplay feasibility (AP, resources, placement, capacity, host) or an
-    //  explicit operation owner: Base cards require the existing Economy expansion demand.
+    //  explicit operation owner: Base cards require Economy; R/P facilities require Development.
     // ===========================================================================================
     internal static class NonCombatCardPlayer
     {
@@ -240,6 +240,12 @@ namespace Game.Ai.V2
 
             if (def.cardType == CardType.Facility)
             {
+                if (def.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research)) == true
+                    || def.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)) == true)
+                {
+                    blocked.Add($"{def.displayName}:facility(requires_supported_development_demand)");
+                    return null;
+                }
                 HexCoord? at = null;
                 int bestReadiness = -1;
                 string why = "noOwnedBase";

@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b,
             IReadOnlyList<DevelopmentOpportunity> devOpportunities, Radar radar,
             IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
-            PlayerSetupData player)
+            PlayerSetupData player, AiTurnContext ctx, PlayerRoot root)
         {
             float devScale = radar != null ? RadarValueScale.For(radar, DesireAxis.Development) : 1f;
             if (s?.Self == null)
@@ -28,77 +28,37 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (!s.Self.HasDevFacility)
+            AiHandData hand = AiHandRegistry.Peek(player);
+            bool SupportsNeed(DevelopmentOpportunity op) =>
+                HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player);
+            int operatorPrerequisites = 0;
+            // Only prepare a mode/site with a concrete supported output, recipient and operator.
+            // One best prerequisite per pass; the next settled pass sees the completed stage.
+            DevelopmentOpportunity preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
+                s, player, root, hand, ctx, SupportsNeed).FirstOrDefault();
+            if (preparation != null)
             {
-                if (s.Self.BaseHexes == null || s.Self.BaseHexes.Count == 0)
-                {
-                    AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_base_to_expand");
-                    yield break;
-                }
-                HexCoord anchor = s.Self.BaseHexes[0];
-                AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({anchor.Q},{anchor.R}) "
-                    + "capability=DevelopmentInfrastructure desired=1 reason=no_research_production_facility");
+                bool facilityReady = s.Development?.Facilities?.Any(f => f.Mode == preparation.Mode
+                    && f.Hex.Equals(preparation.FacilityHex)) == true;
+                operatorPrerequisites++;
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Development,
-                    Capability = CapabilityKind.DevelopmentInfrastructure,
+                    Capability = facilityReady ? CapabilityKind.DevelopmentOperator
+                        : CapabilityKind.DevelopmentInfrastructure,
                     DesiredAmount = 1,
-                    RequiredTraits = TraitPreference.None,
-                    MinimumFollowupAp = 0f,
-                    TargetHex = anchor,
-                    Value = 45f,
-                    Explain = "no Research/Production facility — Development axis has no operator base",
+                    TargetHex = preparation.FacilityHex,
+                    DevelopmentOperatorMode = preparation.Mode,
+                    DevOpportunity = preparation,
+                    Value = preparation.BaseValue * devScale,
+                    Explain = preparation.Explain,
                 };
-                yield break;
             }
-
-            // Facility built but no qualifying operator hero -> stage the hero. PER MODE: Research and
-            // Production need DIFFERENT hero abilities (Researcher vs Assembler), so a staffed b_Lab
-            // must NOT suppress the b_Factory operator demand — each unstaffed mode gets its own.
-            DevelopmentReadiness rd = s.Development;
-            int operatorPrerequisites = 0;
-            if (rd != null && rd.Facilities != null)
-            {
-                foreach (ResearchProductionMode mode in new[]
-                    { ResearchProductionMode.Research, ResearchProductionMode.Production })
-                {
-                    bool modeStaffed = false, modeHasOpenFacility = false;
-                    HexCoord at = default;
-                    foreach (DevelopmentFacility f in rd.Facilities)
-                    {
-                        if (f.Mode != mode) continue;
-                        if (f.HasHero) { modeStaffed = true; break; }
-                        if (!f.Contested && !modeHasOpenFacility)
-                        {
-                            modeHasOpenFacility = true;
-                            at = f.Hex;
-                        }
-                    }
-                    if (modeStaffed || !modeHasOpenFacility)
-                        continue;
-
-                    bool haveCard = mode == ResearchProductionMode.Research
-                        ? rd.ResearcherCardInHand
-                        : rd.AssemblerCardInHand;
-                    operatorPrerequisites++;
-                    AiDebugLog.Write($"[AI][V2][Demand][Development] decision=CREATE anchor=({at.Q},{at.R}) "
-                        + $"capability=DevelopmentOperator mode={mode} desired=1 "
-                        + $"reason={(haveCard ? "unstaffed_facility_operator_card_in_hand" : "unstaffed_facility_no_operator_card_yet")}");
-                    yield return new AxisDemand
-                    {
-                        RequestingAxis = DesireAxis.Development,
-                        Capability = CapabilityKind.DevelopmentOperator,
-                        DesiredAmount = 1,
-                        RequiredTraits = TraitPreference.None,
-                        MinimumFollowupAp = 0f,
-                        TargetHex = at,
-                        DevelopmentOperatorMode = mode,
-                        Value = 45f * devScale,
-                        Explain = $"facility @({at.Q},{at.R}) has no {mode} operator — "
-                            + "Development axis cannot run a Challenge until a qualifying hero stands on it",
-                    };
-                }
-            }
+            // Filter recipients BEFORE selecting the best one for each offering. Otherwise an
+            // unsupported combat upgrade can hide a smaller, useful Recon improvement.
+            if (root != null && hand != null)
+                devOpportunities = DevelopmentOpportunityEvaluator.Enumerate(
+                    s, player, root, hand, null, SupportsNeed);
             // An unstaffed mode must not suppress real opportunities from another ready mode.
             int emitted = 0;
             if (devOpportunities != null)
@@ -133,7 +93,7 @@ namespace Game.Ai.V2
                     + "reason=facility_ready_scored_opportunities");
             else if (operatorPrerequisites == 0)
                 AiDebugLog.Write("[AI][V2][Demand][Development] decision=SATISFIED "
-                    + "reason=facility_ready_no_worthwhile_upgrade");
+                    + "reason=no_supported_profitable_development_use");
         }
 
 
@@ -242,3 +202,4 @@ namespace Game.Ai.V2
 
     }
 }
+
