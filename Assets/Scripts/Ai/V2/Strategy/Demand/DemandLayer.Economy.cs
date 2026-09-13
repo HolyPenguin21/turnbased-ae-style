@@ -772,12 +772,18 @@ namespace Game.Ai.V2
             int considered = 0;
             int kept = 0;
             AxisDemand best = null;
+            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
             var meaningfulDemands = new List<AxisDemand>();
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
                 {
                     considered++;
+                    if (intentState.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
+                    {
+                        thresholdRejected++;
+                        continue;
+                    }
                     if (HasActiveEconomyIntentAtHexOfKind(activeIntents, site.Hex, EconomyTaskKind.BuildExtraction))
                         continue;
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
@@ -864,16 +870,14 @@ namespace Game.Ai.V2
             AxisDemand stagedBase = meaningfulDemands
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
-                .ThenByDescending(d => MissionIntentRegistry.GetOrCreate(player)
-                    .IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex))
+                .ThenByDescending(d => intentState.IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex))
                 .ThenByDescending(d => d.Value)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
                 .FirstOrDefault();
             bool urgencyEligible = stagedBase?.TargetHex != null;
-            float urgency = MissionIntentRegistry.GetOrCreate(player)
-                .MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
+            float urgency = intentState.MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
                     stagedBase?.TargetHex, urgencyEligible);
 
             foreach (AxisDemand demand in meaningfulDemands)
@@ -917,10 +921,10 @@ namespace Game.Ai.V2
 
             return best == null
                 ? $"considered={considered} kept={kept} best=none "
-                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}"
+                    + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
-                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}";
+                    + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
 
         // Cross-family guard: extraction and base candidates are ranked/selected independently
