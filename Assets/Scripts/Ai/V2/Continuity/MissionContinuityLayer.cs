@@ -560,7 +560,14 @@ namespace Game.Ai.V2
                 state.Remove(v.IntentKey);
                 active.Remove(v);
                 if (v.PreferredMoverArmyId.HasValue)
-                    ReconPatrolStateRegistry.Retire(player, v.PreferredMoverArmyId.Value, "recon lane surplus trim");
+                {
+                    // A contraction decision is turn-wide. Do not let the same actor immediately
+                    // acquire a fresh Recon mission later in this turn's bounded replans.
+                    state.MarkReconActorTrimmed(snap.TurnNumber,
+                        v.PreferredMoverArmyId.Value);
+                    ReconPatrolStateRegistry.Retire(player,
+                        v.PreferredMoverArmyId.Value, "recon lane surplus trim");
+                }
                 dropped++;
                 AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
                     + $"(active {scoutLanes.Count}, hard {hardKept}, desired {desired}, "
