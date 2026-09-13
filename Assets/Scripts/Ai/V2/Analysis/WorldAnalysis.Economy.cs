@@ -88,6 +88,9 @@ namespace Game.Ai.V2
                 ResourceType resourceType = site.Type;
                 int effectiveYield = site.Yield;
 
+                if (KnownHostileAtHex(snap, site.Hex))
+                    continue;
+
                 int currentCollection = 0;
                 if (knownBuildings.TryGetValue(site.Hex, out AiMapMemory.KnownBuilding building))
                 {
@@ -172,12 +175,7 @@ namespace Game.Ai.V2
                         if (convertsOwnedExtraction)
                             foreach (ResourceType lostType in ResourceBundle.All)
                                 lostExtractionIncome += knownBuilding.CollectedAmount(lostType);
-                        bool knownHostileAtTarget = (snap.Known?.EnemySightings
-                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                            .Concat(snap.Known?.NeutralSightings
-                                ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                            .Any(contact => contact.Hex.Equals(hex));
-                        if (knownHostileAtTarget)
+                        if (KnownHostileAtHex(snap, hex))
                             continue;
                         int supportDistance = snap.Self.BaseHexes
                             .Min(baseHex => HexGridMath.Distance(baseHex, hex));
@@ -502,6 +500,18 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.ArmyId)
                 .ToList();
         }
+
+        // A build target with a live enemy or neutral sighting exactly ON it is not an escort
+        // problem — SafeStepPathing always exempts the destination hex from its own blocking (see
+        // that class's own comment), so nothing upstream stops a mover from walking straight onto
+        // an occupied hex and building there. This is the one gate that actually prevents it.
+        // Shared between the Base and Extraction candidate loops below so the rule (and its
+        // fog-of-war honesty) lives in exactly one place.
+        internal static bool KnownHostileAtHex(WorldSnapshot snap, HexCoord hex) =>
+            (snap?.Known?.EnemySightings ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Concat(snap?.Known?.NeutralSightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Any(contact => contact.Hex.Equals(hex));
 
         private static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
         {

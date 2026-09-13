@@ -374,9 +374,19 @@ namespace Game.Ai.V2
                     return choice;
                 }
 
-                List<AiMapMemory.KnownEnemySighting> threats =
-                    route.RouteThreats?.ToList()
-                    ?? new List<AiMapMemory.KnownEnemySighting>();
+                // A known NEUTRAL sighting on the route only ever means "occupies that one hex"
+                // (WorldAnalysis.Economy.KnownThreatsAffectingEconomyRoute already keeps it off the
+                // route unless the mover would have to stand on it — SafeStepPathing separately
+                // refuses to path through it at all). It is a stationary, non-chasing blocker: an
+                // economy mover routing past/near it is never forced to fight it, unlike a real
+                // enemy player army, which can reposition to intercept. Only enemy sightings should
+                // demand a roster that can win the fight — a neutral must never gate builder
+                // eligibility on combat strength this early stage has no aggression capability to
+                // provide yet.
+                List<AiMapMemory.KnownEnemySighting> threats = (route.RouteThreats
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    .Where(t => t.Owner?.IsNeutral != true)
+                    .ToList();
                 bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
                 // Analysis already attached honestly-witnessed threats that can affect the exact
                 // SafeStepPathing route. A clean route is evidence, not a proximity guess, and remains

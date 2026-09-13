@@ -635,11 +635,13 @@ namespace Game.Ai.V2
                 eligibleBuilders = eligibleBuilders.Where(
                     x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
 
-            // TEMP DIAGNOSTIC — traces which single eligibility clause below rejects a durable
-            // intent's committed mover, since the FirstOrDefault predicate normally swallows all
-            // of them into one MoverContended result. Remove once the stuck-builder root cause
-            // (project owner's live investigation, 2026-09-13) is found.
-            if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
+            // DIAGNOSTIC (kept for FoundBase only, per project owner's request 2026-09-13 — the
+            // BuildExtraction stuck-builder case is resolved and no longer needs this) — traces
+            // which single eligibility clause below rejects a durable intent's committed mover,
+            // since the FirstOrDefault predicate normally swallows all of them into one
+            // MoverContended result.
+            if (target.Kind == EconomyTaskKind.FoundBase
+                && m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
             {
                 int preferredId = m.PreferredMoverArmyId.Value;
                 var eligibleList = eligibleBuilders.ToList();
@@ -713,54 +715,71 @@ namespace Game.Ai.V2
                 }
             }
 
-            DemandLayer.EconomyBuilderChoice builderChoice = eligibleBuilders
-                .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
-                .FirstOrDefault(x =>
+            bool IsCandidateEligible(DemandLayer.EconomyBuilderChoice x)
+            {
+                if (x.Route.RequiresGarrisonExtraction)
                 {
-                    if (x.Route.RequiresGarrisonExtraction)
-                    {
-                        // ArmyId here names the Garrison, not yet a separate mover — re-derive the
-                        // exact same candidate AiArmyRoles.BestSparableEconomyHero would give
-                        // Analysis right now (canonical, same predicate as CanSpareGarrisonMember),
-                        // never trusting a hero identity carried across from an earlier phase.
-                        ArmyData g = ResolveArmy(player, x.Route.ArmyId);
-                        UnitData sparable = g == null ? null
-                            : AiArmyRoles.BestSparableEconomyHero(player, g);
-                        return g != null && sparable != null
-                            && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex)
-                            && !session.ClaimedArmyIds.Contains(g.Id)
-                            && (g.Hex.Equals(target.TargetHex)
-                                || SafeStepPathing.FindSafePathCost(
-                                    ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax)
-                                    != int.MaxValue);
-                    }
-                    ArmyData a = ResolveArmy(player, x.Route.ArmyId);
-                    return a != null && IsMobileEconomyHero(a, player)
-                    && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
-                    && !session.ClaimedArmyIds.Contains(a.Id)
-                    && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
-                        && !i.IntentKey.Equals(currentIntentKey)
-                        && !DemandLayer.EconomyDonorStructurallyEligible(i))
-                    && (a.Hex.Equals(target.TargetHex)
-                        || (a.CurrentMovement > 0
-                            && SafeStepPathing.FindNextSafeStep(
-                                ctx.Map, a, target.TargetHex).HasValue));
-                });
-            ArmyData hero;
-            if (builderChoice == null)
-            {
-                hero = null;
+                    // ArmyId here names the Garrison, not yet a separate mover — re-derive the
+                    // exact same candidate AiArmyRoles.BestSparableEconomyHero would give
+                    // Analysis right now (canonical, same predicate as CanSpareGarrisonMember),
+                    // never trusting a hero identity carried across from an earlier phase.
+                    ArmyData g = ResolveArmy(player, x.Route.ArmyId);
+                    UnitData sparable = g == null ? null
+                        : AiArmyRoles.BestSparableEconomyHero(player, g);
+                    return g != null && sparable != null
+                        && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex)
+                        && !session.ClaimedArmyIds.Contains(g.Id)
+                        && (g.Hex.Equals(target.TargetHex)
+                            || SafeStepPathing.FindSafePathCost(
+                                ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax)
+                                != int.MaxValue);
+                }
+                ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                return a != null && IsMobileEconomyHero(a, player)
+                && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
+                && !session.ClaimedArmyIds.Contains(a.Id)
+                && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
+                    && !i.IntentKey.Equals(currentIntentKey)
+                    && !DemandLayer.EconomyDonorStructurallyEligible(i))
+                && (a.Hex.Equals(target.TargetHex)
+                    || (a.CurrentMovement > 0
+                        && SafeStepPathing.FindNextSafeStep(
+                            ctx.Map, a, target.TargetHex).HasValue));
             }
-            else if (builderChoice.Route.RequiresGarrisonExtraction)
+
+            // Fallthrough fix (2026-09-13, found via the stuck-builder TRACE below): a
+            // garrison-extraction candidate can pass IsCandidateEligible (a sparable hero exists)
+            // yet still fail to materialize into an actual mover, because
+            // TryExtractGarrisonHeroForEconomy separately needs a free reusable army shell
+            // (ReusableArmySelector.FindReusableAt) at that hex — a resource this predicate never
+            // checks. The old code picked exactly one candidate (FirstOrDefault) and gave up the
+            // whole provisioning attempt if THAT ONE couldn't materialize, even when other
+            // eligible, non-garrison candidates were sitting right there in the same ranked list.
+            // Walk the ranked list in order and keep trying until one actually produces a hero.
+            DemandLayer.EconomyBuilderChoice builderChoice = null;
+            ArmyData hero = null;
+            foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
+                .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
+                .Where(IsCandidateEligible))
             {
-                ArmyData garrisonArmy = ResolveArmy(player, builderChoice.Route.ArmyId);
-                hero = garrisonArmy == null
-                    ? null : TryExtractGarrisonHeroForEconomy(
-                        player, garrisonArmy, ctx, actorCommitments);
-            }
-            else
-            {
-                hero = ResolveArmy(player, builderChoice.Route.ArmyId);
+                ArmyData candidateHero;
+                if (candidate.Route.RequiresGarrisonExtraction)
+                {
+                    ArmyData garrisonArmy = ResolveArmy(player, candidate.Route.ArmyId);
+                    candidateHero = garrisonArmy == null
+                        ? null : TryExtractGarrisonHeroForEconomy(
+                            player, garrisonArmy, ctx, actorCommitments);
+                }
+                else
+                {
+                    candidateHero = ResolveArmy(player, candidate.Route.ArmyId);
+                }
+                if (candidateHero != null)
+                {
+                    builderChoice = candidate;
+                    hero = candidateHero;
+                    break;
+                }
             }
             if (hero == null)
             {
@@ -787,6 +806,63 @@ namespace Game.Ai.V2
 
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"committed economy builder #{preferredId} cannot advance this turn"));
+                }
+                // DIAGNOSTIC (kept for FoundBase only, per project owner's request 2026-09-13 — the
+                // BuildExtraction stuck-builder case is resolved and no longer needs this) — the
+                // durable-mover trace above never fires here: this is reached only once a fresh
+                // Economy mission's FirstOrDefault predicate rejected every ranked candidate (or
+                // rankedBuilders was empty to begin with). Replicate that exact predicate per
+                // candidate, read-only, so the single clause eating each one is visible.
+                if (target.Kind == EconomyTaskKind.FoundBase)
+                {
+                    AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
+                        + $"kind={target.Kind} target=({target.TargetHex.Q},{target.TargetHex.R}) "
+                        + $"turn={session.Snapshot?.TurnNumber} — rankedBuildersTotal={rankedBuilders.Count}");
+                    foreach (DemandLayer.EconomyBuilderChoice x in rankedBuilders)
+                    {
+                        if (x.Route.RequiresGarrisonExtraction)
+                        {
+                            ArmyData g = ResolveArmy(player, x.Route.ArmyId);
+                            UnitData sparable = g == null ? null
+                                : AiArmyRoles.BestSparableEconomyHero(player, g);
+                            bool cThreatG = g != null
+                                && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex);
+                            bool cClaimedG = g != null && !session.ClaimedArmyIds.Contains(g.Id);
+                            bool cPathG = g != null && sparable != null && (g.Hex.Equals(target.TargetHex)
+                                || SafeStepPathing.FindSafePathCost(
+                                    ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax) != int.MaxValue);
+                            AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} (garrison-extraction) "
+                                + $"resolved={g != null} sparableHero={sparable != null} "
+                                + $"notUnderImmediateThreat={cThreatG} notClaimedThisPass={cClaimedG} hasPath={cPathG} "
+                                + $"=> ELIGIBLE={g != null && sparable != null && cThreatG && cClaimedG && cPathG}");
+                            continue;
+                        }
+                        ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                        if (a == null)
+                        {
+                            AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} — ResolveArmy returned null");
+                            continue;
+                        }
+                        bool cMobile = IsMobileEconomyHero(a, player);
+                        bool cThreat = !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex);
+                        bool cClaimed = !session.ClaimedArmyIds.Contains(a.Id);
+                        MissionIntent conflicting = standingIntents.FirstOrDefault(i => i.PreferredMoverArmyId == a.Id
+                            && !i.IntentKey.Equals(currentIntentKey)
+                            && !DemandLayer.EconomyDonorStructurallyEligible(i));
+                        bool cDonorConflict = conflicting == null;
+                        bool atTarget = a.Hex.Equals(target.TargetHex);
+                        HexCoord? nextStep = atTarget
+                            ? (HexCoord?)null
+                            : SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex);
+                        bool cPath = atTarget || (a.CurrentMovement > 0 && nextStep.HasValue);
+                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
+                            + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
+                            + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
+                            + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
+                            + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
+                            + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
+                            + $"=> ELIGIBLE={cMobile && cThreat && cClaimed && cDonorConflict && cPath}");
+                    }
                 }
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "no free hero can advance toward economy site"));
