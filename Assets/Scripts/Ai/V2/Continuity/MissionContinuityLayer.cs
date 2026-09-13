@@ -727,6 +727,25 @@ namespace Game.Ai.V2
             state.ReconcileBaseExpansionWait(turn, outcomes);
         }
 
+        // Same fallback MissionIntentState's own Base-expansion outcome matching uses: a
+        // materialized outcome carries its EconomyTarget directly, but a fresh mission that failed
+        // provisioning before ever producing a ProvisionedMission only has it on the proposal.
+        private static bool TryGetEconomyTarget(MissionTurnOutcome o, out EconomyMissionTarget target)
+        {
+            if (o.HasEconomyPayload)
+            {
+                target = o.EconomyTarget;
+                return true;
+            }
+            if (o.Proposal?.Target is EconomyMissionTarget proposed)
+            {
+                target = proposed;
+                return true;
+            }
+            target = default;
+            return false;
+        }
+
         private static void ReconcileOutcome(MissionIntentState state,
             AiAllocatorState allocState, MissionTurnOutcome o, int turn)
         {
@@ -853,9 +872,21 @@ namespace Game.Ai.V2
                 // that does exist is unaffected. ReturnBuilder (the return-trip leg) has its own,
                 // deliberately unconditional preservation rule above (returnBuilderOutcome) and is
                 // not affected by any of this.
-                bool transientCapability = intent != null
-                    && (o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
-                        || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended);
+                bool capabilityFailure = o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
+                    || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended;
+
+                // P1 fix: a FoundBase project that never got far enough to become a durable intent
+                // (no actor at all — provisioning failed on the very first attempt) must still count
+                // toward the delivery-failure streak, or that project can retry forever without ever
+                // reaching AdvanceIntent's own call (below), which only fires once intent != null.
+                // This is the ONE registration point for the no-intent case; AdvanceIntent's call
+                // only fires for an existing intent, so the two never double-count the same outcome.
+                if (capabilityFailure && intent == null
+                    && TryGetEconomyTarget(o, out EconomyMissionTarget freshTarget)
+                    && freshTarget.Kind == EconomyTaskKind.FoundBase)
+                    state.RecordBaseExpansionDeliveryFailure(turn, freshTarget.BuildCard, freshTarget.TargetHex);
+
+                bool transientCapability = intent != null && capabilityFailure;
                 if (transientCapability)
                 {
                     AdvanceIntent(intent, o, turn, state, allocState);
