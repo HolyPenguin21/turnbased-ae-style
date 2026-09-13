@@ -73,9 +73,9 @@ MonoBehaviour:
     cardType: 3
     apCost: 4
     resourceCost:
-      human: 1
-      energy: 4
-      materials: 4
+      human: 3
+      energy: 2
+      materials: 1
       tech: 2
     requiredBuildingAbility: Barracks
     moveMax: 0

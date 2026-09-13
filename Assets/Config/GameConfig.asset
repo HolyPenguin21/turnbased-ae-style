@@ -64,11 +64,11 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 3d5f5382cd6db30419bbc82c3ce13b5c, type: 3}
     faction: 2
     cardType: 2
-    apCost: 2
+    apCost: 1
     resourceCost:
-      human: 1
+      human: 0
       energy: 1
-      materials: 2
+      materials: 1
       tech: 0
     requiredBuildingAbility: 
     moveMax: 0
@@ -108,11 +108,11 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 63d77ff72622da94ca2218b0a1809950, type: 3}
     faction: 2
     cardType: 2
-    apCost: 2
+    apCost: 1
     resourceCost:
-      human: 1
+      human: 0
       energy: 1
-      materials: 2
+      materials: 1
       tech: 0
     requiredBuildingAbility: 
     moveMax: 0
@@ -152,11 +152,11 @@ MonoBehaviour:
     detailArt: {fileID: 21300000, guid: 43065c17f648ac6428a1cb8bd55ede29, type: 3}
     faction: 2
     cardType: 2
-    apCost: 2
+    apCost: 1
     resourceCost:
-      human: 1
+      human: 0
       energy: 1
-      materials: 2
+      materials: 1
       tech: 0
     requiredBuildingAbility: 
     moveMax: 0
@@ -198,9 +198,9 @@ MonoBehaviour:
     cardType: 2
     apCost: 2
     resourceCost:
-      human: 1
+      human: 0
       energy: 1
-      materials: 2
+      materials: 1
       tech: 0
     requiredBuildingAbility: 
     moveMax: 0
