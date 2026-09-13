@@ -367,6 +367,10 @@ namespace Game.EditorTests
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                // Actor must actually reach ranking (RankEconomyBuilders / SnapshotFallbackRoutes
+                // read snapshot.Self.Armies) so the claim is what excludes it — without this the
+                // candidate is never ranked at all and the claim is never actually exercised.
+                snapshot.Self.Armies = new List<ArmySnapshot> { EconomyBuilder(army.Id, 1, 0f) };
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
                 MissionIntent intent = DurableEconomyIntent(mission, army.Id);
                 MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
@@ -382,6 +386,56 @@ namespace Game.EditorTests
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.True,
                     "an existing safe route must not be reclassified as a proven route failure");
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
+            }
+        }
+
+        // Control for the claim test above: same actor, same route, no claim. Proves the claim
+        // itself is what blocked the candidate — without it, the mover clears ranking and
+        // eligibility and provisioning proceeds past mover-selection (failing later, on the
+        // unfunded AP envelope, rather than on MoverContended/NoMoverExists at selection time).
+        [Test]
+        public void ProvisionEconomy_DurableMoverUnclaimed_ClearsSelectionUnlikeClaimedTwin()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var hero = Hero("Free Builder");
+            hero.MoveMax = 3;
+            hero.MoveCurrent = 3;
+            HexCoord startHex = new HexCoord(0, 0);
+            HexCoord midHex = new HexCoord(1, 0);
+            HexCoord targetHex = new HexCoord(2, 0);
+            var army = new ArmyData { Owner = player, Hex = startHex, Name = "Free" };
+            army.Members.Add(hero);
+            ArmyRegistry.Register(army);
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, startHex, midHex, targetHex); // route genuinely exists
+            try
+            {
+                WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                snapshot.Self.Armies = new List<ArmySnapshot> { EconomyBuilder(army.Id, 1, 0f) };
+                MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.Put(intent);
+                var session = new ProvisioningSession(snapshot); // no ClaimedArmyIds entry this time
+                var ctx = new Game.Ai.AiTurnContext { Map = map };
+
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
+
+                Assert.That(result.Success, Is.False);
+                Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.EnvelopeTooSmall),
+                    "unclaimed, the builder must clear mover-selection and fail only on the " +
+                    "(deliberately unfunded) AP envelope — not be rejected as contended/missing");
+                Assert.That(state.TryGet(intent.IntentKey, out _), Is.True);
             }
             finally
             {
@@ -644,7 +698,9 @@ namespace Game.EditorTests
             state.Put(intent);
             UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
             UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
-            SetHexes(map, actorHex, shelter);
+            SetHexes(map, actorHex, shelter); // connected — the only blocker left must be movement
+            BuildingRegistry.Register(shelter, new BuildingData
+                { Owner = player, Hex = shelter, Name = "Shelter Base", IsBase = true });
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
@@ -664,6 +720,7 @@ namespace Game.EditorTests
             finally
             {
                 ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
                 MissionIntentRegistry.Clear();
                 AiAllocatorStateRegistry.Clear();
                 UnityEngine.Object.DestroyImmediate(mapObject);
@@ -691,6 +748,8 @@ namespace Game.EditorTests
             UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
             UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
             SetHexes(map, actorHex, shelter); // both real hexes, deliberately not connected
+            BuildingRegistry.Register(shelter, new BuildingData
+                { Owner = player, Hex = shelter, Name = "Shelter Base", IsBase = true });
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
@@ -710,6 +769,7 @@ namespace Game.EditorTests
             finally
             {
                 ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
                 MissionIntentRegistry.Clear();
                 AiAllocatorStateRegistry.Clear();
                 UnityEngine.Object.DestroyImmediate(mapObject);
