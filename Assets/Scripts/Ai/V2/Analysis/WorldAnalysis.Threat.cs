@@ -243,7 +243,7 @@ namespace Game.Ai.V2
                 : new List<WorthIt.DefenderProfile>();
             return new ArmySnapshot
             {
-                ArmyId = -1,
+                ArmyId = s.ArmyId,
                 Owner = s.Owner,
                 Hex = s.Hex,
                 MemberCount = s.MemberCount,
@@ -306,3 +306,4 @@ namespace Game.Ai.V2
         private static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;
     }
 }
+

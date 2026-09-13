@@ -87,7 +87,7 @@ namespace Game.Ai.V2
             if (contacts != null)
                 foreach (EnemyContactSnapshot c in contacts)
                     if (c.Source == ContactSource.Honest && c.Knowledge == ContactKnowledge.LastKnown
-                        && c.Position.HasValue)
+                        && c.Position.HasValue && c.Army != null && c.Army.ArmyId > 0)
                         list.Add(BuildSurveil(snap, c));
 
             // Objective-level acceptance is limited to facts this layer owns: the sanitized
@@ -423,3 +423,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

@@ -49,7 +49,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Phase A has materialized the missing Hero for one concrete Economy prerequisite. The
+        // Materialization has delivered the Hero for one concrete Economy prerequisite. The
         // transaction-local capability lease ends at this handoff; Continuity immediately becomes
         // the sole owner of the actor and exact build objective.
         internal static MissionIntent BeginEconomyDelivery(PlayerSetupData player,
@@ -106,7 +106,7 @@ namespace Game.Ai.V2
                              || i.PreferredMoverArmyId != builderArmyId)).ToList())
                 state.Remove(stale.IntentKey);
             state.Put(intent);
-            AiDebugLog.Write($"[AI][V2][Economy] PhaseA handoff {intent.IntentKey} "
+            AiDebugLog.Write($"[AI][V2][Economy] materialization handoff {intent.IntentKey} "
                 + $"actor=#{builderArmyId} funding=Soft");
             return intent;
         }
@@ -245,7 +245,7 @@ namespace Game.Ai.V2
                 if (i.Scout != null && i.Scout.Kind != ScoutTargetKind.Surveil)
                     scoutFoci.Add(i.Scout.FocusHex);
 
-            foreach (MissionIntent intent in state.All)
+            foreach (MissionIntent intent in state.All.ToList())
             {
                 if (intent.Kind == MissionKind.Economy)
                 {
@@ -327,6 +327,42 @@ namespace Game.Ai.V2
                             + $"target={(targetValidBuild ? 1 : 0)}");
                         continue;
                     }
+                    IReadOnlyList<EconomyBuilderRouteSnapshot> routes = ei.Kind == EconomyTaskKind.FoundBase
+                        ? snap.Economy.BaseOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)).BuilderRoutes
+                        : snap.Economy.ExtractionOpportunities.FirstOrDefault(x => x.Hex.Equals(ei.TargetHex)
+                            && ei.ResourceType.HasValue && x.ResourceType == ei.ResourceType.Value).BuilderRoutes;
+                    bool recoveredBuilder = false;
+                    foreach (EconomyBuilderRouteSnapshot route in routes
+                        ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                    {
+                        if (route.ArmyId != actor.ArmyId) continue;
+                        var suitability = DemandLayer.AssessEconomyArmy(snap, ei.TargetHex, route,
+                            actor, ei.BuildApCost, includeReturn: ei.Kind == EconomyTaskKind.BuildExtraction);
+                        if (suitability.Suitability != DemandLayer.EconomyArmySuitability.Ineligible
+                            || suitability.IneligibleReason == "escort_activated_this_turn")
+                            break;
+                        // A composition failure does not heal when movement resets. Release the
+                        // outbound envelope and let the existing recovery lifecycle own the actor.
+                        StrategicResourceReservationLedger.ReleaseByOwner(player, snap.TurnNumber,
+                            EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+                        AiDebugLog.Write($"[AI][V2][Economy] recover {intent.IntentKey} actor=#{actor.ArmyId} "
+                            + $"reason={suitability.IneligibleReason}");
+                        BeginEconomyBuilderRecovery(player, snap, new AxisDemand
+                        {
+                            RequestingAxis = DesireAxis.Economy,
+                            Capability = CapabilityKind.EconomicInfrastructure,
+                            TargetHex = ei.TargetHex, EconomySiteValue = ei.BuildValue,
+                        }, actor.ArmyId, snap.TurnNumber);
+                        // Publish a replacement recovery in this same pass so downstream actor
+                        // commitments cannot briefly expose the returning builder as unassigned.
+                        if (state.TryGet(intent.IntentKey, out MissionIntent recovery)
+                            && recovery.Economy?.Kind == EconomyTaskKind.ReturnBuilder)
+                            active.Add(recovery);
+                        // Recovery may instead have released the actor at a protected hex.
+                        recoveredBuilder = true;
+                        break;
+                    }
+                    if (recoveredBuilder) continue;
                     if (intent.Status == IntentStatus.Suspended
                         && (intent.Suspended == SuspendReason.PoolExhausted
                             || intent.Suspended == SuspendReason.CapabilityUnavailable))
@@ -1129,3 +1165,4 @@ namespace Game.Ai.V2
                     : "?";
     }
 }
+

@@ -81,6 +81,9 @@ namespace Game.Ai.V2
                 player, ctx, snap, plan, residual, inv, afterInv, armyIdsBefore, out delivered);
             if (operationalResidual)
             {
+                if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(residual)
+                    && residual.EconomyPreferredBuilderArmyId.HasValue)
+                    commitments?.Claim(residual.EconomyPreferredBuilderArmyId.Value);
                 residual.DesiredAmount = Mathf.Max(0f, residual.DesiredAmount - delivered);
                 if (residual.DesiredAmount <= AiConfigV2.allocatorSliceEpsilon)
                     result.Reservation.UnresolvedDemands.Remove(residual);
@@ -150,3 +153,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

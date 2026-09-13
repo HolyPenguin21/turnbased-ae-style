@@ -120,7 +120,7 @@ namespace Game.Ai.V2
             foreach (MaterializationPlan mp in MaterializationFeasibility.FilterSurplus(
                 MaterializationChainEnumerator.EnumerateSurplusPlans(
                     snap, player, root, hand, ctx, inv, commitments, reservation),
-                player, root, hand, ctx, reservation))
+                player, root, hand, ctx, reservation, snap))
                 options.Add((mp.ApCost, mp.ResCost));
 
             float ap = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
@@ -155,3 +155,4 @@ namespace Game.Ai.V2
             : c.human + c.energy + c.materials + c.tech;
     }
 }
+
