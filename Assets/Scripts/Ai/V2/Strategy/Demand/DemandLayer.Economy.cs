@@ -360,9 +360,9 @@ namespace Game.Ai.V2
                     route.RouteThreats?.ToList()
                     ?? new List<AiMapMemory.KnownEnemySighting>();
                 bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
-                // EconomyRouteThreats already scans the whole corridor (direct + detour buffer) against
-                // honestly-witnessed sightings — a clean route reported here is not a proximity guess,
-                // it is the fog-honest answer. No separate base-adjacency requirement on top of it.
+                // Analysis already attached honestly-witnessed threats that can affect the exact
+                // SafeStepPathing route. A clean route is evidence, not a proximity guess, and remains
+                // the fog-honest answer. No separate base-adjacency requirement on top of it.
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
                 choice.MinimumEscortCount = minimumEscort;
