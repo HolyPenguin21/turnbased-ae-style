@@ -829,9 +829,12 @@ namespace Game.Ai.V2
                 .ThenBy(u => u.Name).ToList();
             HexPath escortRoute = SafeStepPathing.FindSafePath(
                 ctx.Map, player, builder.Hex, target, builder.MaxMovement);
+            IReadOnlyList<HexCoord> escortPathHexes = escortRoute != null
+                ? (IReadOnlyList<HexCoord>)escortRoute.Hexes
+                : new[] { builder.Hex, target };
             IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
                 WorldAnalysis.KnownThreatsAffectingEconomyRoute(
-                    snapshot, escortRoute?.Hexes ?? new[] { builder.Hex, target });
+                    snapshot, escortPathHexes);
             IReadOnlyList<UnitData> retained = SelectEconomyEscort(
                 builder, bodies, threats, minimumEscort);
             if (retained != null)
