@@ -353,6 +353,10 @@ namespace Game.Ai.V2
             var move = AiDecision.Move(army, next.Value,
                 $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
                 + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f);
+            // Required/optional stealth and visible opportunistic attacks were resolved above.
+            // Re-entering stealth in the shared mover would cancel the intended combat and could
+            // also spend AP that Recon deliberately reserved for other missions.
+            move.AllowAutomaticStealth = false;
             var trace = new AiMoveExecutionTrace();
             control.CommandAttempted = true;
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);

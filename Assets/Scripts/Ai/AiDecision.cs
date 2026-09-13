@@ -70,6 +70,11 @@ namespace Game.Ai
 
         public bool IsRecoveryDraw;
 
+        // Recon may already have prepared visible combat or budgeted optional/required stealth.
+        // The shared mover must not override that decision. Other callers retain their existing
+        // automatic preparation unless they explicitly opt out.
+        public bool AllowAutomaticStealth = true;
+
         public static AiDecision Move(ArmyData army, HexCoord hex, string reason, float score) => new AiDecision
         {
             Kind = AiActionKind.MoveArmy, ExistingArmy = army, TargetHex = hex, Reason = reason, Score = score,
