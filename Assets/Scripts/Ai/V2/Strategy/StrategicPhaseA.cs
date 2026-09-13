@@ -375,7 +375,38 @@ namespace Game.Ai.V2
                             witnessedUsefulApDemand: witnessedUsefulApDemand,
                             fillerUniverse: fillerUniverse);
                     if (top.Count > 0)
+                    {
                         options[state] = top;
+                    }
+                    else if (state.Demand.RequestingAxis == DesireAxis.Economy
+                        && state.Demand.Capability == CapabilityKind.Hero
+                        && state.Demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                        && state.Demand.TargetHex.HasValue)
+                    {
+                        MaterializationDeliveryAvailability availability =
+                            MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                                snap, player, root, hand, ctx, state.Demand, commitments,
+                                result.Reservation);
+                        if (availability.ConfirmedBlocked)
+                        {
+                            bool suppressed = MissionIntentRegistry.GetOrCreate(player)
+                                .RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
+                                    state.Demand.EconomyBuildCard, state.Demand.TargetHex);
+                            AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block — "
+                                + $"target=({state.Demand.TargetHex.Value.Q},"
+                                + $"{state.Demand.TargetHex.Value.R}) "
+                                + $"raw={availability.RawCandidates} "
+                                + $"preflight={availability.PreflightCandidates} "
+                                + $"opDeliver={availability.OperationalCandidates} "
+                                + $"decision={(suppressed ? "reconsider-project" : "keep-continuity")}");
+                            if (suppressed)
+                            {
+                                state.Remaining = 0f;
+                                result.Reservation.ClaimedEconomyBuildCards.Remove(
+                                    state.Demand.EconomyBuildCard);
+                            }
+                        }
+                    }
                 }
 
                 Dictionary<DemandState, DemandCandidate> assigned =
