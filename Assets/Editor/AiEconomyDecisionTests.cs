@@ -234,10 +234,10 @@ namespace Game.EditorTests
         // provisioning result and the finalised outcome so a test can assert on either.
         private static (ProvisioningResult Result, MissionTurnOutcome Outcome) RunDurableEconomyAttempt(
             Game.Players.PlayerSetupData player, PlayerRoot root, Game.Ai.AiTurnContext ctx,
-            ProvisioningSession session, MissionProposal mission, int turn)
+            ProvisioningSession session, MissionProposal mission, int turn, Game.Ai.AiHandData hand = null)
         {
             var funded = new FundedEntry { Mission = mission };
-            ProvisioningResult result = ProvisioningManager.Provision(player, root, null, ctx, session, funded);
+            ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, session, funded);
 
             var ledger = new MissionOutcomeLedger();
             ledger.RegisterProposals(new[] { mission });
@@ -252,8 +252,9 @@ namespace Game.EditorTests
             return (result, outcome);
         }
 
-        [Test]
-        public void ProvisionEconomy_DurableMoverHasNoSafeRoute_TerminatesCommitment()
+        [TestCase(EconomyTaskKind.BuildExtraction)]
+        [TestCase(EconomyTaskKind.FoundBase)]
+        public void ProvisionEconomy_DurableMoverHasNoSafeRoute_TerminatesCommitment(EconomyTaskKind kind)
         {
             var player = new Game.Players.PlayerSetupData();
             var hero = Hero("Stranded Builder");
@@ -270,15 +271,35 @@ namespace Game.EditorTests
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                snapshot.Self.Armies = new List<ArmySnapshot> { EconomyBuilder(army.Id, 1, 0f) };
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                var target = (EconomyMissionTarget)mission.Target;
+                target.Kind = kind;
+                target.ResourceType = kind == EconomyTaskKind.FoundBase ? (ResourceType?)null : ResourceType.Materials;
+                // An explicitly empty route witness avoids the snapshot-only geometric fallback.
+                target.BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>();
+                var hand = new Game.Ai.AiHandData(null, player.Faction, 0);
+                if (kind == EconomyTaskKind.FoundBase)
+                {
+                    target.BuildCard = new CardData(new CardDefinition { cardType = CardType.Base });
+                    hand.AddCard(target.BuildCard);
+                    snapshot.Self.Hand = hand.Hand;
+                }
+                mission.Target = target;
                 MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+                intent.Economy.BuildCard = target.BuildCard;
                 MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
                 state.Put(intent);
                 var session = new ProvisioningSession(snapshot);
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
+                Assert.That(Game.Ai.SafeStepPathing.FindSafePathCost(map, army, targetHex),
+                    Is.EqualTo(int.MaxValue));
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
+
                 (ProvisioningResult result, MissionTurnOutcome outcome) =
-                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1, hand: hand);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
@@ -288,6 +309,11 @@ namespace Game.EditorTests
                 Assert.That(outcome.MadeProgress, Is.False);
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.False,
                     "a proven route failure must release the commitment, not hold it forever");
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.False);
+                Assert.That(army.Hex, Is.EqualTo(startHex));
+                if (kind == EconomyTaskKind.FoundBase)
+                    Assert.That(hand.Hand, Does.Contain(target.BuildCard));
             }
             finally
             {
@@ -318,6 +344,9 @@ namespace Game.EditorTests
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                ArmySnapshot actorSnapshot = EconomyBuilder(army.Id, 1, 0f);
+                actorSnapshot.CurrentMovement = 0;
+                snapshot.Self.Armies = new List<ArmySnapshot> { actorSnapshot };
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
                 MissionIntent intent = DurableEconomyIntent(mission, army.Id);
                 MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
@@ -337,6 +366,8 @@ namespace Game.EditorTests
                 Assert.That(state.TryGet(intent.IntentKey, out MissionIntent preserved), Is.True,
                     "spending this turn's movement elsewhere must not release the commitment");
                 Assert.That(preserved.PreferredMoverArmyId, Is.EqualTo(army.Id));
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
             }
             finally
             {
@@ -386,6 +417,9 @@ namespace Game.EditorTests
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.True,
                     "an existing safe route must not be reclassified as a proven route failure");
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
+                Assert.That(army.Hex, Is.EqualTo(startHex));
             }
             finally
             {
@@ -497,6 +531,82 @@ namespace Game.EditorTests
             }
         }
 
+        [Test]
+        public void ProvisionEconomy_LoanedBuilderRouteFailure_RestoresRegisteredDonorOwnership()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord start = new HexCoord(0, 0);
+            HexCoord targetHex = new HexCoord(9, 9);
+            UnitData hero = Hero("Loaned Builder");
+            hero.MoveMax = hero.MoveCurrent = 3;
+            hero.Abilities.Add("r1s0");
+            var army = new ArmyData { Owner = player, Hex = start, Name = "Loaned" };
+            army.Members.Add(hero);
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            try
+            {
+                ArmyRegistry.Register(army);
+                SetHexes(map, start, targetHex);
+                WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                ArmySnapshot actor = EconomyBuilder(army.Id, 1, 0f);
+                // The donor is a ground Recon role; its capability witness must survive repayment.
+                actor.IsSoloRecce = Game.Ai.AiArmyRoles.IsSoloRecce(army);
+                Assert.That(actor.IsSoloRecce, Is.True);
+                snapshot.Self.Armies = new List<ArmySnapshot> { actor };
+                MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                var target = (EconomyMissionTarget)mission.Target;
+                target.BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>();
+                mission.Target = target;
+                MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+                var donor = new MissionIntent
+                {
+                    Kind = MissionKind.Scout,
+                    PreferredMoverArmyId = army.Id,
+                    Status = IntentStatus.Suspended,
+                    Suspended = SuspendReason.EconomyLoan,
+                    Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(1, 0) },
+                };
+                donor.IntentKey = MissionIntentKey.For(donor);
+                MissionIntentKey donorKey = donor.IntentKey;
+                intent.Economy.Loaned = true;
+                intent.Economy.LoanSource = donorKey;
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.Put(donor);
+                state.Put(intent);
+                Assert.That(ActorCommitments.FromIntents(new[] { intent }, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
+
+                var attempt = RunDurableEconomyAttempt(player, root,
+                    new Game.Ai.AiTurnContext { Map = map, TurnNumber = 1 },
+                    new ProvisioningSession(snapshot), mission, 1);
+
+                Assert.That(attempt.Result.Success, Is.False);
+                Assert.That(attempt.Result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+                Assert.That(attempt.Outcome.MadeProgress, Is.False);
+                Assert.That(state.TryGet(intent.IntentKey, out _), Is.False);
+                Assert.That(state.TryGet(donorKey, out MissionIntent registeredDonor), Is.True);
+                Assert.That(registeredDonor, Is.SameAs(donor));
+                Assert.That(registeredDonor.Status, Is.EqualTo(IntentStatus.Active));
+                Assert.That(registeredDonor.Suspended, Is.EqualTo(SuspendReason.None));
+                Assert.That(registeredDonor.PreferredMoverArmyId, Is.EqualTo(army.Id));
+                Assert.That(state.All.Where(i => i.Kind == MissionKind.Economy), Is.Empty);
+                // Repayment transfers ownership back to the donor; it must not make the actor free.
+                Assert.That(ActorCommitments.FromIntents(new[] { registeredDonor }, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
+                Assert.That(army.Hex, Is.EqualTo(start));
+                Assert.That(army.Members, Is.EquivalentTo(new[] { hero }));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
+            }
+        }
+
         // --- ReturnBuilder regressions (unconditional preservation must survive this fix) ------
 
         private static ArmySnapshot ReturnBuilderActor(int id, HexCoord hex) => new ArmySnapshot
@@ -527,6 +637,104 @@ namespace Game.EditorTests
             };
             intent.IntentKey = MissionIntentKey.For(intent);
             return intent;
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void ReturnBuilder_LostShelterFailure_WaitsForFreshResolve(bool hasAlternative)
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord lost = new HexCoord(0, 0);
+            HexCoord start = new HexCoord(1, 0);
+            HexCoord alternative = new HexCoord(2, 0);
+            UnitData hero = Hero("Recovery Builder");
+            hero.MoveMax = hero.MoveCurrent = 3;
+            var army = new ArmyData { Owner = player, Hex = start, Name = "Recovering" };
+            army.Members.Add(hero);
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            try
+            {
+                ArmyRegistry.Register(army);
+                SetHexes(map, lost, start, alternative);
+                BuildingRegistry.Register(lost, new BuildingData
+                    { Owner = player, Hex = lost, IsBase = true });
+                WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                snapshot.Self.Armies = new List<ArmySnapshot> { ReturnBuilderActor(army.Id, start) };
+                snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>
+                {
+                    new Game.Ai.AiMapMemory.KnownBuilding(lost, player, isStartingCitadel: false,
+                        facilityAbilities: null, isBase: true),
+                };
+                MissionProposal mission = ReturnBuilderMission(lost, army.Id);
+                MissionIntent intent = ReturnBuilderIntent(army.Id, lost);
+                MissionIntentKey oldKey = intent.IntentKey;
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.Put(intent);
+
+                // The shelter disappears after planning. Provisioning reads live buildings;
+                // only the next ResolveActive pass receives the refreshed observation.
+                BuildingRegistry.Unregister(lost);
+                var attempt = RunDurableEconomyAttempt(player, root,
+                    new Game.Ai.AiTurnContext { Map = map, TurnNumber = 1 },
+                    new ProvisioningSession(snapshot), mission, 1);
+                Assert.That(attempt.Result.Success, Is.False);
+                Assert.That(attempt.Result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.TargetInvalidated));
+                Assert.That(attempt.Outcome.Outcome, Is.EqualTo(ExecutionOutcome.Failed));
+                Assert.That(state.TryGet(oldKey, out MissionIntent preserved), Is.True);
+                Assert.That(preserved, Is.SameAs(intent));
+                Assert.That(preserved.Status, Is.EqualTo(IntentStatus.Active));
+                Assert.That(preserved.Economy.TargetHex, Is.EqualTo(lost));
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
+
+                WorldSnapshot refreshed = SnapshotWithDeficits(0f, 0f, true);
+                refreshed.TurnNumber = 2;
+                refreshed.Self.Armies = snapshot.Self.Armies;
+                refreshed.Self.BaseHexes = new List<HexCoord>();
+                if (hasAlternative)
+                {
+                    BuildingRegistry.Register(alternative, new BuildingData
+                        { Owner = player, Hex = alternative, IsBase = true });
+                    refreshed.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>
+                    {
+                        new Game.Ai.AiMapMemory.KnownBuilding(alternative, player, isStartingCitadel: false,
+                            facilityAbilities: null, isBase: true),
+                    };
+                    refreshed.Self.BaseHexes = new List<HexCoord> { alternative };
+                }
+
+                List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, refreshed);
+
+                Assert.That(state.TryGet(oldKey, out _), Is.False);
+                if (hasAlternative)
+                {
+                    Assert.That(active.Single(), Is.SameAs(intent));
+                    Assert.That(intent.Economy.TargetHex, Is.EqualTo(alternative));
+                    Assert.That(intent.IntentKey, Is.EqualTo(MissionIntentKey.For(intent)));
+                    Assert.That(state.TryGet(intent.IntentKey, out MissionIntent rekeyed), Is.True);
+                    Assert.That(rekeyed, Is.SameAs(intent));
+                    Assert.That(state.Count, Is.EqualTo(1));
+                    Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(army.Id));
+                }
+                else
+                {
+                    Assert.That(active, Is.Empty);
+                    Assert.That(state.Count, Is.Zero);
+                }
+                Assert.That(ActorCommitments.FromIntents(state.All, refreshed, null)
+                    .IsArmyClaimed(army.Id), Is.EqualTo(hasAlternative));
+                Assert.That(army.Hex, Is.EqualTo(start));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
+            }
         }
 
         [Test]
@@ -737,6 +945,8 @@ namespace Game.EditorTests
                 Assert.That(state.TryGet(intent.IntentKey, out MissionIntent preserved), Is.True,
                     "a returning builder merely out of movement this turn must not be abandoned");
                 Assert.That(preserved.StallTurns, Is.EqualTo(0));
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
             }
             finally
             {
@@ -786,6 +996,8 @@ namespace Game.EditorTests
                 Assert.That(state.TryGet(intent.IntentKey, out _), Is.True,
                     "a temporarily blocked way home must not terminate the recovery commitment — " +
                     "unlike the outbound fix, ReturnBuilder is deliberately left unconditional");
+                Assert.That(ActorCommitments.FromIntents(state.All, snapshot, null)
+                    .IsArmyClaimed(army.Id), Is.True);
             }
             finally
             {
