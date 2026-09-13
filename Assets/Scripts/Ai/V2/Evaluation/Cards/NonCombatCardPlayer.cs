@@ -13,15 +13,16 @@ namespace Game.Ai.V2
     //  NON-COMBAT SURPLUS CARD PLAY  (Strategy V2 — Strategic Manager Phase B, spec §5/§13)
     // ===========================================================================================
     //  RankedSurplus owns Unit / Hero / solo-Recce materialization (and chained Equipment).
-    //  This peer lane owns Aviation, Base, Facility and standalone Equipment. Both enumerate their
-    //  complete legal alternatives before the common Phase-B arbiter ranks them.
+    //  This peer lane owns Aviation, Facility and standalone Equipment. Base founding belongs
+    //  to the target-specific Economy pipeline. Both surplus lanes enumerate their complete
+    //  admissible alternatives before the common Phase-B arbiter ranks them.
     //
     //  It enumerates every hand/generated card through a pure type router and checks it against
     //  the SAME canonical gameplay APIs the human UI / V1 AI use (BuildingPlayExecutor ->
     //  InfrastructureActions, AviationActions.TryDeployFromCard, EquipmentSystem), then hands
     //  StrategicPhaseB the complete preflighted candidate set.
-    //  Every rejection carries a real gameplay reason (no AP, no resources, no legal destination,
-    //  no capacity, no host) — never "wrong card type" and never "ReconOnly".
+    //  Rejections report gameplay feasibility (AP, resources, placement, capacity, host) or an
+    //  explicit operation owner: Base cards require the existing Economy expansion demand.
     // ===========================================================================================
     internal static class NonCombatCardPlayer
     {
@@ -151,8 +152,8 @@ namespace Game.Ai.V2
                 CardDefinition def = card?.Definition;
                 if (def == null)
                     continue;
-                // Economy owns the exact physical Base card it selected. Phase B may still consider
-                // duplicate copies, but cannot consume this one through generic non-combat scoring.
+                // Respect physical Economy reservations before placement enumeration. Base
+                // founding itself is excluded below for every copy, including generated cards.
                 if (reservation != null && reservation.ClaimsEconomyBuildCard(card))
                 {
                     blocked.Add($"{def.displayName}:reservedForEconomyBuild");
@@ -279,44 +280,14 @@ namespace Game.Ai.V2
 
             if (def.cardType == CardType.Base)
             {
-                // Base targeting has exactly one owner: WorldAnalysis.Economy's structural
-                // BaseOpportunities list (spacing/direction-to-Citadel/threat/occupied-site/safe-
-                // route already applied there). Phase B never rescans the map on its own — it only
-                // runs the final gameplay-legality check (CanFoundBaseAt) per candidate hex, same as
-                // Generated Base below reuses this exact method. Candidates are tried in Economy's
-                // own strategic-value order (StrategicCardEvaluator.ScoreBaseSite — the SAME formula
-                // AddBaseCandidates commits to a staged demand's EconomySiteValue, called here rather
-                // than copied) instead of WorldAnalysis's plain Q/R enumeration order, so a duplicate/
-                // unclaimed Base card founds on the best-value legal hex, not merely the first one.
-                HexCoord? at = null;
-                string why = "noLegalFoundHex";
-                IEnumerable<EconomyBaseOpportunity> sites = snap?.Economy?.BaseOpportunities
-                    ?? System.Array.Empty<EconomyBaseOpportunity>();
-                if (snap != null)
-                    sites = sites.OrderByDescending(
-                            site => StrategicCardEvaluator.ScoreBaseSite(snap, site, card).StrategicValue)
-                        .ThenBy(site => site.Hex.Q).ThenBy(site => site.Hex.R);
-                foreach (EconomyBaseOpportunity site in sites)
-                {
-                    if (BuildingPlayExecutor.CanFoundBaseAt(player, hand, ctx, card, site.Hex, out string r,
-                            requireCardInHand: generation == null))
-                    { at = site.Hex; break; }
-                    if (r != null) why = r;
-                }
-                if (at == null)
-                {
-                    blocked.Add($"{def.displayName}:base({why})");
-                    return null;
-                }
-                return new NonCombatPlay
-                {
-                    Card = card, Kind = PlayKind.Base, TargetHex = at.Value, Generation = generation,
-                    ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, root, ctx, PlayKind.Base, card, hand, 0f,
-                        totalAp, totalRes, generation, witnessedUsefulApDemand),
-                    StableKey = $"{sourceKey}:base:{at.Value.Q},{at.Value.R}",
-                    Explain = $"{def.displayName} -> found Base ({at.Value.Q},{at.Value.R})",
-                };
+                // Founding is a target-specific Economy operation: Demand evaluates the site,
+                // Phase A stages its builder/card and TaskExecutor completes the admitted build.
+                // A free hero and surplus AP cannot authorize a second, independent expansion.
+                // Keep this exclusion in the shared enumeration so tempo, HandFollowup witnesses
+                // and Phase-B AP workload all see the same executable universe, including cards
+                // offered by generation. Newly useful sites re-enter the existing Economy loop.
+                blocked.Add($"{def.displayName}:base(requires_economy_expansion_demand)");
+                return null;
             }
 
             if (def.cardType == CardType.Equipment && def.equipment != null)
