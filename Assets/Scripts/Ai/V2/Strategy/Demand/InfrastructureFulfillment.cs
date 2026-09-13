@@ -193,7 +193,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, int turn, MissionIntent intent)
         {
             EconomyIntent economy = intent?.Economy;
-            if (player == null || intent.Status != IntentStatus.Active
+            if (player == null || intent == null || intent.Status != IntentStatus.Active
                 || intent.Kind != MissionKind.Economy || economy == null
                 || (economy.Kind != EconomyTaskKind.BuildExtraction
                     && economy.Kind != EconomyTaskKind.FoundBase)
