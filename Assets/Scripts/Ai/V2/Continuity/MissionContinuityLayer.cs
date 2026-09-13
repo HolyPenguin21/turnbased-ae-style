@@ -780,12 +780,18 @@ namespace Game.Ai.V2
                     intent.StallTurns = 0;
                     return;
                 }
-                // A transient capability shortage (mover contended / no free hero this turn) is
-                // not mission failure — AdvanceIntent already suspends+preserves the intent for
-                // exactly this case (SuspendReason.CapabilityUnavailable, ShouldReap skipped) and
-                // still reaps it once StallTurns/TurnsActive age out. Retiring it HERE instead let
-                // a fresh materialization hand a second builder the same target next admission
-                // pass while the first was still mid-route.
+                // Outbound Economy commitments (BuildExtraction/FoundBase) preserve their assigned
+                // builder only on genuinely transient capability failures (NoMoverExists /
+                // MoverContended) — AdvanceIntent suspends+preserves the intent for exactly this
+                // case (SuspendReason.CapabilityUnavailable), and these two kinds do NOT age out
+                // through StallTurns/ShouldReap on purpose (retiring here would let a fresh
+                // materialization hand a second builder the same target next admission pass while
+                // the first was still mid-route). Provisioning reports a committed actor that no
+                // longer exists as TargetInvalidated and one with no live safe route right now as
+                // NoExecutableStep — neither is transientCapability below, so both fall through to
+                // the terminal cleanup beneath this block instead of waiting on a stall counter.
+                // ReturnBuilder (the return-trip leg) has its own, deliberately unconditional
+                // preservation rule above (returnBuilderOutcome) and is not affected by this.
                 bool transientCapability = intent != null
                     && (o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
                         || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended);

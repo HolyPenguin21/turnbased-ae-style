@@ -543,7 +543,7 @@ namespace Game.Ai.V2
                 && actor.HasHero && !actor.IsPrison && !actor.IsAir && !actor.IsAirfield;
         }
 
-        private static ProvisioningResult ProvisionEconomy(PlayerSetupData player, PlayerRoot root,
+        internal static ProvisioningResult ProvisionEconomy(PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             EconomyMissionTarget target)
         {
@@ -582,9 +582,44 @@ namespace Game.Ai.V2
                 var eligibleList = eligibleBuilders.ToList();
                 eligibleBuilders = eligibleList;
                 bool inRankedAtAll = rankedBuilders.Any(x => x.Route.ArmyId == preferredId);
-                AiDebugLog.Write($"[AI][V2][Economy][TRACE] durable mover #{preferredId} — "
+                AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} durable mover #{preferredId} "
+                    + $"target=({target.TargetHex.Q},{target.TargetHex.R}) turn={session.Snapshot?.TurnNumber} — "
                     + $"inRankedBuilders={inRankedAtAll} rankedBuildersTotal={rankedBuilders.Count} "
                     + $"eligibleAfterMoverFilter={eligibleList.Count}");
+                if (!inRankedAtAll)
+                {
+                    // Never reached EconomyBuilderCandidates' yield at all — replicate its gates
+                    // here (read-only, does not touch the real generator) to see which one ate it.
+                    ArmySnapshot snapArmy = session.Snapshot?.Self?.Armies
+                        ?.FirstOrDefault(a => a != null && a.ArmyId == preferredId);
+                    if (snapArmy == null)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream — "
+                            + "not found in WorldSnapshot.Self.Armies (destroyed/merged/not owned this turn?)");
+                    }
+                    else
+                    {
+                        MissionIntent upstreamAssignment = standingIntents.FirstOrDefault(
+                            i => i != null && i.Status == IntentStatus.Active
+                            && i.PreferredMoverArmyId == preferredId);
+                        bool economyTargetMismatch = upstreamAssignment != null
+                            && upstreamAssignment.Kind == MissionKind.Economy
+                            && (upstreamAssignment.Economy == null
+                                || !upstreamAssignment.Economy.TargetHex.Equals(target.TargetHex));
+                        bool nonEconomyDonorBlock = upstreamAssignment != null
+                            && upstreamAssignment.Kind != MissionKind.Economy
+                            && !DemandLayer.EconomyDonorStructurallyEligible(upstreamAssignment);
+                        bool claimedUpstream = actorCommitments != null
+                            && actorCommitments.IsArmyClaimed(preferredId);
+                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream "
+                            + $"(EconomyBuilderCandidates-equivalent) — hex=({snapArmy.Hex.Q},{snapArmy.Hex.R}) "
+                            + $"isMobileEconomyBuilder={snapArmy.IsMobileEconomyBuilder} "
+                            + $"assignment={(upstreamAssignment == null ? "none" : $"{upstreamAssignment.Kind}/{upstreamAssignment.IntentKey} status={upstreamAssignment.Status}")} "
+                            + $"economyTargetMismatch={economyTargetMismatch} nonEconomyDonorBlock={nonEconomyDonorBlock} "
+                            + $"claimedUpstream={claimedUpstream} "
+                            + $"underImmediateThreat={DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, snapArmy.Hex)}");
+                    }
+                }
                 foreach (DemandLayer.EconomyBuilderChoice x in eligibleList)
                 {
                     ArmyData a = ResolveArmy(player, x.Route.ArmyId);
@@ -636,8 +671,29 @@ namespace Game.Ai.V2
             if (hero == null)
             {
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
+                {
+                    int preferredId = m.PreferredMoverArmyId.Value;
+                    ArmyData preferredArmy = ResolveArmy(player, preferredId);
+
+                    if (preferredArmy == null)
+                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                            $"committed economy builder #{preferredId} no longer exists"));
+
+                    // Canonical, army-specific safe-route witness (same contract EconomyBuilderRoutes
+                    // uses at Analysis time — MaxMovement, not this turn's remaining CurrentMovement,
+                    // so a merely-spent-for-now mover is never misclassified as unreachable). When
+                    // this is int.MaxValue the committed mover has no safe path at all right now, as
+                    // distinct from "a path exists but this mover didn't clear the other eligibility
+                    // checks this turn" — the latter stays MoverContended below, unchanged.
+                    int routeCost = SafeStepPathing.FindSafePathCost(
+                        ctx.Map, preferredArmy, target.TargetHex);
+                    if (routeCost == int.MaxValue)
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                            $"committed economy builder #{preferredId} has no safe route to the site right now"));
+
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"committed economy builder #{m.PreferredMoverArmyId.Value} cannot advance this turn"));
+                        $"committed economy builder #{preferredId} cannot advance this turn"));
+                }
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "no free hero can advance toward economy site"));
             }
