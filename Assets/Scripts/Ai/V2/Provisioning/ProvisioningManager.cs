@@ -225,6 +225,66 @@ namespace Game.Ai.V2
         private static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player) =>
             army != null && army.Owner == player && AiArmyRoles.IsHeroLed(army);
 
+        // Turns a still-garrisoned "mobile_hero" candidate (WorldAnalysis.Economy.
+        // EconomyBuilderRoutes / AiArmyRoles.BestSparableEconomyHero) into a real, separate field
+        // mover. Reuses the exact same safety gate and transfer primitive Raid's own donor path
+        // already trusts in production (AiArmyRoles.CanSpareGarrisonMember + ArmyActions.
+        // TransferMember) — no second "is it safe to take this hero" answer, no new mutation path.
+        // Only ever targets an ALREADY-EXISTING free shell at the garrison's own hex
+        // (ReusableArmySelector.FindReusableAt) — this never spends the separate
+        // ArmyActions.CreateArmy AP itself. If no shell is free, or the hero no longer qualifies by
+        // the time this runs, extraction simply fails here and Economy falls back to its existing
+        // card-materialization path, unchanged.
+        private static ArmyData TryExtractGarrisonHeroForEconomy(PlayerSetupData player,
+            ArmyData garrison, AiTurnContext ctx, ActorCommitments commitments)
+        {
+            UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, garrison);
+            if (sparable == null)
+                return null;
+            ArmyData shell = ReusableArmySelector.FindReusableAt(player, garrison.Hex, commitments);
+            if (shell == null)
+                return null;
+            if (!ArmyActions.TransferMember(sparable, garrison, shell, ctx.HexSelection, out string why))
+            {
+                AiDebugLog.WriteVerbose(
+                    $"[AI][V2][Economy] garrison hero extraction failed: {why}");
+                return null;
+            }
+            AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {sparable.Name} "
+                + $"from garrison #{garrison.Id} into #{shell.Id} for economy mobile_hero duty");
+            return shell;
+        }
+
+        // Recon's counterpart to TryExtractGarrisonHeroForEconomy above — same safety gate
+        // (AiArmyRoles.CanSpareGarrisonMember, via BestSparableGarrisonRecce) and same transfer
+        // primitive (ArmyActions.TransferMember into an already-existing free shell), just for a
+        // Recce-capable unit/hero instead of a mobile_hero. If no shell is free, or the unit no
+        // longer qualifies by the time this runs, extraction simply fails here and Recon falls back
+        // to its existing card-materialization path, unchanged.
+        private static ArmyData TryExtractGarrisonRecceForScouting(PlayerSetupData player,
+            ArmyData garrison, AiTurnContext ctx, ProvisioningSession session)
+        {
+            UnitData sparable = AiArmyRoles.BestSparableGarrisonRecce(player, garrison);
+            if (sparable == null)
+                return null;
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                session?.Snapshot, null);
+            ArmyData shell = ReusableArmySelector.FindReusableAt(player, garrison.Hex, commitments);
+            if (shell == null)
+                return null;
+            if (!ArmyActions.TransferMember(sparable, garrison, shell, ctx.HexSelection, out string why))
+            {
+                AiDebugLog.WriteVerbose(
+                    $"[AI][V2][Recon] garrison Recce extraction failed: {why}");
+                return null;
+            }
+            AiDebugLog.Write($"[AI][V2][Recon] extracted idle Recce {sparable.Name} "
+                + $"from garrison #{garrison.Id} into #{shell.Id} for scouting duty");
+            return shell;
+        }
+
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation,
             ActorCommitments durableCommitments = null)
@@ -438,7 +498,17 @@ namespace Game.Ai.V2
                 return ProvisionAir(player, root, ctx, session, funded, exec, target, key);
 
             int moverArmyId = exec.Army.ArmyId;
-            ArmyData army = ResolveArmy(player, moverArmyId);
+            ArmyData army;
+            if (exec.Army.RequiresGarrisonExtraction)
+            {
+                ArmyData garrisonArmy = ResolveArmy(player, moverArmyId);
+                army = garrisonArmy == null
+                    ? null : TryExtractGarrisonRecceForScouting(player, garrisonArmy, ctx, session);
+            }
+            else
+            {
+                army = ResolveArmy(player, moverArmyId);
+            }
             if (army == null || army.Owner != player || army.Members.Count == 0
                 || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -654,6 +724,23 @@ namespace Game.Ai.V2
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .FirstOrDefault(x =>
                 {
+                    if (x.Route.RequiresGarrisonExtraction)
+                    {
+                        // ArmyId here names the Garrison, not yet a separate mover — re-derive the
+                        // exact same candidate AiArmyRoles.BestSparableEconomyHero would give
+                        // Analysis right now (canonical, same predicate as CanSpareGarrisonMember),
+                        // never trusting a hero identity carried across from an earlier phase.
+                        ArmyData g = ResolveArmy(player, x.Route.ArmyId);
+                        UnitData sparable = g == null ? null
+                            : AiArmyRoles.BestSparableEconomyHero(player, g);
+                        return g != null && sparable != null
+                            && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex)
+                            && !session.ClaimedArmyIds.Contains(g.Id)
+                            && (g.Hex.Equals(target.TargetHex)
+                                || SafeStepPathing.FindSafePathCost(
+                                    ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax)
+                                    != int.MaxValue);
+                    }
                     ArmyData a = ResolveArmy(player, x.Route.ArmyId);
                     return a != null && IsMobileEconomyHero(a, player)
                     && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
@@ -666,8 +753,22 @@ namespace Game.Ai.V2
                             && SafeStepPathing.FindNextSafeStep(
                                 ctx.Map, a, target.TargetHex).HasValue));
                 });
-            ArmyData hero = builderChoice == null
-                ? null : ResolveArmy(player, builderChoice.Route.ArmyId);
+            ArmyData hero;
+            if (builderChoice == null)
+            {
+                hero = null;
+            }
+            else if (builderChoice.Route.RequiresGarrisonExtraction)
+            {
+                ArmyData garrisonArmy = ResolveArmy(player, builderChoice.Route.ArmyId);
+                hero = garrisonArmy == null
+                    ? null : TryExtractGarrisonHeroForEconomy(
+                        player, garrisonArmy, ctx, actorCommitments);
+            }
+            else
+            {
+                hero = ResolveArmy(player, builderChoice.Route.ArmyId);
+            }
             if (hero == null)
             {
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)

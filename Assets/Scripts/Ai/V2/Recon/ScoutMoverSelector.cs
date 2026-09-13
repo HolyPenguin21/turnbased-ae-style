@@ -1,6 +1,9 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Cards;
 using Game.HexGrid;
+using Game.Map;
+using Game.Players;
 using Game.Units;
 
 namespace Game.Ai.V2
@@ -159,5 +162,57 @@ namespace Game.Ai.V2
 
         public static bool HasStructuralCandidate(WorldSnapshot snap, ScoutMissionTarget target) =>
             StructuralCandidates(snap, target).Any();
+
+        // A Recce-capable unit/hero idle in the local Garrison is a legitimate ground mover too —
+        // synthesized here as a single-member ArmySnapshot (ArmyId = the GARRISON's own id, flagged
+        // RequiresGarrisonExtraction) so ScoutCostModel.PairCost prices it exactly like any other
+        // solo Recce, without a second cost model (project owner's own follow-up report, 2026-09-13
+        // — the same "idle capacity in Garrison is invisible" gap Economy's BestSparableEconomyHero
+        // fix already closed). Ground Explore/Refresh only — never Surveil, never air: those need
+        // vantage/route machinery this extraction path does not attempt to reproduce; a garrisoned
+        // Recce competing for Surveil/Air duty stays a separate, later task. AiArmyRoles.
+        // CanSpareGarrisonMember (the same predicate Raid's donor path and Economy's own extraction
+        // already trust) gates which unit, if any, is even considered.
+        public static List<ArmySnapshot> EligibleGarrisonExtraction(WorldSnapshot snap,
+            PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
+        {
+            var result = new List<ArmySnapshot>();
+            if (snap?.Self?.Armies == null || player == null
+                || target.Kind == ScoutTargetKind.Surveil)
+                return result;
+
+            bool needStealth = target.Stealth == StealthRequirement.Required;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || !a.IsGarrison)
+                    continue;
+                if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
+                    continue;
+                ArmyData live = ArmyRegistry.AllForOwner(player).FirstOrDefault(x => x.Id == a.ArmyId);
+                if (live == null)
+                    continue;
+                UnitData sparable = AiArmyRoles.BestSparableGarrisonRecce(player, live);
+                if (sparable == null)
+                    continue;
+
+                bool hidden = sparable.IsHidden;
+                bool canEnterStealth = StealthSystem.CanEnterStealth(sparable);
+                if (needStealth && !(hidden || canEnterStealth))
+                    continue;
+
+                result.Add(new ArmySnapshot
+                {
+                    ArmyId = a.ArmyId, Owner = player, Hex = a.Hex,
+                    IsGarrison = false, RequiresGarrisonExtraction = true,
+                    MemberCount = 1, IsSoloRecce = true,
+                    MaxMovement = sparable.MoveMax, CurrentMovement = sparable.MoveMax,
+                    ActivationApCost = sparable.ActivationApCost, HasActivatedThisTurn = false,
+                    IsHidden = hidden, CanEnterStealth = canEnterStealth,
+                    StealthLevel = AbilityParams.GetStealthLevel(sparable),
+                    HasHero = sparable.IsHero,
+                });
+            }
+            return result;
+        }
     }
 }

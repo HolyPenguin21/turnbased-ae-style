@@ -356,6 +356,24 @@ namespace Game.Ai.V2
                 if (army == null)
                     return choice;
 
+                // A garrison-hero-extraction row prices only the one sparable hero (already
+                // computed in WorldAnalysis.Economy.EconomyBuilderRoutes via AiArmyRoles.
+                // BestSparableEconomyHero) — `army` here is still the GARRISON's own full-roster
+                // snapshot, which does not describe that hero's future 1-member field roster, so
+                // none of the below escort-augmentation math (built for an already-separate field
+                // army) applies. Escort, if any is warranted, is decided the normal way afterward by
+                // ProvisioningManager.PlanEconomyArmyLightening once the hero is a real separate
+                // ArmyData — same as for every other freshly formed economy mover today.
+                if (route.RequiresGarrisonExtraction)
+                {
+                    choice.Suitability = EconomyArmySuitability.Ready;
+                    choice.IneligibleReason = null;
+                    choice.MinimumEscortCount = 0;
+                    choice.ProjectedActivationApCost = route.ActivationApCost;
+                    choice.ProjectedMaxMovement = route.MaxMovement;
+                    return choice;
+                }
+
                 List<AiMapMemory.KnownEnemySighting> threats =
                     route.RouteThreats?.ToList()
                     ?? new List<AiMapMemory.KnownEnemySighting>();
@@ -592,8 +610,18 @@ namespace Game.Ai.V2
                     yield return (route, army);
                     continue;
                 }
-                if (!army.IsMobileEconomyBuilder)
+                if (army.IsGarrison)
+                {
+                    // Only a garrison-hero-extraction row (WorldAnalysis.Economy.
+                    // EconomyBuilderRoutes) may reach this point off-target — every other Garrison
+                    // row was already handled above or never generated in the first place.
+                    if (!route.RequiresGarrisonExtraction)
+                        continue;
+                }
+                else if (!army.IsMobileEconomyBuilder)
+                {
                     continue;
+                }
 
                 MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
                 bool claimed = commitments != null && commitments.IsArmyClaimed(army.ArmyId);

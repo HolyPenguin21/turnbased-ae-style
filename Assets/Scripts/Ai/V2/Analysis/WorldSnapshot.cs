@@ -164,6 +164,14 @@ namespace Game.Ai.V2
         public PlayerSetupData Owner;
         public HexCoord Hex;
         public bool IsGarrison;
+        // True only for a synthetic ground-scout candidate built from an idle Recce-capable unit
+        // still inside the local Garrison (see ScoutMoverSelector.EligibleGarrisonExtraction /
+        // AiArmyRoles.BestSparableGarrisonRecce) — ArmyId here is the GARRISON's own id, not yet a
+        // separate field mover. ProvisioningManager.Provision must extract the unit (AiArmyRoles.
+        // CanSpareGarrisonMember + ArmyActions.TransferMember, same primitive Economy's own
+        // extraction and Raid's donor path already use) before it is a real executor. Every
+        // ordinary snapshot (including IsGarrison ones from WorldAnalysis.Self) leaves this false.
+        public bool RequiresGarrisonExtraction;
         public bool IsPrison;
         public bool IsAir;
         public bool IsAirfield;
@@ -495,6 +503,13 @@ namespace Game.Ai.V2
         public float EffectiveArmyPower;
         public bool HasActiveEconomyCommitment;
         public bool IsOnTarget;
+        // True only for a candidate synthesized from an idle hero still sitting inside the local
+        // Garrison (see WorldAnalysis.Economy.EconomyBuilderRoutes / AiArmyRoles.
+        // BestSparableEconomyHero) — ArmyId here is the GARRISON's own id, not yet a separate field
+        // mover. ProvisioningManager.ProvisionEconomy must extract the hero (AiArmyRoles.
+        // CanSpareGarrisonMember + ArmyActions.TransferMember, same as the Raid donor path) before
+        // it can be treated as a mover. Every existing row leaves this false by construction.
+        public bool RequiresGarrisonExtraction;
         // Exact fog-honest route selected by SafeStepPathing. Demand consumes the associated
         // route threats instead of reconstructing a wider geometric corridor from endpoints.
         public IReadOnlyList<HexCoord> PathHexes;

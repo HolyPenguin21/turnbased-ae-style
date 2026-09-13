@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -216,6 +217,68 @@ namespace Game.Ai
                 return false;
             ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(hex));
             return garrison != null && garrison.Members.Count(m => !m.IsHero) >= AiConfig.secureBaseMinNonHeroUnits;
+        }
+
+        // The best hero Economy may pull straight out of `garrison` to travel to a resource site,
+        // instead of spending a hand card to materialize a fresh one for a job an idle hero already
+        // owned could do (project owner's own report, 2026-09-13 — WorldAnalysis.Economy.
+        // EconomyBuilderRoutes never even considered a garrisoned hero a candidate). Deterministic
+        // (fastest sparable hero first, ties by CommandRating then Name) so WorldAnalysis.Economy's
+        // route/cost estimate and ProvisioningManager's later transactional re-validation
+        // independently agree on the exact same candidate without passing a live UnitData reference
+        // between the two phases. Reuses CanSpareGarrisonMember unchanged — no second "is it safe to
+        // take this hero" answer — and skips any hero currently serving as this hex's Research/
+        // Production operator, read from the same ResearchProductionSystem.FindActors source
+        // ArmyReorgAnalyzer.MarkDevelopmentOperators already uses, so this never proposes pulling the
+        // one hero a local facility depends on.
+        public static UnitData BestSparableEconomyHero(PlayerSetupData player, ArmyData garrison)
+        {
+            if (player == null || garrison == null || !garrison.IsGarrison)
+                return null;
+
+            HashSet<UnitData> operators = null;
+            BuildingData building = BuildingRegistry.FindAt(garrison.Hex);
+            if (building != null && building.Owner == player)
+            {
+                foreach (ResearchProductionMode mode in new[]
+                         { ResearchProductionMode.Research, ResearchProductionMode.Production })
+                {
+                    if (!building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
+                        continue;
+                    operators ??= new HashSet<UnitData>();
+                    operators.UnionWith(ResearchProductionSystem.FindActors(player, garrison.Hex, mode));
+                }
+            }
+
+            return garrison.Members
+                .Where(u => u != null && u.IsHero
+                    && (operators == null || !operators.Contains(u))
+                    && CanSpareGarrisonMember(player, garrison, u))
+                .OrderByDescending(u => u.MoveMax)
+                .ThenByDescending(u => u.CommandRating)
+                .ThenBy(u => u.Name)
+                .FirstOrDefault();
+        }
+
+        // The best Recce-capable, non-aviation unit or hero Recon may pull straight out of
+        // `garrison` to explore/refresh, the same gap BestSparableEconomyHero closes for Economy
+        // (project owner's own follow-up report, 2026-09-13 — ScoutMoverSelector never considered a
+        // garrisoned Recce carrier a candidate either, via IsSoloRecce's own army.IsGarrison
+        // exclusion). Deterministic (fastest sparable carrier first, ties by Name) so
+        // ScoutMoverSelector.EligibleGarrisonExtraction's cost estimate and ProvisioningManager's
+        // later transactional re-validation independently agree on the same candidate. Reuses
+        // CanSpareGarrisonMember unchanged — no second "is it safe to take this unit" answer.
+        public static UnitData BestSparableGarrisonRecce(PlayerSetupData player, ArmyData garrison)
+        {
+            if (player == null || garrison == null || !garrison.IsGarrison)
+                return null;
+
+            return garrison.Members
+                .Where(u => u != null && !u.IsAviation && AbilityParams.UnitHasAnyRecce(u)
+                    && CanSpareGarrisonMember(player, garrison, u))
+                .OrderByDescending(u => u.MoveMax)
+                .ThenBy(u => u.Name)
+                .FirstOrDefault();
         }
     }
 }

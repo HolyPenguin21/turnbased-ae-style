@@ -233,6 +233,28 @@ namespace Game.Ai.V2
                 }
             }
 
+            // An idle Recce carrier still inside the local Garrison — priced with the same
+            // ScoutCostModel.PairCost math as any real solo Recce above, off the synthetic snapshot's
+            // OWN fields (never the live Garrison ArmyData's aggregate stats, which describe the
+            // whole stack, not the one unit that would leave it). Reachability uses the HexCoord-
+            // based SafeStepPathing overload for the same reason — ResolveArmy(mover.ArmyId) would
+            // resolve the live GARRISON, not the not-yet-extracted unit. Ground Explore/Refresh only
+            // (see ScoutMoverSelector.EligibleGarrisonExtraction); the actual extraction happens
+            // later, transactionally, in ProvisioningManager.Provision if this candidate wins.
+            if (!surveil)
+            {
+                foreach (ArmySnapshot mover in
+                         ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, target, excludeArmyIds))
+                {
+                    if (ctx?.Map != null && SafeStepPathing.FindSafePath(
+                            ctx.Map, player, mover.Hex, target.FocusHex, mover.MaxMovement) == null)
+                        continue;
+                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
+                    list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
+                        pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
+                }
+            }
+
             AppendAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds, airPool);
             return list;
         }
