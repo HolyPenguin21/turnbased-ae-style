@@ -3272,6 +3272,47 @@ namespace Game.EditorTests
                 "Known-hex transit remains valid when it advances the strategic anchor.");
         }
 
+        [Test]
+        public void ActiveEconomyBuildIntent_ProtectsResourcesWithoutRepeatedDemand()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var cost = new ResourceCost { human = 2, materials = 4 };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Status = IntentStatus.Active,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.FoundBase,
+                    TargetHex = new HexCoord(3, 3),
+                    BuildResourceCost = cost,
+                },
+            };
+            StrategicResourceReservationLedger.BeginTurn(player, 20);
+
+            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                player, 20, intent);
+
+            string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(
+                player, 20, owner, StrategicReservationReason.EconomyDeferredBuild,
+                cost, 0f), Is.True);
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, 20, StrategicReservedResource.Materials), Is.EqualTo(4f));
+            StrategicResourceReservationLedger.BeginTurn(player, 21);
+        }
+
+        [Test]
+        public void ReconTrimmedActor_IsExcludedOnlyForCurrentTurn()
+        {
+            var state = new MissionIntentState();
+
+            state.MarkReconActorTrimmed(11, 15);
+
+            Assert.That(state.ReconActorsTrimmedThisTurn(11), Does.Contain(15));
+            Assert.That(state.ReconActorsTrimmedThisTurn(12), Is.Empty);
+        }
+
         private static EconomyExtractionOpportunity ExtractionOpportunity(
             HexCoord hex, ResourceType type, int gain) => new EconomyExtractionOpportunity
         {
