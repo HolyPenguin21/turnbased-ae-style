@@ -13,7 +13,7 @@ namespace Game.Map
 
         // Optional layers used by richer marker prefabs. Existing circle+icon prefabs leave
         // these empty and keep their current behavior; the flagged citadel uses factionAccent
-        // for its cloth and auxiliaryRenderers for neutral metal layers.
+        // for its cloth and auxiliaryRenderers for neutral, non-faction-tinted layers.
         [SerializeField] private SpriteRenderer factionAccent;
         [SerializeField] private SpriteRenderer[] auxiliaryRenderers;
         [SerializeField] private bool tintInnerCircle = true;

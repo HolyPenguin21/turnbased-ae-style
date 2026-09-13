@@ -2,13 +2,15 @@ using UnityEngine;
 
 namespace Game.Map
 {
-    // Lightweight frame animation local to the flagged-citadel prefab. SpriteRenderer colour
-    // is deliberately untouched, so MapObjectVisual.SetColor can keep the cloth in its owner's
-    // colour while only the grayscale fold frame changes.
+    // Lightweight paired-frame animation local to the flagged-citadel prefab. Renderer colours
+    // stay untouched: MapObjectVisual can tint the cloth for its owner while the neutral emblem
+    // follows the same fold phase without inheriting the faction colour.
     public sealed class MapFlagAnimator : MonoBehaviour
     {
         [SerializeField] private SpriteRenderer targetRenderer;
         [SerializeField] private Sprite[] frames;
+        [SerializeField] private SpriteRenderer logoRenderer;
+        [SerializeField] private Sprite[] logoFrames;
         [SerializeField, Min(0.1f)] private float framesPerSecond = 3.5f;
         [SerializeField] private bool randomizePhase = true;
 
@@ -39,6 +41,11 @@ namespace Game.Map
                 return;
             int frameIndex = Mathf.FloorToInt(elapsed * Mathf.Max(0.1f, framesPerSecond)) % frameCount;
             targetRenderer.sprite = frames[frameIndex];
+
+            // The neutral emblem follows the exact same phase as the tinted cloth. A second
+            // animator would randomize independently and make the printed mark slide over it.
+            if (logoRenderer != null && logoFrames != null && logoFrames.Length == frameCount)
+                logoRenderer.sprite = logoFrames[frameIndex];
         }
     }
 }
