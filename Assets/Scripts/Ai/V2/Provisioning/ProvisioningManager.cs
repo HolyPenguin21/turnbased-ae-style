@@ -930,12 +930,14 @@ namespace Game.Ai.V2
                 .ThenBy(u => u.Name).ToList();
             HexPath escortRoute = SafeStepPathing.FindSafePath(
                 ctx.Map, player, builder.Hex, target, builder.MaxMovement);
-            IReadOnlyList<HexCoord> escortPathHexes = escortRoute != null
-                ? (IReadOnlyList<HexCoord>)escortRoute.Hexes
-                : new[] { builder.Hex, target };
+            // No route means no reliable exposure witness. Keep the live roster intact instead
+            // of substituting endpoints and potentially unloading the escort for an unreachable
+            // operation. The caller may retry after the map/known blockers change.
+            if (escortRoute == null)
+                return unload;
             IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
                 WorldAnalysis.KnownThreatsAffectingEconomyRoute(
-                    snapshot, escortPathHexes);
+                    snapshot, escortRoute.Hexes);
             IReadOnlyList<UnitData> retained = SelectEconomyEscort(
                 builder, bodies, threats, minimumEscort);
             if (retained != null)
