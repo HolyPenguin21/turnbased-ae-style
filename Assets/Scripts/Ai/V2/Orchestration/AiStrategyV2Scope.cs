@@ -152,5 +152,16 @@ namespace Game.Ai.V2
         // every legally playable card is still deployed or drawn regardless of its card type. Card
         // type alone is never a reason a legal card is left in hand.
         public static bool AllowSurplusPreparation => true;
+
+        // Phase B (tempo/UseSurplus) is deliberately NOT scoped by AxisInScope above — it is a
+        // hand-management pass, not an operational-mission one (see AllowSurplusPreparation). That
+        // is exactly why StrategicPressureAdvance's PressureSpend candidate (an army marching on
+        // the enemy Citadel — genuine Aggression, not a card play) could slip through Phase B in a
+        // Recon/Economy focus scope even with Aggression desire at zero and Defence disabled: Phase
+        // B never asked. This is the one Phase B decision that IS an operational-mission choice, so
+        // it consults scope directly rather than being carried along by the hand-management
+        // exemption. TempoCandidateProvider is the only consumer; StrategicPressureAdvance and
+        // Execution take the resulting candidate/plan as given and do not re-interpret scope.
+        public static bool AllowStrategicPressure => !IsFocusScoped;
     }
 }

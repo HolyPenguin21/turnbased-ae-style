@@ -175,7 +175,9 @@ namespace Game.Ai.V2
                     ActionKey = "maint:" + sp.StableKey, Label = sp.Label,
                 });
 
-            StrategicPressurePlan pressure = StrategicPressureAdvance.BuildPlan(player, root, hand, ctx, commitments);
+            StrategicPressurePlan pressure = AiStrategyV2Scope.AllowStrategicPressure
+                ? StrategicPressureAdvance.BuildPlan(player, root, hand, ctx, commitments)
+                : null;
             if (pressure != null && pressure.Army != null)
                 list.Add(new TempoCandidate
                 {

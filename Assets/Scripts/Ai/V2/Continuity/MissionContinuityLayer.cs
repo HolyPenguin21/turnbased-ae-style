@@ -397,6 +397,19 @@ namespace Game.Ai.V2
                 ScoutIntent s = intent.Scout;
                 if (s == null) { dead.Add(intent.IntentKey); continue; }
 
+                // A donor parked on an Economy loan (SuspendReason.EconomyLoan) keeps its pre-loan
+                // identity untouched. ProvisioningManager is the sole owner of granting the loan;
+                // RepayEconomyLoan is the only place that resumes it, and it does so by re-finding
+                // this exact IntentKey via the borrowing Economy intent's LoanSource. Refocusing (or
+                // retiring, if no runnable waypoint remains) a stale objective here would rekey or
+                // delete that identity mid-loan; the orphan-repair pass above then finds no live
+                // Economy intent pointing at the surviving key and wrongly reactivates the donor
+                // while its actor is still out on loan — one actor claimed by two active intents.
+                // Leave it parked; its waypoint is stale by definition anyway once it resumes.
+                if (intent.Status == IntentStatus.Suspended
+                    && intent.Suspended == SuspendReason.EconomyLoan)
+                    continue;
+
                 if (!ScoutObjectiveEvaluator.IsIntentStillValid(snap, s))
                 {
                     // Spec §1/§7/§50-52 — the focus hex is a live waypoint, not the durable
@@ -951,6 +964,29 @@ namespace Game.Ai.V2
             {
                 intent.Status = IntentStatus.Suspended;
                 intent.Suspended = SuspendReason.CapabilityUnavailable;
+
+                // Base expansion is deliberately exempt from StallTurns/ShouldReap aging (see the
+                // comment above transientCapability in ReconcileOutcome) so an in-progress delivery
+                // survives a transient blip. That exemption previously had no upper bound: the same
+                // stuck project — NoMoverExists / MoverContended, turn after turn — never triggered
+                // the existing MissionIntentState delivery-failure cooldown because nothing called
+                // it. Wire it here, the one place this intent is suspended for that reason. A gap
+                // turn without a capability failure (real progress or a different suspend reason)
+                // breaks RecordBaseExpansionDeliveryFailure's consecutive-turn streak on its own —
+                // no separate reset is needed.
+                if (!o.MadeProgress && intent.Kind == MissionKind.Economy
+                    && intent.Economy?.Kind == EconomyTaskKind.FoundBase
+                    && state.RecordBaseExpansionDeliveryFailure(
+                        turn, intent.Economy.BuildCard, intent.Economy.TargetHex))
+                {
+                    state.Remove(intent.IntentKey);
+                    StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
+                        "BaseExpansionDeliverySuppressed");
+                    AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
+                        + $"{intent.IntentKey} Base delivery repeatedly failed "
+                        + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
+                    return;
+                }
             }
 
             if (!capabilityUnavailable && ShouldReap(intent))

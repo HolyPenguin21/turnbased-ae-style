@@ -54,6 +54,10 @@ namespace Game.Ai.V2
         public const int economyBaseFoundScanRadius = 3;
         public const int economyBaseMinSpacing = 3;
         public const float economyBaseUrgencyPerDeferredTurn = 12f;
+        // Margin a rival Base site's Value must clear the currently staged site's Value by before
+        // it replaces it as the staged target. Keeps a small edge from causing per-turn flip-flops
+        // while still letting a decisively better known site override a stale staged hex.
+        public const float economyBaseSwitchHysteresisThreshold = 10f;
         public const float economySameTurnCompletionBonus = 8f;
         public const float economyAdmissionCompletionCostWeight = 1f;
         public const float economyLoanHysteresisThreshold = 8f;

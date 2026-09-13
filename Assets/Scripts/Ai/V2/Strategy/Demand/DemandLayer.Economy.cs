@@ -895,11 +895,19 @@ namespace Game.Ai.V2
 
             // Stage the best meaningful, legal and safely-routable Base before value admission.
             // This is what lets the existing continuity urgency accumulate from a negative score.
+            // An active commitment (a mission already delivering an actor there) still wins
+            // outright — that is real in-flight work, not a candidate preference. Below that,
+            // "already staged" is only a hysteresis bonus on top of Value, not a categorical
+            // priority tier: a stale staged hex (e.g. yield=0) must still lose to a newly known
+            // site once that site's Value clears the staged one by more than the threshold, so
+            // urgency can no longer keep compounding on a target that real information has
+            // superseded. A small margin stays inside the threshold and does not flip staging.
             AxisDemand stagedBase = meaningfulDemands
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
-                .ThenByDescending(d => intentState.IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex))
-                .ThenByDescending(d => d.Value)
+                .ThenByDescending(d => d.Value
+                    + (intentState.IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex)
+                        ? AiConfigV2.economyBaseSwitchHysteresisThreshold : 0f))
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
