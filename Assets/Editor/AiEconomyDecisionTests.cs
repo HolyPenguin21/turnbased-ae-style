@@ -160,12 +160,35 @@ namespace Game.EditorTests
         }
 
         // --- Outbound Economy commitment failure classification (durable MoverContended fix) ---
+        // Exercised through the real public chain — ProvisioningManager.Provision (dispatches to
+        // the still-private ProvisionEconomy), MissionOutcomeLedger, then
+        // MissionContinuityLayer.ReconcileAfterTurn — so these prove the actual production
+        // lifecycle, not a hand-built outcome standing in for it.
 
         private static UnityEngine.GameObject NewBareHexMap(out Game.Map.HexMap map)
         {
             var mapObject = new UnityEngine.GameObject("TestHexMap");
             map = mapObject.AddComponent<Game.Map.HexMap>();
             return mapObject;
+        }
+
+        private static UnityEngine.GameObject NewBarePlayerRoot(out PlayerRoot root)
+        {
+            var rootObject = new UnityEngine.GameObject("TestPlayerRoot");
+            root = rootObject.AddComponent<PlayerRoot>();
+            return rootObject;
+        }
+
+        // Registers exactly the given hexes as passable (moveCost 1) — no more. Two hexes that
+        // aren't mutual neighbours of a connected chain therefore have no path between them, same
+        // as if the terrain in between genuinely didn't exist — a real (if minimal) map, not an
+        // empty one, but still deliberately disconnected for the "no route" scenarios.
+        private static void SetHexes(Game.Map.HexMap map, params HexCoord[] hexes)
+        {
+            var data = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
+            foreach (HexCoord h in hexes)
+                data[h] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
+            map.SetData(10, 10, 1f, data);
         }
 
         private static MissionProposal DurableEconomyMission(HexCoord targetHex, int preferredArmyId) =>
@@ -183,100 +206,234 @@ namespace Game.EditorTests
                 FromDurableIntent = true,
             };
 
+        // IntentKey is derived from the PROPOSAL, not re-derived independently from the intent —
+        // guarantees the pre-registered intent and the ledger's own MissionIntentKey.For(proposal)
+        // agree bit-for-bit, so ReconcileAfterTurn actually finds this intent.
+        private static MissionIntent DurableEconomyIntent(MissionProposal mission, int preferredArmyId)
+        {
+            var target = (EconomyMissionTarget)mission.Target;
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Status = IntentStatus.Active,
+                PreferredMoverArmyId = preferredArmyId,
+                Objective = new EconomyIntent
+                {
+                    Kind = target.Kind,
+                    TargetHex = target.TargetHex,
+                    ResourceType = target.ResourceType,
+                    BuilderArmyId = preferredArmyId,
+                },
+            };
+            intent.IntentKey = MissionIntentKey.For(mission);
+            return intent;
+        }
+
+        // Runs the exact production sequence one durable Economy attempt goes through in a real
+        // turn: Provision -> ledger classification -> ReconcileAfterTurn. Returns both the raw
+        // provisioning result and the finalised outcome so a test can assert on either.
+        private static (ProvisioningResult Result, MissionTurnOutcome Outcome) RunDurableEconomyAttempt(
+            Game.Players.PlayerSetupData player, PlayerRoot root, Game.Ai.AiTurnContext ctx,
+            ProvisioningSession session, MissionProposal mission, int turn)
+        {
+            var funded = new FundedEntry { Mission = mission };
+            ProvisioningResult result = ProvisioningManager.Provision(player, root, null, ctx, session, funded);
+
+            var ledger = new MissionOutcomeLedger();
+            ledger.RegisterProposals(new[] { mission });
+            if (result.Success)
+                ledger.RecordProvisionSuccess(mission, result.Provisioned);
+            else
+                ledger.RecordProvisionFailure(mission, result.Failure);
+            List<MissionTurnOutcome> outcomes = ledger.Finalize();
+            MissionTurnOutcome outcome = outcomes.Single();
+
+            MissionContinuityLayer.ReconcileAfterTurn(player, turn, outcomes);
+            return (result, outcome);
+        }
+
         [Test]
-        public void ProvisionEconomy_DurableMoverHasNoSafeRoute_ReturnsNoExecutableStep()
+        public void ProvisionEconomy_DurableMoverHasNoSafeRoute_TerminatesCommitment()
         {
             var player = new Game.Players.PlayerSetupData();
             var hero = Hero("Stranded Builder");
             hero.MoveMax = 3;
             hero.MoveCurrent = 3;
-            var army = new ArmyData { Owner = player, Hex = new HexCoord(0, 0), Name = "Stranded" };
+            HexCoord startHex = new HexCoord(0, 0);
+            HexCoord targetHex = new HexCoord(9, 9); // real hex, but not connected to startHex below
+            var army = new ArmyData { Owner = player, Hex = startHex, Name = "Stranded" };
             army.Members.Add(hero);
             ArmyRegistry.Register(army);
             UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, startHex, targetHex); // both real, but no chain of hexes joins them
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
-                HexCoord targetHex = new HexCoord(5, 5); // far from (0,0); empty map has no terrain at all
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.Put(intent);
                 var session = new ProvisioningSession(snapshot);
-                var funded = new FundedEntry { Mission = mission };
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
-                ProvisioningResult result = ProvisioningManager.ProvisionEconomy(
-                    player, null, null, ctx, session, funded, (EconomyMissionTarget)mission.Target);
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+                Assert.That(outcome.IntentKey, Is.EqualTo(intent.IntentKey));
+                Assert.That(outcome.ProvisionFailureKindValue, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+                Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+                Assert.That(outcome.MadeProgress, Is.False);
+                Assert.That(state.TryGet(intent.IntentKey, out _), Is.False,
+                    "a proven route failure must release the commitment, not hold it forever");
             }
             finally
             {
                 ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
                 UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
             }
         }
 
         [Test]
-        public void ProvisionEconomy_DurableMoverStillHasSafeRoute_ReturnsMoverContended()
+        public void ProvisionEconomy_DurableMoverOutOfMovementThisTurn_PreservesCommitment()
         {
             var player = new Game.Players.PlayerSetupData();
-            HexCoord targetHex = new HexCoord(2, 2);
-            // The snapshot carries no ArmySnapshot entries at all (SnapshotWithDeficits' default),
-            // so the ordinary ranking/predicate never selects anyone regardless of this army's real
-            // eligibility — same as the "no route" test, hero == null is reached either way. What
-            // this test isolates is the NEW check's own outcome: the army sits ON the target hex, so
-            // the canonical route query (start == destination) trivially finds a route, and the
-            // result must be MoverContended, not NoExecutableStep.
-            var army = new ArmyData { Owner = player, Hex = targetHex, Name = "Occupied" };
-            army.Members.Add(Body("Grunt", 3, 3));
+            var hero = Hero("Resting Builder");
+            hero.MoveMax = 3;   // enough for the whole 2-hex trip once movement refreshes
+            hero.MoveCurrent = 0; // but nothing left THIS turn
+            HexCoord startHex = new HexCoord(0, 0);
+            HexCoord midHex = new HexCoord(1, 0);
+            HexCoord targetHex = new HexCoord(2, 0);
+            var army = new ArmyData { Owner = player, Hex = startHex, Name = "Resting" };
+            army.Members.Add(hero);
             ArmyRegistry.Register(army);
             UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, startHex, midHex, targetHex); // a real, connected 2-step chain
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.Put(intent);
                 var session = new ProvisioningSession(snapshot);
-                var funded = new FundedEntry { Mission = mission };
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
-                ProvisioningResult result = ProvisioningManager.ProvisionEconomy(
-                    player, null, null, ctx, session, funded, (EconomyMissionTarget)mission.Target);
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
+                // This is the exact check that would fail if MaxMovement were ever swapped for
+                // CurrentMovement in the canonical route query: a merely-spent-for-now mover has a
+                // perfectly good route once movement refreshes and must not be misread as stranded.
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
+                Assert.That(outcome.ProvisionFailureKindValue, Is.EqualTo(ProvisionFailureKind.MoverContended));
+                Assert.That(state.TryGet(intent.IntentKey, out MissionIntent preserved), Is.True,
+                    "spending this turn's movement elsewhere must not release the commitment");
+                Assert.That(preserved.PreferredMoverArmyId, Is.EqualTo(army.Id));
             }
             finally
             {
                 ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
                 UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
             }
         }
 
         [Test]
-        public void ProvisionEconomy_DurableMoverNoLongerExists_ReturnsTargetInvalidated()
+        public void ProvisionEconomy_DurableMoverClaimedThisPass_PreservesCommitment()
         {
             var player = new Game.Players.PlayerSetupData();
-            // Captured for a stable, never-registered army id; deliberately not added to ArmyRegistry.
-            int vanishedArmyId = new ArmyData().Id;
+            var hero = Hero("Double-Booked Builder");
+            hero.MoveMax = 3;
+            hero.MoveCurrent = 3;
+            HexCoord startHex = new HexCoord(0, 0);
+            HexCoord midHex = new HexCoord(1, 0);
+            HexCoord targetHex = new HexCoord(2, 0);
+            var army = new ArmyData { Owner = player, Hex = startHex, Name = "Claimed" };
+            army.Members.Add(hero);
+            ArmyRegistry.Register(army);
             UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, startHex, midHex, targetHex); // route genuinely exists
             try
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
-                MissionProposal mission = DurableEconomyMission(new HexCoord(3, 3), vanishedArmyId);
+                MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+                MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                state.Put(intent);
                 var session = new ProvisioningSession(snapshot);
-                var funded = new FundedEntry { Mission = mission };
+                session.ClaimedArmyIds.Add(army.Id); // something else already spent this actor this pass
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
-                ProvisioningResult result = ProvisioningManager.ProvisionEconomy(
-                    player, null, null, ctx, session, funded, (EconomyMissionTarget)mission.Target);
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
-                Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.TargetInvalidated));
+                Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
+                Assert.That(state.TryGet(intent.IntentKey, out _), Is.True,
+                    "an existing safe route must not be reclassified as a proven route failure");
             }
             finally
             {
                 ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
                 UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
+            }
+        }
+
+        [Test]
+        public void ProvisionEconomy_DurableMoverVanishesBetweenPlanningAndProvisioning_TerminatesCommitment()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var hero = Hero("Doomed Builder");
+            hero.MoveMax = 3;
+            hero.MoveCurrent = 3;
+            HexCoord targetHex = new HexCoord(3, 3);
+            var army = new ArmyData { Owner = player, Hex = new HexCoord(0, 0), Name = "Doomed" };
+            army.Members.Add(hero);
+            ArmyRegistry.Register(army); // exists at planning time
+            MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
+            MissionIntent intent = DurableEconomyIntent(mission, army.Id);
+            MissionIntentRegistry.GetOrCreate(player).Put(intent); // durable commitment created while alive
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, new HexCoord(0, 0), targetHex);
+            try
+            {
+                ArmyRegistry.Clear(); // gone by the time provisioning actually runs this turn
+
+                WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                var session = new ProvisioningSession(snapshot);
+                var ctx = new Game.Ai.AiTurnContext { Map = map };
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
+
+                Assert.That(result.Success, Is.False);
+                Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.TargetInvalidated));
+                Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.Failed));
+                Assert.That(state.TryGet(intent.IntentKey, out _), Is.False);
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
             }
         }
 
@@ -444,6 +601,119 @@ namespace Game.EditorTests
             finally
             {
                 MissionIntentRegistry.Clear();
+            }
+        }
+
+        // These two go through the real Provision -> Ledger -> ReconcileAfterTurn chain (unlike
+        // the four ResolveActive-only regressions above) because they specifically exercise
+        // ProvisionEconomyRecovery's own gates (CurrentMovement, SafeStepPathing) and the
+        // unconditional returnBuilderOutcome preservation in ReconcileOutcome — neither is
+        // reachable from ResolveActive alone.
+
+        private static MissionProposal ReturnBuilderMission(HexCoord shelterHex, int armyId) =>
+            new MissionProposal
+            {
+                Kind = MissionKind.Economy,
+                Target = new EconomyMissionTarget
+                {
+                    Kind = EconomyTaskKind.ReturnBuilder,
+                    TargetHex = shelterHex,
+                    BuilderArmyId = armyId,
+                },
+                Requirements = new MissionRequirements(),
+                PreferredMoverArmyId = armyId,
+                FromDurableIntent = true,
+            };
+
+        [Test]
+        public void ReturnBuilder_OutOfMovementThisTurn_PreservesRecoveryUnconditionally()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var hero = Hero("Resting Returner");
+            hero.MoveMax = 2;
+            hero.MoveCurrent = 0; // nothing left this turn
+            HexCoord actorHex = new HexCoord(5, 0);
+            HexCoord shelter = new HexCoord(0, 0);
+            var army = new ArmyData { Owner = player, Hex = actorHex, Name = "Returner" };
+            army.Members.Add(hero);
+            ArmyRegistry.Register(army);
+            MissionProposal mission = ReturnBuilderMission(shelter, army.Id);
+            MissionIntent intent = ReturnBuilderIntent(army.Id, shelter);
+            intent.IntentKey = MissionIntentKey.For(mission); // keep ledger/intent keys aligned
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(intent);
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, actorHex, shelter);
+            try
+            {
+                WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                snapshot.Self.Armies = new List<ArmySnapshot> { ReturnBuilderActor(army.Id, actorHex) };
+                var session = new ProvisioningSession(snapshot);
+                var ctx = new Game.Ai.AiTurnContext { Map = map };
+
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
+
+                Assert.That(result.Success, Is.False);
+                Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+                Assert.That(state.TryGet(intent.IntentKey, out MissionIntent preserved), Is.True,
+                    "a returning builder merely out of movement this turn must not be abandoned");
+                Assert.That(preserved.StallTurns, Is.EqualTo(0));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
+            }
+        }
+
+        [Test]
+        public void ReturnBuilder_SafeRouteHomeCurrentlyBlocked_PreservesRecoveryUnconditionally()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var hero = Hero("Blocked Returner");
+            hero.MoveMax = 3;
+            hero.MoveCurrent = 3;
+            HexCoord actorHex = new HexCoord(5, 0);
+            HexCoord shelter = new HexCoord(0, 0);
+            var army = new ArmyData { Owner = player, Hex = actorHex, Name = "Returner" };
+            army.Members.Add(hero);
+            ArmyRegistry.Register(army);
+            MissionProposal mission = ReturnBuilderMission(shelter, army.Id);
+            MissionIntent intent = ReturnBuilderIntent(army.Id, shelter);
+            intent.IntentKey = MissionIntentKey.For(mission);
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(intent);
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
+            SetHexes(map, actorHex, shelter); // both real hexes, deliberately not connected
+            try
+            {
+                WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
+                snapshot.Self.Armies = new List<ArmySnapshot> { ReturnBuilderActor(army.Id, actorHex) };
+                var session = new ProvisioningSession(snapshot);
+                var ctx = new Game.Ai.AiTurnContext { Map = map };
+
+                (ProvisioningResult result, MissionTurnOutcome outcome) =
+                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
+
+                Assert.That(result.Success, Is.False);
+                Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+                Assert.That(state.TryGet(intent.IntentKey, out _), Is.True,
+                    "a temporarily blocked way home must not terminate the recovery commitment — " +
+                    "unlike the outbound fix, ReturnBuilder is deliberately left unconditional");
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                MissionIntentRegistry.Clear();
+                AiAllocatorStateRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+                UnityEngine.Object.DestroyImmediate(rootObject);
             }
         }
 

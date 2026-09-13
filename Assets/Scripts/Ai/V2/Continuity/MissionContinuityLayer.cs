@@ -786,12 +786,17 @@ namespace Game.Ai.V2
                 // case (SuspendReason.CapabilityUnavailable), and these two kinds do NOT age out
                 // through StallTurns/ShouldReap on purpose (retiring here would let a fresh
                 // materialization hand a second builder the same target next admission pass while
-                // the first was still mid-route). Provisioning reports a committed actor that no
-                // longer exists as TargetInvalidated and one with no live safe route right now as
-                // NoExecutableStep — neither is transientCapability below, so both fall through to
-                // the terminal cleanup beneath this block instead of waiting on a stall counter.
-                // ReturnBuilder (the return-trip leg) has its own, deliberately unconditional
-                // preservation rule above (returnBuilderOutcome) and is not affected by this.
+                // the first was still mid-route). Provisioning reports a missing committed actor as
+                // TargetInvalidated, which is handled by the Failed branch above (Outcome.Failed,
+                // not routed through transientCapability at all). A missing live safe route is
+                // reported as NoExecutableStep and, for an outbound Economy outcome with no
+                // progress, is not transientCapability either, so it reaches the cleanup below.
+                // Neither NoMoverExists nor MoverContended is claimed to be always-transient in some
+                // absolute sense — this fix only stops a proven route failure from being mistaken
+                // for one; a mover that stays stuck for some other eligibility reason with a route
+                // that does exist is unaffected. ReturnBuilder (the return-trip leg) has its own,
+                // deliberately unconditional preservation rule above (returnBuilderOutcome) and is
+                // not affected by any of this.
                 bool transientCapability = intent != null
                     && (o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
                         || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended);

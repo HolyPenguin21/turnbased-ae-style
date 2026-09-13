@@ -543,7 +543,7 @@ namespace Game.Ai.V2
                 && actor.HasHero && !actor.IsPrison && !actor.IsAir && !actor.IsAirfield;
         }
 
-        internal static ProvisioningResult ProvisionEconomy(PlayerSetupData player, PlayerRoot root,
+        private static ProvisioningResult ProvisionEconomy(PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             EconomyMissionTarget target)
         {
