@@ -150,9 +150,14 @@ namespace Game.Ai.V2
             if (state == null)
                 return;
             ScoutTrace trace = TraceFor(state, armyId);
+            // Movement outside Recon breaks the observed path; never join disconnected traces.
+            if (trace.Path.Count > 0 && !trace.Path[trace.Path.Count - 1].Equals(from))
+                trace.Path.Clear();
             if (trace.Path.Count == 0)
                 trace.Path.Add(from);
             trace.Path.Add(to);
+            if (trace.Path.Count > 4)
+                trace.Path.RemoveRange(0, trace.Path.Count - 4);
             trace.Steps++;
 
             bool decisionMatches = trace.LastDecisionFrom.HasValue && trace.LastDecisionTo.HasValue
@@ -298,7 +303,20 @@ namespace Game.Ai.V2
                 return null;
             if (!ByPlayer.TryGetValue(player, out TurnAudit state) || state.Turn != turn)
             {
+                TurnAudit previous = state;
                 state = new TurnAudit { Turn = turn };
+                // Two-step attack/evade loops span turns. Preserve only the bounded path tail
+                // of scouts that actually moved in the immediately preceding turn. Decision
+                // matching, intel freshness and scenario statuses still start clean each turn.
+                if (previous != null && previous.Turn + 1 == turn)
+                    foreach (var entry in previous.TraceByArmy)
+                    {
+                        if (entry.Value.Steps == 0)
+                            continue;
+                        var trace = new ScoutTrace();
+                        trace.Path.AddRange(entry.Value.Path);
+                        state.TraceByArmy[entry.Key] = trace;
+                    }
                 ByPlayer[player] = state;
             }
             return state;
