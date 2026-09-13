@@ -207,7 +207,6 @@ namespace Game.Ai.V2
             }
 
             var frontier = new List<FrontierHexSnapshot>();
-            var frontierSet = new HashSet<HexCoord>();
             if (raw.Count > 0)
             {
                 int nearestFrontierDist = raw.Min(f => f.DistanceFromNearestBase);
@@ -216,15 +215,16 @@ namespace Game.Ai.V2
                 {
                     if (f.DistanceFromNearestBase > bandLimit) continue;
                     frontier.Add(f);
-                    frontierSet.Add(f.Hex);
                 }
             }
 
             int explorable = 0;
-            if (frontierSet.Count > 0)
+            // The wave band limits this pass's waypoints, not the amount of reachable knowledge.
+            // Seed every reachable frontier component so a nearby pocket cannot hide distant work.
+            if (raw.Count > 0)
             {
-                var darkSeen = new HashSet<HexCoord>(frontierSet);
-                var darkQueue = new Queue<HexCoord>(frontierSet);
+                var darkSeen = new HashSet<HexCoord>(raw.Select(f => f.Hex));
+                var darkQueue = new Queue<HexCoord>(darkSeen);
                 while (darkQueue.Count > 0)
                 {
                     HexCoord cur = darkQueue.Dequeue();
@@ -257,3 +257,4 @@ namespace Game.Ai.V2
 
     }
 }
+
