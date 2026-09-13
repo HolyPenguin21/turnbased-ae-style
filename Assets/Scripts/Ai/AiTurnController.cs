@@ -286,7 +286,8 @@ namespace Game.Ai
             // keeps the AP for another discovery move. Entry is 1 AP per unit; voluntary exit is
             // free. The rule is the shared, layer-neutral primitive both V1 (here) and V2
             // (ProvisioningManager / TaskExecutor) call — see AiScoutStealthPolicy's own comment.
-            if (!army.HasActivatedThisTurn && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
+            if (decision.AllowAutomaticStealth && !army.HasActivatedThisTurn
+                && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
                 && root != null
                 && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, destination))
             {

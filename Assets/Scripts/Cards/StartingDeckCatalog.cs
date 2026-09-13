@@ -5,11 +5,9 @@ using UnityEngine;
 
 namespace Game.Cards
 {
-    // One card+count row in a StartingDeck. cardKey identifies the card across ALL of
-    // StartingDeckCatalog.catalogs (a card's own id is only unique within its own catalog, see
-    // FactionCardCatalog) as "<catalog.displayName>/<card.displayName>" — drawn via a dropdown
-    // (DeckCardEntryDrawer, Assets/Editor) the same way CardDefinition.grantedAbilities gets one
-    // from [AbilityTag], not hand-typed.
+    // A deck row references CardDefinition.authoredKey when available. Legacy
+    // "<catalog.displayName>/<card.displayName>" references remain readable while existing
+    // cards acquire stable identities; new authored references survive display-name changes.
     [System.Serializable]
     public class DeckCardEntry
     {
@@ -45,24 +43,38 @@ namespace Game.Cards
         public StartingDeck GetDeck(Faction faction) =>
             decks.FirstOrDefault(d => d != null && d.faction == faction);
 
-        // Scans `catalogs` for the card named by cardKey ("<catalog.displayName>/<card.
-        // displayName>") — null if the catalog or the card inside it can no longer be found (a
-        // stale key left over from a rename/removal), same "just skip it" fallback the deck pool
-        // builder below relies on.
+        // Reuse the catalog's existing card lookup. Prefer stable identity across catalogs,
+        // then accept the legacy qualified display name for decks that have not migrated yet.
         public CardDefinition ResolveCard(string cardKey)
         {
-            if (string.IsNullOrEmpty(cardKey))
+            if (string.IsNullOrWhiteSpace(cardKey) || catalogs == null)
                 return null;
+
+            CardDefinition stableMatch = null;
+            foreach (FactionCardCatalog catalog in catalogs)
+            {
+                CardDefinition card = catalog?.ResolveCard(cardKey);
+                if (card == null || card.authoredKey != cardKey)
+                    continue;
+                if (stableMatch != null && !ReferenceEquals(stableMatch, card))
+                {
+                    Debug.LogError($"StartingDeckCatalog '{name}' cannot resolve duplicate "
+                        + $"authoredKey '{cardKey}'.", this);
+                    return null;
+                }
+                stableMatch = card;
+            }
+            if (stableMatch != null)
+                return stableMatch;
 
             foreach (FactionCardCatalog catalog in catalogs)
             {
                 if (catalog == null)
                     continue;
                 string prefix = catalog.displayName + "/";
-                if (!cardKey.StartsWith(prefix))
+                if (!cardKey.StartsWith(prefix, System.StringComparison.Ordinal))
                     continue;
-                string cardName = cardKey.Substring(prefix.Length);
-                CardDefinition match = catalog.cards.FirstOrDefault(c => c != null && c.displayName == cardName);
+                CardDefinition match = catalog.ResolveCard(cardKey.Substring(prefix.Length));
                 if (match != null)
                     return match;
             }
@@ -81,9 +93,17 @@ namespace Game.Cards
 
             foreach (DeckCardEntry entry in deck.cards)
             {
-                CardDefinition card = ResolveCard(entry?.cardKey);
-                if (card == null)
+                if (entry == null || entry.count <= 0)
                     continue;
+                CardDefinition card = ResolveCard(entry.cardKey);
+                if (card == null)
+                {
+                    // A missing facility silently removed from the deck makes an entire AI axis
+                    // impossible to fulfil. Keep the safe skip, but make the data error explicit.
+                    Debug.LogError($"StartingDeckCatalog '{name}', deck '{deck.deckName}': "
+                        + $"unresolved cardKey '{entry.cardKey}' (count {entry.count}).", this);
+                    continue;
+                }
                 for (int i = 0; i < entry.count; i++)
                     pool.Add(card);
             }
