@@ -401,6 +401,13 @@ namespace Game.EditorTests
         // itself is what blocked the candidate — without it, the mover clears ranking and
         // eligibility and provisioning proceeds past mover-selection (failing later, on the
         // unfunded AP envelope, rather than on MoverContended/NoMoverExists at selection time).
+        //
+        // Calls ProvisioningManager.Provision directly rather than going through
+        // RunDurableEconomyAttempt's ledger/ReconcileAfterTurn: EnvelopeTooSmall classifies as a
+        // Blocked, no-progress outbound Economy outcome, which ReconcileAfterTurn legitimately
+        // retires (RepayEconomyLoan + state.Remove) — that removal is correct production
+        // behaviour, not something this test should assert around. Provision's raw result already
+        // proves what this test is for: the builder cleared mover-selection.
         [Test]
         public void ProvisionEconomy_DurableMoverUnclaimed_ClearsSelectionUnlikeClaimedTwin()
         {
@@ -423,19 +430,18 @@ namespace Game.EditorTests
                 snapshot.Self.Armies = new List<ArmySnapshot> { EconomyBuilder(army.Id, 1, 0f) };
                 MissionProposal mission = DurableEconomyMission(targetHex, army.Id);
                 MissionIntent intent = DurableEconomyIntent(mission, army.Id);
-                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-                state.Put(intent);
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
                 var session = new ProvisioningSession(snapshot); // no ClaimedArmyIds entry this time
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
+                var funded = new FundedEntry { Mission = mission };
 
-                (ProvisioningResult result, MissionTurnOutcome outcome) =
-                    RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
+                ProvisioningResult result = ProvisioningManager.Provision(
+                    player, root, null, ctx, session, funded);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.EnvelopeTooSmall),
                     "unclaimed, the builder must clear mover-selection and fail only on the " +
                     "(deliberately unfunded) AP envelope — not be rejected as contended/missing");
-                Assert.That(state.TryGet(intent.IntentKey, out _), Is.True);
             }
             finally
             {
@@ -698,7 +704,10 @@ namespace Game.EditorTests
             state.Put(intent);
             UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
             UnityEngine.GameObject rootObject = NewBarePlayerRoot(out PlayerRoot root);
-            SetHexes(map, actorHex, shelter); // connected — the only blocker left must be movement
+            // A real connected chain, not just the two endpoints — the only blocker left must be
+            // the actor's spent movement, not an incidentally-disconnected map.
+            SetHexes(map, actorHex, new HexCoord(4, 0), new HexCoord(3, 0),
+                new HexCoord(2, 0), new HexCoord(1, 0), shelter);
             BuildingRegistry.Register(shelter, new BuildingData
                 { Owner = player, Hex = shelter, Name = "Shelter Base", IsBase = true });
             try
@@ -708,11 +717,23 @@ namespace Game.EditorTests
                 var session = new ProvisioningSession(snapshot);
                 var ctx = new Game.Ai.AiTurnContext { Map = map };
 
+                // Isolate the cause: with the chain connected, a safe route genuinely exists —
+                // so if the movement gate were ever removed or reordered, this test must not stay
+                // green for the wrong reason (a route failure masquerading as NoExecutableStep).
+                // Uses MaxMovement (via the army.Owner/army.Hex overload), not CurrentMovement —
+                // FindNextSafeStep itself gates on CurrentMovement and would report null here for
+                // the same reason the production code is expected to fail, telling us nothing.
+                Assert.That(Game.Ai.SafeStepPathing.FindSafePathCost(
+                    map, army.Owner, army.Hex, shelter, army.MaxMovement), Is.Not.EqualTo(int.MaxValue),
+                    "test setup sanity: a safe route home must exist independent of movement");
+
                 (ProvisioningResult result, MissionTurnOutcome outcome) =
                     RunDurableEconomyAttempt(player, root, ctx, session, mission, turn: 1);
 
                 Assert.That(result.Success, Is.False);
                 Assert.That(result.Failure.Kind, Is.EqualTo(ProvisionFailureKind.NoExecutableStep));
+                Assert.That(result.Failure.Detail, Does.Contain("no movement"),
+                    "the failure must be attributed to spent movement, not an unreachable route");
                 Assert.That(state.TryGet(intent.IntentKey, out MissionIntent preserved), Is.True,
                     "a returning builder merely out of movement this turn must not be abandoned");
                 Assert.That(preserved.StallTurns, Is.EqualTo(0));
