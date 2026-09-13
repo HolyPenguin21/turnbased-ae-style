@@ -186,6 +186,27 @@ namespace Game.Ai.V2
             ReserveDeferredEconomyResourcesCore(player, turn, owner, demand);
         }
 
+        // Continuity may intentionally suppress a repeated Economy demand once a concrete
+        // builder owns the operation. Preserve that active intent's exact build vector directly;
+        // absence from the current demand list is not cancellation.
+        internal static void ReserveDeferredEconomyResourcesForActiveIntent(
+            PlayerSetupData player, int turn, MissionIntent intent)
+        {
+            EconomyIntent economy = intent?.Economy;
+            if (player == null || intent == null || intent.Status != IntentStatus.Active
+                || intent.Kind != MissionKind.Economy || economy == null
+                || (economy.Kind != EconomyTaskKind.BuildExtraction
+                    && economy.Kind != EconomyTaskKind.FoundBase)
+                || economy.BuildResourceCost == null)
+                return;
+
+            string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
+            ReserveDeferredEconomyResourcesCore(player, turn, owner, new AxisDemand
+            {
+                EconomyBuildResourceCost = economy.BuildResourceCost,
+            });
+        }
+
         // A bare EconomyHeroPrerequisite demand (Capability.Hero, no builder identified yet) can
         // never satisfy ShouldReserveDeferredEconomyResources above — there is no army/route to
         // witness. That left the accepted build's H/E/M/T free for however many turns Economy

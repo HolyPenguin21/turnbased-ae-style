@@ -3147,6 +3147,172 @@ namespace Game.EditorTests
             return snapshot;
         }
 
+        [Test]
+        public void DevelopmentDemand_DefenseOnlyEquipmentDoesNotBorrowRapidReactionAsReconGain()
+        {
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit,
+                activationApCost = 1,
+                grantedAbilities = new List<string>
+                {
+                    "r1s0",
+                    UnitAbilities.RapidReaction,
+                },
+            });
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition
+                {
+                    cardType = CardType.Equipment,
+                    displayName = "Armor Plate",
+                    equipment = new EquipmentGrant
+                    {
+                        statChanges = new List<EquipmentStatChange>
+                        {
+                            new EquipmentStatChange
+                                { stat = EquipmentStat.Defense, amount = 1 },
+                        },
+                    },
+                },
+                RecipientKind = DevRecipientKind.HandCard,
+                RecipientCard = host,
+                BaseValue = 10f,
+            };
+            var recon = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Recon,
+                Capability = CapabilityKind.ScoutCapability,
+            };
+
+            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
+                opportunity, new[] { recon },
+                System.Array.Empty<MissionIntent>(), null), Is.False,
+                "An ability already present on the carrier must be normalized on both sides.");
+        }
+
+        [Test]
+        public void EconomyRouteThreats_IgnoreStationaryNeutralOutsideActualSafePath()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
+            var wrecker = new Game.Ai.AiMapMemory.KnownEnemySighting(
+                new HexCoord(8, -2), null, "Wrecker", 1, 5f, 5f,
+                new List<Game.Combat.WorthIt.DefenderProfile>());
+            snapshot.Known.NeutralSightings = new[] { wrecker };
+            var actualPath = new[]
+            {
+                new HexCoord(8, -4),
+                new HexCoord(7, -4),
+                new HexCoord(6, -3),
+                new HexCoord(5, -2),
+            };
+
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                snapshot, actualPath), Is.Empty,
+                "A neutral inside the old endpoint ellipse cannot intercept from an untraversed hex.");
+
+            snapshot.Known.NeutralSightings = new[]
+            {
+                new Game.Ai.AiMapMemory.KnownEnemySighting(
+                    new HexCoord(6, -3), null, "Path blocker", 1, 5f, 5f,
+                    new List<Game.Combat.WorthIt.DefenderProfile>()),
+            };
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                snapshot, actualPath), Has.Count.EqualTo(1));
+        }
+
+        [Test]
+        public void BaseExpansionDeliveryFailure_ReleasesStickyProjectForBoundedCooldown()
+        {
+            var state = new MissionIntentState();
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            HexCoord target = new HexCoord(5, -2);
+
+            Assert.That(state.RecordBaseExpansionDeliveryFailure(4, card, target), Is.False);
+            Assert.That(state.RecordBaseExpansionDeliveryFailure(5, card, target), Is.True);
+            Assert.That(state.BaseExpansionWaitTurns, Is.Zero);
+            Assert.That(state.IsBaseExpansionDeliverySuppressed(6, card, target), Is.True);
+            Assert.That(state.IsBaseExpansionDeliverySuppressed(7, card, target), Is.True);
+            Assert.That(state.IsBaseExpansionDeliverySuppressed(8, card, target), Is.False,
+                "The project must be reconsidered, not permanently blacklisted.");
+        }
+
+        [Test]
+        public void ScoutContinuity_ProductiveOldIntentIsNotReapedByAbsoluteAge()
+        {
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Scout,
+                TurnsActive = AiConfigV2.commitmentMaxTurns,
+                StallTurns = 0,
+            };
+            System.Reflection.MethodInfo shouldReap = typeof(MissionContinuityLayer)
+                .GetMethod("ShouldReap", System.Reflection.BindingFlags.Static
+                    | System.Reflection.BindingFlags.NonPublic);
+
+            Assert.That(shouldReap, Is.Not.Null);
+            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent }), Is.False);
+
+            intent.StallTurns = AiConfigV2.commitmentStallTurns;
+            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent }), Is.True);
+        }
+
+        [Test]
+        public void ReconStepScore_QualityCannotCreateWorkWithoutPurpose()
+        {
+            float directionAndEfficiencyOnly = ReconGroundStepPlanner.PurposefulStepScore(
+                information: 0f, anchorProgress: 0f, buildingBonus: 0f,
+                heading: 1f, movementEfficiency: 1f);
+            float purposefulTransit = ReconGroundStepPlanner.PurposefulStepScore(
+                information: 0f, anchorProgress: 1f, buildingBonus: 0f,
+                heading: 1f, movementEfficiency: 1f);
+
+            Assert.That(directionAndEfficiencyOnly, Is.Zero);
+            Assert.That(purposefulTransit, Is.GreaterThan(0f),
+                "Known-hex transit remains valid when it advances the strategic anchor.");
+        }
+
+        [Test]
+        public void ActiveEconomyBuildIntent_ProtectsResourcesWithoutRepeatedDemand()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var cost = new ResourceCost { human = 2, materials = 4 };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Status = IntentStatus.Active,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.FoundBase,
+                    TargetHex = new HexCoord(3, 3),
+                    BuildResourceCost = cost,
+                },
+            };
+            StrategicResourceReservationLedger.BeginTurn(player, 20);
+
+            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                player, 20, intent);
+
+            string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
+            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(
+                player, 20, owner, StrategicReservationReason.EconomyDeferredBuild,
+                cost, 0f), Is.True);
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, 20, StrategicReservedResource.Materials), Is.EqualTo(4f));
+            StrategicResourceReservationLedger.BeginTurn(player, 21);
+        }
+
+        [Test]
+        public void ReconTrimmedActor_IsExcludedOnlyForCurrentTurn()
+        {
+            var state = new MissionIntentState();
+
+            state.MarkReconActorTrimmed(11, 15);
+
+            Assert.That(state.ReconActorsTrimmedThisTurn(11), Does.Contain(15));
+            Assert.That(state.ReconActorsTrimmedThisTurn(12), Is.Empty);
+        }
+
         private static EconomyExtractionOpportunity ExtractionOpportunity(
             HexCoord hex, ResourceType type, int gain) => new EconomyExtractionOpportunity
         {

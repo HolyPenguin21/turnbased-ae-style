@@ -387,7 +387,17 @@ namespace Game.Ai.V2
                 if (durableClaimedArmyIds != null)
                     excluded.UnionWith(durableClaimedArmyIds);
                 if (fe.Mission.PreferredMoverArmyId.HasValue)
+                {
                     excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
+                }
+                else
+                {
+                    // Continuity may contract a surplus lane before Missions emits fresh work.
+                    // The contraction is authoritative for this whole turn: another actor or air
+                    // may serve the fresh mission, but the just-released scout cannot be rebound.
+                    excluded.UnionWith(MissionIntentRegistry.GetOrCreate(player)
+                        .ReconActorsTrimmedThisTurn(snap?.TurnNumber ?? ctx?.TurnNumber ?? -1));
+                }
                 return excluded;
             }
 

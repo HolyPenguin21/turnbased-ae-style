@@ -40,6 +40,16 @@ namespace Game.Ai.V2
             }
         }
 
+        internal static float PurposefulStepScore(float information, float anchorProgress,
+            float buildingBonus, float heading, float movementEfficiency)
+        {
+            float purpose = Mathf.Max(0f, information)
+                + Mathf.Max(0f, anchorProgress)
+                + Mathf.Max(0f, buildingBonus);
+            float quality = Mathf.Max(0f, 1f + heading + movementEfficiency);
+            return purpose * quality;
+        }
+
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
             ReconPatrolState assignment, int turn, WorldSnapshot snapshot = null)
         {
@@ -63,7 +73,15 @@ namespace Game.Ai.V2
                 var seen = new HashSet<HexCoord> { army.Hex, h };
                 float lookahead = Lookahead(player, map, army, assignment, turn, h,
                     depth - 1, army.CurrentMovement - baseChoice.MoveCost, seen);
-                float score = baseChoice.Score + lookahead;
+                float headingQuality = ReconDirectionModel.Sector(army.Hex, h)
+                    == assignment.StrategicSector ? 1f : 0f;
+                float movementQuality = 1f / Mathf.Max(1, baseChoice.MoveCost);
+                // Direction and cheap movement improve witnessed useful continuation; they never
+                // create useful work on their own.
+                float score = baseChoice.Score
+                    + lookahead * (1f + headingQuality + movementQuality);
+                if (score <= AiConfigV2.allocatorSliceEpsilon)
+                    continue;
                 choices.Add(new StepChoice(baseChoice.Hex, score, baseChoice.FreshNeighbors,
                     baseChoice.MoveCost, baseChoice.IntelAge, baseChoice.TrailFactor,
                     baseChoice.DetectorRisk, baseChoice.Reason + $" lookahead={lookahead:0.00}"));
@@ -206,6 +224,12 @@ namespace Game.Ai.V2
             ReconSector stepSector = ReconDirectionModel.Sector(army.Hex, h);
             float heading = stepSector == assignment.StrategicSector ? 1f : 0f;
             float movementEfficiency = 1f / moveCost;
+            int anchorDistanceBefore = HexGridMath.Distance(
+                army.Hex, assignment.StrategicAnchor);
+            int anchorDistanceAfter = HexGridMath.Distance(
+                h, assignment.StrategicAnchor);
+            float anchorProgress = Mathf.Max(0,
+                anchorDistanceBefore - anchorDistanceAfter);
             float trailFactor = TrailFactor(player, army.Id, h, visited, assignment.Mode);
             float safetyFactor = Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectorRisk);
 
@@ -252,10 +276,13 @@ namespace Game.Ai.V2
                 homeFactor = Mathf.Clamp(homeFactor, 0.30f, 1.15f);
             }
 
-            float score = (information + heading + movementEfficiency + buildingBonus)
+            float purpose = information + anchorProgress + buildingBonus;
+            float score = PurposefulStepScore(
+                    information, anchorProgress, buildingBonus, heading, movementEfficiency)
                 * trailFactor * safetyFactor * coverageFactor * deadEndFactor * homeFactor;
-            string reason = $"info={information:0.00} heading={heading:0.00} mpEff={movementEfficiency:0.00} "
-                + $"building={buildingBonus:0.00} "
+            string reason = $"purpose={purpose:0.00} info={information:0.00} "
+                + $"anchorProgress={anchorProgress:0.00} heading={heading:0.00} "
+                + $"mpEff={movementEfficiency:0.00} building={buildingBonus:0.00} "
                 + $"coverage={coverageFactor:0.00}(sectorClaims={sectorClaims},near={nearbyClaims}) "
                 + $"deadEnd={deadEndFactor:0.00} "
                 + $"homeDist={homeDist} homeDelta={homeDelta:+0;-0;0} localGap={home.LocalGap:0.00} "

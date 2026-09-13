@@ -103,15 +103,34 @@ namespace Game.Ai.V2
             {
                 Reservation = carriedReservation ?? new MaterializationReservation()
             };
-            if (demands == null || demands.Count == 0 || player == null || root == null || hand == null || ledger == null)
-            {
-                // No demand at all this call. When Economy WAS authoritatively re-evaluated (not
-                // just a non-Economy dirty-axis subset), an empty demand set really does mean
-                // Economy has nothing left to protect — a stale hold from an earlier pass this turn
-                // must not survive to block Phase B on a target that no longer exists.
-                if (economyAxisAuthoritative && player != null && ctx != null)
-                    InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
+            if (player == null || root == null || hand == null || ledger == null || ctx == null)
                 return result;
+            demands ??= System.Array.Empty<AxisDemand>();
+
+            // A target-specific Economy build may deliberately emit no repeated demand once
+            // Continuity owns its builder. That active intent outranks every fresh build for the
+            // single deferred-resource hold and must be protected before any early return.
+            MissionIntent protectedActiveEconomyBuild = activeIntents?
+                .Where(i => i != null && i.Status == IntentStatus.Active
+                    && i.Kind == MissionKind.Economy && i.Economy != null
+                    && (i.Economy.Kind == EconomyTaskKind.BuildExtraction
+                        || i.Economy.Kind == EconomyTaskKind.FoundBase))
+                .OrderByDescending(i => i.Funding)
+                .ThenByDescending(i => i.Economy.BuildValue)
+                .ThenBy(i => i.CreatedTurn)
+                .ThenBy(i => i.IntentKey)
+                .FirstOrDefault();
+            if (protectedActiveEconomyBuild != null)
+            {
+                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                    player, ctx.TurnNumber, protectedActiveEconomyBuild);
+                if (protectedActiveEconomyBuild.Economy.BuildCard != null)
+                    result.Reservation.ClaimedEconomyBuildCards.Add(
+                        protectedActiveEconomyBuild.Economy.BuildCard);
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
+                    + $"{protectedActiveEconomyBuild.Economy.Kind} "
+                    + $"@({protectedActiveEconomyBuild.Economy.TargetHex.Q},"
+                    + $"{protectedActiveEconomyBuild.Economy.TargetHex.R}) before card arbitration");
             }
 
             foreach (AxisDemand economyDemand in demands.Where(d => d != null
@@ -166,7 +185,7 @@ namespace Game.Ai.V2
             var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred).ToList();
             if (states.Count == 0 && deferredStates.Count == 0)
             {
-                if (economyAxisAuthoritative)
+                if (economyAxisAuthoritative && protectedActiveEconomyBuild == null)
                     InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
                 return result;
             }
@@ -177,16 +196,18 @@ namespace Game.Ai.V2
             //     value/telemetry; AP comes from the shared pool. Handled here once, then blocked so the generic
             //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
             // Establish the existing single Economy hold BEFORE infrastructure can spend it.
-            var economyBuildObligations = states.Select(s => s.Demand)
-                .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
-                .Concat(allStates
-                    .Where(s => s.Demand != null
-                        && s.Demand.RequestingAxis == DesireAxis.Economy
-                        && s.Demand.Capability == CapabilityKind.Hero
-                        && s.Demand.TargetHex.HasValue
-                        && s.Demand.EconomyBuildResourceCost != null)
-                    .Select(s => s.Demand))
-                .ToList();
+            var economyBuildObligations = protectedActiveEconomyBuild != null
+                ? new List<AxisDemand>()
+                : states.Select(s => s.Demand)
+                    .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
+                    .Concat(allStates
+                        .Where(s => s.Demand != null
+                            && s.Demand.RequestingAxis == DesireAxis.Economy
+                            && s.Demand.Capability == CapabilityKind.Hero
+                            && s.Demand.TargetHex.HasValue
+                            && s.Demand.EconomyBuildResourceCost != null)
+                        .Select(s => s.Demand))
+                    .ToList();
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
                 .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
@@ -207,7 +228,7 @@ namespace Game.Ai.V2
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
                     + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
             }
-            else if (economyAxisAuthoritative)
+            else if (economyAxisAuthoritative && protectedActiveEconomyBuild == null)
             {
                 // No obligation survived selection — but only clear when this call actually had
                 // Economy's authoritative view. A dirty-axis subset that never included Economy
@@ -354,7 +375,40 @@ namespace Game.Ai.V2
                             witnessedUsefulApDemand: witnessedUsefulApDemand,
                             fillerUniverse: fillerUniverse);
                     if (top.Count > 0)
+                    {
                         options[state] = top;
+                    }
+                    else if (state.Demand.RequestingAxis == DesireAxis.Economy
+                        && state.Demand.Capability == CapabilityKind.Hero
+                        && state.Demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                        && state.Demand.TargetHex.HasValue)
+                    {
+                        MaterializationDeliveryAvailability availability =
+                            MaterializationCandidateBuilder.OperationalDeliveryAvailabilityForDemand(
+                                snap, player, root, hand, ctx, state.Demand, commitments,
+                                result.Reservation);
+                        if (availability.ConfirmedBlocked)
+                        {
+                            bool suppressed = MissionIntentRegistry.GetOrCreate(player)
+                                .RecordBaseExpansionDeliveryFailure(ctx.TurnNumber,
+                                    state.Demand.EconomyBuildCard, state.Demand.TargetHex);
+                            AiDebugLog.Write($"[AI][V2]   strat.A economy delivery-block — "
+                                + $"target=({state.Demand.TargetHex.Value.Q},"
+                                + $"{state.Demand.TargetHex.Value.R}) "
+                                + $"raw={availability.RawCandidates} "
+                                + $"preflight={availability.PreflightCandidates} "
+                                + $"opDeliver={availability.OperationalCandidates} "
+                                + $"decision={(suppressed ? "reconsider-project" : "keep-continuity")}");
+                            if (suppressed)
+                            {
+                                state.Remaining = 0f;
+                                result.Reservation.ClaimedEconomyBuildCards.Remove(
+                                    state.Demand.EconomyBuildCard);
+                                InfrastructureFulfillment.ClearDeferredEconomyResources(
+                                    player, ctx.TurnNumber);
+                            }
+                        }
+                    }
                 }
 
                 Dictionary<DemandState, DemandCandidate> assigned =

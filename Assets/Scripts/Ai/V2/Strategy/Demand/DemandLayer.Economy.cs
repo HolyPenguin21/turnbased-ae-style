@@ -356,12 +356,13 @@ namespace Game.Ai.V2
                 if (army == null)
                     return choice;
 
-                List<AiMapMemory.KnownEnemySighting> threats = EconomyRouteThreats(
-                    snap, army.Hex, target);
+                List<AiMapMemory.KnownEnemySighting> threats =
+                    route.RouteThreats?.ToList()
+                    ?? new List<AiMapMemory.KnownEnemySighting>();
                 bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
-                // EconomyRouteThreats already scans the whole corridor (direct + detour buffer) against
-                // honestly-witnessed sightings — a clean route reported here is not a proximity guess,
-                // it is the fog-honest answer. No separate base-adjacency requirement on top of it.
+                // Analysis already attached honestly-witnessed threats that can affect the exact
+                // SafeStepPathing route. A clean route is evidence, not a proximity guess, and remains
+                // the fog-honest answer. No separate base-adjacency requirement on top of it.
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
                 choice.MinimumEscortCount = minimumEscort;
@@ -471,19 +472,6 @@ namespace Game.Ai.V2
                 }
                 return choice;
             }
-        }
-
-        internal static List<AiMapMemory.KnownEnemySighting> EconomyRouteThreats(
-            WorldSnapshot snapshot, HexCoord from, HexCoord target)
-        {
-            int direct = HexGridMath.Distance(from, target);
-            return (snapshot?.Known?.EnemySightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snapshot?.Known?.NeutralSightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(enemy => HexGridMath.Distance(from, enemy.Hex)
-                    + HexGridMath.Distance(enemy.Hex, target) <= direct + 2)
-                .ToList();
         }
 
         internal static bool EconomyRosterSafe(
@@ -784,12 +772,18 @@ namespace Game.Ai.V2
             int considered = 0;
             int kept = 0;
             AxisDemand best = null;
+            MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
             var meaningfulDemands = new List<AxisDemand>();
 
             foreach (EconomyBaseOpportunity site in s.Economy.BaseOpportunities)
                 foreach (CardData card in baseCards)
                 {
                     considered++;
+                    if (intentState.IsBaseExpansionDeliverySuppressed(s.TurnNumber, card, site.Hex))
+                    {
+                        thresholdRejected++;
+                        continue;
+                    }
                     if (HasActiveEconomyIntentAtHexOfKind(activeIntents, site.Hex, EconomyTaskKind.BuildExtraction))
                         continue;
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
@@ -876,16 +870,14 @@ namespace Game.Ai.V2
             AxisDemand stagedBase = meaningfulDemands
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
-                .ThenByDescending(d => MissionIntentRegistry.GetOrCreate(player)
-                    .IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex))
+                .ThenByDescending(d => intentState.IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex))
                 .ThenByDescending(d => d.Value)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
                 .FirstOrDefault();
             bool urgencyEligible = stagedBase?.TargetHex != null;
-            float urgency = MissionIntentRegistry.GetOrCreate(player)
-                .MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
+            float urgency = intentState.MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
                     stagedBase?.TargetHex, urgencyEligible);
 
             foreach (AxisDemand demand in meaningfulDemands)
@@ -929,10 +921,10 @@ namespace Game.Ai.V2
 
             return best == null
                 ? $"considered={considered} kept={kept} best=none "
-                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}"
+                    + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
-                    + $"wait={MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns} urgency={urgency:0.##}";
+                    + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
 
         // Cross-family guard: extraction and base candidates are ranked/selected independently
