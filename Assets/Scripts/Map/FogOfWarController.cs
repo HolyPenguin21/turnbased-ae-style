@@ -155,22 +155,34 @@ namespace Game.Map
         // One texel per axial (q, r) inside the map's own bounding box — sized generously (a
         // rectangle over an inherently diamond/hex-shaped coordinate range), the slack texels
         // outside the real grid are simply never sampled by anything that draws (no terrain
-        // exists there to darken).
+        // exists there to darken) — EXCEPT the shader's own neighbour look-up at the true map
+        // edge (Custom/FogOfWar.shader's sampleHexFog), which can step one axial unit past this
+        // bounding box. With no padding, that UV lands outside [0,1] and the mask's Clamp wrap
+        // silently reuses an unrelated texel from the opposite edge/corner of the texture as
+        // that "neighbour"'s fog value, producing a patchy blend right on the map's outer rim.
+        // Padding the mask by one always-fogged texel ring absorbs every such look-up (each
+        // neighbour direction is at most 1 step in q and 1 in r) with an explicit, correct
+        // value instead of a wrapped/clamped guess.
         private void BuildMask(HexMap map)
         {
             int maxQ = int.MinValue, maxR = int.MinValue;
-            _minQ = int.MaxValue;
-            _minR = int.MaxValue;
+            int minQ = int.MaxValue, minR = int.MaxValue;
             foreach (HexCoord coord in map.AllCoords)
             {
-                _minQ = Mathf.Min(_minQ, coord.Q);
+                minQ = Mathf.Min(minQ, coord.Q);
                 maxQ = Mathf.Max(maxQ, coord.Q);
-                _minR = Mathf.Min(_minR, coord.R);
+                minR = Mathf.Min(minR, coord.R);
                 maxR = Mathf.Max(maxR, coord.R);
             }
 
-            _maskWidth = Mathf.Max(1, maxQ - _minQ + 1);
-            _maskHeight = Mathf.Max(1, maxR - _minR + 1);
+            _minQ = minQ - 1;
+            _minR = minR - 1;
+            _maskWidth = Mathf.Max(1, maxQ - minQ + 1) + 2;
+            _maskHeight = Mathf.Max(1, maxR - minR + 1) + 2;
+            // Defaults to all-zero (= fully fogged, see RefreshVisibility's byte convention),
+            // which is exactly what both the padding ring and any phantom bounding-box texel
+            // (a rectangle over a diamond-shaped coordinate range never covers every texel with
+            // a real hex) should read as.
             _maskPixels = new byte[_maskWidth * _maskHeight];
 
             // Bilinear (not Point) is what makes Custom/FogOfWar.shader's own continuous-UV

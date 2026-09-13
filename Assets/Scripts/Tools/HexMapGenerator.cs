@@ -80,11 +80,18 @@ namespace Game.Map
             var bounds = new Bounds(Vector3.zero, Vector3.zero);
             bool boundsInitialized = false;
 
+            // Which texture each already-placed hex ended up with — lets a same-type neighbour
+            // steer away from repeating it (see PickVariantSlot) instead of every hex rolling
+            // its variant in isolation.
+            var chosenTexture = new Dictionary<HexCoord, Texture2D>(allCoords.Count);
+
             foreach (HexCoord coord in allCoords)
             {
                 Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, Settings.outerRadius);
                 int typeIndex = assignment[coord];
-                int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex);
+                HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, assignment, chosenTexture);
+                int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
+                chosenTexture[coord] = variantSlots[variantSlot].Texture;
                 HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha);
                 hexData[coord] = Settings.terrainTypes[typeIndex];
 
@@ -298,11 +305,51 @@ namespace Game.Map
             return slots;
         }
 
-        // Independent random roll per hex among that terrain type's texture variants.
-        private static int PickVariantSlot(List<int>[] slotIndicesByType, int typeIndex)
+        // Every same-type hex already placed next to this one, before this hex's own variant is
+        // rolled (BuildCoordList's row-major order means "above"/"left" neighbours are already
+        // in chosenTexture; "below"/"right" ones aren't yet — this only ever softens repeats, it
+        // doesn't guarantee none, per the project owner's own "nice to have, not critical" call).
+        private static HashSet<Texture2D> CollectNeighborTextures(HexCoord coord, int typeIndex, Dictionary<HexCoord, int> assignment, Dictionary<HexCoord, Texture2D> chosenTexture)
+        {
+            HashSet<Texture2D> result = null;
+            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+            {
+                var neighbor = new HexCoord(coord.Q + dq, coord.R + dr);
+                if (!chosenTexture.TryGetValue(neighbor, out Texture2D neighborTexture))
+                    continue;
+                if (!assignment.TryGetValue(neighbor, out int neighborType) || neighborType != typeIndex)
+                    continue;
+
+                result ??= new HashSet<Texture2D>();
+                result.Add(neighborTexture);
+            }
+            return result;
+        }
+
+        // Random roll per hex among that terrain type's texture variants, steered away from
+        // whichever variants its already-placed same-type neighbours picked (CollectNeighborTextures)
+        // so adjacent hexes read as visually distinct where the type has more than one texture to
+        // offer. Falls back to the full pool whenever every variant is already a neighbour's pick
+        // (small variant counts, e.g. only 2 textures both already used) so a hex is never left
+        // without a texture.
+        private static int PickVariantSlot(List<int>[] slotIndicesByType, int typeIndex, List<TextureVariantSlot> variantSlots, HashSet<Texture2D> excludeTextures)
         {
             List<int> slots = slotIndicesByType[typeIndex];
-            return slots[Random.Range(0, slots.Count)];
+            if (excludeTextures == null || excludeTextures.Count == 0 || slots.Count <= 1)
+                return slots[Random.Range(0, slots.Count)];
+
+            List<int> candidates = null;
+            foreach (int slotIndex in slots)
+            {
+                if (excludeTextures.Contains(variantSlots[slotIndex].Texture))
+                    continue;
+                candidates ??= new List<int>();
+                candidates.Add(slotIndex);
+            }
+
+            if (candidates == null || candidates.Count == 0)
+                return slots[Random.Range(0, slots.Count)];
+            return candidates[Random.Range(0, candidates.Count)];
         }
 
         // --- Mesh/material/ground plumbing (unchanged by the placement rules above) ------

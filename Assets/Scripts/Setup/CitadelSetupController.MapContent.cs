@@ -439,21 +439,37 @@ namespace Game.Setup
                 definition.apCost, definition.resourceCost);
         }
 
-        // Events: 6-12 hexes on a 12x9 map, 24-30 on a 16x13 one (see CalibratedCount — 3x the
-        // original starting calibration, per the user's own explicit call). Never on a citadel
-        // hex itself, but — unlike GenerateNeutralArmies — its immediate neighbours are fair game
-        // now (BuildCitadelHexExclusion, not BuildCitadelExclusion; the user's own later call).
-        // Every hex already carrying a neutral army from the passes above (GenerateNeutralArmies
-        // and GenerateCityRuinsGarrisons, which always run first — see FinishAllPlacements) is a
-        // GUARANTEED event target, per the user's own explicit call — not just eligible like a
-        // plain candidate, it always gets one (and unlike a plain candidate, it's exempt from the
-        // "no resource bonus" rule below: an army sharing its hex with a resource is already an
-        // accepted stack, see GenerateResources's own comment, and now the event stacks with
-        // both). The event still spawns its own separate guard there — two armies coexisting on
-        // one hex, same as ArmyRegistry already supports — it never reuses that unrelated army as
-        // its own guard. The remaining event budget then fills from plain (army-free,
-        // resource-free) hexes, same as before, each additionally barred from landing adjacent to
-        // an already-placed event this same pass.
+        // Chance that any single hex carrying a neutral army (GenerateNeutralArmies or
+        // GenerateCityRuinsGarrisons) becomes a guaranteed event target — down from a flat 100%,
+        // per the project owner's own later call (2026-09-13): City ruins alone (below) now cover
+        // the "always guaranteed" tier, so a plain neutral-army camp doesn't need to as well.
+        private const float NeutralArmyEventChance = 0.5f;
+
+        // Events: 12-15 hexes on a 12x9 map, 24-30 on a 16x13 one (see CalibratedCount). Raised
+        // from the previous 6-12/24-30 per the project owner's own later call (2026-09-13) to
+        // absorb City ruins now always guaranteeing an event (below) without starving the plain
+        // fill on a small map. Never on a citadel hex itself, but — unlike GenerateNeutralArmies —
+        // its immediate neighbours are fair game (BuildCitadelHexExclusion, not
+        // BuildCitadelExclusion; the user's own earlier call).
+        //
+        // Two guaranteed tiers, both exempt from the "no resource bonus" rule below (an army or a
+        // ruins hex sharing its hex with a resource is already an accepted stack, see
+        // GenerateResources's own comment, and now the event stacks with both):
+        //  - every City ruins hex, ALWAYS (the project owner's own later call — independent of
+        //    whether GenerateCityRuinsGarrisons actually rolled a garrison there).
+        //  - every other hex carrying a neutral army, each independently rolling
+        //    NeutralArmyEventChance.
+        // Neither tier's own members are checked against each other for adjacency — both are
+        // guaranteed by definition, so two guaranteed hexes landing next to each other (e.g. a
+        // ruins hex beside an army camp) still both get their event. Only the remaining budget's
+        // plain (army-free, resource-free, non-ruins) fill is barred from landing adjacent to any
+        // already-placed event this pass — City ruins no longer need their own separate exclusion
+        // ring for that (see this method's previous revision): being a guaranteed hex now already
+        // makes them "already-placed" by the time the plain pass runs, so the general adjacency
+        // check covers them for free.
+        // The event still spawns its own separate guard on a guaranteed hex — two armies
+        // coexisting on one hex, same as ArmyRegistry already supports — it never reuses that
+        // unrelated army as its own guard.
         private void GenerateRandomEvents()
         {
             if (map == null || gameConfig == null || eventCatalog == null || eventCatalog.events == null || eventCatalog.events.Count == 0)
@@ -461,25 +477,26 @@ namespace Game.Setup
 
             HashSet<HexCoord> excluded = BuildCitadelHexExclusion();
 
-            List<HexCoord> guaranteedHexes = map.AllCoords
-                .Where(h => !excluded.Contains(h) && ArmyRegistry.AllAt(h).Any(a => a.Owner == _neutralPlayer))
+            List<HexCoord> ruinsHexes = GetCityRuinsHexes().Where(h => !excluded.Contains(h)).ToList();
+            var ruinsSet = new HashSet<HexCoord>(ruinsHexes);
+
+            List<HexCoord> armyHexes = map.AllCoords
+                .Where(h => !excluded.Contains(h) && !ruinsSet.Contains(h) && ArmyRegistry.AllAt(h).Any(a => a.Owner == _neutralPlayer))
+                .Where(_ => Random.value < NeutralArmyEventChance)
                 .ToList();
 
-            // Ruins buffer applies only to the plain pool below, never to guaranteedHexes — a
-            // ruins hex is ITSELF a guaranteed hex by now (its own garrison from
-            // GenerateCityRuinsGarrisons already qualifies it via the ArmyRegistry check above)
-            // and still needs its own event; this only keeps an unrelated plain event from
-            // landing on the ring right around it (see BuildCityRuinsExclusion's own comment).
-            HashSet<HexCoord> ruinsBuffer = BuildCityRuinsExclusion();
+            List<HexCoord> guaranteedHexes = ruinsHexes.Concat(armyHexes).ToList();
+            var guaranteedSet = new HashSet<HexCoord>(guaranteedHexes);
+
             List<HexCoord> candidates = map.AllCoords
-                .Where(h => !excluded.Contains(h) && !ruinsBuffer.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null && !guaranteedHexes.Contains(h))
+                .Where(h => !excluded.Contains(h) && HexResourceBonusRegistry.GetBonus(h) == null && !guaranteedSet.Contains(h))
                 .ToList();
             if (candidates.Count == 0 && guaranteedHexes.Count == 0)
                 return;
 
             int hexCount = gameConfig.mapGeneration.width * gameConfig.mapGeneration.height;
-            int min = Mathf.Max(1, CalibratedCount(6, 24, hexCount));
-            int max = Mathf.Max(min, CalibratedCount(12, 30, hexCount));
+            int min = Mathf.Max(1, CalibratedCount(12, 24, hexCount));
+            int max = Mathf.Max(min, CalibratedCount(15, 30, hexCount));
             // The guaranteed army hexes draw from the same total budget rather than stacking on
             // top of it (matches the existing calibration's intent of "roughly this many event
             // hexes total") — the lower clamp bound just makes sure that budget is never rolled
