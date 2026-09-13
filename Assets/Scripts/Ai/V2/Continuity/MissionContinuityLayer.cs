@@ -1142,6 +1142,11 @@ namespace Game.Ai.V2
             if (i.Kind == MissionKind.Raid)
                 return i.StallTurns >= AiConfigV2.raidIntentStallTurns
                     || i.TurnsActive >= AiConfigV2.raidIntentMaxTurns;
+            // Explore/Refresh are durable roles whose waypoint is re-focused by ResolveActive.
+            // Productive movement resets StallTurns; absolute age must not turn that success into
+            // IntentReapedStall. Objective exhaustion/invalidity is handled separately above.
+            if (i.Kind == MissionKind.Scout)
+                return i.StallTurns >= AiConfigV2.commitmentStallTurns;
             return i.StallTurns >= AiConfigV2.commitmentStallTurns
                 || i.TurnsActive >= AiConfigV2.commitmentMaxTurns;
         }
