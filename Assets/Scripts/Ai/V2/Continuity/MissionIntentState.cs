@@ -30,18 +30,37 @@ namespace Game.Ai.V2
 
         private int _reconTrimTurn = -1;
         private int _reconTrimCount;
+        private readonly HashSet<int> _reconTrimmedActorIds = new HashSet<int>();
+
+        private void EnsureReconTrimTurn(int turn)
+        {
+            if (_reconTrimTurn == turn)
+                return;
+            _reconTrimTurn = turn;
+            _reconTrimCount = 0;
+            _reconTrimmedActorIds.Clear();
+        }
 
         internal bool TryConsumeReconLaneTrim(int turn)
         {
-            if (_reconTrimTurn != turn)
-            {
-                _reconTrimTurn = turn;
-                _reconTrimCount = 0;
-            }
+            EnsureReconTrimTurn(turn);
             if (_reconTrimCount >= AiConfigV2.maxReconLaneTrimPerTurn)
                 return false;
             _reconTrimCount++;
             return true;
+        }
+
+        internal void MarkReconActorTrimmed(int turn, int armyId)
+        {
+            EnsureReconTrimTurn(turn);
+            if (armyId != 0)
+                _reconTrimmedActorIds.Add(armyId);
+        }
+
+        internal IReadOnlyCollection<int> ReconActorsTrimmedThisTurn(int turn)
+        {
+            EnsureReconTrimTurn(turn);
+            return _reconTrimmedActorIds;
         }
 
         internal bool IsStagedBaseExpansion(CardData card, HexCoord? target) =>
