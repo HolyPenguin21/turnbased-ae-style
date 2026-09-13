@@ -303,7 +303,7 @@ namespace Game.Ai.V2
             return confidence * Mathf.Clamp01(raw / Mathf.Max(0.0001f, posWeight));
         }
 
-        private static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;
+        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }
 

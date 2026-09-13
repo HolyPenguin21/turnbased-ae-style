@@ -828,18 +828,12 @@ namespace Game.Ai.V2
             return key;
         }
 
-        private static int Lex(long[] a, long[] b)
-        {
-            for (int i = 0; i < a.Length; i++)
-            {
-                int c = a[i].CompareTo(b[i]);
-                if (c != 0) return c;
-            }
-            return 0;
-        }
+        // Bodies moved to AiV2Util (were byte-identical to ProvisioningManager's copies) — kept as
+        // thin local forwarders so every call site above stays unchanged.
+        private static int Lex(long[] a, long[] b) => AiV2Util.Lex(a, b);
 
         private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         // =======================================================================================
         //  C. MeasureCapacity — Demand's ONE read-only aggregate query. Moved verbatim from

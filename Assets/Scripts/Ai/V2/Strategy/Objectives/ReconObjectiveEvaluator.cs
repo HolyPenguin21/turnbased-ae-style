@@ -391,16 +391,7 @@ namespace Game.Ai.V2
             return best == int.MaxValue ? Mathf.Max(0, fallbackDistFromBase) : best;
         }
 
-        private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to)
-        {
-            int best = int.MaxValue;
-            foreach (HexCoord h in hexes)
-            {
-                int d = HexGridMath.Distance(h, to);
-                if (d < best) best = d;
-            }
-            return best == int.MaxValue ? 0 : best;
-        }
+        private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 
         private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex)
         {

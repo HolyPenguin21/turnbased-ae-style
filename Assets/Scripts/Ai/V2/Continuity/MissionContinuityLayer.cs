@@ -1103,6 +1103,34 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Shared skeleton for the three Create*Intent methods below — was three independent,
+        // hand-written copies of the same 12-field MissionIntent construction (see
+        // Docs/ai-duplicate-methods-analysis.md, group M). Collapsing them here means a future
+        // field added to MissionIntent only has to be wired up once, instead of risking a silently
+        // half-initialized intent from a copy nobody remembered to update.
+        private static MissionIntent NewIntent(MissionTurnOutcome o, int turn, MissionKind kind,
+            CommitmentTier funding, object objective)
+        {
+            return new MissionIntent
+            {
+                IntentKey = o.IntentKey,
+                LastAttemptKey = o.AttemptKey,
+                Kind = kind,
+                Funding = funding,
+                Status = IntentStatus.Active,
+                Suspended = SuspendReason.None,
+                Objective = objective,
+                CreatedTurn = turn,
+                TurnsActive = 1,
+                LastReconciledTurn = turn,
+                LastProgressTurn = turn,
+                StallTurns = 0,
+                CumulativeApSpent = o.ApSpent,
+                StepsMovedTotal = o.StepsMoved,
+                PreferredMoverArmyId = o.MoverArmyId,
+            };
+        }
+
         private static void CreateIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
         {
             var si = new ScoutIntent
@@ -1113,24 +1141,8 @@ namespace Game.Ai.V2
                 TrackedArmyId = o.TrackedArmyId,
                 BaselineObservedTurn = o.BaselineObservedTurn,
             };
-            var intent = new MissionIntent
-            {
-                IntentKey = o.IntentKey,
-                LastAttemptKey = o.AttemptKey,
-                Kind = MissionKind.Scout,
-                Funding = o.ScoutKind == ScoutTargetKind.Surveil ? CommitmentTier.Soft : CommitmentTier.None,
-                Status = IntentStatus.Active,
-                Suspended = SuspendReason.None,
-                Objective = si,
-                CreatedTurn = turn,
-                TurnsActive = 1,
-                LastReconciledTurn = turn,
-                LastProgressTurn = turn,
-                StallTurns = 0,
-                CumulativeApSpent = o.ApSpent,
-                StepsMovedTotal = o.StepsMoved,
-                PreferredMoverArmyId = o.MoverArmyId,
-            };
+            CommitmentTier funding = o.ScoutKind == ScoutTargetKind.Surveil ? CommitmentTier.Soft : CommitmentTier.None;
+            MissionIntent intent = NewIntent(o, turn, MissionKind.Scout, funding, si);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created ({intent.Funding}, "
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
@@ -1145,24 +1157,7 @@ namespace Game.Ai.V2
                 TargetIsNeutral = o.RaidTargetIsNeutral,
                 OperationStarted = true,
             };
-            var intent = new MissionIntent
-            {
-                IntentKey = o.IntentKey,
-                LastAttemptKey = o.AttemptKey,
-                Kind = MissionKind.Raid,
-                Funding = CommitmentTier.Hard,
-                Status = IntentStatus.Active,
-                Suspended = SuspendReason.None,
-                Objective = ri,
-                CreatedTurn = turn,
-                TurnsActive = 1,
-                LastReconciledTurn = turn,
-                LastProgressTurn = turn,
-                StallTurns = 0,
-                CumulativeApSpent = o.ApSpent,
-                StepsMovedTotal = o.StepsMoved,
-                PreferredMoverArmyId = o.MoverArmyId,
-            };
+            MissionIntent intent = NewIntent(o, turn, MissionKind.Raid, CommitmentTier.Hard, ri);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
@@ -1170,27 +1165,20 @@ namespace Game.Ai.V2
         private static void CreateEconomyIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
         {
             EconomyMissionTarget t = o.EconomyTarget;
-            var intent = new MissionIntent
+            var ei = new EconomyIntent
             {
-                IntentKey = o.IntentKey, LastAttemptKey = o.AttemptKey, Kind = MissionKind.Economy,
-                Funding = o.EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft,
-                Status = IntentStatus.Active, Suspended = SuspendReason.None,
-                Objective = new EconomyIntent
-                {
-                    Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
-                    BuilderArmyId = o.MoverArmyId,
-                    BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
-                    BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
-                    MinimumFollowupAp = t.MinimumFollowupAp,
-                    ProjectedActivationApCost = t.ProjectedActivationApCost,
-                    ProjectedMaxMovement = t.ProjectedMaxMovement,
-                    Loaned = o.EconomyLoanSource.HasValue,
-                    LoanSource = o.EconomyLoanSource ?? default,
-                },
-                CreatedTurn = turn, TurnsActive = 1, LastReconciledTurn = turn,
-                LastProgressTurn = turn, CumulativeApSpent = o.ApSpent,
-                StepsMovedTotal = o.StepsMoved, PreferredMoverArmyId = o.MoverArmyId,
+                Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
+                BuilderArmyId = o.MoverArmyId,
+                BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
+                BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
+                MinimumFollowupAp = t.MinimumFollowupAp,
+                ProjectedActivationApCost = t.ProjectedActivationApCost,
+                ProjectedMaxMovement = t.ProjectedMaxMovement,
+                Loaned = o.EconomyLoanSource.HasValue,
+                LoanSource = o.EconomyLoanSource ?? default,
             };
+            CommitmentTier funding = o.EconomyBuildCompleted ? CommitmentTier.Hard : CommitmentTier.Soft;
+            MissionIntent intent = NewIntent(o, turn, MissionKind.Economy, funding, ei);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] continuity create {intent.IntentKey} mover=#{o.MoverArmyId}");
         }

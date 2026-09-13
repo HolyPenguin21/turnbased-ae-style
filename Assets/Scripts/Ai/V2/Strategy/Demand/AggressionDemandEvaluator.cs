@@ -223,17 +223,7 @@ namespace Game.Ai.V2
         internal static StableMissionKey RaidKey(AggressionObjective o) =>
             new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, o.TargetArmyId, 0, 0);
 
-        internal static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId)
-        {
-            if (snap?.Known == null || targetArmyId == 0)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                if (s.ArmyId == targetArmyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
-        }
+        internal static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId) =>
+            AiV2Util.KnownDefenders(snap, targetArmyId);
     }
 }

@@ -267,8 +267,7 @@ namespace Game.Ai.V2
             return result;
         }
 
-        private static int CeilDiv(int value, int divisor) =>
-            divisor <= 0 ? value : (value + divisor - 1) / divisor;
+        private static int CeilDiv(int value, int divisor) => AiV2Util.CeilDiv(value, divisor);
 
         private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, ArmyData army, ActorCommitments commitments)
         {

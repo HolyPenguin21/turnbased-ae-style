@@ -183,18 +183,8 @@ namespace Game.Ai.V2
             return new RaidCandidate(target, o.BaseValue, las, explain);
         }
 
-        private static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId)
-        {
-            if (snap?.Known == null || armyId == 0)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
-            IEnumerable<AiMapMemory.KnownEnemySighting> all =
-                (snap.Known.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in all)
-                if (s.ArmyId == armyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
-        }
+        private static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId) =>
+            AiV2Util.KnownDefenders(snap, armyId);
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c)
         {

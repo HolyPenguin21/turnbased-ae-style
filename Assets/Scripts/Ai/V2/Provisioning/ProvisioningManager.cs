@@ -461,15 +461,8 @@ namespace Game.Ai.V2
             return key;
         }
 
-        private static int Lex(long[] a, long[] b)
-        {
-            for (int i = 0; i < a.Length; i++)
-            {
-                int c = a[i].CompareTo(b[i]);
-                if (c != 0) return c;
-            }
-            return 0;
-        }
+        // Was byte-identical to ReconAssignmentPlanner's copy — body moved to AiV2Util.
+        private static int Lex(long[] a, long[] b) => AiV2Util.Lex(a, b);
 
         public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
@@ -1447,8 +1440,9 @@ namespace Game.Ai.V2
             return false;
         }
 
+        // Was byte-identical in ReconAssignmentPlanner and (twice) in this file — moved to AiV2Util.
         private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
@@ -1556,7 +1550,7 @@ namespace Game.Ai.V2
                 }
 
                 List<WorthIt.DefenderProfile> projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
-                if (!Clears(projectedProfiles, defenders, out float projectedWin))
+                if (!RaidCombatFeasibility.Clears(projectedProfiles, defenders, out float projectedWin, out _))
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                         "planned same-hex roster no longer clears the shared WorthIt estimator"));
                 plan.ProjectedWinChance = projectedWin;
@@ -1641,23 +1635,13 @@ namespace Game.Ai.V2
             return ok;
         }
 
-        private static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win)
-        {
-            if (!WorthIt.CanDamageAll(attackers, defenders, 0f))
-            {
-                win = 0f;
-                return false;
-            }
-            win = defenders.Count == 0
-                ? 1f
-                : WorthIt.WinChance((IReadOnlyCollection<WorthIt.DefenderProfile>)attackers,
-                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-            return win >= AiConfigV2.raidMinViableWinChance;
-        }
+        // Was a duplicate of RaidCombatFeasibility.Clears — with a stale hardcoded win-chance
+        // threshold and no `cover` output — now calls that shared, parameterized implementation
+        // directly at the one call site above (see Docs/ai-duplicate-methods-analysis.md, D4).
 
+        // Was byte-identical in ReconAssignmentPlanner and (twice) in this file — moved to AiV2Util.
         private static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
 

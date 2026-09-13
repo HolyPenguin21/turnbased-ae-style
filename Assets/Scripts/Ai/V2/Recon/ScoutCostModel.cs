@@ -159,6 +159,6 @@ namespace Game.Ai.V2
             return est;
         }
 
-        private static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;
+        private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }

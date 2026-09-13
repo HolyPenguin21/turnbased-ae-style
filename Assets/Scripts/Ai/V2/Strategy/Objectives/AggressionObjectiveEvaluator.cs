@@ -195,27 +195,10 @@ namespace Game.Ai.V2
             };
         }
 
-        private static IReadOnlyList<WorthIt.DefenderProfile> DefendersOf(WorldSnapshot snap, int armyId)
-        {
-            IEnumerable<AiMapMemory.KnownEnemySighting> all =
-                (snap.Known?.EnemySightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known?.NeutralSightings ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in all)
-                if (s.ArmyId == armyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
-        }
+        private static IReadOnlyList<WorthIt.DefenderProfile> DefendersOf(WorldSnapshot snap, int armyId) =>
+            AiV2Util.KnownDefenders(snap, armyId);
 
-        private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to)
-        {
-            int best = int.MaxValue;
-            foreach (HexCoord h in hexes)
-            {
-                int d = HexGridMath.Distance(h, to);
-                if (d < best) best = d;
-            }
-            return best == int.MaxValue ? 0 : best;
-        }
+        private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);
     }
