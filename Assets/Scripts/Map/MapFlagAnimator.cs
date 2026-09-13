@@ -9,7 +9,7 @@ namespace Game.Map
     {
         [SerializeField] private SpriteRenderer targetRenderer;
         [SerializeField] private Sprite[] frames;
-        [SerializeField, Min(0.1f)] private float framesPerSecond = 6f;
+        [SerializeField, Min(0.1f)] private float framesPerSecond = 4f;
         [SerializeField] private bool randomizePhase = true;
 
         private float elapsed;
