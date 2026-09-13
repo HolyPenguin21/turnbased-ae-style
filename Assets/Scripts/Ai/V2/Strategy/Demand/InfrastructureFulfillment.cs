@@ -87,7 +87,7 @@ namespace Game.Ai.V2
                     : demand.Capability == CapabilityKind.EconomicExpansionBase
                         ? BuildEconomyBaseCandidate(snap, player, root, hand, ctx, demand)
                     : demand.Capability == CapabilityKind.DevelopmentInfrastructure
-                        ? BuildDevelopmentCandidate(snap, player, root, hand, ctx)
+                        ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand)
                         : demand.Capability == CapabilityKind.DevelopmentOperator
                             ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx, demand)
                             : null;
@@ -366,7 +366,7 @@ namespace Game.Ai.V2
 
         // DEV — a CardType.Facility with Research/Production, into an owned Base slot.
         private static InfraCandidate BuildDevelopmentCandidate(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
         {
             if (hand?.Hand == null)
                 return null;
@@ -374,8 +374,10 @@ namespace Game.Ai.V2
                 .Select((card, ordinal) => (Card: card, Ordinal: ordinal))
                 .Where(x => x.Card?.Definition != null && x.Card.Definition.cardType == CardType.Facility
                     && x.Card.Definition.grantedAbilities != null
-                    && (x.Card.Definition.grantedAbilities.Contains(UnitAbilities.Research)
-                        || x.Card.Definition.grantedAbilities.Contains(UnitAbilities.Production)))
+                    && x.Card == demand.DevOpportunity?.PreparationFacilityCard
+                    && demand.DevelopmentOperatorMode.HasValue
+                    && x.Card.Definition.grantedAbilities.Contains(
+                        ResearchProductionSystem.FacilityAbility(demand.DevelopmentOperatorMode.Value)))
                 .ToList();
             List<HexCoord> bases = BuildingRegistry.AllBuildings()
                 .Where(b => b != null && b.Owner == player && b.IsBase)
@@ -390,6 +392,8 @@ namespace Game.Ai.V2
                     NonCombatRole.Facility, card, snap, inv, hand, bestEquipmentUpgrade: 0f);
                 foreach (HexCoord baseHex in bases)
                 {
+                    if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
+                        continue;
                     if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out _))
                         continue;
                     if (!StrategicSpendability.FitsSpendableResources(
@@ -449,7 +453,8 @@ namespace Game.Ai.V2
                     IReadOnlyList<string> abilities = card?.Definition != null
                         ? MaterializationChainMatching.EffectiveAbilities(card.Definition, card.Equipment)
                         : null;
-                    if (abilities == null || !abilities.Contains(role))
+                    if (card != demand.DevOpportunity?.PreparationOperatorCard
+                        || abilities == null || !abilities.Contains(role))
                         continue;
 
                     var placement = new PlacementOption(fac.Hex, DeploymentKind.Garrison, garrison);
@@ -531,3 +536,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

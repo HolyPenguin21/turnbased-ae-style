@@ -179,13 +179,20 @@ namespace Game.Ai.V2
                             .Any(contact => contact.Hex.Equals(hex));
                         if (knownHostileAtTarget)
                             continue;
-                        if (ctx?.Map != null && !snap.Self.BaseHexes.Any(home =>
-                                SafeStepPathing.FindSafePathCost(
-                                    ctx.Map, player, home, hex) < int.MaxValue))
-                            continue;
-
                         int supportDistance = snap.Self.BaseHexes
                             .Min(baseHex => HexGridMath.Distance(baseHex, hex));
+                        // Economy expansion must remain connected to our support network. The
+                        // same sanctioned starting-citadel fact that shapes direction also prevents
+                        // an unsupported site inside the opponent's immediate base perimeter.
+                        if (HexGridMath.Distance(hex, targetCitadel) <= AiConfigV2.economyBaseMinSpacing
+                            && HexGridMath.Distance(hex, targetCitadel) < supportDistance)
+                            continue;
+                        int preparationTravel = snap.Self.BaseHexes.Min(home => ctx?.Map != null
+                            ? SafeStepPathing.FindSafePathCost(ctx.Map, player, home, hex)
+                            : HexGridMath.Distance(home, hex));
+                        if (preparationTravel == int.MaxValue)
+                            continue;
+
                         float logistics = 1f - Mathf.Clamp01(
                             (supportDistance - AiConfigV2.economyBaseMinSpacing)
                             / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
@@ -208,6 +215,7 @@ namespace Game.Ai.V2
                         baseOpportunities.Add(new EconomyBaseOpportunity
                         {
                             Hex = hex,
+                            PreparationTravelCost = preparationTravel,
                             HexYield = knownSites.Contains(hex)
                                 ? EconomyKnownHexYield(snap, hex) : default(ResourceBundle),
                             CapacityValue = convertsOwnedExtraction ? 1f : 0.5f,

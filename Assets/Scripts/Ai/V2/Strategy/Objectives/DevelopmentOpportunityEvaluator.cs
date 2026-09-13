@@ -53,6 +53,8 @@ namespace Game.Ai.V2
         public ResourceBundle StakeCost;
         public float SuccessChance;
         public GenerationStep Generation;    // exact operator/source selected by GenerationSource
+        public CardData PreparationFacilityCard;
+        public CardData PreparationOperatorCard;
 
         public DevRecipientKind RecipientKind;
         public CardData RecipientCard;       // HandCard
@@ -72,7 +74,8 @@ namespace Game.Ai.V2
     public static class DevelopmentOpportunityEvaluator
     {
         public static List<DevelopmentOpportunity> Enumerate(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, IReadOnlyList<AggressionObjective> aggObjectives)
+            PlayerRoot root, AiHandData hand, IReadOnlyList<AggressionObjective> aggObjectives,
+            System.Func<DevelopmentOpportunity, bool> supportsNeed = null)
         {
             var result = new List<DevelopmentOpportunity>();
             DevelopmentReadiness rd = snap?.Development;
@@ -99,7 +102,7 @@ namespace Game.Ai.V2
                 }
 
                 DevelopmentOpportunity best = BestEquipmentOpportunity(
-                    off, snap, inv, player, root, hand, raidHexes, out string recipDiag);
+                    off, snap, inv, player, root, hand, raidHexes, out string recipDiag, supportsNeed);
                 if (best == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} p={off.SuccessChance:0.00} "
@@ -137,6 +140,112 @@ namespace Game.Ai.V2
             foreach (DevelopmentOpportunity op in result)
                 AiDebugLog.Write($"[AI][V2][Dev]   {op.Explain} base {op.BaseValue:0.0}");
             return result;
+        }
+
+        // Preparation witnesses use the same catalog, legal recipient enumeration and scorer
+        // as a ready Challenge. They carry no GenerationStep and never authorize execution.
+        internal static List<DevelopmentOpportunity> EnumeratePreparation(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            System.Func<DevelopmentOpportunity, bool> supportsNeed)
+        {
+            var result = new List<DevelopmentOpportunity>();
+            if (snap?.Self?.BaseHexes == null || player == null || root == null
+                || hand?.Hand == null || ctx?.ResearchProductionCatalog == null || supportsNeed == null)
+                return result;
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            foreach (ResearchProductionMode mode in new[]
+                { ResearchProductionMode.Research, ResearchProductionMode.Production })
+            foreach (HexCoord hex in snap.Self.BaseHexes)
+            {
+                BuildingData building = BuildingRegistry.FindAt(hex);
+                if (building == null || building.Owner != player
+                    || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null)
+                    continue;
+                bool facilityReady = building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
+                // Reuse the mode's existing facility. Preparation must not manufacture another
+                // lab at every base while the first one can already serve the same output.
+                if (snap.Development?.Facilities?.Any(f => f.Mode == mode && f.HasHero && !f.Contested) == true
+                    || (!facilityReady && snap.Development?.Facilities?.Any(f => f.Mode == mode) == true))
+                    continue;
+                UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
+                if (facilityReady && actor != null)
+                    continue;
+                CardData facility = facilityReady ? null : hand.Hand
+                    .Where(c => c?.Definition?.cardType == CardType.Facility
+                        && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
+                    .OrderBy(c => c.EffectivePlayApCost * AiConfigV2.devApValue
+                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
+                    .FirstOrDefault();
+                if (!facilityReady && facility == null)
+                    continue;
+                ArmyData garrison = ArmyRegistry.AllAt(hex)
+                    .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
+                CardData operatorCard = actor != null ? null : hand.Hand
+                    .Where(c => c?.Definition?.cardType == CardType.Hero
+                        && MaterializationChainMatching.EffectiveAbilities(c.Definition, c.Equipment)
+                            .Contains(ResearchProductionSystem.RoleAbility(mode))
+                        && garrison != null && CardPlayExecutor.Preflight(player, root, hand, ctx,
+                            CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _))
+                    .OrderBy(c => c.EffectivePlayApCost * AiConfigV2.devApValue
+                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
+                    .FirstOrDefault();
+                if (actor == null && operatorCard == null)
+                    continue;
+                UnitData projectedActor = actor;
+                if (projectedActor == null)
+                {
+                    // UnitData is plain data. This unregistered preview is used only for the
+                    // canonical probability calculation, never as a generation/execution actor.
+                    int fate = operatorCard.Definition.fate;
+                    if (operatorCard.Equipment?.equipment != null)
+                    {
+                        PredictedEquipmentState projected = EquipmentSystem.Predict(
+                            operatorCard.Equipment.equipment,
+                            new Dictionary<EquipmentStat, int> { [EquipmentStat.Fate] = fate },
+                            operatorCard.Definition.grantedAbilities);
+                        if (projected.Stats.TryGetValue(EquipmentStat.Fate, out int equippedFate))
+                            fate = equippedFate;
+                    }
+                    projectedActor = new UnitData { Fate = Mathf.Max(0, fate), IsHero = true,
+                        Owner = player, OriginatingCard = operatorCard.Definition,
+                        Equipment = operatorCard.Equipment };
+                    projectedActor.Abilities.UnionWith(MaterializationChainMatching.EffectiveAbilities(
+                        operatorCard.Definition, operatorCard.Equipment));
+                }
+                float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
+                    .Sum(c => c.EffectivePlayApCost * AiConfigV2.devApValue
+                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap));
+                foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
+                    ctx.ResearchProductionCatalog, mode, player.Faction))
+                {
+                    if (card?.cardType != CardType.Equipment || card.equipment == null)
+                        continue;
+                    if (ResourceBundle.All.Any(t =>
+                        (facility?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                        + (operatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                        + (card.resourceCost?.Get(t) ?? 0)
+                        > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
+                        continue;
+                    var off = new DevelopmentOffering
+                    {
+                        Mode = mode, FacilityHex = hex, Card = card, ProducesEquipment = true,
+                        SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
+                    };
+                    DevelopmentOpportunity op = BestEquipmentOpportunity(off, snap, inv, player,
+                        root, hand, new HashSet<HexCoord>(), out _, supportsNeed);
+                    if (op == null) continue;
+                    Score(op, snap, root, hand);
+                    op.PreparationFacilityCard = facility;
+                    op.PreparationOperatorCard = operatorCard;
+                    op.Ev -= preparationCost;
+                    op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
+                    if (op.Ev <= AiConfigV2.devEvMargin) continue;
+                    op.Explain = $"prepare {mode} @({hex.Q},{hex.R}) for {card.displayName} -> "
+                        + $"{op.RecipientLabel}; EV after prerequisites={op.Ev:0.##}";
+                    result.Add(op);
+                }
+            }
+            return result.OrderByDescending(o => o.BaseValue).ToList();
         }
 
         // Re-score an already-built opportunity against the CURRENT snapshot (surplus + best
@@ -193,7 +302,8 @@ namespace Game.Ai.V2
         // gated by EquipmentSystem.CanAttach (host kind + type tags + free slot + affordability).
         private static DevelopmentOpportunity BestEquipmentOpportunity(DevelopmentOffering off,
             WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, HashSet<HexCoord> raidHexes, out string diag)
+            AiHandData hand, HashSet<HexCoord> raidHexes, out string diag,
+            System.Func<DevelopmentOpportunity, bool> supportsNeed = null)
         {
             diag = "no equipment grant on the card";
             EquipmentGrant grant = off.Card.equipment;
@@ -206,7 +316,7 @@ namespace Game.Ai.V2
             DevelopmentOpportunity best = null;
             void Consider(DevelopmentOpportunity cand)
             {
-                if (cand == null) return;
+                if (cand == null || (supportsNeed != null && !supportsNeed(cand))) return;
                 if (cand.ExpectedGain <= 0f) { gainZero++; return; }
                 if (best == null || cand.ExpectedGain > best.ExpectedGain)
                     best = cand;
@@ -310,3 +420,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

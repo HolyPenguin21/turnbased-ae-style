@@ -176,8 +176,51 @@ namespace Game.Ai.V2
             //     API, NOT the Unit/Hero materialization chain below. The requesting axis labels
             //     value/telemetry; AP comes from the shared pool. Handled here once, then blocked so the generic
             //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
-            var deferredEconomyBuilds = new List<AxisDemand>();
-            foreach (DemandState istate in states.Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability)))
+            // Establish the existing single Economy hold BEFORE infrastructure can spend it.
+            var economyBuildObligations = states.Select(s => s.Demand)
+                .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
+                .Concat(allStates
+                    .Where(s => s.Demand != null
+                        && s.Demand.RequestingAxis == DesireAxis.Economy
+                        && s.Demand.Capability == CapabilityKind.Hero
+                        && s.Demand.TargetHex.HasValue
+                        && s.Demand.EconomyBuildResourceCost != null)
+                    .Select(s => s.Demand))
+                .ToList();
+            AxisDemand protectedEconomyBuild = economyBuildObligations
+                .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
+                .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
+                .ThenByDescending(d => ResolveEconomyTaskKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
+                .ThenByDescending(d => d.EconomySiteValue)
+                .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
+                .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
+                .FirstOrDefault();
+            if (protectedEconomyBuild != null)
+            {
+                if (protectedEconomyBuild.Capability == CapabilityKind.Hero)
+                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
+                        player, ctx.TurnNumber, protectedEconomyBuild);
+                else
+                    InfrastructureFulfillment.ReserveDeferredEconomyResources(
+                        snap, player, ctx.TurnNumber, protectedEconomyBuild);
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
+                    + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
+                    + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
+            }
+            else if (economyAxisAuthoritative)
+            {
+                // No obligation survived selection — but only clear when this call actually had
+                // Economy's authoritative view. A dirty-axis subset that never included Economy
+                // (economyAxisAuthoritative == false) says nothing about whether Economy's build
+                // target still exists; the hold must be left exactly as it was.
+                InfrastructureFulfillment.ClearDeferredEconomyResources(
+                    player, ctx.TurnNumber);
+            }
+
+            foreach (DemandState istate in states
+                .Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability))
+                .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
+                .ThenByDescending(s => s.Demand.Value + s.Demand.EconomyStrategicUrgency))
             {
                 istate.Blocked = true;
                 result.InfrastructureAttempts++;
@@ -226,65 +269,8 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    // Only a real EconomicInfrastructure/Expansion demand reaches this hold:
-                    // Demand has already proved a valuable site and an eligible builder route.
-                    // A missing-builder Hero prerequisite is a different capability and therefore
-                    // cannot lock the Human needed to create that hero.
-                    if (istate.Demand.Capability == CapabilityKind.EconomicInfrastructure
-                        || istate.Demand.Capability == CapabilityKind.EconomicExpansionBase)
-                        deferredEconomyBuilds.Add(istate.Demand);
                     AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
                 }
-            }
-
-            // Protect exactly one economy build vector — collected ONCE, before any per-round
-            // reservation writer runs, from BOTH direct-build obligations (infra/expansion demands
-            // that just failed TryFulfill) AND Hero-prerequisite obligations (an accepted Economy
-            // build target with no Hero to send yet). Picking a single owner here up front means
-            // the old per-round Hero-prerequisite writer inside the materialization loop below
-            // cannot silently outbid (or be outbid by, in foreach order) this hold — there is only
-            // ever one writer of StrategicReservationReason.EconomyDeferredBuild per FulfillDemands
-            // call. Extraction and Base demands may coexist as alternatives, but reserving both
-            // would manufacture a second resource-allocation layer inside Economy. The highest
-            // admitted local priority owns the hold for this pass.
-            var economyBuildObligations = deferredEconomyBuilds
-                .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
-                .Concat(allStates
-                    .Where(s => s.Demand != null
-                        && s.Demand.RequestingAxis == DesireAxis.Economy
-                        && s.Demand.Capability == CapabilityKind.Hero
-                        && s.Demand.TargetHex.HasValue
-                        && s.Demand.EconomyBuildResourceCost != null)
-                    .Select(s => s.Demand))
-                .ToList();
-            AxisDemand protectedEconomyBuild = economyBuildObligations
-                .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
-                .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
-                .ThenByDescending(d => ResolveEconomyTaskKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
-                .ThenByDescending(d => d.EconomySiteValue)
-                .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
-                .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
-                .FirstOrDefault();
-            if (protectedEconomyBuild != null)
-            {
-                if (protectedEconomyBuild.Capability == CapabilityKind.Hero)
-                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
-                        player, ctx.TurnNumber, protectedEconomyBuild);
-                else
-                    InfrastructureFulfillment.ReserveDeferredEconomyResources(
-                        snap, player, ctx.TurnNumber, protectedEconomyBuild);
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected "
-                    + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
-                    + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
-            }
-            else if (economyAxisAuthoritative)
-            {
-                // No obligation survived selection — but only clear when this call actually had
-                // Economy's authoritative view. A dirty-axis subset that never included Economy
-                // (economyAxisAuthoritative == false) says nothing about whether Economy's build
-                // target still exists; the hold must be left exactly as it was.
-                InfrastructureFulfillment.ClearDeferredEconomyResources(
-                    player, ctx.TurnNumber);
             }
 
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate

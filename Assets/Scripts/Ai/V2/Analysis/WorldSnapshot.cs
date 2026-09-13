@@ -511,6 +511,8 @@ namespace Game.Ai.V2
 
     public struct EconomyBaseOpportunity
     {
+        // Safe route from an owned base, independent of whether its next builder exists yet.
+        public int PreparationTravelCost;
         public HexCoord Hex;
         public ResourceBundle HexYield;
         public float CapacityValue;
@@ -734,3 +736,4 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
+

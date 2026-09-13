@@ -50,10 +50,10 @@ namespace Game.Ai.V2
     //  internal-Facility slot when a Facility already in hand is blocked SPECIFICALLY by slot
     //  capacity (not by affordability or by an already-open slot).
     //
-    //  Everything that is a card play — placing that internal Facility, attaching Equipment to a
-    //  live unit, running a Research/Production Challenge — is an ordinary PlayCard candidate in
-    //  the end-of-turn tempo arbiter, scored by the single StrategicCardEvaluator through
-    //  NonCombatCardPlayer (spec §5, one card scorer). There is deliberately NO second card
+    //  Card execution remains with its existing owner. Research/Production facilities require a
+    //  supported Development prerequisite; this policy may unlock their slot only with the same
+    //  concrete output/recipient witness. Other facilities keep the ordinary surplus path, scored
+    //  by StrategicCardEvaluator through NonCombatCardPlayer (spec §5, one card scorer). There is deliberately NO second card
     //  scorer here and NO hidden "facility, then capacity, then equipment, then generation"
     //  priority chain: EnumerateCandidates returns every eligible non-card action and the arbiter
     //  ranks purely by utility.
@@ -121,6 +121,14 @@ namespace Game.Ai.V2
             if (bases.Count == 0)
                 yield break;
 
+            var intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
+            List<DevelopmentOpportunity> preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
+                snap, player, root, hand, ctx,
+                op => DemandLayer.HasSupportedDevelopmentAxisDemand(op, null, intents, player));
+            bool NeedsDevelopment(CardData card) => card?.Definition?.grantedAbilities != null
+                && (card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research))
+                    || card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)));
+
             // Evaluate every Facility card, including economy / ApBonus Facilities. A card is an
             // upgrade consequence only when the authoritative placement check rejects it for the
             // capacity reason at every owned Base; an AP/resource/ownership failure must not be
@@ -129,6 +137,8 @@ namespace Game.Ai.V2
                 .Select((card, ordinal) => new { Card = card, Ordinal = ordinal })
                 .Where(x => x.Card?.Definition != null
                     && x.Card.Definition.cardType == CardType.Facility)
+                .Where(x => !NeedsDevelopment(x.Card)
+                    || preparation.Any(op => op.PreparationFacilityCard == x.Card))
                 .Where(x => IsBlockedOnlyByCapacity(x.Card, bases, player, hand, ctx))
                 .Select(x => new
                 {
@@ -144,26 +154,42 @@ namespace Game.Ai.V2
             if (blockedFacilities.Count == 0)
                 yield break;
 
-            var bestFacility = blockedFacilities[0];
-
             foreach (BuildingData b in bases
                 .Where(x => x.UnlockedFacilitySlots < x.TotalFacilitySlots)
                 .OrderByDescending(x => x.IsStartingCitadel)
                 .ThenBy(x => x.Level)
                 .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R))
             {
+                var bestFacility = blockedFacilities.FirstOrDefault(x => !NeedsDevelopment(x.Card)
+                    || preparation.Any(op => op.PreparationFacilityCard == x.Card
+                        && op.FacilityHex.Equals(b.Hex)));
+                if (bestFacility == null)
+                    continue;
                 int tierIndex = b.Level - 1;
                 if (tierIndex < 0 || tierIndex >= ctx.GameConfig.baseUpgradeTiers.Length)
                     continue;
                 BaseUpgradeTier tier = ctx.GameConfig.baseUpgradeTiers[tierIndex];
                 if (tier == null)
                     continue;
+                DevelopmentOpportunity witness = NeedsDevelopment(bestFacility.Card)
+                    ? preparation.FirstOrDefault(op => op.PreparationFacilityCard == bestFacility.Card
+                        && op.FacilityHex.Equals(b.Hex)
+                        && !ResourceBundle.All.Any(t => (tier.cost?.Get(t) ?? 0)
+                            + (op.PreparationFacilityCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                            + (op.PreparationOperatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                            + (op.Card?.resourceCost?.Get(t) ?? 0)
+                            > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
+                    : null;
+                if (NeedsDevelopment(bestFacility.Card) && witness == null)
+                    continue;
                 yield return new CapacityUpgrade
                 {
                     Building = b,
                     Tier = tier,
                     Facility = bestFacility.Card,
-                    FacilityUtility = bestFacility.Evaluation.TotalUseScore,
+                    FacilityUtility = witness != null
+                        ? Mathf.Min(bestFacility.Evaluation.TotalUseScore, witness.Ev)
+                        : bestFacility.Evaluation.TotalUseScore,
                     FacilityBreakdown = bestFacility.Evaluation.Breakdown?.ToCompact() ?? "no breakdown",
                 };
             }
@@ -209,3 +235,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

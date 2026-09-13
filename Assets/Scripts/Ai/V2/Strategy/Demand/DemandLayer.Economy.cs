@@ -162,6 +162,7 @@ namespace Game.Ai.V2
                         activeIntents, x.TargetHex, EconomyTaskKind.BuildExtraction))
                 .OrderByDescending(x => IsActiveBaseCommitment(
                     activeIntents, x.TargetHex, x.EconomyBuildCard))
+                .ThenByDescending(x => x.Value + x.EconomyStrategicUrgency)
                 .ThenByDescending(x => x.EconomySiteValue)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
                 .ThenBy(x => x.EconomyTravelCost)
@@ -172,34 +173,27 @@ namespace Game.Ai.V2
                 .Concat(baseRanked.Take(
                     Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
                 .ToList();
-            // Fresh-vs-fresh cross-family conflict: the per-list filters above only exclude a
-            // candidate that collides with an ACTIVE intent of the other family. On the very
-            // first admission for a hex — before either family has an active intent yet — both
-            // an extraction and a base candidate can independently pass and land in `selected`
-            // together. Keep exactly one per hex: an active intent for either family wins
-            // outright (should already be excluded above, kept as a defensive tie-break);
-            // otherwise the higher-Value candidate wins.
-            if (selected.Count > 1)
-            {
-                var hexConflicts = selected.Where(d => d.TargetHex.HasValue)
-                    .GroupBy(d => d.TargetHex.Value)
-                    .Where(g => g.Count() > 1);
-                var losers = new HashSet<AxisDemand>();
-                foreach (var group in hexConflicts)
+            // One existing builder and one physical Base card can justify only one operation
+            // in this admission. Commitment wins; otherwise compare full delivered merit.
+            var selectedHexes = new HashSet<HexCoord>();
+            var selectedBuilders = new HashSet<int>();
+            var selectedCards = new HashSet<CardData>();
+            selected = selected
+                .OrderByDescending(d => HasActiveEconomyBuildIntent(activeIntents, d))
+                .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
+                .Where(d =>
                 {
-                    AxisDemand winner = group
-                        .OrderByDescending(d => HasActiveEconomyIntentAtHexOfKind(activeIntents,
-                            d.TargetHex, d.Capability == CapabilityKind.EconomicExpansionBase
-                                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction) ? 1 : 0)
-                        .ThenByDescending(d => d.Value)
-                        .First();
-                    foreach (AxisDemand d in group)
-                        if (!ReferenceEquals(d, winner))
-                            losers.Add(d);
-                }
-                if (losers.Count > 0)
-                    selected = selected.Where(d => !losers.Contains(d)).ToList();
-            }
+                    if ((d.TargetHex.HasValue && selectedHexes.Contains(d.TargetHex.Value))
+                        || (d.EconomyPreferredBuilderArmyId.HasValue
+                            && selectedBuilders.Contains(d.EconomyPreferredBuilderArmyId.Value))
+                        || (d.EconomyBuildCard != null && selectedCards.Contains(d.EconomyBuildCard)))
+                        return false;
+                    if (d.TargetHex.HasValue) selectedHexes.Add(d.TargetHex.Value);
+                    if (d.EconomyPreferredBuilderArmyId.HasValue)
+                        selectedBuilders.Add(d.EconomyPreferredBuilderArmyId.Value);
+                    if (d.EconomyBuildCard != null) selectedCards.Add(d.EconomyBuildCard);
+                    return true;
+                }).ToList();
             foreach (AxisDemand demand in selected)
             {
                 // A Phase-A Hero handoff already has one concrete actor and target owned by
@@ -329,137 +323,154 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
+        // Analysis replaces snapshots on every operational/knowledge refresh. Reuse only exact
+        // read-only assessments within that snapshot; weak keys cannot retain old turns/players.
+        private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
+            Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool), EconomyBuilderChoice>>
+            EconomyAssessmentCache = new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
+                Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool), EconomyBuilderChoice>>();
+
         internal static EconomyBuilderChoice AssessEconomyArmy(WorldSnapshot snap,
             HexCoord target, EconomyBuilderRouteSnapshot route, ArmySnapshot army,
             float buildApCost, bool includeReturn)
         {
-            var choice = new EconomyBuilderChoice
-            {
-                Route = route,
-                Army = army,
-                TotalAssignmentApCost = EstimateEconomyAssignmentAp(
-                    route, buildApCost, includeReturn),
-                Suitability = EconomyArmySuitability.Ineligible,
-                IneligibleReason = "insufficient_safe_escort",
-            };
-            if (army == null)
-                return choice;
+            if (snap == null)
+                return Compute();
+            var cache = EconomyAssessmentCache.GetOrCreateValue(snap);
+            var key = (target, route, army, buildApCost, includeReturn);
+            if (!cache.TryGetValue(key, out EconomyBuilderChoice assessed))
+                cache[key] = assessed = Compute();
+            return assessed;
 
-            List<AiMapMemory.KnownEnemySighting> threats = EconomyRouteThreats(
-                snap, army.Hex, target);
-            bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
-            // EconomyRouteThreats already scans the whole corridor (direct + detour buffer) against
-            // honestly-witnessed sightings — a clean route reported here is not a proximity guess,
-            // it is the fog-honest answer. No separate base-adjacency requirement on top of it.
-            bool safeRear = threats.Count == 0;
-            int minimumEscort = safeRear ? 0 : 1;
-            choice.MinimumEscortCount = minimumEscort;
-
-            List<int> currentIndices = Enumerable.Range(0, army.Members?.Count ?? 0)
-                .Where(i => i >= (army.NonHeroIsAviation?.Count ?? 0)
-                    || !army.NonHeroIsAviation[i]).ToList();
-            List<WorthIt.DefenderProfile> current = currentIndices
-                .Select(i => army.Members[i]).ToList();
-            if (EconomyRosterSafe(current, threats, minimumEscort))
+            EconomyBuilderChoice Compute()
             {
-                List<int> retained = MinimumSafeEconomyEscortIndices(
-                    army, threats, minimumEscort);
-                // Field composition is immutable for Economy: a suitable field army travels as
-                // one actor and must be priced whole. Only a Base/Citadel candidate may project
-                // the minimum retained subset that Provisioning can actually unload atomically.
-                if (!atBase)
-                    retained = currentIndices;
-                int smallest = retained?.Count ?? current.Count;
-                choice.MinimumEscortCount = smallest;
-                int knownBodyAp = army.NonHeroActivationApCosts?.Sum() ?? 0;
-                int heroAp = army.HeroActivationApCost > 0
-                    ? army.HeroActivationApCost
-                    : Mathf.Max(0, route.ActivationApCost - knownBodyAp);
-                int heroMove = army.HeroMoveMax > 0
-                    ? army.HeroMoveMax : route.MaxMovement;
-                choice.ProjectedActivationApCost = heroAp
-                    + retained.Sum(i => i < army.NonHeroActivationApCosts.Count
-                        ? army.NonHeroActivationApCosts[i] : 0);
-                choice.ProjectedMaxMovement = retained.Count == 0
-                    ? heroMove
-                    : Mathf.Min(heroMove,
-                        retained.Min(i => i < army.NonHeroMoveMax.Count
-                            ? army.NonHeroMoveMax[i] : army.MaxMovement));
-                EconomyBuilderRouteSnapshot projectedRoute = route;
-                projectedRoute.ActivationApCost = choice.ProjectedActivationApCost;
-                projectedRoute.MaxMovement = Mathf.Max(1, choice.ProjectedMaxMovement);
-                choice.Route = projectedRoute;
-                choice.TotalAssignmentApCost = EstimateEconomyAssignmentAp(
-                    projectedRoute, buildApCost, includeReturn);
-                choice.Suitability = atBase && current.Count > smallest
-                    ? EconomyArmySuitability.LightenAtBase
-                    : EconomyArmySuitability.Ready;
-                return choice;
-            }
-
-            // Field rosters are immutable for Economy. A deficient field army is rejected here,
-            // before its AP reaches Allocation. Only a Base/Citadel garrison may supply the exact
-            // minimum missing escort.
-            if (!atBase || snap?.Self?.Armies == null)
-                return choice;
-            ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a != null
-                && a.IsGarrison && a.Hex.Equals(army.Hex));
-            // Mirror ProvisioningManager.PlanEconomyArmyLightening's hard gate here: a garrison
-            // already activated this turn cannot actually hand over an escort, so do not score
-            // ReinforceAtBase as viable and let Provisioning discover that as AssemblyInfeasible
-            // (which also burns a 2-turn structural cooldown on the whole delivery for nothing).
-            if (garrison == null || garrison == army)
-                return choice;
-            if (garrison.HasActivatedThisTurn)
-            {
-                choice.IneligibleReason = "escort_activated_this_turn";
-                return choice;
-            }
-            List<WorthIt.DefenderProfile> reserve =
-                garrison?.Members?.ToList() ?? new List<WorthIt.DefenderProfile>();
-            List<int> reserveIndices = Enumerable.Range(0, reserve.Count)
-                .Where(i => i >= (garrison.NonHeroIsAviation?.Count ?? 0)
-                    || !garrison.NonHeroIsAviation[i]).ToList();
-            for (int add = 1; add <= reserve.Count; add++)
-            {
-                List<int> best = null;
-                int bestAp = int.MaxValue;
-                int bestMove = int.MinValue;
-                foreach (List<int> subset in Combinations(reserveIndices, add))
+                var choice = new EconomyBuilderChoice
                 {
-                    var projected = new List<WorthIt.DefenderProfile>(current);
-                    projected.AddRange(subset.Select(i => reserve[i]));
-                    if (!EconomyRosterSafe(projected, threats, minimumEscort))
-                        continue;
-                    int addedAp = subset.Sum(i => i < garrison.NonHeroActivationApCosts.Count
-                        ? garrison.NonHeroActivationApCosts[i] : 0);
-                    int addedMove = subset.Min(i => i < garrison.NonHeroMoveMax.Count
-                        ? garrison.NonHeroMoveMax[i] : garrison.MaxMovement);
-                    if (best == null || addedAp < bestAp
-                        || (addedAp == bestAp && addedMove > bestMove))
-                    {
-                        best = subset;
-                        bestAp = addedAp;
-                        bestMove = addedMove;
-                    }
-                }
-                if (best != null)
+                    Route = route,
+                    Army = army,
+                    TotalAssignmentApCost = EstimateEconomyAssignmentAp(
+                        route, buildApCost, includeReturn),
+                    Suitability = EconomyArmySuitability.Ineligible,
+                    IneligibleReason = "insufficient_safe_escort",
+                };
+                if (army == null)
+                    return choice;
+
+                List<AiMapMemory.KnownEnemySighting> threats = EconomyRouteThreats(
+                    snap, army.Hex, target);
+                bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
+                // EconomyRouteThreats already scans the whole corridor (direct + detour buffer) against
+                // honestly-witnessed sightings — a clean route reported here is not a proximity guess,
+                // it is the fog-honest answer. No separate base-adjacency requirement on top of it.
+                bool safeRear = threats.Count == 0;
+                int minimumEscort = safeRear ? 0 : 1;
+                choice.MinimumEscortCount = minimumEscort;
+
+                List<int> currentIndices = Enumerable.Range(0, army.Members?.Count ?? 0)
+                    .Where(i => i >= (army.NonHeroIsAviation?.Count ?? 0)
+                        || !army.NonHeroIsAviation[i]).ToList();
+                List<WorthIt.DefenderProfile> current = currentIndices
+                    .Select(i => army.Members[i]).ToList();
+                if (EconomyRosterSafe(current, threats, minimumEscort))
                 {
-                    choice.MinimumEscortCount = current.Count + best.Count;
-                    choice.Suitability = EconomyArmySuitability.ReinforceAtBase;
-                    choice.ProjectedActivationApCost = route.ActivationApCost + bestAp;
-                    choice.ProjectedMaxMovement = Mathf.Min(route.MaxMovement,
-                        bestMove > 0 ? bestMove : route.MaxMovement);
+                    List<int> retained = atBase
+                        ? MinimumSafeEconomyEscortIndices(army, threats, minimumEscort)
+                        : currentIndices;
+                    // Field composition is immutable for Economy: a suitable field army travels as
+                    // one actor and must be priced whole. Only a Base/Citadel candidate may project
+                    // the minimum retained subset that Provisioning can actually unload atomically.
+                    int smallest = retained?.Count ?? current.Count;
+                    choice.MinimumEscortCount = smallest;
+                    int knownBodyAp = army.NonHeroActivationApCosts?.Sum() ?? 0;
+                    int heroAp = army.HeroActivationApCost > 0
+                        ? army.HeroActivationApCost
+                        : Mathf.Max(0, route.ActivationApCost - knownBodyAp);
+                    int heroMove = army.HeroMoveMax > 0
+                        ? army.HeroMoveMax : route.MaxMovement;
+                    choice.ProjectedActivationApCost = heroAp
+                        + retained.Sum(i => i < army.NonHeroActivationApCosts.Count
+                            ? army.NonHeroActivationApCosts[i] : 0);
+                    choice.ProjectedMaxMovement = retained.Count == 0
+                        ? heroMove
+                        : Mathf.Min(heroMove,
+                            retained.Min(i => i < army.NonHeroMoveMax.Count
+                                ? army.NonHeroMoveMax[i] : army.MaxMovement));
                     EconomyBuilderRouteSnapshot projectedRoute = route;
                     projectedRoute.ActivationApCost = choice.ProjectedActivationApCost;
                     projectedRoute.MaxMovement = Mathf.Max(1, choice.ProjectedMaxMovement);
                     choice.Route = projectedRoute;
                     choice.TotalAssignmentApCost = EstimateEconomyAssignmentAp(
                         projectedRoute, buildApCost, includeReturn);
+                    choice.Suitability = atBase && current.Count > smallest
+                        ? EconomyArmySuitability.LightenAtBase
+                        : EconomyArmySuitability.Ready;
                     return choice;
                 }
+
+                // Field rosters are immutable for Economy. A deficient field army is rejected here,
+                // before its AP reaches Allocation. Only a Base/Citadel garrison may supply the exact
+                // minimum missing escort.
+                if (!atBase || snap?.Self?.Armies == null)
+                    return choice;
+                ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a != null
+                    && a.IsGarrison && a.Hex.Equals(army.Hex));
+                // Mirror ProvisioningManager.PlanEconomyArmyLightening's hard gate here: a garrison
+                // already activated this turn cannot actually hand over an escort, so do not score
+                // ReinforceAtBase as viable and let Provisioning discover that as AssemblyInfeasible
+                // (which also burns a 2-turn structural cooldown on the whole delivery for nothing).
+                if (garrison == null || garrison == army)
+                    return choice;
+                if (garrison.HasActivatedThisTurn)
+                {
+                    choice.IneligibleReason = "escort_activated_this_turn";
+                    return choice;
+                }
+                List<WorthIt.DefenderProfile> reserve =
+                    garrison?.Members?.ToList() ?? new List<WorthIt.DefenderProfile>();
+                List<int> reserveIndices = Enumerable.Range(0, reserve.Count)
+                    .Where(i => i >= (garrison.NonHeroIsAviation?.Count ?? 0)
+                        || !garrison.NonHeroIsAviation[i]).ToList();
+                for (int add = 1; add <= reserve.Count; add++)
+                {
+                    List<int> best = null;
+                    int bestAp = int.MaxValue;
+                    int bestMove = int.MinValue;
+                    foreach (List<int> subset in Combinations(reserveIndices, add))
+                    {
+                        var projected = new List<WorthIt.DefenderProfile>(current);
+                        projected.AddRange(subset.Select(i => reserve[i]));
+                        if (!EconomyRosterSafe(projected, threats, minimumEscort))
+                            continue;
+                        int addedAp = subset.Sum(i => i < garrison.NonHeroActivationApCosts.Count
+                            ? garrison.NonHeroActivationApCosts[i] : 0);
+                        int addedMove = subset.Min(i => i < garrison.NonHeroMoveMax.Count
+                            ? garrison.NonHeroMoveMax[i] : garrison.MaxMovement);
+                        if (best == null || addedAp < bestAp
+                            || (addedAp == bestAp && addedMove > bestMove))
+                        {
+                            best = subset;
+                            bestAp = addedAp;
+                            bestMove = addedMove;
+                        }
+                    }
+                    if (best != null)
+                    {
+                        choice.MinimumEscortCount = current.Count + best.Count;
+                        choice.Suitability = EconomyArmySuitability.ReinforceAtBase;
+                        choice.ProjectedActivationApCost = route.ActivationApCost + bestAp;
+                        choice.ProjectedMaxMovement = Mathf.Min(route.MaxMovement,
+                            bestMove > 0 ? bestMove : route.MaxMovement);
+                        EconomyBuilderRouteSnapshot projectedRoute = route;
+                        projectedRoute.ActivationApCost = choice.ProjectedActivationApCost;
+                        projectedRoute.MaxMovement = Mathf.Max(1, choice.ProjectedMaxMovement);
+                        choice.Route = projectedRoute;
+                        choice.TotalAssignmentApCost = EstimateEconomyAssignmentAp(
+                            projectedRoute, buildApCost, includeReturn);
+                        return choice;
+                    }
+                }
+                return choice;
             }
-            return choice;
         }
 
         internal static List<AiMapMemory.KnownEnemySighting> EconomyRouteThreats(
@@ -518,15 +529,15 @@ namespace Game.Ai.V2
                 int bestMove = int.MinValue;
                 foreach (List<int> subset in Combinations(indices, count))
                 {
-                    List<WorthIt.DefenderProfile> roster = subset.Select(i => pool[i]).ToList();
-                    if (!EconomyRosterSafe(roster, threats, minimumEscort))
-                        continue;
                     int ap = subset.Sum(i => i < army.NonHeroActivationApCosts.Count
                         ? army.NonHeroActivationApCosts[i] : 0);
                     int move = subset.Count == 0 ? army.HeroMoveMax
                         : subset.Min(i => i < army.NonHeroMoveMax.Count
                             ? army.NonHeroMoveMax[i] : army.MaxMovement);
-                    if (best == null || ap < bestAp || (ap == bestAp && move > bestMove))
+                    if (best != null && (ap > bestAp || (ap == bestAp && move <= bestMove)))
+                        continue;
+                    List<WorthIt.DefenderProfile> roster = subset.Select(i => pool[i]).ToList();
+                    if (EconomyRosterSafe(roster, threats, minimumEscort))
                     {
                         best = subset;
                         bestAp = ap;
@@ -779,6 +790,8 @@ namespace Game.Ai.V2
                 foreach (CardData card in baseCards)
                 {
                     considered++;
+                    if (HasActiveEconomyIntentAtHexOfKind(activeIntents, site.Hex, EconomyTaskKind.BuildExtraction))
+                        continue;
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
                     StrategicCardEvaluator.BaseSiteValue score =
                         StrategicCardEvaluator.ScoreBaseSite(s, site, card);
@@ -796,8 +809,8 @@ namespace Game.Ai.V2
                     EconomyBuilderChoice builder = SelectEconomyBuilder(
                         s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
                         reasonValue, card.EffectivePlayApCost, includeReturn: false);
-                    bool structuralRoute = HasStructuralEconomyBuilderRoute(
-                        s, site.Hex, site.BuilderRoutes);
+                    bool structuralRoute = site.PreparationTravelCost < int.MaxValue
+                        || HasStructuralEconomyBuilderRoute(s, site.Hex, site.BuilderRoutes);
                     if (!structuralRoute)
                     {
                         noBuilder++;
@@ -805,7 +818,7 @@ namespace Game.Ai.V2
                     }
 
                     float travel = builder?.Route.TravelCost
-                        ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
+                        ?? site.PreparationTravelCost;
                     float exposure = score.Exposure;
                     float heroCost = EconomyMissionOpportunityCost(builder, activeIntents);
                     float assignmentAp = builder?.TotalAssignmentApCost
@@ -861,17 +874,16 @@ namespace Game.Ai.V2
             // Stage the best meaningful, legal and safely-routable Base before value admission.
             // This is what lets the existing continuity urgency accumulate from a negative score.
             AxisDemand stagedBase = meaningfulDemands
-                .Where(d => d.EconomyPreferredBuilderArmyId.HasValue)
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
+                .ThenByDescending(d => MissionIntentRegistry.GetOrCreate(player)
+                    .IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex))
                 .ThenByDescending(d => d.Value)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
                 .FirstOrDefault();
-            bool urgencyEligible = stagedBase?.TargetHex != null
-                && HasStructuralEconomyBuilderRoute(
-                    s, stagedBase.TargetHex.Value, stagedBase.EconomyBuilderRoutes);
+            bool urgencyEligible = stagedBase?.TargetHex != null;
             float urgency = MissionIntentRegistry.GetOrCreate(player)
                 .MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
                     stagedBase?.TargetHex, urgencyEligible);

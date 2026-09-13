@@ -35,11 +35,15 @@ namespace Game.Ai.V2
             if (GenerateAxis(DesireAxis.Defence))
                 demands.AddRange(DefenceDemands(snap, breakdown));
             if (GenerateAxis(DesireAxis.Economy))
+            {
+                var timer = System.Diagnostics.Stopwatch.StartNew();
                 demands.AddRange(EconomyDemands(snap, breakdown, player, ctx, root,
                     activeIntents, commitments));
+                AiDebugLog.Write($"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
+            }
             if (GenerateAxis(DesireAxis.Development))
                 demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar,
-                    demands, activeIntents, player));
+                    demands, activeIntents, player, ctx, root));
             // AI-MGR-01 — radar-independent standing-force pull. Emitted LAST so it can see whether
             // an Aggression / Defence combat demand already covers the same ground this pass.
             if (GenerateAxis(DesireAxis.Defence))
@@ -57,3 +61,4 @@ namespace Game.Ai.V2
         }
     }
 }
+
