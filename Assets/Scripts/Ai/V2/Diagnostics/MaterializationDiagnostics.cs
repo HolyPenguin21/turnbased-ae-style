@@ -72,9 +72,14 @@ namespace Game.Ai.V2
                         };
                         // §15 — mirror the REAL candidate builder's next gates so the reported
                         // postGate cannot say "passes" while every candidate is discarded here.
-                        if (!MaterializationCandidateBuilder.CanDeliverDemandOperationally(diagnosticPlan, demand, snap, player, ctx))
+                        MaterializationDeliveryPolicy.DeliveryAssessment delivery =
+                            MaterializationDeliveryPolicy.AssessDemandOperationally(
+                                diagnosticPlan, demand, snap, player, ctx);
+                        if (!delivery.CanDeliver)
                         {
-                            string k = $"{card.Definition.displayName}: {opt.Kind} cannot operationally deliver {demand.Capability}";
+                            string k = $"{card.Definition.displayName}: {opt.Kind} "
+                                + $"cannot operationally deliver {demand.Capability} "
+                                + $"reason={delivery}";
                             failures.TryGetValue(k, out int oc);
                             failures[k] = oc + 1;
                             continue;
