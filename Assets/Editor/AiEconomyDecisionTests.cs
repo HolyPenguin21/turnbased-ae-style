@@ -1416,13 +1416,16 @@ namespace Game.EditorTests
             ArmyRegistry.Register(builder);
             ArmyRegistry.Register(garrison);
             BuildingRegistry.Register(home, baseBuilding);
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            SetHexes(map, home, new HexCoord(1, 0), new HexCoord(2, 0),
+                new HexCoord(3, 0), new HexCoord(4, 0));
             try
             {
                 float before = ProvisioningManager.EconomyMissionClaimedAp(
                     builder, 1f, 1f, null);
                 int moved = ProvisioningManager.TryLightenEconomyArmy(player, builder,
                     new HexCoord(4, 0), SnapshotWithDeficits(0f, 0f, true),
-                    new Game.Ai.AiTurnContext());
+                    new Game.Ai.AiTurnContext { Map = map });
                 float after = ProvisioningManager.EconomyMissionClaimedAp(
                     builder, 1f, 1f, null);
 
@@ -1436,6 +1439,43 @@ namespace Game.EditorTests
             {
                 ArmyRegistry.Clear();
                 BuildingRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
+            }
+        }
+
+        [Test]
+        public void EconomyArmyLightening_UnreachableTargetPreservesEscort()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(0, 0);
+            HexCoord target = new HexCoord(4, 0);
+            var builder = new ArmyData { Owner = player, Hex = home, Name = "Builder" };
+            UnitData hero = Hero("Builder hero", activation: 1);
+            UnitData escort = Body("Escort", 6, 6, activation: 2);
+            builder.Members.AddRange(new[] { hero, escort });
+            var garrison = new ArmyData
+                { Owner = player, Hex = home, Name = "Garrison", IsGarrison = true };
+            ArmyRegistry.Register(builder);
+            ArmyRegistry.Register(garrison);
+            BuildingRegistry.Register(home, new BuildingData
+                { Owner = player, Hex = home, Name = "Base", IsBase = true });
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            SetHexes(map, home, target);
+            try
+            {
+                int moved = ProvisioningManager.TryLightenEconomyArmy(
+                    player, builder, target, SnapshotWithDeficits(0f, 0f, true),
+                    new Game.Ai.AiTurnContext { Map = map });
+
+                Assert.That(moved, Is.Zero);
+                Assert.That(builder.Members, Is.EquivalentTo(new[] { hero, escort }));
+                Assert.That(garrison.Members, Is.Empty);
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+                BuildingRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
             }
         }
 
@@ -2375,10 +2415,13 @@ namespace Game.EditorTests
             ArmyRegistry.Register(garrison);
             BuildingRegistry.Register(home, new BuildingData
                 { Owner = player, Hex = home, Name = "Base", IsBase = true });
+            UnityEngine.GameObject mapObject = NewBareHexMap(out Game.Map.HexMap map);
+            SetHexes(map, home, new HexCoord(1, 0), new HexCoord(2, 0), target);
             try
             {
                 int moved = ProvisioningManager.TryLightenEconomyArmy(
-                    player, builder, target, snapshot, new Game.Ai.AiTurnContext(),
+                    player, builder, target, snapshot,
+                    new Game.Ai.AiTurnContext { Map = map },
                     projected.MinimumEscortCount);
                 float liveActivation = ProvisioningManager.EconomyMissionClaimedAp(
                     builder, 0f, 0f, null, travelNeeded: true,
@@ -2394,6 +2437,7 @@ namespace Game.EditorTests
             {
                 ArmyRegistry.Clear();
                 BuildingRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(mapObject);
             }
         }
 
