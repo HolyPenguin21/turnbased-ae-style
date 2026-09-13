@@ -827,8 +827,11 @@ namespace Game.Ai.V2
                 .Where(u => u != null && !u.IsHero && !u.IsAviation)
                 .OrderByDescending(u => AiPower.ToPowerUnit(u).BasePower)
                 .ThenBy(u => u.Name).ToList();
+            HexPath escortRoute = SafeStepPathing.FindSafePath(
+                ctx.Map, player, builder.Hex, target, builder.MaxMovement);
             IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
-                DemandLayer.EconomyRouteThreats(snapshot, builder.Hex, target);
+                WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                    snapshot, escortRoute?.Hexes ?? new[] { builder.Hex, target });
             IReadOnlyList<UnitData> retained = SelectEconomyEscort(
                 builder, bodies, threats, minimumEscort);
             if (retained != null)
