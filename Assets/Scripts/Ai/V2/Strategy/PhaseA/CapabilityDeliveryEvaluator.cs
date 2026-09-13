@@ -120,15 +120,45 @@ namespace Game.Ai.V2
             out float delivered)
         {
             IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
-            // CapabilityInventory.AvailableHeroes intentionally counts combat-ready heroes only.
-            // An Economy Hero is delivered by the demand-aware mobile-builder predicate instead.
-            delivered = MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand)
-                ? leased.Count
-                : DeliveredCapabilityAmount(demand, before, after);
+            delivered = 0f;
+            if (MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
+            {
+                // Both phases must establish the same durable owner before reducing a residual.
+                // Revalidate after the real deployment: a successful card play can still fail to
+                // deliver a builder if the route or escort changed during that operation.
+                var intents = MissionIntentRegistry.GetOrCreate(player).All
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+                var commitments = ActorCommitments.FromIntents(intents, afterSnap, null);
+                foreach (int builderId in leased)
+                {
+                    DemandLayer.EconomyBuilderChoice choice = EconomyDeliveryChoice(
+                        afterSnap, demand, builderId, intents, commitments,
+                        out IReadOnlyList<EconomyBuilderRouteSnapshot> routes);
+                    if (choice == null) continue;
+                    demand.EconomyPreferredBuilderArmyId = builderId;
+                    demand.EconomyBuilderRoutes = routes;
+                    demand.EconomyProjectedActivationApCost = choice.ProjectedActivationApCost;
+                    demand.EconomyProjectedMaxMovement = choice.ProjectedMaxMovement;
+                    demand.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
+                    MissionContinuityLayer.BeginEconomyDelivery(player, demand, builderId, ctx.TurnNumber);
+                    InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
+                        InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
+                        {
+                            RequestingAxis = DesireAxis.Economy,
+                            Capability = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                                ? CapabilityKind.EconomicExpansionBase : CapabilityKind.EconomicInfrastructure,
+                            TargetHex = demand.TargetHex, EconomyResourceType = demand.EconomyResourceType,
+                        }), demand.EconomyBuildResourceCost, 0f,
+                        StrategicReservationReason.EconomyDeferredBuild);
+                    delivered = 1f;
+                    break;
+                }
+            }
+            else
+                delivered = DeliveredCapabilityAmount(demand, before, after);
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
                 return false;
-            // Economy Hero delivery is handed synchronously to MissionContinuityLayer by Phase A;
-            // persisting the generic through-Housekeeping lease as well would leave two owners.
+            // Economy already has one Continuity owner; a generic lease would add a second one.
             // Other capabilities still need the turn-local barrier until their normal handoff.
             if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
                 StrategicCapabilityLeaseRegistry.Mark(
@@ -162,3 +192,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

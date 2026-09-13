@@ -148,11 +148,11 @@ namespace Game.Ai.V2
             foreach (MaterializationPlan p in MaterializationFeasibility.FilterSurplus(
                 MaterializationChainEnumerator.EnumerateSurplusPlans(
                     snap, player, root, hand, ctx, inv, commitments, reservation),
-                player, root, hand, ctx, reservation))
+                player, root, hand, ctx, reservation, snap))
             {
                 if (p == null) continue;
-                bool dHero = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, heroDemand);
-                bool dPower = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, powerDemand);
+                bool dHero = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, heroDemand, snap, player, ctx);
+                bool dPower = MaterializationCandidateBuilder.CanDeliverDemandOperationally(p, powerDemand, snap, player, ctx);
                 if (!dHero && !dPower) continue;
                 (string armyKey, bool elig) = ResolveArmy(p);
                 CardDefinition bd = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
@@ -267,3 +267,4 @@ namespace Game.Ai.V2
             : c.human + c.energy + c.materials + c.tech;
     }
 }
+

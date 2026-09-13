@@ -18,7 +18,8 @@ namespace Game.Ai.V2
         // (plan, followupAp, projected traits).
         internal static List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> FilterForDemand(
             IReadOnlyList<MaterializationPlan> raw, PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, AxisDemand demand, AxisBudgetLedger ledger, float reservedFollowupAp)
+            AiTurnContext ctx, AxisDemand demand, AxisBudgetLedger ledger, float reservedFollowupAp,
+            WorldSnapshot snapshot = null)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
             float axisBudget = ledger.DiscreteAdmissionBudget(demand.RequestingAxis);
@@ -33,7 +34,7 @@ namespace Game.Ai.V2
                     continue;
                 CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                 AddIfFeasibleA(sink, p, demand, baseDef, stealthSurcharge, reservedFollowupAp,
-                    axisBudget, eps, root, hand, player, ctx);
+                    axisBudget, eps, root, hand, player, ctx, snapshot);
             }
             return sink;
         }
@@ -42,7 +43,7 @@ namespace Game.Ai.V2
         // unresolved strategic claim on its base card, hand-slot-feasible, reserves still OK.
         internal static List<MaterializationPlan> FilterSurplus(IReadOnlyList<MaterializationPlan> raw,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            MaterializationReservation reservation)
+            MaterializationReservation reservation, WorldSnapshot snapshot = null)
         {
             var sink = new List<MaterializationPlan>();
             foreach (MaterializationPlan p in raw)
@@ -55,7 +56,7 @@ namespace Game.Ai.V2
                 // capability. Otherwise it stays in hand until Phase A resolves the demand.
                 AxisDemand strategicClaim = UnresolvedClaimFor(reservation, p.FinalCapability, p.ProjectedAbilities);
                 if (strategicClaim != null
-                    && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, strategicClaim))
+                    && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, strategicClaim, snapshot, player, ctx))
                     continue;
                 if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot)
                     continue;
@@ -81,12 +82,12 @@ namespace Game.Ai.V2
             List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> sink,
             MaterializationPlan p, AxisDemand demand, CardDefinition baseDef, int stealthSurcharge,
             float reservedFollowupAp, float axisBudget, float eps, PlayerRoot root, AiHandData hand,
-            PlayerSetupData player, AiTurnContext ctx)
+            PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snapshot = null)
         {
             bool upgrade = p != null && p.Kind == MaterializationChainKind.GenerateAttachUpgrade;
             // Upgrade delivery is the attachment itself and has no post-deploy follow-up. Every
             // deploy chain keeps the canonical operational-delivery gate.
-            if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand))
+            if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx))
                 return;
 
             float activationAp = p != null && !upgrade
@@ -120,3 +121,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

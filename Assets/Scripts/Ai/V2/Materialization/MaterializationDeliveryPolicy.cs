@@ -1,4 +1,6 @@
 using System.Linq;
+using Game.Combat;
+using UnityEngine;
 using Game.Cards;
 using Game.Map;
 using Game.Players;
@@ -20,7 +22,8 @@ namespace Game.Ai.V2
         // Plan-level: would executing this chain move the live capability inventory for `demand`?
         // (A garrison deposit is preparation, not Field/Hero delivery; a lone Hero shell is
         // reserve-only until it has an escort; a Scout placement always counts.)
-        internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)
+        internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand,
+            WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null)
         {
             if (p == null || demand == null) return false;
             switch (demand.Capability)
@@ -34,9 +37,45 @@ namespace Game.Ai.V2
                     // is AiArmyRoles.IsHeroLed, so a legal field placement may create a solo hero.
                     // Keep the escort rule unchanged for every non-Economy Hero demand.
                     if (IsEconomyHeroDemand(demand))
-                        return p.Deploy.Kind == DeploymentKind.NewArmy
+                    {
+                        bool field = p.Deploy.Kind == DeploymentKind.NewArmy
                             || p.Deploy.Kind == DeploymentKind.ReusableShell
                             || p.Deploy.Kind == DeploymentKind.ExistingArmy;
+                        if (!field || snapshot == null) return false;
+                        if (!demand.TargetHex.HasValue || snapshot.Self?.Armies == null
+                            || player == null || ctx == null) return false;
+                        // A legal Hero placement is not yet a delivered builder. Project its roster
+                        // and reuse Analysis routing and Demand's authoritative escort assessment.
+                        ArmySnapshot recipient = p.Deploy.Army == null ? null
+                            : snapshot.Self.Armies.FirstOrDefault(a => a.ArmyId == p.Deploy.Army.Id);
+                        // IsHeroLed requires exactly one hero; never project a second leader as
+                        // a usable Economy actor even if a generic placement accepted the card.
+                        if ((p.Deploy.Army != null && recipient == null)
+                            || recipient?.HasHero == true) return false;
+                        int heroMove = CapabilityQualityEvaluator.ProjectedMoveMax(p);
+                        int heroAp = CapabilityQualityEvaluator.ProjectedActivationApCost(p);
+                        var projected = new ArmySnapshot
+                        {
+                            ArmyId = recipient?.ArmyId ?? -1, Owner = player, Hex = p.Deploy.Hex,
+                            HasHero = true, IsMobileEconomyBuilder = true,
+                            Members = recipient?.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                            NonHeroActivationApCosts = recipient?.NonHeroActivationApCosts ?? System.Array.Empty<int>(),
+                            NonHeroMoveMax = recipient?.NonHeroMoveMax ?? System.Array.Empty<int>(),
+                            NonHeroIsAviation = recipient?.NonHeroIsAviation ?? System.Array.Empty<bool>(),
+                            HeroMoveMax = heroMove, HeroActivationApCost = heroAp,
+                            MaxMovement = recipient?.MemberCount > 0 ? Mathf.Min(heroMove, recipient.MaxMovement) : heroMove,
+                            ActivationApCost = heroAp + (recipient?.NonHeroActivationApCosts?.Sum() ?? 0),
+                            MemberCount = (recipient?.MemberCount ?? 0) + 1,
+                        };
+                        projected.CurrentMovement = projected.MaxMovement;
+                        var routes = WorldAnalysis.EconomyBuilderRoutes(
+                            snapshot, player, ctx, demand.TargetHex.Value, projected);
+                        if (routes.Count == 0) return false;
+                        var choice = DemandLayer.AssessEconomyArmy(snapshot, demand.TargetHex.Value,
+                            routes[0], projected, demand.EconomyBuildApCost,
+                            includeReturn: demand.EconomyBuildCard?.Definition?.cardType != CardType.Base);
+                        return choice.Suitability != DemandLayer.EconomyArmySuitability.Ineligible;
+                    }
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
                         && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
@@ -98,3 +137,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

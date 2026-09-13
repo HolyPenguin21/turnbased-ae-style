@@ -215,7 +215,7 @@ namespace Game.Ai.V2
             var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
             var candidates = MaterializationFeasibility.FilterForDemand(
-                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp);
+                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp, snap);
 
             if (candidates.Count == 0) return new List<DemandCandidate>();
 
@@ -368,7 +368,7 @@ namespace Game.Ai.V2
             List<MaterializationPlan> raw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
             List<MaterializationPlan> candidates = MaterializationFeasibility.FilterSurplus(
-                raw, player, root, hand, ctx, reservation);
+                raw, player, root, hand, ctx, reservation, snap);
             if (candidates.Count == 0) return new List<(MaterializationPlan plan, float utility)>();
 
             // `witnessedUsefulApDemand` is the SHARED Phase-B owner-witnessed AP workload
@@ -412,7 +412,7 @@ namespace Game.Ai.V2
             float DecisionScore(MaterializationPlan p)
             {
                 AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
-                float urgency = d != null && CanDeliverDemandOperationally(p, d)
+                float urgency = d != null && CanDeliverDemandOperationally(p, d, snap, player, ctx)
                     ? UrgencyBonus(d.Value) : 0f;
                 return p.Score + urgency * GenerationChanceForDecision(p);
             }
@@ -442,8 +442,9 @@ namespace Game.Ai.V2
 
         // ARCH-02 §16 — moved to the canonical MaterializationDeliveryPolicy. This forwarder keeps
         // the widely-used name for the builder's own gates and its external callers.
-        internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand)
-            => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand);
+        internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand,
+            WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null)
+            => MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx);
 
         // ARCH-02 §45 — route through the one owner-aware spendability seam so a bounded reaction
         // envelope (or any other explicit reservation) is respected here too, not just the legacy
@@ -480,7 +481,7 @@ namespace Game.Ai.V2
             var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
             var candidates = MaterializationFeasibility.FilterForDemand(
-                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp);
+                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp, snap);
 
             var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
             foreach (var c in candidates)
@@ -558,7 +559,7 @@ namespace Game.Ai.V2
             List<MaterializationPlan> surplusRaw = MaterializationChainEnumerator.EnumerateSurplusPlans(
                 snap, player, root, hand, ctx, inv, commitments, reservation);
             List<MaterializationPlan> surplus = MaterializationFeasibility.FilterSurplus(
-                surplusRaw, player, root, hand, ctx, reservation);
+                surplusRaw, player, root, hand, ctx, reservation, snap);
             var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
             foreach (MaterializationPlan p in surplus)
             {
@@ -582,3 +583,4 @@ namespace Game.Ai.V2
 
     }
 }
+

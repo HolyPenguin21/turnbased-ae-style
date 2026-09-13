@@ -558,57 +558,9 @@ namespace Game.Ai.V2
                     chosenDemand, inv, afterInv, armyIdsBefore, out float delivered);
 
                 if (operationallyDelivered
-                    && MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand))
-                {
-                    int builderArmyId = CapabilityDeliveryEvaluator.OperationalLeaseArmyIds(
-                            armyIdsBefore, snap, plan, chosenDemand)
-                        .OrderBy(id => id).FirstOrDefault();
-                    if (builderArmyId != 0)
-                    {
-                        DemandLayer.EconomyBuilderChoice delivery =
-                            CapabilityDeliveryEvaluator.EconomyDeliveryChoice(
-                                snap, chosenDemand, builderArmyId, activeIntents,
-                                commitments, out IReadOnlyList<EconomyBuilderRouteSnapshot> routes);
-                        if (delivery != null)
-                        {
-                            chosenDemand.EconomyPreferredBuilderArmyId = builderArmyId;
-                            chosenDemand.EconomyBuilderRoutes = routes;
-                            chosenDemand.EconomyProjectedActivationApCost =
-                                delivery.ProjectedActivationApCost;
-                            chosenDemand.EconomyProjectedMaxMovement =
-                                delivery.ProjectedMaxMovement;
-                            chosenDemand.EconomyAssignmentApCost =
-                                delivery.TotalAssignmentApCost;
-                        }
-                        MissionContinuityLayer.BeginEconomyDelivery(
-                            player, chosenDemand, builderArmyId, ctx.TurnNumber);
-                        // Continuity owns the actor from this point. Mirror that handoff into the
-                        // current Phase-A view as well, so a later chain in this same bounded pass
-                        // cannot treat the freshly delivered Economy army as a free recipient.
-                        commitments?.Claim(builderArmyId);
-                        // Reserve the saved build envelope the instant the dedicated builder is
-                        // committed. Gating this on `delivery != null` (ShouldReserveDeferredEconomy
-                        // Resources' witnessed-route check) left it unreserved for however many turns
-                        // the freshly-materialized hero needed before that route witness could see it
-                        // (it wasn't yet a recognised mobile builder or garrisoned on target) — during
-                        // that window Phase B was free to spend the exact H/E/M/T this build still
-                        // needs. BeginEconomyDelivery above already committed this exact actor to this
-                        // exact target, so the envelope is owed regardless of route visibility.
-                        InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
-                            InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
-                            {
-                                RequestingAxis = DesireAxis.Economy,
-                                Capability = chosenDemand.EconomyBuildCard?.Definition?.cardType
-                                    == CardType.Base
-                                        ? CapabilityKind.EconomicExpansionBase
-                                        : CapabilityKind.EconomicInfrastructure,
-                                TargetHex = chosenDemand.TargetHex,
-                                EconomyResourceType = chosenDemand.EconomyResourceType,
-                            }),
-                            chosenDemand.EconomyBuildResourceCost, 0f,
-                            StrategicReservationReason.EconomyDeferredBuild);
-                    }
-                }
+                    && MaterializationDeliveryPolicy.IsEconomyHeroDemand(chosenDemand)
+                    && chosenDemand.EconomyPreferredBuilderArmyId.HasValue)
+                    commitments?.Claim(chosenDemand.EconomyPreferredBuilderArmyId.Value);
 
                 float borrowed = 0f;
                 if (operationallyDelivered)
@@ -818,3 +770,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

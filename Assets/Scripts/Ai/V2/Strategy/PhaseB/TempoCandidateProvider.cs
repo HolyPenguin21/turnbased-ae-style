@@ -353,7 +353,7 @@ namespace Game.Ai.V2
             {
                 AxisDemand matchedResidual = result.Reservation.BestUnresolvedDemandFor(plan);
                 AxisDemand residual = matchedResidual != null
-                    && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual)
+                    && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual, snap, player, ctx)
                         ? matchedResidual : null;
 
                 // Production amplifies a demand it is delivering against (ProductionSupportAdjustment
@@ -414,3 +414,4 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
+

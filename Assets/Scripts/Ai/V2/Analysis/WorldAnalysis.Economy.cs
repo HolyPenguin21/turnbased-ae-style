@@ -320,8 +320,9 @@ namespace Game.Ai.V2
             && ownBases.Min(h => HexGridMath.Distance(h, candidate))
                 >= AiConfigV2.economyBaseMinSpacing;
 
-        private static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
-            WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target)
+        internal static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
+            WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target,
+            ArmySnapshot projectedArmy = null)
         {
             var result = new List<EconomyBuilderRouteSnapshot>();
             if (snap?.Self?.Armies == null || player == null || ctx?.Map == null)
@@ -334,7 +335,9 @@ namespace Game.Ai.V2
                     .Where(i => i != null && i.Status == IntentStatus.Active
                         && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId.HasValue)
                     .Select(i => i.PreferredMoverArmyId.Value));
-            foreach (ArmySnapshot army in snap.Self.Armies
+            IEnumerable<ArmySnapshot> candidates = projectedArmy != null
+                ? new[] { projectedArmy } : snap.Self.Armies;
+            foreach (ArmySnapshot army in candidates
                          .Where(a => a != null).OrderBy(a => a.ArmyId))
             {
                 if (army.IsGarrison)
@@ -353,14 +356,14 @@ namespace Game.Ai.V2
                     continue;
                 }
                 if (!army.IsMobileEconomyBuilder
-                    || !liveById.TryGetValue(army.ArmyId, out ArmyData live))
+                    || (projectedArmy == null && !liveById.ContainsKey(army.ArmyId)))
                     continue;
                 // maxMovement hard-blocks any hex this army could never enter in one step (see
                 // SafeStepPathing.FindSafePath, generalising the old post-hoc bd283fb reject into
                 // the search itself), so the route returned — if any — is already guaranteed
                 // usable; the per-hex re-check below is now just a defensive safety net.
                 HexPath route = SafeStepPathing.FindSafePath(
-                    ctx.Map, live.Owner, live.Hex, target, army.MaxMovement);
+                    ctx.Map, player, army.Hex, target, army.MaxMovement);
                 if (route == null)
                     continue;
                 int cost = route.TotalCost;
@@ -507,3 +510,4 @@ namespace Game.Ai.V2
 
     }
 }
+

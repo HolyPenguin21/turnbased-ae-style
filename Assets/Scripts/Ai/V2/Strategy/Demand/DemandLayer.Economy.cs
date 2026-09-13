@@ -270,6 +270,7 @@ namespace Game.Ai.V2
             public ArmySnapshot Army;
             public float TotalAssignmentApCost;
             public EconomyArmySuitability Suitability;
+            public string IneligibleReason;
             public int MinimumEscortCount;
             public int ProjectedActivationApCost;
             public int ProjectedMaxMovement;
@@ -328,7 +329,7 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
-        private static EconomyBuilderChoice AssessEconomyArmy(WorldSnapshot snap,
+        internal static EconomyBuilderChoice AssessEconomyArmy(WorldSnapshot snap,
             HexCoord target, EconomyBuilderRouteSnapshot route, ArmySnapshot army,
             float buildApCost, bool includeReturn)
         {
@@ -339,6 +340,7 @@ namespace Game.Ai.V2
                 TotalAssignmentApCost = EstimateEconomyAssignmentAp(
                     route, buildApCost, includeReturn),
                 Suitability = EconomyArmySuitability.Ineligible,
+                IneligibleReason = "insufficient_safe_escort",
             };
             if (army == null)
                 return choice;
@@ -406,8 +408,13 @@ namespace Game.Ai.V2
             // already activated this turn cannot actually hand over an escort, so do not score
             // ReinforceAtBase as viable and let Provisioning discover that as AssemblyInfeasible
             // (which also burns a 2-turn structural cooldown on the whole delivery for nothing).
-            if (garrison == null || garrison == army || garrison.HasActivatedThisTurn)
+            if (garrison == null || garrison == army)
                 return choice;
+            if (garrison.HasActivatedThisTurn)
+            {
+                choice.IneligibleReason = "escort_activated_this_turn";
+                return choice;
+            }
             List<WorthIt.DefenderProfile> reserve =
                 garrison?.Members?.ToList() ?? new List<WorthIt.DefenderProfile>();
             List<int> reserveIndices = Enumerable.Range(0, reserve.Count)
@@ -987,3 +994,4 @@ namespace Game.Ai.V2
         // ---------------------------------------------------------------------------------------
     }
 }
+
