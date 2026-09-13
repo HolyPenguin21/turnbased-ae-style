@@ -76,11 +76,11 @@ MonoBehaviour:
       count: 1
     - cardKey: The Ashen/Scrapwing
       count: 1
-    - cardKey: Neutral/b_Lab
+    - cardKey: neutral.facility.lab
       count: 1
-    - cardKey: Neutral/b_Factory
+    - cardKey: neutral.facility.factory
       count: 1
-    - cardKey: Neutral/b_Intel
+    - cardKey: neutral.facility.intel
       count: 1
     - cardKey: The Ashen/HT Boomstick
       count: 0
@@ -145,9 +145,9 @@ MonoBehaviour:
       count: 1
     - cardKey: Iron Concord/Rusty Vulture
       count: 1
-    - cardKey: Neutral/b_Lab
+    - cardKey: neutral.facility.lab
       count: 1
-    - cardKey: Neutral/b_Factory
+    - cardKey: neutral.facility.factory
       count: 1
-    - cardKey: Neutral/b_Intel
+    - cardKey: neutral.facility.intel
       count: 1

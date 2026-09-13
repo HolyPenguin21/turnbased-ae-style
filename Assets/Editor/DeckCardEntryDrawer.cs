@@ -66,7 +66,11 @@ namespace Game.EditorTools
                 {
                     if (card == null || string.IsNullOrEmpty(card.displayName))
                         continue;
-                    keys.Add($"{fc.displayName}/{card.displayName}");
+                    // Store authored identity whenever the card has one; legacy cards remain
+                    // selectable until their catalog data is migrated. Opening an existing row
+                    // never rewrites its old key without an explicit selection.
+                    keys.Add(!string.IsNullOrWhiteSpace(card.authoredKey)
+                        ? card.authoredKey : $"{fc.displayName}/{card.displayName}");
                 }
             }
             return keys;
