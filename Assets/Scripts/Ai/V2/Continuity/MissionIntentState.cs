@@ -28,6 +28,26 @@ namespace Game.Ai.V2
         public void Put(MissionIntent i) => _intents[i.IntentKey] = i;
         public void Remove(MissionIntentKey k) => _intents.Remove(k);
 
+        private int _reconTrimTurn = -1;
+        private int _reconTrimCount;
+
+        internal bool TryConsumeReconLaneTrim(int turn)
+        {
+            if (_reconTrimTurn != turn)
+            {
+                _reconTrimTurn = turn;
+                _reconTrimCount = 0;
+            }
+            if (_reconTrimCount >= AiConfigV2.maxReconLaneTrimPerTurn)
+                return false;
+            _reconTrimCount++;
+            return true;
+        }
+
+        internal bool IsStagedBaseExpansion(CardData card, HexCoord? target) =>
+            card == _baseExpansionCard && target.HasValue
+            && target.Equals(_baseExpansionTarget);
+
         public int BaseExpansionWaitTurns { get; private set; }
 
         // Pre-intent continuity for a legal Base opportunity. A Base mission cannot own a durable
@@ -128,3 +148,4 @@ namespace Game.Ai.V2
         public static void Clear() => ByPlayer.Clear();
     }
 }
+
