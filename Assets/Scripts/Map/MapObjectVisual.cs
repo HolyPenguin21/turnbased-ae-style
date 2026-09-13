@@ -11,6 +11,14 @@ namespace Game.Map
         [SerializeField] private SpriteRenderer innerCircle;
         [SerializeField] private SpriteRenderer objectImage;
 
+        // Optional layers used by richer marker prefabs. Existing circle+icon prefabs leave
+        // these empty and keep their current behavior; the flagged citadel uses factionAccent
+        // for its cloth and auxiliaryRenderers for neutral metal layers.
+        [SerializeField] private SpriteRenderer factionAccent;
+        [SerializeField] private SpriteRenderer[] auxiliaryRenderers;
+        [SerializeField] private bool tintInnerCircle = true;
+        [SerializeField] private SpriteRenderer hitRendererOverride;
+
         // Fraction of the marker's own art half-width that actually counts as a click on it
         // (see ContainsScreenPoint). Below 1 so the transparent margin baked into the circle
         // sprite — and a bit of the opaque rim — doesn't register, which is what kept the old
@@ -19,8 +27,10 @@ namespace Game.Map
 
         public void SetColor(Color color)
         {
-            if (innerCircle != null)
+            if (tintInnerCircle && innerCircle != null)
                 innerCircle.color = color;
+            if (factionAccent != null)
+                factionAccent.color = color;
         }
 
         public void SetIcon(Sprite icon)
@@ -39,6 +49,8 @@ namespace Game.Map
                 return;
             CopyRenderer(source.innerCircle, innerCircle);
             CopyRenderer(source.objectImage, objectImage);
+            CopyRenderer(source.factionAccent, factionAccent);
+            CopyRenderers(source.auxiliaryRenderers, auxiliaryRenderers);
         }
 
         private static void CopyRenderer(SpriteRenderer source, SpriteRenderer target)
@@ -53,6 +65,15 @@ namespace Game.Map
             target.transform.localPosition = source.transform.localPosition;
             target.transform.localRotation = source.transform.localRotation;
             target.transform.localScale = source.transform.localScale;
+        }
+
+        private static void CopyRenderers(SpriteRenderer[] source, SpriteRenderer[] target)
+        {
+            if (source == null || target == null)
+                return;
+            int count = Mathf.Min(source.Length, target.Length);
+            for (int i = 0; i < count; i++)
+                CopyRenderer(source[i], target[i]);
         }
 
         // Circle and icon are two independent SpriteRenderers on the same flat (Y=0) marker —
@@ -78,13 +99,26 @@ namespace Game.Map
                 innerCircle.enabled = visible;
             if (objectImage != null)
                 objectImage.enabled = visible;
+            if (factionAccent != null)
+                factionAccent.enabled = visible;
+            if (auxiliaryRenderers != null)
+                foreach (SpriteRenderer renderer in auxiliaryRenderers)
+                    if (renderer != null)
+                        renderer.enabled = visible;
         }
 
         // Whether the last SetVisible call left this marker showing — used to tell an owner's
         // currently-representative army marker (see HexSelectionController.RestackArmiesOn)
         // apart from one of their other armies sharing the same hex, which stays instantiated
         // but hidden rather than destroyed.
-        public bool IsVisible => innerCircle != null && innerCircle.enabled;
+        public bool IsVisible
+        {
+            get
+            {
+                SpriteRenderer renderer = hitRendererOverride != null ? hitRendererOverride : innerCircle;
+                return renderer != null && renderer.enabled;
+            }
+        }
 
         // Hit-tests the marker as a circle around its projected centre, sized from the art's
         // own half-width. This replaced a projected-AABB rectangle: that box circumscribed a
@@ -126,6 +160,8 @@ namespace Game.Map
         // a marker with no circle (or whose circle is momentarily spriteless).
         private SpriteRenderer ResolveHitRenderer()
         {
+            if (hitRendererOverride != null && hitRendererOverride.enabled && hitRendererOverride.sprite != null)
+                return hitRendererOverride;
             if (innerCircle != null && innerCircle.enabled && innerCircle.sprite != null)
                 return innerCircle;
             if (objectImage != null && objectImage.enabled && objectImage.sprite != null)
