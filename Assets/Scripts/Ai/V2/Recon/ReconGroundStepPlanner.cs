@@ -40,6 +40,16 @@ namespace Game.Ai.V2
             }
         }
 
+        internal static float PurposefulStepScore(float information, float anchorProgress,
+            float buildingBonus, float heading, float movementEfficiency)
+        {
+            float purpose = Mathf.Max(0f, information)
+                + Mathf.Max(0f, anchorProgress)
+                + Mathf.Max(0f, buildingBonus);
+            float quality = Mathf.Max(0f, 1f + heading + movementEfficiency);
+            return purpose * quality;
+        }
+
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
             ReconPatrolState assignment, int turn, WorldSnapshot snapshot = null)
         {
@@ -267,8 +277,8 @@ namespace Game.Ai.V2
             }
 
             float purpose = information + anchorProgress + buildingBonus;
-            float quality = 1f + heading + movementEfficiency;
-            float score = purpose * quality
+            float score = PurposefulStepScore(
+                    information, anchorProgress, buildingBonus, heading, movementEfficiency)
                 * trailFactor * safetyFactor * coverageFactor * deadEndFactor * homeFactor;
             string reason = $"purpose={purpose:0.00} info={information:0.00} "
                 + $"anchorProgress={anchorProgress:0.00} heading={heading:0.00} "
