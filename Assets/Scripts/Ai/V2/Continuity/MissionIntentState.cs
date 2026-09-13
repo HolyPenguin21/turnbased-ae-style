@@ -21,6 +21,13 @@ namespace Game.Ai.V2
         private int _baseExpansionLastReconciledTurn = -1;
         private CardData _baseExpansionCard;
         private HexCoord? _baseExpansionTarget;
+        private int _baseExpansionDeliveryFailureTurn = -1;
+        private int _baseExpansionDeliveryFailureCount;
+        private CardData _baseExpansionDeliveryFailureCard;
+        private HexCoord? _baseExpansionDeliveryFailureTarget;
+        private int _baseExpansionSuppressedUntilTurn = -1;
+        private CardData _baseExpansionSuppressedCard;
+        private HexCoord? _baseExpansionSuppressedTarget;
 
         public IReadOnlyCollection<MissionIntent> All => _intents.Values;
         public int Count => _intents.Count;
@@ -68,6 +75,45 @@ namespace Game.Ai.V2
             && target.Equals(_baseExpansionTarget);
 
         public int BaseExpansionWaitTurns { get; private set; }
+
+        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) =>
+            turn < _baseExpansionSuppressedUntilTurn
+            && card == _baseExpansionSuppressedCard
+            && target.HasValue
+            && target.Equals(_baseExpansionSuppressedTarget);
+
+        // A structurally valid site may still be operationally impossible for every materialized
+        // builder. Count only consecutive, canonical delivery-gate failures for the exact staged
+        // project. Once the ordinary commitment stall window is exhausted, briefly suppress that
+        // project so Demand can compare other sites instead of manufacturing urgency forever.
+        internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target)
+        {
+            if (card == null || !target.HasValue)
+                return false;
+            bool sameProject = card == _baseExpansionDeliveryFailureCard
+                && target.Equals(_baseExpansionDeliveryFailureTarget);
+            bool consecutiveTurn = _baseExpansionDeliveryFailureTurn == turn
+                || _baseExpansionDeliveryFailureTurn == turn - 1;
+            if (!sameProject || !consecutiveTurn)
+                _baseExpansionDeliveryFailureCount = 0;
+            if (_baseExpansionDeliveryFailureTurn != turn)
+                _baseExpansionDeliveryFailureCount++;
+            _baseExpansionDeliveryFailureTurn = turn;
+            _baseExpansionDeliveryFailureCard = card;
+            _baseExpansionDeliveryFailureTarget = target;
+
+            if (_baseExpansionDeliveryFailureCount
+                < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
+                return false;
+
+            _baseExpansionSuppressedCard = card;
+            _baseExpansionSuppressedTarget = target;
+            _baseExpansionSuppressedUntilTurn = turn
+                + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
+            _baseExpansionDeliveryFailureCount = 0;
+            ResetBaseExpansionWait();
+            return true;
+        }
 
         // Pre-intent continuity for a legal Base opportunity. A Base mission cannot own a durable
         // actor before winning allocation, but repeated portfolio deferral must still survive into
