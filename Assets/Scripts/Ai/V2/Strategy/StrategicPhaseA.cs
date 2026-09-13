@@ -404,6 +404,8 @@ namespace Game.Ai.V2
                                 state.Remaining = 0f;
                                 result.Reservation.ClaimedEconomyBuildCards.Remove(
                                     state.Demand.EconomyBuildCard);
+                                InfrastructureFulfillment.ClearDeferredEconomyResources(
+                                    player, ctx.TurnNumber);
                             }
                         }
                     }
