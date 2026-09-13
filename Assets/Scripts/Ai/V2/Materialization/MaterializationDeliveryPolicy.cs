@@ -22,16 +22,66 @@ namespace Game.Ai.V2
         // Plan-level: would executing this chain move the live capability inventory for `demand`?
         // (A garrison deposit is preparation, not Field/Hero delivery; a lone Hero shell is
         // reserve-only until it has an escort; a Scout placement always counts.)
+        internal enum DeliveryFailureReason
+        {
+            None,
+            MissingPlanOrDemand,
+            WrongPlacement,
+            MissingWorldContext,
+            MissingTarget,
+            RecipientMissing,
+            RecipientAlreadyHasHero,
+            NoSafeRoute,
+            InsufficientSafeEscort,
+        }
+
+        internal readonly struct DeliveryAssessment
+        {
+            internal readonly bool CanDeliver;
+            internal readonly DeliveryFailureReason FailureReason;
+            internal readonly string Detail;
+
+            internal DeliveryAssessment(bool canDeliver, DeliveryFailureReason failureReason,
+                string detail = null)
+            {
+                CanDeliver = canDeliver;
+                FailureReason = failureReason;
+                Detail = detail;
+            }
+
+            internal static DeliveryAssessment Ok =>
+                new DeliveryAssessment(true, DeliveryFailureReason.None);
+            internal static DeliveryAssessment No(DeliveryFailureReason reason,
+                string detail = null) => new DeliveryAssessment(false, reason, detail);
+
+            public override string ToString() => CanDeliver
+                ? "ok"
+                : string.IsNullOrEmpty(Detail)
+                    ? FailureReason.ToString()
+                    : $"{FailureReason}:{Detail}";
+        }
+
         internal static bool CanDeliverDemandOperationally(MaterializationPlan p, AxisDemand demand,
             WorldSnapshot snapshot = null, PlayerSetupData player = null, AiTurnContext ctx = null)
+            => AssessDemandOperationally(p, demand, snapshot, player, ctx).CanDeliver;
+
+        // The same canonical decision as the bool facade, with a stable reason for diagnostics and
+        // retry policy. No caller re-derives route, placement or escort eligibility.
+        internal static DeliveryAssessment AssessDemandOperationally(MaterializationPlan p,
+            AxisDemand demand, WorldSnapshot snapshot = null, PlayerSetupData player = null,
+            AiTurnContext ctx = null)
         {
-            if (p == null || demand == null) return false;
+            if (p == null || demand == null)
+                return DeliveryAssessment.No(DeliveryFailureReason.MissingPlanOrDemand);
             switch (demand.Capability)
             {
                 case CapabilityKind.ScoutCapability:
-                    return true;
+                    return DeliveryAssessment.Ok;
                 case CapabilityKind.GarrisonCombatPower:
-                    return p.Deploy.Kind == DeploymentKind.Garrison;
+                    return p.Deploy.Kind == DeploymentKind.Garrison
+                        ? DeliveryAssessment.Ok
+                        : DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                            p.Deploy.Kind.ToString());
                 case CapabilityKind.Hero:
                     // Economy does not need a combat-ready hero stack: its canonical builder shape
                     // is AiArmyRoles.IsHeroLed, so a legal field placement may create a solo hero.
@@ -41,17 +91,29 @@ namespace Game.Ai.V2
                         bool field = p.Deploy.Kind == DeploymentKind.NewArmy
                             || p.Deploy.Kind == DeploymentKind.ReusableShell
                             || p.Deploy.Kind == DeploymentKind.ExistingArmy;
-                        if (!field || snapshot == null) return false;
-                        if (!demand.TargetHex.HasValue || snapshot.Self?.Armies == null
-                            || player == null || ctx == null) return false;
+                        if (!field)
+                            return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                                p.Deploy.Kind.ToString());
+                        if (snapshot == null || snapshot.Self?.Armies == null
+                            || player == null || ctx == null)
+                            return DeliveryAssessment.No(DeliveryFailureReason.MissingWorldContext);
+                        if (!demand.TargetHex.HasValue)
+                            return DeliveryAssessment.No(DeliveryFailureReason.MissingTarget);
+
                         // A legal Hero placement is not yet a delivered builder. Project its roster
                         // and reuse Analysis routing and Demand's authoritative escort assessment.
                         ArmySnapshot recipient = p.Deploy.Army == null ? null
                             : snapshot.Self.Armies.FirstOrDefault(a => a.ArmyId == p.Deploy.Army.Id);
+                        if (p.Deploy.Army != null && recipient == null)
+                            return DeliveryAssessment.No(DeliveryFailureReason.RecipientMissing,
+                                $"army#{p.Deploy.Army.Id}");
                         // IsHeroLed requires exactly one hero; never project a second leader as
                         // a usable Economy actor even if a generic placement accepted the card.
-                        if ((p.Deploy.Army != null && recipient == null)
-                            || recipient?.HasHero == true) return false;
+                        if (recipient?.HasHero == true)
+                            return DeliveryAssessment.No(
+                                DeliveryFailureReason.RecipientAlreadyHasHero,
+                                $"army#{recipient.ArmyId}");
+
                         int heroMove = CapabilityQualityEvaluator.ProjectedMoveMax(p);
                         int heroAp = CapabilityQualityEvaluator.ProjectedActivationApCost(p);
                         var projected = new ArmySnapshot
@@ -70,27 +132,43 @@ namespace Game.Ai.V2
                         projected.CurrentMovement = projected.MaxMovement;
                         var routes = WorldAnalysis.EconomyBuilderRoutes(
                             snapshot, player, ctx, demand.TargetHex.Value, projected);
-                        if (routes.Count == 0) return false;
-                        var choice = DemandLayer.AssessEconomyArmy(snapshot, demand.TargetHex.Value,
-                            routes[0], projected, demand.EconomyBuildApCost,
-                            includeReturn: demand.EconomyBuildCard?.Definition?.cardType != CardType.Base);
-                        return choice.Suitability != DemandLayer.EconomyArmySuitability.Ineligible;
+                        if (routes.Count == 0)
+                            return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                                $"from=({projected.Hex.Q},{projected.Hex.R}) target=({demand.TargetHex.Value.Q},{demand.TargetHex.Value.R})");
+
+                        var choice = DemandLayer.AssessEconomyArmy(snapshot,
+                            demand.TargetHex.Value, routes[0], projected,
+                            demand.EconomyBuildApCost,
+                            includeReturn: demand.EconomyBuildCard?.Definition?.cardType
+                                != CardType.Base);
+                        return choice.Suitability != DemandLayer.EconomyArmySuitability.Ineligible
+                            ? DeliveryAssessment.Ok
+                            : DeliveryAssessment.No(
+                                DeliveryFailureReason.InsufficientSafeEscort,
+                                choice.IneligibleReason);
                     }
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
-                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
+                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation)
+                            ? DeliveryAssessment.Ok
+                            : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 case CapabilityKind.FieldCombatPower:
                 {
-                    if (p.Deploy.Kind == DeploymentKind.Garrison) return false;
+                    if (p.Deploy.Kind == DeploymentKind.Garrison)
+                        return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                            p.Deploy.Kind.ToString());
                     CardDefinition d = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                     bool hero = d != null && d.cardType == CardType.Hero;
-                    if (!hero) return true;
+                    if (!hero)
+                        return DeliveryAssessment.Ok;
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
-                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation);
+                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation)
+                            ? DeliveryAssessment.Ok
+                            : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 }
                 default:
-                    return true;
+                    return DeliveryAssessment.Ok;
             }
         }
 
