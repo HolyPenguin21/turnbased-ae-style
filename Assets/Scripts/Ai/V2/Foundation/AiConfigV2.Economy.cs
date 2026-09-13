@@ -58,6 +58,11 @@ namespace Game.Ai.V2
         public const float economyAdmissionCompletionCostWeight = 1f;
         public const float economyLoanHysteresisThreshold = 8f;
         public const float economyLoanContinuationLoss = 20f;
+        // Bounded AP-equivalent penalty added to a home-vocation hero's TotalAssignmentApCost when
+        // ranking economy builders (RankEconomyBuilders) — a small, real cost a large travel-cost
+        // gap can still outweigh, not a hard preference that always wins ties regardless of
+        // distance.
+        public const float economyHomeHeroAssignmentApPenalty = 1.5f;
         // Blend weights for EconomicSecurity = w_abs*AbsFloor + w_rel*relTerm + w_bot*(1-Bottleneck).
         public const float economySecurityAbsWeight = 0.5f;
         public const float economySecurityRelWeight = 0.3f;

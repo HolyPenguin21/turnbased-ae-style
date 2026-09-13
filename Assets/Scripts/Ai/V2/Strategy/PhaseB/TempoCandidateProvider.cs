@@ -356,6 +356,22 @@ namespace Game.Ai.V2
                     && MaterializationDeliveryPolicy.CanDeliverDemandOperationally(plan, matchedResidual)
                         ? matchedResidual : null;
 
+                // Production amplifies a demand it is delivering against (ProductionSupportAdjustment
+                // in StrategicCardEvaluator); it must not manufacture its own reason to spend. A
+                // generated Unit/Hero/Equipment body (plan.Generation != null — this lane never
+                // carries CardUpgrade or non-combat generation) with no operationally deliverable
+                // residual demand behind it is exactly a Challenge spent purely on the generic
+                // RoleFit/ForceGrowthValue/CapabilityGapValue a cheap card can already clear on its
+                // own — hold the generator instead of minting into a vacuum. Base/Development/
+                // Aviation generation are separate lanes (NonCombatCardPlayer) and untouched by this.
+                if (plan.Generation != null && residual == null)
+                {
+                    if (verbose)
+                        AiDebugLog.Write($"[AI][V2]   strat.B — hold {plan.StableKey}: generated "
+                            + "Unit/Hero/Equipment has no operationally deliverable residual demand");
+                    continue;
+                }
+
                 if (matchedResidual != null && residual == null
                     && matchedResidual.Capability == CapabilityKind.Hero && PlanBaseIsHeroCard(plan))
                 {

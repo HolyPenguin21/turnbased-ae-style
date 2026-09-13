@@ -310,14 +310,17 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.Suitability == EconomyArmySuitability.Ready ? 0
                     : x.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
                 // A home-vocation hero (HeroRoleEvaluator — low MoveMax / Researcher / Assembler /
-                // ApBonus) is worth more standing garrison duty than travelling to build; only send
-                // one when no better-suited army qualifies. Preference, not a filter — placed before
-                // the AP-cost/travel tiebreakers below so a small cost/distance edge cannot silently
-                // override it, but still falls back to the home hero when it is the only candidate.
+                // ApBonus) is worth more standing garrison duty than travelling to build, but that
+                // preference must stay a bounded ranking cost, not an absolute veto a large
+                // travel-cost gap can never overturn — a home hero one step away must still beat a
+                // field hero eight steps away. Folded into the AP-cost tiebreaker itself (a sort-key
+                // adjustment only: the real TotalAssignmentApCost on the winning choice, which flows
+                // into AxisDemand.EconomyAssignmentApCost / delivery telemetry, is left untouched).
                 // Gated on !IsOnTarget: a home hero building right on its own garrison hex isn't
                 // travelling anywhere, so there is nothing here to protect it from.
-                .ThenBy(x => !x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true ? 1 : 0)
-                .ThenBy(x => x.TotalAssignmentApCost)
+                .ThenBy(x => x.TotalAssignmentApCost
+                    + (!x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true
+                        ? AiConfigV2.economyHomeHeroAssignmentApPenalty : 0f))
                 .ThenBy(x => x.Route.EffectiveArmyPower)
                 .ThenBy(x => x.Route.ArmySize)
                 .ThenBy(x => x.Route.TravelCost + (includeReturn ? x.Route.ReturnTravelCost : 0))
@@ -738,6 +741,66 @@ namespace Game.Ai.V2
             - AiConfigV2.economySiteThreatPenalty * Mathf.Clamp01(threatExposure)
             - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
 
+        // Structural+card value of one Base site for one card — builder-route and active-mission
+        // independent, so it needs only the site/card facts, never activeIntents/commitments. The
+        // SAME numbers AddBaseCandidates below folds into its staged demand's EconomySiteValue.
+        // Exposed (not copied) so Phase B can order a duplicate/unclaimed Base card's legal hexes
+        // by real strategic value instead of WorldAnalysis.Economy's plain Q/R enumeration order,
+        // without NonCombatCardPlayer becoming a second owner of this formula.
+        internal readonly struct BaseSiteValue
+        {
+            internal readonly float ReasonValue;
+            internal readonly float HexYield;
+            internal readonly float GlobalEffect;
+            internal readonly float Airfield;
+            internal readonly float Exposure;
+            internal readonly float IntrinsicBuildCost;
+            internal readonly float ExtractionLossPenalty;
+            internal readonly float StrategicValue;
+
+            internal BaseSiteValue(float reasonValue, float hexYield, float globalEffect,
+                float airfield, float exposure, float intrinsicBuildCost,
+                float extractionLossPenalty, float strategicValue)
+            {
+                ReasonValue = reasonValue;
+                HexYield = hexYield;
+                GlobalEffect = globalEffect;
+                Airfield = airfield;
+                Exposure = exposure;
+                IntrinsicBuildCost = intrinsicBuildCost;
+                ExtractionLossPenalty = extractionLossPenalty;
+                StrategicValue = strategicValue;
+            }
+        }
+
+        internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
+            CardData card)
+        {
+            float hexYield = BaseHexYieldValue(s, site.HexYield);
+            float global = BaseGlobalEffectValue(s, card.Definition);
+            float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
+            float reasonValue = AiConfigV2.economyBaseCapacityValue * site.CapacityValue
+                + AiConfigV2.economyBaseHexYieldValue * hexYield
+                + AiConfigV2.economyBaseClusterValue * site.NearbyResourceClusterValue
+                + AiConfigV2.economyBaseNetworkExpansionValue * site.NetworkExpansionValue
+                + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
+                + AiConfigV2.economyBaseAirfieldValue * airfield
+                + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
+                + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
+                + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
+                + AiConfigV2.economyBaseGlobalEffectValue * global;
+            float intrinsicBuildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
+                + ResourceCostSum(card.EffectivePlayResourceCost) * AiConfigV2.economyBuildResourcePenalty;
+            float extractionLossPenalty = site.ConvertsOwnedExtractionSite
+                ? AiConfigV2.economyBaseExtractionLossPenalty * site.LostExtractionIncome
+                : 0f;
+            float exposure = ThreatExposure(s, site.Hex);
+            float strategicValue = reasonValue - intrinsicBuildCost
+                - AiConfigV2.economySiteThreatPenalty * exposure - extractionLossPenalty;
+            return new BaseSiteValue(reasonValue, hexYield, global, airfield, exposure,
+                intrinsicBuildCost, extractionLossPenalty, strategicValue);
+        }
+
         private static string AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
             PlayerSetupData player, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
@@ -770,19 +833,11 @@ namespace Game.Ai.V2
                 {
                     considered++;
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
-                    float hexYield = BaseHexYieldValue(s, site.HexYield);
-                    float global = BaseGlobalEffectValue(s, card.Definition);
-                    float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
-                    float reasonValue = AiConfigV2.economyBaseCapacityValue * site.CapacityValue
-                        + AiConfigV2.economyBaseHexYieldValue * hexYield
-                        + AiConfigV2.economyBaseClusterValue * site.NearbyResourceClusterValue
-                        + AiConfigV2.economyBaseNetworkExpansionValue * site.NetworkExpansionValue
-                        + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
-                        + AiConfigV2.economyBaseAirfieldValue * airfield
-                        + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
-                        + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
-                        + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
-                        + AiConfigV2.economyBaseGlobalEffectValue * global;
+                    BaseSiteValue score = ScoreBaseSite(s, site, card);
+                    float hexYield = score.HexYield;
+                    float global = score.GlobalEffect;
+                    float airfield = score.Airfield;
+                    float reasonValue = score.ReasonValue;
                     bool meaningful = reasonValue > AiConfigV2.allocatorSliceEpsilon || committed;
                     if (!meaningful)
                     {
@@ -803,23 +858,16 @@ namespace Game.Ai.V2
 
                     float travel = builder?.Route.TravelCost
                         ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
-                    float exposure = ThreatExposure(s, site.Hex);
+                    float exposure = score.Exposure;
                     float heroCost = EconomyMissionOpportunityCost(builder, activeIntents);
                     float assignmentAp = builder?.TotalAssignmentApCost
                         ?? card.EffectivePlayApCost;
-                    float intrinsicBuildCost = card.EffectivePlayApCost
-                            * AiConfigV2.economyBuildApPenalty
-                        + ResourceCostSum(card.EffectivePlayResourceCost)
-                            * AiConfigV2.economyBuildResourcePenalty;
+                    float intrinsicBuildCost = score.IntrinsicBuildCost;
                     float deliveryApCost = Mathf.Max(0f,
                             assignmentAp - card.EffectivePlayApCost)
                         * AiConfigV2.economyBuildApPenalty;
-                    float extractionLossPenalty = site.ConvertsOwnedExtractionSite
-                        ? AiConfigV2.economyBaseExtractionLossPenalty * site.LostExtractionIncome
-                        : 0f;
-                    float strategicValue = reasonValue - intrinsicBuildCost
-                        - AiConfigV2.economySiteThreatPenalty * exposure
-                        - extractionLossPenalty;
+                    float extractionLossPenalty = score.ExtractionLossPenalty;
+                    float strategicValue = score.StrategicValue;
                     float value = strategicValue - deliveryApCost
                         - AiConfigV2.economySiteTravelPenalty * travel
                         - Mathf.Max(0f, heroCost);
