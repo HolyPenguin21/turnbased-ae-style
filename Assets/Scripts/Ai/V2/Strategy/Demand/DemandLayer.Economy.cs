@@ -356,8 +356,9 @@ namespace Game.Ai.V2
                 if (army == null)
                     return choice;
 
-                List<AiMapMemory.KnownEnemySighting> threats = EconomyRouteThreats(
-                    snap, army.Hex, target);
+                List<AiMapMemory.KnownEnemySighting> threats =
+                    route.RouteThreats?.ToList()
+                    ?? new List<AiMapMemory.KnownEnemySighting>();
                 bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
                 // EconomyRouteThreats already scans the whole corridor (direct + detour buffer) against
                 // honestly-witnessed sightings — a clean route reported here is not a proximity guess,
@@ -471,19 +472,6 @@ namespace Game.Ai.V2
                 }
                 return choice;
             }
-        }
-
-        internal static List<AiMapMemory.KnownEnemySighting> EconomyRouteThreats(
-            WorldSnapshot snapshot, HexCoord from, HexCoord target)
-        {
-            int direct = HexGridMath.Distance(from, target);
-            return (snapshot?.Known?.EnemySightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snapshot?.Known?.NeutralSightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(enemy => HexGridMath.Distance(from, enemy.Hex)
-                    + HexGridMath.Distance(enemy.Hex, target) <= direct + 2)
-                .ToList();
         }
 
         internal static bool EconomyRosterSafe(
