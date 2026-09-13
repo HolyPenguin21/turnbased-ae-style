@@ -306,29 +306,18 @@ namespace Game.Ai.V2
                         anchorTarget = target.FocusHex;
                     }
 
-                    // Score against the SAME scorer inputs the structural capacity probe and the
-                    // executor use (ReconAirReservationPrepass.BuildScoringContextForWing): projected
-                    // turn-start sortie state, self-sortie exclusion, AND the per-actor effective
-                    // mode (a continuing wing's durable ReconPatrolState.Mode wins over the pass's
-                    // global RequestedMode). Any of these left at its default gives a continuing wing
-                    // a RouteScore that diverges from what capacity promised Demand and what the
-                    // executor will actually fly.
-                    (ReconAirSortieState projectedSortie, int excludeSortieId, ReconMode actorMode) =
-                        ReconAirReservationPrepass.BuildScoringContextForWing(player, ctx, live, mode);
-                    var airScoringCtx = new AirReconScoringContext { ExcludeSortieId = excludeSortieId };
-                    ReconAirStepPlanner.StepChoice? choice = ReconAirStepPlanner.Pick(
-                        player, ctx, live, snap, actorMode, ctx.TurnNumber, sortieState: projectedSortie,
-                        scoringCtx: airScoringCtx, missionFocusHex: anchorTarget);
-                    if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                        player, ctx, snap, mode, slot, null, anchorTarget);
+                    if (!choice.Feasible)
                         continue;
                     int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                         + AbilityParams.GetBestRecceRadius(live);
-                    if (!MakesGenuineProgress(live.Hex, choice.Value.Hex, anchorTarget, vision))
+                    if (!MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
                         continue;
 
-                    list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.Value.ActivationAp),
-                        1, 0, 0f, 0, false, choice.Value.ActivationAp, ScoutExecutorKind.AirExisting,
-                        requiredEnergy: choice.Value.ActivationEnergy, routeScore: choice.Value.Score));
+                    list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
+                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
+                        requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore));
                 }
                 else
                 {
@@ -341,21 +330,19 @@ namespace Game.Ai.V2
                     if (subset.Count == 0)
                         continue;
 
-                    var launchCandidate = new AirLaunchCandidate(slot.AirfieldHex, null, subset);
-                    ReconAirStepPlanner.StepChoice? choice = ReconAirStepPlanner.PickFromStorage(
-                        player, ctx, launchCandidate, snap, mode, ctx.TurnNumber,
-                        scoringCtx: null, missionFocusHex: target.FocusHex);
-                    if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                        player, ctx, snap, mode, slot, null, target.FocusHex);
+                    if (!choice.Feasible)
                         continue;
                     int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                         + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-                    if (!MakesGenuineProgress(slot.AirfieldHex, choice.Value.Hex, target.FocusHex, vision))
+                    if (!MakesGenuineProgress(slot.AirfieldHex, choice.ChosenHex, target.FocusHex, vision))
                         continue;
 
-                    list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.Value.ActivationAp),
-                        1, 0, 0f, 0, false, choice.Value.ActivationAp, ScoutExecutorKind.AirLaunch,
-                        slot.AirfieldHex, subset, requiredEnergy: choice.Value.ActivationEnergy,
-                        routeScore: choice.Value.Score));
+                    list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.ActivationAp),
+                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirLaunch,
+                        slot.AirfieldHex, subset, requiredEnergy: choice.LaunchEnergy,
+                        routeScore: choice.RouteScore));
                 }
             }
         }
@@ -387,6 +374,22 @@ namespace Game.Ai.V2
             var result = new ReconAssignmentResult();
             if (open == null || open.Count == 0)
                 return result;
+
+            HashSet<int> ExclusionsFor(FundedEntry fe)
+            {
+                // A ProvisioningSession only owns claims made during this one admission. Durable
+                // actor occupancy belongs to ActorCommitments and must survive the next mid-turn
+                // session. Let a mission keep its own incumbent, but never borrow another intent's
+                // physical scout merely because a fresh session started.
+                var excluded = alreadyClaimedArmyIds != null
+                    ? new HashSet<int>(alreadyClaimedArmyIds)
+                    : new HashSet<int>();
+                if (durableClaimedArmyIds != null)
+                    excluded.UnionWith(durableClaimedArmyIds);
+                if (fe.Mission.PreferredMoverArmyId.HasValue)
+                    excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
+                return excluded;
+            }
 
             // Round 4/5 — the SAME ordered, per-pass-capped air-actor pool for every mission in this
             // batch. Continuing airborne Recon wings participate in the same funded Assignment pool
@@ -441,28 +444,24 @@ namespace Game.Ai.V2
                 // ProvisioningManager.ProvisionAir -> EnvelopeTooSmall -> ResourceAllocator.Repack, the
                 // ONE funding authority.
                 airEnergyBudget = int.MaxValue;
-                ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
                 IEnumerable<AirObservationSlot> ordered = detail.AirborneWings.Concat(detail.SpareCandidatesInOrder);
                 airPool = BuildFeasibleAirPool(ordered, airActorCap,
-                    slot => ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null).Feasible);
+                    slot => open.Any(fe =>
+                    {
+                        if (!(fe.Mission.Target is ScoutMissionTarget target))
+                            return false;
+                        var witnessed = new List<ScoutExecutionCandidate>();
+                        AppendAirCandidates(witnessed, snap, ctx, player, root, target,
+                            ExclusionsFor(fe), new[] { slot });
+                        return witnessed.Count > 0;
+                    }));
             }
 
             var cands = new List<List<ScoutExecutionCandidate>>(open.Count);
             var exclusions = new List<HashSet<int>>(open.Count);
             foreach (FundedEntry fe in open)
             {
-                // A ProvisioningSession only owns claims made during this one admission. Durable
-                // actor occupancy belongs to ActorCommitments and must survive the next mid-turn
-                // session. Let a mission keep its own incumbent, but never borrow another intent's
-                // physical scout merely because a fresh session started.
-                var excluded = alreadyClaimedArmyIds != null
-                    ? new HashSet<int>(alreadyClaimedArmyIds)
-                    : new HashSet<int>();
-                if (durableClaimedArmyIds != null)
-                    excluded.UnionWith(durableClaimedArmyIds);
-                if (fe.Mission.PreferredMoverArmyId.HasValue)
-                    excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
+                var excluded = ExclusionsFor(fe);
                 exclusions.Add(excluded);
 
                 var target = (ScoutMissionTarget)fe.Mission.Target;
@@ -534,7 +533,10 @@ namespace Game.Ai.V2
                     if (!anyReachable)
                         return ScoutAssignmentFailureReason.NoExecutableStep;
                 }
-                return ScoutAssignmentFailureReason.MoverContended;
+                bool freeStructural = StructuralCandidates(snap, target).Any(mv =>
+                    excludeArmyIds == null || !excludeArmyIds.Contains(mv.ArmyId));
+                return freeStructural ? ScoutAssignmentFailureReason.NoExecutableStep
+                    : ScoutAssignmentFailureReason.MoverContended;
             }
 
             bool anyStructuralVantage = StructuralCandidates(snap, target)
@@ -1007,11 +1009,8 @@ namespace Game.Ai.V2
                 airborneProbed++;
                 slotsUsed++;
 
-                AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                    player, ctx, snap, mode, wing, provisionalWedges);
-                if (sf.Feasible
-                    && AirActorProgressesAnObjective(ctx, player, snap, mode, wing, obsRunnable,
-                        consumedObjectiveKeys, provisionalWedges))
+                if (AirActorProgressesAnObjective(ctx, player, snap, mode, wing, obsRunnable,
+                        consumedObjectiveKeys, provisionalWedges, out _))
                 {
                     airborneWitnessed++;
                     if (wing.ActorId.HasValue)
@@ -1031,11 +1030,8 @@ namespace Game.Ai.V2
                     break;
                 launchProbed++;
 
-                AirStructuralFeasibility sf = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                    player, ctx, snap, mode, slot, provisionalWedges);
-                if (!sf.Feasible
-                    || !AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable,
-                        consumedObjectiveKeys, provisionalWedges))
+                if (!AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable,
+                        consumedObjectiveKeys, provisionalWedges, out HexCoord chosenHex))
                 {
                     launchRejected++;
                     continue;
@@ -1045,7 +1041,7 @@ namespace Game.Ai.V2
                 if (slot.ActorId.HasValue)
                     reservedActorIds.Add(slot.ActorId.Value);
                 if (ctx?.Map != null)
-                    provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, sf.ChosenHex));
+                    provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, chosenHex));
             }
 
             AiDebugLog.Write($"[AI][V2][ReconAirCap] structuralObsLanes={airborneWitnessed + spareLaunchWitnessed} "
@@ -1074,8 +1070,9 @@ namespace Game.Ai.V2
         private static bool AirActorProgressesAnObjective(AiTurnContext ctx, PlayerSetupData player,
             WorldSnapshot snap, ReconMode mode, AirObservationSlot slot,
             IReadOnlyList<ReconObjective> obsRunnable, HashSet<MissionIntentKey> consumedObjectiveKeys,
-            IReadOnlyList<ReconSector> provisionalWedges)
+            IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
         {
+            chosenHex = default;
             if (ctx?.Map == null)
                 return true; // bare test harness — mirror EvaluateAirStructuralFeasibility's own fallback
             if (obsRunnable == null || obsRunnable.Count == 0)
@@ -1126,30 +1123,11 @@ namespace Game.Ai.V2
                     anchor = o.FocusHex;
                 }
 
-                ReconAirStepPlanner.StepChoice? choice;
-                if (live != null)
-                {
-                    (ReconAirSortieState projected, int excludeSortieId, ReconMode actorMode) =
-                        ReconAirReservationPrepass.BuildScoringContextForWing(player, ctx, live, mode);
-                    var scoring = new AirReconScoringContext
-                    {
-                        ExcludeSortieId = excludeSortieId,
-                        ProvisionalWedgeClaims = provisionalWedges,
-                    };
-                    choice = ReconAirStepPlanner.Pick(player, ctx, live, snap, actorMode, ctx.TurnNumber,
-                        sortieState: projected, scoringCtx: scoring, missionFocusHex: anchor);
-                }
-                else
-                {
-                    var scoring = new AirReconScoringContext { ProvisionalWedgeClaims = provisionalWedges };
-                    choice = ReconAirStepPlanner.PickFromStorage(player, ctx,
-                        new AirLaunchCandidate(slot.AirfieldHex, null, subset), snap, mode, ctx.TurnNumber,
-                        scoringCtx: scoring, missionFocusHex: anchor);
-                }
-                if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                    player, ctx, snap, mode, slot, provisionalWedges, anchor);
+                if (!choice.Feasible || !MakesGenuineProgress(from, choice.ChosenHex, anchor, vision))
                     continue;
-                if (!MakesGenuineProgress(from, choice.Value.Hex, anchor, vision))
-                    continue;
+                chosenHex = choice.ChosenHex;
 
                 consumedObjectiveKeys.Add(o.IntentKey);
                 return true;
@@ -1293,3 +1271,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

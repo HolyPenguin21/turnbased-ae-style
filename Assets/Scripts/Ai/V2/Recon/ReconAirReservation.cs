@@ -32,12 +32,14 @@ namespace Game.Ai.V2
     {
         public readonly bool Feasible;
         public readonly HexCoord ChosenHex;
+        public readonly float ActivationAp;
         public readonly int LaunchEnergy;   // this candidate's own real launch/activation Energy cost
         public readonly float RouteScore;   // AIR-01 route score — an ECONOMICS input, carried through
         public readonly int ExcludeArmyId;  // the actor being evaluated (-1 for a not-yet-formed launch)
 
-        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore, int excludeArmyId)
+        public AirStructuralFeasibility(bool feasible, HexCoord chosenHex, int launchEnergy, float routeScore, int excludeArmyId, float activationAp = 0f)
         {
+            ActivationAp = activationAp;
             Feasible = feasible;
             ChosenHex = chosenHex;
             LaunchEnergy = launchEnergy;
@@ -59,7 +61,7 @@ namespace Game.Ai.V2
         // ProvisioningManager.AirSortieReservationAdmission, never to capability measurement.
         internal static AirStructuralFeasibility EvaluateAirStructuralFeasibility(PlayerSetupData player,
             AiTurnContext ctx, WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot,
-            IReadOnlyList<ReconSector> provisionalWedges)
+            IReadOnlyList<ReconSector> provisionalWedges, HexCoord? missionFocusHex = null)
         {
             if (ctx?.Map == null)
                 return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId ?? -1); // bare harness
@@ -96,7 +98,7 @@ namespace Game.Ai.V2
                     && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
                     return AirStructuralFeasibility.No;
 
-                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx);
+                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx, missionFocusHex: missionFocusHex);
                 launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
                 excludeArmyId = wing.Id;
             }
@@ -113,7 +115,7 @@ namespace Game.Ai.V2
                 if (subset.Count == 0)
                     return AirStructuralFeasibility.No;
                 var candidate = new AirLaunchCandidate(slot.AirfieldHex, null, subset);
-                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx);
+                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx, missionFocusHex: missionFocusHex);
                 launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
                 excludeArmyId = -1;
             }
@@ -126,7 +128,7 @@ namespace Game.Ai.V2
             if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 return AirStructuralFeasibility.No;
 
-            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId);
+            return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId, choice.Value.ActivationAp);
         }
 
         // Shared scorer INPUTS for one wing, used by BOTH EvaluateAirStructuralFeasibility (capacity)
@@ -206,3 +208,4 @@ namespace Game.Ai.V2
         }
     }
 }
+

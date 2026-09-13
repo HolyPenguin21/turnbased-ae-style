@@ -555,7 +555,7 @@ namespace Game.Ai.V2
             int dropped = 0;
             foreach (MissionIntent v in shedable)
             {
-                if (dropped >= surplus || dropped >= AiConfigV2.maxReconLaneTrimPerTurn)
+                if (dropped >= surplus || !state.TryConsumeReconLaneTrim(snap.TurnNumber))
                     break;
                 state.Remove(v.IntentKey);
                 active.Remove(v);
@@ -564,7 +564,7 @@ namespace Game.Ai.V2
                 dropped++;
                 AiDebugLog.Write($"[AI][V2] continuity — {v.IntentKey} retired: recon lane surplus "
                     + $"(active {scoutLanes.Count}, hard {hardKept}, desired {desired}, "
-                    + $"shed 1/{surplus} this turn)");
+                    + $"shed {dropped}/{surplus} this pass; per-turn quota enforced)");
             }
         }
 
