@@ -90,6 +90,8 @@ namespace Game.Ai.V2
         {
             if (card == null || !target.HasValue)
                 return false;
+            if (IsBaseExpansionDeliverySuppressed(turn, card, target))
+                return true;
             bool sameProject = card == _baseExpansionDeliveryFailureCard
                 && target.Equals(_baseExpansionDeliveryFailureTarget);
             bool consecutiveTurn = _baseExpansionDeliveryFailureTurn == turn
