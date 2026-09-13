@@ -284,7 +284,7 @@ namespace Game.Ai.V2
                 // route already applied there). Phase B never rescans the map on its own — it only
                 // runs the final gameplay-legality check (CanFoundBaseAt) per candidate hex, same as
                 // Generated Base below reuses this exact method. Candidates are tried in Economy's
-                // own strategic-value order (DemandLayer.ScoreBaseSite — the SAME formula
+                // own strategic-value order (StrategicCardEvaluator.ScoreBaseSite — the SAME formula
                 // AddBaseCandidates commits to a staged demand's EconomySiteValue, called here rather
                 // than copied) instead of WorldAnalysis's plain Q/R enumeration order, so a duplicate/
                 // unclaimed Base card founds on the best-value legal hex, not merely the first one.
@@ -293,7 +293,8 @@ namespace Game.Ai.V2
                 IEnumerable<EconomyBaseOpportunity> sites = snap?.Economy?.BaseOpportunities
                     ?? System.Array.Empty<EconomyBaseOpportunity>();
                 if (snap != null)
-                    sites = sites.OrderByDescending(site => DemandLayer.ScoreBaseSite(snap, site, card).StrategicValue)
+                    sites = sites.OrderByDescending(
+                            site => StrategicCardEvaluator.ScoreBaseSite(snap, site, card).StrategicValue)
                         .ThenBy(site => site.Hex.Q).ThenBy(site => site.Hex.R);
                 foreach (EconomyBaseOpportunity site in sites)
                 {

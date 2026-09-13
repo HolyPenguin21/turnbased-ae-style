@@ -571,6 +571,50 @@ namespace Game.Ai.V2
             if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
                 eligibleBuilders = eligibleBuilders.Where(
                     x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
+
+            // TEMP DIAGNOSTIC — traces which single eligibility clause below rejects a durable
+            // intent's committed mover, since the FirstOrDefault predicate normally swallows all
+            // of them into one MoverContended result. Remove once the stuck-builder root cause
+            // (project owner's live investigation, 2026-09-13) is found.
+            if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
+            {
+                int preferredId = m.PreferredMoverArmyId.Value;
+                var eligibleList = eligibleBuilders.ToList();
+                eligibleBuilders = eligibleList;
+                bool inRankedAtAll = rankedBuilders.Any(x => x.Route.ArmyId == preferredId);
+                AiDebugLog.Write($"[AI][V2][Economy][TRACE] durable mover #{preferredId} — "
+                    + $"inRankedBuilders={inRankedAtAll} rankedBuildersTotal={rankedBuilders.Count} "
+                    + $"eligibleAfterMoverFilter={eligibleList.Count}");
+                foreach (DemandLayer.EconomyBuilderChoice x in eligibleList)
+                {
+                    ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                    if (a == null)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} — ResolveArmy returned null");
+                        continue;
+                    }
+                    bool cMobile = IsMobileEconomyHero(a, player);
+                    bool cThreat = !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex);
+                    bool cClaimed = !session.ClaimedArmyIds.Contains(a.Id);
+                    MissionIntent conflicting = standingIntents.FirstOrDefault(i => i.PreferredMoverArmyId == a.Id
+                        && !i.IntentKey.Equals(currentIntentKey)
+                        && !DemandLayer.EconomyDonorStructurallyEligible(i));
+                    bool cDonorConflict = conflicting == null;
+                    bool atTarget = a.Hex.Equals(target.TargetHex);
+                    HexCoord? nextStep = atTarget
+                        ? (HexCoord?)null
+                        : SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex);
+                    bool cPath = atTarget || (a.CurrentMovement > 0 && nextStep.HasValue);
+                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
+                        + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
+                        + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
+                        + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
+                        + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
+                        + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
+                        + $"=> ELIGIBLE={cMobile && cThreat && cClaimed && cDonorConflict && cPath}");
+                }
+            }
+
             DemandLayer.EconomyBuilderChoice builderChoice = eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .FirstOrDefault(x =>

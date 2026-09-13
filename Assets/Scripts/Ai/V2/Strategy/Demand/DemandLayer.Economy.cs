@@ -47,7 +47,7 @@ namespace Game.Ai.V2
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
-                float resourceCost = ResourceCostSum(def?.resourceCost);
+                float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
                 float preliminaryPayback = EconomyPaybackTurns(
                     gain, resourceCost, def?.apCost ?? 0f);
                 float preliminaryValue = ScoreEconomySite(
@@ -60,7 +60,7 @@ namespace Game.Ai.V2
                     preliminaryValue, def?.apCost ?? 0f, includeReturn: true);
                 float travel = builder?.Route.TravelCost
                     ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
-                float exposure = ThreatExposure(s, site.Hex);
+                float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
                 float opportunity = EconomyMissionOpportunityCost(builder, activeIntents);
                 float assignmentAp = builder?.TotalAssignmentApCost ?? (def?.apCost ?? 0f);
                 float payback = EconomyPaybackTurns(gain, resourceCost, assignmentAp);
@@ -702,7 +702,7 @@ namespace Game.Ai.V2
                 && (!t.EnemyEta.HasValue || t.EnemyEta.Value <= 1));
 
         internal static float EconomyRecoveryThreatExposure(WorldSnapshot snap, HexCoord hex) =>
-            ThreatExposure(snap, hex);
+            StrategicCardEvaluator.ThreatExposure(snap, hex);
 
         internal static float EconomyPaybackTurns(float expectedIncomeGain,
             float resourceCost, float assignmentApCost) => expectedIncomeGain <= 0f
@@ -741,66 +741,6 @@ namespace Game.Ai.V2
             - AiConfigV2.economySiteThreatPenalty * Mathf.Clamp01(threatExposure)
             - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
 
-        // Structural+card value of one Base site for one card — builder-route and active-mission
-        // independent, so it needs only the site/card facts, never activeIntents/commitments. The
-        // SAME numbers AddBaseCandidates below folds into its staged demand's EconomySiteValue.
-        // Exposed (not copied) so Phase B can order a duplicate/unclaimed Base card's legal hexes
-        // by real strategic value instead of WorldAnalysis.Economy's plain Q/R enumeration order,
-        // without NonCombatCardPlayer becoming a second owner of this formula.
-        internal readonly struct BaseSiteValue
-        {
-            internal readonly float ReasonValue;
-            internal readonly float HexYield;
-            internal readonly float GlobalEffect;
-            internal readonly float Airfield;
-            internal readonly float Exposure;
-            internal readonly float IntrinsicBuildCost;
-            internal readonly float ExtractionLossPenalty;
-            internal readonly float StrategicValue;
-
-            internal BaseSiteValue(float reasonValue, float hexYield, float globalEffect,
-                float airfield, float exposure, float intrinsicBuildCost,
-                float extractionLossPenalty, float strategicValue)
-            {
-                ReasonValue = reasonValue;
-                HexYield = hexYield;
-                GlobalEffect = globalEffect;
-                Airfield = airfield;
-                Exposure = exposure;
-                IntrinsicBuildCost = intrinsicBuildCost;
-                ExtractionLossPenalty = extractionLossPenalty;
-                StrategicValue = strategicValue;
-            }
-        }
-
-        internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
-            CardData card)
-        {
-            float hexYield = BaseHexYieldValue(s, site.HexYield);
-            float global = BaseGlobalEffectValue(s, card.Definition);
-            float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
-            float reasonValue = AiConfigV2.economyBaseCapacityValue * site.CapacityValue
-                + AiConfigV2.economyBaseHexYieldValue * hexYield
-                + AiConfigV2.economyBaseClusterValue * site.NearbyResourceClusterValue
-                + AiConfigV2.economyBaseNetworkExpansionValue * site.NetworkExpansionValue
-                + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
-                + AiConfigV2.economyBaseAirfieldValue * airfield
-                + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
-                + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
-                + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
-                + AiConfigV2.economyBaseGlobalEffectValue * global;
-            float intrinsicBuildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
-                + ResourceCostSum(card.EffectivePlayResourceCost) * AiConfigV2.economyBuildResourcePenalty;
-            float extractionLossPenalty = site.ConvertsOwnedExtractionSite
-                ? AiConfigV2.economyBaseExtractionLossPenalty * site.LostExtractionIncome
-                : 0f;
-            float exposure = ThreatExposure(s, site.Hex);
-            float strategicValue = reasonValue - intrinsicBuildCost
-                - AiConfigV2.economySiteThreatPenalty * exposure - extractionLossPenalty;
-            return new BaseSiteValue(reasonValue, hexYield, global, airfield, exposure,
-                intrinsicBuildCost, extractionLossPenalty, strategicValue);
-        }
-
         private static string AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
             PlayerSetupData player, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
@@ -833,7 +773,8 @@ namespace Game.Ai.V2
                 {
                     considered++;
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
-                    BaseSiteValue score = ScoreBaseSite(s, site, card);
+                    StrategicCardEvaluator.BaseSiteValue score =
+                        StrategicCardEvaluator.ScoreBaseSite(s, site, card);
                     float hexYield = score.HexYield;
                     float global = score.GlobalEffect;
                     float airfield = score.Airfield;
@@ -1027,71 +968,12 @@ namespace Game.Ai.V2
                         || (route.IsOnTarget && army.IsGarrison && army.HasHero))));
         }
 
-        private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield)
-        {
-            if (s?.Economy?.PerType == null)
-                return 0f;
-            var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
-            float value = 0f;
-            foreach (ResourceType type in ResourceBundle.All)
-                if (standings.TryGetValue(type, out EconomyResourceStanding standing))
-                    value += yield.Get(type) * Mathf.Max(0.25f, standing.DeficitScore);
-            return value;
-        }
-
-        private static float BaseGlobalEffectValue(WorldSnapshot s, CardDefinition definition)
-        {
-            if (definition?.grantedAbilities == null)
-                return 0f;
-            EffectContribution contribution = StrategicEffectRegistry.Contributions(
-                IntendedRole.Economy, definition.grantedAbilities, 0,
-                new EffectEvaluationContext(s));
-            return contribution.GlobalRoleFit + contribution.GlobalImmediateTempo
-                + contribution.GlobalThreatResponse + contribution.GlobalCapabilityGap
-                + contribution.GlobalForceGrowth + contribution.GlobalSynergy;
-        }
-
-        private static float BaseAirfieldValue(WorldSnapshot s, CardDefinition definition,
-            HexCoord target)
-        {
-            if (definition == null || definition.airfieldCapacity <= 0 || s?.Self == null)
-                return 0f;
-            bool aviationRelevant = (s.Self.Hand ?? System.Array.Empty<CardData>())
-                    .Any(c => c?.Definition?.isAviation == true)
-                || (s.Self.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null && a.IsAir);
-            if (!aviationRelevant)
-                return 0f;
-            List<ArmySnapshot> airfields = (s.Self.Armies ?? System.Array.Empty<ArmySnapshot>())
-                .Where(a => a != null && a.IsAirfield).ToList();
-            if (airfields.Count == 0)
-                return 1f;
-            int distance = airfields.Min(a => HexGridMath.Distance(a.Hex, target));
-            return Mathf.Clamp01(distance / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
-        }
-
         private static CardDefinition ExtractionDefinition(AiTurnContext ctx, ResourceType type)
         {
             CardDefinition[] cards = ctx?.GameConfig?.extractionFacilityCards;
             int index = (int)type;
             return cards != null && index >= 0 && index < cards.Length ? cards[index] : null;
         }
-
-        private static float ThreatExposure(WorldSnapshot s, HexCoord target)
-        {
-            if (s?.Known?.EnemySightings == null)
-                return 0f;
-            float exposure = 0f;
-            foreach (AiMapMemory.KnownEnemySighting enemy in s.Known.EnemySightings)
-            {
-                int distance = HexGridMath.Distance(target, enemy.Hex);
-                if (distance <= 3)
-                    exposure = Mathf.Max(exposure, 1f - distance / 4f);
-            }
-            return exposure;
-        }
-
-        private static float ResourceCostSum(ResourceCost cost) => cost == null ? 0f
-            : ResourceBundle.All.Sum(t => Mathf.Max(0, cost.Get(t)));
 
         // ---------------------------------------------------------------------------------------
         //  DEV — three staged shapes (the radar no longer gates on facility+hero; the demand layer

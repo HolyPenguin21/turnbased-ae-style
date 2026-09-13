@@ -1526,5 +1526,128 @@ namespace Game.Ai.V2
             if (string.IsNullOrEmpty(b)) return a;
             return a + " ; " + b;
         }
+
+        // ===========================================================================================
+        //  BASE SITE SCORING — moved from Strategy/Demand/DemandLayer.Economy.cs (dependency-direction
+        //  fix, 2026-09-13): Evaluation is the reusable scoring layer Strategy calls into, never the
+        //  reverse. DemandLayer.AddBaseCandidates and NonCombatCardPlayer both route through this one
+        //  formula; DemandLayer stays the owner of Base candidate selection and Economy demand
+        //  emission, this class owns only the numeric Base card x site value.
+        // ===========================================================================================
+        internal readonly struct BaseSiteValue
+        {
+            internal readonly float ReasonValue;
+            internal readonly float HexYield;
+            internal readonly float GlobalEffect;
+            internal readonly float Airfield;
+            internal readonly float Exposure;
+            internal readonly float IntrinsicBuildCost;
+            internal readonly float ExtractionLossPenalty;
+            internal readonly float StrategicValue;
+
+            internal BaseSiteValue(float reasonValue, float hexYield, float globalEffect,
+                float airfield, float exposure, float intrinsicBuildCost,
+                float extractionLossPenalty, float strategicValue)
+            {
+                ReasonValue = reasonValue;
+                HexYield = hexYield;
+                GlobalEffect = globalEffect;
+                Airfield = airfield;
+                Exposure = exposure;
+                IntrinsicBuildCost = intrinsicBuildCost;
+                ExtractionLossPenalty = extractionLossPenalty;
+                StrategicValue = strategicValue;
+            }
+        }
+
+        internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
+            CardData card)
+        {
+            float hexYield = BaseHexYieldValue(s, site.HexYield);
+            float global = BaseGlobalEffectValue(s, card.Definition);
+            float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
+            float reasonValue = AiConfigV2.economyBaseCapacityValue * site.CapacityValue
+                + AiConfigV2.economyBaseHexYieldValue * hexYield
+                + AiConfigV2.economyBaseClusterValue * site.NearbyResourceClusterValue
+                + AiConfigV2.economyBaseNetworkExpansionValue * site.NetworkExpansionValue
+                + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
+                + AiConfigV2.economyBaseAirfieldValue * airfield
+                + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
+                + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
+                + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
+                + AiConfigV2.economyBaseGlobalEffectValue * global;
+            float intrinsicBuildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
+                + ResourceCostSum(card.EffectivePlayResourceCost) * AiConfigV2.economyBuildResourcePenalty;
+            float extractionLossPenalty = site.ConvertsOwnedExtractionSite
+                ? AiConfigV2.economyBaseExtractionLossPenalty * site.LostExtractionIncome
+                : 0f;
+            float exposure = ThreatExposure(s, site.Hex);
+            float strategicValue = reasonValue - intrinsicBuildCost
+                - AiConfigV2.economySiteThreatPenalty * exposure - extractionLossPenalty;
+            return new BaseSiteValue(reasonValue, hexYield, global, airfield, exposure,
+                intrinsicBuildCost, extractionLossPenalty, strategicValue);
+        }
+
+        private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield)
+        {
+            if (s?.Economy?.PerType == null)
+                return 0f;
+            var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
+            float value = 0f;
+            foreach (ResourceType type in ResourceBundle.All)
+                if (standings.TryGetValue(type, out EconomyResourceStanding standing))
+                    value += yield.Get(type) * Mathf.Max(0.25f, standing.DeficitScore);
+            return value;
+        }
+
+        private static float BaseGlobalEffectValue(WorldSnapshot s, CardDefinition definition)
+        {
+            if (definition?.grantedAbilities == null)
+                return 0f;
+            EffectContribution contribution = StrategicEffectRegistry.Contributions(
+                IntendedRole.Economy, definition.grantedAbilities, 0,
+                new EffectEvaluationContext(s));
+            return contribution.GlobalRoleFit + contribution.GlobalImmediateTempo
+                + contribution.GlobalThreatResponse + contribution.GlobalCapabilityGap
+                + contribution.GlobalForceGrowth + contribution.GlobalSynergy;
+        }
+
+        private static float BaseAirfieldValue(WorldSnapshot s, CardDefinition definition,
+            HexCoord target)
+        {
+            if (definition == null || definition.airfieldCapacity <= 0 || s?.Self == null)
+                return 0f;
+            bool aviationRelevant = (s.Self.Hand ?? System.Array.Empty<CardData>())
+                    .Any(c => c?.Definition?.isAviation == true)
+                || (s.Self.Armies ?? System.Array.Empty<ArmySnapshot>()).Any(a => a != null && a.IsAir);
+            if (!aviationRelevant)
+                return 0f;
+            List<ArmySnapshot> airfields = (s.Self.Armies ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.IsAirfield).ToList();
+            if (airfields.Count == 0)
+                return 1f;
+            int distance = airfields.Min(a => HexGridMath.Distance(a.Hex, target));
+            return Mathf.Clamp01(distance / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
+        }
+
+        // Shared with Strategy/Demand's Extraction site scoring — generic map/resource-cost
+        // primitives, not Base-specific, so DemandLayer calls back into this evaluator rather than
+        // each side keeping its own copy.
+        internal static float ThreatExposure(WorldSnapshot s, HexCoord target)
+        {
+            if (s?.Known?.EnemySightings == null)
+                return 0f;
+            float exposure = 0f;
+            foreach (AiMapMemory.KnownEnemySighting enemy in s.Known.EnemySightings)
+            {
+                int distance = HexGridMath.Distance(target, enemy.Hex);
+                if (distance <= 3)
+                    exposure = Mathf.Max(exposure, 1f - distance / 4f);
+            }
+            return exposure;
+        }
+
+        internal static float ResourceCostSum(ResourceCost cost) => cost == null ? 0f
+            : ResourceBundle.All.Sum(t => Mathf.Max(0, cost.Get(t)));
     }
 }
