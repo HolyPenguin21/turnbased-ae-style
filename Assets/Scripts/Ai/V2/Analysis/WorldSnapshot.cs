@@ -495,6 +495,10 @@ namespace Game.Ai.V2
         public float EffectiveArmyPower;
         public bool HasActiveEconomyCommitment;
         public bool IsOnTarget;
+        // Exact fog-honest route selected by SafeStepPathing. Demand consumes the associated
+        // route threats instead of reconstructing a wider geometric corridor from endpoints.
+        public IReadOnlyList<HexCoord> PathHexes;
+        public IReadOnlyList<AiMapMemory.KnownEnemySighting> RouteThreats;
     }
 
     public struct EconomyExtractionOpportunity

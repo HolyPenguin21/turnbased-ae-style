@@ -202,6 +202,17 @@ namespace Game.Ai.V2
             return p != null ? new List<MaterializationPlan> { p } : new List<MaterializationPlan>();
         }
 
+        internal static MaterializationDeliveryAvailability OperationalDeliveryAvailabilityForDemand(
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, AxisDemand demand, ActorCommitments commitments,
+            MaterializationReservation reservation)
+        {
+            List<MaterializationPlan> raw = RawForDemand(
+                snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
+            return MaterializationFeasibility.AssessOperationalDelivery(
+                raw, player, root, hand, ctx, demand, snap);
+        }
+
         public static List<DemandCandidate> TopForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
             AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,

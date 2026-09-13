@@ -173,20 +173,31 @@ namespace Game.Ai.V2
                 [EquipmentStat.MoveMax] = beforeMove,
                 [EquipmentStat.ActivationApCost] = beforeActivation,
             };
+            // Compare two states normalized by the same gameplay-owned predictor. In
+            // particular, a host that already has RapidReaction already has effective activation
+            // AP 0 before this grant; the grant must not receive credit for that existing ability.
+            PredictedEquipmentState before = EquipmentSystem.Predict(
+                null, beforeStats, beforeAbilities);
             PredictedEquipmentState after = EquipmentSystem.Predict(
                 grant, beforeStats, beforeAbilities);
+            int normalizedBeforeMove = before.Stats.TryGetValue(
+                EquipmentStat.MoveMax, out int beforePredictedMove)
+                ? beforePredictedMove : beforeMove;
+            int normalizedBeforeActivation = before.Stats.TryGetValue(
+                EquipmentStat.ActivationApCost, out int beforePredictedActivation)
+                ? beforePredictedActivation : beforeActivation;
             int afterMove = after.Stats.TryGetValue(EquipmentStat.MoveMax, out int move)
-                ? move : beforeMove;
+                ? move : normalizedBeforeMove;
             int afterActivation = after.Stats.TryGetValue(
                 EquipmentStat.ActivationApCost, out int activation)
-                ? activation : beforeActivation;
+                ? activation : normalizedBeforeActivation;
             return AbilityParams.GetBestRecceRadius(after.Abilities)
-                    > AbilityParams.GetBestRecceRadius(beforeAbilities)
+                    > AbilityParams.GetBestRecceRadius(before.Abilities)
                 || AbilityParams.GetBestRecceSpotStrength(after.Abilities)
-                    > AbilityParams.GetBestRecceSpotStrength(beforeAbilities)
-                || BestStealthLevel(after.Abilities) > BestStealthLevel(beforeAbilities)
-                || afterMove > beforeMove
-                || afterActivation < beforeActivation;
+                    > AbilityParams.GetBestRecceSpotStrength(before.Abilities)
+                || BestStealthLevel(after.Abilities) > BestStealthLevel(before.Abilities)
+                || afterMove > normalizedBeforeMove
+                || afterActivation < normalizedBeforeActivation;
         }
 
         private static int BestStealthLevel(IEnumerable<string> abilities)

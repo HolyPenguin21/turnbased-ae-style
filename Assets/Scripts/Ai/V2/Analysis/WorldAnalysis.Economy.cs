@@ -360,6 +360,9 @@ namespace Game.Ai.V2
                             EffectiveArmyPower = army.EffectiveArmyPower,
                             HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
                             IsOnTarget = true,
+                            PathHexes = new[] { target },
+                            RouteThreats = KnownThreatsAffectingEconomyRoute(
+                                snap, new[] { target }),
                         });
                     continue;
                 }
@@ -408,9 +411,39 @@ namespace Game.Ai.V2
                     EffectiveArmyPower = army.EffectiveArmyPower,
                     HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
                     IsOnTarget = army.Hex.Equals(target),
+                    PathHexes = route.Hexes.ToList(),
+                    RouteThreats = KnownThreatsAffectingEconomyRoute(
+                        snap, route.Hexes),
                 });
             }
             return result;
+        }
+
+        // Route exposure is derived from the exact SafeStepPathing witness. Known neutral
+        // armies are stationary blockers and only matter when they occupy the route itself;
+        // mobile enemy armies can threaten an adjacent route hex. Both inputs remain fog-honest.
+        internal static IReadOnlyList<AiMapMemory.KnownEnemySighting>
+            KnownThreatsAffectingEconomyRoute(WorldSnapshot snap,
+                IReadOnlyList<HexCoord> pathHexes)
+        {
+            if (pathHexes == null || pathHexes.Count == 0)
+                return System.Array.Empty<AiMapMemory.KnownEnemySighting>();
+
+            var path = new HashSet<HexCoord>(pathHexes);
+            var threats = new List<AiMapMemory.KnownEnemySighting>();
+            foreach (AiMapMemory.KnownEnemySighting enemy in snap?.Known?.EnemySightings
+                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                if (path.Any(hex => HexGridMath.Distance(hex, enemy.Hex) <= 1))
+                    threats.Add(enemy);
+            foreach (AiMapMemory.KnownEnemySighting neutral in snap?.Known?.NeutralSightings
+                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                if (path.Contains(neutral.Hex))
+                    threats.Add(neutral);
+            return threats
+                .OrderBy(x => x.Owner?.IsNeutral == true ? 1 : 0)
+                .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+                .ThenBy(x => x.ArmyId)
+                .ToList();
         }
 
         private static float EconomyBaseNetworkSynergy(WorldSnapshot snap, HexCoord target)
