@@ -6,6 +6,24 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
+    internal readonly struct MaterializationDeliveryAvailability
+    {
+        public readonly int RawCandidates;
+        public readonly int PreflightCandidates;
+        public readonly int OperationalCandidates;
+
+        public MaterializationDeliveryAvailability(int rawCandidates,
+            int preflightCandidates, int operationalCandidates)
+        {
+            RawCandidates = rawCandidates;
+            PreflightCandidates = preflightCandidates;
+            OperationalCandidates = operationalCandidates;
+        }
+
+        public bool ConfirmedBlocked => PreflightCandidates > 0
+            && OperationalCandidates == 0;
+    }
+
     // ARCH-02 §9 / DoD "Feasibility отделена от enumeration/scoring" — the per-chain feasibility
     // stage. It takes the RAW shapes MaterializationChainEnumerator produced and admits the ones
     // that are legally playable now (CardPlayExecutor.Preflight), fit the requesting axis's
@@ -37,6 +55,33 @@ namespace Game.Ai.V2
                     axisBudget, eps, root, hand, player, ctx, snapshot);
             }
             return sink;
+        }
+
+        // Read-only explanation seam for callers that must distinguish an operational-delivery
+        // dead end from ordinary AP/resource/hand affordability. It reuses the same preflight and
+        // canonical delivery policy as FilterForDemand and never scores or selects a plan.
+        internal static MaterializationDeliveryAvailability AssessOperationalDelivery(
+            IReadOnlyList<MaterializationPlan> raw, PlayerSetupData player, PlayerRoot root,
+            AiHandData hand, AiTurnContext ctx, AxisDemand demand, WorldSnapshot snapshot = null)
+        {
+            int rawCount = 0;
+            int preflightCount = 0;
+            int operationalCount = 0;
+            foreach (MaterializationPlan plan in raw ?? System.Array.Empty<MaterializationPlan>())
+            {
+                if (plan == null)
+                    continue;
+                rawCount++;
+                if (!PreflightIfExisting(player, root, hand, ctx, plan))
+                    continue;
+                preflightCount++;
+                if (plan.Kind == MaterializationChainKind.GenerateAttachUpgrade
+                    || MaterializationDeliveryPolicy.CanDeliverDemandOperationally(
+                        plan, demand, snapshot, player, ctx))
+                    operationalCount++;
+            }
+            return new MaterializationDeliveryAvailability(
+                rawCount, preflightCount, operationalCount);
         }
 
         // Phase B — admit the raw surplus shapes: legally playable now, not blocked by an
