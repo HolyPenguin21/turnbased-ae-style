@@ -7,9 +7,26 @@ namespace Game.Ai.V2
 {
     public static partial class ArmyReorganizationPlanner
     {
+        private readonly struct ThreatContactRow
+        {
+            public readonly int ThreatArmyId;
+            public readonly float FirstReadiness;
+            public readonly float SecondReadiness;
+
+            public ThreatContactRow(int threatArmyId, float firstReadiness, float secondReadiness)
+            {
+                ThreatArmyId = threatArmyId;
+                FirstReadiness = firstReadiness;
+                SecondReadiness = secondReadiness;
+            }
+        }
+
         private static Outcome Evaluate(VState s)
         {
-            Dictionary<int, float> pressureByContainer = ComputeContactPressureByContainer(s);
+            bool hasThreatBenchmarks = s.ThreatBenchmarks.Count > 0;
+            IReadOnlyList<float> contactReadiness = hasThreatBenchmarks
+                ? BuildThreatContactReadiness(s)
+                : System.Array.Empty<float>();
 
             int garrisonDeficit = 0;
             int legality = 0;
@@ -23,7 +40,7 @@ namespace Game.Ai.V2
             // §9 — formation-leadership bookkeeping. A "benched" hero sits in a garrison or a lone
             // hero container; a heroless viable field formation is only a fixable defect when such
             // a hero exists in the same group.
-            int benchedCombatCapable = 0;   // CombatLeader or Flexible, available to lead
+            int benchedCombatCapable = 0;
             int unledViableFields = 0;
             int supportLedWhileCombatBenched = 0;
 
@@ -37,8 +54,6 @@ namespace Game.Ai.V2
                 if (!meta.IsGarrison)
                     operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
 
-                // §7 — commander order is a formation-quality concern for every reorderable
-                // container, garrison included. Accumulate before the garrison early-out.
                 if (meta.CanChangeComposition)
                     commandWaste += CommandCapacityWaste(units);
 
@@ -55,7 +70,8 @@ namespace Game.Ai.V2
                             && GarrisonMayRelease(units, u, meta));
                         if (nonHero > 0)
                         {
-                            formationStrengths.Add(FormationReadiness(s, units, pressureByContainer, id));
+                            if (!hasThreatBenchmarks)
+                                formationStrengths.Add(ReorgViability.EffectivePower(units));
                             composition += ReorgViability.CompositionQuality(units);
                         }
                     }
@@ -77,7 +93,8 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.IsViable(units))
                 {
-                    formationStrengths.Add(FormationReadiness(s, units, pressureByContainer, id));
+                    if (!hasThreatBenchmarks)
+                        formationStrengths.Add(ReorgViability.EffectivePower(units));
                     composition += ReorgViability.CompositionQuality(units);
 
                     ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
@@ -92,94 +109,115 @@ namespace Game.Ai.V2
                 }
             }
 
-            // Only an unled/support-led formation that a benched combat hero could actually take
-            // over is a defect the planner can act on.
             int formationDefect = benchedCombatCapable > 0
                 ? Math.Min(unledViableFields + supportLedWhileCombatBenched, benchedCombatCapable)
                 : 0;
 
-            // The first value represents the best defender the contact system can expose, then
-            // the next layer from the remainder. Every measurable reduction in enemy success can
-            // win; there is deliberately no artificial viability gate.
-            formationStrengths.Sort((a, b) => b.CompareTo(a));
+            if (hasThreatBenchmarks)
+            {
+                // Already ordered by the worst enemy contact first. Keep enemy identity and the
+                // first/second contact layers adjacent; never collapse them back per container.
+                formationStrengths.AddRange(contactReadiness);
+            }
+            else
+            {
+                // No deployed enemy benchmark: retain the canonical AiPower fallback.
+                formationStrengths.Sort((a, b) => b.CompareTo(a));
+            }
+
             return new Outcome(garrisonDeficit, legality, operatorExposure, singles, nonViable,
                 commandWaste, formationDefect, formationStrengths, -composition, s.Transfers.Count);
         }
 
-        // §Task4 — per-container readiness against the enemy actually threatening IT, not a
-        // scalar worst-case folded across the whole group. `pressureByContainer` is precomputed
-        // once per Evaluate() call by ComputeContactPressureByContainer below.
-        private static float FormationReadiness(VState state, IReadOnlyList<ReorgUnit> units,
-            IReadOnlyDictionary<int, float> pressureByContainer, int containerId)
+        // Threat-first defensive profile. For each concrete enemy attacker, reproduce
+        // BattleInitiator's observer-specific contact ordering with its canonical comparator.
+        // The plan then compares the worst threat's first defender, that threat's second line,
+        // and only then the next threat. No position coefficient or per-container max is used.
+        private static IReadOnlyList<float> BuildThreatContactReadiness(VState state)
         {
-            if (state.ThreatBenchmarks.Count == 0)
-                return ReorgViability.EffectivePower(units);
-
-            if (!units.Any(u => u != null && !u.IsHero))
-                return 0f;
-
-            float pressure = pressureByContainer.TryGetValue(containerId, out float p) ? p : 0f;
-            return 1f - pressure;
-        }
-
-        // Mirrors BattleInitiator's own attacker-specific contact selection instead of scoring
-        // every formation against every enemy's worst case independently (the old scalar-collapse
-        // bug — two enemy compositions that are each weak against a DIFFERENT one of our formations
-        // could get folded/redistributed as if neither mattered). For each enemy benchmark: rank
-        // every contact-eligible container by the SAME canonical hardness comparator BattleInitiator
-        // uses (BattleInitiator.CompareDefenderHardness), restricted to the non-hero members that
-        // specific enemy can actually see (ReorgThreatBenchmark.TargetableUnitKeys). Only the first
-        // (real contact) and second (the follow-up contact if the first were cleared) ranked
-        // containers absorb this enemy's pressure — every other formation is correctly unaffected
-        // by an enemy that would never actually reach it first.
-        private static Dictionary<int, float> ComputeContactPressureByContainer(VState state)
-        {
-            var pressureByContainer = new Dictionary<int, float>();
-            if (state.ThreatBenchmarks.Count == 0)
-                return pressureByContainer;
+            var rows = new List<ThreatContactRow>();
 
             foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
             {
-                var ranked = new List<(int containerId, WorthIt.BattleEstimate estimate, List<WorthIt.DefenderProfile> defenders)>();
-                foreach (var kv in state.Meta)
+                var ranked = new List<(int containerId, WorthIt.BattleEstimate selection,
+                    List<WorthIt.DefenderProfile> defenders)>();
+
+                foreach (KeyValuePair<int, ReorgContainer> kv in state.Meta)
                 {
                     ReorgContainer meta = kv.Value;
-                    if (meta.Role == ReorgPhysicalRole.Aviation || meta.Role == ReorgPhysicalRole.SpecialExcludedContainer)
+                    if (meta.Role == ReorgPhysicalRole.Aviation
+                        || meta.Role == ReorgPhysicalRole.SpecialExcludedContainer)
                         continue;
                     if (!state.Roster.TryGetValue(kv.Key, out List<ReorgUnit> units))
                         continue;
 
-                    var defenders = units.Where(u => u != null && !u.IsHero
+                    var defenders = units
+                        .Where(u => u != null && !u.IsHero
                             && threat.TargetableUnitKeys.Contains(u.Key))
                         .Select(u => u.CombatProfile)
                         .ToList();
                     if (defenders.Count == 0)
-                        continue; // fully hidden from (or has no combat member visible to) this enemy
+                        continue;
 
-                    WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders, state.HexDefenseBonus);
-                    ranked.Add((kv.Key, estimate, defenders));
+                    // BattleInitiator currently ranks contact candidates with a zero bonus.
+                    // Keep selection identical. The actual readiness read below applies the
+                    // group's terrain/base defence without changing which container is contacted.
+                    WorthIt.BattleEstimate selection =
+                        WorthIt.Estimate(threat.Members, defenders, 0f);
+                    ranked.Add((kv.Key, selection, defenders));
                 }
+
+                // This attacker cannot contact any non-hero defender on the hex (for example every
+                // unit is hidden from it), so it exerts no Housekeeping packaging pressure here.
                 if (ranked.Count == 0)
                     continue;
 
-                ranked.Sort((a, b) =>
-                    Game.Combat.BattleInitiator.CompareDefenderHardness(a.estimate, a.containerId, b.estimate, b.containerId));
+                ranked.Sort((a, b) => BattleInitiator.CompareDefenderHardness(
+                    a.selection, a.containerId, b.selection, b.containerId));
 
-                for (int i = 0; i < ranked.Count && i < 2; i++)
-                {
-                    (int containerId, WorthIt.BattleEstimate estimate, List<WorthIt.DefenderProfile> defenders) = ranked[i];
-                    // Same non-penetration guard the old scalar read already applied: a force that
-                    // cannot damage every remaining defender cannot actually clear this container.
-                    float success = WorthIt.CanDamageAll(threat.Members, defenders, state.HexDefenseBonus)
-                        ? estimate.WinChance
-                        : 0f;
-                    float pressure = (success / (1f + Math.Max(0, threat.EtaToGroup))) * (i == 0 ? 1f : 0.5f);
-                    if (!pressureByContainer.TryGetValue(containerId, out float existing) || pressure > existing)
-                        pressureByContainer[containerId] = pressure;
-                }
+                float first = ContactReadiness(state, threat, ranked[0].defenders);
+                // If the first army falls and no second contactable formation remains, the second
+                // defensive layer is empty: model certain passage at the same distance weighting.
+                float second = ranked.Count > 1
+                    ? ContactReadiness(state, threat, ranked[1].defenders)
+                    : NoDefenderReadiness(threat.EtaToGroup);
+                rows.Add(new ThreatContactRow(threat.ArmyId, first, second));
             }
-            return pressureByContainer;
+
+            // Lowest readiness is the most dangerous enemy contact. Stable army id is ordering
+            // only; it never becomes strategic utility.
+            rows.Sort((a, b) =>
+            {
+                if (a.FirstReadiness < b.FirstReadiness - FloatEps) return -1;
+                if (a.FirstReadiness > b.FirstReadiness + FloatEps) return 1;
+                if (a.SecondReadiness < b.SecondReadiness - FloatEps) return -1;
+                if (a.SecondReadiness > b.SecondReadiness + FloatEps) return 1;
+                return a.ThreatArmyId.CompareTo(b.ThreatArmyId);
+            });
+
+            var profile = new List<float>(rows.Count * 2);
+            foreach (ThreatContactRow row in rows)
+            {
+                profile.Add(row.FirstReadiness);
+                profile.Add(row.SecondReadiness);
+            }
+            return profile;
         }
+
+        private static float ContactReadiness(VState state, ReorgThreatBenchmark threat,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders)
+        {
+            WorthIt.BattleEstimate estimate =
+                WorthIt.Estimate(threat.Members, defenders, state.HexDefenseBonus);
+            float success = WorthIt.CanDamageAll(
+                    threat.Members, defenders, state.HexDefenseBonus)
+                ? estimate.WinChance
+                : 0f;
+            return 1f - success / (1f + Math.Max(0, threat.EtaToGroup));
+        }
+
+        private static float NoDefenderReadiness(int eta) =>
+            1f - 1f / (1f + Math.Max(0, eta));
 
         // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster
         // order here mirrors the live ArmyData.Members order (Analyzer preserves it; a planned
