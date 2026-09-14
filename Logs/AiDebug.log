@@ -1,404 +1,122 @@
-=== AI debug log — session started 2026-09-14 22:37:22 ===
-[22:37:41] [AiMapMemory.OnVisibilityChanged:695] [AI] Draven: memory — building "Citadel" (owner=Draven) remembered at (10,-2).
-[22:37:41] [AiMapMemory.OnVisibilityChanged:695] [AI] Orlan: memory — building "Citadel" (owner=Orlan) remembered at (0,3).
-[22:37:41] [InitiativeCoordinatorV2.PlanAndApplyForAll:43] [AI][V2][Initiative] Orlan (turn 1) — apPressure=0,00 (cur=0,00 hist=0,00), turnOrderPressure=0,00, bottleneck=no-structural-work/no-history, armies=0 power=0,0 apCards=0, avail H/E/M/T=1/1/1/1, oppDice=[5] => plan: no current AP workload
-[22:38:16] [AiStrategyV2Pipeline.RunTurn:503] [AI][V2] === Orlan — Strategy V2 pipeline owns this turn (turn 1) ===
-[22:38:16] [WorldAnalysis.Observation.LogSnapshot:339] [AI][V2] Orlan worldscan turn 1 — map 0.99 dark (visited 1/108, visible 5) | frontier 4 hexes, explorable 0.99
-[22:38:16] [WorldAnalysis.Observation.LogSnapshot:344] [AI][V2]   self.power field=0.0 garrison=0.0 total=0.0 | bestStack=39.8 totalPotential=88.2 | AP=8 hand=6/10 deck=20 | dev fac=0 op=0
-[22:38:16] [WorldAnalysis.Observation.LogSnapshot:351] [AI][V2]   dev.readiness facilities=0 withHero=0 offerings=0 bestP=0.00 surplus=0.50 prodSupport=0.7 targets=3
-[22:38:16] [WorldAnalysis.Observation.LogSnapshot:357] [AI][V2]   self.stock H/E/M/T=1.0/1.0/1.0/1.0 | income=1.0/1.0/1.0/1.0
-[22:38:16] [WorldAnalysis.Observation.LogSnapshot:366] [AI][V2]   economy.security=0.63 (absFloor=0.59 rel=0.8 bottleneck=0.42) | deckNeed H/E/M/T=17.0/14.0/10.0/10.0 | targetIncome H/E/M/T=2.5/2.0/1.5/2.0 total=8.0 actualIncome=4.0
-[22:38:16] [WorldAnalysis.Observation.LogSnapshot:379] [AI][V2]   threat: contacts 0 (honest=0 cheat=0) assets 1 listedThreats 0 siege=0
-[22:38:17] [DesireEvaluators.LogDesires:641] [AI][V2]   desires — RCN raw 1.00 smoothed 1.00 (explRaw 0.99 exploreP 0.99 survRaw 0.18 refreshP 0.23 blind 1.00)
-[22:38:17] [DesireEvaluators.LogDesires:645] [AI][V2]   desires — AGG raw 0.00 smoothed 0.00 = max(raid 0.15, war 0.21) [opp 0.00 surp 0.00 edge 0.50 sat 0.00 mom 0.50]
-[22:38:17] [DesireEvaluators.LogDesires:649] [AI][V2]   desires — reserve 3.00 free 0.00 | lossPulse enemy 0.00 (drop 0.00) own 0.00 (drop 0.00)
-[22:38:17] [DesireEvaluators.LogDesires:652] [AI][V2][Economy][Desire] resource=Human max=0.42 mean=0.27 incomeGap=0.60 relativeGap=0.50 runwayGap=0.57 operational=0.00 actionableGate=0.25 raw=0.09 smoothed=0.09
-[22:38:17] [DesireEvaluators.LogDesires:658] [AI][V2]   desires — DEV raw 0.00 smoothed 0.00 = surplus 0.50 x quality 0.00 (facReady 0.00 pathViable 0 bestP 0.00 targets 3)
-[22:38:17] [DesireEvaluators.LogDesires:667] [AI][V2]   desires — bestOpp none (targets 0, heroAvail 1, cap 8) | threat 0.00 runway 0.69
-[22:38:17] [AiStrategyV2Scope.ApplyRadarScope:126] [AI][V2][Scope] mode=ReconAggressionEconomyDevelopment radar=RCN 0.92 AGG 0.00 DEF 0.00 ECO 0.08 DEV 0.00
-[22:38:17] [AiStrategyV2Pipeline.RunTurn:544] [AI][V2] Orlan: radar — RCN 0.92 AGG 0.00 DEF 0.00 ECO 0.08 DEV 0.00 | threat 0.00 runway 0.69
-[22:38:17] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:17] [DemandLayer.Recon.ReconDemands:88] [AI][V2][Demand][Recon] jobs raw=4 covered=0 uncovered=4 blocked=0 runnable=4 active=0
-[22:38:17] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:17] [DemandLayer.Recon.ReconDemands:121] [AI][V2][Demand][Recon] capacity desiredObs=0 desiredGround=3 combinedCeiling=3 existingGroundUsable=0 obs[genLanes=0 airborne=0 spareAir=0] ground[genLanes=0 idleScouts=0] => obsDeficit=0 groundTraversalDeficit=3 active=0 hard=3 runnable=4 (obs=0 groundVisit=4 stealth=0) blocked=0
-[22:38:17] [DemandLayer.Recon.ReconDemands:207] [AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence reason=zero_capacity_bootstrap class=GroundTraversal runnable=4 rawSupply=0 witnessedSupply=0 rawDeficit=3 effectiveDeficit=3 bootstrapped=1
-[22:38:17] [DemandLayer.Recon.ReconDemands:281] [AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent class=GroundTraversal persistenceDeferredEmitted=true desired=2 runnable=4 witnessedSupply=0 streak=0
-[22:38:17] [DemandLayer.Recon.ReconDemands:355] [AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability profile=generic-ground desired=1 reason=persistent_ground_traversal_deficit groundTraversalDeficit(effective)=3(streak=0) combinedCeiling=3 existingGroundUsable=0 matGround=1 matObs=0 runnable=4 blocked=0 target=(1,2)
-[22:38:17] [DemandLayer.Aggression.AggressionDemands:26] [AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives
-[22:38:17] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=0 kept=0 best=none wait=0 urgency=0
-[22:38:17] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=0 delivery_value=0 threshold=0
-[22:38:17] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=0 reason=no_legal_valuable_site_or_base
-[22:38:17] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=10
-[22:38:17] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:17] [DemandLayer.Generate:57] [AI][V2]   demand — [T1-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @1,2 val 56,6 | GroundTraversal effective deficit 3 not yet persistent (streak 0); 4 runnable job(s); deferred pending no-alternative-work reconciliation
-[22:38:17] [DemandLayer.Generate:57] [AI][V2]   demand — [T1-P4-M-D02] RCN needs 1x ScoutCapability ~Stealth @1,2 val 56,6 | persistent GroundTraversal effective deficit 3 (aviation cannot substitute a physical visit); want 1; blocked 0
-[22:38:17] [AiStrategyV2Pipeline.RunTurn:607] [AI][V2] Orlan: budget ledger — sharedAP 8.00/8.00 axis=value-only
-[22:38:17] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:17] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Orlan hand [0:"Ashen Base", 1:"Hooded", 2:"Dust Runner", 3:"Elena Hayes", 4:"Miller Hayes", 5:"Scrapwing"]
-[22:38:17] [MaterializationCandidateBuilder.TopForDemand:314] [AI][V2]   strat.eval A — ScoutCapability via 0|0|:1|-|-|0:0,3:-1 role=Scout play 1.59 hold 0.43 urgency 1.80 decision 2.97 [role +1.05 tempo 0.00 next +0.23 gap +0.50 grow 0.00 threat 0.00 res -0.36 syn +0.18 deploy 0.00 scarce 0.00 redun 0.00 alt 0.00 resP 0.00 handP 0.00 prod 0.00 hold +0.43 = 1.59]
-[22:38:17] [ArmyReorgAnalyzer.Mark:42] [AI][V2][Lease] protect operational ScoutCapability army(s) [12] through housekeeping (turn 1)
-[22:38:17] [StrategicPhaseA.FulfillDemands:659] [AI][V2]   strat.A — [T1-P4-M-D02] RCN needs 1x ScoutCapability ~Stealth @1,2 val 56,6: Direct cards[base="Hooded" source=hand] @0,3 (ap 2 -> RCN, NewArmy, delivered 1, followup 0ap reserved, 0|0|:1|-|-|0:0,3:-1)
-[22:38:17] [StrategicPhaseA.TryPromotePersistenceDeferred:828] [AI][V2]   strat.A persistence-reconcile — [T1-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @1,2 val 56,6: decision=DEFER reason=no_deliverable_candidate; stays deferred, Phase B proceeds
-[22:38:17] [StrategicPhaseA.FulfillDemands:678] [AI][V2] strat.A — 1 chain(s), ledger now sharedAP 6.00/8.00 axis=value-only
-[22:38:17] [StrategicPhaseA.FulfillDemands:680] [AI][V2] strat.A — residual demands [T1-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @1,2 val 56,6
-[22:38:17] [DemandLayer.Recon.ReconDemands:88] [AI][V2][Demand][Recon] jobs raw=4 covered=0 uncovered=4 blocked=0 runnable=4 active=0
-[22:38:17] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:17] [DemandLayer.Recon.ReconDemands:121] [AI][V2][Demand][Recon] capacity desiredObs=0 desiredGround=3 combinedCeiling=3 existingGroundUsable=1 obs[genLanes=0 airborne=0 spareAir=0] ground[genLanes=0 idleScouts=1] => obsDeficit=0 groundTraversalDeficit=2 active=0 hard=3 runnable=4 (obs=0 groundVisit=4 stealth=0) blocked=0
-[22:38:17] [DemandLayer.Recon.ReconDemands:264] [AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent obsDeficit(effective)=0(raw=0 persist=0 streak=0) groundTraversalDeficit(effective)=2(raw=2 persist=0 streak=0) missStealth=0 stealthFree=0 active=0 activeGround=0 hard=3 combinedCeiling=3 existingGroundUsable=1 usefulGenericRoom=2 groundFloor=0 roomForNew=3 blocked=0 deferredCandidates=(ground=2,obs=0)
-[22:38:17] [DemandLayer.Recon.ReconDemands:281] [AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent class=GroundTraversal persistenceDeferredEmitted=true desired=2 runnable=4 witnessedSupply=1 streak=0
-[22:38:17] [DemandLayer.Aggression.AggressionDemands:26] [AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives
-[22:38:17] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=0 kept=0 best=none wait=0 urgency=0
-[22:38:17] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=0 delivery_value=0 threshold=0
-[22:38:17] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=0 reason=no_legal_valuable_site_or_base
-[22:38:17] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=1
-[22:38:17] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:17] [DemandLayer.Generate:57] [AI][V2]   demand — [T1-P4-M-D03] RCN needs 2x ScoutCapability ~Stealth @1,2 val 56,6 | GroundTraversal effective deficit 2 not yet persistent (streak 0); 4 runnable job(s); deferred pending no-alternative-work reconciliation
-[22:38:17] [AiStrategyV2Pipeline.RunTurn:868] [AI][V2][Loop] begin — typed operational admission
-[22:38:17] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:17] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:17] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 6.00, locked 0.00, funded 4 (0 commit), deferred 0, unused 2.00, overdraft axis/global 0.00/0.00
-[22:38:17] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 4 open, assigned [Scout(Explore 1,2)->Ground#12@(1,2)] rejected [Scout(Explore 1,3):MoverContended Scout(Explore 0,2):MoverContended Scout(Explore 0,4):MoverContended]
-[22:38:17] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M02 causeDemand=none] Scout(Explore 1,3) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:17] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M03 causeDemand=none] Scout(Explore 0,2) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:17] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M04 causeDemand=none] Scout(Explore 0,4) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:17] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 6.00, locked 0.00, funded 1 (0 commit), deferred 3, unused 5.00, overdraft axis/global 0.00/0.00
-[22:38:17] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [Scout(Explore 1,2)->Ground#12@(1,2)]
-[22:38:17] [ReconPatrolState.GetOrCreate:60] [AI][V2][Recon][Patrol] actor=#12 mode=Explore anchor=(1,2) sector=SE start=1
-[22:38:17] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#12 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:17] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#12 mode=Explore sector=SE from=(0,3) to=(1,2) freshNeighbors=5 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=12,00 purpose=3,00 info=2,00 anchorProgress=1,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=1 homeDelta=+1 localGap=0,97 homeFactor=1,00 lookahead=1,00
-[22:38:17] [ReconGroundExecutor.MaybeEnterOptionalStealth:588] [AI][V2][Recon][Stealth] [T1-P4-M-M01] actor=#12 risk 0.35 protect 0.32 route 0.00 opportunity 0.41 -> SKIP ap=6 mandatory=0 slack=6 draw=1
-[22:38:17] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Dead Tide" (movement=2/2) from (0,3) heads to (1,2) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(1,2).
-[22:38:18] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Dead Tide" arrived at (1, 2).
-[22:38:18] [ReconGroundExecutor.RefreshObjectiveSatisfied:486] [AI][V2][Recon][Objective] [T1-P4-M-M01] Scout(Explore 1,2) kind=Explore met; durableRoleContinues=1
-[22:38:18] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T1-P4-M-M01] Scout(Explore 1,2) actor=#12 kind=Explore (0,3)→(1,2) steps=1 ap−0 objective=met stop=StepCompleted
-[22:38:18] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M01 causeDemand=[T1-P4-M-D03]] outcome ProductiveStop Intent(Explore 1,2)
-[22:38:18] [MissionContinuityLayer.CreateIntent:1540] [AI][V2] continuity — [attempt=T1-P4-M-M01 causeDemand=[T1-P4-M-D03]] Intent(Explore 1,2) created (None, mover #12, 1 step(s))
-[22:38:18] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M02 causeDemand=none] outcome Blocked Intent(Explore 1,3)
-[22:38:18] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M03 causeDemand=none] outcome Blocked Intent(Explore 0,2)
-[22:38:18] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M04 causeDemand=none] outcome Blocked Intent(Explore 0,4)
-[22:38:18] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=1 task=Scout(Explore 1,2) progress=1 stop=StepCompleted operationalTriggers=ReconKnowledge, Actor, EventState strategicTriggers=None noProgress=0
-[22:38:18] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:18] [MissionContinuityLayer.ResolveActive:509] [AI][V2] continuity — Intent(Explore 1,2) waypoint done; re-focused to Intent(Explore 1,1) — durable identity kept
-[22:38:18] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:18] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 6.00, locked 0.00, funded 3 (0 commit), deferred 0, unused 3.00, overdraft axis/global 0.00/0.00
-[22:38:18] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 3 open, assigned [Scout(Explore 1,1)->Ground#12@(1,1)] rejected [Scout(Explore 2,1):MoverContended Scout(Explore 2,2):MoverContended]
-[22:38:18] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M06 causeDemand=none] Scout(Explore 2,1) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:18] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M07 causeDemand=none] Scout(Explore 2,2) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:18] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 6.00, locked 0.00, funded 1 (0 commit), deferred 2, unused 5.00, overdraft axis/global 0.00/0.00
-[22:38:18] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [Scout(Explore 1,1)->Ground#12@(1,1)]
-[22:38:18] [ReconPatrolState.GetOrCreate:114] [AI][V2][Recon][Patrol] actor=#12 reassign anchor=(1,2)→(1,1) sector=SE→SW reason=anchor-reached turn=1
-[22:38:18] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#12 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:18] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#12 mode=Explore sector=SW from=(1,2) to=(1,1) freshNeighbors=5 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=9,00 purpose=3,00 info=2,00 anchorProgress=1,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=2 homeDelta=+1 localGap=0,94 homeFactor=1,00 lookahead=0,00
-[22:38:18] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Dead Tide" (movement=1/2) from (1,2) heads to (1,1) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(1,1).
-[22:38:19] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Dead Tide" arrived at (1, 1).
-[22:38:20] [ReconGroundExecutor.RefreshObjectiveSatisfied:486] [AI][V2][Recon][Objective] [T1-P4-M-M05] Scout(Explore 1,1) kind=Explore met; durableRoleContinues=1
-[22:38:20] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T1-P4-M-M05] Scout(Explore 1,1) actor=#12 kind=Explore (1,2)→(1,1) steps=1 ap−0 objective=met stop=OutOfMovement
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M05 causeDemand=none] outcome ProductiveStop Intent(Explore 1,1)
-[22:38:20] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T1-P4-M-M05 causeDemand=none] Intent(Explore 1,1) advanced (ProductiveStop, progress 1, t1 stall0)
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M06 causeDemand=none] outcome Blocked Intent(Explore 2,1)
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M07 causeDemand=none] outcome Blocked Intent(Explore 2,2)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=2 task=Scout(Explore 1,1) progress=1 stop=OutOfMovement operationalTriggers=ReconKnowledge, Actor, EventState strategicTriggers=None noProgress=0
-[22:38:20] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:20] [MissionContinuityLayer.ResolveActive:509] [AI][V2] continuity — Intent(Explore 1,1) waypoint done; re-focused to Intent(Explore 1,0) — durable identity kept
-[22:38:20] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:20] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 6.00, locked 0.00, funded 2 (0 commit), deferred 0, unused 4.00, overdraft axis/global 0.00/0.00
-[22:38:20] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 2 open, assigned [] rejected [Scout(Explore 1,0):NoExecutableStep Scout(Explore 2,0):MoverContended]
-[22:38:20] [CapabilityPoolExhaustionRegistry.DeferNoExecutableStep:138] [AI][V2] mission deferred until next turn — Scout(Explore 1,0): eligible scout(s)/vantage exist but none reachable this turn toward (1,0)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M11 causeDemand=none] Scout(Explore 1,0) — FAIL NoExecutableStep [RetryNextTurn] eligible scout(s)/vantage exist but none reachable this turn toward (1,0)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M16 causeDemand=none] Scout(Explore 2,0) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:20] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 6.00, locked 0.00, funded 0 (0 commit), deferred 2, unused 6.00, overdraft axis/global 0.00/0.00
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M11 causeDemand=none] outcome Blocked Intent(Explore 1,0)
-[22:38:20] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T1-P4-M-M11 causeDemand=none] Intent(Explore 1,0) advanced (Blocked, progress 0, t1 stall0)
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M16 causeDemand=none] outcome Blocked Intent(Explore 2,0)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1153] [AI][V2][Loop] admission stopped — no provisioned task; noProgress=1
-[22:38:20] [StrategicPhaseB.UseSurplus:102] [AI][V2]   strat.B — Orlan hand [0:"Ashen Base", 1:"Dust Runner", 2:"Elena Hayes", 3:"Miller Hayes", 4:"Scrapwing"]
-[22:38:20] [StrategicPhaseB.UseSurplus:104] [AI][V2]   strat.B/tempo — budget on entry: total 0/10, draws 0/4, gen 0/3
-[22:38:20] [MaterializationCandidateBuilder.RankedSurplus:439] [AI][V2]   strat.eval B — 0|1|:2|-|-|3:0,3:2 role=CombatBody net 2.48 decision 2.48 [role +2.92 tempo -0.10 next 0.00 gap +0.50 grow 0.00 threat 0.00 res -0.21 syn 0.00 deploy 0.00 scarce +0.50 redun 0.00 alt -1.13 resP 0.00 handP 0.00 prod 0.00 hold 0.00 = 2.48  || command=7 nominalCap=4 projectedCap=7 occupiedBefore=0 legalFillers=0 requiredCapacity=1 usableExtraSlots=0 commandMarginalValue=0.00]
-[22:38:20] [TempoActionExecutor.ExecuteMatSurplus:97] [AI][V2]   strat.B — Direct cards[base="Elena Hayes" source=hand] util 2.48 (ap 1, Garrison, delivered 0, 0|1|:2|-|-|3:0,3:2)
-[22:38:20] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[0] — WINNER PlayMat util 2.48 eff 2.48 — Direct cards[base="Elena Hayes" source=hand]  => ok 1 progressed 1 stateChanged 1 spent ap 1 H/E/M/T 1/0/0/0 card 1 drawn 0 gen 0 attach 0
-[22:38:20] [CardDrawExecutor.TryCycle:41] [AI][V2]   strat.B — drew "Vera Sterling" (2 AP)
-[22:38:20] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[1] — WINNER Draw util 0.78 eff 0.78 — cycle 1 card (2 AP), hand 4/10  => ok 1 progressed 1 stateChanged 1 spent ap 2 H/E/M/T 0/0/0/0 card 0 drawn 1 gen 0 attach 0
-[22:38:20] [CardDrawExecutor.TryCycle:41] [AI][V2]   strat.B — drew "AA Rad Hunter" (2 AP)
-[22:38:20] [CardDrawExecutor.TryCycle:61] [AI][V2] strategic interrupt — terminal boundary draw changed the hand; hand opportunity registered
-[22:38:20] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[2] — WINNER Draw util 0.78 eff 0.78 — cycle 1 card (2 AP), hand 5/10  => ok 1 progressed 1 stateChanged 1 spent ap 2 H/E/M/T 0/0/0/0 card 0 drawn 1 gen 0 attach 0
-[22:38:20] [TempoCandidateProvider.BuildTempoCandidates:161] [AI][V2]     cand Draw BLOCKED: raw AP 1 < cost 2; hand 6/10 deck 18
-[22:38:20] [StrategicPhaseB.UseSurplus:279] [AI][V2] strat.B/tempo — END: iters 3, turn budget total 3/10 draws 2/4 gen 0/3; cardsPlayed 1, drawn 2; ap 1 (spendable 1), H/E/M/T 0/0/1/1; reservations [ownerAwarePhysical=none]; stop=no eligible spend candidate (budget total 3/10, draws 2/4, gen 0/3)
-[22:38:20] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:20] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=2 kept=0 best=none wait=0 urgency=0
-[22:38:20] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=2 delivery_value=0 threshold=0
-[22:38:20] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=2 reason=no_legal_valuable_site_or_base
-[22:38:20] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=15
-[22:38:20] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:20] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:20] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Orlan hand [0:"Ashen Base", 1:"Dust Runner", 2:"Miller Hayes", 3:"Scrapwing", 4:"Vera Sterling", 5:"AA Rad Hunter"]
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:860] [AI][V2][Loop] strategic re-admission axes=Economy,Development triggers=Actor, Capability, Hand, Resources changed=0
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1279] [AI][V2][Loop] management round=1 strategicTriggers=Actor, Capability, Hand, Resources operationalTriggers=Actor operationalReadmit=1
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:868] [AI][V2][Loop] begin — typed operational admission
-[22:38:20] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:20] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:20] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 5, unused 0.00, overdraft axis/global 0.00/0.00
-[22:38:20] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 1,0):NoExecutableStep]
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M17 causeDemand=none] Scout(Explore 1,0) — FAIL NoExecutableStep [RetryNextTurn] eligible scout(s)/vantage exist but none reachable this turn toward (1,0)
-[22:38:20] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 5, unused 0.00, overdraft axis/global 0.00/0.00
-[22:38:20] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 2,2):MoverContended]
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M18 causeDemand=none] Scout(Explore 2,2) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:20] [CapabilityPoolExhaustionRegistry.MarkExhausted:175] [AI][V2] capability pool exhausted — Scout this turn: assignment batch rejected all 1 funded Scout mission(s) in pool Scout, proven pool-wide unable
-[22:38:20] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p3 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 5, unused 0.00, overdraft axis/global 0.00/0.00
-[22:38:20] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 1,3):MoverContended]
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M19 causeDemand=none] Scout(Explore 1,3) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:20] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p4 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 5, unused 0.00, overdraft axis/global 0.00/0.00
-[22:38:20] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 2,1):MoverContended]
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M20 causeDemand=none] Scout(Explore 2,1) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M17 causeDemand=none] outcome Blocked Intent(Explore 1,0)
-[22:38:20] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T1-P4-M-M17 causeDemand=none] Intent(Explore 1,0) advanced (Blocked, progress 0, t1 stall0)
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M18 causeDemand=none] outcome Blocked Intent(Explore 2,2)
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M19 causeDemand=none] outcome Blocked Intent(Explore 1,3)
-[22:38:20] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M20 causeDemand=none] outcome Blocked Intent(Explore 2,1)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1153] [AI][V2][Loop] admission stopped — no provisioned task; noProgress=1
-[22:38:20] [StrategicPhaseB.UseSurplus:102] [AI][V2]   strat.B — Orlan hand [0:"Ashen Base", 1:"Dust Runner", 2:"Miller Hayes", 3:"Scrapwing", 4:"Vera Sterling", 5:"AA Rad Hunter"]
-[22:38:20] [StrategicPhaseB.UseSurplus:104] [AI][V2]   strat.B/tempo — budget on entry: total 3/10, draws 2/4, gen 0/3
-[22:38:20] [TempoCandidateProvider.BuildTempoCandidates:161] [AI][V2]     cand Draw BLOCKED: raw AP 1 < cost 2; hand 6/10 deck 18
-[22:38:20] [StrategicPhaseB.UseSurplus:279] [AI][V2] strat.B/tempo — END: iters 0, turn budget total 3/10 draws 2/4 gen 0/3; cardsPlayed 0, drawn 0; ap 1 (spendable 1), H/E/M/T 0/0/1/1; reservations [ownerAwarePhysical=none]; stop=no eligible spend candidate (budget total 3/10, draws 2/4, gen 0/3)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1279] [AI][V2][Loop] management round=2 strategicTriggers=None operationalTriggers=None operationalReadmit=0
-[22:38:20] [ReconAcceptanceAudit.Summarize:296] [AI][V2][Recon][Acceptance][Summary] turn=1 pass=4 fail=0 notObserved=8
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1501] [AI][V2][StrategicManager][Summary] handStart=6 played=2 (phaseA 1, phaseB 1) generated=0 equipAttached=0 infraBuilt=0 drawn=2 handEnd=6 remaining=6 matAttempts=2 capDeliveries=1 blockedReasons=see strat.A/strat.B diag lines (never ReconOnly/wrongAxis)
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1512] [AI][V2][T1-P4-M][STATE] AP 8→1 H 1→0 E 1→0 M 1→1 T 1→1
-[22:38:20] [HousekeepingManager.Run:129] [AI][V2] housekeeping — no local force group worth reorganising.
-[22:38:20] [TurnResourceTelemetry.LogEnd:56] [AI][V2] Orlan: resources — ap=8>1, h=1>0, e=1>0, m=1>1, t=1>1
-[22:38:20] [AiStrategyV2Pipeline.RunTurn:1552] [AI][V2] === Orlan — V2 turn ends (demands 1, stratA 1, missions 6, lastPackFunded 1, turnFundedUnique 9, provisioned 2, executed 2, stratB 1) ===
-[22:38:20] [V2TurnActivityTelemetry.LogSummary:146] [AI][V2] Orlan: activity main    — demands 1, missions 6, funded 9, provisioned 2, provFail 11 [MoverContended=9,NoExecutableStep=2], execAttempts 2, execOk 2, execStale 0, cards 2, draws 2, capDeliveries 1, exhaustion 1, poolRecov 0, mat 2/2, genCard 0/0, equip 0/0, infra 0/0
-[22:38:20] [V2TurnActivityTelemetry.LogSummary:147] [AI][V2] Orlan: activity reaction — demands 0, missions 0, funded 0, provisioned 0, provFail 0 [none], execAttempts 0, execOk 0, execStale 0, cards 0, draws 0, capDeliveries 0, exhaustion 0, poolRecov 0, mat 0/0, genCard 0/0, equip 0/0, infra 0/0
-[22:38:20] [V2TurnActivityTelemetry.LogSummary:148] [AI][V2] Orlan: activity total    — demands 1, missions 6, funded 9, provisioned 2, provFail 11 [MoverContended=9,NoExecutableStep=2], execAttempts 2, execOk 2, execStale 0, cards 2, draws 2, capDeliveries 1, exhaustion 1, poolRecov 0, mat 2/2, genCard 0/0, equip 0/0, infra 0/0
-[22:38:20] [InitiativeCoordinatorV2.PlanAndApplyForAll:43] [AI][V2][Initiative] Orlan (turn 2) — apPressure=0,22 (cur=0,40 hist=0,00), turnOrderPressure=0,24, bottleneck=capacity-balanced(prevEnd=1/8), armies=1 power=5,6 apCards=6, avail H/E/M/T=1/1/2/2, oppDice=[5] => plan: zero dice beats every legal purchase
-[22:38:22] [AiStrategyV2Pipeline.RunTurn:503] [AI][V2] === Orlan — Strategy V2 pipeline owns this turn (turn 2) ===
-[22:38:22] [WorldAnalysis.Observation.LogSnapshot:339] [AI][V2] Orlan worldscan turn 2 — map 0.97 dark (visited 3/108, visible 10) | frontier 8 hexes, explorable 0.97
-[22:38:22] [WorldAnalysis.Observation.LogSnapshot:344] [AI][V2]   self.power field=5.6 garrison=8.9 total=14.5 | bestStack=48.7 totalPotential=88.2 | AP=10 hand=6/10 deck=18 | dev fac=0 op=0
-[22:38:22] [WorldAnalysis.Observation.LogSnapshot:351] [AI][V2]   dev.readiness facilities=0 withHero=0 offerings=0 bestP=0.00 surplus=0.50 prodSupport=0.7 targets=4
-[22:38:22] [WorldAnalysis.Observation.LogSnapshot:357] [AI][V2]   self.stock H/E/M/T=1.0/1.0/2.0/2.0 | income=1.0/1.0/1.0/1.0
-[22:38:22] [WorldAnalysis.Observation.LogSnapshot:366] [AI][V2]   economy.security=0.63 (absFloor=0.66 rel=0.8 bottleneck=0.42) | deckNeed H/E/M/T=16.0/13.0/10.0/10.0 | targetIncome H/E/M/T=2.5/2.5/1.5/2.5 total=9.0 actualIncome=4.0
-[22:38:22] [WorldAnalysis.Observation.LogSnapshot:379] [AI][V2]   threat: contacts 0 (honest=0 cheat=0) assets 2 listedThreats 0 siege=0
-[22:38:22] [DesireEvaluators.LogDesires:641] [AI][V2]   desires — RCN raw 1.00 smoothed 1.00 (explRaw 0.97 exploreP 0.97 survRaw 0.18 refreshP 0.23 blind 1.00)
-[22:38:22] [DesireEvaluators.LogDesires:645] [AI][V2]   desires — AGG raw 0.00 smoothed 0.00 = max(raid 0.35, war 0.46) [opp 0.00 surp 1.00 edge 0.50 sat 0.00 mom 0.50]
-[22:38:22] [DesireEvaluators.LogDesires:649] [AI][V2]   desires — reserve 3.00 free 11.47 | lossPulse enemy 0.00 (drop 0.00) own 0.00 (drop 0.00)
-[22:38:22] [DesireEvaluators.LogDesires:652] [AI][V2][Economy][Desire] resource=Human max=0.42 mean=0.27 incomeGap=0.60 relativeGap=0.50 runwayGap=0.55 operational=0.00 actionableGate=1.00 raw=0.37 smoothed=0.26
-[22:38:22] [DesireEvaluators.LogDesires:658] [AI][V2]   desires — DEV raw 0.00 smoothed 0.00 = surplus 0.50 x quality 0.00 (facReady 0.00 pathViable 0 bestP 0.00 targets 4)
-[22:38:22] [DesireEvaluators.LogDesires:667] [AI][V2]   desires — bestOpp none (targets 0, heroAvail 1, cap 8) | threat 0.00 runway 0.70
-[22:38:22] [AiStrategyV2Scope.ApplyRadarScope:126] [AI][V2][Scope] mode=ReconAggressionEconomyDevelopment radar=RCN 0.80 AGG 0.00 DEF 0.00 ECO 0.20 DEV 0.00
-[22:38:22] [AiStrategyV2Pipeline.RunTurn:544] [AI][V2] Orlan: radar — RCN 0.80 AGG 0.00 DEF 0.00 ECO 0.20 DEV 0.00 | threat 0.00 runway 0.70
-[22:38:22] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:22] [DemandLayer.Recon.ReconDemands:88] [AI][V2][Demand][Recon] jobs raw=8 covered=1 uncovered=7 blocked=0 runnable=7 active=1
-[22:38:22] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:22] [DemandLayer.Recon.ReconDemands:121] [AI][V2][Demand][Recon] capacity desiredObs=0 desiredGround=3 combinedCeiling=3 existingGroundUsable=1 obs[genLanes=0 airborne=0 spareAir=0] ground[genLanes=1 idleScouts=0] => obsDeficit=0 groundTraversalDeficit=2 active=1 hard=3 runnable=7 (obs=0 groundVisit=7 stealth=0) blocked=0
-[22:38:22] [DemandLayer.Recon.ReconDemands:355] [AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability profile=generic-ground desired=2 reason=persistent_ground_traversal_deficit groundTraversalDeficit(effective)=2(streak=1) combinedCeiling=3 existingGroundUsable=1 matGround=2 matObs=0 runnable=7 blocked=0 target=(2,2)
-[22:38:22] [DemandLayer.Aggression.AggressionDemands:26] [AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives
-[22:38:22] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=2 kept=0 best=none wait=1 urgency=12
-[22:38:22] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=2 delivery_value=0 threshold=0
-[22:38:22] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=2 reason=no_legal_valuable_site_or_base
-[22:38:22] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=1
-[22:38:22] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:22] [DemandLayer.Generate:57] [AI][V2]   demand — [T2-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @2,2 val 56,6 | persistent GroundTraversal effective deficit 2 (aviation cannot substitute a physical visit); want 2; blocked 0
-[22:38:22] [AiStrategyV2Pipeline.RunTurn:607] [AI][V2] Orlan: budget ledger — sharedAP 10.00/10.00 axis=value-only
-[22:38:22] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:22] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Orlan hand [0:"Ashen Base", 1:"Dust Runner", 2:"Miller Hayes", 3:"Scrapwing", 4:"Vera Sterling", 5:"AA Rad Hunter"]
-[22:38:22] [MaterializationCandidateBuilder.TopForDemand:314] [AI][V2]   strat.eval A — ScoutCapability via 0|0|:1|-|-|0:0,3:-1 role=Scout play 0.58 hold 0.03 urgency 1.80 decision 2.36 [role +0.91 tempo 0.00 next +0.23 gap 0.00 grow 0.00 threat 0.00 res -0.55 syn 0.00 deploy 0.00 scarce 0.00 redun 0.00 alt 0.00 resP 0.00 handP 0.00 prod 0.00 hold +0.03 = 0.58]
-[22:38:23] [ArmyReorgAnalyzer.Mark:42] [AI][V2][Lease] protect operational ScoutCapability army(s) [13] through housekeeping (turn 2)
-[22:38:23] [StrategicPhaseA.FulfillDemands:659] [AI][V2]   strat.A — [T2-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @2,2 val 56,6: Direct cards[base="Dust Runner" source=hand] @0,3 (ap 3 -> RCN, NewArmy, delivered 1, followup 1ap reserved, 0|0|:1|-|-|0:0,3:-1)
-[22:38:23] [StrategicPhaseA.FulfillDemands:475] [AI][V2]   strat.A — [T2-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @2,2 val 56,6: no feasible useful chain (RCN entitlement 7, discrete 7, followup reserved 1); diag hand=5 [0:"Ashen Base", 1:"Miller Hayes", 2:"Scrapwing", 3:"Vera Sterling", 4:"AA Rad Hunter"] freeSlot=1 match=0 trait=0 placements=0 preflight=0 opDeliver=0 resReject=0 fails=[-] directNeedMin=- postGate=- axis=7 discrete=7 ap=7 followupReserved=1
-[22:38:23] [StrategicPhaseA.FulfillDemands:678] [AI][V2] strat.A — 1 chain(s), ledger now sharedAP 7.00/10.00 reserved 1.00 axis=value-only
-[22:38:23] [StrategicPhaseA.FulfillDemands:680] [AI][V2] strat.A — residual demands [T2-P4-M-D01] RCN needs 1x ScoutCapability ~Stealth @2,2 val 56,6
-[22:38:23] [DemandLayer.Recon.ReconDemands:88] [AI][V2][Demand][Recon] jobs raw=8 covered=1 uncovered=7 blocked=0 runnable=7 active=1
-[22:38:23] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:23] [DemandLayer.Recon.ReconDemands:121] [AI][V2][Demand][Recon] capacity desiredObs=0 desiredGround=3 combinedCeiling=3 existingGroundUsable=2 obs[genLanes=0 airborne=0 spareAir=0] ground[genLanes=1 idleScouts=1] => obsDeficit=0 groundTraversalDeficit=1 active=1 hard=3 runnable=7 (obs=0 groundVisit=7 stealth=0) blocked=0
-[22:38:23] [DemandLayer.Recon.ReconDemands:355] [AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability profile=generic-ground desired=1 reason=persistent_ground_traversal_deficit groundTraversalDeficit(effective)=1(streak=1) combinedCeiling=3 existingGroundUsable=2 matGround=1 matObs=0 runnable=7 blocked=0 target=(2,2)
-[22:38:23] [DemandLayer.Aggression.AggressionDemands:26] [AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives
-[22:38:23] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=2 kept=0 best=none wait=1 urgency=12
-[22:38:23] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=2 delivery_value=0 threshold=0
-[22:38:23] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=2 reason=no_legal_valuable_site_or_base
-[22:38:23] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=1
-[22:38:23] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:23] [DemandLayer.Generate:57] [AI][V2]   demand — [T2-P4-M-D02] RCN needs 1x ScoutCapability ~Stealth @2,2 val 56,6 | persistent GroundTraversal effective deficit 1 (aviation cannot substitute a physical visit); want 1; blocked 0
-[22:38:23] [AiStrategyV2Pipeline.RunTurn:868] [AI][V2][Loop] begin — typed operational admission
-[22:38:23] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:23] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:23] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 7.00, locked 0.00, funded 6 (0 commit), deferred 0, unused 1.00, overdraft axis/global 0.00/0.00
-[22:38:23] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 6 open, assigned [Scout(Explore 1,0)->Ground#12@(1,0) Scout(Explore 2,2)->Ground#13@(2,2)] rejected [Scout(Explore 1,3):MoverContended Scout(Explore 2,1):MoverContended Scout(Explore 0,4):MoverContended Scout(Explore 2,0):MoverContended]
-[22:38:23] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M03 causeDemand=none] Scout(Explore 1,3) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:23] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M04 causeDemand=none] Scout(Explore 2,1) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:23] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M05 causeDemand=none] Scout(Explore 0,4) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:23] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M06 causeDemand=none] Scout(Explore 2,0) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:23] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 7.00, locked 0.00, funded 2 (0 commit), deferred 4, unused 5.00, overdraft axis/global 0.00/0.00
-[22:38:23] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 2 open, assigned [Scout(Explore 1,0)->Ground#12@(1,0) Scout(Explore 2,2)->Ground#13@(2,2)]
-[22:38:23] [ReconPatrolState.GetOrCreate:114] [AI][V2][Recon][Patrol] actor=#12 reassign anchor=(1,1)→(1,0) sector=SW→SW reason=anchor-reached turn=2
-[22:38:23] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#12 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:23] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#12 mode=Explore sector=SW from=(1,1) to=(1,0) freshNeighbors=4 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=11,63 purpose=3,00 info=2,00 anchorProgress=1,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=3 homeDelta=+1 localGap=0,91 homeFactor=1,00 lookahead=0,88
-[22:38:23] [ReconGroundExecutor.MaybeEnterOptionalStealth:588] [AI][V2][Recon][Stealth] [T2-P4-M-M01] actor=#12 risk 0.35 protect 0.32 route 0.00 opportunity 0.06 -> ENTER ap=7 mandatory=0 slack=7 draw=1
-[22:38:23] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Dead Tide" (movement=2/2) from (1,1) heads to (1,0) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(1,0).
-[22:38:23] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Dead Tide" arrived at (1, 0).
-[22:38:24] [ReconGroundExecutor.RefreshObjectiveSatisfied:486] [AI][V2][Recon][Objective] [T2-P4-M-M01] Scout(Explore 1,0) kind=Explore met; durableRoleContinues=1
-[22:38:24] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T2-P4-M-M01] Scout(Explore 1,0) actor=#12 kind=Explore (1,1)→(1,0) steps=1 ap−1 objective=met stop=StepCompleted
-[22:38:24] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M01 causeDemand=none] outcome ProductiveStop Intent(Explore 1,0)
-[22:38:24] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T2-P4-M-M01 causeDemand=none] Intent(Explore 1,0) advanced (ProductiveStop, progress 1, t2 stall0)
-[22:38:24] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M03 causeDemand=none] outcome Blocked Intent(Explore 1,3)
-[22:38:24] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M04 causeDemand=none] outcome Blocked Intent(Explore 2,1)
-[22:38:24] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M05 causeDemand=none] outcome Blocked Intent(Explore 0,4)
-[22:38:24] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M06 causeDemand=none] outcome Blocked Intent(Explore 2,0)
-[22:38:24] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:24] [MissionContinuityLayer.ResolveActive:509] [AI][V2] continuity — Intent(Explore 1,0) waypoint done; re-focused to Intent(Explore 0,0) — durable identity kept
-[22:38:24] [DemandLayer.Economy.EconomyDemands:214] [AI][V2][Economy][Demand] selected=EconomicInfrastructure resource=Human target=(0,0) value=48,67 rejected=0
-[22:38:24] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=4 kept=0 best=none wait=1 urgency=12
-[22:38:24] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=4 delivery_value=0 threshold=0
-[22:38:24] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=4
-[22:38:24] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:24] [DemandLayer.Generate:57] [AI][V2]   demand — [T2-P4-M-D03] ECO needs 1x EconomicInfrastructure @0,0 +1fu val 48,7 | Human deficit=0,42 resourcePriority=0,8 marginalGain=1 effectiveYield=1 alreadyCollected=0 network=0,33 cluster=0,42 site=64,17 delivery=48,67 travel=3 exposure=0 heroCost=0
-[22:38:24] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:24] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Orlan hand [0:"Ashen Base", 1:"Miller Hayes", 2:"Scrapwing", 3:"Vera Sterling", 4:"AA Rad Hunter"]
-[22:38:24] [StrategicPhaseA.FulfillDemands:329] [AI][V2]   strat.A infra — [T2-P4-M-D03] ECO needs 1x EconomicInfrastructure @0,0 +1fu val 48,7: not built (EconomicInfrastructure: no legal authoritative build available now)
-[22:38:24] [StrategicPhaseA.FulfillDemands:680] [AI][V2] strat.A — residual demands [T2-P4-M-D03] ECO needs 1x EconomicInfrastructure @0,0 +1fu val 48,7
-[22:38:24] [AiStrategyV2Pipeline.RunTurn:860] [AI][V2][Loop] strategic re-admission axes=Economy,Development triggers=Actor, ResourceSite changed=0
-[22:38:24] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=1 task=Scout(Explore 1,0) progress=1 stop=StepCompleted operationalTriggers=ReconKnowledge, Actor strategicTriggers=Actor, ResourceSite noProgress=0
-[22:38:24] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
-[22:38:24] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:24] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 6.00, locked 0.00, funded 2 (0 commit), deferred 1, unused 4.00, overdraft axis/global 0.00/0.00
-[22:38:24] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 2 open, assigned [Scout(Explore 2,2)->Ground#13@(2,2) Scout(Explore 0,0)->Ground#12@(0,0)]
-[22:38:24] [ReconPatrolState.GetOrCreate:60] [AI][V2][Recon][Patrol] actor=#13 mode=Explore anchor=(2,2) sector=E start=2
-[22:38:24] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#13 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:24] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#13 mode=Explore sector=E from=(0,3) to=(1,3) freshNeighbors=4 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=11,25 purpose=3,00 info=2,00 anchorProgress=1,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=1 homeDelta=+1 localGap=0,88 homeFactor=1,00 lookahead=0,75
-[22:38:24] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Mud Crawl" (movement=4/4) from (0,3) heads to (1,3) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(2,2).
-[22:38:25] [AiMapMemory.OnVisibilityChanged:586] [AI] Orlan: memory — neutral "Sand Fin" remembered at (1,4).
-[22:38:25] [HexSelectionController.Events.ShowEventChoice:130] [AI] Orlan: Mud Crawl visited event 'Nuclear silo' at (1, 3) — declined.
-[22:38:25] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Mud Crawl" arrived at (1, 3). — resources: AP 6→5
-[22:38:25] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T2-P4-M-M07] Scout(Explore 2,2) actor=#13 kind=Explore (0,3)→(1,3) steps=1 ap−1 objective=open stop=HexEventStarted
-[22:38:25] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M07 causeDemand=[T2-P4-M-D02]] outcome ProductiveStop Intent(Explore 2,2)
-[22:38:25] [MissionContinuityLayer.CreateIntent:1540] [AI][V2] continuity — [attempt=T2-P4-M-M07 causeDemand=[T2-P4-M-D02]] Intent(Explore 2,2) created (None, mover #13, 1 step(s))
-[22:38:25] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=2 task=Scout(Explore 2,2) progress=1 stop=HexEventStarted operationalTriggers=ReconKnowledge, Contact, Actor, EventState strategicTriggers=None noProgress=0
-[22:38:25] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:25] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#4) reason=no_ready_raid_actor_after_phaseA
-[22:38:25] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 1 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:25] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 5.00, locked 0.00, funded 3 (0 commit), deferred 1, unused 2.00, overdraft axis/global 0.00/0.00
-[22:38:25] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 3 open, assigned [Scout(Explore 2,2)->Ground#13@(2,2) Scout(Explore 0,0)->Ground#12@(0,0)] rejected [Scout(Explore 2,3):MoverContended]
-[22:38:25] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M15 causeDemand=none] Scout(Explore 2,3) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:25] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 5.00, locked 0.00, funded 2 (0 commit), deferred 2, unused 3.00, overdraft axis/global 0.00/0.00
-[22:38:25] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 2 open, assigned [Scout(Explore 2,2)->Ground#13@(2,2) Scout(Explore 0,0)->Ground#12@(0,0)]
-[22:38:25] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#13 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:25] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#13 mode=Explore sector=E from=(1,3) to=(2,3) freshNeighbors=5 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=9,00 purpose=2,00 info=2,00 anchorProgress=0,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=2 homeDelta=+1 localGap=0,85 homeFactor=1,00 lookahead=1,00
-[22:38:25] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Mud Crawl" (movement=3/4) from (1,3) heads to (2,3) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(2,2).
-[22:38:26] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Mud Crawl" arrived at (2, 3).
-[22:38:27] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T2-P4-M-M14] Scout(Explore 2,2) actor=#13 kind=Explore (1,3)→(2,3) steps=1 ap−0 objective=open stop=StepCompleted
-[22:38:27] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M14 causeDemand=[T2-P4-M-D02]] outcome ProductiveStop Intent(Explore 2,2)
-[22:38:27] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T2-P4-M-M14 causeDemand=[T2-P4-M-D02]] Intent(Explore 2,2) advanced (ProductiveStop, progress 1, t1 stall0)
-[22:38:27] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M15 causeDemand=none] outcome Blocked Intent(Explore 2,3)
-[22:38:27] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:27] [DemandLayer.Economy.EconomyDemands:214] [AI][V2][Economy][Demand] selected=EconomicInfrastructure resource=Materials target=(3,2) value=58,77 rejected=1
-[22:38:27] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=7 kept=0 best=none wait=1 urgency=12
-[22:38:27] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=7 delivery_value=0 threshold=0
-[22:38:27] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=1
-[22:38:27] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:27] [DemandLayer.Generate:57] [AI][V2]   demand — [T2-P4-M-D04] ECO needs 1x EconomicInfrastructure @3,2 +1fu val 58,8 | Materials deficit=0,03 resourcePriority=1 marginalGain=1 effectiveYield=1 alreadyCollected=0 network=0,33 cluster=0,1 site=74,27 delivery=58,77 travel=3 exposure=0 heroCost=0
-[22:38:27] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:27] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Orlan hand [0:"Ashen Base", 1:"Miller Hayes", 2:"Scrapwing", 3:"Vera Sterling", 4:"AA Rad Hunter"]
-[22:38:27] [StrategicPhaseA.FulfillDemands:329] [AI][V2]   strat.A infra — [T2-P4-M-D04] ECO needs 1x EconomicInfrastructure @3,2 +1fu val 58,8: not built (EconomicInfrastructure: no legal authoritative build available now)
-[22:38:27] [StrategicPhaseA.FulfillDemands:680] [AI][V2] strat.A — residual demands [T2-P4-M-D04] ECO needs 1x EconomicInfrastructure @3,2 +1fu val 58,8
-[22:38:27] [AiStrategyV2Pipeline.RunTurn:860] [AI][V2][Loop] strategic re-admission axes=Economy,Development triggers=Actor, ResourceSite changed=0
-[22:38:27] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=3 task=Scout(Explore 2,2) progress=1 stop=StepCompleted operationalTriggers=ReconKnowledge, Actor strategicTriggers=Actor, ResourceSite noProgress=0
-[22:38:27] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:27] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#4) reason=no_ready_raid_actor_after_phaseA
-[22:38:27] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 1 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:27] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 5.00, locked 0.00, funded 4 (0 commit), deferred 1, unused 1.00, overdraft axis/global 0.00/0.00
-[22:38:27] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 4 open, assigned [Scout(Explore 2,2)->Ground#13@(2,2)] rejected [Scout(Explore 2,4):MoverContended Scout(Explore 3,2):MoverContended Scout(Explore 3,3):MoverContended]
-[22:38:27] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M23 causeDemand=none] Scout(Explore 2,4) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:27] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M24 causeDemand=none] Scout(Explore 3,2) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:27] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M25 causeDemand=none] Scout(Explore 3,3) — FAIL MoverContended [RetryNextTurn] a capable solo Recce exists but is spent / activated / claimed this cycle
-[22:38:27] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 5.00, locked 0.00, funded 1 (0 commit), deferred 4, unused 4.00, overdraft axis/global 0.00/0.00
-[22:38:27] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [Scout(Explore 2,2)->Ground#13@(2,2)]
-[22:38:27] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#13 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:27] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#13 mode=Explore sector=E from=(2,3) to=(3,3) freshNeighbors=5 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=9,00 purpose=2,00 info=2,00 anchorProgress=0,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=3 homeDelta=+1 localGap=0,82 homeFactor=1,00 lookahead=1,00
-[22:38:27] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Mud Crawl" (movement=2/4) from (2,3) heads to (3,3) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(2,2).
-[22:38:27] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Mud Crawl" arrived at (3, 3).
-[22:38:28] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T2-P4-M-M21] Scout(Explore 2,2) actor=#13 kind=Explore (2,3)→(3,3) steps=1 ap−0 objective=open stop=StepCompleted
-[22:38:28] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M21 causeDemand=[T2-P4-M-D02]] outcome ProductiveStop Intent(Explore 2,2)
-[22:38:28] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T2-P4-M-M21 causeDemand=[T2-P4-M-D02]] Intent(Explore 2,2) advanced (ProductiveStop, progress 1, t1 stall0)
-[22:38:28] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M23 causeDemand=none] outcome Blocked Intent(Explore 2,4)
-[22:38:28] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M24 causeDemand=none] outcome Blocked Intent(Explore 3,2)
-[22:38:28] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M25 causeDemand=none] outcome Blocked Intent(Explore 3,3)
-[22:38:28] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=4 task=Scout(Explore 2,2) progress=1 stop=StepCompleted operationalTriggers=ReconKnowledge, Actor strategicTriggers=None noProgress=0
-[22:38:28] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:28] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#4) reason=no_ready_raid_actor_after_phaseA
-[22:38:28] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 1 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:28] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 5.00, locked 0.00, funded 1 (0 commit), deferred 1, unused 4.00, overdraft axis/global 0.00/0.00
-[22:38:28] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [Scout(Explore 2,2)->Ground#13@(2,2)]
-[22:38:28] [ReconReactionPolicy.Log:342] [AI][V2][Recon][Reaction] actor=#13 mode=Explore action=Continue target=none army=none win=0,00 reason=no live reaction
-[22:38:28] [ReconGroundStepPlanner.Pick:101] [AI][V2][Recon][Ground][Step] actor=#13 mode=Explore sector=E from=(3,3) to=(4,3) freshNeighbors=5 intelAge=0 moveCost=1 trail=1,00 detectorRisk=0,00 score=6,00 purpose=2,00 info=2,00 anchorProgress=0,00 heading=1,00 mpEff=1,00 building=0,00 coverage=1,00(sectorClaims=0,near=0) deadEnd=1,00 homeDist=4 homeDelta=+1 localGap=0,79 homeFactor=1,00 lookahead=0,00
-[22:38:28] [AiTurnController.MoveArmyRoutine:249] [AI] Orlan: "Mud Crawl" (movement=1/4) from (3,3) heads to (4,3) — V2 recon continuous — Explore; mission=Explore; mode=Explore; anchor=(2,2).
-[22:38:29] [AiMapMemory.OnVisibilityChanged:586] [AI] Orlan: memory — neutral "Deserters squad" remembered at (4,4).
-[22:38:29] [AiTurnController.MoveArmyRoutine:408] [AI] Orlan: "Mud Crawl" arrived at (4, 3).
-[22:38:29] [ReconGroundExecutor.RunPreparedStep:418] [AI][V2][Recon][Discovery] actor=#13 neutral=[7] — next action will be live reaction/replan
-[22:38:29] [ReconGroundExecutor.Finish:437] [AI][V2][Recon][Ground] [T2-P4-M-M28] Scout(Explore 2,2) actor=#13 kind=Explore (3,3)→(4,3) steps=1 ap−0 objective=open stop=OutOfMovement
-[22:38:29] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M28 causeDemand=[T2-P4-M-D02]] outcome ProductiveStop Intent(Explore 2,2)
-[22:38:29] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T2-P4-M-M28 causeDemand=[T2-P4-M-D02]] Intent(Explore 2,2) advanced (ProductiveStop, progress 1, t1 stall0)
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1215] [AI][V2][Loop] step=5 task=Scout(Explore 2,2) progress=1 stop=OutOfMovement operationalTriggers=ReconKnowledge, Contact, Actor, EventState strategicTriggers=None noProgress=0
-[22:38:29] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:29] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=7 hex=(4,4) base=35.68 readyWin=0.00 asmWin=0.99 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:29] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#4) reason=no_ready_raid_actor_after_phaseA
-[22:38:29] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#7) reason=no_ready_raid_actor_after_phaseA
-[22:38:29] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 2 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:29] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 5.00, locked 0.00, funded 1 (0 commit), deferred 1, unused 4.00, overdraft axis/global 0.00/0.00
-[22:38:29] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 2,2):NoExecutableStep]
-[22:38:29] [CapabilityPoolExhaustionRegistry.DeferNoExecutableStep:138] [AI][V2] mission deferred until next turn — Scout(Explore 2,2): eligible scout(s)/vantage exist but none reachable this turn toward (2,2)
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T2-P4-M-M35 causeDemand=[T2-P4-M-D02]] Scout(Explore 2,2) — FAIL NoExecutableStep [RetryNextTurn] eligible scout(s)/vantage exist but none reachable this turn toward (2,2)
-[22:38:29] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 5.00, locked 0.00, funded 0 (0 commit), deferred 2, unused 5.00, overdraft axis/global 0.00/0.00
-[22:38:29] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T2-P4-M-M35 causeDemand=[T2-P4-M-D02]] outcome Blocked Intent(Explore 2,2)
-[22:38:29] [MissionContinuityLayer.AdvanceIntent:1426] [AI][V2] continuity — [attempt=T2-P4-M-M35 causeDemand=[T2-P4-M-D02]] Intent(Explore 2,2) advanced (Blocked, progress 0, t1 stall0)
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1153] [AI][V2][Loop] admission stopped — no provisioned task; noProgress=1
-[22:38:29] [StrategicPhaseB.UseSurplus:102] [AI][V2]   strat.B — Orlan hand [0:"Ashen Base", 1:"Miller Hayes", 2:"Scrapwing", 3:"Vera Sterling", 4:"AA Rad Hunter"]
-[22:38:29] [StrategicPhaseB.UseSurplus:104] [AI][V2]   strat.B/tempo — budget on entry: total 0/10, draws 0/4, gen 0/3
-[22:38:29] [MaterializationCandidateBuilder.RankedSurplus:439] [AI][V2]   strat.eval B — 0|1|:1|-|-|3:0,3:2 role=CombatBody net 2.73 decision 2.73 [role +2.74 tempo -0.10 next 0.00 gap +0.50 grow +0.52 threat 0.00 res -0.21 syn 0.00 deploy 0.00 scarce +0.50 redun 0.00 alt -1.21 resP 0.00 handP 0.00 prod 0.00 hold 0.00 = 2.73  || effect=ProduceMaterials scope=PlayerGlobal yield=+1/turn deficit=0,03->0,00 marginalUtility=1,00 future=0,77 persistence=0,93 effectValue=0,22 ; command=8 nominalCap=7 projectedCap=7 occupiedBefore=1 legalFillers=0 requiredCapacity=2 usableExtraSlots=0 commandMarginalValue=0.00]
-[22:38:29] [TempoActionExecutor.ExecuteMatSurplus:97] [AI][V2]   strat.B — Direct cards[base="Miller Hayes" source=hand] util 2.73 (ap 1, Garrison, delivered 0, 0|1|:1|-|-|3:0,3:2)
-[22:38:29] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[0] — WINNER PlayMat util 2.73 eff 2.73 — Direct cards[base="Miller Hayes" source=hand]  => ok 1 progressed 1 stateChanged 1 spent ap 1 H/E/M/T 1/0/0/0 card 1 drawn 0 gen 0 attach 0
-[22:38:29] [TempoActionExecutor.ExecuteNonCombatSurplus:149] [AI][V2]   strat.B non-combat — played Aviation Scrapwing -> airfield (0,3) (ap 2)
-[22:38:29] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[1] — WINNER PlayNonCombat util 2.12 eff 2.12 — Aviation Scrapwing -> airfield (0,3)  => ok 1 progressed 1 stateChanged 1 spent ap 2 H/E/M/T 0/1/0/2 card 1 drawn 0 gen 0 attach 0
-[22:38:29] [CardDrawExecutor.TryCycle:41] [AI][V2]   strat.B — drew "Nova Sterling" (2 AP)
-[22:38:29] [CardDrawExecutor.TryCycle:61] [AI][V2] strategic interrupt — terminal boundary draw changed the hand; hand opportunity registered
-[22:38:29] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[2] — WINNER Draw util 0.78 eff 0.78 — cycle 1 card (2 AP), hand 3/10  => ok 1 progressed 1 stateChanged 1 spent ap 2 H/E/M/T 0/0/0/0 card 0 drawn 1 gen 0 attach 0
-[22:38:29] [TempoCandidateProvider.BuildTempoCandidates:161] [AI][V2]     cand Draw BLOCKED: raw AP 0 < cost 2; hand 4/10 deck 17
-[22:38:29] [StrategicPhaseB.UseSurplus:279] [AI][V2] strat.B/tempo — END: iters 3, turn budget total 3/10 draws 1/4 gen 0/3; cardsPlayed 2, drawn 1; ap 0 (spendable 0), H/E/M/T 0/0/0/0; reservations [ownerAwarePhysical=none]; stop=no eligible spend candidate (budget total 3/10, draws 1/4, gen 0/3)
-[22:38:29] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:29] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=7 hex=(4,4) base=35.68 readyWin=0.00 asmWin=0.99 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:29] [DemandLayer.Economy.EconomyDemands:214] [AI][V2][Economy][Demand] selected=EconomicInfrastructure resource=Human target=(0,0) value=60,82 rejected=1
-[22:38:29] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=12 kept=0 best=none wait=1 urgency=12
-[22:38:29] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=12 delivery_value=0 threshold=0
-[22:38:29] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=1
-[22:38:29] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
-[22:38:29] [DemandLayer.Generate:57] [AI][V2]   demand — [T2-P4-M-D05] ECO needs 1x EconomicInfrastructure @0,0 +1fu val 60,8 | Human deficit=0,44 resourcePriority=1 marginalGain=1 effectiveYield=1 alreadyCollected=0 network=0,33 cluster=0,44 site=76,32 delivery=60,82 travel=3 exposure=0 heroCost=0
-[22:38:29] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
-[22:38:29] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Orlan hand [0:"Ashen Base", 1:"Vera Sterling", 2:"AA Rad Hunter", 3:"Nova Sterling"]
-[22:38:29] [StrategicPhaseA.FulfillDemands:329] [AI][V2]   strat.A infra — [T2-P4-M-D05] ECO needs 1x EconomicInfrastructure @0,0 +1fu val 60,8: not built (EconomicInfrastructure: no legal authoritative build available now)
-[22:38:29] [StrategicPhaseA.FulfillDemands:680] [AI][V2] strat.A — residual demands [T2-P4-M-D05] ECO needs 1x EconomicInfrastructure @0,0 +1fu val 60,8
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:860] [AI][V2][Loop] strategic re-admission axes=Economy,Development triggers=Actor, Capability, Hand, Resources changed=0
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1279] [AI][V2][Loop] management round=1 strategicTriggers=Actor, Capability, Hand, Resources operationalTriggers=Actor operationalReadmit=1
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:868] [AI][V2][Loop] begin — typed operational admission
-[22:38:29] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=4 hex=(1,4) base=36.81 readyWin=0.00 asmWin=1.00 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:29] [AggressionObjectiveEvaluator.Enumerate:157] [AI][V2][AggressionObjective] decision=ACCEPT targetArmy=7 hex=(4,4) base=35.68 readyWin=0.00 asmWin=0.99 cover=1 gate=1 frozenNeedsPower=0 frozenNeedsHero=0 frozenPowerDeficit=0.00 frozenGap=none
-[22:38:29] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#4) reason=no_ready_raid_actor_after_phaseA
-[22:38:29] [AggressionMissionPlanner.Propose:153] [AI][V2]   mission suppress — Raid(#7) reason=no_ready_raid_actor_after_phaseA
-[22:38:29] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 2 frozen objective(s), no executable candidate survived beam/materialisation
-[22:38:29] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 0.00, locked 0.00, funded 0 (0 commit), deferred 7, unused 0.00, overdraft axis/global 0.00/0.00
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:995] [AI][V2][Loop] stop — no funded typed mission
-[22:38:29] [StrategicPhaseB.UseSurplus:102] [AI][V2]   strat.B — Orlan hand [0:"Ashen Base", 1:"Vera Sterling", 2:"AA Rad Hunter", 3:"Nova Sterling"]
-[22:38:29] [StrategicPhaseB.UseSurplus:104] [AI][V2]   strat.B/tempo — budget on entry: total 3/10, draws 1/4, gen 0/3
-[22:38:29] [TempoCandidateProvider.BuildTempoCandidates:161] [AI][V2]     cand Draw BLOCKED: raw AP 0 < cost 2; hand 4/10 deck 17
-[22:38:29] [StrategicPhaseB.UseSurplus:279] [AI][V2] strat.B/tempo — END: iters 0, turn budget total 3/10 draws 1/4 gen 0/3; cardsPlayed 0, drawn 0; ap 0 (spendable 0), H/E/M/T 0/0/0/0; reservations [ownerAwarePhysical=none]; stop=no eligible spend candidate (budget total 3/10, draws 1/4, gen 0/3)
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1279] [AI][V2][Loop] management round=2 strategicTriggers=None operationalTriggers=None operationalReadmit=0
-[22:38:29] [ReconAcceptanceAudit.Summarize:296] [AI][V2][Recon][Acceptance][Summary] turn=2 pass=5 fail=0 notObserved=7
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1501] [AI][V2][StrategicManager][Summary] handStart=6 played=3 (phaseA 1, phaseB 2) generated=0 equipAttached=0 infraBuilt=0 drawn=1 handEnd=4 remaining=4 matAttempts=3 capDeliveries=1 blockedReasons=see strat.A/strat.B diag lines (never ReconOnly/wrongAxis)
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1512] [AI][V2][T2-P4-M][STATE] AP 10→0 H 1→0 E 1→0 M 2→0 T 2→0
-[22:38:29] [HousekeepingManager.Run:133] [AI][V2][HOUSEKEEPING] -- LOCAL FORCE PACKAGING ----------------
-[22:38:29] [HousekeepingManager.LogGroupInput:172] [AI][V2][HOUSEKEEPING]   (0,3) before: #2/Garrison[Elena Hayes{H:CombatLeader},Miller Hayes{H:CombatLeader}] | #3/SpecialExcludedContainer[] | #14/Aviation[Scrapwing]
-[22:38:29] [HousekeepingManager.LogGroupInput:177] [AI][V2][HOUSEKEEPING]   (0,3) benchmark: no deployed enemy field army; fallback=AiPower
-[22:38:29] [HousekeepingManager.Run:146] [AI][V2][HOUSEKEEPING]   0,3 decision: (0,3) profile []->[]; 1 member operation(s): commander u1:#2
-[22:38:29] [HousekeepingManager.Run:151] [AI][V2][HOUSEKEEPING]   0,3 after: #2/Garrison[Miller Hayes{H:CombatLeader},Elena Hayes{H:CombatLeader}] | #3/SpecialExcludedContainer[] | #14/Aviation[Scrapwing]
-[22:38:29] [HousekeepingManager.Run:164] [AI][V2] housekeeping — strategicActions 0, groups 1, operations applied 1, failed 0, stateChanged 1, apInvariant ok
-[22:38:29] [TurnResourceTelemetry.LogEnd:56] [AI][V2] Orlan: resources — ap=10>0, h=1>0, e=1>0, m=2>0, t=2>0
-[22:38:29] [AiStrategyV2Pipeline.RunTurn:1552] [AI][V2] === Orlan — V2 turn ends (demands 2, stratA 1, missions 7, lastPackFunded 0, turnFundedUnique 11, provisioned 5, executed 5, stratB 2) ===
-[22:38:29] [V2TurnActivityTelemetry.LogSummary:146] [AI][V2] Orlan: activity main    — demands 2, missions 7, funded 11, provisioned 5, provFail 9 [MoverContended=8,NoExecutableStep=1], execAttempts 5, execOk 5, execStale 0, cards 3, draws 1, capDeliveries 1, exhaustion 0, poolRecov 0, mat 3/3, genCard 0/0, equip 0/0, infra 0/3
-[22:38:29] [V2TurnActivityTelemetry.LogSummary:147] [AI][V2] Orlan: activity reaction — demands 0, missions 0, funded 0, provisioned 0, provFail 0 [none], execAttempts 0, execOk 0, execStale 0, cards 0, draws 0, capDeliveries 0, exhaustion 0, poolRecov 0, mat 0/0, genCard 0/0, equip 0/0, infra 0/0
-[22:38:29] [V2TurnActivityTelemetry.LogSummary:148] [AI][V2] Orlan: activity total    — demands 2, missions 7, funded 11, provisioned 5, provFail 9 [MoverContended=8,NoExecutableStep=1], execAttempts 5, execOk 5, execStale 0, cards 3, draws 1, capDeliveries 1, exhaustion 0, poolRecov 0, mat 3/3, genCard 0/0, equip 0/0, infra 0/3
+=== AI debug log — session started 2026-09-14 23:25:20 ===
+[23:25:27] [AiMapMemory.OnVisibilityChanged:695] [AI] Halden: memory — building "Citadel" (owner=Halden) remembered at (6,5).
+[23:25:27] [AiMapMemory.OnVisibilityChanged:695] [AI] Kryll: memory — building "Citadel" (owner=Kryll) remembered at (3,-1).
+[23:25:27] [InitiativeCoordinatorV2.PlanAndApplyForAll:43] [AI][V2][Initiative] Kryll (turn 1) — apPressure=0,00 (cur=0,00 hist=0,00), turnOrderPressure=0,00, bottleneck=no-structural-work/no-history, armies=0 power=0,0 apCards=0, avail H/E/M/T=1/1/1/1, oppDice=[5] => plan: no current AP workload
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:503] [AI][V2] === Kryll — Strategy V2 pipeline owns this turn (turn 1) ===
+[23:25:41] [WorldAnalysis.Observation.LogSnapshot:339] [AI][V2] Kryll worldscan turn 1 — map 0.99 dark (visited 1/108, visible 6) | frontier 5 hexes, explorable 0.99
+[23:25:41] [WorldAnalysis.Observation.LogSnapshot:344] [AI][V2]   self.power field=0.0 garrison=0.0 total=0.0 | bestStack=32.4 totalPotential=88.2 | AP=8 hand=6/10 deck=20 | dev fac=0 op=0
+[23:25:41] [WorldAnalysis.Observation.LogSnapshot:351] [AI][V2]   dev.readiness facilities=0 withHero=0 offerings=0 bestP=0.00 surplus=0.50 prodSupport=0.7 targets=2
+[23:25:41] [WorldAnalysis.Observation.LogSnapshot:357] [AI][V2]   self.stock H/E/M/T=1.0/1.0/1.0/1.0 | income=1.0/1.0/1.0/1.0
+[23:25:41] [WorldAnalysis.Observation.LogSnapshot:366] [AI][V2]   economy.security=0.75 (absFloor=0.71 rel=1.0 bottleneck=0.28) | deckNeed H/E/M/T=17.0/14.0/10.0/10.0 | targetIncome H/E/M/T=2.0/1.5/1.3/1.5 total=6.3 actualIncome=4.0
+[23:25:41] [WorldAnalysis.Observation.LogSnapshot:379] [AI][V2]   threat: contacts 0 (honest=0 cheat=0) assets 1 listedThreats 0 siege=0
+[23:25:41] [DesireEvaluators.LogDesires:641] [AI][V2]   desires — RCN raw 0.64 smoothed 0.64 (explRaw 0.99 exploreP 0.99 survRaw 0.18 refreshP 0.18 blind 0.00)
+[23:25:41] [DesireEvaluators.LogDesires:645] [AI][V2]   desires — AGG raw 0.00 smoothed 0.00 = max(raid 0.15, war 0.23) [opp 0.00 surp 0.00 edge 0.50 sat 0.00 mom 0.50]
+[23:25:41] [DesireEvaluators.LogDesires:649] [AI][V2]   desires — reserve 3.00 free 0.00 | lossPulse enemy 0.00 (drop 0.00) own 0.00 (drop 0.00)
+[23:25:41] [DesireEvaluators.LogDesires:652] [AI][V2][Economy][Desire] resource=Human max=0.28 mean=0.17 incomeGap=0.50 relativeGap=0.00 runwayGap=0.53 operational=0.00 actionableGate=0.25 raw=0.06 smoothed=0.06
+[23:25:41] [DesireEvaluators.LogDesires:658] [AI][V2]   desires — DEV raw 0.00 smoothed 0.00 = surplus 0.50 x quality 0.00 (facReady 0.00 pathViable 0 bestP 0.00 targets 2)
+[23:25:41] [DesireEvaluators.LogDesires:667] [AI][V2]   desires — bestOpp none (targets 0, heroAvail 1, cap 8) | threat 0.00 runway 0.85
+[23:25:41] [AiStrategyV2Scope.ApplyRadarScope:126] [AI][V2][Scope] mode=ReconAggressionEconomyDevelopment radar=RCN 0.91 AGG 0.00 DEF 0.00 ECO 0.09 DEV 0.00
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:544] [AI][V2] Kryll: radar — RCN 0.91 AGG 0.00 DEF 0.00 ECO 0.09 DEV 0.00 | threat 0.00 runway 0.85
+[23:25:41] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
+[23:25:41] [DemandLayer.Recon.ReconDemands:88] [AI][V2][Demand][Recon] jobs raw=5 covered=0 uncovered=5 blocked=0 runnable=5 active=0
+[23:25:41] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
+[23:25:41] [DemandLayer.Recon.ReconDemands:121] [AI][V2][Demand][Recon] capacity desiredObs=0 desiredGround=3 combinedCeiling=3 existingGroundUsable=0 obs[genLanes=0 airborne=0 spareAir=0] ground[genLanes=0 idleScouts=0] => obsDeficit=0 groundTraversalDeficit=3 active=0 hard=3 runnable=5 (obs=0 groundVisit=5 stealth=0) blocked=0
+[23:25:41] [DemandLayer.Recon.ReconDemands:207] [AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence reason=zero_capacity_bootstrap class=GroundTraversal runnable=5 rawSupply=0 witnessedSupply=0 rawDeficit=3 effectiveDeficit=3 bootstrapped=1
+[23:25:41] [DemandLayer.Recon.ReconDemands:281] [AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent class=GroundTraversal persistenceDeferredEmitted=true desired=2 runnable=5 witnessedSupply=0 streak=0
+[23:25:41] [DemandLayer.Recon.ReconDemands:355] [AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability profile=generic-ground desired=1 reason=persistent_ground_traversal_deficit groundTraversalDeficit(effective)=3(streak=0) combinedCeiling=3 existingGroundUsable=0 matGround=1 matObs=0 runnable=5 blocked=0 target=(2,0)
+[23:25:41] [DemandLayer.Aggression.AggressionDemands:26] [AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives
+[23:25:41] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=0 kept=0 reason=no_base_card_or_opportunity
+[23:25:41] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=0 delivery_value=0 threshold=0
+[23:25:41] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=0 reason=no_legal_valuable_site_or_base
+[23:25:41] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=9
+[23:25:41] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
+[23:25:41] [DemandLayer.Generate:57] [AI][V2]   demand — [T1-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @2,0 val 56,6 | GroundTraversal effective deficit 3 not yet persistent (streak 0); 5 runnable job(s); deferred pending no-alternative-work reconciliation
+[23:25:41] [DemandLayer.Generate:57] [AI][V2]   demand — [T1-P4-M-D02] RCN needs 1x ScoutCapability ~Stealth @2,0 val 56,6 | persistent GroundTraversal effective deficit 3 (aviation cannot substitute a physical visit); want 1; blocked 0
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:607] [AI][V2] Kryll: budget ledger — sharedAP 8.00/8.00 axis=value-only
+[23:25:41] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
+[23:25:41] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Kryll hand [0:"Iri Vane", 1:"Intel Center", 2:"Ash Drifter", 3:"Vera Sterling", 4:"Hank Mercer", 5:"Scrapwing"]
+[23:25:41] [StrategicPhaseA.FulfillDemands:475] [AI][V2]   strat.A — [T1-P4-M-D02] RCN needs 1x ScoutCapability ~Stealth @2,0 val 56,6: no feasible useful chain (RCN entitlement 8, discrete 8, followup reserved 0); diag hand=6 [0:"Iri Vane", 1:"Intel Center", 2:"Ash Drifter", 3:"Vera Sterling", 4:"Hank Mercer", 5:"Scrapwing"] freeSlot=1 match=0 trait=0 placements=0 preflight=0 opDeliver=0 resReject=0 fails=[-] directNeedMin=- postGate=- axis=8 discrete=8 ap=8 followupReserved=0
+[23:25:41] [StrategicPhaseA.TryPromotePersistenceDeferred:828] [AI][V2]   strat.A persistence-reconcile — [T1-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @2,0 val 56,6: decision=DEFER reason=no_deliverable_candidate; stays deferred, Phase B proceeds
+[23:25:41] [StrategicPhaseA.FulfillDemands:680] [AI][V2] strat.A — residual demands [T1-P4-M-D02] RCN needs 1x ScoutCapability ~Stealth @2,0 val 56,6 | [T1-P4-M-D01] RCN needs 2x ScoutCapability ~Stealth @2,0 val 56,6
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:868] [AI][V2][Loop] begin — typed operational admission
+[23:25:41] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
+[23:25:41] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
+[23:25:41] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 8.00, locked 0.00, funded 5 (0 commit), deferred 0, unused 3.00, overdraft axis/global 0.00/0.00
+[23:25:41] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 5 open, assigned [] rejected [Scout(Explore 2,0):NoMoverExists Scout(Explore 3,0):NoMoverExists Scout(Explore 4,-1):NoMoverExists Scout(Explore 2,-1):NoMoverExists Scout(Explore 4,-2):NoMoverExists]
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M01 causeDemand=[T1-P4-M-D01,T1-P4-M-D02]] Scout(Explore 2,0) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M02 causeDemand=none] Scout(Explore 3,0) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M03 causeDemand=none] Scout(Explore 4,-1) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M04 causeDemand=none] Scout(Explore 2,-1) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M05 causeDemand=none] Scout(Explore 4,-2) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [CapabilityPoolExhaustionRegistry.MarkExhausted:175] [AI][V2] capability pool exhausted — Scout this turn: assignment batch rejected all 5 funded Scout mission(s) in pool Scout, proven pool-wide unable
+[23:25:41] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 8.00, locked 0.00, funded 0 (0 commit), deferred 5, unused 8.00, overdraft axis/global 0.00/0.00
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M01 causeDemand=[T1-P4-M-D01,T1-P4-M-D02]] outcome Blocked Intent(Explore 2,0)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M02 causeDemand=none] outcome Blocked Intent(Explore 3,0)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M03 causeDemand=none] outcome Blocked Intent(Explore 4,-1)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M04 causeDemand=none] outcome Blocked Intent(Explore 2,-1)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M05 causeDemand=none] outcome Blocked Intent(Explore 4,-2)
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1153] [AI][V2][Loop] admission stopped — no provisioned task; noProgress=1
+[23:25:41] [StrategicPhaseB.UseSurplus:102] [AI][V2]   strat.B — Kryll hand [0:"Iri Vane", 1:"Intel Center", 2:"Ash Drifter", 3:"Vera Sterling", 4:"Hank Mercer", 5:"Scrapwing"]
+[23:25:41] [StrategicPhaseB.UseSurplus:104] [AI][V2]   strat.B/tempo — budget on entry: total 0/10, draws 0/4, gen 0/3
+[23:25:41] [NonCombatCardPlayer.Evaluate:73] [AI][V2]   strat.nonCombat — Intel Center role=Economy net 0.70 [role +1.35 tempo 0.00 next 0.00 gap 0.00 grow 0.00 threat 0.00 res -0.47 syn 0.00 deploy 0.00 scarce 0.00 redun 0.00 alt 0.00 resP 0.00 handP 0.00 prod 0.00 hold +0.18 = 0.87  || effect=ApBonus scope=PlayerGlobal yield=+2AP/turn horizon=8x future=0,84 apMarginalUtility=0,10 existingRecurringSources=0 saturation=0,00 persistence=1,00 effectValue=0,00]
+[23:25:41] [MaterializationCandidateBuilder.RankedSurplus:439] [AI][V2]   strat.eval B — 0|1|:4|-|-|3:3,-1:2 role=CombatBody net 2.48 decision 2.48 [role +2.92 tempo -0.10 next 0.00 gap +0.50 grow 0.00 threat 0.00 res -0.21 syn 0.00 deploy 0.00 scarce +0.50 redun 0.00 alt -1.13 resP 0.00 handP 0.00 prod 0.00 hold 0.00 = 2.48  || command=6 nominalCap=4 projectedCap=6 occupiedBefore=0 legalFillers=1 requiredCapacity=2 usableExtraSlots=0 commandMarginalValue=0.00]
+[23:25:41] [NonCombatCardPlayer.Evaluate:73] [AI][V2]   strat.nonCombat — Intel Center role=Economy net 0.70 [role +1.35 tempo 0.00 next 0.00 gap 0.00 grow 0.00 threat 0.00 res -0.47 syn 0.00 deploy 0.00 scarce 0.00 redun 0.00 alt 0.00 resP 0.00 handP 0.00 prod 0.00 hold +0.18 = 0.87  || effect=ApBonus scope=PlayerGlobal yield=+2AP/turn horizon=8x future=0,84 apMarginalUtility=0,10 existingRecurringSources=0 saturation=0,00 persistence=1,00 effectValue=0,00]
+[23:25:41] [TempoActionExecutor.ExecuteMatSurplus:97] [AI][V2]   strat.B — Direct cards[base="Hank Mercer" source=hand] util 2.48 (ap 1, Garrison, delivered 0, 0|1|:4|-|-|3:3,-1:2)
+[23:25:41] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[0] — WINNER PlayMat util 2.48 eff 2.48 — Direct cards[base="Hank Mercer" source=hand]  => ok 1 progressed 1 stateChanged 1 spent ap 1 H/E/M/T 1/0/0/0 card 1 drawn 0 gen 0 attach 0
+[23:25:41] [MaterializationCandidateBuilder.RankedSurplus:439] [AI][V2]   strat.eval B — 0|1|ashen.unit.ashdrifter:2|-|-|3:3,-1:2 role=CombatBody net 1.30 decision 1.30 [role +1.33 tempo -0.10 next 0.00 gap +0.50 grow 0.00 threat 0.00 res -0.15 syn 0.00 deploy 0.00 scarce +0.15 redun 0.00 alt -0.43 resP 0.00 handP 0.00 prod 0.00 hold 0.00 = 1.30]
+[23:25:41] [TempoActionExecutor.ExecuteMatSurplus:97] [AI][V2]   strat.B — Direct cards[base="Ash Drifter" source=hand] util 1.3 (ap 1, Garrison, delivered 0, 0|1|ashen.unit.ashdrifter:2|-|-|3:3,-1:2)
+[23:25:41] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[1] — WINNER PlayMat util 1.3 eff 1.3 — Direct cards[base="Ash Drifter" source=hand]  => ok 1 progressed 1 stateChanged 1 spent ap 1 H/E/M/T 0/0/0/0 card 1 drawn 0 gen 0 attach 0
+[23:25:41] [CardDrawExecutor.TryCycle:41] [AI][V2]   strat.B — drew "MT Rust Tank" (2 AP)
+[23:25:41] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[2] — WINNER Draw util 0.78 eff 0.78 — cycle 1 card (2 AP), hand 4/10  => ok 1 progressed 1 stateChanged 1 spent ap 2 H/E/M/T 0/0/0/0 card 0 drawn 1 gen 0 attach 0
+[23:25:41] [CardDrawExecutor.TryCycle:41] [AI][V2]   strat.B — drew "Ash Drifter" (2 AP)
+[23:25:41] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[3] — WINNER Draw util 0.78 eff 0.78 — cycle 1 card (2 AP), hand 5/10  => ok 1 progressed 1 stateChanged 1 spent ap 2 H/E/M/T 0/0/0/0 card 0 drawn 1 gen 0 attach 0
+[23:25:41] [MaterializationCandidateBuilder.RankedSurplus:439] [AI][V2]   strat.eval B — 0|1|ashen.unit.ashdrifter:5|-|-|3:3,-1:2 role=CombatBody net 1.30 decision 1.30 [role +1.33 tempo -0.10 next 0.00 gap +0.50 grow 0.00 threat 0.00 res -0.15 syn 0.00 deploy 0.00 scarce +0.15 redun 0.00 alt -0.43 resP 0.00 handP 0.00 prod 0.00 hold 0.00 = 1.30]
+[23:25:41] [TempoActionExecutor.ExecuteMatSurplus:97] [AI][V2]   strat.B — Direct cards[base="Ash Drifter" source=hand] util 1.3 (ap 1, Garrison, delivered 0, 0|1|ashen.unit.ashdrifter:5|-|-|3:3,-1:2)
+[23:25:41] [StrategicPhaseB.UseSurplus:242] [AI][V2]   tempo[4] — WINNER PlayMat util 1.3 eff 1.3 — Direct cards[base="Ash Drifter" source=hand]  => ok 1 progressed 1 stateChanged 1 spent ap 1 H/E/M/T 0/0/0/0 card 1 drawn 0 gen 0 attach 0
+[23:25:41] [TempoCandidateProvider.BuildTempoCandidates:161] [AI][V2]     cand Draw BLOCKED: raw AP 1 < cost 2; hand 5/10 deck 18
+[23:25:41] [StrategicPhaseB.UseSurplus:279] [AI][V2] strat.B/tempo — END: iters 5, turn budget total 5/10 draws 2/4 gen 0/3; cardsPlayed 3, drawn 2; ap 1 (spendable 1), H/E/M/T 0/1/1/1; reservations [ownerAwarePhysical=none]; stop=no eligible spend candidate (budget total 5/10, draws 2/4, gen 0/3)
+[23:25:41] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
+[23:25:41] [DemandLayer.Economy.EconomyDemands:220] [AI][V2][Economy][BaseCandidates] considered=0 kept=0 reason=no_base_card_or_opportunity
+[23:25:41] [DemandLayer.Economy.EconomyDemands:224] [AI][V2][Economy][Rejections] no_builder=0 payback=0 strategic_value=0 delivery_value=0 threshold=0
+[23:25:41] [DemandLayer.Economy.EconomyDemands:228] [AI][V2][Economy][Demand] selected=none rejected=0 reason=no_legal_valuable_site_or_base
+[23:25:41] [DemandLayer.Generate:44] [AI][V2][Timing] EconomyDemands elapsedMs=0
+[23:25:41] [DemandLayer.Development.DevelopmentDemands:95] [AI][V2][Demand][Development] decision=SATISFIED reason=no_supported_profitable_development_use
+[23:25:41] [ReconAssignmentPlanner.MeasureAirCapacity:1189] [AI][V2][ReconAirCap] structuralObsLanes=0 (airborne 0/0 stuck 0 + launch 0/0 rejected 0) obsNeed=0 desiredObs=0 activeObsLanes=0 mode=Explore (structural-only capability witness — no AP/Energy/reservation read; activation economics happen only at Provisioning time)
+[23:25:41] [StrategicPhaseA.FulfillDemands:202] [AI][V2]   strat.A — Kryll hand [0:"Iri Vane", 1:"Intel Center", 2:"Vera Sterling", 3:"Scrapwing", 4:"MT Rust Tank"]
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:860] [AI][V2][Loop] strategic re-admission axes=Economy,Development triggers=Actor, Capability, Hand, Resources changed=0
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1279] [AI][V2][Loop] management round=1 strategicTriggers=Actor, Capability, Hand, Resources operationalTriggers=Actor operationalReadmit=1
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:868] [AI][V2][Loop] begin — typed operational admission
+[23:25:41] [AggressionObjectiveEvaluator.Enumerate:115] [AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities
+[23:25:41] [AggressionMissionPlanner.Propose:164] [AI][V2]   raid mission — NONE: 0 frozen objective(s), no executable candidate survived beam/materialisation
+[23:25:41] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p1 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 4, unused 0.00, overdraft axis/global 0.00/0.00
+[23:25:41] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 2,0):NoMoverExists]
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M06 causeDemand=[T1-P4-M-D01,T1-P4-M-D02]] Scout(Explore 2,0) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p2 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 4, unused 0.00, overdraft axis/global 0.00/0.00
+[23:25:41] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 3,0):NoMoverExists]
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M07 causeDemand=none] Scout(Explore 3,0) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p3 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 4, unused 0.00, overdraft axis/global 0.00/0.00
+[23:25:41] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 4,-1):NoMoverExists]
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M08 causeDemand=none] Scout(Explore 4,-1) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [ResourceAllocator.LogDump:1226] [AI][V2] allocator p4 — pool 1.00, locked 0.00, funded 1 (0 commit), deferred 4, unused 0.00, overdraft axis/global 0.00/0.00
+[23:25:41] [ReconAssignmentPlanner.AssignFunded:610] [AI][V2][Recon][Assignment] assignFunded — 1 open, assigned [] rejected [Scout(Explore 2,-1):NoMoverExists]
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1035] [AI][V2][Loop] assignment-batch [attempt=T1-P4-M-M09 causeDemand=none] Scout(Explore 2,-1) — FAIL NoMoverExists [RetryNextTurn] no solo Recce on the map
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M06 causeDemand=[T1-P4-M-D01,T1-P4-M-D02]] outcome Blocked Intent(Explore 2,0)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M07 causeDemand=none] outcome Blocked Intent(Explore 3,0)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M08 causeDemand=none] outcome Blocked Intent(Explore 4,-1)
+[23:25:41] [MissionContinuityLayer.ReconcileOutcome:1099] [AI][V2] [attempt=T1-P4-M-M09 causeDemand=none] outcome Blocked Intent(Explore 2,-1)
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1153] [AI][V2][Loop] admission stopped — no provisioned task; noProgress=1
+[23:25:41] [StrategicPhaseB.UseSurplus:102] [AI][V2]   strat.B — Kryll hand [0:"Iri Vane", 1:"Intel Center", 2:"Vera Sterling", 3:"Scrapwing", 4:"MT Rust Tank"]
+[23:25:41] [StrategicPhaseB.UseSurplus:104] [AI][V2]   strat.B/tempo — budget on entry: total 5/10, draws 2/4, gen 0/3
+[23:25:41] [TempoCandidateProvider.BuildTempoCandidates:161] [AI][V2]     cand Draw BLOCKED: raw AP 1 < cost 2; hand 5/10 deck 18
+[23:25:41] [StrategicPhaseB.UseSurplus:279] [AI][V2] strat.B/tempo — END: iters 0, turn budget total 5/10 draws 2/4 gen 0/3; cardsPlayed 0, drawn 0; ap 1 (spendable 1), H/E/M/T 0/1/1/1; reservations [ownerAwarePhysical=none]; stop=no eligible spend candidate (budget total 5/10, draws 2/4, gen 0/3)
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1279] [AI][V2][Loop] management round=2 strategicTriggers=None operationalTriggers=None operationalReadmit=0
+[23:25:41] [ReconAcceptanceAudit.Summarize:296] [AI][V2][Recon][Acceptance][Summary] turn=1 pass=0 fail=0 notObserved=12
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1501] [AI][V2][StrategicManager][Summary] handStart=6 played=3 (phaseA 0, phaseB 3) generated=0 equipAttached=0 infraBuilt=0 drawn=2 handEnd=5 remaining=5 matAttempts=3 capDeliveries=0 blockedReasons=see strat.A/strat.B diag lines (never ReconOnly/wrongAxis)
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1512] [AI][V2][T1-P4-M][STATE] AP 8→1 H 1→0 E 1→1 M 1→1 T 1→1
+[23:25:41] [HousekeepingManager.Run:129] [AI][V2] housekeeping — no local force group worth reorganising.
+[23:25:41] [TurnResourceTelemetry.LogEnd:56] [AI][V2] Kryll: resources — ap=8>1, h=1>0, e=1>1, m=1>1, t=1>1
+[23:25:41] [AiStrategyV2Pipeline.RunTurn:1552] [AI][V2] === Kryll — V2 turn ends (demands 2, stratA 0, missions 5, lastPackFunded 1, turnFundedUnique 5, provisioned 0, executed 0, stratB 3) ===
+[23:25:41] [V2TurnActivityTelemetry.LogSummary:146] [AI][V2] Kryll: activity main    — demands 2, missions 5, funded 5, provisioned 0, provFail 9 [NoMoverExists=9], execAttempts 0, execOk 0, execStale 0, cards 3, draws 2, capDeliveries 0, exhaustion 1, poolRecov 0, mat 3/3, genCard 0/0, equip 0/0, infra 0/0
+[23:25:41] [V2TurnActivityTelemetry.LogSummary:147] [AI][V2] Kryll: activity reaction — demands 0, missions 0, funded 0, provisioned 0, provFail 0 [none], execAttempts 0, execOk 0, execStale 0, cards 0, draws 0, capDeliveries 0, exhaustion 0, poolRecov 0, mat 0/0, genCard 0/0, equip 0/0, infra 0/0
+[23:25:41] [V2TurnActivityTelemetry.LogSummary:148] [AI][V2] Kryll: activity total    — demands 2, missions 5, funded 5, provisioned 0, provFail 9 [NoMoverExists=9], execAttempts 0, execOk 0, execStale 0, cards 3, draws 2, capDeliveries 0, exhaustion 1, poolRecov 0, mat 3/3, genCard 0/0, equip 0/0, infra 0/0
+[23:25:42] [InitiativeCoordinatorV2.PlanAndApplyForAll:43] [AI][V2][Initiative] Kryll (turn 2) — apPressure=0,14 (cur=0,25 hist=0,00), turnOrderPressure=0,15, bottleneck=capacity-balanced(prevEnd=1/8), armies=0 power=0,0 apCards=5, avail H/E/M/T=1/2/2/2, oppDice=[5] => plan: zero dice beats every legal purchase
