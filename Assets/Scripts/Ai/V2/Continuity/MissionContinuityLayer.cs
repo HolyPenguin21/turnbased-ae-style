@@ -755,7 +755,8 @@ namespace Game.Ai.V2
             // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
             // positive live read (ours / another player's roster / honest map memory).
             bool targetGone = ri.TargetArmyId != 0
-                && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.TargetArmyId);
+                && (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.TargetArmyId)
+                    || RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.TargetArmyId));
             if (!targetGone)
             {
                 // A Reinforcement whose primary has since become strong enough again returns to
@@ -1102,6 +1103,29 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
             {
+                // Raid completion ends only the CURRENT neutral target, not the durable campaign.
+                // Keep (or create, when the first attack completed immediately) the operation so
+                // the next ResolveActive pass can re-orient the same primary onto another neutral
+                // or enter Return. Removing it here strands the victorious army and makes the
+                // Assault -> next target / Return phase machine unreachable.
+                if (o.MissionKind == MissionKind.Raid)
+                {
+                    if (intent != null)
+                    {
+                        AdvanceIntent(intent, o, turn, state, allocState);
+                        AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} current "
+                            + "target completed; durable campaign kept for re-orient/return");
+                        return;
+                    }
+                    if (o.HasRaidPayload && o.RaidOperationStarted)
+                    {
+                        CreateRaidIntent(state, o, turn);
+                        AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} first "
+                            + "target completed during opening step; campaign created for return/refocus");
+                        return;
+                    }
+                }
+
                 RepayEconomyLoan(state, intent, o);
                 // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
                 // OTHER than this actor's own execution reaching goal (another scout opened it
@@ -1278,23 +1302,22 @@ namespace Game.Ai.V2
                 // real raiding force. Only a mover that IS (or is taking over as) the primary may
                 // rewrite it: a support-executed step leaves the primary untouched.
                 RaidIntent raid = intent.Raid;
-                bool supportExecutedThisTurn = raid != null
-                    && ((raid.SupportArmyId != 0 && raid.SupportArmyId == o.MoverArmyId.Value)
-                        || (raid.Phase == RaidMissionPhase.Reinforcement
-                            && raid.PrimaryArmyId != 0
-                            && raid.PrimaryArmyId != o.MoverArmyId.Value));
+                // Actor role is taken from the immutable provisioned outcome. Execution may already
+                // have called CompleteRaidReinforcement, clearing SupportArmyId and switching the
+                // live intent to Assault; inspecting that mutated phase here used to misclassify the
+                // convoy as the new primary. A completed handoff deliberately releases the convoy;
+                // only a still-travelling selected support becomes a durable claim.
+                bool supportExecutedThisTurn = raid != null && o.HasRaidPayload
+                    && o.RaidPhase == RaidMissionPhase.Reinforcement
+                    && o.RaidPrimaryArmyId != 0
+                    && o.RaidPrimaryArmyId != o.MoverArmyId.Value;
                 if (supportExecutedThisTurn)
                 {
-                    // AGG-RAID P0#1 — an EXISTING free army picked fresh this turn by Provisioning's
-                    // batch actor solve (no prior CapabilityDeliveryEvaluator materialization
-                    // handoff) has no durable owner yet. Record it here, the ONE point Continuity
-                    // learns a Reinforcement leg actually executed successfully, or the claim in
-                    // ActorCommitments never applies and the same free army is up for grabs again
-                    // next turn.
-                    if (raid.SupportArmyId == 0)
+                    if (!o.RaidReinforcementHandoffAttempted && raid.SupportArmyId == 0)
                         raid.SupportArmyId = o.MoverArmyId.Value;
                     AiDebugLog.WriteVerbose($"[AI][V2][Raid] {intent.IntentKey} step executed by support "
-                        + $"#{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept");
+                        + $"#{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept; "
+                        + $"handoffAttempted={(o.RaidReinforcementHandoffAttempted ? 1 : 0)}");
                 }
                 // Economy actor ownership is durable. A replacement may only happen after
                 // ResolveActive retires a structurally invalid intent; an ordinary retry cannot
