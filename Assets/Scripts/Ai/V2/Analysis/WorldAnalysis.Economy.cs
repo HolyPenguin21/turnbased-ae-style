@@ -95,8 +95,14 @@ namespace Game.Ai.V2
                 if (knownBuildings.TryGetValue(site.Hex, out AiMapMemory.KnownBuilding building))
                 {
                     // BuildingPlayExecutor can only add a Facility to our own building, and only
-                    // while an unlocked slot was last observed free.
-                    if (building.Owner != player || building.FreeFacilitySlots <= 0)
+                    // while an unlocked slot was last observed free. A slot being free does not
+                    // mean this resource type is still buildable there: HexSelectionController.
+                    // Factory.TryBuildExtractionFacility separately refuses a second Facility
+                    // with the same collect ability on one building — mirror that same check here
+                    // (KnownBuilding.HasFacilityWithAbility, same method the live building uses)
+                    // so this candidate list never proposes a site the executor will only reject.
+                    if (building.Owner != player || building.FreeFacilitySlots <= 0
+                        || building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(resourceType)))
                         continue;
                     currentCollection = building.CollectedAmount(resourceType);
                 }
@@ -159,11 +165,17 @@ namespace Game.Ai.V2
                     directionalSites.UnionWith(knownMapHexes);
                 foreach (HexCoord hex in directionalSites.OrderBy(x => x.Q).ThenBy(x => x.R))
                     {
+                        // Direction is a SCORE input (ForwardProgressValue/CorridorAlignmentValue
+                        // below), not an admission gate: IsForwardBaseCandidate's own "strictly
+                        // closer to the enemy citadel than our anchor" rule used to also veto
+                        // candidates here, before those same two score terms ever got to weigh a
+                        // resource-rich hex that happened to sit slightly off the direct line.
+                        // MeetsBaseSpacing (own-base clearance, a real structural constraint) is
+                        // the only hard gate that stays; IsForwardBaseCandidate itself is kept for
+                        // its own unit coverage (AiEconomyDecisionTests) but no longer called here.
                         if (!knownMapHexes.Contains(hex)
                             || !MeetsBaseSpacing(snap.Self.BaseHexes, hex)
-                            || !hasDirection
-                            || !IsForwardBaseCandidate(snap.Self.BaseHexes, anchor,
-                                targetCitadel, hex))
+                            || !hasDirection)
                             continue;
                         bool hasBuilding = occupied.TryGetValue(hex,
                             out AiMapMemory.KnownBuilding knownBuilding);
@@ -191,9 +203,6 @@ namespace Game.Ai.V2
                         if (preparationTravel == int.MaxValue)
                             continue;
 
-                        float logistics = 1f - Mathf.Clamp01(
-                            (supportDistance - AiConfigV2.economyBaseMinSpacing)
-                            / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
                         float forwardProgress = 0f;
                         float corridorAlignment = 0f;
                         if (hasDirection)
@@ -214,15 +223,8 @@ namespace Game.Ai.V2
                         {
                             Hex = hex,
                             PreparationTravelCost = preparationTravel,
-                            HexYield = knownSites.Contains(hex)
-                                ? EconomyKnownHexYield(snap, hex) : default(ResourceBundle),
-                            CapacityValue = convertsOwnedExtraction ? 1f : 0.5f,
-                            NearbyResourceClusterValue = EconomyResourceClusterValue(
-                                snap, hex, standings),
-                            NetworkExpansionValue = EconomyBaseNetworkExpansionValue(
-                                snap, hex, standings),
+                            HexYield = BaseUncollectedYield(snap, hex, knownSites, hasBuilding, knownBuilding),
                             InfrastructurePressure = infrastructurePressure,
-                            LogisticsValue = logistics,
                             ForwardProgressValue = forwardProgress,
                             CorridorAlignmentValue = corridorAlignment,
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
@@ -542,24 +544,29 @@ namespace Game.Ai.V2
             return value;
         }
 
-        private static float EconomyBaseNetworkExpansionValue(WorldSnapshot snap,
-            HexCoord target, IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings)
+        // Structural site fact only — how much of this hex's yield is left uncollected by
+        // whatever building already sits here (raw yield minus its CollectedAmount, per type).
+        // Deliberately NOT "how much a Base would add": that depends on which Base card's own
+        // grantedAbilities actually get baked onto the new building (BuildingData.CollectedAmount
+        // has no more special-cased IsBase branch — a Base earns 1 per its own baked Collect
+        // ability, same as any building, plus 1 + UpgradeLevel per placed Facility), and this
+        // opportunity record is card-agnostic by design (see the "Base opportunities are
+        // structural site facts only" comment above). StrategicCardEvaluator.BaseHexYieldValue
+        // is where the specific card's abilities get applied to this remaining yield.
+        // Zero for a hex with no known resource site, same as before this was split out.
+        private static ResourceBundle BaseUncollectedYield(WorldSnapshot snap, HexCoord hex,
+            HashSet<HexCoord> knownSites, bool hasBuilding, AiMapMemory.KnownBuilding building)
         {
-            if (snap?.Known?.ResourceHexes == null || snap.Self?.BaseHexes == null)
-                return 0f;
-            float value = 0f;
-            foreach (HexCoord site in snap.Known.ResourceHexes.Select(x => x.Hex).Distinct())
+            if (!knownSites.Contains(hex))
+                return default(ResourceBundle);
+            ResourceBundle rawYield = EconomyKnownHexYield(snap, hex);
+            var remaining = new ResourceBundle();
+            foreach (ResourceType type in ResourceBundle.All)
             {
-                if (HexGridMath.Distance(target, site) > AiConfigV2.economyBaseFoundScanRadius
-                    || snap.Self.BaseHexes.Any(baseHex => HexGridMath.Distance(baseHex, site)
-                        <= AiConfigV2.economyBaseFoundScanRadius))
-                    continue;
-                ResourceBundle yield = EconomyKnownHexYield(snap, site);
-                foreach (ResourceType type in ResourceBundle.All)
-                    if (standings.TryGetValue(type, out EconomyResourceStanding standing))
-                        value += yield.Get(type) * Mathf.Max(0.25f, standing.DeficitScore);
+                int currentCollection = hasBuilding ? building.CollectedAmount(type) : 0;
+                remaining.Add(type, Mathf.Max(0f, rawYield.Get(type) - currentCollection));
             }
-            return value;
+            return remaining;
         }
 
         private static ResourceBundle EconomyKnownHexYield(WorldSnapshot snap, HexCoord hex) =>

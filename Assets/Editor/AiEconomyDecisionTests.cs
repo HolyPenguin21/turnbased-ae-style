@@ -1147,9 +1147,12 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    Hex = new HexCoord(3, 0), CapacityValue = 1f,
-                    InfrastructurePressure = 1f,
-                    NearbyResourceClusterValue = 2f,
+                    // CapacityValue/NearbyResourceClusterValue/NetworkExpansionValue folded away
+                    // (2026-09-14 base-site scoring cleanup — see StrategicCardEvaluator.
+                    // ScoreBaseSite); the surviving fields below stand in purely to keep this
+                    // fixture's reasonValue comfortably above the admission threshold.
+                    Hex = new HexCoord(3, 0), InfrastructurePressure = 1f,
+                    ForwardProgressValue = 1f, CorridorAlignmentValue = 1f,
                 },
             };
 
@@ -1176,7 +1179,9 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    Hex = incumbentHex, CapacityValue = -1f,
+                    // CapacityValue removed (2026-09-14 cleanup) — InfrastructurePressure stands
+                    // in to keep this fixture's reasonValue negative, same test intent.
+                    Hex = incumbentHex, InfrastructurePressure = -1f,
                 },
             };
             var incumbent = new MissionIntent
@@ -1632,8 +1637,11 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    Hex = new HexCoord(4, 0), CapacityValue = 1f,
-                    InfrastructurePressure = 1f,
+                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup) —
+                    // InfrastructurePressure/ForwardProgressValue keep this fixture's reasonValue
+                    // in the same "positive but not yet admitted" range the test exercises.
+                    Hex = new HexCoord(4, 0), InfrastructurePressure = 1f,
+                    ForwardProgressValue = 1f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 4, 0, 1) },
                 },
             };
@@ -1680,7 +1688,10 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    Hex = new HexCoord(3, 0), CapacityValue = 1f,
+                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup) —
+                    // InfrastructurePressure(1.2)*10=12 stands in for the old capacity(1)*12=12,
+                    // same reasonValue this boundary test (below-threshold-then-admitted) depends on.
+                    Hex = new HexCoord(3, 0), InfrastructurePressure = 1.2f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -1728,8 +1739,10 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
+                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup) — same
+                    // InfrastructurePressure(1.2)*10=12 stand-in as the fixture above.
                     Hex = new HexCoord(3, 0),
-                    CapacityValue = 1f,
+                    InfrastructurePressure = 1.2f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -3041,26 +3054,38 @@ namespace Game.EditorTests
             var baseDef = new CardDefinition
             {
                 cardType = CardType.Base, authoredKey = "base", displayName = "Base",
+                // Every real Base card in both faction catalogs grants all four Collect
+                // abilities (see CardCatalog_IronConcord/TheAshen.asset) — matched here so
+                // "strategic"'s HexYield below scores under StrategicCardEvaluator.
+                // BaseHexYieldValue's per-ability gate, same as it would in a real game.
+                grantedAbilities = new List<string>
+                {
+                    UnitAbilities.CollectHuman, UnitAbilities.CollectEnergy,
+                    UnitAbilities.CollectMaterials, UnitAbilities.CollectTech,
+                },
             };
             snapshot.Self.Hand = new[] { new CardData(baseDef) };
             ArmySnapshot builder = EconomyBuilder(9, 2, 3f);
             builder.Hex = new HexCoord(3, 1);
             snapshot.Self.Armies = new[] { builder };
 
+            // CapacityValue/NearbyResourceClusterValue/LogisticsValue/NetworkExpansionValue removed
+            // (2026-09-14 base-site scoring cleanup) — dropped rather than replaced here since
+            // neither site needs them to preserve the test's actual point: "strategic" wins on
+            // real resource yield + corridor alignment despite being the less convenient delivery
+            // for the builder.
             EconomyBaseOpportunity convenient = new EconomyBaseOpportunity
             {
-                Hex = new HexCoord(3, 1), CapacityValue = 0.5f,
-                InfrastructurePressure = 1f, LogisticsValue = 1f,
+                Hex = new HexCoord(3, 1),
+                InfrastructurePressure = 1f,
                 ForwardProgressValue = 0.3f,
                 CorridorAlignmentValue = 0.5f,
                 BuilderRoutes = new[] { BuilderRoute(builder, 0, 3, 1) },
             };
             EconomyBaseOpportunity strategic = new EconomyBaseOpportunity
             {
-                Hex = new HexCoord(6, 0), CapacityValue = 0.5f,
+                Hex = new HexCoord(6, 0),
                 HexYield = new ResourceBundle { Energy = 1f, Materials = 1f },
-                NearbyResourceClusterValue = 0.5f,
-                NetworkExpansionValue = 0.5f, LogisticsValue = 0.5f,
                 ForwardProgressValue = 1f,
                 CorridorAlignmentValue = 1f,
                 BuilderRoutes = new[] { BuilderRoute(builder, 5, 3, 1) },

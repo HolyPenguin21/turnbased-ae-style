@@ -892,11 +892,10 @@ namespace Game.Ai.V2
                         EconomyProjectedMaxMovement = builder?.ProjectedMaxMovement ?? 0,
                         EconomyBuilderRoutes = site.BuilderRoutes,
                         Value = value,
-                        Explain = $"Base reason={reasonValue:0.##} capacity={site.CapacityValue:0.##} "
-                            + $"yield={hexYield:0.##} cluster={site.NearbyResourceClusterValue:0.##} "
-                            + $"network={site.NetworkExpansionValue:0.##} "
+                        Explain = $"Base reason={reasonValue:0.##} "
+                            + $"yield={hexYield:0.##} "
                             + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
-                            + $"logistics={site.LogisticsValue:0.##} forward={site.ForwardProgressValue:0.##} "
+                            + $"forward={site.ForwardProgressValue:0.##} "
                             + $"corridor={site.CorridorAlignmentValue:0.##} global={global:0.##} "
                             + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##} "
                             + $"extractionLoss={extractionLossPenalty:0.##}",

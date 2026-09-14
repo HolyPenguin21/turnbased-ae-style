@@ -32,13 +32,16 @@ namespace Game.Ai.V2
         public const float economySiteTravelPenalty = 2.5f;
         public const float economySiteThreatPenalty = 18f;
         public const float economySiteHeroOpportunityPenalty = 0.35f;
-        public const float economyBaseCapacityValue = 12f;
+        // Net-new-yield weight: site.HexYield is now IncomeProjection-derived marginal income
+        // (raw hex yield minus whatever an existing building already collects there), not the
+        // hex's raw total — a Base converting an already-productive site no longer double-counts
+        // what it destroys AND what it "gains" (see StrategicCardEvaluator.ScoreBaseSite /
+        // WorldAnalysis.Economy.BaseNetNewYield). economyBaseCapacityValue folded into this same
+        // term for the same reason (it modeled the identical "is this hex already productive"
+        // question with a flat 0.5/1.0 guess instead of the real marginal number).
         public const float economyBaseHexYieldValue = 10f;
-        public const float economyBaseClusterValue = 8f;
-        public const float economyBaseNetworkExpansionValue = 6f;
         public const float economyBaseInfrastructurePressureValue = 10f;
         public const float economyBaseAirfieldValue = 8f;
-        public const float economyBaseLogisticsValue = 5f;
         public const float economyBaseForwardProgressValue = 8f;
         public const float economyBaseCorridorAlignmentValue = 8f;
         public const float economyBaseGlobalEffectValue = 6f;

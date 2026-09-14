@@ -61,10 +61,19 @@ namespace Game.Turns
         // in-game UI, same convention as debugWatchAiTurns.
         [SerializeField] private bool debugRevealFullMap;
 
+        // Gates AiDebugLog.WriteVerbose project-wide (per-candidate BaseCandidate/extraction
+        // scoring breakdowns, ResourceAllocator detail, etc.) — everything WriteVerbose logs is
+        // silently dropped while this is off (AiDebugLog.VerboseEnabled defaults false). Off by
+        // default for the same reason as debugWatchAiTurns/debugRevealFullMap: real playthroughs
+        // don't want the extra volume. Editor Inspector checkbox only, no in-game UI, same
+        // convention as the two debug flags above.
+        [SerializeField] private bool debugVerboseAiLog;
+
         private void OnValidate()
         {
             Game.Map.StealthSystem.DebugLog = debugWatchAiTurns;
             Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
+            AiDebugLog.VerboseEnabled = debugVerboseAiLog;
         }
 
         // Only needed for the start-of-turn resource collection below (citadel hex lookup +
@@ -260,6 +269,7 @@ namespace Game.Turns
             // that startup case too.
             StealthSystem.DebugLog = debugWatchAiTurns;
             Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
+            AiDebugLog.VerboseEnabled = debugVerboseAiLog;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
             if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
             if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;

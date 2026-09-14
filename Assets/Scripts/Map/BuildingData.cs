@@ -115,16 +115,16 @@ namespace Game.Map
             return false;
         }
 
-        // How much of `type` this building can collect per turn. A Base works the entire yield of
-        // its hex for every resource type; the high sentinel expresses uncapped capacity because
-        // this data object deliberately does not know terrain yield and every caller already caps
-        // it against the real hex amount. It deliberately leaves headroom for marginal-capacity
-        // arithmetic. Non-Base extraction sites keep their ability/facility capacity. Shared by
-        // actual income, projections, memory and UI so they cannot disagree.
+        // How much of `type` this building can collect per turn. Same rule for a Base and a
+        // hero-built extraction site alike: 1 for the building's own baked-in Collect ability
+        // (see UnitAbilities.CollectHuman/Energy/Materials/Tech — whatever a Base card's own
+        // grantedAbilities actually authored at SpawnBuilding, not every type automatically),
+        // plus 1 + UpgradeLevel per placed Facility with that same ability. Capped against the
+        // real hex amount by every caller (see GameTurnController.CollectResourceIncome /
+        // IncomeProjection), same as before. Shared by actual income, projections, memory and UI
+        // so they cannot disagree.
         public int CollectedAmount(ResourceType type)
         {
-            if (IsBase)
-                return int.MaxValue / 2;
             string ability = UnitAbilities.CollectAbilityFor(type);
             int amount = HasAbility(ability) ? 1 : 0;
             foreach (FacilityData facility in FacilitySlots)

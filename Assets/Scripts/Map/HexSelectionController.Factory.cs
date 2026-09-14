@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Ai;
 using Game.Aviation;
 using Game.Cards;
 using Game.Combat;
@@ -242,13 +243,28 @@ namespace Game.Map
         // extractionFacilityCards) directly into whatever building already sits on `hex`,
         // creating a brand-new minimal "resource site" building first if it's still bare. Never
         // touches CardHandUI/a hand slot — these cards are never drawn or held.
+        // Same "no one to click a popup during another player's turn" contract as
+        // HexSelectionController.Movement.NotifyMoveBlocked (see its own comment — an unguarded
+        // ShowSpawnHint there once left the human-only blocking popup open, and input locked, for
+        // the rest of the game after an AI rejection). TryBuildExtractionFacility is reachable
+        // from the AI executor the same way (BuildingPlayExecutor.BuildExtractionFacility ->
+        // InfrastructureActions.TryBuildExtractionSite -> here), so every rejection branch below
+        // routes through this instead of calling ShowSpawnHint directly.
+        private void NotifyBuildBlocked(PlayerSetupData owner, string message)
+        {
+            if (owner != null && owner.IsHuman)
+                turnController?.ShowSpawnHint(message);
+            else
+                AiDebugLog.Write($"[AI] {owner?.Nickname ?? "Neutral"}: extraction build rejected — {message}");
+        }
+
         public bool TryBuildExtractionFacility(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
             if (definition == null || owner == null || gameConfig == null || turnController == null)
                 return false;
             if (!HasOwnHeroArmyAt(hex, owner))
             {
-                turnController.ShowSpawnHint($"Needs one of your armies with a Hero on this hex to build {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"Needs one of your armies with a Hero on this hex to build {definition.displayName}.");
                 return false;
             }
 
@@ -285,7 +301,7 @@ namespace Game.Map
                 return false; // malformed extraction definition
             if (building.HasFacilityWithAbility(ability))
             {
-                turnController.ShowSpawnHint($"{building.Name} already has a {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"{building.Name} already has a {definition.displayName}.");
                 return false;
             }
 
@@ -304,7 +320,7 @@ namespace Game.Map
                 ownerArmyCollectors, armiesCanCollect);
             if (marginalGain <= 0)
             {
-                turnController.ShowSpawnHint(
+                NotifyBuildBlocked(owner,
                     $"{definition.displayName} would not increase {resourceType} income on this hex.");
                 return false;
             }
@@ -312,7 +328,7 @@ namespace Game.Map
             int slotIndex = building.FindFirstAvailableFacilitySlot();
             if (slotIndex < 0)
             {
-                turnController.ShowSpawnHint($"{building.Name} has no free Facility slot for {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"{building.Name} has no free Facility slot for {definition.displayName}.");
                 return false;
             }
 
@@ -321,12 +337,12 @@ namespace Game.Map
                 return false;
             if (!root.CanSpendActionPoints(definition.apCost))
             {
-                turnController.ShowSpawnHint($"Not enough action points to build {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"Not enough action points to build {definition.displayName}.");
                 return false;
             }
             if (!definition.resourceCost.CanAfford(root))
             {
-                turnController.ShowSpawnHint($"Not enough resources to build {definition.displayName}.");
+                NotifyBuildBlocked(owner, $"Not enough resources to build {definition.displayName}.");
                 return false;
             }
 

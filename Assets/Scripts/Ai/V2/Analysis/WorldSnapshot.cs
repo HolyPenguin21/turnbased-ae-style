@@ -533,14 +533,13 @@ namespace Game.Ai.V2
         // Safe route from an owned base, independent of whether its next builder exists yet.
         public int PreparationTravelCost;
         public HexCoord Hex;
+        // Structural site fact: hex yield minus whatever an existing building on this hex already
+        // collects (IncomeProjection.MarginalBuildingCollection) — not the hex's raw total yield,
+        // and not yet filtered by which Collect abilities the founding card actually has (see
+        // StrategicCardEvaluator.BaseHexYieldValue, which applies that per-card gate). Converting
+        // an already-productive site no longer scores as if starting from zero.
         public ResourceBundle HexYield;
-        public float CapacityValue;
-        public float NearbyResourceClusterValue;
-        public float NetworkExpansionValue;
         public float InfrastructurePressure;
-        // Ease of reinforcing/supplying the candidate from the existing Base network. This is
-        // intentionally the inverse of expansion distance; forward reach is represented below.
-        public float LogisticsValue;
         public float ForwardProgressValue;
         public float CorridorAlignmentValue;
         public bool ConvertsOwnedExtractionSite;

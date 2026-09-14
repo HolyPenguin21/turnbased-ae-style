@@ -122,15 +122,51 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (protectedActiveEconomyBuild != null)
             {
-                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
-                    player, ctx.TurnNumber, protectedActiveEconomyBuild);
-                if (protectedActiveEconomyBuild.Economy.BuildCard != null)
-                    result.Reservation.ClaimedEconomyBuildCards.Add(
-                        protectedActiveEconomyBuild.Economy.BuildCard);
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
-                    + $"{protectedActiveEconomyBuild.Economy.Kind} "
-                    + $"@({protectedActiveEconomyBuild.Economy.TargetHex.Q},"
-                    + $"{protectedActiveEconomyBuild.Economy.TargetHex.R}) before card arbitration");
+                // Exception to the otherwise-absolute protection above, scoped to FoundBase only:
+                // per the project owner's own call, a Base site must keep reacting to newly-known
+                // hexes even after commitment, not just while still staged (DemandLayer.Economy.
+                // AddBaseCandidates already does this for an uncommitted candidate — see
+                // economyBaseSwitchHysteresisThreshold). Only safe to release while the founding
+                // card is still physically in hand (nothing irreversible spent yet) and only for a
+                // fresh candidate that clears the SAME hysteresis margin — one threshold, one rule,
+                // now applied at both stages instead of just the first.
+                AxisDemand supersedingBaseSite = null;
+                if (protectedActiveEconomyBuild.Economy.Kind == EconomyTaskKind.FoundBase
+                    && protectedActiveEconomyBuild.Economy.BuildCard != null
+                    && hand.Hand.Contains(protectedActiveEconomyBuild.Economy.BuildCard))
+                {
+                    supersedingBaseSite = demands
+                        .Where(d => d != null && d.RequestingAxis == DesireAxis.Economy
+                            && d.Capability == CapabilityKind.EconomicExpansionBase
+                            && d.TargetHex.HasValue
+                            && !d.TargetHex.Value.Equals(protectedActiveEconomyBuild.Economy.TargetHex)
+                            && d.Value > protectedActiveEconomyBuild.Economy.BuildValue
+                                + AiConfigV2.economyBaseSwitchHysteresisThreshold)
+                        .OrderByDescending(d => d.Value)
+                        .FirstOrDefault();
+                }
+                if (supersedingBaseSite != null)
+                {
+                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold — released active "
+                        + $"{protectedActiveEconomyBuild.Economy.Kind} "
+                        + $"@({protectedActiveEconomyBuild.Economy.TargetHex.Q},"
+                        + $"{protectedActiveEconomyBuild.Economy.TargetHex.R}) "
+                        + $"value={protectedActiveEconomyBuild.Economy.BuildValue:0.##}: newly-known "
+                        + $"@({supersedingBaseSite.TargetHex.Value.Q},{supersedingBaseSite.TargetHex.Value.R}) "
+                        + $"value={supersedingBaseSite.Value:0.##} clears the hysteresis margin");
+                }
+                else
+                {
+                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                        player, ctx.TurnNumber, protectedActiveEconomyBuild);
+                    if (protectedActiveEconomyBuild.Economy.BuildCard != null)
+                        result.Reservation.ClaimedEconomyBuildCards.Add(
+                            protectedActiveEconomyBuild.Economy.BuildCard);
+                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
+                        + $"{protectedActiveEconomyBuild.Economy.Kind} "
+                        + $"@({protectedActiveEconomyBuild.Economy.TargetHex.Q},"
+                        + $"{protectedActiveEconomyBuild.Economy.TargetHex.R}) before card arbitration");
+                }
             }
 
             foreach (AxisDemand economyDemand in demands.Where(d => d != null

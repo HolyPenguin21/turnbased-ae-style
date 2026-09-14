@@ -681,7 +681,7 @@ namespace Game.Ai.V2
                           + "|bases=" + string.Join(";", (snapshot?.Economy?.BaseOpportunities
                                 ?? System.Array.Empty<EconomyBaseOpportunity>())
                             .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
-                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.CapacityValue:0.###}"))
+                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.HexYield.Sum:0.###}"))
                           + "|threats=" + string.Join(";", (snapshot?.Known?.EnemySightings
                                 ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                             .Concat(snapshot?.Known?.NeutralSightings

@@ -1563,16 +1563,12 @@ namespace Game.Ai.V2
         internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
             CardData card)
         {
-            float hexYield = BaseHexYieldValue(s, site.HexYield);
+            float hexYield = BaseHexYieldValue(s, site.HexYield, card.Definition);
             float global = BaseGlobalEffectValue(s, card.Definition);
             float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
-            float reasonValue = AiConfigV2.economyBaseCapacityValue * site.CapacityValue
-                + AiConfigV2.economyBaseHexYieldValue * hexYield
-                + AiConfigV2.economyBaseClusterValue * site.NearbyResourceClusterValue
-                + AiConfigV2.economyBaseNetworkExpansionValue * site.NetworkExpansionValue
+            float reasonValue = AiConfigV2.economyBaseHexYieldValue * hexYield
                 + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
                 + AiConfigV2.economyBaseAirfieldValue * airfield
-                + AiConfigV2.economyBaseLogisticsValue * site.LogisticsValue
                 + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
                 + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
                 + AiConfigV2.economyBaseGlobalEffectValue * global;
@@ -1588,15 +1584,27 @@ namespace Game.Ai.V2
                 intrinsicBuildCost, extractionLossPenalty, strategicValue);
         }
 
-        private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield)
+        // `yield` is the hex's remaining UNCOLLECTED amount per type (structural site fact, see
+        // WorldAnalysis.Economy.BaseUncollectedYield) — not what this specific Base would actually
+        // draw. A founded Base earns 1 unit of a type only if its own card grants that type's
+        // Collect ability (BuildingData.CollectedAmount's real rule, no more uncapped IsBase
+        // branch), so this counts at most 1 per type the card actually grants, capped by whatever
+        // the hex still has left to give — never the full remaining yield regardless of card.
+        private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield,
+            CardDefinition definition)
         {
-            if (s?.Economy?.PerType == null)
+            if (s?.Economy?.PerType == null || definition?.grantedAbilities == null)
                 return 0f;
             var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
             float value = 0f;
             foreach (ResourceType type in ResourceBundle.All)
-                if (standings.TryGetValue(type, out EconomyResourceStanding standing))
-                    value += yield.Get(type) * Mathf.Max(0.25f, standing.DeficitScore);
+            {
+                if (!definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type)))
+                    continue;
+                float gain = Mathf.Min(1f, yield.Get(type));
+                if (gain > 0f && standings.TryGetValue(type, out EconomyResourceStanding standing))
+                    value += gain * Mathf.Max(0.25f, standing.DeficitScore);
+            }
             return value;
         }
 
