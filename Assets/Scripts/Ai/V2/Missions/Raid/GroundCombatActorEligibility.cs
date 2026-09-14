@@ -8,7 +8,7 @@ namespace Game.Ai.V2
     // (it may read the live domain), and every layer reads that field — no re-derivation from live
     // ArmyRegistry state, and no upward dependency from Analysis / State onto this Missions type.
     // What lives here is only the Missions-specific mover ORDERING for the assembly solver.
-    internal static class RaidActorEligibility
+    internal static class GroundCombatActorEligibility
     {
         // Free, structurally-eligible ground combat armies for this cycle, mobility-first:
         // already-activated / cheaper activation first, then the least powerful sufficient host

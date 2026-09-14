@@ -205,8 +205,18 @@ namespace Game.Ai.V2
             }
             // Step 9 — Raid identity is the tracked target army (spec §25). Hex is telemetry /
             // tie-break only, so it stays out of the key: a moving target is the same mission.
+            // AGG-RAID §8 — the attempt key now includes the PHASE, so an attack cooldown can never
+            // be confused with a return cooldown, a support convoy is never counted as the
+            // primary's own attempt, and two identical support convoys can never be created for the
+            // same Raid.
+            //   Assault       : target army id
+            //   Reinforcement : primary army id + rendezvous hex
+            //   Return        : primary army id + return hex
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
-                return new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
+                return rt.Phase == RaidMissionPhase.Assault
+                    ? new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, rt.TargetArmyId, 0, 0)
+                    : new StableMissionKey(MissionKind.Raid, (int)rt.Phase, rt.PrimaryArmyId,
+                        rt.DestinationHex.Q, rt.DestinationHex.R);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
@@ -226,7 +236,9 @@ namespace Game.Ai.V2
                     ? $"{Kind}({(ScoutTargetKind)SubKind} #{TargetId} {Q},{R})"
                     : $"{Kind}({(ScoutTargetKind)SubKind} {Q},{R})")
                 : Kind == MissionKind.Raid
-                    ? $"Raid(#{TargetId})"
+                    ? (SubKind == (int)RaidMissionPhase.Assault
+                        ? $"Raid(#{TargetId})"
+                        : $"Raid({(RaidMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.Economy
                         ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
                     : $"{Kind}";

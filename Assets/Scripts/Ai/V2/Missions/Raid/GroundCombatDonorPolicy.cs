@@ -6,11 +6,11 @@ using Game.Units;
 
 namespace Game.Ai.V2
 {
-    // ARCH-02 §29 — raid donor policy, split out of RaidAssemblyPlanner. Owns "which same-hex unit
+    // ARCH-02 §29 — raid donor policy, split out of GroundCombatAssemblyPlanner. Owns "which same-hex unit
     // may a donor legally spare for the assembling host" (hero attach preference + non-hero body
     // combat value). The transaction boundary (a donor is never emptied) mirrors Provisioning's
     // canonical raid transaction. Bodies verbatim.
-    internal static class RaidDonorPolicy
+    internal static class GroundCombatDonorPolicy
     {
         // §12 — the best same-hex hero that may legally join `host`, or (null, null).
         // CombatLeader > Flexible > SupportOperator, then a stable donor-id tiebreak. A donor must

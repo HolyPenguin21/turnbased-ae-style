@@ -12,7 +12,7 @@ namespace Game.Ai.V2
     // armies can independently clear the SAME WorthIt estimator for each target, so obvious
     // same-turn actor collisions can be rejected as portfolio admission rather than discovered as
     // a fake structural target failure after funding.
-    internal static class RaidAdmissionRegistry
+    internal static class GroundCombatAdmissionRegistry
     {
         private sealed class Entry
         {
@@ -27,17 +27,21 @@ namespace Game.Ai.V2
         {
             if (proposal == null || snap == null || !(proposal.Target is RaidMissionTarget target))
                 return;
+            // AGG-RAID §8 — only an ASSAULT leg is a fresh actor-admission decision. Reinforcement
+            // and Return already carry a Continuity-pinned actor.
+            if (target.Phase != RaidMissionPhase.Assault)
+                return;
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders = DefendersFor(snap, target.TargetArmyId);
             var excluded = new HashSet<int>();
             var ids = new List<int>();
 
-            // RaidAssemblyPlanner.Plan always applies the STRICT fresh-raid win gate and returns the
+            // GroundCombatAssemblyPlanner.Plan always applies the STRICT fresh-raid win gate and returns the
             // strongest currently-eligible ready actor. Re-run while excluding each hit to enumerate
             // the whole fresh set without duplicating its eligibility or WorthIt rules here.
             while (true)
             {
-                RaidAssemblyPlan plan = RaidAssemblyPlanner.Plan(snap, target, defenders, excluded);
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, excluded);
                 if (!plan.Feasible || !excluded.Add(plan.BaseArmyId))
                     break;
                 ids.Add(plan.BaseArmyId);
@@ -49,7 +53,7 @@ namespace Game.Ai.V2
             // continuation gate so a small Monte-Carlo drop (the observed ~0.78 -> ~0.41 case) does
             // not produce the impossible state "Hard/CLAIM actor #X" + "readyActors=[none]".
             //
-            // If the incumbent passes, PIN the operation to it. PrepareRaidAssignments deliberately
+            // If the incumbent passes, PIN the operation to it. PrepareGroundCombatAssignments deliberately
             // sorts actors by activation/power and otherwise has no knowledge of PreferredMover; if
             // we left fresh actors in the set it could silently switch a Hard operation to another
             // army and orphan the physical force continuity just protected. If the incumbent fails
@@ -59,7 +63,7 @@ namespace Game.Ai.V2
                 && proposal.PreferredMoverArmyId.HasValue)
             {
                 int incumbentId = proposal.PreferredMoverArmyId.Value;
-                RaidAssemblyPlan incumbent = RaidAssemblyPlanner.PlanForArmy(
+                GroundCombatAssemblyPlan incumbent = GroundCombatAssemblyPlanner.PlanForArmy(
                     snap, target, defenders, incumbentId);
                 if (incumbent.Feasible)
                 {

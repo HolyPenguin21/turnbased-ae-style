@@ -56,6 +56,21 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent i in intents)
             {
+                // AGG-RAID §5 — the SUPPORT actor of a Raid in Reinforcement is claimed
+                // independently of the primary: Housekeeping (and every other mission lane) must
+                // never see the convoy as a free army while it is carrying reinforcement. It is
+                // claimed ONLY in the Reinforcement phase, and losing it releases just this claim.
+                RaidIntent raid = i?.Raid;
+                if (raid != null && raid.SupportArmyId != 0
+                    && raid.Phase == RaidMissionPhase.Reinforcement
+                    && snap.Self.Armies.Any(a => a != null && a.ArmyId == raid.SupportArmyId
+                        && !a.IsPrison && !a.IsAir && a.MemberCount > 0))
+                {
+                    c.Claim(raid.SupportArmyId);
+                    AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
+                        + $"support={raid.SupportArmyId} reason=reinforcement_convoy_in_transit");
+                }
+
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 

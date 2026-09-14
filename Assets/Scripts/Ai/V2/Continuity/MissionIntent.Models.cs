@@ -123,6 +123,28 @@ namespace Game.Ai.V2
         public HexCoord LastKnownHex;
         public bool TargetIsNeutral;
         public bool OperationStarted;
+
+        // AGG-RAID §4/§5 — the execution phase of this one Raid operation (Assault ->
+        // Reinforcement -> Assault -> ... -> Return). NOT an objective type.
+        public RaidMissionPhase Phase = RaidMissionPhase.Assault;
+
+        // THE primary raiding army. This is the SINGLE storage for that concept: MissionIntent
+        // .PreferredMoverArmyId is a pass-through projection onto this field for a Raid intent
+        // (see MissionIntent below), so generic continuity/commitment code keeps working and there
+        // is never a second, divergent copy. 0 == no primary bound yet.
+        public int PrimaryArmyId;
+
+        // The separate mobile support army delivering reinforcement to the primary. Non-zero ONLY
+        // during RaidMissionPhase.Reinforcement; released (without destroying the Raid) if lost.
+        public int SupportArmyId;
+
+        // The base the primary walks back to in RaidMissionPhase.Return. Fixed after the first
+        // successful Return step; re-selected only if that base is lost or becomes unreachable.
+        public HexCoord? ReturnHex;
+
+        // Turn on which the reinforcement demand was raised, so exactly ONE support intent is
+        // requested per weakened primary (no duplicate convoys).
+        public int ReinforcementRequestedTurn = -1;
     }
 
     public sealed class EconomyIntent
@@ -160,7 +182,28 @@ namespace Game.Ai.V2
         public int StallTurns;
         public float CumulativeApSpent;
         public int StepsMovedTotal;
-        public int? PreferredMoverArmyId;
+        private int? _preferredMoverArmyId;
+
+        // The generic "actor this durable intent owns". For a Raid intent this is deliberately NOT
+        // separate storage: it reads and writes RaidIntent.PrimaryArmyId, so "the primary raiding
+        // army" exists exactly once in the model and generic code (ActorCommitments, Provisioning,
+        // AdvanceIntent, telemetry) needs no Raid-specific knowledge.
+        public int? PreferredMoverArmyId
+        {
+            get
+            {
+                RaidIntent r = Raid;
+                if (r == null) return _preferredMoverArmyId;
+                return r.PrimaryArmyId != 0 ? r.PrimaryArmyId : (int?)null;
+            }
+            set
+            {
+                RaidIntent r = Raid;
+                if (r != null) r.PrimaryArmyId = value ?? 0;
+                else _preferredMoverArmyId = value;
+            }
+        }
+
         public ScoutIntent Scout => Objective as ScoutIntent;
         public RaidIntent Raid => Objective as RaidIntent;
         public EconomyIntent Economy => Objective as EconomyIntent;

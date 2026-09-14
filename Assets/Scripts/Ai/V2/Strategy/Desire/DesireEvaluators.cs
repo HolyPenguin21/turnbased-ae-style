@@ -191,7 +191,11 @@ namespace Game.Ai.V2
             breakdown.ReconRefreshPressure = refreshPressure;
 
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
-            float opportunity = opp.Best.HasTarget ? opp.Best.OpportunityScore : 0f;
+            // AGG-RAID §3 — Aggression desire is computed ONLY from NEUTRAL targets. An ordinary
+            // enemy army must no longer by itself create Raid pressure; that is the future Active
+            // Defence / strategic-offensive lane's job.
+            float opportunity = opp.BestNeutralOpportunity.HasTarget
+                ? opp.BestNeutralOpportunity.OpportunityScore : 0f;
 
             ComputeSurplus(snapshot, out float requiredReserve, out float freePower);
             float surplus = Curves.Ramp(freePower / Mathf.Max(1f, snapshot.Self.TotalPower),
@@ -221,7 +225,8 @@ namespace Game.Ai.V2
                 + AiConfigV2.aggWarWeightEcoGate * ecoGate
                 + AiConfigV2.aggWarWeightRelEdge * relativeEdge;
 
-            bool hasKnownCombatTarget = opp.All != null && opp.All.Count > 0;
+            bool hasKnownCombatTarget = opp.NeutralOpportunities != null
+                && opp.NeutralOpportunities.Count > 0;
             float rawAggression = hasKnownCombatTarget
                 ? Mathf.Clamp01(Mathf.Max(raidOpportunity, warPressure))
                     * (underSiege ? AiConfigV2.aggSiegeDamp : 1f)
@@ -288,6 +293,52 @@ namespace Game.Ai.V2
             breakdown.ReconEnemyBlindness = blindness;
             breakdown.ReconExplorePressure = exploration;
             breakdown.ReconRefreshPressure = refreshPressure;
+        }
+
+        // AGG-RAID §3 — the Aggression counterpart of RefreshReconLanePressures. After a settled
+        // combat/movement step, the frozen turn-start CombatOpportunityReport can describe a target
+        // that is already dead (or a neutral that just became reachable). Rebuild ONLY the
+        // operational Aggression facts from the fresh snapshot: the opportunity report, the
+        // best/neutral reads and the raidOpportunity sub-driver. Radar is NOT renormalized
+        // mid-turn — exactly the same discipline the Recon lane refresh follows.
+        public static void RefreshAggressionLanePressures(WorldSnapshot snapshot, DesireBreakdown breakdown)
+        {
+            if (snapshot?.Self == null || breakdown == null)
+                return;
+
+            CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
+            float opportunity = opp.BestNeutralOpportunity.HasTarget
+                ? opp.BestNeutralOpportunity.OpportunityScore : 0f;
+
+            ComputeSurplus(snapshot, out float requiredReserve, out float freePower);
+            float surplus = Curves.Ramp(freePower / Mathf.Max(1f, snapshot.Self.TotalPower),
+                AiConfigV2.aggSurplusRampLo, AiConfigV2.aggSurplusRampHi);
+
+            float ownPower = Mathf.Max(snapshot.Self.FieldPower, snapshot.Self.BestStackPotential);
+            float enemyPower = snapshot.Known?.EnemyKnownStrength ?? 0f;
+            float relativeEdge = enemyPower < 1f
+                ? AiConfigV2.aggRelEdgeNoIntel
+                : Curves.Ramp(ownPower / enemyPower, AiConfigV2.aggRelEdgeRampLo, AiConfigV2.aggRelEdgeRampHi);
+
+            // Momentum is a cross-turn smoothed signal owned by the once-per-turn Evaluate; reuse
+            // the already-frozen value rather than re-pulsing it mid-turn.
+            float raidOpportunity =
+                AiConfigV2.aggRaidOppWeightOpportunity * opportunity
+                + AiConfigV2.aggRaidOppWeightSurplus * surplus
+                + AiConfigV2.aggRaidOppWeightRelEdge * relativeEdge
+                + AiConfigV2.aggRaidOppWeightMomentum * breakdown.AggMomentum;
+
+            breakdown.OpportunityReport = opp;
+            breakdown.BestOpportunity = opp.Best;
+            breakdown.AggOpportunity = opportunity;
+            breakdown.AggSurplus = surplus;
+            breakdown.AggRelativeEdge = relativeEdge;
+            breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
+            breakdown.RequiredDefensiveReserve = requiredReserve;
+            breakdown.OffensiveFreePower = freePower;
+            AiDebugLog.WriteVerbose("[AI][V2][Aggression] lane refresh — "
+                + $"neutrals={opp.NeutralOpportunities.Count} opportunity={opportunity:0.00} "
+                + $"raidOpportunity={breakdown.AggRaidOpportunity:0.00} (radar NOT renormalized)");
         }
 
         private static float ReconExploration(WorldSnapshot snap)

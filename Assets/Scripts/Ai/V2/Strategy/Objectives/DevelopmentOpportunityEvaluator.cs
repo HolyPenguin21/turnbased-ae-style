@@ -333,7 +333,7 @@ namespace Game.Ai.V2
                     if (!EquipmentSystem.CanAttach(generatedPreview, c, root, out string why))
                     { lastReject = why; continue; }
                     float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        off.Card, c, snap, inv) * AiConfigV2.defencePerBodyPowerEstimate;
+                        off.Card, c, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, DevRecipientKind.HandCard, c, null,
                         $"hand:{c.Definition.displayName}", delta * AiConfigV2.devImportanceHandCard));
                 }
@@ -355,7 +355,7 @@ namespace Game.Ai.V2
                         : raidHexes.Contains(army.Hex) ? AiConfigV2.devImportanceRaidMatch
                         : AiConfigV2.devImportanceField;
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        off.Card, u, snap, inv) * AiConfigV2.defencePerBodyPowerEstimate * importance;
+                        off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate * importance;
                     Consider(Make(off, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
                         null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain));
                 }

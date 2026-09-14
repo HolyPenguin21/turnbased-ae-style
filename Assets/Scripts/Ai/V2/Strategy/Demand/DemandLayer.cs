@@ -32,8 +32,10 @@ namespace Game.Ai.V2
                 demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx, root));
             if (GenerateAxis(DesireAxis.Aggression))
                 demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
-            if (GenerateAxis(DesireAxis.Defence))
-                demands.AddRange(DefenceDemands(snap, breakdown));
+            // AGG-RAID Defence cleanup — V2 has no Defence mission, only the two demand stubs that
+            // used to live here (DefenceDemands -> GarrisonCombatPower, and the AI-MGR-01
+            // BaselineForceReadiness pull charged to the Defence axis). Both are gone; DesireAxis
+            // .Defence remains a reserved, zero-weight axis for the future Active Defence lane.
             if (GenerateAxis(DesireAxis.Economy))
             {
                 var timer = System.Diagnostics.Stopwatch.StartNew();
@@ -44,10 +46,6 @@ namespace Game.Ai.V2
             if (GenerateAxis(DesireAxis.Development))
                 demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar,
                     demands, activeIntents, player, ctx, root));
-            // AI-MGR-01 — radar-independent standing-force pull. Emitted LAST so it can see whether
-            // an Aggression / Defence combat demand already covers the same ground this pass.
-            if (GenerateAxis(DesireAxis.Defence))
-                demands.AddRange(BaselineForceReadinessDemands(snap, player, commitments, demands));
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
             // ToString from here — into Phase A and every [CHECK] line raised for the demand.

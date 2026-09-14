@@ -141,7 +141,6 @@ namespace Game.Ai.V2
                     + $"operational {N2(b.EconomyOperationalPressure)} gate {N2(b.EconomyActionableGate)}");
                 AiDebugLog.Write($"{P}   dev drivers:    facility-ready {N2(b.DevFacilityReady)} (hint)  path-viable {(b.DevPathViable ? "yes" : "no")}  "
                     + $"surplus {N2(b.DevSurplusFraction)}  quality {N2(b.DevOfferingQuality)}  best-success {N2(b.DevBestSuccessChance)}  targets {b.DevUpgradeTargets}");
-                AiDebugLog.Write($"{P}   NOTE: Defence has no evaluator yet (raw desire = 0).");
             }
         }
 

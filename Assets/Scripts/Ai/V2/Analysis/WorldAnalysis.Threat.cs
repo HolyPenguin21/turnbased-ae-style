@@ -57,7 +57,7 @@ namespace Game.Ai.V2
 
             foreach (HexCoord home in snap.Self.BaseHexes)
             {
-                if (AiMapMemory.HasKnownEnemyWithin(player, home, AiConfig.defenceReactionRadius))
+                if (AiMapMemory.HasKnownEnemyWithin(player, home, AiConfig.threatReactionRadius))
                     continue;
 
                 ArmySnapshot strongest = null;
@@ -66,7 +66,7 @@ namespace Game.Ai.V2
                 {
                     if (ea.IsGarrison || ea.MemberCount == 0 || ea.MemberCount > AiConfig.makeshiftScoutMinMembers)
                         continue;
-                    if (HexGridMath.Distance(home, ea.Hex) > AiConfig.defenceReactionRadius)
+                    if (HexGridMath.Distance(home, ea.Hex) > AiConfig.threatReactionRadius)
                         continue;
                     float sum = ea.AttackSum + ea.DefenseSum;
                     if (sum > strongestSum)
@@ -76,7 +76,7 @@ namespace Game.Ai.V2
                     }
                 }
                 if (strongest != null)
-                    contacts.Add(MakeCheatContact(strongest, home, AiConfig.defenceReactionRadius));
+                    contacts.Add(MakeCheatContact(strongest, home, AiConfig.threatReactionRadius));
             }
             model.Contacts = contacts;
 

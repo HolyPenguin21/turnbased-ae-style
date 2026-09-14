@@ -14,6 +14,18 @@ namespace Game.Ai.V2
         Raid,
     }
 
+    // AGG-RAID §4 — the EXECUTION PHASE of one Raid operation, deliberately separate from the
+    // objective TYPE. These are three states of a single durable Raid, not three managers:
+    //   Assault       — the primary army is moving on / fighting the current neutral target.
+    //   Reinforcement — the primary holds position; a separate support army is en route to it.
+    //   Return        — no neutral targets remain; the primary walks home to the chosen base.
+    public enum RaidMissionPhase
+    {
+        Assault,
+        Reinforcement,
+        Return,
+    }
+
     public sealed class AggressionObjective
     {
         public AggressionObjectiveKind Kind;
@@ -60,6 +72,15 @@ namespace Game.Ai.V2
 
     public struct RaidMissionTarget
     {
+        // AGG-RAID §8 — which leg of the operation this proposal is. Assault (default) attacks the
+        // neutral; Reinforcement moves the SUPPORT army to the primary; Return walks the primary
+        // home. One target type, three phases — not three mission kinds.
+        public RaidMissionPhase Phase;
+        public int PrimaryArmyId;
+        public int SupportArmyId;
+        // Rendezvous hex (Reinforcement) or chosen base hex (Return). Unused for Assault.
+        public HexCoord DestinationHex;
+
         public int TargetArmyId;
         public HexCoord LastKnownHex;
         public PlayerSetupData TargetOwner;
@@ -83,14 +104,26 @@ namespace Game.Ai.V2
                 AiDebugLog.Write("[AI][V2][AggressionObjective] decision=NONE reason=no_self_snapshot");
                 return list;
             }
-            if (report?.All == null || report.All.Count == 0)
+            // AGG-RAID §4 — Raid targets ONLY known neutral armies. An ordinary enemy army belongs
+            // to the future Active Defence / strategic-offensive lane and must never produce a Raid
+            // objective here. NeutralOpportunities is the analyzer's own filtered view of the same
+            // facts; the raw `All` list stays available to every other consumer.
+            IReadOnlyList<CombatOpportunity> candidates = report?.NeutralOpportunities
+                ?? (IReadOnlyList<CombatOpportunity>)System.Array.Empty<CombatOpportunity>();
+            if (candidates.Count == 0)
             {
-                AiDebugLog.Write("[AI][V2][AggressionObjective] decision=NONE reason=no_known_enemy_or_neutral_army_opportunities");
+                AiDebugLog.Write("[AI][V2][AggressionObjective] decision=NONE reason=no_known_neutral_army_opportunities");
                 return list;
             }
 
-            foreach (CombatOpportunity o in report.All)
+            foreach (CombatOpportunity o in candidates)
             {
+                if (!o.TargetIsNeutral)
+                {
+                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT targetArmy={o.TargetArmyId} "
+                        + "reason=target_is_not_neutral");
+                    continue;
+                }
                 if (!o.HasTarget)
                 {
                     AiDebugLog.Write("[AI][V2][AggressionObjective] decision=REJECT targetArmy=0 reason=opportunity_has_no_target");
@@ -141,8 +174,11 @@ namespace Game.Ai.V2
         {
             if (report?.All == null || trackedArmyId == 0)
                 return null;
+            // Identity is the TargetArmyId, never a coordinate — a moving neutral stays the same
+            // objective. Neutrality is still required: a target that stopped being neutral is no
+            // longer a Raid objective.
             foreach (CombatOpportunity o in report.All)
-                if (o.HasTarget && o.TargetArmyId == trackedArmyId)
+                if (o.HasTarget && o.TargetIsNeutral && o.TargetArmyId == trackedArmyId)
                     return Build(snap, report, o);
             return null;
         }

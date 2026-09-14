@@ -54,7 +54,7 @@ namespace Game.Ai.V2
         // scout/raid-shaped force — same scope V1's AiDefencePlanner.CheatEstimateRaiderThreat
         // used. It carries the base's own sector, never the army's hex (spec-18, now a type
         // invariant — see EnemyContactSnapshot).
-        //   Radii reuse the V1 AiConfig constants at the call site (defenceReactionRadius,
+        //   Radii reuse the V1 AiConfig constants at the call site (threatReactionRadius,
         //   makeshiftScoutMinMembers) so the two never silently diverge on the numbers.
 
         // Severity = confidence * clamp01( wWin*AttackWinChance + wDmg*potentialDamageFrac

@@ -71,6 +71,26 @@ namespace Game.Ai.V2
                 {
                     if (intent.Kind != MissionKind.Raid || intent.Raid == null)
                         continue;
+
+                    // AGG-RAID §8 — a non-Assault leg of a durable Raid is its OWN proposal shape,
+                    // with its own mover, its own destination and its own StableMissionKey.
+                    if (intent.Raid.Phase == RaidMissionPhase.Return)
+                    {
+                        RaidCandidate? ret = ReturnCandidate(intent);
+                        if (ret.HasValue) incumbents.Add(ret.Value);
+                        continue;
+                    }
+                    if (intent.Raid.Phase == RaidMissionPhase.Reinforcement)
+                    {
+                        RaidCandidate? sup = ReinforcementCandidate(snap, intent);
+                        if (sup.HasValue) incumbents.Add(sup.Value);
+                        else
+                            AiDebugLog.Write($"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
+                                + $"#{intent.Raid.PrimaryArmyId} waits in place; no support army assigned yet "
+                                + "(Aggression demand owns the request)");
+                        continue;
+                    }
+
                     AggressionObjective o = AggressionObjectiveEvaluator.ForTrackedArmy(
                         snap, breakdown.OpportunityReport, intent.Raid.TargetArmyId);
                     if (o == null)
@@ -127,7 +147,7 @@ namespace Game.Ai.V2
             {
                 MissionProposal p = BuildProposal(snap, c);
                 if (!c.IsIncumbent
-                    && RaidAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
+                    && GroundCombatAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
                     && eligible.Count == 0)
                 {
                     AiDebugLog.Write($"[AI][V2]   mission suppress — {StableMissionKey.For(p)} "
@@ -138,18 +158,77 @@ namespace Game.Ai.V2
                 proposals.Add(p);
                 AiDebugLog.Write($"[AI][V2]   raid mission — PROPOSE {StableMissionKey.For(p)}: {p.Explain}; "
                     + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}, "
-                    + $"readyActors=[{RaidAdmissionRegistry.EligibleIds(p)}]");
+                    + $"readyActors=[{GroundCombatAdmissionRegistry.EligibleIds(p)}]");
             }
             if (proposals.Count == 0)
                 AiDebugLog.Write($"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
             return proposals;
         }
 
+        // §8 Return: mover = primary, target = the base Continuity already fixed.
+        private static RaidCandidate? ReturnCandidate(MissionIntent intent)
+        {
+            RaidIntent ri = intent.Raid;
+            if (ri.PrimaryArmyId == 0 || !ri.ReturnHex.HasValue)
+                return null;
+            var target = new RaidMissionTarget
+            {
+                Phase = RaidMissionPhase.Return,
+                PrimaryArmyId = ri.PrimaryArmyId,
+                DestinationHex = ri.ReturnHex.Value,
+                TargetArmyId = ri.TargetArmyId,
+                LastKnownHex = ri.LastKnownHex,
+                TargetIsNeutral = ri.TargetIsNeutral,
+                EstimatedEta = 1,
+                AssemblableWinChance = 1f,
+                CanCoverAllDefenders = true,
+            };
+            float value = AiConfigV2.raidBaseValueMin;
+            AiDebugLog.Write($"[AI][V2]   raid mission — RETURN {intent.IntentKey}: primary "
+                + $"#{ri.PrimaryArmyId} -> ({ri.ReturnHex.Value.Q},{ri.ReturnHex.Value.R})");
+            return new RaidCandidate(target, value, value,
+                $"Raid #{ri.TargetArmyId} Return: primary #{ri.PrimaryArmyId} to base "
+                + $"({ri.ReturnHex.Value.Q},{ri.ReturnHex.Value.R})",
+                true, intent.Funding, ri.PrimaryArmyId);
+        }
+
+        // §8 Reinforcement: mover = support, target = the primary's CURRENT hex (rendezvous).
+        private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent)
+        {
+            RaidIntent ri = intent.Raid;
+            if (ri.PrimaryArmyId == 0 || ri.SupportArmyId == 0)
+                return null;
+            ArmySnapshot primary = snap.Self?.Armies?
+                .FirstOrDefault(a => a != null && a.ArmyId == ri.PrimaryArmyId);
+            if (primary == null)
+                return null;
+            var target = new RaidMissionTarget
+            {
+                Phase = RaidMissionPhase.Reinforcement,
+                PrimaryArmyId = ri.PrimaryArmyId,
+                SupportArmyId = ri.SupportArmyId,
+                DestinationHex = primary.Hex,
+                TargetArmyId = ri.TargetArmyId,
+                LastKnownHex = ri.LastKnownHex,
+                TargetIsNeutral = ri.TargetIsNeutral,
+                EstimatedEta = 1,
+                AssemblableWinChance = 1f,
+                CanCoverAllDefenders = true,
+            };
+            float value = AiConfigV2.raidBaseValueMax;
+            AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE {intent.IntentKey}: support "
+                + $"#{ri.SupportArmyId} -> primary #{ri.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})");
+            return new RaidCandidate(target, value, value,
+                $"Raid #{ri.TargetArmyId} Reinforcement: support #{ri.SupportArmyId} joins primary "
+                + $"#{ri.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
+                true, intent.Funding, ri.SupportArmyId);
+        }
+
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o, DesireBreakdown bd)
         {
             RaidMissionTarget target = o.ToTarget();
             IReadOnlyList<WorthIt.DefenderProfile> defenders = KnownDefenders(snap, o.TargetArmyId);
-            RaidAssemblyPlan live = RaidAssemblyPlanner.Plan(snap, target, defenders, null);
+            GroundCombatAssemblyPlan live = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
 
             float readyWin = live.Feasible ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
             if (live.Feasible)
@@ -203,7 +282,11 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = c.PreferredMover,
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1.0f;
-            RaidAdmissionRegistry.Record(proposal, snap);
+            // §8 — the ground-combat admission registry decides ACTOR feasibility for attacks. A
+            // Reinforcement/Return leg already has its actor pinned by Continuity (support /
+            // primary), so it is not an actor-contention decision and is not recorded here.
+            if (c.Target.Phase == RaidMissionPhase.Assault)
+                GroundCombatAdmissionRegistry.Record(proposal, snap);
             return proposal;
         }
 

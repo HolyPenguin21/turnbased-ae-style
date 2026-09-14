@@ -95,8 +95,6 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.FieldCombatPower:
                     return Mathf.Max(0f, after.RaidAvailableFieldPower - before.RaidAvailableFieldPower);
-                case CapabilityKind.GarrisonCombatPower:
-                    return Mathf.Max(0f, after.GarrisonCombatPower - before.GarrisonCombatPower);
                 case CapabilityKind.Hero:
                     return Mathf.Max(0, after.AvailableHeroes - before.AvailableHeroes);
                 case CapabilityKind.ScoutCapability:
@@ -158,11 +156,56 @@ namespace Game.Ai.V2
                 delivered = DeliveredCapabilityAmount(demand, before, after);
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
                 return false;
+
+            // AGG-RAID §7 — the Raid-reinforcement handoff, analogous to the Economy one above.
+            // Identify the CONCRETE delivered army, record it as RaidIntent.SupportArmyId and hand
+            // ownership straight to Continuity. No parallel generic Housekeeping lease is taken:
+            // ActorCommitments already claims a Reinforcement support actor, and a second owner is
+            // exactly the class of bug the Economy handoff avoids.
+            if (TryHandoffRaidSupport(player, afterSnap, demand, leased))
+                return true;
+
             // Economy already has one Continuity owner; a generic lease would add a second one.
             // Other capabilities still need the turn-local barrier until their normal handoff.
             if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
                 StrategicCapabilityLeaseRegistry.Mark(
                     player, ctx.TurnNumber, demand.Capability, leased);
+            return true;
+        }
+
+        // AGG-RAID §7 — bind an IndependentFieldArmy delivery to the exact RaidIntent that asked
+        // for it. Returns true when the support actor was handed to Continuity.
+        private static bool TryHandoffRaidSupport(PlayerSetupData player, WorldSnapshot afterSnap,
+            AxisDemand demand, IReadOnlyList<int> leased)
+        {
+            if (player == null || demand == null
+                || demand.RequestingAxis != DesireAxis.Aggression
+                || demand.DeliveryShape != CapabilityDeliveryShape.IndependentFieldArmy
+                || !demand.ConsumerIntentKey.HasValue)
+                return false;
+
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            if (!state.TryGet(demand.ConsumerIntentKey.Value, out MissionIntent intent)
+                || intent?.Raid == null)
+                return false;
+            RaidIntent ri = intent.Raid;
+
+            // The concrete delivered army: an operational field actor produced/modified by this
+            // plan that is neither the primary nor an already-bound support.
+            int support = leased
+                .Where(id => id != 0 && id != ri.PrimaryArmyId)
+                .Where(id => afterSnap?.Self?.Armies?.Any(a => a != null && a.ArmyId == id
+                    && a.IsStructuralRaidActor) == true)
+                .OrderBy(id => id)
+                .FirstOrDefault();
+            if (support == 0)
+                return false;
+
+            ri.SupportArmyId = support;
+            ri.Phase = RaidMissionPhase.Reinforcement;
+            AiDebugLog.Write($"[AI][V2][Raid] materialization handoff {intent.IntentKey} "
+                + $"support=#{support} primary=#{ri.PrimaryArmyId} phase=Reinforcement "
+                + "(Continuity owns the actor; no generic housekeeping lease)");
             return true;
         }
 

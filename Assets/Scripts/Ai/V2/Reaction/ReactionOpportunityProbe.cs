@@ -18,16 +18,16 @@ namespace Game.Ai.V2
         // round 9 (P0.1) — a DIRECT-responder reaction witness is built ONLY from a discovered target
         // whose canonical RaidOperationalReadiness is ReadyExecutable right now (no GatePassed
         // filter — GatePassed is a frozen strategic projection, not the live admission gate). The AP
-        // envelope is the ready RaidAssemblyPlan's own actor (ReadyPlan.BaseArmyId), NOT the cheapest
+        // envelope is the ready GroundCombatAssemblyPlan's own actor (ReadyPlan.BaseArmyId), NOT the cheapest
         // arbitrary pathable army — the cheapest pathable army may not be the one that clears
-        // RaidAssemblyPlanner, which under-reserved the budget.
+        // GroundCombatAssemblyPlanner, which under-reserved the budget.
         internal static List<ReactionWitness> ProbeTargetDriven(PlayerSetupData player, AiTurnContext ctx,
             AggressionDemandEvaluation eval, ReactionStateBasis basis)
         {
             var witnesses = new List<ReactionWitness>();
             HashSet<int> targetIds = StrategicInterruptRegistry.TargetIds(player, ctx.TurnNumber);
 
-            foreach ((AggressionObjective obj, RaidAssemblyPlan plan) in eval.ReadyExecutable)
+            foreach ((AggressionObjective obj, GroundCombatAssemblyPlan plan) in eval.ReadyExecutable)
             {
                 if (obj == null || plan == null || !targetIds.Contains(obj.TargetArmyId))
                     continue;

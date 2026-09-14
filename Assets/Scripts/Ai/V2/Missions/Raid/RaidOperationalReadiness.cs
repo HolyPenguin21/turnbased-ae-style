@@ -9,10 +9,10 @@ namespace Game.Ai.V2
     // evaluator owns target merit + frozen strategic projections; this type answers the later,
     // different question after continuity claims are known: "can a free actor execute now, and if
     // not, which deployable capability is missing?" Demand reads this directly and Provisioning
-    // continues to use the same RaidAssemblyPlanner as its final live proof.
+    // continues to use the same GroundCombatAssemblyPlanner as its final live proof.
     public sealed class RaidOperationalReadiness
     {
-        public RaidAssemblyPlan ReadyPlan;
+        public GroundCombatAssemblyPlan ReadyPlan;
         public CapabilityInventory Inventory;
         public float RequiredPower;
         public float NumericPowerDeficit;
@@ -34,7 +34,7 @@ namespace Game.Ai.V2
             CapabilityInventory inventory)
         {
             inventory = inventory ?? new CapabilityInventory();
-            RaidAssemblyPlan ready = RaidAssemblyPlanner.Plan(
+            GroundCombatAssemblyPlan ready = GroundCombatAssemblyPlanner.Plan(
                 snap, objective.ToTarget(), defenders, commitments?.ClaimedArmyIdSet);
 
             float requiredPower = Mathf.Max(1f, objective.TargetPower * AiConfigV2.raidCombatPowerMargin);

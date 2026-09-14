@@ -24,7 +24,6 @@ namespace Game.Ai.V2
                 case CapabilityKind.ScoutCapability: return recce;
                 case CapabilityKind.Hero: return d.cardType == CardType.Hero && !recce;
                 case CapabilityKind.FieldCombatPower:
-                case CapabilityKind.GarrisonCombatPower:
                     return !recce && (d.cardType == CardType.Unit || d.cardType == CardType.Hero);
                 default: return false;
             }
@@ -37,8 +36,7 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.ScoutCapability: return recce;
                 case CapabilityKind.Hero: return type == CardType.Hero;
-                case CapabilityKind.FieldCombatPower:
-                case CapabilityKind.GarrisonCombatPower: return type == CardType.Unit || type == CardType.Hero;
+                case CapabilityKind.FieldCombatPower: return type == CardType.Unit || type == CardType.Hero;
                 default: return false;
             }
         }

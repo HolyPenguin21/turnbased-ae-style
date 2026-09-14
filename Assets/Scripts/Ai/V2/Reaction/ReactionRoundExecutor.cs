@@ -90,7 +90,8 @@ namespace Game.Ai.V2
                     + $"asmWin {ao.AssemblableWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"gate {(ao.GatePassed ? 1 : 0)}");
 
-            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot);
+            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(
+                player, snapshot, reconObjectives, aggressionObjectives);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
             // RECON-AIR-02 (round 5) — no separate prepass any more: DemandLayer measures air
             // capacity itself (ReconAssignmentPlanner.MeasureAirCapacity), recomputed fresh against
@@ -113,6 +114,8 @@ namespace Game.Ai.V2
             // Same Orchestration-owned refresh as the main pass (AiStrategyV2Pipeline.BuildMissionSet)
             // — Missions must receive current Recon pressures, not trigger their recomputation.
             StrategyLayer.RefreshReconLanePressures(snapshot, assessment.Breakdown);
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,

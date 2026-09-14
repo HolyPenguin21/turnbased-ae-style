@@ -146,7 +146,12 @@ namespace Game.Ai.V2
                 bool satisfied;
                 if (pm.Kind == MissionKind.Raid)
                 {
-                    satisfied = RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId);
+                    // AGG-RAID §9/§10 — only the ASSAULT leg's objective is the target army. A
+                    // Reinforcement convoy or a Return march must never be reported as "objective
+                    // already met" just because the (by definition already dead) previous target no
+                    // longer exists — that would retire the whole operation mid-leg.
+                    satisfied = pm.RaidPhase == RaidMissionPhase.Assault
+                        && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId);
                 }
                 else if (pm.Kind == MissionKind.Economy)
                 {

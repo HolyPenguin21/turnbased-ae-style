@@ -514,7 +514,7 @@ namespace Game.Ai.V2
                 return false;
             return threats.All(t => WorthIt.CanDamageAll(roster, t.Defenders)
                 && WorthIt.WinChance(roster, t.Defenders, 0f)
-                    >= AiConfig.defenceActiveWinChance);
+                    >= AiConfig.economyEscortMinWinChance);
         }
 
         internal static int MinimumSafeEconomyEscortCount(

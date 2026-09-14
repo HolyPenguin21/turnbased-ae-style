@@ -99,6 +99,13 @@ namespace Game.Ai.V2
     {
         public IReadOnlyList<CombatOpportunity> All = System.Array.Empty<CombatOpportunity>();
         public CombatOpportunity Best = CombatOpportunity.None;
+        // AGG-RAID §3 — the NEUTRAL view of the same facts. Raid (this task's Aggression lane)
+        // targets only neutral armies; ordinary enemy armies belong to the future Active Defence /
+        // strategic-offensive lanes and must not by themselves create Raid pressure. `All` stays
+        // the complete, unfiltered fact list for every other consumer.
+        public IReadOnlyList<CombatOpportunity> NeutralOpportunities =
+            System.Array.Empty<CombatOpportunity>();
+        public CombatOpportunity BestNeutralOpportunity = CombatOpportunity.None;
         public bool HeroAvailable;   // was any hero obtainable for a fresh raid at all
         public int AssemblableCap;   // roster slot cap the projection used
     }
@@ -230,6 +237,13 @@ namespace Game.Ai.V2
             report.All = all;
             report.Best = all.Count > 0
                 ? all.OrderByDescending(o => o.OpportunityScore).ThenByDescending(o => o.AssemblableWinChance).First()
+                : CombatOpportunity.None;
+
+            List<CombatOpportunity> neutrals = all.Where(o => o.TargetIsNeutral).ToList();
+            report.NeutralOpportunities = neutrals;
+            report.BestNeutralOpportunity = neutrals.Count > 0
+                ? neutrals.OrderByDescending(o => o.OpportunityScore)
+                    .ThenByDescending(o => o.AssemblableWinChance).First()
                 : CombatOpportunity.None;
             return report;
         }

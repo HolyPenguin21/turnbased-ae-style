@@ -64,7 +64,7 @@ namespace Game.Ai.V2
         // entirely in Provisioning/Assignment (ReconAssignmentPlanner.AssignFunded, one actor <= one
         // job) with ResourceAllocator's existing repack loop reconciling any funded mission that
         // Assignment could not actually staff. Raid keeps its own pairwise actor-distinctness
-        // rejection (RaidAdmissionRegistry) — that lane is untouched by this pass.
+        // rejection (GroundCombatAdmissionRegistry) — that lane is untouched by this pass.
         public static bool Conflicts(MissionProposal a, MissionProposal b)
         {
             if (a == null || b == null) return false;
@@ -74,7 +74,7 @@ namespace Game.Ai.V2
             {
                 if (ra.TargetArmyId == rb.TargetArmyId)
                     return true;
-                return !RaidAdmissionRegistry.PairHasDistinctAssignment(a, b);
+                return !GroundCombatAdmissionRegistry.PairHasDistinctAssignment(a, b);
             }
 
             if (a.Kind == MissionKind.Economy && b.Kind == MissionKind.Economy

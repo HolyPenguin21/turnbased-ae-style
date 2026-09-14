@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
@@ -18,29 +19,29 @@ namespace Game.Ai.V2
     //  revalidate/apply exactly the roster that passed WorthIt here.
     //
     //  ARCH-02 §29/§31 — this class is the constrained physical ASSEMBLY SOLVER only. Actor
-    //  eligibility is RaidActorEligibility; the WorthIt win/coverage check is RaidCombatFeasibility;
-    //  same-hex donor legality is RaidDonorPolicy; the fresh-vs-continuation win gates are
+    //  eligibility is GroundCombatActorEligibility; the WorthIt win/coverage check is GroundCombatFeasibility;
+    //  same-hex donor legality is GroundCombatDonorPolicy; the fresh-vs-continuation win gates are
     //  RaidAdmissionPolicy. It computes no strategic objective value.
     // ===========================================================================================
-    public sealed class RaidAssemblyTransfer
+    public sealed class GroundCombatAssemblyTransfer
     {
         public int DonorArmyId;
         public UnitData Unit;
     }
 
-    public sealed class RaidAssemblyPlan
+    public sealed class GroundCombatAssemblyPlan
     {
         public bool Feasible;
         public string Reason;
         public int BaseArmyId;
         public bool NeedsAssembly;
         public readonly List<int> MergeArmyIds = new List<int>();
-        public readonly List<RaidAssemblyTransfer> Transfers = new List<RaidAssemblyTransfer>();
+        public readonly List<GroundCombatAssemblyTransfer> Transfers = new List<GroundCombatAssemblyTransfer>();
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
 
-        public static RaidAssemblyPlan Infeasible(string reason) =>
-            new RaidAssemblyPlan { Feasible = false, Reason = reason };
+        public static GroundCombatAssemblyPlan Infeasible(string reason) =>
+            new GroundCombatAssemblyPlan { Feasible = false, Reason = reason };
     }
 
     // ARCH-02 §29 — the fresh-start vs continuation win-chance gates. Starting a raid and
@@ -59,73 +60,143 @@ namespace Game.Ai.V2
         internal const float ContinuationWinChanceFloor = 0.40f;
     }
 
-    public static class RaidAssemblyPlanner
+    // AGG-RAID §1 — the generalized ground-combat assembly REQUEST. The kernel below is shared by
+    // Raid (Assault / Reinforcement) and by any future Active Defence lane; nothing Raid-specific
+    // (target merit, phase transitions, cooldowns) lives inside it. Every field is an explicit
+    // constraint the caller owns.
+    public sealed class GroundCombatAssemblyRequest
     {
-        public static RaidAssemblyPlan Plan(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds)
+        // Defenders the assembled force must be able to beat. Empty == "no fight to win" (a pure
+        // escort / rendezvous request), which trivially clears the estimator.
+        public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
+            System.Array.Empty<WorthIt.DefenderProfile>();
+        // Fresh-start vs continuation win gate. Callers pass RaidAdmissionPolicy's two constants.
+        public float WinChanceGate = AiConfigV2.raidMinViableWinChance;
+        // When set, this actor is tried first and (with PinToPreferred) exclusively.
+        public int? PreferredPrimaryArmyId;
+        public bool PinToPreferred;
+        // Armies excluded because they are busy / already claimed this cycle.
+        public ISet<int> ExcludedArmyIds;
+        // Staging restriction: only armies standing on this hex may host the formation.
+        public HexCoord? StagingHex;
+        // May the kernel build a package out of same-hex donors, or must it find an
+        // already-sufficient army?
+        public bool AllowSameHexAssembly = true;
+        // The result must be an army OTHER than PreferredPrimaryArmyId (a separate support actor).
+        public bool RequiresSeparateSupportActor;
+    }
+
+    public static class GroundCombatAssemblyPlanner
+    {
+        // Legacy/raid-shaped facade. `target` is identity only; the kernel needs the defenders.
+        public static GroundCombatAssemblyPlan Plan(WorldSnapshot snap, RaidMissionTarget target,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds) =>
+            Plan(snap, new GroundCombatAssemblyRequest
+            {
+                Defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                WinChanceGate = RaidAdmissionPolicy.FreshStartWinChanceGate,
+                ExcludedArmyIds = excludeArmyIds,
+            });
+
+        // The generalized kernel. Prefer an already-sufficient free army; otherwise (when allowed)
+        // build a minimal same-hex package around a legal host.
+        public static GroundCombatAssemblyPlan Plan(WorldSnapshot snap, GroundCombatAssemblyRequest request)
         {
             if (snap?.Self?.Armies == null)
-                return RaidAssemblyPlan.Infeasible("no own-force snapshot");
+                return GroundCombatAssemblyPlan.Infeasible("no own-force snapshot");
+            if (request == null)
+                return GroundCombatAssemblyPlan.Infeasible("no ground-combat assembly request");
 
-            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            List<ArmySnapshot> eligible = RaidActorEligibility.EligibleReadyArmies(snap, excludeArmyIds);
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                request.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            List<ArmySnapshot> eligible = GroundCombatActorEligibility
+                .EligibleReadyArmies(snap, request.ExcludedArmyIds)
+                .Where(a => Admissible(a, request))
+                .ToList();
+            if (request.PinToPreferred && request.PreferredPrimaryArmyId.HasValue)
+                eligible = eligible.Where(a => a.ArmyId == request.PreferredPrimaryArmyId.Value).ToList();
+            else if (request.PreferredPrimaryArmyId.HasValue)
+                eligible = eligible
+                    .OrderByDescending(a => a.ArmyId == request.PreferredPrimaryArmyId.Value)
+                    .ToList();
             if (eligible.Count == 0)
-                return RaidAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
+                return GroundCombatAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
 
-            // Already-formed force always wins over reorganisation. This is FRESH admission, so it
-            // must retain the normal strict raid bar; continuation hysteresis is only for an actor
-            // that was explicitly assigned to an already-started durable Raid.
+            // Already-formed force always wins over reorganisation.
             foreach (ArmySnapshot a in eligible)
             {
-                RaidAssemblyPlan exact = PlanForArmyAtThreshold(
-                    snap, target, defenders, a.ArmyId, RaidAdmissionPolicy.FreshStartWinChanceGate);
+                GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
+                    snap, defenders, a.ArmyId, request.WinChanceGate);
                 if (exact.Feasible)
                     return exact;
             }
+
+            if (!request.AllowSameHexAssembly)
+                return GroundCombatAssemblyPlan.Infeasible(
+                    "no already-formed free ground force clears the shared combat estimator "
+                    + "(same-hex assembly not permitted for this request)");
 
             // Minimal same-hex reinforcement. The host itself must be a real mobile combat body;
             // donors may be reserve armies or garrisons, but dedicated Recce / aviation / prisons
             // and mission-claimed containers are excluded.
             foreach (ArmySnapshot a in eligible)
             {
-                RaidAssemblyPlan assembled = TryAssembleForHost(snap, defenders, a, excludeArmyIds);
+                GroundCombatAssemblyPlan assembled = TryAssembleForHost(
+                    snap, defenders, a, request.ExcludedArmyIds, request.WinChanceGate);
                 if (assembled.Feasible)
                     return assembled;
             }
 
-            return RaidAssemblyPlan.Infeasible(
+            return GroundCombatAssemblyPlan.Infeasible(
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
+        }
+
+        private static bool Admissible(ArmySnapshot a, GroundCombatAssemblyRequest r)
+        {
+            if (a == null) return false;
+            if (r.StagingHex.HasValue && !a.Hex.Equals(r.StagingHex.Value)) return false;
+            if (r.RequiresSeparateSupportActor && r.PreferredPrimaryArmyId.HasValue
+                && a.ArmyId == r.PreferredPrimaryArmyId.Value)
+                return false;
+            return true;
         }
 
         // Exact feasibility for one ALREADY ASSIGNED actor. Fresh actor admission is performed by
         // Plan() above at the strict raidMinViableWinChance. Provisioning calls this method only
-        // after its batch assignment has picked a concrete actor; RaidAdmissionRegistry additionally
+        // after its batch assignment has picked a concrete actor; GroundCombatAdmissionRegistry additionally
         // uses it for the PreferredMover of a durable Hard Raid. That incumbent gets bounded
         // continuation hysteresis so a valid multi-turn operation is not destroyed by the stricter
         // start gate on every subsequent turn.
-        public static RaidAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
+        public static GroundCombatAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId) =>
-            PlanForArmyAtThreshold(snap, target, defenders, armyId, RaidAdmissionPolicy.ContinuationWinChanceFloor);
+            PlanForArmyAtThreshold(snap, defenders, armyId, RaidAdmissionPolicy.ContinuationWinChanceFloor);
 
-        private static RaidAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap, RaidMissionTarget target,
+        // AGG-RAID §6 — the exact gate the Aggression demand layer re-runs against the NEXT
+        // objective before it may call an active Raid "covered". Threshold is explicit: a fresh
+        // target is a fresh start decision even for an incumbent army.
+        public static GroundCombatAssemblyPlan PlanForArmyAt(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance) =>
+            PlanForArmyAtThreshold(snap, defenders, armyId, minWinChance);
+
+        internal static GroundCombatAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance)
         {
             if (snap?.Self?.Armies == null)
-                return RaidAssemblyPlan.Infeasible("no own-force snapshot");
+                return GroundCombatAssemblyPlan.Infeasible("no own-force snapshot");
 
             ArmySnapshot a = snap.Self.Armies.FirstOrDefault(x => x != null && x.ArmyId == armyId);
             if (a == null || !a.IsStructuralRaidActor)
-                return RaidAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
+                return GroundCombatAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
 
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
             List<WorthIt.DefenderProfile> roster =
                 (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
-            if (!RaidCombatFeasibility.Clears(roster, defenders, minWinChance, out float win, out bool cover))
-                return RaidAssemblyPlan.Infeasible(
+            if (!GroundCombatFeasibility.Clears(roster, defenders, minWinChance, out float win, out bool cover))
+                return GroundCombatAssemblyPlan.Infeasible(
                     $"raid actor #{armyId} does not clear the assigned-actor raid estimator "
                     + $"(win {win:0.00} < {minWinChance:0.00} or coverage missing)");
 
-            return new RaidAssemblyPlan
+            return new GroundCombatAssemblyPlan
             {
                 Feasible = true,
                 BaseArmyId = a.ArmyId,
@@ -135,20 +206,21 @@ namespace Game.Ai.V2
             };
         }
 
-        private static RaidAssemblyPlan TryAssembleForHost(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ArmySnapshot hostSnap, ISet<int> excludeArmyIds)
+        private static GroundCombatAssemblyPlan TryAssembleForHost(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, ArmySnapshot hostSnap, ISet<int> excludeArmyIds,
+            float minWinChance)
         {
             PlayerSetupData owner = hostSnap?.Owner;
             if (owner == null)
-                return RaidAssemblyPlan.Infeasible("assembly host has no owner");
+                return GroundCombatAssemblyPlan.Infeasible("assembly host has no owner");
             ArmyData host = ArmyRegistry.AllForOwner(owner)
                 .FirstOrDefault(a => a != null && a.Id == hostSnap.ArmyId);
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0)
-                return RaidAssemblyPlan.Infeasible("assembly host is no longer live/mobile");
+                return GroundCombatAssemblyPlan.Infeasible("assembly host is no longer live/mobile");
 
             var projectedUnits = new List<UnitData>(host.Members);
             var projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
-            var selected = new List<RaidAssemblyTransfer>();
+            var selected = new List<GroundCombatAssemblyTransfer>();
 
             // §12 — a heroless host may take ONE eligible same-hex hero from a safe donor
             // (typically the garrison). Preference: CombatLeader > Flexible > SupportOperator.
@@ -157,7 +229,7 @@ namespace Game.Ai.V2
             // promise a transfer the executor will reject.
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
-                (ArmyData heroDonor, UnitData hero) = RaidDonorPolicy.PickAttachableHero(owner, host, excludeArmyIds);
+                (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host, excludeArmyIds);
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };
@@ -165,8 +237,8 @@ namespace Game.Ai.V2
                     {
                         projectedUnits.Add(hero);
                         projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
-                        selected.Add(new RaidAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
-                        if (RaidCombatFeasibility.Clears(projectedProfiles, defenders, out float hWin, out bool hCover))
+                        selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
+                        if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance, out float hWin, out bool hCover))
                             return FinishAssembly(host, selected, hWin, hCover);
                     }
                 }
@@ -194,7 +266,7 @@ namespace Game.Ai.V2
                         && donor.CanLeaveWithoutOvercrowding(u)
                         && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(owner, donor, u))
                         && (!host.HasActivatedThisTurn || u.ActivationApCost <= 0))
-                    .OrderByDescending(RaidDonorPolicy.UnitCombatValue)
+                    .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                     .ThenBy(u => u.Name)
                     .FirstOrDefault();
                 if (pick == null)
@@ -206,23 +278,23 @@ namespace Game.Ai.V2
 
                 projectedUnits.Add(pick);
                 projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
-                selected.Add(new RaidAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
+                selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
 
-                if (RaidCombatFeasibility.Clears(projectedProfiles, defenders, out float win, out bool cover))
+                if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance, out float win, out bool cover))
                     return FinishAssembly(host, selected, win, cover);
             }
 
             // The hero alone (no bodies available/needed) may already clear.
-            if (selected.Count > 0 && RaidCombatFeasibility.Clears(projectedProfiles, defenders, out float wOnly, out bool cOnly))
+            if (selected.Count > 0 && GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance, out float wOnly, out bool cOnly))
                 return FinishAssembly(host, selected, wOnly, cOnly);
 
-            return RaidAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
+            return GroundCombatAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
         }
 
-        private static RaidAssemblyPlan FinishAssembly(ArmyData host,
-            IReadOnlyList<RaidAssemblyTransfer> selected, float win, bool cover)
+        private static GroundCombatAssemblyPlan FinishAssembly(ArmyData host,
+            IReadOnlyList<GroundCombatAssemblyTransfer> selected, float win, bool cover)
         {
-            var plan = new RaidAssemblyPlan
+            var plan = new GroundCombatAssemblyPlan
             {
                 Feasible = true,
                 BaseArmyId = host.Id,
@@ -230,7 +302,7 @@ namespace Game.Ai.V2
                 ProjectedWinChance = win,
                 CoversAllDefenders = cover,
             };
-            foreach (RaidAssemblyTransfer t in selected)
+            foreach (GroundCombatAssemblyTransfer t in selected)
             {
                 plan.Transfers.Add(t);
                 if (!plan.MergeArmyIds.Contains(t.DonorArmyId))

@@ -28,11 +28,13 @@ namespace Game.Ai
         public const int raidAssembleMaxTurns = 6;
         public const int raidPlanRejectCooldownTurns = 3;
 
-        // Defence — reaction radius + siege/patrol geometry + minimum garrison bodies.
-        public const int defenceReactionRadius = 5;
+        // Threat geometry + siege/patrol geometry + minimum garrison bodies. (Renamed from the
+        // old defence* naming: these are shared Analysis/Economy facts, not a Defence lane.)
+        public const int threatReactionRadius = 5;
         public const int siegeRadius = 4;
         public const int patrolRadius = 5;
-        public const float defenceActiveWinChance = 0.6f;
+        // The minimum win chance an Economy escort must project before it is considered safe.
+        public const float economyEscortMinWinChance = 0.6f;
         public const int secureBaseMinNonHeroUnits = 2;
         public const int secureCitadelMinNonHeroUnits = 2;
 

@@ -29,6 +29,16 @@ namespace Game.Ai.V2
         public int RaidTargetArmyId;
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
+        // AGG-RAID §9 — which leg of the Raid this provisioned task is, and the concrete actors /
+        // destination it was provisioned for. Execution reads these and does NOT re-decide any of
+        // them (no target re-pick, no base re-pick, no strategic re-scoring).
+        public RaidMissionPhase RaidPhase = RaidMissionPhase.Assault;
+        public int RaidPrimaryArmyId;
+        public int RaidSupportArmyId;
+        public HexCoord RaidDestinationHex;
+        // Reinforcement only: the support army is already standing on the primary's hex, so this
+        // step is the ATOMIC roster handoff (transfer / swap) and must perform no movement.
+        public bool RaidHandoffReady;
         public EconomyMissionTarget EconomyTarget;
         public string ReservationOwner;
         public MissionIntentKey? EconomyLoanSource;
@@ -473,7 +483,7 @@ namespace Game.Ai.V2
             ActorCommitments durableCommitments = null)
         {
             PrepareScoutAssignments(player, root, ctx, session, allocation, durableCommitments);
-            PrepareRaidAssignments(session, allocation);
+            PrepareGroundCombatAssignments(session, allocation);
         }
 
         // Assignment is solved for the whole funded Scout set. Expose every negative result as one
@@ -527,14 +537,32 @@ namespace Game.Ai.V2
             session.SetAssignment(result);
         }
 
-        private static void PrepareRaidAssignments(ProvisioningSession session, TentativeAllocation allocation)
+        private static void PrepareGroundCombatAssignments(ProvisioningSession session, TentativeAllocation allocation)
         {
             var open = new List<FundedEntry>();
+            // AGG-RAID §8 — ALL ground-combat proposals are decided in ONE pass, so one army can
+            // never simultaneously receive an Assault assignment and be pinned as another Raid's
+            // primary or reinforcement convoy (and, later, an Active Defence assignment).
+            var pinnedByOtherLegs = new HashSet<int>();
+            if (allocation?.Funded != null)
+                foreach (FundedEntry fe in allocation.Funded)
+                {
+                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
+                        || !(fe.Mission.Target is RaidMissionTarget rt)
+                        || rt.Phase == RaidMissionPhase.Assault)
+                        continue;
+                    if (rt.PrimaryArmyId != 0) pinnedByOtherLegs.Add(rt.PrimaryArmyId);
+                    if (rt.SupportArmyId != 0) pinnedByOtherLegs.Add(rt.SupportArmyId);
+                }
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
                 {
                     if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
                         || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
+                        continue;
+                    // Non-Assault legs already have their actor pinned by Continuity; they are not
+                    // an actor-contention decision and take no part in the assignment solve.
+                    if (fe.Mission.Target is RaidMissionTarget t && t.Phase != RaidMissionPhase.Assault)
                         continue;
                     open.Add(fe);
                 }
@@ -544,8 +572,10 @@ namespace Game.Ai.V2
             foreach (FundedEntry fe in open)
             {
                 var ids = new List<int>();
-                if (RaidAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
-                    ids.AddRange(eligible.Where(id => !session.ClaimedArmyIds.Contains(id))
+                if (GroundCombatAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
+                    ids.AddRange(eligible
+                        .Where(id => !session.ClaimedArmyIds.Contains(id)
+                            && !pinnedByOtherLegs.Contains(id))
                         .OrderBy(id => RaidActorActivation(session.Snapshot, id))
                         .ThenBy(id => RaidActorPower(session.Snapshot, id))
                         .ThenBy(id => id));
@@ -2027,6 +2057,13 @@ namespace Game.Ai.V2
             WorldSnapshot snap = session.Snapshot;
             float eps = AiConfigV2.allocatorSliceEpsilon;
 
+            // AGG-RAID §9 — the Assault leg keeps the existing transactional same-hex assembly
+            // verbatim. Reinforcement and Return are their own, much narrower provisioning shapes.
+            if (target.Phase == RaidMissionPhase.Return)
+                return ProvisionReturn(player, root, ctx, session, funded, target, key, eps);
+            if (target.Phase == RaidMissionPhase.Reinforcement)
+                return ProvisionReinforcement(player, root, ctx, session, funded, target, key, eps);
+
             AiMapMemory.KnownEnemySighting? sighting = FindLiveSighting(player, target.TargetArmyId);
             if (sighting == null)
             {
@@ -2044,19 +2081,19 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders =
                 sighting.Value.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
 
-            RaidAssemblyPlan plan = null;
+            GroundCombatAssemblyPlan plan = null;
             if (session.TryGetAssignedRaidActor(key, out int assignedActor)
                 && !session.ClaimedArmyIds.Contains(assignedActor))
             {
-                RaidAssemblyPlan assigned = RaidAssemblyPlanner.PlanForArmy(snap, target, defenders, assignedActor);
+                GroundCombatAssemblyPlan assigned = GroundCombatAssemblyPlanner.PlanForArmy(snap, target, defenders, assignedActor);
                 if (assigned.Feasible) plan = assigned;
             }
             if (plan == null)
-                plan = RaidAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
+                plan = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
 
             if (!plan.Feasible)
             {
-                RaidAssemblyPlan unrestricted = RaidAssemblyPlanner.Plan(snap, target, defenders, null);
+                GroundCombatAssemblyPlan unrestricted = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
                 if (unrestricted.Feasible)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"raid target #{target.TargetArmyId} has an executable force but its host/donor is already claimed; {plan.Reason}"));
@@ -2073,13 +2110,13 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"raid host #{plan.BaseArmyId} was claimed by an earlier mission this cycle"));
 
-            var transfers = new List<RaidAssemblyTransfer>();
+            var transfers = new List<GroundCombatAssemblyTransfer>();
             var claimedDonors = new HashSet<int>();
             var projectedUnits = new List<UnitData>(host.Members);
             if (plan.NeedsAssembly)
             {
                 int heroTransfers = 0;
-                foreach (RaidAssemblyTransfer t in plan.Transfers)
+                foreach (GroundCombatAssemblyTransfer t in plan.Transfers)
                 {
                     if (t?.Unit == null)
                         return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("raid assembly contains a null unit"));
@@ -2117,7 +2154,7 @@ namespace Game.Ai.V2
                 }
 
                 List<WorthIt.DefenderProfile> projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
-                if (!RaidCombatFeasibility.Clears(projectedProfiles, defenders, out float projectedWin, out _))
+                if (!GroundCombatFeasibility.Clears(projectedProfiles, defenders, out float projectedWin, out _))
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                         "planned same-hex roster no longer clears the shared WorthIt estimator"));
                 plan.ProjectedWinChance = projectedWin;
@@ -2137,8 +2174,8 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: raid needs {N(activationAp)}, {N(turnApLeft)} left"));
 
-            var applied = new List<RaidAssemblyTransfer>();
-            foreach (RaidAssemblyTransfer t in transfers)
+            var applied = new List<GroundCombatAssemblyTransfer>();
+            foreach (GroundCombatAssemblyTransfer t in transfers)
             {
                 ArmyData donor = ResolveArmy(player, t.DonorArmyId);
                 string why = donor == null ? "donor missing" : null;
@@ -2182,13 +2219,202 @@ namespace Game.Ai.V2
             }, applied.Count);
         }
 
+        // =====================================================================================
+        //  AGG-RAID §9 — RETURN leg. Mover is the primary; the destination base was already
+        //  chosen (and fixed) by Continuity. Provisioning re-validates the actor, the route and
+        //  the AP envelope; it never re-picks the base.
+        // =====================================================================================
+        private static ProvisioningResult ProvisionReturn(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            RaidMissionTarget target, StableMissionKey key, float eps)
+        {
+            ArmyData primary = ResolveArmy(player, target.PrimaryArmyId);
+            if (primary == null || primary.Owner != player || primary.Members.Count == 0
+                || primary.IsPrison || primary.IsAirfield || AviationRules.IsAirArmy(primary))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"raid return primary #{target.PrimaryArmyId} is no longer a usable field army"));
+            if (session.ClaimedArmyIds.Contains(primary.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid return primary #{primary.Id} was claimed by an earlier mission this cycle"));
+
+            HexCoord home = target.DestinationHex;
+            if (primary.Hex.Equals(home))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    $"raid return primary #{primary.Id} is already home at ({home.Q},{home.R})"));
+            if (primary.CurrentMovement <= 0)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"raid return primary #{primary.Id} has no movement left"));
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, primary, home) == null)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"no safe first step from ({primary.Hex.Q},{primary.Hex.R}) toward return base ({home.Q},{home.R})"));
+
+            int activationAp = primary.HasActivatedThisTurn ? 0 : primary.ActivationApCost;
+            if (activationAp > funded.Tentative.Ap + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
+                    $"raid return needs {N(activationAp)} AP, envelope is {N(funded.Tentative.Ap)}"));
+            if (activationAp > root.ActionPoints - session.ApClaimed + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: raid return needs {N(activationAp)}"));
+
+            AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} — OK RETURN "
+                + $"primary #{primary.Id} -> ({home.Q},{home.R}) ap {N(activationAp)}");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Raid,
+                MoverArmyId = primary.Id,
+                FocusHex = home,
+                ExecutionHex = home,
+                RaidPhase = RaidMissionPhase.Return,
+                RaidPrimaryArmyId = primary.Id,
+                RaidDestinationHex = home,
+                RaidTargetArmyId = target.TargetArmyId,
+                RaidLastKnownHex = target.LastKnownHex,
+                RaidTargetIsNeutral = target.TargetIsNeutral,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = activationAp,
+                StealthApReserved = false,
+            });
+        }
+
+        // =====================================================================================
+        //  AGG-RAID §9 — REINFORCEMENT leg. Mover is the SEPARATE support army; the rendezvous is
+        //  the primary's current hex. The primary itself does not move while support is in
+        //  transit (it is never the mover of this mission and is claimed by continuity).
+        // =====================================================================================
+        private static ProvisioningResult ProvisionReinforcement(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            RaidMissionTarget target, StableMissionKey key, float eps)
+        {
+            ArmyData primary = ResolveArmy(player, target.PrimaryArmyId);
+            if (primary == null || primary.Owner != player || primary.Members.Count == 0
+                || primary.IsPrison || primary.IsAirfield || AviationRules.IsAirArmy(primary))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"raid reinforcement primary #{target.PrimaryArmyId} is gone or no longer a field army"));
+
+            ArmyData support = ResolveArmy(player, target.SupportArmyId);
+            if (support == null || support.Owner != player || support.Id == primary.Id
+                || support.Members.Count == 0 || support.IsPrison || support.IsGarrison
+                || support.IsAirfield || AviationRules.IsAirArmy(support))
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    $"raid reinforcement support #{target.SupportArmyId} is not a separate mobile ground army"));
+            if (session.ClaimedArmyIds.Contains(support.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid reinforcement support #{support.Id} was claimed by an earlier mission this cycle"));
+
+            HexCoord rendezvous = primary.Hex;
+            bool atRendezvous = support.Hex.Equals(rendezvous);
+
+            // Does the projected delivered roster actually improve the primary's odds? Re-run the
+            // SAME WorthIt projection provisioning/execution will use, never a separate estimator.
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                AiV2Util.KnownDefenders(session.Snapshot, target.TargetArmyId);
+            if (!ReinforcementImprovesOdds(primary, support, defenders, out string why))
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                    $"raid reinforcement #{support.Id} -> #{primary.Id} would not improve the primary's odds: {why}"));
+
+            if (!atRendezvous)
+            {
+                if (support.CurrentMovement <= 0)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        $"raid reinforcement support #{support.Id} has no movement left"));
+                if (SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous) == null)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        $"no safe first step from ({support.Hex.Q},{support.Hex.R}) toward rendezvous ({rendezvous.Q},{rendezvous.R})"));
+            }
+
+            int activationAp = support.HasActivatedThisTurn ? 0 : support.ActivationApCost;
+            if (activationAp > funded.Tentative.Ap + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
+                    $"raid reinforcement needs {N(activationAp)} AP, envelope is {N(funded.Tentative.Ap)}"));
+            if (activationAp > root.ActionPoints - session.ApClaimed + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"turn AP exhausted: raid reinforcement needs {N(activationAp)}"));
+
+            // The primary must not be handed to another mission while the convoy is in transit.
+            session.ClaimedArmyIds.Add(primary.Id);
+
+            AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} — OK REINFORCE "
+                + $"support #{support.Id} -> primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R}) "
+                + $"{(atRendezvous ? "HANDOFF" : "TRANSIT")} ap {N(activationAp)}");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Raid,
+                MoverArmyId = support.Id,
+                FocusHex = rendezvous,
+                ExecutionHex = rendezvous,
+                RaidPhase = RaidMissionPhase.Reinforcement,
+                RaidPrimaryArmyId = primary.Id,
+                RaidSupportArmyId = support.Id,
+                RaidDestinationHex = rendezvous,
+                RaidHandoffReady = atRendezvous,
+                RaidTargetArmyId = target.TargetArmyId,
+                RaidLastKnownHex = target.LastKnownHex,
+                RaidTargetIsNeutral = target.TargetIsNeutral,
+                ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = activationAp,
+                StealthApReserved = false,
+            });
+        }
+
+        // §9 — the projection: would merging the support's transferable bodies into the primary
+        // raise its WorthIt win chance against the current defenders? A convoy that cannot help is
+        // never provisioned.
+        private static bool ReinforcementImprovesOdds(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, out string why)
+        {
+            why = null;
+            List<UnitData> sparable = SparableSupportBodies(support);
+            if (sparable.Count == 0)
+            {
+                why = "support army has no body it may legally spare (a container is never emptied)";
+                return false;
+            }
+            var before = primary.Members.Select(WorthIt.FromLiveUnit).ToList();
+            var after = new List<WorthIt.DefenderProfile>(before);
+            after.AddRange(sparable.Select(WorthIt.FromLiveUnit));
+            float winBefore = defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(before, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            float winAfter = defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(after, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            if (winAfter <= winBefore + 0.001f)
+            {
+                why = $"projected win {N(winAfter)} does not improve on {N(winBefore)}";
+                return false;
+            }
+            return true;
+        }
+
+        // A support container is never emptied and never gives up its own hero.
+        internal static List<UnitData> SparableSupportBodies(ArmyData support)
+        {
+            var list = new List<UnitData>();
+            if (support == null)
+                return list;
+            foreach (UnitData u in support.Members
+                .Where(x => x != null && !x.IsHero && !x.IsAviation)
+                .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
+                .ThenBy(x => x.Name))
+            {
+                if (support.Members.Count - list.Count <= 1)
+                    break;  // minimum-body invariant: leave at least one member behind
+                if (!support.CanLeaveWithoutOvercrowding(u))
+                    continue;
+                list.Add(u);
+            }
+            return list;
+        }
+
         private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
-            List<RaidAssemblyTransfer> applied, AiTurnContext ctx)
+            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx)
         {
             bool ok = true;
             for (int i = applied.Count - 1; i >= 0; i--)
             {
-                RaidAssemblyTransfer t = applied[i];
+                GroundCombatAssemblyTransfer t = applied[i];
                 ArmyData donor = ResolveArmy(player, t.DonorArmyId);
                 string why = donor == null ? "donor missing" : !host.Members.Contains(t.Unit) ? "unit no longer in host" : null;
                 if (donor == null || !host.Members.Contains(t.Unit)
@@ -2202,7 +2428,7 @@ namespace Game.Ai.V2
             return ok;
         }
 
-        // Was a duplicate of RaidCombatFeasibility.Clears — with a stale hardcoded win-chance
+        // Was a duplicate of GroundCombatFeasibility.Clears — with a stale hardcoded win-chance
         // threshold and no `cover` output — now calls that shared, parameterized implementation
         // directly at the one call site above (see Docs/ai-duplicate-methods-analysis.md, D4).
 

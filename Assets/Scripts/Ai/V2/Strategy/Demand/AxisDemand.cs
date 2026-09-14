@@ -22,7 +22,6 @@ namespace Game.Ai.V2
     public enum CapabilityKind
     {
         ScoutCapability,
-        GarrisonCombatPower,
         FieldCombatPower,
         Hero,
         EconomicInfrastructure,
@@ -31,6 +30,14 @@ namespace Game.Ai.V2
         DevelopmentOperator,
         CardUpgrade,
     }
+
+    // AGG-RAID §6 — HOW a capability must be delivered, orthogonal to WHICH capability it is.
+    //   Any                 — the existing, unconstrained behaviour (attach, garrison, new army…).
+    //   IndependentFieldArmy— the capability must arrive as a SEPARATE mobile field army that can
+    //                         move to the consumer on its own. A Raid reinforcement cannot be
+    //                         satisfied by attaching a unit onto the (remote) primary or by
+    //                         depositing it into a garrison.
+    public enum CapabilityDeliveryShape { Any, IndependentFieldArmy }
 
     [System.Flags]
     public enum TraitPreference
@@ -85,6 +92,14 @@ namespace Game.Ai.V2
 
         public float RequiredCapabilityPower;
         public bool IsPersistenceDeferred;
+
+        // AGG-RAID §6 — delivery-shape constraint (see CapabilityDeliveryShape) and the EXACT
+        // durable mission this capability is for. ConsumerIntentKey turns a generic
+        // "FieldCombatPower please" into "FieldCombatPower for Raid #42", so Phase A can hand the
+        // delivered army straight to that intent instead of leaving it to generic housekeeping,
+        // and so a second identical support convoy is never requested for the same operation.
+        public CapabilityDeliveryShape DeliveryShape = CapabilityDeliveryShape.Any;
+        public MissionIntentKey? ConsumerIntentKey;
 
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")

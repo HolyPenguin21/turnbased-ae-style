@@ -11,25 +11,30 @@ namespace Game.Ai.V2
     //
     //   Full             — all five desire axes (Recon / Aggression / Defence / Economy / Development).
     //   ReconOnly        — Recon only. Radar is pinned to RCN:1.
-    //   ReconDevelopment — Recon + Development. Aggression / Defence / Economy demand is dropped, so
-    //                      BaselineForceReadiness (RequestingAxis = Defence -> FieldCombatPower) can
-    //                      no longer materialize an ordinary combat body while an isolated
-    //                      Recon+Development run is active. StrategicManager Phase A/B, Development
-    //                      generation, attach and draw all stay.
+    //   ReconDevelopment — Recon + Development. Aggression / Defence / Economy demand is dropped.
+    //                      StrategicManager Phase A/B, Development generation, attach and draw all
+    //                      stay.
+    //   ReconAggressionEconomyDevelopment
+    //                    — Recon + Economy + Aggression + Development. Defence is deliberately NOT
+    //                      in this mode (no V2 Defence mission exists), and AllowStrategicPressure
+    //                      stays OFF: turning neutral Raid on must never re-enable the old
+    //                      Citadel-pressure advance.
     public enum AiStrategyV2Mode
     {
         Full,
         ReconOnly,
         ReconDevelopment,
         ReconEconomyDevelopment,
+        ReconAggressionEconomyDevelopment,
     }
 
     public static class AiStrategyV2Scope
     {
-        // Focused production bring-up: Recon -> Economy -> Development/Production support.
-        // Aggression/Defence are disabled only here so radar, demand, proposals, continuity and
-        // typed admission all observe the same boundary. Phase B and Housekeeping are unaffected.
-        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconEconomyDevelopment;
+        // Focused production bring-up: Recon -> Economy -> Aggression demand -> Development/
+        // Production support. Defence alone is disabled here, so radar, demand, proposals,
+        // continuity and typed admission all observe the same boundary. Phase B and Housekeeping
+        // are unaffected, and AllowStrategicPressure stays OFF for every focus scope.
+        public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconAggressionEconomyDevelopment;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
 
@@ -60,6 +65,11 @@ namespace Game.Ai.V2
             DesireAxis.Recon, DesireAxis.Economy, DesireAxis.Development,
         };
 
+        private static readonly DesireAxis[] ReconAggressionEconomyDevelopmentAxes =
+        {
+            DesireAxis.Recon, DesireAxis.Aggression, DesireAxis.Economy, DesireAxis.Development,
+        };
+
         // The desire axes the current mode keeps live. Full keeps all five.
         public static IReadOnlyList<DesireAxis> AxesInScope
         {
@@ -70,10 +80,28 @@ namespace Game.Ai.V2
                     case AiStrategyV2Mode.ReconOnly: return ReconOnlyAxes;
                     case AiStrategyV2Mode.ReconDevelopment: return ReconDevelopmentAxes;
                     case AiStrategyV2Mode.ReconEconomyDevelopment: return ReconEconomyDevelopmentAxes;
+                    case AiStrategyV2Mode.ReconAggressionEconomyDevelopment:
+                        return ReconAggressionEconomyDevelopmentAxes;
                     default: return AllAxes;
                 }
             }
         }
+
+        // AGG-RAID §2 — the SINGLE mission-kind -> desire-axis mapping table. Intent scope and
+        // mission scope both consult it, so a new mission kind can never be admitted by one and
+        // silently dropped by the other. ActiveDefence maps to DesireAxis.Defence when it lands.
+        internal static DesireAxis AxisOf(MissionKind kind)
+        {
+            switch (kind)
+            {
+                case MissionKind.Scout: return DesireAxis.Recon;
+                case MissionKind.Raid: return DesireAxis.Aggression;
+                case MissionKind.Economy: return DesireAxis.Economy;
+                default: return DesireAxis.Development;
+            }
+        }
+
+        internal static bool MissionKindInScope(MissionKind kind) => AxisInScope(AxisOf(kind));
 
         public static bool AxisInScope(DesireAxis axis) => !IsFocusScoped || AxesInScope.Contains(axis);
 
@@ -105,18 +133,16 @@ namespace Game.Ai.V2
             if (!IsFocusScoped)
                 return activeIntents?.Where(i => i != null).ToList() ?? new List<MissionIntent>();
 
-            bool economy = Mode == AiStrategyV2Mode.ReconEconomyDevelopment;
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            foreach (MissionIntent stale in state.All.Where(i => i != null
-                && i.Kind != MissionKind.Scout && !(economy && i.Kind == MissionKind.Economy)).ToList())
+            foreach (MissionIntent stale in state.All
+                .Where(i => i != null && !MissionKindInScope(i.Kind)).ToList())
             {
                 state.Remove(stale.IntentKey);
                 AiDebugLog.Write($"[AI][V2][Scope] retire {stale.IntentKey} reason={Mode}");
             }
 
             return (activeIntents ?? new List<MissionIntent>())
-                .Where(i => i != null && (i.Kind == MissionKind.Scout
-                    || (economy && i.Kind == MissionKind.Economy)))
+                .Where(i => i != null && MissionKindInScope(i.Kind))
                 .ToList();
         }
 
@@ -138,13 +164,10 @@ namespace Game.Ai.V2
             if (!IsFocusScoped)
                 return all;
 
-            bool economy = Mode == AiStrategyV2Mode.ReconEconomyDevelopment;
-            int suppressed = all.Count(m => m.Kind != MissionKind.Scout
-                && !(economy && m.Kind == MissionKind.Economy));
+            int suppressed = all.Count(m => !MissionKindInScope(m.Kind));
             if (suppressed > 0)
                 AiDebugLog.Write($"[AI][V2][Scope] suppressedMissions={suppressed} reason={Mode}");
-            return all.Where(m => m.Kind == MissionKind.Scout
-                || (economy && m.Kind == MissionKind.Economy)).ToList();
+            return all.Where(m => MissionKindInScope(m.Kind)).ToList();
         }
 
         // Spec §5/§13 — a focus scope isolates which operational missions execute. It is

@@ -31,7 +31,6 @@ namespace Game.Ai.V2
         public float FieldCombatPower;         // structurally Raid-eligible ground field power (ready + spent + committed)
         public float CommittedFieldCombatPower;// subset locked to an active mission (Raid / other durable op)
         public float RaidAvailableFieldPower;  // unclaimed Raid-eligible ground power that can still act THIS cycle
-        public float GarrisonCombatPower;
         public int AvailableHeroes;    // hero-led Raid-eligible field armies that can act this cycle and are unclaimed
         public int CommittedHeroes;    // hero-led Raid-eligible field armies claimed by an active mission
 
@@ -67,8 +66,6 @@ namespace Game.Ai.V2
                     inv.ReserveScouts++;
                 }
             }
-
-            inv.GarrisonCombatPower = snap.Self.GarrisonPower;
 
             // Raid supply and Raid provisioning now share the exact same actor-shape predicate.
             // Garrison remains real reserve/potential combat power, but never mobile Raid supply;

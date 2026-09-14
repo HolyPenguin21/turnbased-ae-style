@@ -21,10 +21,17 @@ namespace Game.Ai.V2
     //    · StrategicReactionPass          — the reaction feasibility probe (reads ChosenObjective /
     //      Readiness / Outcome; never mirrors the rules).
     //
-    //  Build is a PURE deterministic primitive: no yield, no trace ids, no logging as a side
-    //  effect, no registry mutation. It only READS AiAllocatorStateRegistry for cooldowns. Every
-    //  diagnostic line the pipeline used to write inline is returned in `Diagnostics` for the
-    //  caller to replay verbatim.
+    //  Build is a deterministic primitive: no yield, no trace ids, no logging as a side effect.
+    //  It only READS AiAllocatorStateRegistry for cooldowns. Every diagnostic line the pipeline
+    //  used to write inline is returned in `Diagnostics` for the caller to replay verbatim.
+    //
+    //  AGG-RAID §6 — ONE deliberate exception to "no mutation": when a weakened primary raises a
+    //  reinforcement demand, Build stamps RaidIntent.ReinforcementRequestedTurn (and moves the
+    //  intent into RaidMissionPhase.Reinforcement). That stamp IS the "exactly one support intent
+    //  per weakened primary" invariant, and it must be established at the single point the demand
+    //  is created — otherwise the main Phase-A pass and the bounded reaction probe, which both call
+    //  Build in the same turn, would each raise their own convoy for the same Raid. It is
+    //  idempotent within a turn: a second call in the same turn sees the stamp and creates nothing.
     // ===========================================================================================
 
     public enum AggressionDemandOutcome
@@ -44,11 +51,11 @@ namespace Game.Ai.V2
         public string Reason = "";
         public int BlockedByCooldown;
         // Every non-covered / non-cooldown discovered-or-not objective whose canonical
-        // RaidOperationalReadiness is ReadyExecutable RIGHT NOW, with the ready RaidAssemblyPlan
+        // RaidOperationalReadiness is ReadyExecutable RIGHT NOW, with the ready GroundCombatAssemblyPlan
         // (its BaseArmyId is the canonical executable raid actor). The reaction direct-witness
         // probe reads this instead of a GatePassed filter + cheapest arbitrary pathable army.
-        public IReadOnlyList<(AggressionObjective Objective, RaidAssemblyPlan Plan)> ReadyExecutable =
-            System.Array.Empty<(AggressionObjective, RaidAssemblyPlan)>();
+        public IReadOnlyList<(AggressionObjective Objective, GroundCombatAssemblyPlan Plan)> ReadyExecutable =
+            System.Array.Empty<(AggressionObjective, GroundCombatAssemblyPlan)>();
         // Fully-formatted "[AI][V2][Demand][Aggression] …" lines — the caller replays them through
         // AiDebugLog so Build itself performs no logging.
         public IReadOnlyList<string> Diagnostics = System.Array.Empty<string>();
@@ -76,24 +83,120 @@ namespace Game.Ai.V2
                 return eval;
             }
 
+            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+
+            // ===================================================================================
+            //  AGG-RAID §6 — THE MAIN FIX. An active Raid intent is NOT automatically "covered".
+            //  A claimed actor only proves an army is bound to the operation, not that it can
+            //  still WIN the next fight. The old code marked the target covered on that claim
+            //  alone, so a primary weakened by the previous battle produced no demand, was
+            //  re-proposed as incumbent anyway, was rejected by Provisioning as AssemblyInfeasible,
+            //  and the intent hung until stall/reap. Here the primary is re-tested against the
+            //  CURRENT (already re-oriented) target through the SAME gate Provisioning will use.
+            // ===================================================================================
             var coveredTargets = new HashSet<int>();
-            if (activeIntents != null && commitments != null)
+            var reinforcementDemands = new List<AxisDemand>();
+            if (activeIntents != null)
                 foreach (MissionIntent i in activeIntents)
                 {
-                    if (i?.Kind != MissionKind.Raid || i.Raid == null || i.PreferredMoverArmyId == null)
+                    RaidIntent ri = i?.Kind == MissionKind.Raid ? i.Raid : null;
+                    if (ri == null)
                         continue;
-                    if (!commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value))
-                        continue;
-                    coveredTargets.Add(i.Raid.TargetArmyId);
-                    diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED targetArmy={i.Raid.TargetArmyId} "
-                        + $"reason=covered_by_active_raid actor={i.PreferredMoverArmyId.Value}");
-                }
 
-            CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
+                    // A Return leg consumes no target and needs no combat capability at all.
+                    if (ri.Phase == RaidMissionPhase.Return)
+                    {
+                        coveredTargets.Add(ri.TargetArmyId);
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
+                            + "reason=raid_in_return_phase");
+                        continue;
+                    }
+
+                    int primaryId = ri.PrimaryArmyId;
+                    if (primaryId == 0 || commitments == null || !commitments.IsArmyClaimed(primaryId))
+                        continue;   // no bound primary yet -> ordinary fresh-objective handling below
+
+                    coveredTargets.Add(ri.TargetArmyId);
+
+                    IReadOnlyList<WorthIt.DefenderProfile> defenders = RaidDefenders(snap, ri.TargetArmyId);
+                    GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
+                        snap, defenders, primaryId, AiConfigV2.raidMinViableWinChance);
+                    if (primaryPlan.Feasible)
+                    {
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
+                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} "
+                            + $"win={primaryPlan.ProjectedWinChance:0.00} "
+                            + "reason=primary_clears_worthit_against_current_target");
+                        continue;
+                    }
+
+                    if (ri.SupportArmyId != 0)
+                    {
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
+                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} support={ri.SupportArmyId} "
+                            + "reason=reinforcement_already_assigned_or_en_route");
+                        continue;
+                    }
+
+                    if (ri.ReinforcementRequestedTurn == snap.TurnNumber)
+                    {
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
+                            + "reason=reinforcement_already_requested_this_turn");
+                        continue;
+                    }
+
+                    ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
+                    float targetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders);
+                    float required = UnityEngine.Mathf.Max(1f, targetPower * AiConfigV2.raidCombatPowerMargin);
+                    float deficit = UnityEngine.Mathf.Max(1f, required - (primary?.EffectiveArmyPower ?? 0f));
+
+                    // §6 — if the power exists numerically but cannot PHYSICALLY be delivered as a
+                    // separate army (no free field army, no reusable shell, no deployable unit
+                    // card), emit a bounded DEFER instead of a phantom +1 power claim.
+                    if (!CanDeliverIndependentFieldArmy(snap, inv))
+                    {
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER intent={i.IntentKey} "
+                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} "
+                            + $"reason=no_independent_field_army_deliverable deficit={deficit:0.#} "
+                            + $"freePower={inv.RaidAvailableFieldPower:0.#} shells={inv.ReusableEmptyArmies.Count}");
+                        continue;
+                    }
+
+                    ri.ReinforcementRequestedTurn = snap.TurnNumber;
+                    if (ri.Phase != RaidMissionPhase.Reinforcement)
+                    {
+                        ri.Phase = RaidMissionPhase.Reinforcement;
+                        diag.Add($"[AI][V2][Demand][Aggression] phase intent={i.IntentKey} "
+                            + "Assault -> Reinforcement reason=primary_fails_worthit_against_current_target");
+                    }
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE intent={i.IntentKey} "
+                        + $"targetArmy={ri.TargetArmyId} capability=FieldCombatPower "
+                        + $"shape=IndependentFieldArmy desired={deficit:0.#} primary={primaryId} "
+                        + $"required={required:0.#} have={(primary?.EffectiveArmyPower ?? 0f):0.#} "
+                        + $"rendezvous=({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}) "
+                        + "reason=weakened_primary_needs_separate_support_army");
+                    reinforcementDemands.Add(new AxisDemand
+                    {
+                        RequestingAxis = DesireAxis.Aggression,
+                        Capability = CapabilityKind.FieldCombatPower,
+                        DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
+                        ConsumerIntentKey = i.IntentKey,
+                        DesiredAmount = deficit,
+                        RequiredCapabilityPower = deficit,
+                        RequiredTraits = TraitPreference.None,
+                        MinimumFollowupAp = 0f,
+                        TargetHex = primary?.Hex,
+                        Value = AiConfigV2.raidBaseValueMax,
+                        Explain = $"raid #{ri.TargetArmyId}: primary #{primaryId} no longer clears WorthIt "
+                            + $"({(primary?.EffectiveArmyPower ?? 0f):0.#} of {required:0.#} needed); "
+                            + $"deliver ~{deficit:0.#} field power as a SEPARATE support army to "
+                            + $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)})",
+                    });
+                }
             AggressionObjective chosen = null;
             RaidOperationalReadiness chosenReadiness = null;
             int blocked = 0;
-            var readyList = new List<(AggressionObjective, RaidAssemblyPlan)>();
+            var readyList = new List<(AggressionObjective, GroundCombatAssemblyPlan)>();
             // Non-creating read — Build must not register a fresh allocator-state entry as a side
             // effect. null == no state yet == no cooldowns.
             AiAllocatorState cooldownState = AiAllocatorStateRegistry.Peek(player);
@@ -140,6 +243,13 @@ namespace Game.Ai.V2
 
             if (chosen == null || chosenReadiness == null)
             {
+                if (reinforcementDemands.Count > 0)
+                {
+                    eval.Demands = reinforcementDemands;
+                    eval.Outcome = AggressionDemandOutcome.Demand;
+                    eval.Reason = "raid_reinforcement";
+                    return eval;
+                }
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED reason=no_runnable_capability_shortage "
                     + $"objectives={objectives.Count} blocked={blocked} freePower={inv.RaidAvailableFieldPower:0.#} "
                     + $"committedPower={inv.CommittedFieldCombatPower:0.#} freeHeroes={inv.AvailableHeroes} "
@@ -151,7 +261,7 @@ namespace Game.Ai.V2
             eval.ChosenObjective = chosen;
             eval.Readiness = chosenReadiness;
 
-            if (chosenReadiness.NeedsAssembly)
+            if (chosenReadiness.NeedsAssembly && reinforcementDemands.Count == 0)
             {
                 // §11 — enough numeric power and a raid-eligible hero exist; the target is not
                 // executable only because no legal same-hex formation clears the estimator. That
@@ -167,7 +277,9 @@ namespace Game.Ai.V2
                 return eval;
             }
 
-            var demands = new List<AxisDemand>();
+            // Reinforcement demands are real, target-specific and always carried through: they are
+            // never replaced by the fresh-objective shortage below.
+            var demands = new List<AxisDemand>(reinforcementDemands);
 
             if (chosenReadiness.NeedsHero)
             {
@@ -220,8 +332,33 @@ namespace Game.Ai.V2
             return eval;
         }
 
+        // §6 — "is there, in principle, a way to physically field a SEPARATE support army": a free
+        // ready field army, a reusable empty shell, or a deployable unit/hero card in hand. Pure
+        // read; it never claims anything. When this is false the caller DEFERS (bounded) instead of
+        // inventing a phantom power request nothing could ever satisfy.
+        internal static bool CanDeliverIndependentFieldArmy(WorldSnapshot snap, CapabilityInventory inv)
+        {
+            if (inv != null && inv.RaidAvailableFieldPower > AiConfigV2.allocatorSliceEpsilon)
+                return true;
+            if (inv != null && inv.ReusableEmptyArmies != null && inv.ReusableEmptyArmies.Count > 0)
+                return true;
+            foreach (Game.Cards.CardData c in snap?.Self?.Hand
+                ?? (IReadOnlyList<Game.Cards.CardData>)System.Array.Empty<Game.Cards.CardData>())
+            {
+                Game.Cards.CardType? t = c?.Definition?.cardType;
+                if (t == Game.Cards.CardType.Unit || t == Game.Cards.CardType.Hero)
+                    return true;
+            }
+            return false;
+        }
+
+        // SubKind is (int)RaidMissionPhase.Assault, NOT (int)AggressionObjectiveKind.Raid — this key
+        // gates cooldowns for a fresh/incumbent ASSAULT attempt on this target army, and must match
+        // ResourceAllocator.cs's own StableMissionKey construction for a Raid Assault mission exactly
+        // (both currently evaluate to 0, but that is coincidental; spelled out explicitly here so the
+        // two never silently diverge if either enum gains members).
         internal static StableMissionKey RaidKey(AggressionObjective o) =>
-            new StableMissionKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, o.TargetArmyId, 0, 0);
+            new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, o.TargetArmyId, 0, 0);
 
         internal static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId) =>
             AiV2Util.KnownDefenders(snap, targetArmyId);

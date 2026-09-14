@@ -3,10 +3,10 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    // ARCH-02 §29 — the raid combat-feasibility check, split out of RaidAssemblyPlanner. Wraps the
+    // ARCH-02 §29 — the raid combat-feasibility check, split out of GroundCombatAssemblyPlanner. Wraps the
     // shared WorthIt estimator: "does this attacker roster cover every defender AND clear the win
     // bar". Pure read; no plan construction, no objective value. Bodies verbatim.
-    internal static class RaidCombatFeasibility
+    internal static class GroundCombatFeasibility
     {
         internal static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win, out bool cover) =>

@@ -209,7 +209,7 @@ namespace Game.Combat
         // through from now on (2026-08-22, project owner's own explicit call: "все сравнения армий
         // на карте должны происходить только через worth it для всех задач и методов") — Оборона's
         // Active posture sizes its own composition against this directly (AiConfig.
-        // defenceActiveWinChance, a 60/40 target), and RaidWeakerArmyTask.IsReady routes its own
+        // economyEscortMinWinChance, a 60/40 target), and RaidWeakerArmyTask.IsReady routes its own
         // two-sided edge check here too instead of keeping a second copy of the same math.
         //
         // Monte Carlo (2026-08-22, project owner's own call): MonteCarloTrials simulated exchanges

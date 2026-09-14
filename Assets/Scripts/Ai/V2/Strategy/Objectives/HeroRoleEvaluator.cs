@@ -86,7 +86,7 @@ namespace Game.Ai.V2
 
         // Deterministic "who should lead the field force" ordering — most-preferred first.
         // Role preference, then combat score, then CommandRating, then Fate, then a stable
-        // name tiebreak (ordinal) matching RaidAssemblyPlanner's existing donor-pick convention.
+        // name tiebreak (ordinal) matching GroundCombatAssemblyPlanner's existing donor-pick convention.
         public static int CompareForFieldCommand(UnitData a, UnitData b)
         {
             if (ReferenceEquals(a, b)) return 0;

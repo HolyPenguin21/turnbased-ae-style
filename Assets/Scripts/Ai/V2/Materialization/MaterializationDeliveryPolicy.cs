@@ -8,7 +8,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // ARCH-02 §16/§47 — the ONE owner of "can this materialization / army operationally satisfy a
-    // capability demand" for FieldCombatPower / GarrisonCombatPower / Hero / ScoutCapability.
+    // capability demand" for FieldCombatPower / Hero / ScoutCapability.
     // Before ARCH-02 the same switch lived three times: MaterializationCandidateBuilder
     // (CanDeliverDemandOperationally, plan-level, unclassified => deliverable), StrategicManager
     // (CanDeliverResidualOperationally, plan-level, unclassified => NOT deliverable) and
@@ -77,11 +77,6 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.ScoutCapability:
                     return DeliveryAssessment.Ok;
-                case CapabilityKind.GarrisonCombatPower:
-                    return p.Deploy.Kind == DeploymentKind.Garrison
-                        ? DeliveryAssessment.Ok
-                        : DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
-                            p.Deploy.Kind.ToString());
                 case CapabilityKind.Hero:
                     // Economy does not need a combat-ready hero stack: its canonical builder shape
                     // is AiArmyRoles.IsHeroLed, so a legal field placement may create a solo hero.
@@ -157,6 +152,28 @@ namespace Game.Ai.V2
                     if (p.Deploy.Kind == DeploymentKind.Garrison)
                         return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                             p.Deploy.Kind.ToString());
+                    // AGG-RAID §7 — an IndependentFieldArmy demand (Raid reinforcement) must
+                    // arrive as its OWN mobile container. FORBIDDEN: attaching onto the consumer's
+                    // own (remote) primary army, any garrison deposit, and any actor already
+                    // committed to another mission. ALLOWED: a free ready field army, a reusable
+                    // empty shell, a brand-new army — i.e. an independent mobile support actor.
+                    if (demand.DeliveryShape == CapabilityDeliveryShape.IndependentFieldArmy)
+                    {
+                        if (p.Deploy.Kind == DeploymentKind.ExistingArmy && p.Deploy.Army != null)
+                        {
+                            if (snapshot?.Self?.Armies != null)
+                            {
+                                ArmySnapshot host = snapshot.Self.Armies
+                                    .FirstOrDefault(a => a != null && a.ArmyId == p.Deploy.Army.Id);
+                                if (host == null || !host.IsStructuralRaidActor)
+                                    return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                                        $"independent_support_requires_mobile_field_army#{p.Deploy.Army.Id}");
+                            }
+                            if (IsConsumerPrimaryOrCommitted(player, demand, p.Deploy.Army.Id))
+                                return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                                    $"independent_support_may_not_reuse_committed_actor#{p.Deploy.Army.Id}");
+                        }
+                    }
                     CardDefinition d = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                     bool hero = d != null && d.cardType == CardType.Hero;
                     if (!hero)
@@ -183,6 +200,24 @@ namespace Game.Ai.V2
                 : IsArmyOperationalForCapability(army, demand.Capability, demand.RequiredTraits);
         }
 
+        // AGG-RAID §7 — is this army the demand's own consumer primary, or an actor some other
+        // durable mission already owns? Either disqualifies it as an INDEPENDENT support actor.
+        private static bool IsConsumerPrimaryOrCommitted(PlayerSetupData player, AxisDemand demand, int armyId)
+        {
+            if (player == null || armyId == 0)
+                return false;
+            var intents = MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            foreach (MissionIntent i in intents)
+            {
+                if (i.PreferredMoverArmyId == armyId)
+                    return true;
+                if (i.Raid != null && (i.Raid.PrimaryArmyId == armyId || i.Raid.SupportArmyId == armyId))
+                    return true;
+            }
+            return false;
+        }
+
         internal static bool IsEconomyHeroDemand(AxisDemand demand)
             => demand != null
                 && demand.RequestingAxis == DesireAxis.Economy
@@ -200,8 +235,6 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.FieldCombatPower:
                     return army.IsStructuralRaidActor;
-                case CapabilityKind.GarrisonCombatPower:
-                    return army.IsGarrison;
                 case CapabilityKind.Hero:
                     return army.HasHero && army.IsStructuralRaidActor;
                 case CapabilityKind.ScoutCapability:

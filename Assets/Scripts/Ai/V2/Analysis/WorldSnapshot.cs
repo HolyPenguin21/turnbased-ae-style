@@ -242,7 +242,7 @@ namespace Game.Ai.V2
         // target/intent/route context; they never re-derive the structural actor shape.
         public bool IsMobileEconomyBuilder;
         // ARCH-02 §29/§59 — frozen at scan time from the live ArmyData so downstream layers
-        // (RaidActorEligibility, CombatOpportunityAnalyzer, CapabilityInventory) read one snapshot
+        // (GroundCombatActorEligibility, CombatOpportunityAnalyzer, CapabilityInventory) read one snapshot
         // fact instead of re-deriving it from live ArmyRegistry state. Own armies only: a raid
         // mover is always our own. Structural = not prison/air/airfield/garrison/soloRecce/
         // solo-hero-awaiting-escort and has at least one member.

@@ -576,7 +576,8 @@ namespace Game.Ai.V2
             // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, then apply the
             //     centralized execution scope. In ReconOnly this cleanly retires stale Raid intents
             //     before ActorCommitments or the allocator can protect them.
-            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
+            List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(
+                player, snapshot, reconObjectives, aggressionObjectives);
             activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
@@ -622,7 +623,7 @@ namespace Game.Ai.V2
                 // into ReturnBuilder (or resume a safe scout). Re-read the same continuity owner
                 // before mission construction so stale pre-build actor claims cannot execute.
                 activeIntents = MissionContinuityLayer.ResolveActive(
-                    player, snapshot, reconObjectives);
+                    player, snapshot, reconObjectives, aggressionObjectives);
                 activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                 actorCommitments = ActorCommitments.FromIntents(
                     activeIntents, snapshot, reconObjectives);
@@ -737,8 +738,17 @@ namespace Game.Ai.V2
                 {
                     StrategicInvalidation pending =
                         StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
-                    operationalReasons = pending.Reasons
-                        & DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
+                    // AGG-RAID §12 — the OPERATIONAL mask is built from EVERY enabled mission axis,
+                    // not only Recon. Without Aggression here, destroying a neutral published a
+                    // Contact invalidation that nothing consumed, so the bounded loop never got a
+                    // same-turn chance to refresh the objective list, complete the old target,
+                    // select the next one, or start a Return mission. Defence is deliberately out
+                    // of scope for this task (no V2 Defence mission exists yet).
+                    StrategicInvalidationReason operationalMask =
+                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
+                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                        operationalMask |= DesireAxes.InvalidationMaskFor(DesireAxis.Aggression);
+                    operationalReasons = pending.Reasons & operationalMask;
                     strategicReasons = StrategicInvalidationReason.None;
                     dirtyStrategicAxes = new HashSet<DesireAxis>();
                     foreach (DesireAxis axis in new[]
@@ -798,7 +808,7 @@ namespace Game.Ai.V2
                             snapshot, assessment.Breakdown.OpportunityReport)
                         : new List<AggressionObjective>();
                     activeIntents = MissionContinuityLayer.ResolveActive(
-                        player, snapshot, reconObjectives);
+                        player, snapshot, reconObjectives, aggressionObjectives);
                     activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
@@ -835,7 +845,7 @@ namespace Game.Ai.V2
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         activeIntents = MissionContinuityLayer.ResolveActive(
-                            player, snapshot, reconObjectives);
+                            player, snapshot, reconObjectives, aggressionObjectives);
                         activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                         actorCommitments = ActorCommitments.FromIntents(
                             activeIntents, snapshot, reconObjectives);
@@ -888,13 +898,19 @@ namespace Game.Ai.V2
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                     }
+                    // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
+                    // settled snapshot before re-enumerating objectives, so a neutral destroyed
+                    // during the previous step is gone from the frozen report in the same turn.
+                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                     aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                         ? AggressionObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport)
                         : new List<AggressionObjective>();
                     if (!ownershipFreshAfterPhaseA)
                     {
-                        activeIntents = MissionContinuityLayer.ResolveActive(player, snapshot, reconObjectives);
+                        activeIntents = MissionContinuityLayer.ResolveActive(
+                            player, snapshot, reconObjectives, aggressionObjectives);
                         activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                         actorCommitments = ActorCommitments.FromIntents(
                             activeIntents, snapshot, reconObjectives);
@@ -1554,6 +1570,10 @@ namespace Game.Ai.V2
             // earlier this same settled pass is reflected without Missions itself triggering
             // Strategy/Desire recomputation.
             StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
+            // AGG-RAID §3 — the same discipline for the Aggression lane: refresh only the
+            // operational opportunity facts from the current snapshot, never the radar.
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                StrategyLayer.RefreshAggressionLanePressures(snapshot, breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives);
             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))

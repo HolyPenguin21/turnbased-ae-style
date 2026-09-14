@@ -321,8 +321,9 @@ namespace Game.Ai.V2
                 : ProductionSupportAdjustment(bd, plan, snap, productionDemandFloor);
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource);
 
-            bd.RedundancyPenalty = -(GarrisonSaturationPenalty(plan, demand, snap)
-                                     + ScoutOversupplyPenalty(role, inv));
+            // AGG-RAID Defence cleanup — GarrisonSaturationPenalty only ever applied to a
+            // GarrisonCombatPower demand, which no longer exists.
+            bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             // Phase A form of AlternativeUseValue: the scarcity opportunity cost of spending this
             // exact card body (a scarce hero on a non-hero demand, a unique stealth item on a
             // non-stealth demand) — the general "best other role" cost applies in Phase B.
@@ -707,8 +708,7 @@ namespace Game.Ai.V2
         private static float ForceGrowthValue(MaterializationPlan plan, CapabilityKind cap,
             BaselineForceReadiness baseline)
         {
-            if (cap != CapabilityKind.FieldCombatPower && cap != CapabilityKind.GarrisonCombatPower
-                && cap != CapabilityKind.Hero)
+            if (cap != CapabilityKind.FieldCombatPower && cap != CapabilityKind.Hero)
                 return 0f;
             float marginal = SurplusCombatReadinessUtility(plan);
             if (marginal <= 0f)
@@ -730,7 +730,6 @@ namespace Game.Ai.V2
                 case CapabilityKind.Hero:
                     return (inv.AvailableHeroes + inv.CommittedHeroes) <= 0 ? AiConfigV2.capabilityGapValue : 0f;
                 case CapabilityKind.FieldCombatPower:
-                case CapabilityKind.GarrisonCombatPower:
                     return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue;
                 default:
                     return 0f;
@@ -1130,7 +1129,7 @@ namespace Game.Ai.V2
                 float newPower = AiPower.EffectiveArmyPower(before);
                 marginal = Mathf.Max(incoming.BasePower * 0.25f, newPower - oldPower);
             }
-            return Mathf.Clamp(marginal / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate), 0f, 2f);
+            return Mathf.Clamp(marginal / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate), 0f, 2f);
         }
 
         internal static float EquipmentUpgradeUtility(MaterializationPlan p, WorldSnapshot snap = null,
@@ -1243,7 +1242,7 @@ namespace Game.Ai.V2
                 predicted.Abilities == null || !predicted.Abilities.Contains(a)) ?? 0;
             tactical += (addedAbilities - lostAbilities) * 0.15f;
 
-            return Mathf.Clamp(combatDelta / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate) + tactical,
+            return Mathf.Clamp(combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate) + tactical,
                 -1.5f, 1.5f);
         }
 
@@ -1289,7 +1288,7 @@ namespace Game.Ai.V2
             foreach (IntendedRole role in after)
                 if (!before.Contains(role))
                     delta += AiConfigV2.stratTraitMatchBonus;
-            return delta / Mathf.Max(1f, AiConfigV2.defencePerBodyPowerEstimate);
+            return delta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
         }
 
         internal static float SurplusScarcity(CapabilityInventory inv, bool recce, bool hero)
@@ -1305,45 +1304,6 @@ namespace Game.Ai.V2
             return AiConfigV2.surplusScarcityLow;
         }
 
-        internal static float GarrisonSaturationPenalty(MaterializationPlan p, AxisDemand demand, WorldSnapshot snap)
-        {
-            if (demand == null || demand.Capability != CapabilityKind.GarrisonCombatPower)
-                return 0f;
-            ArmyData dest = p?.Deploy.Army;
-            if (dest == null)
-                return 0f;
-
-            int members = dest.Members?.Count ?? 0;
-            float penalty = AiConfigV2.garrisonCrowdingPenaltyPerMember * members;
-
-            float destPower = 0f;
-            if (snap?.Self?.Armies != null)
-                foreach (ArmySnapshot a in snap.Self.Armies)
-                    if (a != null && a.ArmyId == dest.Id) { destPower = a.EffectiveArmyPower; break; }
-            if (demand.RequiredCapabilityPower > 0f && destPower >= demand.RequiredCapabilityPower)
-                penalty += AiConfigV2.garrisonSaturatedPenalty;
-
-            if (PrimaryTypeDominates(p, dest))
-                penalty += AiConfigV2.garrisonDuplicateTypePenalty;
-
-            return penalty;
-        }
-
-        private static bool PrimaryTypeDominates(MaterializationPlan p, ArmyData dest)
-        {
-            CardDefinition def = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
-            if (def?.unitTypeTags == null || def.unitTypeTags.Count == 0 || dest?.Members == null)
-                return false;
-            UnitTypeTag primary = def.unitTypeTags[0];
-            int nonHero = 0, sharing = 0;
-            foreach (UnitData m in dest.Members)
-            {
-                if (m == null || m.IsHero) continue;
-                nonHero++;
-                if (m.TypeTags != null && m.TypeTags.Contains(primary)) sharing++;
-            }
-            return nonHero > 0 && sharing * 2 >= nonHero;
-        }
 
         // Phase-A opportunity cost of spending this exact card body off its best use.
         internal static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)

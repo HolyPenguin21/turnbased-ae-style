@@ -33,6 +33,10 @@ namespace Game.Ai.V2
             float activationAp = AiConfigV2.raidNotionalActivationAp;
             bool moverKnown = false;
             int eta = Mathf.Max(1, target.EstimatedEta);
+            // AGG-RAID §8 — a Reinforcement/Return leg travels to its own destination (the
+            // rendezvous hex / the chosen base), not to the neutral target's last-known hex.
+            HexCoord destination = target.Phase == RaidMissionPhase.Assault
+                ? target.LastKnownHex : target.DestinationHex;
             if (snap?.Self?.Armies != null)
             {
                 var ready = snap.Self.Armies
@@ -43,7 +47,7 @@ namespace Game.Ai.V2
                 {
                     moverKnown = true;
                     activationAp = ready.Min(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost);
-                    int nearest = ready.Min(a => HexGridMath.Distance(a.Hex, target.LastKnownHex));
+                    int nearest = ready.Min(a => HexGridMath.Distance(a.Hex, destination));
                     int budget = ready.Max(a => Mathf.Max(1, a.MaxMovement));
                     eta = Mathf.Max(1, CeilDiv(nearest, budget));
                 }

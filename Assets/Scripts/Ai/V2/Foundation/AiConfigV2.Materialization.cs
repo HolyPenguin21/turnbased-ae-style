@@ -327,8 +327,9 @@ namespace Game.Ai.V2
         // --- BaselineForceReadiness (spec §4) — radar-DEMAND-INDEPENDENT standing-force signal.
         //     Need in [0..1]: high when the fielded force / combat-actor count / capability coverage
         //     is thin for the game stage, economy and known enemy strength. Consumed by
-        //     ForceGrowthValue AND by DemandLayer.BaselineForceReadinessDemands (one low-priority
-        //     FieldCombatPower demand so an ordinary unit gets Phase-A pull, not only surplus).
+        //     ForceGrowthValue. (The AGG-RAID Defence cleanup removed the separate
+        //     DemandLayer.BaselineForceReadinessDemands pull that was charged to the Defence axis;
+        //     ForceGrowthValue is now the single consumer of Need.)
         public const int baselineReadinessStageRampLo = 2;    // turn at/under which "stage" is 0 (very little standing force expected)
         public const int baselineReadinessStageRampHi = 18;   // turn at/over which "stage" is 1 (a full standing force is expected)
         public const float baselineReadinessBaseTargetPower = 12f;   // minimum expected fielded power regardless of enemy
@@ -340,9 +341,6 @@ namespace Game.Ai.V2
         public const float baselineReadinessCoverGapWeight = 0.20f;
         public const float baselineReadinessSecureDamp = 0.55f;      // a fully secure economy multiplies Need by this
         public const float baselineReadinessGrowthFloor = 0.40f;     // ForceGrowthValue keeps at least this fraction of its marginal value at Need 0
-        public const float baselineReadinessDemandMinNeed = 0.45f;   // below this Need, DemandLayer raises no baseline demand
-        public const float baselineReadinessDemandValue = 22f;       // AxisDemand.Value ceiling for the baseline demand (scaled by Need) — deliberately low so real threats/raids outrank it
-        public const float baselineReadinessSatisfiedPower = 14f;    // free raid-eligible field power at/above this + enough actors -> no baseline demand
 
         // --- P0.1 non-combat cards (Aviation / Base / Facility / standalone Equipment) scored on
         //     the SAME breakdown / NetScore as Unit/Hero — no more NonCombatCardPlayer's fixed
