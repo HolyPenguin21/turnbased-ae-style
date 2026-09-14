@@ -204,7 +204,7 @@ namespace Game.Ai.V2
         // durable mission already owns? Either disqualifies it as an INDEPENDENT support actor.
         private static bool IsConsumerPrimaryOrCommitted(PlayerSetupData player, AxisDemand demand, int armyId)
         {
-            if (player == null || armyId == 0)
+            if (player == null)
                 return false;
             var intents = MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();

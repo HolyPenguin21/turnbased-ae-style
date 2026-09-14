@@ -163,7 +163,7 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds)
         {
             var ids = new List<int>();
-            if (snap?.Self?.Armies == null || primaryArmyId == 0)
+            if (snap?.Self?.Armies == null)
                 return ids;
             ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
             if (primary == null)

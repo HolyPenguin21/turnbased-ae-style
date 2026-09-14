@@ -23,18 +23,29 @@ namespace Game.Ai.V2
         public readonly int SubKind;
         public readonly int ObjectiveId;
         public readonly int Q, R;
+        // Default NeutralArmy so every non-Raid key (Economy, Scout) is unaffected by this field.
+        public readonly RaidTargetKind TargetKind;
 
-        public MissionIntentKey(MissionKind kind, int subKind, int objectiveId, int q, int r)
+        public MissionIntentKey(MissionKind kind, int subKind, int objectiveId, int q, int r,
+            RaidTargetKind targetKind = RaidTargetKind.NeutralArmy)
         {
-            Kind = kind; SubKind = subKind; ObjectiveId = objectiveId; Q = q; R = r;
+            Kind = kind; SubKind = subKind; ObjectiveId = objectiveId; Q = q; R = r; TargetKind = targetKind;
         }
+
+        // Single owner of Raid key encoding — no other class should hand-assemble a Raid
+        // MissionIntentKey. Distinguishes a neutral army #0 from an event guard at (0,0) via
+        // TargetKind, since both would otherwise collapse to the same numeric identity.
+        public static MissionIntentKey ForRaid(RaidTargetRef target) =>
+            target.Kind == RaidTargetKind.NeutralArmy
+                ? new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, target.ArmyId, 0, 0, RaidTargetKind.NeutralArmy)
+                : new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, 0, target.Hex.Q, target.Hex.R, RaidTargetKind.EventGuard);
 
         public static MissionIntentKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
                 return ForScoutTarget(t);
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
-                return new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, rt.TargetArmyId, 0, 0);
+                return ForRaid(rt.Target);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new MissionIntentKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
@@ -56,7 +67,7 @@ namespace Game.Ai.V2
         {
             RaidIntent ri = intent?.Raid;
             if (ri != null)
-                return new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, ri.TargetArmyId, 0, 0);
+                return ForRaid(ri.Target);
             EconomyIntent ei = intent?.Economy;
             if (ei != null)
                 return new MissionIntentKey(MissionKind.Economy, (int)ei.Kind,
@@ -74,9 +85,10 @@ namespace Game.Ai.V2
         }
 
         public bool Equals(MissionIntentKey o) =>
-            Kind == o.Kind && SubKind == o.SubKind && ObjectiveId == o.ObjectiveId && Q == o.Q && R == o.R;
+            Kind == o.Kind && SubKind == o.SubKind && ObjectiveId == o.ObjectiveId && Q == o.Q && R == o.R
+            && TargetKind == o.TargetKind;
         public override bool Equals(object obj) => obj is MissionIntentKey o && Equals(o);
-        public override int GetHashCode() => ((int)Kind, SubKind, ObjectiveId, Q, R).GetHashCode();
+        public override int GetHashCode() => ((int)Kind, SubKind, ObjectiveId, Q, R, (int)TargetKind).GetHashCode();
 
         public int CompareTo(MissionIntentKey o)
         {
@@ -84,7 +96,8 @@ namespace Game.Ai.V2
             c = SubKind.CompareTo(o.SubKind); if (c != 0) return c;
             c = ObjectiveId.CompareTo(o.ObjectiveId); if (c != 0) return c;
             c = Q.CompareTo(o.Q); if (c != 0) return c;
-            return R.CompareTo(o.R);
+            c = R.CompareTo(o.R); if (c != 0) return c;
+            return ((int)TargetKind).CompareTo((int)o.TargetKind);
         }
 
         public override string ToString()
@@ -98,7 +111,9 @@ namespace Game.Ai.V2
                 return $"Intent(Explore {Q},{R})";
             }
             if (Kind == MissionKind.Raid)
-                return $"Intent(Raid #{ObjectiveId})";
+                return TargetKind == RaidTargetKind.EventGuard
+                    ? $"Intent(Raid Guard@{Q},{R})"
+                    : $"Intent(Raid Army#{ObjectiveId})";
             if (Kind == MissionKind.Economy)
                 return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
             return $"Intent({Kind})";
@@ -119,28 +134,43 @@ namespace Game.Ai.V2
 
     public sealed class RaidIntent
     {
-        public int TargetArmyId;
+        // THE target identity. Single source of truth for both physical neutral armies (ArmyId,
+        // which may legitimately be 0) and event guards (stable hex, no ArmyId until spawned).
+        // TargetArmyId/TargetHex below are read-only projections for existing non-Raid/logging
+        // readers — never a second settable copy of the target.
+        public RaidTargetRef Target;
         public HexCoord LastKnownHex;
         public bool TargetIsNeutral;
         public bool OperationStarted;
 
+        public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
+        public HexCoord? TargetHex => Target.Kind == RaidTargetKind.EventGuard ? Target.Hex : (HexCoord?)null;
+
         // AGG-RAID §4/§5 — the execution phase of this one Raid operation (Assault ->
-        // Reinforcement -> Assault -> ... -> Return). NOT an objective type.
+        // Reinforcement -> SupportReturn -> Assault -> ... -> Return). NOT an objective type.
         public RaidMissionPhase Phase = RaidMissionPhase.Assault;
 
         // THE primary raiding army. This is the SINGLE storage for that concept: MissionIntent
         // .PreferredMoverArmyId is a pass-through projection onto this field for a Raid intent
         // (see MissionIntent below), so generic continuity/commitment code keeps working and there
-        // is never a second, divergent copy. 0 == no primary bound yet.
-        public int PrimaryArmyId;
+        // is never a second, divergent copy. null == no primary bound yet (a real army's Id may
+        // legitimately be 0, so 0 is NOT used as "unbound" — see AiV2 raid-target-unification).
+        public int? PrimaryArmyId;
 
-        // The separate mobile support army delivering reinforcement to the primary. Non-zero ONLY
-        // during RaidMissionPhase.Reinforcement; released (without destroying the Raid) if lost.
-        public int SupportArmyId;
+        // The separate mobile support army delivering reinforcement to the primary, and later the
+        // one returning home after a full/full swap (RaidMissionPhase.SupportReturn). HasValue only
+        // during Reinforcement/SupportReturn; released (without destroying the Raid) if lost.
+        public int? SupportArmyId;
 
         // The base the primary walks back to in RaidMissionPhase.Return. Fixed after the first
         // successful Return step; re-selected only if that base is lost or becomes unreachable.
         public HexCoord? ReturnHex;
+
+        // The base the SUPPORT walks back to in RaidMissionPhase.SupportReturn, chosen the same way
+        // (MissionContinuityLayer.SelectReturnBase) and fixed the same way as ReturnHex above — a
+        // separate field because primary and support can be mid-transit to different homes at once
+        // (primary already has ReturnHex set from a previous campaign leg).
+        public HexCoord? SupportReturnHex;
 
         // Turn on which the reinforcement demand was raised, so exactly ONE support intent is
         // requested per weakened primary (no duplicate convoys).
@@ -194,12 +224,12 @@ namespace Game.Ai.V2
             {
                 RaidIntent r = Raid;
                 if (r == null) return _preferredMoverArmyId;
-                return r.PrimaryArmyId != 0 ? r.PrimaryArmyId : (int?)null;
+                return r.PrimaryArmyId;
             }
             set
             {
                 RaidIntent r = Raid;
-                if (r != null) r.PrimaryArmyId = value ?? 0;
+                if (r != null) r.PrimaryArmyId = value;
                 else _preferredMoverArmyId = value;
             }
         }

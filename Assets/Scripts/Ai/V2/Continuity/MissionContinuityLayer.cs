@@ -55,7 +55,7 @@ namespace Game.Ai.V2
         internal static MissionIntent BeginEconomyDelivery(PlayerSetupData player,
             AxisDemand demand, int builderArmyId, int turn)
         {
-            if (player == null || demand?.TargetHex == null || builderArmyId == 0
+            if (player == null || demand?.TargetHex == null
                 || demand.RequestingAxis != DesireAxis.Economy
                 || demand.Capability != CapabilityKind.Hero)
                 return null;
@@ -251,11 +251,11 @@ namespace Game.Ai.V2
                     scoutFoci.Add(i.Scout.FocusHex);
 
             // AGG-RAID §5 — neutral targets already owned by a durable Raid, so a re-orientation
-            // never lands two Raid operations on the same neutral army.
-            var activeRaidTargets = new HashSet<int>();
+            // never lands two Raid operations on the same neutral target (either kind).
+            var activeRaidTargets = new HashSet<RaidTargetRef>();
             foreach (MissionIntent i in state.All)
-                if (i?.Raid != null && i.Raid.TargetArmyId != 0)
-                    activeRaidTargets.Add(i.Raid.TargetArmyId);
+                if (i?.Raid != null && i.Raid.Target.HasValue)
+                    activeRaidTargets.Add(i.Raid.Target);
 
             foreach (MissionIntent intent in state.All.ToList())
             {
@@ -402,36 +402,51 @@ namespace Game.Ai.V2
                     // AdvanceRaidPhase runs later in this same pass, and its own analogous re-check
                     // (`ri.Phase == RaidMissionPhase.Reinforcement && ...`) would then silently no-op
                     // because Phase is already Assault, letting a still-too-weak primary be proposed
-                    // for an ordinary Assault this step.
-                    if (ri.SupportArmyId != 0 && !RaidSupportActorAlive(snap, ri.SupportArmyId))
+                    // for an ordinary Assault this step. A support in SupportReturn is walking home
+                    // after a successful swap, not carrying reinforcement — its loss there is handled
+                    // separately, below, without reverting the phase.
+                    if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.Reinforcement
+                        && !RaidSupportActorAlive(snap, ri.SupportArmyId.Value))
                     {
-                        int lostSupportId = ri.SupportArmyId;
-                        ri.SupportArmyId = 0;
+                        int lostSupportId = ri.SupportArmyId.Value;
+                        ri.SupportArmyId = null;
                         ri.ReinforcementRequestedTurn = -1;
-                        bool nowClears = ri.Phase == RaidMissionPhase.Reinforcement
-                            && PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.TargetArmyId);
+                        bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
                         if (nowClears)
                             ri.Phase = RaidMissionPhase.Assault;
                         AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{lostSupportId} lost; "
                             + $"released support claim, primary raid kept, phase={ri.Phase} "
                             + $"(primaryNowClears={(nowClears ? 1 : 0)})");
                     }
+                    // §SupportReturn — the displaced support died on the way home. Release its claim
+                    // and continue the Raid from the primary's own state alone; the primary was never
+                    // touched by this leg, so no re-check against the target is needed here.
+                    else if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.SupportReturn
+                        && !RaidSupportActorAlive(snap, ri.SupportArmyId.Value))
+                    {
+                        int lostSupportId = ri.SupportArmyId.Value;
+                        ri.SupportArmyId = null;
+                        AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{lostSupportId} lost "
+                            + "en route home; released claim, primary raid continues");
+                    }
 
                     // §5 actor ownership — a LOST PRIMARY ends the operation. Any support is
                     // released with it (ActorCommitments stops claiming the moment the intent dies).
-                    if (ri.OperationStarted && ri.PrimaryArmyId != 0
-                        && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId))
+                    if (ri.OperationStarted && ri.PrimaryArmyId.HasValue
+                        && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value))
                     {
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — primary "
-                            + $"#{ri.PrimaryArmyId} is no longer a usable ground combat army "
-                            + $"(support #{ri.SupportArmyId} released)");
+                            + $"#{ri.PrimaryArmyId.Value} is no longer a usable ground combat army "
+                            + $"(support #{(ri.SupportArmyId.HasValue ? ri.SupportArmyId.Value.ToString() : "none")} released)");
                         continue;
                     }
 
-                    // §5 phase machine. Return never consults target validity (its objective is a
-                    // base, not an army); every other phase keeps the existing fog!=death rule.
-                    if (ri.Phase != RaidMissionPhase.Return
+                    // §5/§SupportReturn phase machine. Return and SupportReturn never consult target
+                    // validity (their objective is a base, not the Raid target); every other phase
+                    // keeps the existing fog!=death rule.
+                    bool isReturnLeg = ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn;
+                    if (!isReturnLeg
                         && !AdvanceRaidPhase(player, snap, intent, ri, aggressionObjectives,
                             activeRaidTargets, rekeys))
                     {
@@ -439,7 +454,7 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    if (ri.Phase != RaidMissionPhase.Return
+                    if (!isReturnLeg
                         && !RaidObjectiveEvaluator.IsIntentStillValid(snap, ri))
                     {
                         dead.Add(intent.IntentKey);
@@ -462,6 +477,33 @@ namespace Game.Ai.V2
                             + $"({replacement.Value.Q},{replacement.Value.R})");
                         ri.ReturnHex = replacement;
                         intent.StallTurns = 0;
+                    }
+                    // §SupportReturn — same controlled-retarget rule for the support's own home.
+                    // Losing the support (already handled above) always releases the claim before
+                    // this point can even run against a stale actor.
+                    if (ri.Phase == RaidMissionPhase.SupportReturn && ri.SupportArmyId.HasValue
+                        && !ReturnBaseStillValid(snap, player, ri.SupportArmyId, ri.SupportReturnHex))
+                    {
+                        HexCoord? replacement = SelectReturnBase(snap, player, ri.SupportArmyId);
+                        if (replacement == null)
+                        {
+                            // §SupportReturn — no own base to send it to must never wedge the Raid:
+                            // release the support and let the primary carry on being re-evaluated.
+                            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{ri.SupportArmyId.Value} "
+                                + "has no reachable home base — released, primary continues "
+                                + "reason=no_replacement_base_for_support_return");
+                            ri.SupportArmyId = null;
+                            ri.SupportReturnHex = null;
+                            bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
+                            ri.Phase = nowClears ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
+                        }
+                        else
+                        {
+                            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return base "
+                                + $"retargeted to ({replacement.Value.Q},{replacement.Value.R})");
+                            ri.SupportReturnHex = replacement;
+                            intent.StallTurns = 0;
+                        }
                     }
                     if (intent.Status == IntentStatus.Suspended
                         && (intent.Suspended == SuspendReason.PoolExhausted
@@ -749,20 +791,21 @@ namespace Game.Ai.V2
         private static bool AdvanceRaidPhase(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, RaidIntent ri,
             IReadOnlyList<AggressionObjective> aggressionObjectives,
-            HashSet<int> activeRaidTargets,
+            HashSet<RaidTargetRef> activeRaidTargets,
             List<(MissionIntentKey Old, MissionIntent Intent)> rekeys)
         {
             // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
-            // positive live read (ours / another player's roster / honest map memory).
-            bool targetGone = ri.TargetArmyId != 0
-                && (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.TargetArmyId)
-                    || RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.TargetArmyId));
+            // positive live read (ours / another player's roster / honest map memory / event-guard
+            // Consumed state, per target kind).
+            bool targetGone = ri.Target.HasValue
+                && (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.Target)
+                    || RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target));
             if (!targetGone)
             {
                 // A Reinforcement whose primary has since become strong enough again returns to
                 // Assault on its own; Provisioning re-checks this after every roster transfer too.
-                if (ri.Phase == RaidMissionPhase.Reinforcement && ri.SupportArmyId == 0
-                    && PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.TargetArmyId))
+                if (ri.Phase == RaidMissionPhase.Reinforcement && !ri.SupportArmyId.HasValue
+                    && PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
                 {
                     ri.Phase = RaidMissionPhase.Assault;
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Reinforcement -> Assault "
@@ -773,8 +816,8 @@ namespace Game.Ai.V2
                 // owner of durable Phase, so a bound primary that no longer clears its CURRENT
                 // (possibly already re-oriented) target is moved to Reinforcement here, before
                 // Demand/Missions run this same pass.
-                else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId != 0
-                    && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.TargetArmyId))
+                else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId.HasValue
+                    && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
                 {
                     ri.Phase = RaidMissionPhase.Reinforcement;
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Assault -> Reinforcement "
@@ -785,11 +828,11 @@ namespace Game.Ai.V2
 
             AggressionObjective next = (aggressionObjectives
                     ?? (IReadOnlyList<AggressionObjective>)System.Array.Empty<AggressionObjective>())
-                .Where(o => o != null && o.TargetIsNeutral && o.TargetArmyId != 0
-                    && o.TargetArmyId != ri.TargetArmyId
-                    && !activeRaidTargets.Contains(o.TargetArmyId))
+                .Where(o => o != null && o.TargetIsNeutral && o.Target.HasValue
+                    && !o.Target.Equals(ri.Target)
+                    && !activeRaidTargets.Contains(o.Target))
                 .OrderByDescending(o => o.BaseValue)
-                .ThenBy(o => o.TargetArmyId)
+                .ThenBy(o => o.Target.DiagnosticLabel)
                 .FirstOrDefault();
 
             if (next == null)
@@ -803,7 +846,7 @@ namespace Game.Ai.V2
                 }
                 ri.Phase = RaidMissionPhase.Return;
                 ri.ReturnHex = home;
-                ri.SupportArmyId = 0;
+                ri.SupportArmyId = null;
                 ri.ReinforcementRequestedTurn = -1;
                 intent.StallTurns = 0;
                 intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
@@ -813,13 +856,13 @@ namespace Game.Ai.V2
             }
 
             // Re-orient the SAME durable operation onto the next neutral (identity is the target
-            // army id, so the registry slot is re-keyed in place — accumulated AP/steps kept).
+            // itself, so the registry slot is re-keyed in place — accumulated AP/steps kept).
             MissionIntentKey oldKey = intent.IntentKey;
-            activeRaidTargets.Remove(ri.TargetArmyId);
-            ri.TargetArmyId = next.TargetArmyId;
+            activeRaidTargets.Remove(ri.Target);
+            ri.Target = next.Target;
             ri.LastKnownHex = next.LastKnownHex;
             ri.TargetIsNeutral = true;
-            activeRaidTargets.Add(ri.TargetArmyId);
+            activeRaidTargets.Add(ri.Target);
             intent.IntentKey = MissionIntentKey.For(intent);
             if (!intent.IntentKey.Equals(oldKey))
                 rekeys.Add((oldKey, intent));
@@ -828,11 +871,11 @@ namespace Game.Ai.V2
 
             // §5 — the new target is a FRESH decision: the primary is re-checked against the strict
             // start gate, never against the stale gate that admitted the previous target.
-            bool strongEnough = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.TargetArmyId);
+            bool strongEnough = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
             ri.Phase = strongEnough ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
             if (strongEnough)
             {
-                ri.SupportArmyId = 0;
+                ri.SupportArmyId = null;
                 ri.ReinforcementRequestedTurn = -1;
             }
             AiDebugLog.Write($"[AI][V2][Raid] {oldKey} target completed -> re-oriented to {intent.IntentKey} "
@@ -846,7 +889,7 @@ namespace Game.Ai.V2
         internal static void CompleteRaidReinforcement(PlayerSetupData player, int primaryArmyId,
             bool rosterVerified, string detail)
         {
-            if (player == null || primaryArmyId == 0)
+            if (player == null)
                 return;
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid != null
@@ -854,34 +897,107 @@ namespace Game.Ai.V2
             if (intent == null)
                 return;
             RaidIntent ri = intent.Raid;
-            ri.SupportArmyId = 0;
+            ri.SupportArmyId = null;
             ri.ReinforcementRequestedTurn = -1;
             ri.Phase = rosterVerified ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
             AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} reinforcement complete — "
                 + $"phase={ri.Phase} verified={(rosterVerified ? 1 : 0)} {detail}");
         }
 
+        // AGG-RAID §SupportReturn — a full/full swap displaced a primary member into support;
+        // Execution has finished the swap and now hands the support army a Return leg home while
+        // the primary stays put on the target. Called once, from the same execution step that ran
+        // ArmyActions.SwapMembers.
+        internal static void BeginRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
+            int primaryArmyId, int supportArmyId, string detail)
+        {
+            if (player == null)
+                return;
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid != null
+                && i.Raid.PrimaryArmyId == primaryArmyId);
+            if (intent == null)
+                return;
+            RaidIntent ri = intent.Raid;
+            HexCoord? home = SelectReturnBase(snap, player, supportArmyId);
+            if (home == null)
+            {
+                // No base to send it home to — never block the Raid on this. Release the support
+                // right away and let the usual reinforcement-loss path re-evaluate the primary.
+                ri.SupportArmyId = null;
+                ri.ReinforcementRequestedTurn = -1;
+                bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
+                ri.Phase = nowClears ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{supportArmyId} swapped "
+                    + "out but no reachable home base exists — released immediately "
+                    + $"phase={ri.Phase} {detail}");
+                return;
+            }
+            ri.SupportArmyId = supportArmyId;
+            ri.SupportReturnHex = home;
+            ri.Phase = RaidMissionPhase.SupportReturn;
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} full/full swap complete — support "
+                + $"#{supportArmyId} -> SupportReturn home ({home.Value.Q},{home.Value.R}); "
+                + $"primary #{primaryArmyId} holds target {ri.Target.DiagnosticLabel} {detail}");
+        }
+
+        // AGG-RAID §SupportReturn — the support army has arrived home. Release its claim, clear the
+        // leg, and re-evaluate the primary against the current target exactly like any other
+        // reinforcement-completion edge.
+        internal static void CompleteRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
+            int primaryArmyId, string detail)
+        {
+            if (player == null)
+                return;
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid != null
+                && i.Raid.PrimaryArmyId == primaryArmyId);
+            if (intent == null)
+                return;
+            RaidIntent ri = intent.Raid;
+            ri.SupportArmyId = null;
+            ri.SupportReturnHex = null;
+            bool stillHasTarget = ri.Target.HasValue
+                && !RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.Target)
+                && !RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target);
+            if (!stillHasTarget)
+            {
+                // The target finished while support was walking home — let the ordinary phase
+                // machine pick the next target (or Return) on the next ResolveActive pass; parking
+                // in Assault here is a safe default since AdvanceRaidPhase re-derives everything.
+                ri.Phase = RaidMissionPhase.Assault;
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; target already "
+                    + $"resolved while away — will re-orient next pass {detail}");
+                return;
+            }
+            bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
+            ri.Phase = nowClears ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; released — "
+                + $"phase={ri.Phase} primaryClears={(nowClears ? 1 : 0)} {detail}");
+        }
+
         // §5/§6 — the one shared "can the primary take THIS target right now" question. Fresh
         // target => fresh start gate.
         internal static bool PrimaryClearsTarget(WorldSnapshot snap, PlayerSetupData player,
-            int primaryArmyId, int targetArmyId)
+            int? primaryArmyId, RaidTargetRef target)
         {
-            if (snap == null || primaryArmyId == 0 || targetArmyId == 0)
+            if (snap == null || !primaryArmyId.HasValue || !target.HasValue)
                 return false;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                snap, AiV2Util.KnownDefenders(snap, targetArmyId), primaryArmyId,
+                snap, AiV2Util.KnownDefenders(snap, target), primaryArmyId.Value,
                 AiConfigV2.raidMinViableWinChance);
             return plan.Feasible;
         }
 
         // §11 / AGG-RAID P1#3 — is the fixed return base still ours AND still structurally
         // reachable? "Structurally" is the key word: this reads the GENUINE, any-number-of-turns
-        // route-existence fact WorldAnalysis froze onto the primary's ArmySnapshot
+        // route-existence fact WorldAnalysis froze onto the mover's ArmySnapshot
         // (SafeStepPathing.FindSafePath — the same oracle Provisioning uses live), never "reachable
         // THIS turn" — a merely-temporarily-blocked step must NOT trigger a retarget, only a base
-        // with NO safe route at all.
+        // with NO safe route at all. Shared by the primary's Return leg and the support's
+        // SupportReturn leg — `moverArmyId` is whichever of the two is walking home.
         internal static bool ReturnBaseStillValid(WorldSnapshot snap, PlayerSetupData player,
-            int primaryArmyId, HexCoord? hex)
+            int? moverArmyId, HexCoord? hex)
         {
             if (!hex.HasValue || snap?.Known?.Buildings == null)
                 return false;
@@ -890,9 +1006,11 @@ namespace Game.Ai.V2
             if (!ownedBase)
                 return false;
 
-            ArmySnapshot primary = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
-            if (primary != null && primary.IsStructuralRaidActor
-                && !primary.ReachableOwnBaseHexes.Contains(hex.Value))
+            ArmySnapshot mover = moverArmyId.HasValue
+                ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == moverArmyId.Value)
+                : null;
+            if (mover != null && mover.IsStructuralRaidActor
+                && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
                 return false;
             return true;
         }
@@ -908,7 +1026,7 @@ namespace Game.Ai.V2
         //    5. min ETA for the returning army
         //    6. starting Citadel first, then coordinates (stable tie-break only)
         // ---------------------------------------------------------------------------------------
-        internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int primaryArmyId)
+        internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int? moverArmyId)
         {
             if (snap?.Known?.Buildings == null || player == null)
                 return null;
@@ -918,8 +1036,10 @@ namespace Game.Ai.V2
             if (bases.Count == 0)
                 return null;
 
-            ArmySnapshot primary = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
-            int moveBudget = System.Math.Max(1, primary?.MaxMovement ?? AiConfigV2.etaFallbackMoveBudget);
+            ArmySnapshot mover = moverArmyId.HasValue
+                ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == moverArmyId.Value)
+                : null;
+            int moveBudget = System.Math.Max(1, mover?.MaxMovement ?? AiConfigV2.etaFallbackMoveBudget);
 
             // AGG-RAID P1#3 — a structurally reachable base always outranks an unreachable one,
             // ahead of every other tie-break. Falls back to the old distance-only ordering among
@@ -927,8 +1047,8 @@ namespace Game.Ai.V2
             // still returns the best-by-distance candidate rather than stranding the operation on a
             // signal that may only be a transient blockade.
             bool Reachable(Game.Ai.AiMapMemory.KnownBuilding b) =>
-                primary == null || !primary.IsStructuralRaidActor
-                || primary.ReachableOwnBaseHexes.Contains(b.Hex);
+                mover == null || !mover.IsStructuralRaidActor
+                || mover.ReachableOwnBaseHexes.Contains(b.Hex);
 
             return bases
                 .OrderByDescending(b => Reachable(b) ? 1 : 0)
@@ -936,8 +1056,8 @@ namespace Game.Ai.V2
                 .ThenByDescending(b => BaseHasDevelopmentInfrastructure(snap, player, b.Hex) ? 1 : 0)
                 .ThenByDescending(b => BaseOwnPowerAt(snap, b.Hex))
                 .ThenBy(b => BaseThreatSeverityAt(snap, b.Hex))
-                .ThenBy(b => primary == null ? 0
-                    : AiV2Util.CeilDiv(HexGridMath.Distance(primary.Hex, b.Hex), moveBudget))
+                .ThenBy(b => mover == null ? 0
+                    : AiV2Util.CeilDiv(HexGridMath.Distance(mover.Hex, b.Hex), moveBudget))
                 .ThenByDescending(b => b.IsStartingCitadel ? 1 : 0)
                 .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
                 .Select(b => (HexCoord?)b.Hex)
@@ -1194,7 +1314,7 @@ namespace Game.Ai.V2
                 if (raidReinforcementOutcome && intent?.Raid != null
                     && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible)
                 {
-                    intent.Raid.SupportArmyId = 0;
+                    intent.Raid.SupportArmyId = null;
                     intent.Raid.ReinforcementRequestedTurn = -1;
                     intent.Raid.Phase = RaidMissionPhase.Reinforcement;
                     intent.Status = IntentStatus.Active;
@@ -1335,13 +1455,14 @@ namespace Game.Ai.V2
                 // convoy as the new primary. A completed handoff deliberately releases the convoy;
                 // only a still-travelling selected support becomes a durable claim.
                 bool supportExecutedThisTurn = raid != null && o.HasRaidPayload
-                    && o.RaidPhase == RaidMissionPhase.Reinforcement
+                    && (o.RaidPhase == RaidMissionPhase.Reinforcement || o.RaidPhase == RaidMissionPhase.SupportReturn)
                     && o.RaidPrimaryArmyId == raid.PrimaryArmyId
-                    && o.RaidSupportArmyId != 0
-                    && o.RaidSupportArmyId == o.MoverArmyId.Value;
+                    && o.RaidSupportArmyId.HasValue
+                    && o.RaidSupportArmyId.Value == o.MoverArmyId.Value;
                 if (supportExecutedThisTurn)
                 {
-                    if (!o.RaidReinforcementHandoffAttempted && raid.SupportArmyId == 0)
+                    if (o.RaidPhase == RaidMissionPhase.Reinforcement
+                        && !o.RaidReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
                         raid.SupportArmyId = o.MoverArmyId.Value;
                     AiDebugLog.WriteVerbose($"[AI][V2][Raid] {intent.IntentKey} step executed by support "
                         + $"#{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept; "
@@ -1454,8 +1575,7 @@ namespace Game.Ai.V2
         private static void ReleaseOtherReconActorClaims(MissionIntentState state,
             MissionIntent owner, int moverArmyId)
         {
-            if (state == null || owner == null || owner.Kind != MissionKind.Scout
-                || moverArmyId == 0)
+            if (state == null || owner == null || owner.Kind != MissionKind.Scout)
                 return;
 
             foreach (MissionIntent other in state.All)
@@ -1480,7 +1600,7 @@ namespace Game.Ai.V2
         private static bool TryAbsorbIntoExistingActorRole(MissionIntentState state,
             MissionTurnOutcome o, int turn, AiAllocatorState allocState)
         {
-            if (!o.HasScoutPayload || o.MoverArmyId == null || o.MoverArmyId.Value == 0)
+            if (!o.HasScoutPayload || o.MoverArmyId == null)
                 return false;
 
             MissionIntent owner = null;
@@ -1567,7 +1687,7 @@ namespace Game.Ai.V2
         {
             var ri = new RaidIntent
             {
-                TargetArmyId = o.RaidTargetArmyId,
+                Target = o.RaidTarget,
                 LastKnownHex = o.RaidLastKnownHex,
                 TargetIsNeutral = o.RaidTargetIsNeutral,
                 OperationStarted = true,

@@ -44,7 +44,8 @@ namespace Game.Ai.V2
 
             if (pm.Kind == MissionKind.Raid)
             {
-                if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId))
+                if (pm.RaidPhase == RaidMissionPhase.Assault
+                    && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
                     return MissionValidity.StaleGoalMet;
                 return MissionValidity.Valid;
             }

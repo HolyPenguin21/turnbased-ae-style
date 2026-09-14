@@ -314,9 +314,9 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Raid)
             {
                 if (singleStepOnly)
-                    yield return RunRaidStep(player, root, ctx, pm, result, apBefore);
+                    yield return RunRaidStep(player, root, ctx, pm, result, apBefore, snapshot);
                 else
-                    yield return RunRaid(player, root, ctx, pm, result, apBefore);
+                    yield return RunRaid(player, root, ctx, pm, result, apBefore, snapshot);
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
                 CompleteResult(result, root);
@@ -432,7 +432,7 @@ namespace Game.Ai.V2
         // revalidated before every adjacent move, but the adapter keeps executing steps until the
         // same terminal conditions as the previous loop.
         private static IEnumerator RunRaid(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, int apBefore)
+            ProvisionedMission pm, ExecutionResult result, int apBefore, WorldSnapshot snapshot)
         {
             ArmyData initialArmy = Resolve(player, pm.MoverArmyId);
             int maxIterations = (initialArmy?.CurrentMovement ?? 0) + 1;
@@ -447,7 +447,7 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                yield return RunRaidStepCore(player, root, ctx, pm, result);
+                yield return RunRaidStepCore(player, root, ctx, pm, result, snapshot);
                 stop = result.StopReason;
                 if (stop != ExecutionStopReason.StepCompleted)
                     break;
@@ -460,14 +460,15 @@ namespace Game.Ai.V2
         // Objective identity stays fixed, while its last honestly-known hex and route are resolved
         // again immediately before the command.
         internal static IEnumerator RunRaidStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            WorldSnapshot snapshot = null)
         {
-            yield return RunRaidStepCore(player, root, ctx, pm, result);
+            yield return RunRaidStepCore(player, root, ctx, pm, result, snapshot);
             FinishRaid(player, root, pm, result, apBefore, result.StopReason);
         }
 
         private static IEnumerator RunRaidStepCore(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, WorldSnapshot snapshot)
         {
             ArmyData army = Resolve(player, pm?.MoverArmyId ?? -1);
             if (army == null || army.Owner != player)
@@ -488,55 +489,81 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // AGG-RAID §10 — three atomic legs. Execution never picks a different target, a
-            // different base, re-scores anything, or creates a replacement mission: it carries out
-            // exactly the plan Provisioning pinned onto `pm`.
-            if (pm.RaidPhase == RaidMissionPhase.Return)
+            // AGG-RAID §10/§SupportReturn — four atomic legs. Execution never picks a different
+            // target, a different base, re-scores anything, or creates a replacement mission: it
+            // carries out exactly the plan Provisioning pinned onto `pm`.
+            if (pm.RaidPhase == RaidMissionPhase.Return || pm.RaidPhase == RaidMissionPhase.SupportReturn)
             {
-                yield return RunRaidReturnStep(player, root, ctx, pm, result, army);
+                yield return RunRaidReturnStep(player, root, ctx, pm, result, army, snapshot);
                 yield break;
             }
             if (pm.RaidPhase == RaidMissionPhase.Reinforcement)
             {
-                yield return RunRaidReinforcementStep(player, root, ctx, pm, result, army);
+                yield return RunRaidReinforcementStep(player, root, ctx, pm, result, army, snapshot);
                 yield break;
             }
 
-            if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId))
+            if (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget))
             {
                 result.ReachedGoal = true;
                 result.StopReason = ExecutionStopReason.ReachedGoal;
                 yield break;
             }
 
-            AiMapMemory.KnownEnemySighting? target = FindRaidSighting(
-                player, pm.RaidTargetArmyId);
-            if (!target.HasValue)
+            HexCoord targetHex;
+            bool targetIsNeutral;
+            if (pm.RaidTarget.Kind == RaidTargetKind.EventGuard)
             {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                yield break;
+                // Event guards have no ArmyId until spawned — never queried in ArmyRegistry before
+                // the trigger, never spawned here. The stable hex is the whole identity.
+                if (!HexEventRegistry.HasActiveEvent(pm.RaidTarget.Hex))
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+                targetHex = pm.RaidTarget.Hex;
+                targetIsNeutral = true;
             }
+            else
+            {
+                AiMapMemory.KnownEnemySighting? target = FindRaidSighting(player, pm.RaidTarget.ArmyId);
+                if (!target.HasValue)
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
 
-            HexCoord targetHex = target.Value.Hex;
+                targetHex = target.Value.Hex;
+                targetIsNeutral = target.Value.Owner != null && target.Value.Owner.IsNeutral;
+
+                // AGG-RAID P0#2 — defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget
+                // is the ONE canonical neutrality decision, already applied by Provisioning before
+                // this step was ever scheduled. A target that flips to a non-neutral owner between
+                // provisioning and this execution step (e.g. another AI player claimed it mid-turn)
+                // must not be attacked — Raid targets neutrals only.
+                if (!RaidObjectiveEvaluator.IsNeutralRaidTarget(target.Value.Owner))
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+            }
             pm.ExecutionHex = targetHex;
             pm.RaidLastKnownHex = targetHex;
-            pm.RaidTargetIsNeutral = target.Value.Owner != null && target.Value.Owner.IsNeutral;
-
-            // AGG-RAID P0#2 — defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget is
-            // the ONE canonical neutrality decision, already applied by Provisioning before this
-            // step was ever scheduled. A target that flips to a non-neutral owner between
-            // provisioning and this execution step (e.g. another AI player claimed it mid-turn)
-            // must not be attacked — Raid targets neutrals only.
-            if (!RaidObjectiveEvaluator.IsNeutralRaidTarget(target.Value.Owner))
-            {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                yield break;
-            }
+            pm.RaidTargetIsNeutral = targetIsNeutral;
 
             if (army.Hex.Equals(targetHex))
             {
+                // Already standing on the target hex with no battle active (checked above). For an
+                // event guard this can happen with no fresh move about to fire ResolveEventExplore
+                // on its own (e.g. a previously blocked step) — explicitly (re-)trigger it through
+                // the one thin gameplay entry point; the domain flow (spawn/battle/reward) is
+                // unchanged either way. A physical neutral army resolves through the ordinary
+                // contact/battle systems exactly as before.
+                if (pm.RaidTarget.Kind == RaidTargetKind.EventGuard && ctx.HexSelection != null)
+                    ctx.HexSelection.TriggerAiEventExplore(army, targetHex);
                 result.StopReason = ExecutionStopReason.EnemyDiscovered;
                 yield break;
             }
@@ -556,7 +583,7 @@ namespace Game.Ai.V2
 
             HexCoord before = army.Hex;
             var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — strike #{pm.RaidTargetArmyId} at ({targetHex.Q},{targetHex.R})", 0f);
+                $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -600,18 +627,35 @@ namespace Game.Ai.V2
         }
 
         // =====================================================================================
-        //  AGG-RAID §10 — RETURN leg: at most ONE step of the primary toward the already-chosen
-        //  base. The base is never re-selected here.
+        //  AGG-RAID §10/§SupportReturn — RETURN leg: at most ONE step of the mover (primary for
+        //  Return, support for SupportReturn) toward the already-chosen base. The base is never
+        //  re-selected here. On SupportReturn arrival, the support's completion is handed straight
+        //  to Continuity (mirrors CompleteRaidReinforcement's direct-call pattern) and the step is
+        //  reported as a ProductiveStop (DurableRoleContinues), never a Completed objective — the
+        //  durable Raid campaign must not be retired just because this one leg finished.
         // =====================================================================================
         private static IEnumerator RunRaidReturnStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData army)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData army,
+            WorldSnapshot snapshot)
         {
+            bool isSupportLeg = pm.RaidPhase == RaidMissionPhase.SupportReturn;
+            void ReportArrived()
+            {
+                if (isSupportLeg)
+                {
+                    MissionContinuityLayer.CompleteRaidSupportReturn(player, snapshot,
+                        pm.RaidPrimaryArmyId ?? pm.MoverArmyId, $"support #{pm.MoverArmyId} arrived home");
+                    result.DurableRoleContinues = true;
+                }
+                result.ReachedGoal = true;
+                result.StopReason = ExecutionStopReason.ReachedGoal;
+            }
+
             HexCoord home = pm.RaidDestinationHex;
             pm.ExecutionHex = home;
             if (army.Hex.Equals(home))
             {
-                result.ReachedGoal = true;
-                result.StopReason = ExecutionStopReason.ReachedGoal;
+                ReportArrived();
                 yield break;
             }
             if (army.CurrentMovement <= 0)
@@ -622,6 +666,7 @@ namespace Game.Ai.V2
             HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
             if (!next.HasValue)
             {
+                // Temporarily blocked first step is a retry-next-turn, not a reason to drop the leg.
                 result.StopReason = ExecutionStopReason.NoSafeStep;
                 result.NeedsReplan = true;
                 yield break;
@@ -629,7 +674,7 @@ namespace Game.Ai.V2
 
             HexCoord before = army.Hex;
             var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — return to base ({home.Q},{home.R})", 0f);
+                $"V2 raid — {(isSupportLeg ? "support " : "")}return to base ({home.Q},{home.R})", 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -645,6 +690,8 @@ namespace Game.Ai.V2
             if (trace.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
             if (army == null)
             {
+                // Support/primary lost en route — release its claim and let the Raid continue from
+                // whatever state remains; ResolveActive's next pass detects the loss and cleans up.
                 result.StopReason = ExecutionStopReason.MoverLost;
                 result.NeedsReplan = true;
                 yield break;
@@ -652,8 +699,7 @@ namespace Game.Ai.V2
             if (!moved) { result.StopReason = ExecutionStopReason.MoveRejected; yield break; }
             if (army.Hex.Equals(home))
             {
-                result.ReachedGoal = true;
-                result.StopReason = ExecutionStopReason.ReachedGoal;
+                ReportArrived();
                 yield break;
             }
             result.StopReason = army.CurrentMovement > 0
@@ -667,9 +713,10 @@ namespace Game.Ai.V2
         //  with NO movement in the same step. The primary never moves in this leg.
         // =====================================================================================
         private static IEnumerator RunRaidReinforcementStep(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData support)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData support,
+            WorldSnapshot snapshot)
         {
-            ArmyData primary = Resolve(player, pm.RaidPrimaryArmyId);
+            ArmyData primary = pm.RaidPrimaryArmyId.HasValue ? Resolve(player, pm.RaidPrimaryArmyId.Value) : null;
             if (primary == null || primary.Owner != player || primary.Members.Count == 0)
             {
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
@@ -724,10 +771,11 @@ namespace Game.Ai.V2
             // ---- the atomic handoff transaction ------------------------------------------
             result.RaidReinforcementHandoffAttempted = true;
             bool handoffOk = ApplyReinforcementHandoff(player, ctx, pm, support, primary,
-                out int transferred, out string detail);
+                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — raid "
                 + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
-                + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} {detail}");
+                + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
+                + $"{(wasSwap ? $"displaced={displacedUnitName} " : "")}{detail}");
 
             if (transferred > 0)
             {
@@ -740,10 +788,25 @@ namespace Game.Ai.V2
                     actorIds: new[] { primary.Id, support.Id });
             }
 
+            // AGG-RAID §SupportReturn — a full/full swap displaced a primary member into support:
+            // the whole support army now walks itself home instead of rejoining the fight. Hand
+            // this off to Continuity right here, same direct-call pattern as CompleteRaidReinforcement
+            // below, and skip the ordinary Assault-verification/CompleteRaidReinforcement path for
+            // this turn — SupportReturn's own arrival re-evaluates the primary later.
+            if (wasSwap)
+            {
+                MissionContinuityLayer.BeginRaidSupportReturn(player, snapshot, primary.Id, support.Id,
+                    $"displaced={displacedUnitName}");
+                result.ReachedGoal = true;
+                result.DurableRoleContinues = true;
+                result.StopReason = ExecutionStopReason.ReachedGoal;
+                yield break;
+            }
+
             // §9/§10 — the roster is re-verified against the shared estimator, and ONLY a verified
             // roster returns the operation to Assault. Continuity owns that state transition.
             IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiMapMemoryDefenders(player, pm.RaidTargetArmyId);
+                AiMapMemoryDefenders(player, pm.RaidTarget);
             bool verified = GroundCombatFeasibility.Clears(
                 primary.Members.Select(WorthIt.FromLiveUnit).ToList(), defenders,
                 AiConfigV2.raidMinViableWinChance, out float win, out bool cover);
@@ -772,9 +835,11 @@ namespace Game.Ai.V2
         // authoritative ArmyActions primitives a human uses; the support container is never emptied.
         private static bool ApplyReinforcementHandoff(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ArmyData support, ArmyData primary,
-            out int transferred, out string detail)
+            out int transferred, out bool wasSwap, out string displacedUnitName, out string detail)
         {
             transferred = 0;
+            wasSwap = false;
+            displacedUnitName = null;
             detail = "";
             List<UnitData> sparable = RaidProvisioner.SparableSupportBodies(support);
             if (sparable.Count == 0)
@@ -800,7 +865,9 @@ namespace Game.Ai.V2
             }
 
             // Primary is full — trade out its most critically wounded member for the best fresh
-            // body the support can spare (a straight swap needs no free slot on either side).
+            // body the support can spare (a straight swap needs no free slot on either side). A
+            // successful swap here is the AGG-RAID §SupportReturn trigger: the displaced unit only
+            // exists in support now, so the whole support army must walk itself home afterward.
             UnitData weakest = primary.Members
                 .Where(u => u != null && !u.IsHero && !u.IsAviation)
                 .OrderBy(u => u.HitPointsMax > 0 ? (float)u.HitPointsCurrent / u.HitPointsMax : 1f)
@@ -820,6 +887,8 @@ namespace Game.Ai.V2
                         out string swapWhy))
                 {
                     transferred = 1;
+                    wasSwap = true;
+                    displacedUnitName = weakest.Name;
                     detail = $"swapped {weakest.Name} out for {fresh.Name}";
                     return true;
                 }
@@ -831,9 +900,17 @@ namespace Game.Ai.V2
         }
 
         private static IReadOnlyList<WorthIt.DefenderProfile> AiMapMemoryDefenders(
-            PlayerSetupData player, int targetArmyId)
+            PlayerSetupData player, RaidTargetRef target)
         {
-            AiMapMemory.KnownEnemySighting? s = FindRaidSighting(player, targetArmyId);
+            if (!target.HasValue)
+                return System.Array.Empty<WorthIt.DefenderProfile>();
+            if (target.Kind == RaidTargetKind.EventGuard)
+            {
+                AiMapMemory.GuardStrength? g = AiMapMemory.KnownEventGuardStrengthAt(player, target.Hex);
+                return g?.Defenders ?? (IReadOnlyList<WorthIt.DefenderProfile>)
+                    System.Array.Empty<WorthIt.DefenderProfile>();
+            }
+            AiMapMemory.KnownEnemySighting? s = FindRaidSighting(player, target.ArmyId);
             return s?.Defenders ?? (IReadOnlyList<WorthIt.DefenderProfile>)
                 System.Array.Empty<WorthIt.DefenderProfile>();
         }

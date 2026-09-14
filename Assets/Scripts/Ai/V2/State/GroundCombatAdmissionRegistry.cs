@@ -32,7 +32,7 @@ namespace Game.Ai.V2
             if (target.Phase != RaidMissionPhase.Assault)
                 return;
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = DefendersFor(snap, target.TargetArmyId);
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, target.Target);
             var excluded = new HashSet<int>();
             var ids = new List<int>();
 
@@ -69,7 +69,7 @@ namespace Game.Ai.V2
                 {
                     ids.Clear();
                     ids.Add(incumbentId);
-                    AiDebugLog.Write($"[AI][V2][RaidAdmission] decision=CONTINUE targetArmy={target.TargetArmyId} "
+                    AiDebugLog.Write($"[AI][V2][RaidAdmission] decision=CONTINUE target={target.Target.DiagnosticLabel} "
                         + $"actor={incumbentId} win={incumbent.ProjectedWinChance:0.00} "
                         + "reason=durable_hard_incumbent_passed_continuation_gate");
                 }
@@ -87,12 +87,13 @@ namespace Game.Ai.V2
         public static void RecordReinforcement(MissionProposal proposal, WorldSnapshot snap)
         {
             if (proposal == null || snap == null || !(proposal.Target is RaidMissionTarget target)
-                || target.Phase != RaidMissionPhase.Reinforcement || target.SupportArmyId != 0)
+                || target.Phase != RaidMissionPhase.Reinforcement || target.SupportArmyId.HasValue
+                || !target.PrimaryArmyId.HasValue)
                 return;
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = DefendersFor(snap, target.TargetArmyId);
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, target.Target);
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, target.PrimaryArmyId, defenders, null);
+                snap, target.PrimaryArmyId.Value, defenders, null);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -140,18 +141,5 @@ namespace Game.Ai.V2
             return ids.Count == 0 ? "none" : string.Join(",", ids.OrderBy(x => x));
         }
 
-        private static IReadOnlyList<WorthIt.DefenderProfile> DefendersFor(WorldSnapshot snap, int targetArmyId)
-        {
-            if (snap?.Known == null || targetArmyId == 0)
-                return Array.Empty<WorthIt.DefenderProfile>();
-
-            IEnumerable<AiMapMemory.KnownEnemySighting> sightings =
-                (snap.Known.EnemySightings ?? Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Concat(snap.Known.NeutralSightings ?? Array.Empty<AiMapMemory.KnownEnemySighting>());
-            foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                if (s.ArmyId == targetArmyId)
-                    return s.Defenders ?? Array.Empty<WorthIt.DefenderProfile>();
-            return Array.Empty<WorthIt.DefenderProfile>();
-        }
     }
 }

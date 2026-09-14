@@ -58,7 +58,7 @@ namespace Game.Ai.V2
             out IReadOnlyList<EconomyBuilderRouteSnapshot> builderRoutes)
         {
             builderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>();
-            if (after?.Economy == null || demand?.TargetHex == null || builderArmyId == 0)
+            if (after?.Economy == null || demand?.TargetHex == null)
                 return null;
             bool foundBase = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base;
             IReadOnlyList<EconomyBuilderRouteSnapshot> witnessed = foundBase
@@ -214,26 +214,30 @@ namespace Game.Ai.V2
                 || intent?.Raid == null)
                 return false;
             RaidIntent ri = intent.Raid;
+            if (!ri.PrimaryArmyId.HasValue)
+                return false;
+            int primaryId = ri.PrimaryArmyId.Value;
 
             // GroundCombatAssemblyPlanner is the single owner of reinforcement admission. Intersect
             // its transfer-ready candidates with the armies this materialization actually touched;
             // never weaken that contract back to the generic IsStructuralRaidActor shape.
             var admissible = new HashSet<int>(
                 GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    afterSnap, ri.PrimaryArmyId,
-                    AiV2Util.KnownDefenders(afterSnap, ri.TargetArmyId), null));
-            int support = leased
-                .Where(id => id != 0 && id != ri.PrimaryArmyId && admissible.Contains(id))
+                    afterSnap, primaryId,
+                    AiV2Util.KnownDefenders(afterSnap, ri.Target), null));
+            int? support = leased
+                .Where(id => id != primaryId && admissible.Contains(id))
                 .OrderBy(id => id)
+                .Select(id => (int?)id)
                 .FirstOrDefault();
-            if (support == 0)
+            if (!support.HasValue)
                 return false;
 
             ri.SupportArmyId = support;
             ri.Phase = RaidMissionPhase.Reinforcement;
             ri.ReinforcementRequestedTurn = turnNumber;
             AiDebugLog.Write($"[AI][V2][Raid] materialization handoff {intent.IntentKey} "
-                + $"support=#{support} primary=#{ri.PrimaryArmyId} phase=Reinforcement "
+                + $"support=#{support.Value} primary=#{primaryId} phase=Reinforcement "
                 + "(Continuity owns the actor; no generic housekeeping lease)");
             return true;
         }

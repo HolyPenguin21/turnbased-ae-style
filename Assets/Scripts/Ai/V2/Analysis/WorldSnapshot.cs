@@ -388,12 +388,33 @@ namespace Game.Ai.V2
         public IReadOnlyList<AiMapMemory.KnownEnemySighting> NeutralSightings;
         public IReadOnlyList<AiMapMemory.KnownBuilding> Buildings;
         public IReadOnlyList<HexCoord> EventGuardHexes;
+        // Typed event-guard snapshot (hex + strength + defender profiles), sourced only from
+        // AiMapMemory.KnownEventGuardHexes/KnownEventGuardStrengthAt — never a live map read or a
+        // fabricated ArmyData. Feeds CombatOpportunityAnalyzer as a second Raid target kind.
+        public IReadOnlyList<KnownEventGuardSnapshot> EventGuards;
         public IReadOnlyList<AiMapMemory.KnownResourceHex> ResourceHexes;
 
         // Aggregates ported verbatim from AiStrategyDirector.Evaluate's own "shared readings".
         public float EnemyKnownStrength;
         public int NearestEnemyToBase;
         public float EnemyStrengthNearBases;
+    }
+
+    // A known-but-not-yet-triggered event guard, honest fog-of-war memory (AiMapMemory), not a live
+    // ArmyData — one doesn't exist until the guard is actually spawned at Explore-time.
+    public readonly struct KnownEventGuardSnapshot
+    {
+        public readonly HexCoord Hex;
+        public readonly AiMapMemory.GuardStrength Strength;
+        public readonly string Name;
+        public readonly int DefenderCount;
+
+        public KnownEventGuardSnapshot(HexCoord hex, AiMapMemory.GuardStrength strength, string name, int defenderCount)
+        {
+            Hex = hex; Strength = strength; Name = name; DefenderCount = defenderCount;
+        }
+
+        public IReadOnlyList<WorthIt.DefenderProfile> Defenders => Strength.Defenders;
     }
 
     // =======================================================================================

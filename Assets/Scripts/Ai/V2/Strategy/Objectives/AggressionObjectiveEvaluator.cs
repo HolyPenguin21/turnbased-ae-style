@@ -23,18 +23,26 @@ namespace Game.Ai.V2
     {
         Assault,
         Reinforcement,
+        // AGG-RAID §SupportReturn — a full/full reinforcement swap displaced a primary member into
+        // support; the whole support army walks home while primary stays put on the target.
+        SupportReturn,
         Return,
     }
 
     public sealed class AggressionObjective
     {
         public AggressionObjectiveKind Kind;
-        public int TargetArmyId;
+        // Single source of truth for this objective's target (physical neutral army OR event
+        // guard). TargetArmyId/TargetHex below are read-only projections for existing non-Raid or
+        // logging readers — never a second settable field.
+        public RaidTargetRef Target;
         public HexCoord LastKnownHex;
         public PlayerSetupData TargetOwner;
         public bool TargetIsNeutral;
         public float BaseValue;
         public float Confidence;
+
+        public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
 
         // FROZEN strategic projection captured before StrategicManager/continuity ownership changes.
         // These describe strategic assemblability only. They are deliberately NOT the authoritative
@@ -50,13 +58,12 @@ namespace Game.Ai.V2
         public bool NeedsHero;
         public float CombatPowerDeficit;
 
-        public string ObjectiveId => $"Raid#{TargetArmyId}";
-        public MissionIntentKey IntentKey =>
-            new MissionIntentKey(MissionKind.Raid, (int)Kind, TargetArmyId, 0, 0);
+        public string ObjectiveId => $"Raid#{Target.DiagnosticLabel}";
+        public MissionIntentKey IntentKey => MissionIntentKey.ForRaid(Target);
 
         public RaidMissionTarget ToTarget() => new RaidMissionTarget
         {
-            TargetArmyId = TargetArmyId,
+            Target = Target,
             LastKnownHex = LastKnownHex,
             TargetOwner = TargetOwner,
             TargetIsNeutral = TargetIsNeutral,
@@ -76,12 +83,12 @@ namespace Game.Ai.V2
         // neutral; Reinforcement moves the SUPPORT army to the primary; Return walks the primary
         // home. One target type, three phases — not three mission kinds.
         public RaidMissionPhase Phase;
-        public int PrimaryArmyId;
-        public int SupportArmyId;
-        // Rendezvous hex (Reinforcement) or chosen base hex (Return). Unused for Assault.
+        public int? PrimaryArmyId;
+        public int? SupportArmyId;
+        // Rendezvous hex (Reinforcement) or chosen base hex (Return/SupportReturn). Unused for Assault.
         public HexCoord DestinationHex;
 
-        public int TargetArmyId;
+        public RaidTargetRef Target;
         public HexCoord LastKnownHex;
         public PlayerSetupData TargetOwner;
         public bool TargetIsNeutral;
@@ -92,6 +99,8 @@ namespace Game.Ai.V2
         public int DefenderCount;
         public float TargetPower;
         public int EstimatedEta;
+
+        public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
     }
 
     public static class AggressionObjectiveEvaluator
@@ -120,31 +129,20 @@ namespace Game.Ai.V2
             {
                 if (!o.TargetIsNeutral)
                 {
-                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT targetArmy={o.TargetArmyId} "
+                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT target={o.Target.DiagnosticLabel} "
                         + "reason=target_is_not_neutral");
                     continue;
                 }
-                if (!o.HasTarget)
+                if (!o.HasTarget || !o.Target.HasValue)
                 {
-                    AiDebugLog.Write("[AI][V2][AggressionObjective] decision=REJECT targetArmy=0 reason=opportunity_has_no_target");
-                    continue;
-                }
-                if (o.TargetArmyId == 0)
-                {
-                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT hex=({o.TargetHex.Q},{o.TargetHex.R}) reason=missing_stable_target_army_id");
-                    continue;
-                }
-                if (o.DefenderCount > AiConfigV2.raidTargetMaxDefenders)
-                {
-                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT targetArmy={o.TargetArmyId} "
-                        + $"reason=too_many_defenders defenders={o.DefenderCount} max={AiConfigV2.raidTargetMaxDefenders}");
+                    AiDebugLog.Write("[AI][V2][AggressionObjective] decision=REJECT target=None reason=opportunity_has_no_target");
                     continue;
                 }
 
                 AggressionObjective obj = Build(snap, report, o);
                 if (obj.BaseValue < AiConfigV2.raidObjectiveMinBaseValue)
                 {
-                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT targetArmy={obj.TargetArmyId} "
+                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT target={obj.Target.DiagnosticLabel} "
                         + $"reason=base_value_below_threshold base={F(obj.BaseValue)} min={F(AiConfigV2.raidObjectiveMinBaseValue)}");
                     continue;
                 }
@@ -154,10 +152,11 @@ namespace Game.Ai.V2
                     : obj.NeedsCombatPower ? "assemblability"
                     : obj.NeedsHero ? "hero_availability"
                     : "none";
-                AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=ACCEPT targetArmy={obj.TargetArmyId} "
+                AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=ACCEPT target={obj.Target.DiagnosticLabel} "
                     + $"hex=({obj.LastKnownHex.Q},{obj.LastKnownHex.R}) base={F(obj.BaseValue)} "
                     + $"readyWin={F(obj.ReadyWinChance)} asmWin={F(obj.AssemblableWinChance)} "
                     + $"cover={(obj.CanCoverAllDefenders ? 1 : 0)} gate={(obj.GatePassed ? 1 : 0)} "
+                    + $"defenders={obj.DefenderCount} "
                     + $"frozenNeedsPower={(obj.NeedsCombatPower ? 1 : 0)} frozenNeedsHero={(obj.NeedsHero ? 1 : 0)} "
                     + $"frozenPowerDeficit={F(obj.CombatPowerDeficit)} frozenGap={frozenGap}");
             }
@@ -165,20 +164,26 @@ namespace Game.Ai.V2
             list.Sort((a, b) =>
             {
                 int c = b.BaseValue.CompareTo(a.BaseValue);
-                return c != 0 ? c : a.TargetArmyId.CompareTo(b.TargetArmyId);
+                return c != 0 ? c : string.CompareOrdinal(a.Target.DiagnosticLabel, b.Target.DiagnosticLabel);
             });
             return list;
         }
 
-        public static AggressionObjective ForTrackedArmy(WorldSnapshot snap, CombatOpportunityReport report, int trackedArmyId)
+        // Legacy overload for non-Raid callers that only ever track a physical army (e.g. Recon).
+        // Raid consumers must go through ForTrackedTarget(RaidTargetRef) so an event-guard target
+        // is handled by the same code path, not a second army/event switch.
+        public static AggressionObjective ForTrackedArmy(WorldSnapshot snap, CombatOpportunityReport report, int trackedArmyId) =>
+            ForTrackedTarget(snap, report, RaidTargetRef.ForNeutralArmy(trackedArmyId));
+
+        public static AggressionObjective ForTrackedTarget(WorldSnapshot snap, CombatOpportunityReport report, RaidTargetRef target)
         {
-            if (report?.All == null || trackedArmyId == 0)
+            if (report?.All == null || !target.HasValue)
                 return null;
-            // Identity is the TargetArmyId, never a coordinate — a moving neutral stays the same
-            // objective. Neutrality is still required: a target that stopped being neutral is no
-            // longer a Raid objective.
+            // Identity is Target, never a coordinate — a moving neutral army stays the same
+            // objective, and an event guard stays keyed by its stable hex. Neutrality is still
+            // required: a target that stopped being neutral is no longer a Raid objective.
             foreach (CombatOpportunity o in report.All)
-                if (o.HasTarget && o.TargetIsNeutral && o.TargetArmyId == trackedArmyId)
+                if (o.HasTarget && o.TargetIsNeutral && o.Target.Equals(target))
                     return Build(snap, report, o);
             return null;
         }
@@ -205,14 +210,14 @@ namespace Game.Ai.V2
             bool needsHero = !haveViable && !report.HeroAvailable;
             bool needsCombatPower = !haveViable;
 
-            float targetPower = AiPower.EffectiveArmyPowerFromProfiles(DefendersOf(snap, o.TargetArmyId));
+            float targetPower = AiPower.EffectiveArmyPowerFromProfiles(AiV2Util.KnownDefenders(snap, o.Target));
             float requiredPower = targetPower * AiConfigV2.raidCombatPowerMargin;
             float deficit = needsCombatPower ? Mathf.Max(1f, requiredPower - snap.Self.FieldPower) : 0f;
 
             return new AggressionObjective
             {
                 Kind = AggressionObjectiveKind.Raid,
-                TargetArmyId = o.TargetArmyId,
+                Target = o.Target,
                 LastKnownHex = o.TargetHex,
                 TargetOwner = o.TargetOwner,
                 TargetIsNeutral = o.TargetIsNeutral,
@@ -230,9 +235,6 @@ namespace Game.Ai.V2
                 CombatPowerDeficit = deficit,
             };
         }
-
-        private static IReadOnlyList<WorthIt.DefenderProfile> DefendersOf(WorldSnapshot snap, int armyId) =>
-            AiV2Util.KnownDefenders(snap, armyId);
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 

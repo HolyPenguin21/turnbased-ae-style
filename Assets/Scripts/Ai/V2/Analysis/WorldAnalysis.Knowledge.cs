@@ -23,12 +23,24 @@ namespace Game.Ai.V2
     {
         private static KnownSnapshot BuildKnown(PlayerSetupData player, IReadOnlyList<HexCoord> baseHexes)
         {
+            List<HexCoord> eventGuardHexes = AiMapMemory.KnownEventGuardHexes(player).ToList();
             var known = new KnownSnapshot
             {
                 EnemySightings = AiMapMemory.AllKnownEnemySightings(player).ToList(),
                 NeutralSightings = AiMapMemory.AllKnownNeutralSightings(player).ToList(),
                 Buildings = AiMapMemory.AllKnownBuildings(player).ToList(),
-                EventGuardHexes = AiMapMemory.KnownEventGuardHexes(player).ToList(),
+                EventGuardHexes = eventGuardHexes,
+                EventGuards = eventGuardHexes
+                    .Select(h =>
+                    {
+                        AiMapMemory.GuardStrength? s = AiMapMemory.KnownEventGuardStrengthAt(player, h);
+                        return s.HasValue
+                            ? new KnownEventGuardSnapshot(h, s.Value, s.Value.Name, s.Value.Defenders?.Count ?? 0)
+                            : (KnownEventGuardSnapshot?)null;
+                    })
+                    .Where(g => g.HasValue)
+                    .Select(g => g.Value)
+                    .ToList(),
                 ResourceHexes = AiMapMemory.AllKnownResourceHexes(player).ToList(),
             };
 

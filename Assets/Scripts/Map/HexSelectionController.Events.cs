@@ -185,6 +185,20 @@ namespace Game.Map
             return true;
         }
 
+        // AI V2 Raid entry point — a Raid army can already be standing on an event hex it was
+        // provisioned to explore (e.g. a blocked-then-retried step, or a re-provisioned mission that
+        // finds itself already there) with no fresh move command about to run ResolveEventExplore on
+        // its own. Thin wrapper only: finds the entry and calls the SAME private ResolveEventExplore
+        // every other trigger point uses — no V2 logic, no second reward path. No-ops (returns false)
+        // if there is nothing active to explore or a guard fight is already open.
+        public bool TriggerAiEventExplore(ArmyData mover, HexCoord hex)
+        {
+            HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
+            if (mover == null || entry == null || entry.Consumed || entry.Triggered)
+                return false;
+            return ResolveEventExplore(mover, hex, entry);
+        }
+
         // Builds `entry`'s own guard as a fresh ArmyData, right now — the only place one of these
         // is ever created (see HexEventRegistry.Entry.ResolvedGuardMembers's own comment for why
         // it's never pre-spawned at map-generation time any more): a guard that physically existed

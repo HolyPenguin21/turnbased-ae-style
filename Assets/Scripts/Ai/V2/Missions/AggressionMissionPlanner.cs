@@ -72,12 +72,21 @@ namespace Game.Ai.V2
                     if (intent.Kind != MissionKind.Raid || intent.Raid == null)
                         continue;
 
-                    // AGG-RAID §8 — a non-Assault leg of a durable Raid is its OWN proposal shape,
-                    // with its own mover, its own destination and its own StableMissionKey.
+                    // AGG-RAID §8/§SupportReturn — a non-Assault leg of a durable Raid is its OWN
+                    // proposal shape, with its own mover, its own destination and its own
+                    // StableMissionKey.
                     if (intent.Raid.Phase == RaidMissionPhase.Return)
                     {
-                        RaidCandidate? ret = ReturnCandidate(intent);
+                        RaidCandidate? ret = ReturnCandidate(intent, RaidMissionPhase.Return,
+                            intent.Raid.PrimaryArmyId, intent.Raid.ReturnHex);
                         if (ret.HasValue) incumbents.Add(ret.Value);
+                        continue;
+                    }
+                    if (intent.Raid.Phase == RaidMissionPhase.SupportReturn)
+                    {
+                        RaidCandidate? sret = ReturnCandidate(intent, RaidMissionPhase.SupportReturn,
+                            intent.Raid.SupportArmyId, intent.Raid.SupportReturnHex);
+                        if (sret.HasValue) incumbents.Add(sret.Value);
                         continue;
                     }
                     if (intent.Raid.Phase == RaidMissionPhase.Reinforcement)
@@ -91,8 +100,8 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    AggressionObjective o = AggressionObjectiveEvaluator.ForTrackedArmy(
-                        snap, breakdown.OpportunityReport, intent.Raid.TargetArmyId);
+                    AggressionObjective o = AggressionObjectiveEvaluator.ForTrackedTarget(
+                        snap, breakdown.OpportunityReport, intent.Raid.Target);
                     if (o == null)
                     {
                         if (!intent.Raid.OperationStarted)
@@ -102,7 +111,7 @@ namespace Game.Ai.V2
                         }
                         var stale = new RaidMissionTarget
                         {
-                            TargetArmyId = intent.Raid.TargetArmyId,
+                            Target = intent.Raid.Target,
                             LastKnownHex = intent.Raid.LastKnownHex,
                             TargetIsNeutral = intent.Raid.TargetIsNeutral,
                             AssemblableWinChance = AiConfigV2.raidMinViableWinChance,
@@ -111,7 +120,7 @@ namespace Game.Ai.V2
                         float sv = AiConfigV2.raidBaseValueMin;
                         float staleScore = sv * UnityEngine.Mathf.Max(0.01f, breakdown.AggRaidOpportunity);
                         incumbents.Add(new RaidCandidate(stale, sv, staleScore,
-                            $"Raid #{intent.Raid.TargetArmyId} (tracking in fog; Hard funding protection is allocator-owned)",
+                            $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId));
                         AiDebugLog.Write($"[AI][V2]   raid mission — CONTINUE {intent.IntentKey}: target in fog, using last-known hex "
                             + $"({intent.Raid.LastKnownHex.Q},{intent.Raid.LastKnownHex.R}); base {F(sv)}, local {F(staleScore)}, tier {intent.Funding}");
@@ -120,20 +129,20 @@ namespace Game.Ai.V2
                     incumbents.Add(ToCandidate(snap, o, breakdown).AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
-            var incumbentKeys = new HashSet<int>(incumbents.Select(c => c.Target.TargetArmyId));
+            var incumbentKeys = new HashSet<RaidTargetRef>(incumbents.Where(c => c.Target.Target.HasValue).Select(c => c.Target.Target));
             var picked = new List<RaidCandidate>();
 
             foreach (RaidCandidate c in incumbents
                 .Where(x => x.Tier != CommitmentTier.None)
                 .OrderByDescending(x => x.LocalAdmissionScore)
-                .ThenBy(x => x.Target.TargetArmyId))
+                .ThenBy(x => x.Target.Target.DiagnosticLabel))
                 picked.Add(c);
 
             IEnumerable<RaidCandidate> ordinary = incumbents
                 .Where(x => x.Tier == CommitmentTier.None)
-                .Concat(fresh.Where(f => !incumbentKeys.Contains(f.Target.TargetArmyId)))
+                .Concat(fresh.Where(f => !incumbentKeys.Contains(f.Target.Target)))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
-                .ThenBy(x => x.Target.TargetArmyId);
+                .ThenBy(x => x.Target.Target.DiagnosticLabel);
             int count = 0;
             foreach (RaidCandidate c in ordinary)
             {
@@ -165,18 +174,22 @@ namespace Game.Ai.V2
             return proposals;
         }
 
-        // §8 Return: mover = primary, target = the base Continuity already fixed.
-        private static RaidCandidate? ReturnCandidate(MissionIntent intent)
+        // §8/§SupportReturn Return: mover = primary (Return) or support (SupportReturn), target =
+        // the base Continuity already fixed for that mover. One shape for both — the mover and its
+        // home hex are the only things that differ.
+        private static RaidCandidate? ReturnCandidate(MissionIntent intent, RaidMissionPhase phase,
+            int? moverArmyId, HexCoord? homeHex)
         {
             RaidIntent ri = intent.Raid;
-            if (ri.PrimaryArmyId == 0 || !ri.ReturnHex.HasValue)
+            if (!moverArmyId.HasValue || !homeHex.HasValue)
                 return null;
             var target = new RaidMissionTarget
             {
-                Phase = RaidMissionPhase.Return,
+                Phase = phase,
                 PrimaryArmyId = ri.PrimaryArmyId,
-                DestinationHex = ri.ReturnHex.Value,
-                TargetArmyId = ri.TargetArmyId,
+                SupportArmyId = ri.SupportArmyId,
+                DestinationHex = homeHex.Value,
+                Target = ri.Target,
                 LastKnownHex = ri.LastKnownHex,
                 TargetIsNeutral = ri.TargetIsNeutral,
                 EstimatedEta = 1,
@@ -184,12 +197,14 @@ namespace Game.Ai.V2
                 CanCoverAllDefenders = true,
             };
             float value = AiConfigV2.raidBaseValueMin;
-            AiDebugLog.Write($"[AI][V2]   raid mission — RETURN {intent.IntentKey}: primary "
-                + $"#{ri.PrimaryArmyId} -> ({ri.ReturnHex.Value.Q},{ri.ReturnHex.Value.R})");
+            string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN" : "RETURN";
+            string role = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
+            AiDebugLog.Write($"[AI][V2]   raid mission — {label} {intent.IntentKey}: {role} "
+                + $"#{moverArmyId.Value} -> ({homeHex.Value.Q},{homeHex.Value.R})");
             return new RaidCandidate(target, value, value,
-                $"Raid #{ri.TargetArmyId} Return: primary #{ri.PrimaryArmyId} to base "
-                + $"({ri.ReturnHex.Value.Q},{ri.ReturnHex.Value.R})",
-                true, intent.Funding, ri.PrimaryArmyId);
+                $"Raid {ri.Target.DiagnosticLabel} {phase}: {role} #{moverArmyId.Value} to base "
+                + $"({homeHex.Value.Q},{homeHex.Value.R})",
+                true, intent.Funding, moverArmyId);
         }
 
         // §8 Reinforcement: mover = support, target = the primary's CURRENT hex (rendezvous).
@@ -202,28 +217,29 @@ namespace Game.Ai.V2
         private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent)
         {
             RaidIntent ri = intent.Raid;
-            if (ri.PrimaryArmyId == 0)
+            if (!ri.PrimaryArmyId.HasValue)
                 return null;
+            int primaryId = ri.PrimaryArmyId.Value;
             ArmySnapshot primary = snap.Self?.Armies?
-                .FirstOrDefault(a => a != null && a.ArmyId == ri.PrimaryArmyId);
+                .FirstOrDefault(a => a != null && a.ArmyId == primaryId);
             if (primary == null)
                 return null;
 
-            if (ri.SupportArmyId == 0)
+            if (!ri.SupportArmyId.HasValue)
             {
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = KnownDefenders(snap, ri.TargetArmyId);
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    snap, ri.PrimaryArmyId, defenders, null);
+                    snap, primaryId, defenders, null);
                 if (candidates.Count == 0)
                     return null;
 
                 var unpinned = new RaidMissionTarget
                 {
                     Phase = RaidMissionPhase.Reinforcement,
-                    PrimaryArmyId = ri.PrimaryArmyId,
-                    SupportArmyId = 0,
+                    PrimaryArmyId = primaryId,
+                    SupportArmyId = null,
                     DestinationHex = primary.Hex,
-                    TargetArmyId = ri.TargetArmyId,
+                    Target = ri.Target,
                     LastKnownHex = ri.LastKnownHex,
                     TargetIsNeutral = ri.TargetIsNeutral,
                     EstimatedEta = 1,
@@ -232,21 +248,21 @@ namespace Game.Ai.V2
                 };
                 float uvalue = AiConfigV2.raidBaseValueMax;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
-                    + $"{candidates.Count} existing free candidate(s) for primary #{ri.PrimaryArmyId} "
+                    + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} "
                     + $"at ({primary.Hex.Q},{primary.Hex.R})");
                 return new RaidCandidate(unpinned, uvalue, uvalue,
-                    $"Raid #{ri.TargetArmyId} Reinforcement: select an existing free support for "
-                    + $"primary #{ri.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
+                    $"Raid {ri.Target.DiagnosticLabel} Reinforcement: select an existing free support for "
+                    + $"primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})",
                     true, intent.Funding, null);
             }
 
             var target = new RaidMissionTarget
             {
                 Phase = RaidMissionPhase.Reinforcement,
-                PrimaryArmyId = ri.PrimaryArmyId,
+                PrimaryArmyId = primaryId,
                 SupportArmyId = ri.SupportArmyId,
                 DestinationHex = primary.Hex,
-                TargetArmyId = ri.TargetArmyId,
+                Target = ri.Target,
                 LastKnownHex = ri.LastKnownHex,
                 TargetIsNeutral = ri.TargetIsNeutral,
                 EstimatedEta = 1,
@@ -255,17 +271,17 @@ namespace Game.Ai.V2
             };
             float value = AiConfigV2.raidBaseValueMax;
             AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE {intent.IntentKey}: support "
-                + $"#{ri.SupportArmyId} -> primary #{ri.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})");
+                + $"#{ri.SupportArmyId.Value} -> primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
             return new RaidCandidate(target, value, value,
-                $"Raid #{ri.TargetArmyId} Reinforcement: support #{ri.SupportArmyId} joins primary "
-                + $"#{ri.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
+                $"Raid {ri.Target.DiagnosticLabel} Reinforcement: support #{ri.SupportArmyId.Value} joins primary "
+                + $"#{primaryId} at ({primary.Hex.Q},{primary.Hex.R})",
                 true, intent.Funding, ri.SupportArmyId);
         }
 
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o, DesireBreakdown bd)
         {
             RaidMissionTarget target = o.ToTarget();
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = KnownDefenders(snap, o.TargetArmyId);
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
             GroundCombatAssemblyPlan live = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
 
             float readyWin = live.Feasible ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
@@ -291,7 +307,7 @@ namespace Game.Ai.V2
             float las = o.BaseValue * UnityEngine.Mathf.Max(0.01f, bd.AggRaidOpportunity)
                 * feasibility * apEfficiency;
 
-            string explain = $"Raid #{o.TargetArmyId} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
+            string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
                 + $"val {F(o.BaseValue)} x aggRaid {F(bd.AggRaidOpportunity)} liveFeas {F(feasibility)} "
                 + $"apEff {F(apEfficiency)} (readyWin {F(readyWin)} frozenReady {F(o.ReadyWinChance)} "
                 + $"asmWin {F(o.AssemblableWinChance)} def {o.DefenderCount} eta {o.EstimatedEta} "
@@ -299,9 +315,6 @@ namespace Game.Ai.V2
                 + $"{(o.NeedsHero ? " NEEDS-HERO" : "")})";
             return new RaidCandidate(target, o.BaseValue, las, explain);
         }
-
-        private static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId) =>
-            AiV2Util.KnownDefenders(snap, armyId);
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c)
         {
@@ -327,7 +340,7 @@ namespace Game.Ai.V2
             // decision — same as Assault — so it gets its own eligible-candidate recording.
             if (c.Target.Phase == RaidMissionPhase.Assault)
                 GroundCombatAdmissionRegistry.Record(proposal, snap);
-            else if (c.Target.Phase == RaidMissionPhase.Reinforcement && c.Target.SupportArmyId == 0)
+            else if (c.Target.Phase == RaidMissionPhase.Reinforcement && !c.Target.SupportArmyId.HasValue)
                 GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);
             return proposal;
         }

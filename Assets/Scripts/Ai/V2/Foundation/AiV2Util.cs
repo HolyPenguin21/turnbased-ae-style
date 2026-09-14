@@ -50,22 +50,38 @@ namespace Game.Ai.V2
             return best == int.MaxValue ? 0 : best;
         }
 
-        // Known defenders of a sighted army id, from either the enemy or neutral sighting list.
-        // Was copy-pasted (to the line) in AggressionMissionPlanner.KnownDefenders,
-        // AggressionObjectiveEvaluator.DefendersOf and AggressionDemandEvaluator.RaidDefenders —
-        // the exact kind of duplicate that can silently start giving different answers to "who
-        // defends this army" if only one copy gets a future fix.
-        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId)
+        // THE single resolver every Raid consumer (objective, demand, admission, assembly,
+        // provisioning, reinforcement projection, continuity WorthIt checks) must use to find a
+        // Raid target's defenders — no event/army switch duplicated elsewhere. Note armyId 0 is a
+        // legitimate army id (see ArmyData identity sequencing), so absence is expressed only by
+        // RaidTargetRef.HasValue == false or "not found in the sighting/guard list", never by a
+        // numeric sentinel.
+        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target)
         {
-            if (snap?.Known == null || armyId == 0)
+            if (snap?.Known == null || !target.HasValue)
                 return System.Array.Empty<WorthIt.DefenderProfile>();
+
+            if (target.Kind == RaidTargetKind.EventGuard)
+            {
+                if (snap.Known.EventGuards != null)
+                    foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                        if (g.Hex.Equals(target.Hex))
+                            return g.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+                return System.Array.Empty<WorthIt.DefenderProfile>();
+            }
+
             IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
                 (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
                 .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
-                if (s.ArmyId == armyId)
+                if (s.ArmyId == target.ArmyId)
                     return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
             return System.Array.Empty<WorthIt.DefenderProfile>();
         }
+
+        // Legacy overload for non-Raid callers that only ever deal with a physical army. Raid
+        // consumers must call the RaidTargetRef overload above instead of duplicating this switch.
+        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId) =>
+            KnownDefenders(snap, RaidTargetRef.ForNeutralArmy(armyId));
     }
 }
