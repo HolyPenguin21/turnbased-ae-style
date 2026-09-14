@@ -9,6 +9,8 @@ namespace Game.Ai.V2
     {
         private static Outcome Evaluate(VState s)
         {
+            Dictionary<int, float> pressureByContainer = ComputeContactPressureByContainer(s);
+
             int garrisonDeficit = 0;
             int legality = 0;
             int operatorExposure = 0;
@@ -53,7 +55,7 @@ namespace Game.Ai.V2
                             && GarrisonMayRelease(units, u, meta));
                         if (nonHero > 0)
                         {
-                            formationStrengths.Add(FormationReadiness(s, units));
+                            formationStrengths.Add(FormationReadiness(s, units, pressureByContainer, id));
                             composition += ReorgViability.CompositionQuality(units);
                         }
                     }
@@ -75,7 +77,7 @@ namespace Game.Ai.V2
 
                 if (ReorgViability.IsViable(units))
                 {
-                    formationStrengths.Add(FormationReadiness(s, units));
+                    formationStrengths.Add(FormationReadiness(s, units, pressureByContainer, id));
                     composition += ReorgViability.CompositionQuality(units);
 
                     ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
@@ -104,32 +106,79 @@ namespace Game.Ai.V2
                 commandWaste, formationDefect, formationStrengths, -composition, s.Transfers.Count);
         }
 
-        private static float FormationReadiness(VState state, IReadOnlyList<ReorgUnit> units)
+        // §Task4 — per-container readiness against the enemy actually threatening IT, not a
+        // scalar worst-case folded across the whole group. `pressureByContainer` is precomputed
+        // once per Evaluate() call by ComputeContactPressureByContainer below.
+        private static float FormationReadiness(VState state, IReadOnlyList<ReorgUnit> units,
+            IReadOnlyDictionary<int, float> pressureByContainer, int containerId)
         {
             if (state.ThreatBenchmarks.Count == 0)
                 return ReorgViability.EffectivePower(units);
 
-            var defenders = units
-                .Where(u => u != null && !u.IsHero)
-                .Select(u => u.CombatProfile)
-                .ToList();
-            if (defenders.Count == 0)
+            if (!units.Any(u => u != null && !u.IsHero))
                 return 0f;
 
-            float worstPressure = 0f;
+            float pressure = pressureByContainer.TryGetValue(containerId, out float p) ? p : 0f;
+            return 1f - pressure;
+        }
+
+        // Mirrors BattleInitiator's own attacker-specific contact selection instead of scoring
+        // every formation against every enemy's worst case independently (the old scalar-collapse
+        // bug — two enemy compositions that are each weak against a DIFFERENT one of our formations
+        // could get folded/redistributed as if neither mattered). For each enemy benchmark: rank
+        // every contact-eligible container by the SAME canonical hardness comparator BattleInitiator
+        // uses (BattleInitiator.CompareDefenderHardness), restricted to the non-hero members that
+        // specific enemy can actually see (ReorgThreatBenchmark.TargetableUnitKeys). Only the first
+        // (real contact) and second (the follow-up contact if the first were cleared) ranked
+        // containers absorb this enemy's pressure — every other formation is correctly unaffected
+        // by an enemy that would never actually reach it first.
+        private static Dictionary<int, float> ComputeContactPressureByContainer(VState state)
+        {
+            var pressureByContainer = new Dictionary<int, float>();
+            if (state.ThreatBenchmarks.Count == 0)
+                return pressureByContainer;
+
             foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
             {
-                // A force that cannot penetrate every remaining defender cannot clear the army.
-                // WorthIt's draw=0.5 convention is useful for generic comparison but must not turn
-                // physical non-penetration into a fictitious 50% successful capture here.
-                float success = WorthIt.CanDamageAll(threat.Members, defenders, state.HexDefenseBonus)
-                    ? WorthIt.WinChance(threat.Members, defenders, state.HexDefenseBonus)
-                    : 0f;
-                float pressure = success / (1f + Math.Max(0, threat.EffectiveEta));
-                if (pressure > worstPressure)
-                    worstPressure = pressure;
+                var ranked = new List<(int containerId, WorthIt.BattleEstimate estimate, List<WorthIt.DefenderProfile> defenders)>();
+                foreach (var kv in state.Meta)
+                {
+                    ReorgContainer meta = kv.Value;
+                    if (meta.Role == ReorgPhysicalRole.Aviation || meta.Role == ReorgPhysicalRole.SpecialExcludedContainer)
+                        continue;
+                    if (!state.Roster.TryGetValue(kv.Key, out List<ReorgUnit> units))
+                        continue;
+
+                    var defenders = units.Where(u => u != null && !u.IsHero
+                            && threat.TargetableUnitKeys.Contains(u.Key))
+                        .Select(u => u.CombatProfile)
+                        .ToList();
+                    if (defenders.Count == 0)
+                        continue; // fully hidden from (or has no combat member visible to) this enemy
+
+                    WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders, state.HexDefenseBonus);
+                    ranked.Add((kv.Key, estimate, defenders));
+                }
+                if (ranked.Count == 0)
+                    continue;
+
+                ranked.Sort((a, b) =>
+                    Game.Combat.BattleInitiator.CompareDefenderHardness(a.estimate, a.containerId, b.estimate, b.containerId));
+
+                for (int i = 0; i < ranked.Count && i < 2; i++)
+                {
+                    (int containerId, WorthIt.BattleEstimate estimate, List<WorthIt.DefenderProfile> defenders) = ranked[i];
+                    // Same non-penetration guard the old scalar read already applied: a force that
+                    // cannot damage every remaining defender cannot actually clear this container.
+                    float success = WorthIt.CanDamageAll(threat.Members, defenders, state.HexDefenseBonus)
+                        ? estimate.WinChance
+                        : 0f;
+                    float pressure = (success / (1f + Math.Max(0, threat.EtaToGroup))) * (i == 0 ? 1f : 0.5f);
+                    if (!pressureByContainer.TryGetValue(containerId, out float existing) || pressure > existing)
+                        pressureByContainer[containerId] = pressure;
+                }
             }
-            return 1f - worstPressure;
+            return pressureByContainer;
         }
 
         // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster

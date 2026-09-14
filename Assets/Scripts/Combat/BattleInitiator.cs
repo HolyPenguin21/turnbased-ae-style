@@ -125,16 +125,25 @@ namespace Game.Combat
         }
 
         private static bool IsHarderDefender(in WorthIt.BattleEstimate candidate, int candidateId,
-            in WorthIt.BattleEstimate incumbent, int incumbentId)
+            in WorthIt.BattleEstimate incumbent, int incumbentId) =>
+            CompareDefenderHardness(candidate, candidateId, incumbent, incumbentId) < 0;
+
+        // Canonical attacker-specific defender tie-break, exposed so no second copy of this
+        // comparison exists anywhere in the assembly (2026-09-14, Housekeeping contact-selection
+        // sync — see project owner's own report). Negative = `a` is the harder defender (lower
+        // attacker WinChance, then lower surviving-HP ratio on win, then higher critical-after-win
+        // chance, then lower stable army id).
+        internal static int CompareDefenderHardness(in WorthIt.BattleEstimate a, int aId,
+            in WorthIt.BattleEstimate b, int bId)
         {
             const float eps = 0.0001f;
-            if (candidate.WinChance < incumbent.WinChance - eps) return true;
-            if (candidate.WinChance > incumbent.WinChance + eps) return false;
-            if (candidate.ExpectedSurvivingHpRatioOnWin < incumbent.ExpectedSurvivingHpRatioOnWin - eps) return true;
-            if (candidate.ExpectedSurvivingHpRatioOnWin > incumbent.ExpectedSurvivingHpRatioOnWin + eps) return false;
-            if (candidate.CriticalAfterBattleChance > incumbent.CriticalAfterBattleChance + eps) return true;
-            if (candidate.CriticalAfterBattleChance < incumbent.CriticalAfterBattleChance - eps) return false;
-            return candidateId < incumbentId;
+            if (a.WinChance < b.WinChance - eps) return -1;
+            if (a.WinChance > b.WinChance + eps) return 1;
+            if (a.ExpectedSurvivingHpRatioOnWin < b.ExpectedSurvivingHpRatioOnWin - eps) return -1;
+            if (a.ExpectedSurvivingHpRatioOnWin > b.ExpectedSurvivingHpRatioOnWin + eps) return 1;
+            if (a.CriticalAfterBattleChance > b.CriticalAfterBattleChance + eps) return -1;
+            if (a.CriticalAfterBattleChance < b.CriticalAfterBattleChance - eps) return 1;
+            return aId.CompareTo(bId);
         }
     }
 }

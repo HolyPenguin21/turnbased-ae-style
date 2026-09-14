@@ -181,7 +181,7 @@ namespace Game.Ai.V2
 
             string threats = string.Join(" | ", group.ThreatBenchmarks.Select(t =>
                 $"enemy#{t.ArmyId} {(t.HiddenFromUs ? "hidden-cheat" : "visible")} "
-                + $"eta(group/base/used)={t.EtaToGroup}/{t.EtaToNearestBase}/{t.EffectiveEta} "
+                + $"eta(group/base)={t.EtaToGroup}/{t.EtaToNearestBase} "
                 + $"[{string.Join(",", t.Members.Select(FormatCombatProfile))}]"));
             AiDebugLog.Write($"[AI][V2][HOUSEKEEPING]   ({group.Q},{group.R}) benchmark: {threats}");
         }

@@ -490,23 +490,8 @@ namespace Game.Combat
         // win (nothing known to fight — matches CanDamageAll's own "vacuously coverable" reading);
         // empty/null `attackerUnits` against a real enemy roster is a trivial loss.
         public static float WinChance(IReadOnlyCollection<DefenderProfile> attackerUnits,
-            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f)
-        {
-            if (enemyUnits == null || enemyUnits.Count == 0)
-                return 1f;
-            if (attackerUnits == null || attackerUnits.Count == 0)
-                return 0f;
-
-            var rng = new System.Random(BuildRosterSeed(attackerUnits, enemyUnits, hexDefenseBonus));
-            int wins = 0, draws = 0;
-            for (int i = 0; i < MonteCarloTrials; i++)
-            {
-                int result = SimulateOneBattle(ToBattleUnits(attackerUnits), ToBattleUnits(enemyUnits, hexDefenseBonus), rng);
-                if (result > 0) wins++;
-                else if (result == 0) draws++;
-            }
-            return (wins + draws * 0.5f) / MonteCarloTrials;
-        }
+            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f) =>
+            Estimate(attackerUnits, enemyUnits, hexDefenseBonus).WinChance;
 
         // Converts a real UnitData into the same per-combatant snapshot DefenderProfile carries for
         // a remembered/cheat-read enemy — used both for our own army (never behind fog of war) and
@@ -565,8 +550,41 @@ namespace Game.Combat
             if (baseline.Count == 0)
                 return new BattleEstimate(0f, 0f, 0f);
 
+            // Seeded off the same FromLiveUnit-derived profile the live roster represents — real
+            // MaxHp still comes from ToAttackerBattleUnits above (a wounded attacker's true max is
+            // not recoverable from DefenderProfile.HitPoints, which only ever carries CURRENT hp).
             var seedProfiles = attacker.Members.Where(m => !m.IsHero).Select(FromLiveUnit).ToList();
-            var rng = new System.Random(BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus));
+            int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus);
+            return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed);
+        }
+
+        // Roster-vs-roster overload (2026-09-14, Housekeeping contact-selection sync) — the same
+        // full round-by-round Monte Carlo as the ArmyData overload above, for a virtual/projected
+        // attacker that has no live ArmyData (e.g. an enemy DefenderProfile roster read off
+        // AiMapMemory, or a Housekeeping virtual defender roster). Both overloads now share the one
+        // EstimateCore loop below — no second Monte Carlo copy.
+        public static BattleEstimate Estimate(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus)
+        {
+            if (defenderUnits == null || defenderUnits.Count == 0)
+                return new BattleEstimate(1f, 1f, 0f);
+
+            List<BattleUnit> baseline = ToBattleUnits(attackerUnits);
+            if (baseline.Count == 0)
+                return new BattleEstimate(0f, 0f, 0f);
+
+            int seed = BuildRosterSeed(attackerUnits, defenderUnits, hexDefenseBonus);
+            return EstimateCore(baseline, defenderUnits, hexDefenseBonus, seed);
+        }
+
+        // Shared Monte Carlo readout loop — `baseline` is the attacker's own BattleUnit snapshot
+        // (already carrying whatever MaxHp fidelity its caller could offer), copied fresh every
+        // trial; `defenderUnits`/`hexDefenseBonus` are rebuilt into BattleUnits per trial the same
+        // way every existing caller here already expected.
+        private static BattleEstimate EstimateCore(List<BattleUnit> baseline,
+            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus, int seed)
+        {
+            var rng = new System.Random(seed);
             float startHp = baseline.Sum(u => u.Hp);
 
             int wins = 0, draws = 0, criticalOnWin = 0;
@@ -574,7 +592,7 @@ namespace Game.Combat
             for (int i = 0; i < MonteCarloTrials; i++)
             {
                 var attackers = new List<BattleUnit>(baseline);
-                int result = SimulateOneBattle(attackers, ToBattleUnits(enemyUnits, hexDefenseBonus), rng);
+                int result = SimulateOneBattle(attackers, ToBattleUnits(defenderUnits, hexDefenseBonus), rng);
                 if (result > 0)
                 {
                     wins++;

@@ -109,7 +109,7 @@ namespace Game.Ai.V2
                     R = hexGroup.Key.R,
                     HexDefenseBonus = WorthIt.HexDefenseBonus(groupHex, ctx?.Map),
                     Containers = containers,
-                    ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex),
+                    ThreatBenchmarks = BuildThreatBenchmarks(snapshot, groupHex, containers, unitByKey),
                 };
                 if (lfg.WorthPlanning())
                     groups.Add(lfg);
@@ -232,7 +232,8 @@ namespace Game.Ai.V2
         }
 
         private static List<ReorgThreatBenchmark> BuildThreatBenchmarks(
-            WorldSnapshot snapshot, HexCoord groupHex)
+            WorldSnapshot snapshot, HexCoord groupHex, IReadOnlyList<ReorgContainer> containers,
+            IReadOnlyDictionary<int, UnitData> unitByKey)
         {
             var result = new List<ReorgThreatBenchmark>();
             IReadOnlyList<ArmySnapshot> enemies = snapshot?.TrueWorld?.EnemyArmies;
@@ -241,6 +242,12 @@ namespace Game.Ai.V2
 
             IReadOnlyList<HexCoord> bases = snapshot.Self?.BaseHexes
                 ?? (IReadOnlyList<HexCoord>)System.Array.Empty<HexCoord>();
+
+            // §Task4 — every friendly non-hero unit currently on this hex, keyed the same way the
+            // planner's virtual roster keeps them. Visibility is evaluated once here, off the live
+            // roster, and travels with the Key through every later virtual transfer/swap.
+            List<ReorgUnit> nonHeroFriendlies = containers.SelectMany(c => c.Units)
+                .Where(u => u != null && !u.IsHero).ToList();
 
             foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
             {
@@ -255,6 +262,12 @@ namespace Game.Ai.V2
                 if (bases.Count > 0)
                     baseEta = bases.Min(b => CeilDiv(HexGridMath.Distance(enemy.Hex, b), move));
 
+                var targetable = new HashSet<int>();
+                foreach (ReorgUnit u in nonHeroFriendlies)
+                    if (unitByKey.TryGetValue(u.Key, out UnitData live) && live != null
+                        && !StealthSystem.IsHiddenFrom(live, enemy.Owner))
+                        targetable.Add(u.Key);
+
                 result.Add(new ReorgThreatBenchmark
                 {
                     ArmyId = enemy.ArmyId,
@@ -262,6 +275,7 @@ namespace Game.Ai.V2
                     EtaToGroup = groupEta,
                     EtaToNearestBase = baseEta,
                     Members = enemy.Members,
+                    TargetableUnitKeys = targetable,
                 });
             }
             return result;

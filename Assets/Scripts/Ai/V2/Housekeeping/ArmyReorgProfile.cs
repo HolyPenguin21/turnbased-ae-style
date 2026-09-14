@@ -77,10 +77,19 @@ namespace Game.Ai.V2
         public int ArmyId;
         public bool HiddenFromUs;
         public int EtaToGroup;
+        // Diagnostic only — how far the enemy is from any friendly base. Housekeeping is same-hex
+        // and task-neutral: it must never let another base's threat pressure a group it cannot
+        // move, so decision weighting uses EtaToGroup exclusively. Strategic reaction to base
+        // threats belongs to Defence (Analysis/Threat → Defence Demand → Mission → Provisioning).
         public int EtaToNearestBase;
         public IReadOnlyList<WorthIt.DefenderProfile> Members = Array.Empty<WorthIt.DefenderProfile>();
-
-        public int EffectiveEta => Math.Min(EtaToGroup, EtaToNearestBase);
+        // §Task4 — observer-specific projection: the friendly non-hero ReorgUnit.Key set this
+        // specific enemy can actually target right now (StealthSystem.IsHiddenFrom, computed once
+        // at Analyzer time off the live roster). A virtual transfer/swap moves a unit's Key into a
+        // different container but never changes this fact, so contact selection during planning
+        // stays honest about which enemy can see which unit. A container with none of its units in
+        // this set is not a real contact candidate for this enemy.
+        public HashSet<int> TargetableUnitKeys = new HashSet<int>();
     }
 
     public sealed class LocalForceGroup
@@ -96,6 +105,13 @@ namespace Game.Ai.V2
 
         public bool WorthPlanning()
         {
+            // §7 — a commander reorder is a single-container operation, so it must not wait on
+            // the multi-container gate below: a lone army/garrison with a sub-optimal commander
+            // is worth a zero-AP planning pass on its own.
+            foreach (ReorgContainer c in Containers)
+                if (ReorgViability.HasCommanderUpgrade(c))
+                    return true;
+
             if (Containers.Count < AiConfigV2.housekeepingMinContainersForGroup)
                 return false;
 
@@ -104,12 +120,6 @@ namespace Game.Ai.V2
                 && Containers.Any(c => !c.IsGarrison && c.IsMutableGround
                     && c.Units.Any(u => u != null && u.IsDevelopmentOperator)))
                 return true;
-
-            // §7 — a container (field OR garrison) whose commander is not its highest-capacity
-            // hero is worth a zero-AP planning pass on its own.
-            foreach (ReorgContainer c in Containers)
-                if (ReorgViability.HasCommanderUpgrade(c))
-                    return true;
 
             // §9 — a heroless OR support-led viable field formation plus a benched combat hero
             // that could lead it is worth a planning pass even if nothing else is degraded.
