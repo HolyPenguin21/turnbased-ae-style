@@ -49,6 +49,13 @@ namespace Game.Ai.V2
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
         public bool RaidOperationStarted;
+        // Exact provisioned leg/actors plus the execution-time handoff boundary. Continuity uses
+        // these immutable facts instead of inspecting RaidIntent.Phase after Execution may already
+        // have advanced it.
+        public RaidMissionPhase RaidPhase;
+        public int RaidPrimaryArmyId;
+        public int RaidSupportArmyId;
+        public bool RaidReinforcementHandoffAttempted;
         public bool HasEconomyPayload;
         public EconomyMissionTarget EconomyTarget;
         public bool EconomyBuildCompleted;
@@ -207,6 +214,9 @@ namespace Game.Ai.V2
                         o.RaidTargetArmyId = r.Provisioned.RaidTargetArmyId;
                         o.RaidLastKnownHex = r.Provisioned.RaidLastKnownHex;
                         o.RaidTargetIsNeutral = r.Provisioned.RaidTargetIsNeutral;
+                        o.RaidPhase = r.Provisioned.RaidPhase;
+                        o.RaidPrimaryArmyId = r.Provisioned.RaidPrimaryArmyId;
+                        o.RaidSupportArmyId = r.Provisioned.RaidSupportArmyId;
                     }
                     else if (r.Provisioned.Kind == MissionKind.Economy)
                     {
@@ -246,8 +256,12 @@ namespace Game.Ai.V2
                         || e.RaidOperationStarted || raidEngaged
                         || e.ActorMaterialized || e.EconomyPrepared;
                     if (o.MissionKind == MissionKind.Raid)
+                    {
                         o.RaidOperationStarted = e.RaidOperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
+                        o.RaidReinforcementHandoffAttempted =
+                            e.RaidReinforcementHandoffAttempted;
+                    }
                     if (o.MissionKind == MissionKind.Economy)
                         o.EconomyBuildCompleted = e.InfrastructureChanged;
                     Classify(e, o);
