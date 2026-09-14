@@ -76,6 +76,14 @@ namespace Game.Ai.V2
                     StrategicInvalidationReason.Actor,
                     actorIds: actorIds);
 
+            // Donor-only preparation changes intent state but not the army snapshot.
+            if (execution != null && execution.EconomyPrepared)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Actor,
+                    actorIds: execution.ActualActorArmyId.HasValue
+                        ? new[] { execution.ActualActorArmyId.Value }
+                        : null);
+
             HashSet<int> capabilityActorIds =
                 ChangedCapabilityActorIds(before.Snapshot, after.Snapshot);
             if (capabilityActorIds.Count > 0)

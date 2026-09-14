@@ -1,5 +1,19 @@
 # Economy mover materialization — decision tree (reusable analysis pattern)
 
+## Review round 11 (2026-09-14) — atomic Economy preparation
+
+| Issue in `ae96a80` | Root cause and correction |
+|---|---|
+| Extraction and composition shared one execution step | `TaskExecutor` now ends after extraction; Analysis observes the actor before preparation and movement are re-admitted. |
+| Create-tier could leave a paid empty shell | `ArmyActions.CreateArmyWithMember` preflights the shared batch-transfer rules before AP spend/registration and commits the first member atomically. |
+| Composition AP was underclaimed | Shared `ArmyActions.TransferMembersApCost` covers reinforcement and unload destinations; Execution subtracts actual composition AP before checking the remainder. |
+| Direct preparation masqueraded as actor creation | `EconomyPrepared` is separate from `ActorMaterialized`; stale pre-mutation paths no longer claim mutation. |
+| Donor-only preparation stopped the loop | The existing Analysis observation owner publishes Actor invalidation from `EconomyPrepared`. |
+
+Responsibilities stay horizontal: Map/domain actions → Provisioning → Execution → Analysis →
+Continuity. Aggression/Defence is unchanged. Unity compilation/play-test remains required because
+the connector workspace had no generated `.csproj`, .NET/Mono compiler, or Unity editor.
+
 ## Review round 10 (2026-09-14) — extraction AP fix, rough-estimate lower bound, physical reservation
 ## timing, direct-army path unified into the same deferred-apply mechanism
 

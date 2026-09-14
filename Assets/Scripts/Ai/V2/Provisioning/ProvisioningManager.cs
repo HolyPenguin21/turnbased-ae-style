@@ -396,24 +396,10 @@ namespace Game.Ai.V2
             return preview;
         }
 
-        // Turns a resolved GarrisonExtractionCandidate into a real, separate field mover. All
-        // three tiers share one transfer primitive (ArmyActions.TransferMember — the exact same
-        // safety gate and mutation path Raid's own donor path already trusts in production). A
-        // shell minted here via ArmyActions.CreateArmy but never successfully populated is kept,
-        // never rolled back (same rule CardPlayExecutor documents for its own NewArmy path) — it
-        // simply becomes a future Shell-tier candidate. `containerCreated` reports whether
-        // ArmyActions.CreateArmy ACTUALLY ran and spent its AP — true even when the very next
-        // TransferMember into it then fails, so a caller can never lose track of a real,
-        // already-spent cost just because this call returned null overall (2026-09-14 review
-        // round 3 P1 — the caller used to infer this from candidate.Tier, which reflects what was
-        // CHOSEN, not what actually happened).
+        // Applies the resolved extraction through canonical domain actions.
         internal static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
-            GarrisonExtractionCandidate candidate, AiTurnContext ctx,
-            out UnitData extractedHero, out bool containerCreated, out int createdContainerArmyId)
+            GarrisonExtractionCandidate candidate, AiTurnContext ctx)
         {
-            extractedHero = null;
-            containerCreated = false;
-            createdContainerArmyId = -1;
             if (candidate.Tier == GarrisonExtractionTier.None)
                 return null;
 
@@ -421,22 +407,28 @@ namespace Game.Ai.V2
             if (candidate.Tier == GarrisonExtractionTier.Create)
             {
                 FactionCardCatalog catalog = ctx.StartingDeckCatalog?.GetCatalog(player.Faction);
-                container = ArmyActions.CreateArmy(player, garrison.Hex, catalog, ctx.HexSelection);
+                container = ArmyActions.CreateArmyWithMember(player, garrison.Hex, catalog,
+                    garrison, candidate.Hero, ctx.HexSelection, out string whyCreate);
                 if (container == null)
+                {
+                    if (!string.IsNullOrEmpty(whyCreate))
+                        AiDebugLog.WriteVerbose($"[AI][V2][Economy] garrison hero extraction "
+                            + $"(Create) failed atomically: {whyCreate}");
                     return null;
-                containerCreated = true;
-                createdContainerArmyId = container.Id;
+                }
+                AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
+                    + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "
+                    + $"ap {candidate.ApCost:0.##}) for economy mobile_hero duty");
+                return container;
             }
 
-            if (!ArmyActions.TransferMember(candidate.Hero, garrison, container, ctx.HexSelection, out string why))
+            if (!ArmyActions.TransferMember(candidate.Hero, garrison, container,
+                    ctx.HexSelection, out string why))
             {
                 AiDebugLog.WriteVerbose($"[AI][V2][Economy] garrison hero extraction "
-                    + $"({candidate.Tier}) to #{container.Id} failed: {why}"
-                    + (candidate.Tier == GarrisonExtractionTier.Create
-                        ? " — shell kept as a reusable asset" : ""));
+                    + $"({candidate.Tier}) to #{container.Id} failed: {why}");
                 return null;
             }
-            extractedHero = candidate.Hero;
             AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
                 + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "
                 + $"ap {candidate.ApCost:0.##}) for economy mobile_hero duty");
@@ -1392,7 +1384,7 @@ namespace Game.Ai.V2
                     $"economy builder #{identityArmyId} no longer has its planned minimum escort"));
             float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
                 target.MinimumFollowupAp, lighteningPlan, reinforcementPlan,
-                travelNeeded, completionThisTurn);
+                garrison, travelNeeded, completionThisTurn);
             if (realAp > apEnvelope + eps)
                 return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(realAp,
                     $"economy hero #{identityArmyId} needs {realAp:0.##} AP for "
@@ -1655,18 +1647,22 @@ namespace Game.Ai.V2
         internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
             float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded) =>
             EconomyMissionClaimedAp(builder, buildApCost, minimumFollowupAp, unloaded,
-                travelNeeded: true, completionThisTurn: true);
+                added: null, unloadTarget: null, travelNeeded: true, completionThisTurn: true);
 
         internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
             float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded,
             bool travelNeeded, bool completionThisTurn)
             => EconomyMissionClaimedAp(builder, buildApCost, minimumFollowupAp,
-                unloaded, added: null, travelNeeded, completionThisTurn);
+                unloaded, added: null, unloadTarget: null,
+                travelNeeded: travelNeeded, completionThisTurn: completionThisTurn);
 
         internal static float EconomyMissionClaimedAp(ArmyData builder, float buildApCost,
             float minimumFollowupAp, IReadOnlyCollection<UnitData> unloaded,
-            IReadOnlyCollection<UnitData> added, bool travelNeeded, bool completionThisTurn)
+            IReadOnlyCollection<UnitData> added, ArmyData unloadTarget,
+            bool travelNeeded, bool completionThisTurn)
         {
+            float immediateTransfers = ArmyActions.TransferMembersApCost(added, builder)
+                + ArmyActions.TransferMembersApCost(unloaded, unloadTarget);
             float activation = 0f;
             if (travelNeeded && builder != null && !builder.HasActivatedThisTurn)
                 activation = builder.Members
@@ -1675,7 +1671,7 @@ namespace Game.Ai.V2
                     .Distinct().Sum(u => u.ActivationApCost);
             float completion = completionThisTurn
                 ? Mathf.Max(buildApCost, minimumFollowupAp) : 0f;
-            return activation + completion;
+            return immediateTransfers + activation + completion;
         }
 
         private static ProvisioningResult ProvisionEconomyRecovery(

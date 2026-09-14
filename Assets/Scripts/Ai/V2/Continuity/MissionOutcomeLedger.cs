@@ -242,7 +242,7 @@ namespace Game.Ai.V2
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
                         || e.RaidOperationStarted || raidEngaged
-                        || e.ActorMaterialized || e.ContainerCreated;
+                        || e.ActorMaterialized || e.EconomyPrepared;
                     if (o.MissionKind == MissionKind.Raid)
                         o.RaidOperationStarted = e.RaidOperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
@@ -317,13 +317,8 @@ namespace Game.Ai.V2
 
             if (o.MissionKind == MissionKind.Economy)
             {
-                // 2026-09-14 review round 5 (P1 #5, extended round 6) — a deferred
-                // garrison-extraction step that materialized a real mover, OR at least kept a newly
-                // created shell (ContainerCreated), (StopReason MoverLost only because THIS mission
-                // has no mover to advance until next admission finds one) is a ProductiveStop: the
-                // world changed for good either way. Without this it fell into the default Failed
-                // case even though nothing about the attempt actually failed.
-                if ((e.ActorMaterialized || e.ContainerCreated) && e.StopReason == ExecutionStopReason.MoverLost)
+                // A committed roster mutation remains progress if its pinned tail became stale.
+                if (e.EconomyPrepared && e.StopReason == ExecutionStopReason.TargetInvalidated)
                 {
                     o.Outcome = ExecutionOutcome.ProductiveStop;
                     return;

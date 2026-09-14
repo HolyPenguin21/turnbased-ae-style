@@ -40,6 +40,50 @@ namespace Game.Map
                 return null;
             root.SpendActionPoints(CreateArmyApCost);
 
+            return RegisterNewArmy(owner, hex, catalog, hexSelectionController);
+        }
+
+        // Atomic form of "create a field army and put its first ground member into it".
+        // Every fallible check runs before AP spend or ArmyRegistry identity allocation.
+        public static ArmyData CreateArmyWithMember(PlayerSetupData owner, HexCoord hex,
+            FactionCardCatalog catalog, ArmyData source, UnitData member,
+            HexSelectionController hexSelectionController, out string failReason)
+        {
+            failReason = null;
+            if (owner == null || catalog == null || source == null || member == null
+                || source.Owner != owner || source.IsPrison || member.IsAviation
+                || !source.Hex.Equals(hex))
+            {
+                failReason = "Invalid create-army-with-member request.";
+                return null;
+            }
+
+            ArmyData prospective = ArmyData.CreateVisualSnapshot();
+            prospective.Hex = hex;
+            prospective.Owner = owner;
+            prospective.IsGarrison = false;
+            if (!CanTransferMembers(new[] { member }, source, prospective, out failReason))
+                return null;
+
+            PlayerRoot root = PlayerRootRegistry.FindFor(owner);
+            if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
+            {
+                failReason = $"Not enough action points to create an army ({CreateArmyApCost} AP needed).";
+                return null;
+            }
+
+            root.SpendActionPoints(CreateArmyApCost);
+            ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController);
+            source.Members.Remove(member);
+            army.AddMemberSorted(member);
+            army.MarkUnitActivationPaid(member);
+            hexSelectionController?.RestackArmiesOn(source.Hex, null);
+            return army;
+        }
+
+        private static ArmyData RegisterNewArmy(PlayerSetupData owner, HexCoord hex,
+            FactionCardCatalog catalog, HexSelectionController hexSelectionController)
+        {
             var takenNames = ArmyRegistry.AllForOwner(owner).Select(a => a.Name);
             var army = new ArmyData
             {
@@ -306,6 +350,15 @@ namespace Game.Map
             ArmyData target, out string failReason)
             => CanTransferMembers(units, source, target, out _, out _, out _, out failReason);
 
+        // Immediate AP price for members joining this destination now.
+        public static int TransferMembersApCost(IEnumerable<UnitData> units, ArmyData target)
+        {
+            if (units == null || target == null)
+                return 0;
+            return units.Where(u => u != null && target.RequiresActivationCharge(u))
+                .Distinct().Sum(u => u.ActivationApCost);
+        }
+
         private static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost,
             out string failReason)
@@ -374,7 +427,7 @@ namespace Game.Map
             var chargeable = distinct.Where(target.RequiresActivationCharge).ToList();
             if (chargeable.Count > 0)
             {
-                totalApCost = chargeable.Sum(u => u.ActivationApCost);
+                totalApCost = TransferMembersApCost(chargeable, target);
                 // Same sibling Energy cost TransferMember now charges per-unit — see its own
                 // comment. A batch transfer only ever carries aircraft when `target` is/becomes
                 // an air army (CanContain above already enforced that), so this is 0 for every
