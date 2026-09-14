@@ -485,7 +485,7 @@ namespace Game.Ai.V2
             ActorCommitments durableCommitments = null)
         {
             PrepareScoutAssignments(player, root, ctx, session, allocation, durableCommitments);
-            PrepareGroundCombatAssignments(session, allocation);
+            PrepareGroundCombatAssignments(session, allocation, durableCommitments);
         }
 
         // Assignment is solved for the whole funded Scout set. Expose every negative result as one
@@ -539,7 +539,8 @@ namespace Game.Ai.V2
             session.SetAssignment(result);
         }
 
-        private static void PrepareGroundCombatAssignments(ProvisioningSession session, TentativeAllocation allocation)
+        private static void PrepareGroundCombatAssignments(ProvisioningSession session,
+            TentativeAllocation allocation, ActorCommitments durableCommitments)
         {
             var open = new List<FundedEntry>();
             // AGG-RAID §8 — ALL ground-combat proposals are decided in ONE pass, so one army can
@@ -581,7 +582,14 @@ namespace Game.Ai.V2
                 if (GroundCombatAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
                     ids.AddRange(eligible
                         .Where(id => !session.ClaimedArmyIds.Contains(id)
-                            && !pinnedByOtherLegs.Contains(id))
+                            && !pinnedByOtherLegs.Contains(id)
+                            // A free support/assault actor may not be stolen from another durable
+                            // Recon/Economy/Raid operation. The only exception is this proposal's
+                            // own pinned incumbent primary, which must remain executable.
+                            && (durableCommitments == null
+                                || !durableCommitments.IsArmyClaimed(id)
+                                || (fe.Mission.FromDurableIntent
+                                    && fe.Mission.PreferredMoverArmyId == id)))
                         .OrderBy(id => RaidActorActivation(session.Snapshot, id))
                         .ThenBy(id => RaidActorPower(session.Snapshot, id))
                         .ThenBy(id => id));
@@ -2086,11 +2094,11 @@ namespace Game.Ai.V2
             // so Continuity retargets instead of continuing to attack a now-illegal target.
             if (!RaidObjectiveEvaluator.IsNeutralRaidTarget(sighting.Value.Owner))
             {
-                if (sighting.Value.Owner.Equals(player))
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                        $"raid target #{target.TargetArmyId} is now ours"));
-                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    $"raid target #{target.TargetArmyId} is no longer neutral (now owned by another player)"));
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    sighting.Value.Owner.Equals(player)
+                        ? $"raid target #{target.TargetArmyId} is now ours"
+                        : $"raid target #{target.TargetArmyId} is no longer neutral "
+                            + "(now owned by another player)"));
             }
 
             HexCoord targetHex = sighting.Value.Hex;
