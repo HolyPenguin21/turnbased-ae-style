@@ -186,5 +186,34 @@ namespace Game.Ai.V2
         // exemption. TempoCandidateProvider is the only consumer; StrategicPressureAdvance and
         // Execution take the resulting candidate/plan as given and do not re-interpret scope.
         public static bool AllowStrategicPressure => !IsFocusScoped;
+
+        // AGG-RAID P1#2 — the mission axes with a live, in-turn-re-admittable durable OPERATION
+        // (Recon/Scout, Aggression/Raid, and — once it exists — Active Defence). Economy and
+        // Development are demand-side axes with their own dedicated re-admission gating
+        // (AiStrategyV2Pipeline.TakeTypedTriggers' dirtyStrategicAxes loop) and are deliberately NOT
+        // part of this list. Add a new operational mission axis here ONCE and every consumer below
+        // (and every follow-up Consume call site) picks it up automatically.
+        private static readonly DesireAxis[] OperationalMissionAxes =
+        {
+            DesireAxis.Recon, DesireAxis.Aggression,
+        };
+
+        // AGG-RAID P1#2 — the ONE canonical operational invalidation mask, built from every
+        // CURRENTLY-ENABLED operational mission axis. Before this, two follow-up re-check call
+        // sites in AiStrategyV2Pipeline (the main mid-turn loop and the end-of-turn management
+        // round) hardcoded Recon-only, so an Aggression invalidation published mid-loop (e.g. a
+        // reinforcement materialization or a combat-power change) was invisible to those specific
+        // re-checks — a delay, or an accidental dependency on an unrelated Recon event firing too.
+        internal static StrategicInvalidationReason OperationalInvalidationMask
+        {
+            get
+            {
+                StrategicInvalidationReason mask = StrategicInvalidationReason.None;
+                foreach (DesireAxis axis in OperationalMissionAxes)
+                    if (AxisInScope(axis))
+                        mask |= DesireAxes.InvalidationMaskFor(axis);
+                return mask;
+            }
+        }
     }
 }

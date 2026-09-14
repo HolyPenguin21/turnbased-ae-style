@@ -738,16 +738,15 @@ namespace Game.Ai.V2
                 {
                     StrategicInvalidation pending =
                         StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
-                    // AGG-RAID §12 — the OPERATIONAL mask is built from EVERY enabled mission axis,
-                    // not only Recon. Without Aggression here, destroying a neutral published a
-                    // Contact invalidation that nothing consumed, so the bounded loop never got a
-                    // same-turn chance to refresh the objective list, complete the old target,
-                    // select the next one, or start a Return mission. Defence is deliberately out
-                    // of scope for this task (no V2 Defence mission exists yet).
+                    // AGG-RAID §12/P1#2 — the OPERATIONAL mask is built from EVERY currently-enabled
+                    // mission axis, not only Recon. Without Aggression here, destroying a neutral
+                    // published a Contact invalidation that nothing consumed, so the bounded loop
+                    // never got a same-turn chance to refresh the objective list, complete the old
+                    // target, select the next one, or start a Return mission. Defence is deliberately
+                    // out of scope for this task (no V2 Defence mission exists yet — it drops out of
+                    // AiStrategyV2Scope.OperationalInvalidationMask automatically once it's added).
                     StrategicInvalidationReason operationalMask =
-                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon);
-                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                        operationalMask |= DesireAxes.InvalidationMaskFor(DesireAxis.Aggression);
+                        AiStrategyV2Scope.OperationalInvalidationMask;
                     operationalReasons = pending.Reasons & operationalMask;
                     strategicReasons = StrategicInvalidationReason.None;
                     dirtyStrategicAxes = new HashSet<DesireAxis>();
@@ -971,9 +970,12 @@ namespace Game.Ai.V2
                             out HashSet<DesireAxis> recoveryDirtyAxes);
                         bool recoveryStrategicChanged = ReenterStrategicAxes(
                             recoveryStrategicReasons, recoveryDirtyAxes);
+                        // AGG-RAID P1#2 — was Recon-only; now the same operational mask
+                        // TakeTypedTriggers itself uses, so an Aggression invalidation published by
+                        // this recovery step is not invisible to this follow-up re-check.
                         StrategicInvalidation recoveryFollowupTriggers =
                             StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                                DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                                AiStrategyV2Scope.OperationalInvalidationMask);
                         recoveryOperationalReasons |= recoveryFollowupTriggers.Reasons;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
                             + $"progress={(recoveryProgress ? 1 : 0)} "
@@ -1204,9 +1206,11 @@ namespace Game.Ai.V2
                         strategicReasons, dirtyStrategicAxes);
                     progressed |= strategicChanged;
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
+                    // AGG-RAID P1#2 — was Recon-only; the main mid-turn loop's own follow-up
+                    // re-check now sees the same operational axes TakeTypedTriggers admits.
                     StrategicInvalidation followupOperationalTriggers =
                         StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                            DesireAxes.InvalidationMaskFor(DesireAxis.Recon));
+                            AiStrategyV2Scope.OperationalInvalidationMask);
                     operationalReasons |= followupOperationalTriggers.Reasons;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
@@ -1266,9 +1270,11 @@ namespace Game.Ai.V2
                     bool strategicDirty = strategicReasons != StrategicInvalidationReason.None;
                     bool strategicChanged = ReenterStrategicAxes(
                         strategicReasons, dirtyStrategicAxes);
+                    // AGG-RAID P1#2 — was Recon-only; Phase B's end-of-turn management round
+                    // follow-up re-check now sees the same operational axes TakeTypedTriggers admits.
                     operationalDirty |= StrategicInterruptRegistry.Consume(
                         player, ctx.TurnNumber,
-                        DesireAxes.InvalidationMaskFor(DesireAxis.Recon)).Any;
+                        AiStrategyV2Scope.OperationalInvalidationMask).Any;
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
                         + $"strategicTriggers={strategicReasons} "
