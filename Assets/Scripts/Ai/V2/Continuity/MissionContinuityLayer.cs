@@ -1096,6 +1096,11 @@ namespace Game.Ai.V2
             bool returnBuilderOutcome = o.MissionKind == MissionKind.Economy
                 && (o.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
                     || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder);
+            bool raidReinforcementOutcome = o.MissionKind == MissionKind.Raid
+                && (o.HasRaidPayload
+                    ? o.RaidPhase == RaidMissionPhase.Reinforcement
+                    : o.Proposal?.Target is RaidMissionTarget reinforcementTarget
+                        && reinforcementTarget.Phase == RaidMissionPhase.Reinforcement);
             AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
                 + (o.ObjectiveSatisfied ? " satisfied" : "")
                 + (o.StructuralFailure ? " structural" : "")
@@ -1183,6 +1188,23 @@ namespace Game.Ai.V2
 
             if (o.StructuralFailure)
             {
+                // A failed support roster invalidates only that reinforcement assignment, not the
+                // durable Raid campaign or its neutral target. Provisioning classifies a missing
+                // primary/target separately; AssemblyInfeasible here is therefore support-local.
+                if (raidReinforcementOutcome && intent?.Raid != null
+                    && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible)
+                {
+                    intent.Raid.SupportArmyId = 0;
+                    intent.Raid.ReinforcementRequestedTurn = -1;
+                    intent.Raid.Phase = RaidMissionPhase.Reinforcement;
+                    intent.Status = IntentStatus.Active;
+                    intent.Suspended = SuspendReason.None;
+                    intent.LastReconciledTurn = turn;
+                    AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} "
+                        + "support assembly invalid; support released, campaign kept in Reinforcement");
+                    return;
+                }
+
                 if (returnBuilderOutcome && intent != null)
                 {
                     intent.Status = IntentStatus.Active;

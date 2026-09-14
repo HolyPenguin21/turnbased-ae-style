@@ -157,13 +157,27 @@ namespace Game.Ai.V2
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
                 return false;
 
-            // AGG-RAID §7 — the Raid-reinforcement handoff, analogous to the Economy one above.
-            // Identify the CONCRETE delivered army, record it as RaidIntent.SupportArmyId and hand
-            // ownership straight to Continuity. No parallel generic Housekeeping lease is taken:
-            // ActorCommitments already claims a Reinforcement support actor, and a second owner is
-            // exactly the class of bug the Economy handoff avoids.
-            if (TryHandoffRaidSupport(player, afterSnap, demand, leased, ctx.TurnNumber))
-                return true;
+            // AGG-RAID §7 — an IndependentFieldArmy is delivered only when the SAME
+            // GroundCombat admission used by Demand/Missions/Provisioning accepts the concrete
+            // post-deployment roster. A one-body shell is useful construction progress, but it
+            // cannot spare a body without emptying its container and must not close the demand or
+            // become Continuity's support actor yet.
+            if (IsRaidReinforcementDemand(demand))
+            {
+                if (TryHandoffRaidSupport(player, afterSnap, demand, leased, ctx.TurnNumber))
+                    return true;
+
+                // Keep the partial recipient intact through this turn's Housekeeping. The residual
+                // remains open (delivered=0), so a later pass/turn may add another body to the same
+                // ordinary reserve army and re-run the canonical GroundCombat admission.
+                StrategicCapabilityLeaseRegistry.Mark(
+                    player, ctx.TurnNumber, demand.Capability, leased);
+                delivered = 0f;
+                AiDebugLog.Write($"[AI][V2][Raid] materialization partial support for "
+                    + $"{demand.ConsumerIntentKey}: no transfer-ready leased army; "
+                    + "demand remains open");
+                return false;
+            }
 
             // Economy already has one Continuity owner; a generic lease would add a second one.
             // Other capabilities still need the turn-local barrier until their normal handoff.
@@ -172,6 +186,13 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber, demand.Capability, leased);
             return true;
         }
+
+        private static bool IsRaidReinforcementDemand(AxisDemand demand)
+            => demand != null
+                && demand.RequestingAxis == DesireAxis.Aggression
+                && demand.Capability == CapabilityKind.FieldCombatPower
+                && demand.DeliveryShape == CapabilityDeliveryShape.IndependentFieldArmy
+                && demand.ConsumerIntentKey.HasValue;
 
         // AGG-RAID §7 — bind an IndependentFieldArmy delivery to the exact RaidIntent that asked
         // for it. Returns true when the support actor was handed to Continuity.
@@ -194,12 +215,15 @@ namespace Game.Ai.V2
                 return false;
             RaidIntent ri = intent.Raid;
 
-            // The concrete delivered army: an operational field actor produced/modified by this
-            // plan that is neither the primary nor an already-bound support.
+            // GroundCombatAssemblyPlanner is the single owner of reinforcement admission. Intersect
+            // its transfer-ready candidates with the armies this materialization actually touched;
+            // never weaken that contract back to the generic IsStructuralRaidActor shape.
+            var admissible = new HashSet<int>(
+                GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
+                    afterSnap, ri.PrimaryArmyId,
+                    AiV2Util.KnownDefenders(afterSnap, ri.TargetArmyId), null));
             int support = leased
-                .Where(id => id != 0 && id != ri.PrimaryArmyId)
-                .Where(id => afterSnap?.Self?.Armies?.Any(a => a != null && a.ArmyId == id
-                    && a.IsStructuralRaidActor) == true)
+                .Where(id => id != 0 && id != ri.PrimaryArmyId && admissible.Contains(id))
                 .OrderBy(id => id)
                 .FirstOrDefault();
             if (support == 0)
