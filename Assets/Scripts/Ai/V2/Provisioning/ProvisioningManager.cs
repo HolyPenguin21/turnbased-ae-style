@@ -60,6 +60,12 @@ namespace Game.Ai.V2
         // which could legally pick a different — or already-claimed-by-someone-else — actor. Default
         // (Tier == None) whenever EconomyExtractionGarrisonArmyId is -1 (nothing deferred).
         internal ProvisioningManager.GarrisonExtractionCandidate EconomyExtractionPlan;
+        // 2026-09-14 review round 8 — the FULL preparation decision (composition, donor, real AP,
+        // resource stage cost) PlanEconomyCompletion computed against a read-only preview of the
+        // not-yet-real container. Execution applies this pinned plan directly — see
+        // TaskExecutor.MaterializeEconomyGarrisonBuilder — never re-deriving it. Default
+        // (Feasible == false) whenever EconomyExtractionGarrisonArmyId is -1.
+        internal ProvisioningManager.EconomyCompletionPlan EconomyExtractionPreparation;
         // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
@@ -355,6 +361,36 @@ namespace Game.Ai.V2
 
             return GarrisonExtractionCandidate.No(
                 "no free shell, no eligible host army, and no ECO-axis room left to create one");
+        }
+
+        // 2026-09-14 review round 8 (P0) — builds a READ-ONLY preview of what the deferred
+        // garrison-extraction container will look like immediately after the (real) hero transfer,
+        // so PlanEconomyCompletion can compute the FULL composition/donor/AP decision at
+        // Provisioning time against ArmyData's own real Members/MaxMovement/CurrentMovement/
+        // HasActivatedThisTurn projections — no duplicated math, no live mutation.
+        // ArmyData.CreateVisualSnapshot() never touches ArmyRegistry or burns a real Id (Id stays
+        // -1), which is exactly what a caller must use `identityArmyId` for instead (see
+        // PlanEconomyArmyLightening's own comment on that parameter).
+        private static ArmyData BuildGarrisonExtractionPreview(
+            PlayerSetupData player, ArmyData garrison, GarrisonExtractionCandidate plan)
+        {
+            ArmyData preview = ArmyData.CreateVisualSnapshot();
+            preview.Hex = garrison.Hex;
+            preview.Owner = player;
+            if (plan.Container != null)
+            {
+                preview.Members.AddRange(plan.Container.Members);
+                // Propagate the REAL container's activation state so the projected AP/charge math
+                // (EconomyMissionClaimedAp, ArmyActions.RequiresActivationCharge-style reasoning)
+                // matches what Execution will actually see once the hero is really transferred in —
+                // MarkActivated covers exactly the pre-existing members, matching a container that
+                // already moved this turn; the hero appended below is deliberately NOT covered, same
+                // as any brand-new join into an activated army.
+                if (plan.Container.HasActivatedThisTurn)
+                    preview.MarkActivated();
+            }
+            preview.Members.Add(plan.Hero);
+            return preview;
         }
 
         // Turns a resolved GarrisonExtractionCandidate into a real, separate field mover. All
@@ -1015,7 +1051,7 @@ namespace Game.Ai.V2
             ArmyData hero = null;
             ArmyData deferredGarrison = null;
             GarrisonExtractionCandidate deferredPlan = default;
-            float deferredEstimatedAp = 0f;
+            EconomyCompletionPlan deferredPreparation = default;
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
             float rawApRemaining = root.ActionPoints - session.ApClaimed;
             float eps = AiConfigV2.allocatorSliceEpsilon;
@@ -1033,21 +1069,32 @@ namespace Game.Ai.V2
                         root, ecoApEnvelopeRemaining);
                     if (plan.Tier == GarrisonExtractionTier.None)
                         continue;
-                    // Conservative pre-mutation estimate: EconomyMissionClaimedAp only ever needs
-                    // UnitData.ActivationApCost sums, not a live ArmyData, and the not-yet-extracted
-                    // hero is solo by construction here — its own stats stand in for what the real
-                    // materialized army will report. This only gates whether the ECO axis funds the
-                    // attempt at all; the AUTHORITATIVE recheck (same FinishEconomyBuilder tail the
-                    // direct-army path below already uses) runs again once the hero is real, inside
-                    // TaskExecutor.MaterializeEconomyGarrisonBuilder.
-                    float estimatedTotal = plan.ApCost + plan.Hero.ActivationApCost
+                    // Cheap pre-check before paying for a full composition search: the coarsest
+                    // possible lower bound (hero's own activation + container cost + build/followup,
+                    // no escort/lightening yet) must already fit, or there is no point computing the
+                    // real plan below at all.
+                    float roughEstimate = plan.ApCost + plan.Hero.ActivationApCost
                         + Mathf.Max(target.BuildApCost, target.MinimumFollowupAp);
-                    if (estimatedTotal > ecoApEnvelopeRemaining + eps
-                        || estimatedTotal > rawApRemaining + eps)
+                    if (roughEstimate > ecoApEnvelopeRemaining + eps
+                        || roughEstimate > rawApRemaining + eps)
                         continue;
+
+                    // 2026-09-14 review round 8 (P0) — compute and PIN the FULL preparation plan
+                    // (composition, donor, authoritative AP, resource stage cost) here, against a
+                    // read-only preview of the not-yet-real container (BuildGarrisonExtractionPreview)
+                    // — the SAME PlanEconomyCompletion the direct-army path uses below, so Execution
+                    // never re-plans, only re-validates this exact decision and applies it.
+                    ArmyData preview = BuildGarrisonExtractionPreview(player, candidateGarrison, plan);
+                    int identityArmyId = plan.Container?.Id ?? -1;
+                    EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
+                        session.Snapshot, standingIntents, key, target, candidate, preview,
+                        identityArmyId, ecoApEnvelopeRemaining, rawApRemaining);
+                    if (!prep.Feasible)
+                        continue;
+
                     deferredGarrison = candidateGarrison;
                     deferredPlan = plan;
-                    deferredEstimatedAp = estimatedTotal;
+                    deferredPreparation = prep;
                     builderChoice = candidate;
                     break;
                 }
@@ -1072,10 +1119,13 @@ namespace Game.Ai.V2
                     MoverArmyId = SyntheticGarrisonExtractionActorId(deferredGarrison.Id),
                     EconomyExtractionGarrisonArmyId = deferredGarrison.Id,
                     EconomyExtractionPlan = deferredPlan,
+                    EconomyExtractionPreparation = deferredPreparation,
                     EconomyPendingBuilderChoice = builderChoice,
                     FocusHex = target.TargetHex, ExecutionHex = deferredGarrison.Hex,
                     EconomyTarget = target,
-                    ClaimedAp = deferredEstimatedAp,
+                    // Authoritative now (EconomyMissionClaimedAp via PlanEconomyCompletion), not the
+                    // coarse pre-composition estimate — includes lightening/reinforcement AP too.
+                    ClaimedAp = deferredPreparation.RealAp,
                 });
             }
 
@@ -1184,37 +1234,71 @@ namespace Game.Ai.V2
                 funded.Tentative.Ap, root.ActionPoints - session.ApClaimed);
         }
 
-        // 2026-09-14 review round 4 — the shared tail for a hero that ALREADY exists as a real,
-        // live field army: donor loan, lightening/reinforcement, the final AP/resource checks, and
-        // the resource reservation. Two callers: ProvisionEconomy itself (direct-army candidates,
-        // unchanged from before this round) and TaskExecutor.MaterializeEconomyGarrisonBuilder
-        // (a garrison-extraction candidate, immediately after ApplyGarrisonExtraction makes `hero`
-        // real). No rollback machinery here on purpose: by construction `hero` is real by the time
-        // this runs either way, so a failure here is an ordinary "this attempt did not complete",
-        // not a mutation to undo — a live army left with a lightened/reinforced roster but no
-        // completed build is exactly the same shape of partial progress a live army left mid-walk
-        // already is, and both are handled the same way next turn (it is found again next admission
-        // pass, this time via the direct-army path). `apEnvelope`/`apPoolRemaining` are the two
-        // Provisioning-time budget concepts as plain numbers so a caller with no FundedEntry/
-        // ProvisioningSession of its own (Execution) can still supply them.
-        internal static ProvisioningResult FinishEconomyBuilder(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, WorldSnapshot snapshot, IReadOnlyList<MissionIntent> standingIntents,
-            MissionProposal m, StableMissionKey key, EconomyMissionTarget target,
-            DemandLayer.EconomyBuilderChoice builderChoice, ArmyData hero,
-            float apEnvelope, float apPoolRemaining, bool bumpVersion = true)
+        // 2026-09-14 review round 8 (P0) — the pure DECISION half of what FinishEconomyBuilder used
+        // to compute inline: donor loan, route, lightening/reinforcement composition, AP/resource
+        // feasibility. Split out so Provisioning can compute and PIN this exact decision against a
+        // read-only preview (see BuildGarrisonExtractionPreview) for a deferred garrison-extraction
+        // candidate — Execution then only re-validates the volatile parts (AP, resources) and
+        // APPLIES the pinned Unload/Reinforcement, never re-deriving them. The direct-army path
+        // (FinishEconomyBuilder, below) calls this with the REAL live hero — identical behaviour to
+        // before this split, since every read here (Hex/Members/MaxMovement/CurrentMovement/
+        // HasActivatedThisTurn) is satisfied the same way by a real ArmyData or by the preview.
+        // `identityArmyId` is `hero.Id` for the direct-army path; for a preview it is the REAL
+        // container id when one already exists (Shell/Host) or -1 for Create (nothing could already
+        // be bound to an army that does not exist yet).
+        internal readonly struct EconomyCompletionPlan
+        {
+            public readonly bool Feasible;
+            public readonly ProvisionFailure Failure;
+            public readonly MissionIntent Donor;
+            public readonly ArmyData Garrison;
+            public readonly List<UnitData> Unload;
+            public readonly List<UnitData> Reinforcement;
+            public readonly bool TravelNeeded;
+            public readonly bool CompletionThisTurn;
+            public readonly ResourceCost StageCost;
+            public readonly float RealAp;
+            public readonly string OwnerKey;
+
+            private EconomyCompletionPlan(bool feasible, ProvisionFailure failure,
+                MissionIntent donor, ArmyData garrison, List<UnitData> unload,
+                List<UnitData> reinforcement, bool travelNeeded, bool completionThisTurn,
+                ResourceCost stageCost, float realAp, string ownerKey)
+            {
+                Feasible = feasible; Failure = failure; Donor = donor; Garrison = garrison;
+                Unload = unload; Reinforcement = reinforcement; TravelNeeded = travelNeeded;
+                CompletionThisTurn = completionThisTurn; StageCost = stageCost; RealAp = realAp;
+                OwnerKey = ownerKey;
+            }
+
+            public static EconomyCompletionPlan No(ProvisionFailure failure) =>
+                new EconomyCompletionPlan(false, failure, null, null, null, null,
+                    false, false, null, 0f, null);
+            public static EconomyCompletionPlan Yes(MissionIntent donor, ArmyData garrison,
+                List<UnitData> unload, List<UnitData> reinforcement, bool travelNeeded,
+                bool completionThisTurn, ResourceCost stageCost, float realAp, string ownerKey) =>
+                new EconomyCompletionPlan(true, default, donor, garrison, unload, reinforcement,
+                    travelNeeded, completionThisTurn, stageCost, realAp, ownerKey);
+        }
+
+        internal static EconomyCompletionPlan PlanEconomyCompletion(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> standingIntents, StableMissionKey key,
+            EconomyMissionTarget target, DemandLayer.EconomyBuilderChoice builderChoice,
+            ArmyData hero, int identityArmyId, float apEnvelope, float apPoolRemaining)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
             MissionIntent donor = standingIntents.FirstOrDefault(i => i != null
-                && i.Kind != MissionKind.Economy && i.PreferredMoverArmyId == hero.Id
+                && i.Kind != MissionKind.Economy && i.PreferredMoverArmyId == identityArmyId
                 && DemandLayer.EconomyDonorStructurallyEligible(i));
             int distance = SafeStepPathing.FindSafePathCost(ctx.Map, hero, target.TargetHex);
             if (distance == int.MaxValue)
-                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("no safe economy route"));
+                return EconomyCompletionPlan.No(ProvisionFailure.NoExecutableStep("no safe economy route"));
             if (donor != null)
             {
                 if (!DemandLayer.EconomyLoanAllowed(donor, target.BuildValue, distance,
                         hero.CurrentMovement, out float loanNet))
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    return EconomyCompletionPlan.No(ProvisionFailure.MoverContended(
                         $"loan rejected donor={donor.IntentKey} distance={distance} move={hero.CurrentMovement} net={loanNet:0.##}"));
             }
 
@@ -1222,47 +1306,76 @@ namespace Game.Ai.V2
             bool completionThisTurn = distance <= hero.CurrentMovement;
             ResourceCost stageCost = completionThisTurn ? target.BuildResourceCost : null;
             List<UnitData> lighteningPlan = PlanEconomyArmyLightening(
-                player, hero, target.TargetHex, snapshot, ctx,
+                player, hero, identityArmyId, target.TargetHex, snapshot, ctx,
                 builderChoice.MinimumEscortCount, out ArmyData garrison,
                 out List<UnitData> reinforcementPlan);
             if (builderChoice.Suitability == DemandLayer.EconomyArmySuitability.ReinforceAtBase
                 && reinforcementPlan.Count == 0)
-                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                    $"economy builder #{hero.Id} no longer has its planned minimum escort"));
+                return EconomyCompletionPlan.No(ProvisionFailure.AssemblyInfeasible(
+                    $"economy builder #{identityArmyId} no longer has its planned minimum escort"));
             float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
                 target.MinimumFollowupAp, lighteningPlan, reinforcementPlan,
                 travelNeeded, completionThisTurn);
             if (realAp > apEnvelope + eps)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
-                    $"economy hero #{hero.Id} needs {realAp:0.##} AP for "
+                return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(realAp,
+                    $"economy hero #{identityArmyId} needs {realAp:0.##} AP for "
                     + (completionThisTurn ? "delivery + completion" : "this travel stage")));
             if (realAp > apPoolRemaining + eps)
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended("economy AP no longer available"));
+                return EconomyCompletionPlan.No(ProvisionFailure.MoverContended("economy AP no longer available"));
 
             string owner = EconomyMissionPlanner.OwnerKey(key);
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx,
-                    stageCost, owner))
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost, owner))
+                return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(realAp, CostVector(stageCost)),
                     "economy completion resources no longer spendable"));
+
+            return EconomyCompletionPlan.Yes(donor, garrison, lighteningPlan, reinforcementPlan,
+                travelNeeded, completionThisTurn, stageCost, realAp, owner);
+        }
+
+        // 2026-09-14 review round 4 — the shared tail for a hero that ALREADY exists as a real,
+        // live field army: donor loan, lightening/reinforcement, the final AP/resource checks, and
+        // the resource reservation. Caller: ProvisionEconomy itself (direct-army candidates). Round
+        // 8 — the deferred garrison-extraction path no longer calls this at all; it computes/pins
+        // its own EconomyCompletionPlan at Provisioning time and applies it directly in
+        // TaskExecutor.MaterializeEconomyGarrisonBuilder, never re-planning in Execution. No
+        // rollback machinery here on purpose: by construction `hero` is real by the time this runs,
+        // so a failure here is an ordinary "this attempt did not complete", not a mutation to undo —
+        // a live army left with a lightened/reinforced roster but no completed build is exactly the
+        // same shape of partial progress a live army left mid-walk already is, and both are handled
+        // the same way next turn (found again next admission pass). `apEnvelope`/`apPoolRemaining`
+        // are the two Provisioning-time budget concepts as plain numbers.
+        internal static ProvisioningResult FinishEconomyBuilder(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snapshot, IReadOnlyList<MissionIntent> standingIntents,
+            MissionProposal m, StableMissionKey key, EconomyMissionTarget target,
+            DemandLayer.EconomyBuilderChoice builderChoice, ArmyData hero,
+            float apEnvelope, float apPoolRemaining, bool bumpVersion = true)
+        {
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+            EconomyCompletionPlan plan = PlanEconomyCompletion(player, root, ctx, snapshot,
+                standingIntents, key, target, builderChoice, hero, hero.Id,
+                apEnvelope, apPoolRemaining);
+            if (!plan.Feasible)
+                return ProvisioningResult.Fail(plan.Failure);
+
             int preparedMembers = ApplyEconomyArmyLightening(
-                hero, garrison, lighteningPlan, reinforcementPlan, ctx);
-            int plannedTransfers = lighteningPlan.Count + reinforcementPlan.Count;
+                hero, plan.Garrison, plan.Unload, plan.Reinforcement, ctx);
+            int plannedTransfers = plan.Unload.Count + plan.Reinforcement.Count;
             if (preparedMembers != plannedTransfers)
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{hero.Id} composition transaction did not commit"));
             // Atomic transfer failure leaves the original roster intact, so claim its real live AP
             // rather than the projected lighter value.
-            realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
-                target.MinimumFollowupAp, null, travelNeeded, completionThisTurn);
+            float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
+                target.MinimumFollowupAp, null, plan.TravelNeeded, plan.CompletionThisTurn);
             if (realAp > apEnvelope + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
                     "economy army could not be lightened within the funded AP envelope"));
-            if (completionThisTurn)
-                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, owner,
+            if (plan.CompletionThisTurn)
+                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, plan.OwnerKey,
                     target.BuildResourceCost, target.BuildApCost);
 
-            MissionIntent loan = donor;
+            MissionIntent loan = plan.Donor;
             if (loan != null)
             {
                 loan.Status = IntentStatus.Suspended;
@@ -1275,8 +1388,8 @@ namespace Game.Ai.V2
                 Mission = m, Key = key, Kind = MissionKind.Economy,
                 MoverArmyId = hero.Id, FocusHex = target.TargetHex,
                 ExecutionHex = target.TargetHex, EconomyTarget = target,
-                ClaimedAp = realAp, ClaimedPhysical = CostVector(stageCost),
-                ReservationOwner = owner,
+                ClaimedAp = realAp, ClaimedPhysical = CostVector(plan.StageCost),
+                ReservationOwner = plan.OwnerKey,
                 EconomyLoanSource = loan?.IntentKey,
             }, preparedMembers, bumpVersion);
         }
@@ -1303,6 +1416,20 @@ namespace Game.Ai.V2
             ArmyData builder, HexCoord target, WorldSnapshot snapshot, AiTurnContext ctx,
             int minimumEscort, out ArmyData garrison,
             out List<UnitData> reinforcement)
+            => PlanEconomyArmyLightening(player, builder, builder?.Id ?? -1, target, snapshot, ctx,
+                minimumEscort, out garrison, out reinforcement);
+
+        // 2026-09-14 review round 8 (P0) — `identityArmyId` decouples the loan-protection intent
+        // check from `builder.Id` so a Provisioning-time READ-ONLY PREVIEW of a not-yet-real
+        // garrison-extraction container (ArmyData.CreateVisualSnapshot(), Id always -1) can still be
+        // checked against the REAL container id it stands in for when one already exists (Shell/Host
+        // tier) — using the preview's own -1 id would silently skip this protection for those tiers.
+        // Both existing callers (the overload above, TryLightenEconomyArmy) keep passing `builder.Id`
+        // — unchanged behaviour for every live-army caller.
+        private static List<UnitData> PlanEconomyArmyLightening(PlayerSetupData player,
+            ArmyData builder, int identityArmyId, HexCoord target, WorldSnapshot snapshot,
+            AiTurnContext ctx, int minimumEscort, out ArmyData garrison,
+            out List<UnitData> reinforcement)
         {
             garrison = null;
             reinforcement = new List<UnitData>();
@@ -1317,7 +1444,7 @@ namespace Game.Ai.V2
             // remaining loanable obligations as well.
             if (MissionIntentRegistry.GetOrCreate(player).All.Any(i => i != null
                 && i.Status == IntentStatus.Active && i.Kind != MissionKind.Economy
-                && i.PreferredMoverArmyId == builder.Id))
+                && i.PreferredMoverArmyId == identityArmyId))
                 return unload;
             BuildingData home = BuildingRegistry.FindAt(builder.Hex);
             bool isCitadel = player.CitadelHexQ == builder.Hex.Q
@@ -1383,7 +1510,7 @@ namespace Game.Ai.V2
             return unload;
         }
 
-        private static int ApplyEconomyArmyLightening(ArmyData builder,
+        internal static int ApplyEconomyArmyLightening(ArmyData builder,
             ArmyData garrison, IReadOnlyList<UnitData> unload,
             IReadOnlyList<UnitData> reinforcement, AiTurnContext ctx)
         {
@@ -1594,7 +1721,7 @@ namespace Game.Ai.V2
             });
         }
 
-        private static ResourceVector CostVector(ResourceCost cost) => cost == null
+        internal static ResourceVector CostVector(ResourceCost cost) => cost == null
             ? ResourceVector.Zero
             : new ResourceVector(0f, cost.Get(ResourceType.Human), cost.Get(ResourceType.Energy),
                 cost.Get(ResourceType.Materials), cost.Get(ResourceType.Tech));

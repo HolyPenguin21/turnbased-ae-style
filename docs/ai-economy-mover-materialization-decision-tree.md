@@ -1,5 +1,75 @@
 # Economy mover materialization — decision tree (reusable analysis pattern)
 
+## Review round 8/9 (2026-09-14) — composition planning moved to Provisioning; ONE execution lifecycle
+
+A further external review correctly rejected round 6/7's "structurally blocked" verdict on both
+items round 7 left open, pointing at concrete existing primitives this session had missed:
+`ArmyData.ComputeCapacity(IEnumerable<UnitData>, bool)` (a pure projection, not tied to a live
+army), `ArmyCapacityRules`, and `ArmyData.MaxMovement`/`CurrentMovement` (`Members.Min(...)`,
+already pure over any member list). Re-investigated with those in hand — both items turned out to
+be achievable without new duplicated math or a new architectural seam.
+
+**P0 — Execution no longer re-plans Economy composition.** `ProvisioningManager.FinishEconomyBuilder`
+was split into a pure decision half, `PlanEconomyCompletion` (donor lookup, safe-route distance,
+`PlanEconomyArmyLightening` call, AP/resource feasibility — returns a new `EconomyCompletionPlan`
+struct) and the existing apply/reserve/donor-suspend tail (unchanged, still `FinishEconomyBuilder`,
+still the sole caller for the direct-army path). For a deferred garrison-extraction candidate,
+Provisioning now builds a READ-ONLY preview of the not-yet-real container
+(`ArmyData.CreateVisualSnapshot()` — an existing primitive built for exactly this: `Id` stays `-1`,
+never touches `ArmyRegistry`) with the hero's `UnitData` appended to `Members`, and the real
+container's pre-existing members + `HasActivatedThisTurn` state copied in when one already exists
+(Shell/Host tier). `PlanEconomyCompletion` is called against this preview — the EXACT same function
+the direct-army path uses, so there is no second, divergence-prone implementation — and the
+resulting `Unload`/`Reinforcement`/`Donor`/`RealAp`/`StageCost`/`OwnerKey` decision is pinned onto
+`ProvisionedMission.EconomyExtractionPreparation`. `TaskExecutor.MaterializeEconomyGarrisonBuilder`
+no longer calls `FinishEconomyBuilder` (or `PlanEconomyArmyLightening`, or the donor/route logic) at
+all — it applies the pinned `GarrisonExtractionCandidate` (hero) via the existing
+`ApplyGarrisonExtraction`, cheaply RE-VALIDATES only the two facts that can actually shift between
+Provisioning and Execution within the same batch pass (AP still available, resources still
+spendable — never composition/donor/route), applies the pinned `Unload`/`Reinforcement` via the
+existing `ApplyEconomyArmyLightening`, and stamps the reservation/donor-suspend from the pinned
+decision. `PlanEconomyArmyLightening` gained an `identityArmyId` parameter (defaulting to
+`builder.Id` for both pre-existing callers, unchanged behaviour) so the loan-protection intent check
+can be pointed at the REAL container id a Shell/Host preview stands in for, instead of the preview's
+own always-`-1` id. As a side effect the deferred mission's `ClaimedAp` is now the AUTHORITATIVE
+`EconomyMissionClaimedAp` figure (includes lightening/reinforcement AP), not the old coarse
+pre-composition estimate — and the Provisioning-side candidate loop now `continue`s to the next
+ranked builder if the full plan turns out infeasible, instead of deferring a doomed mission.
+
+*Not fully collapsed into a single ArmyActions transaction*: `ApplyGarrisonExtraction` (hero) and
+`ApplyEconomyArmyLightening` (composition, with its own round-6 rollback) remain two sequential
+domain calls inside one Execution step, not merged into one preflight-then-commit primitive. Given
+composition legality is checked live against the REAL post-hero-transfer container either way (no
+projection needed at commit time — only at Provisioning-time planning), and each call is already
+individually atomic with honest partial-failure reporting (`ContainerCreated` distinct from
+`ActorMaterialized`), this was judged to close the review's actual underlying risk (stranded/
+silently-lost mutations) without inventing a new ArmyActions-level transaction type or reversing the
+established "a Create-tier shell that fails its hero transfer is kept, never rolled back" precedent
+(round 2/3) — which a full merge would have had to either preserve awkwardly or reverse outright.
+Revisit only if a concrete scenario shows the two-call sequencing itself (not what each call reports)
+causing a problem.
+
+**P1 — one execution lifecycle.** Round 7's three short-circuit helpers are now called from inside a
+single new `TaskExecutor.ExecuteMissionCore` — the complete per-mission step (stale-plan check,
+deferred-Economy materialization, mover resolve, stale-goal revalidation, kind dispatch, AP/version/
+resource stamping, result recording, reservation release). `Execute` (batch) is now a thin loop that
+constructs each mission's `ExecutionResult` and calls this core with `singleStepOnly: false`;
+`ExecuteStep` calls it once with a singleton queue and `singleStepOnly: true`. Neither re-implements
+any lifecycle logic of its own any more. `singleStepOnly` picks between Recon/Raid's own two
+PRE-EXISTING execution strategies (`ReconGroundExecutor.Run`/`RunRaid` — continuous multi-step
+lookahead — vs `RunStep`/`RunRaidStep` — one atomic step), per the review's own explicit framing
+("this strategy difference is fine, it just shouldn't require two lifecycle owners") — it is not a
+new fork, it is the parameter that was implicitly duplicated across two copies of the outer loop
+before. The two small pre-existing observable differences between the old duplicated bodies (Execute
+never sets `NeedsReplan` on a lost/stale mover or unsupported kind and logs a line ExecuteStep
+doesn't; ExecuteStep does the reverse) are preserved explicitly via the same parameter, not silently
+erased — neither was ever explained as a bug by either round.
+
+`dotnet build Assembly-CSharp.csproj` — 0 errors/0 warnings after every incremental step of this
+round (verified after each file edit, not just once at the end). **Still NOT play-tested in Unity —
+this round touches the actual composition/AP/donor decision path, the highest-risk area yet; a
+Unity playtest before trusting this in a real game matters more for this round than any prior one.**
+
 ## Review round 7 (2026-09-14) — Execute/ExecuteStep dedup; plan-immutability left structurally blocked
 
 Follow-up on round 6's two deliberately-deferred items, per explicit instruction to proceed.

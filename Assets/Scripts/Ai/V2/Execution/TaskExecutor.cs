@@ -240,9 +240,126 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // 2026-09-14 review round 9 (P1 — two execution lifecycles, final) — the ONE per-mission
+        // step lifecycle: stale-plan check, deferred-Economy materialization, mover resolve, stale-
+        // goal revalidation, kind dispatch, AP/version/resource stamping, result recording,
+        // reservation release. Both Execute() (batch adapter, `singleStepOnly: false`) and
+        // ExecuteStep() (`singleStepOnly: true`) call this and NOTHING ELSE per mission — neither
+        // re-implements any of it. `singleStepOnly` is an execution-STRATEGY switch, not a second
+        // lifecycle: it picks which of Recon/Raid's own two execution modes applies (continuous
+        // multi-step lookahead — Run/RunRaid — vs one atomic step — RunStep/RunRaidStep, the
+        // pre-existing difference those subsystems already expose), and reproduces the two small,
+        // pre-existing observable differences between the old duplicated bodies (Execute's batch
+        // model never sets NeedsReplan on a lost/stale mover or an unsupported kind, and logs where
+        // ExecuteStep's incremental model doesn't; ExecuteStep does the reverse) — preserved
+        // explicitly rather than silently unified, since neither was ever explained as a bug.
+        private static IEnumerator ExecuteMissionCore(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
+            List<ExecutionResult> results, bool enforceFreshPlan, WorldSnapshot snapshot,
+            List<ProvisionedMission> queue, int missionIndex, bool singleStepOnly)
+        {
+            if (TryHandleStalePlan(player, root, ctx, pm, result, results,
+                    enforceFreshPlan, logStalePlan: !singleStepOnly))
+                yield break;
+
+            int apBefore = root != null ? root.ActionPoints : 0;
+            // 2026-09-14 review round 5 (P1) — a deferred Economy garrison-extraction mission
+            // carries a SYNTHETIC negative MoverArmyId (ProvisioningManager.
+            // SyntheticGarrisonExtractionActorId) — the same "actor does not exist yet" pattern
+            // ScoutExecutorKind.AirLaunch already uses. Materialization happens HERE, first, before
+            // Resolve/MissionRevalidator/anything else below ever sees the synthetic id, and is ALSO
+            // a terminal step of its own — see the helper's own comment for why this never falls
+            // through to movement in the same call.
+            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore))
+            {
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                if (result.StopReason != ExecutionStopReason.StepCompleted)
+                    ReleaseEconomyReservation(player, ctx, pm);
+                yield break;
+            }
+            if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
+                    setNeedsReplan: singleStepOnly, logMoverGone: !singleStepOnly,
+                    singleStepOnly ? "mover gone before atomic execution" : "mover gone before execution",
+                    out ArmyData army))
+                yield break;
+
+            // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
+            // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
+            // + the mission planner re-target the durable ReconPatrolState on the next pass.
+            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore,
+                    setNeedsReplan: singleStepOnly, logRevalidation: !singleStepOnly,
+                    retireReason: singleStepOnly
+                        ? "atomic mission revalidation lost mover" : "mission revalidation lost mover"))
+                yield break;
+
+            if (pm.Kind == MissionKind.Scout)
+            {
+                if (singleStepOnly)
+                {
+                    var soloQueue = new List<ProvisionedMission> { pm };
+                    var control = new ReconGroundExecutor.StepControl();
+                    yield return ReconGroundExecutor.RunStep(player, root, ctx, pm, result, apBefore,
+                        soloQueue, 0, snapshot, control);
+                }
+                else
+                {
+                    yield return ReconGroundExecutor.Run(player, root, ctx, pm, result, apBefore,
+                        queue, missionIndex, snapshot);
+                }
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
+            if (pm.Kind == MissionKind.Raid)
+            {
+                if (singleStepOnly)
+                    yield return RunRaidStep(player, root, ctx, pm, result, apBefore);
+                else
+                    yield return RunRaid(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
+            if (pm.Kind == MissionKind.Economy)
+            {
+                yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                if (result.StopReason != ExecutionStopReason.StepCompleted)
+                    ReleaseEconomyReservation(player, ctx, pm);
+                yield break;
+            }
+
+            // Future mission kinds must opt into an executor explicitly. Never silently treat
+            // an unknown mission as Scout or let it mutate the world through a fallback path.
+            result.StopReason = ExecutionStopReason.TargetInvalidated;
+            result.NeedsReplan = singleStepOnly;
+            result.ApSpent = 0f;
+            ApCheck(pm, apBefore, root, result);
+            CompleteResult(result, root);
+            results.Add(result);
+            ReleaseEconomyReservation(player, ctx, pm);
+            if (!singleStepOnly)
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — unsupported mission kind {pm.Kind}");
+        }
+
         // `snapshot` is passed through to the per-mission executors. ARCH-02 §35 — the terminal
         // air-recon pass is NO LONGER run here: the orchestrator plans it (AirReconPlanner) and
-        // runs it (ReconAirExecutor.Execute) as its own stage after this returns.
+        // runs it (ReconAirExecutor.Execute) as its own stage after this returns. A thin adapter
+        // over ExecuteMissionCore (see that method's own comment) — this loop owns only queue
+        // iteration and the ReconAcceptanceAudit summary bookkeeping, nothing about a mission's own
+        // lifecycle.
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             IReadOnlyList<ProvisionedMission> provisioned, List<ExecutionResult> results,
             WorldSnapshot snapshot = null, bool enforceFreshPlan = false)
@@ -280,81 +397,8 @@ namespace Game.Ai.V2
                     StateVersionBefore = V2StateVersion.Current,
                     ResourcesBefore = AiV2Trace.Stamp(root),
                 };
-
-                if (TryHandleStalePlan(player, root, ctx, pm, result, results,
-                        enforceFreshPlan, logStalePlan: true))
-                    continue;
-
-                int apBefore = root != null ? root.ActionPoints : 0;
-                // 2026-09-14 review round 5 (P1) — this batch loop used to fall straight into
-                // Resolve(pm.MoverArmyId) below with a deferred Economy mission's SYNTHETIC negative
-                // id and misreport MoverLost every time; ExecuteStep already had the real handling.
-                // Same door both loops must use — see the helper's own comment.
-                if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore, snapshot))
-                {
-                    ApCheck(pm, apBefore, root, result);
-                    StampVersion(result);
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    if (result.StopReason != ExecutionStopReason.StepCompleted)
-                        ReleaseEconomyReservation(player, ctx, pm);
-                    continue;
-                }
-                if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
-                        setNeedsReplan: false, logMoverGone: true, "mover gone before execution",
-                        out ArmyData army))
-                    continue;
-
-                // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
-                // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
-                // + the mission planner re-target the durable ReconPatrolState on the next pass.
-                if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore,
-                        setNeedsReplan: false, logRevalidation: true,
-                        retireReason: "mission revalidation lost mover"))
-                    continue;
-
-                if (pm.Kind == MissionKind.Scout)
-                {
-                    yield return ReconGroundExecutor.Run(player, root, ctx, pm, result, apBefore,
-                        queue, missionIndex, snapshot);
-                    ApCheck(pm, apBefore, root, result);
-                    StampVersion(result);
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    continue;
-                }
-
-                if (pm.Kind == MissionKind.Raid)
-                {
-                    yield return RunRaid(player, root, ctx, pm, result, apBefore);
-                    ApCheck(pm, apBefore, root, result);
-                    StampVersion(result);
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    continue;
-                }
-
-                if (pm.Kind == MissionKind.Economy)
-                {
-                    yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
-                    ApCheck(pm, apBefore, root, result);
-                    StampVersion(result);
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    if (result.StopReason != ExecutionStopReason.StepCompleted)
-                        ReleaseEconomyReservation(player, ctx, pm);
-                    continue;
-                }
-
-                // Future mission kinds must opt into an executor explicitly. Never silently treat
-                // an unknown mission as Scout or let it mutate the world through a fallback path.
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.ApSpent = 0f;
-                ApCheck(pm, apBefore, root, result);
-                CompleteResult(result, root);
-                results.Add(result);
-                ReleaseEconomyReservation(player, ctx, pm);
-                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — unsupported mission kind {pm.Kind}");
+                yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
+                    enforceFreshPlan, snapshot, queue, missionIndex, singleStepOnly: false);
             }
 
             // TaskExecutor owns the batch lifecycle, so the summary is still written when the last
@@ -367,7 +411,8 @@ namespace Game.Ai.V2
 
         // Mid-turn orchestration door for exactly one already-provisioned Ground/Raid task step.
         // Selection, allocation and provisioning stay outside this execution owner; validation,
-        // command dispatch, AP invariants and version/resource stamping stay inside it.
+        // command dispatch, AP invariants and version/resource stamping stay inside
+        // ExecuteMissionCore, called here with a singleton queue and singleStepOnly: true.
         internal static IEnumerator ExecuteStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisionedMission pm, List<ExecutionResult> results, WorldSnapshot snapshot = null,
             bool enforceFreshPlan = true)
@@ -383,82 +428,9 @@ namespace Game.Ai.V2
                 StateVersionBefore = V2StateVersion.Current,
                 ResourcesBefore = AiV2Trace.Stamp(root),
             };
-
-            if (TryHandleStalePlan(player, root, ctx, pm, result, results,
-                    enforceFreshPlan, logStalePlan: false))
-                yield break;
-
-            int apBefore = root != null ? root.ActionPoints : 0;
-            // 2026-09-14 review round 5 — a deferred Economy garrison-extraction mission carries a
-            // SYNTHETIC negative MoverArmyId (ProvisioningManager.SyntheticGarrisonExtractionActorId)
-            // — the same "actor does not exist yet" pattern ScoutExecutorKind.AirLaunch already uses
-            // (there, ReconAirExecutor materializes it; the orchestrator routes those missions to it
-            // instead of here). Economy stays on this one path, so materialization happens HERE,
-            // first, before Resolve/MissionRevalidator/anything else below ever sees the synthetic
-            // id. It is ALSO a terminal step in its own right — see the helper's own comment for why
-            // this never falls through to movement in the same call.
-            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore, snapshot))
-            {
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
-                if (result.StopReason != ExecutionStopReason.StepCompleted)
-                    ReleaseEconomyReservation(player, ctx, pm);
-                yield break;
-            }
-            if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
-                    setNeedsReplan: true, logMoverGone: false, "mover gone before atomic execution",
-                    out ArmyData army))
-                yield break;
-
-            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore,
-                    setNeedsReplan: true, logRevalidation: false,
-                    retireReason: "atomic mission revalidation lost mover"))
-                yield break;
-
-            if (pm.Kind == MissionKind.Scout)
-            {
-                var queue = new List<ProvisionedMission> { pm };
-                var control = new ReconGroundExecutor.StepControl();
-                yield return ReconGroundExecutor.RunStep(player, root, ctx, pm, result, apBefore,
-                    queue, 0, snapshot, control);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
-                yield break;
-            }
-
-            if (pm.Kind == MissionKind.Raid)
-            {
-                yield return RunRaidStep(player, root, ctx, pm, result, apBefore);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
-                yield break;
-            }
-
-            if (pm.Kind == MissionKind.Economy)
-            {
-                yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
-                ApCheck(pm, apBefore, root, result);
-                StampVersion(result);
-                CompleteResult(result, root);
-                results.Add(result);
-                if (result.StopReason != ExecutionStopReason.StepCompleted)
-                    ReleaseEconomyReservation(player, ctx, pm);
-                yield break;
-            }
-
-            result.StopReason = ExecutionStopReason.TargetInvalidated;
-            result.NeedsReplan = true;
-            result.ApSpent = 0f;
-            ApCheck(pm, apBefore, root, result);
-            CompleteResult(result, root);
-            results.Add(result);
-            ReleaseEconomyReservation(player, ctx, pm);
+            var soloQueue = new List<ProvisionedMission> { pm };
+            yield return ExecuteMissionCore(player, root, ctx, pm, result, results,
+                enforceFreshPlan, snapshot, soloQueue, 0, singleStepOnly: true);
         }
 
         // Compatibility adapter for the current Full/Aggression batch path. The target is
@@ -650,13 +622,12 @@ namespace Game.Ai.V2
         // to move on its own step, exactly like any in-progress Economy mission already is.
         private static bool TryHandleDeferredEconomyMaterialization(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            int apBefore, WorldSnapshot snapshot)
+            int apBefore)
         {
             if (pm.Kind != MissionKind.Economy || pm.EconomyExtractionGarrisonArmyId < 0)
                 return false;
 
-            bool materialized = MaterializeEconomyGarrisonBuilder(
-                player, root, ctx, pm, result, apBefore, snapshot);
+            bool materialized = MaterializeEconomyGarrisonBuilder(player, root, ctx, pm, result, apBefore);
             result.StartHex = pm.ExecutionHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             if (!materialized)
@@ -673,9 +644,17 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // 2026-09-14 review round 8 (P0) — Execution no longer re-plans the composition here at
+        // all. Provisioning already computed and pinned the FULL decision (which units to unload/
+        // reinforce, the donor, the authoritative AP) onto `pm.EconomyExtractionPreparation`
+        // (ProvisioningManager.PlanEconomyCompletion, run against a read-only preview — see its own
+        // comment). This function's only job is: apply the pinned hero extraction, cheaply
+        // re-validate the two facts that can actually have shifted since Provisioning within the
+        // same batch pass (AP, resource spendability — never composition/donor/route, which are not
+        // re-derived), apply the pinned Unload/Reinforcement, and stamp the result. No
+        // ProvisioningManager.FinishEconomyBuilder call anywhere in this path any more.
         private static bool MaterializeEconomyGarrisonBuilder(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
-            WorldSnapshot snapshot)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
             ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
             if (garrison == null || pm.EconomyPendingBuilderChoice == null)
@@ -688,6 +667,10 @@ namespace Game.Ai.V2
             ProvisioningManager.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
             if (plan.Tier == ProvisioningManager.GarrisonExtractionTier.None)
                 return false;
+            ProvisioningManager.EconomyCompletionPlan prep = pm.EconomyExtractionPreparation;
+            if (!prep.Feasible)
+                return false;   // defensive only — Provisioning only ever defers a feasible plan
+
             ArmyData materialized = ProvisioningManager.ApplyGarrisonExtraction(
                 player, garrison, plan, ctx, out UnitData extractedHero, out bool containerCreated,
                 out int createdContainerArmyId);
@@ -704,46 +687,74 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            List<MissionIntent> standingIntents = MissionIntentRegistry.GetOrCreate(player).All
-                .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
-            // 2026-09-14 review round 5 — the funding envelope for this call is what Provisioning
-            // actually funded THIS mission (pm.ClaimedAp), minus whatever the extraction itself just
-            // spent — never the player's entire current AP pool, which would let Economy silently
-            // overrun the ECO-axis budget other demands were counting on this same pass. The raw pool
-            // check stays live (root.ActionPoints): by Execution time each mission already mutates
-            // AP for real, so there is no session-tracked cross-mission claim left to add back in.
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+            // 2026-09-14 review round 5/8 — the envelope is what Provisioning actually funded THIS
+            // mission (pm.ClaimedAp, now the AUTHORITATIVE PlanEconomyCompletion figure, not a coarse
+            // pre-composition estimate), minus whatever the hero extraction itself just spent — never
+            // the player's entire current AP pool.
             float spentSoFar = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             float remainingEnvelope = Mathf.Max(0f, pm.ClaimedAp - spentSoFar);
-            // 2026-09-14 review round 6 (P1) — pass the REAL current snapshot, not null: a null
-            // snapshot makes WorldAnalysis.KnownThreatsAffectingEconomyRoute (inside
-            // PlanEconomyArmyLightening) see zero threats, which can silently starve a
-            // ReinforceAtBase candidate's escort plan and turn an escort requirement into a bogus
-            // AssemblyInfeasible right after the hero was for-real extracted.
-            //
-            // `bumpVersion: false` — StampVersion (the caller's caller, keyed off
-            // ExecutionResult.ActorMaterialized) is the SOLE version-bump owner for this Execution
-            // step; ProvisioningResult.Ok would otherwise also bump when preparedMembers > 0,
-            // double-counting one mutation as two version bumps.
-            ProvisioningResult finished = ProvisioningManager.FinishEconomyBuilder(player, root, ctx,
-                snapshot, standingIntents, pm.Mission, pm.Key, pm.EconomyTarget,
-                pm.EconomyPendingBuilderChoice, materialized,
-                apEnvelope: remainingEnvelope, apPoolRemaining: root.ActionPoints, bumpVersion: false);
-            if (!finished.Success || finished.Provisioned == null)
+            if (prep.RealAp > remainingEnvelope + eps
+                || !root.CanSpendActionPoints(Mathf.CeilToInt(prep.RealAp)))
             {
-                AiDebugLog.Write($"[AI][V2][Economy] materialization prep failed for {pm.Key}: "
-                    + $"{finished.Failure.Kind} {finished.Failure.Detail}"
-                    + " — hero stays a real field mover, found again next admission pass");
+                AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: AP no "
+                    + "longer available — hero stays a real field mover, found again next admission pass");
+                result.ActualActorArmyId = materialized.Id;
+                result.ActorMaterialized = true;
+                return false;
+            }
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, prep.StageCost, prep.OwnerKey))
+            {
+                AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: resources "
+                    + "no longer spendable — hero stays a real field mover, found again next admission pass");
                 result.ActualActorArmyId = materialized.Id;
                 result.ActorMaterialized = true;
                 return false;
             }
 
+            int preparedMembers = ProvisioningManager.ApplyEconomyArmyLightening(
+                materialized, prep.Garrison, prep.Unload, prep.Reinforcement, ctx);
+            int plannedTransfers = prep.Unload.Count + prep.Reinforcement.Count;
+            if (preparedMembers != plannedTransfers)
+            {
+                AiDebugLog.Write($"[AI][V2][Economy] materialization prep failed for {pm.Key}: "
+                    + "composition transaction did not commit"
+                    + " — hero stays a real field mover, found again next admission pass");
+                result.ActualActorArmyId = materialized.Id;
+                result.ActorMaterialized = true;
+                return false;
+            }
+            // Atomic transfer failure leaves the original roster intact, so claim its real live AP
+            // rather than the pinned projected value (matches FinishEconomyBuilder's own rule).
+            float realAp = ProvisioningManager.EconomyMissionClaimedAp(materialized,
+                pm.EconomyTarget.BuildApCost, pm.EconomyTarget.MinimumFollowupAp, null,
+                prep.TravelNeeded, prep.CompletionThisTurn);
+            if (realAp > remainingEnvelope + eps)
+            {
+                AiDebugLog.Write($"[AI][V2][Economy] materialization prep stale for {pm.Key}: could "
+                    + "not lighten within the funded AP envelope — hero stays a real field mover, "
+                    + "found again next admission pass");
+                result.ActualActorArmyId = materialized.Id;
+                result.ActorMaterialized = true;
+                return false;
+            }
+            if (prep.CompletionThisTurn)
+                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, prep.OwnerKey,
+                    pm.EconomyTarget.BuildResourceCost, pm.EconomyTarget.BuildApCost);
+            if (prep.Donor != null)
+            {
+                prep.Donor.Status = IntentStatus.Suspended;
+                prep.Donor.Suspended = SuspendReason.EconomyLoan;
+                AiDebugLog.Write($"[AI][V2][Economy][Loan] borrow actor=#{materialized.Id} "
+                    + $"from={prep.Donor.IntentKey} to={pm.Key}");
+            }
+
             pm.MoverArmyId = materialized.Id;
             pm.EconomyExtractionGarrisonArmyId = -1;
-            pm.ReservationOwner = finished.Provisioned.ReservationOwner;
-            pm.EconomyLoanSource = finished.Provisioned.EconomyLoanSource;
-            pm.ClaimedAp = finished.Provisioned.ClaimedAp;
-            pm.ClaimedPhysical = finished.Provisioned.ClaimedPhysical;
+            pm.ReservationOwner = prep.OwnerKey;
+            pm.EconomyLoanSource = prep.Donor?.IntentKey;
+            pm.ClaimedAp = realAp;
+            pm.ClaimedPhysical = ProvisioningManager.CostVector(prep.StageCost);
             result.ActualActorArmyId = materialized.Id;
             result.ActorMaterialized = true;
             AiDebugLog.Write($"[AI][V2][Economy] materialized builder #{materialized.Id} "
