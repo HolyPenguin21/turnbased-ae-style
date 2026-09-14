@@ -708,7 +708,16 @@ namespace Game.Ai.V2
             {
                 ScoutExecutionCandidate cand = cands[i][c];
                 int aid = cand.ActorKey;
-                if (usedArmyIds.Contains(aid)) continue;
+                // Review round (2026-09-14) — a garrison-extraction candidate's ActorKey is the
+                // DESTINATION SHELL, which is enough to stop two missions claiming the same shell,
+                // but NOT enough to stop two missions each claiming a DIFFERENT free shell at the
+                // same garrison's hex for the SAME single sparable Recce (garrison #10 + shell #20
+                // for mission A, garrison #10 + shell #21 for mission B — distinct ActorKeys, same
+                // source unit). The source garrison is a second exclusive resource the solver must
+                // reserve alongside the shell.
+                int sourceId = cand.SourceGarrisonArmyId;
+                if (usedArmyIds.Contains(aid) || (sourceId > 0 && usedArmyIds.Contains(sourceId)))
+                    continue;
 
                 bool isAir = cand.ExecutorKind != ScoutExecutorKind.Ground;
                 if (isAir && usedAirActors + 1 > airActorCap)
@@ -750,12 +759,16 @@ namespace Game.Ai.V2
                     continue;
 
                 usedArmyIds.Add(aid);
+                if (sourceId > 0)
+                    usedArmyIds.Add(sourceId);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
                     airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci,
                     nextAirLaunchEnergy,
                     usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
                 usedArmyIds.Remove(aid);
+                if (sourceId > 0)
+                    usedArmyIds.Remove(sourceId);
             }
             chosen[i] = -1;
         }
