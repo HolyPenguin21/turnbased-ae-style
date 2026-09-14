@@ -46,6 +46,10 @@ namespace Game.Ai.V2
         public bool InfrastructureChanged;
         public bool CombatChanged;
         public bool RaidOperationStarted;
+        // Immutable execution fact consumed by Continuity. A reinforcement handoff may change the
+        // RaidIntent phase before the outcome ledger reconciles it, so actor-role ownership must
+        // never be inferred from the intent's already-mutated current phase.
+        public bool RaidReinforcementHandoffAttempted;
 
         // Set when an Economy builder reaches its BuildExtraction/FoundBase target this step but
         // the infrastructure itself is not up yet (that's Phase A's job next admission). Nothing in
@@ -718,6 +722,7 @@ namespace Game.Ai.V2
             }
 
             // ---- the atomic handoff transaction ------------------------------------------
+            result.RaidReinforcementHandoffAttempted = true;
             bool handoffOk = ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out string detail);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — raid "
