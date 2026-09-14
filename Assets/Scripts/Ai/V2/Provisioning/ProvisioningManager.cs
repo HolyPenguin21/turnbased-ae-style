@@ -54,6 +54,12 @@ namespace Game.Ai.V2
         // FinishEconomyBuilder tail ProvisionEconomy itself runs for the non-deferred case. Null
         // whenever EconomyExtractionGarrisonArmyId is -1 (nothing to carry).
         internal DemandLayer.EconomyBuilderChoice EconomyPendingBuilderChoice;
+        // 2026-09-14 review round 5 — the EXACT resolved plan (tier/hero/container/AP) Provisioning
+        // chose, pinned so Execution materializes precisely that plan instead of re-running
+        // ResolveGarrisonExtractionCandidate with weaker inputs (commitments:null, session:null),
+        // which could legally pick a different — or already-claimed-by-someone-else — actor. Default
+        // (Tier == None) whenever EconomyExtractionGarrisonArmyId is -1 (nothing deferred).
+        internal ProvisioningManager.GarrisonExtractionCandidate EconomyExtractionPlan;
         // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
@@ -203,6 +209,14 @@ namespace Game.Ai.V2
             ApClaimed += m.ClaimedAp;
             EnergyClaimed += m.ClaimedEnergy;
             ClaimedArmyIds.Add(m.MoverArmyId);
+            // 2026-09-14 review round 5 — a deferred garrison-extraction mission's MoverArmyId is a
+            // synthetic negative id; the garrison and the chosen container (if one already exists —
+            // Shell/Host tiers) are the REAL armies this mission has committed to and must not be
+            // handed to a second mission later in the same batch pass.
+            if (m.EconomyExtractionGarrisonArmyId >= 0)
+                ClaimedArmyIds.Add(m.EconomyExtractionGarrisonArmyId);
+            if (m.EconomyExtractionPlan.Container != null)
+                ClaimedArmyIds.Add(m.EconomyExtractionPlan.Container.Id);
         }
 
         internal void SetAssignment(ReconAssignmentResult result)
@@ -349,10 +363,11 @@ namespace Game.Ai.V2
         // CHOSEN, not what actually happened).
         internal static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
             GarrisonExtractionCandidate candidate, AiTurnContext ctx,
-            out UnitData extractedHero, out bool containerCreated)
+            out UnitData extractedHero, out bool containerCreated, out int createdContainerArmyId)
         {
             extractedHero = null;
             containerCreated = false;
+            createdContainerArmyId = -1;
             if (candidate.Tier == GarrisonExtractionTier.None)
                 return null;
 
@@ -364,6 +379,7 @@ namespace Game.Ai.V2
                 if (container == null)
                     return null;
                 containerCreated = true;
+                createdContainerArmyId = container.Id;
             }
 
             if (!ArmyActions.TransferMember(candidate.Hero, garrison, container, ctx.HexSelection, out string why))
@@ -991,6 +1007,7 @@ namespace Game.Ai.V2
             DemandLayer.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
             ArmyData deferredGarrison = null;
+            GarrisonExtractionCandidate deferredPlan = default;
             float deferredEstimatedAp = 0f;
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
             float rawApRemaining = root.ActionPoints - session.ApClaimed;
@@ -1022,6 +1039,7 @@ namespace Game.Ai.V2
                         || estimatedTotal > rawApRemaining + eps)
                         continue;
                     deferredGarrison = candidateGarrison;
+                    deferredPlan = plan;
                     deferredEstimatedAp = estimatedTotal;
                     builderChoice = candidate;
                     break;
@@ -1046,6 +1064,7 @@ namespace Game.Ai.V2
                     Mission = m, Key = key, Kind = MissionKind.Economy,
                     MoverArmyId = SyntheticGarrisonExtractionActorId(deferredGarrison.Id),
                     EconomyExtractionGarrisonArmyId = deferredGarrison.Id,
+                    EconomyExtractionPlan = deferredPlan,
                     EconomyPendingBuilderChoice = builderChoice,
                     FocusHex = target.TargetHex, ExecutionHex = deferredGarrison.Hex,
                     EconomyTarget = target,

@@ -234,9 +234,13 @@ namespace Game.Ai.V2
                     bool raidEngaged = o.MissionKind == MissionKind.Raid
                         && (e.StopReason == ExecutionStopReason.BattleStarted
                             || e.StopReason == ExecutionStopReason.HexEventStarted);
+                    // 2026-09-14 review round 5 (P1 #5) — a garrison-extraction materialization
+                    // (CreateArmy/TransferMember, no movement of its own) is a real world mutation;
+                    // without this it never counted as progress even though the hero left the
+                    // garrison for good this turn.
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
-                        || e.RaidOperationStarted || raidEngaged;
+                        || e.RaidOperationStarted || raidEngaged || e.ActorMaterialized;
                     if (o.MissionKind == MissionKind.Raid)
                         o.RaidOperationStarted = e.RaidOperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
@@ -311,6 +315,16 @@ namespace Game.Ai.V2
 
             if (o.MissionKind == MissionKind.Economy)
             {
+                // 2026-09-14 review round 5 (P1 #5) — a deferred garrison-extraction step that
+                // materialized a real mover (StopReason MoverLost only because THIS mission has no
+                // mover to advance until next admission's direct-army path finds it) is a
+                // ProductiveStop: the world changed for good. Without this it fell into the default
+                // Failed case even though nothing about the attempt actually failed.
+                if (e.ActorMaterialized && e.StopReason == ExecutionStopReason.MoverLost)
+                {
+                    o.Outcome = ExecutionOutcome.ProductiveStop;
+                    return;
+                }
                 switch (e.StopReason)
                 {
                     case ExecutionStopReason.StepCompleted:

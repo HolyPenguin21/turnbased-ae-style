@@ -181,6 +181,20 @@ namespace Game.Ai.V2
                 }
 
                 int apBefore = root != null ? root.ActionPoints : 0;
+                // 2026-09-14 review round 5 (P1) — this batch loop used to fall straight into
+                // Resolve(pm.MoverArmyId) below with a deferred Economy mission's SYNTHETIC negative
+                // id and misreport MoverLost every time; ExecuteStep already had the real handling.
+                // Same door both loops must use — see the helper's own comment.
+                if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore))
+                {
+                    ApCheck(pm, apBefore, root, result);
+                    StampVersion(result);
+                    CompleteResult(result, root);
+                    results.Add(result);
+                    if (result.StopReason != ExecutionStopReason.StepCompleted)
+                        ReleaseEconomyReservation(player, ctx, pm);
+                    continue;
+                }
                 ArmyData army = Resolve(player, pm.MoverArmyId);
                 if (army == null)
                 {
@@ -321,27 +335,22 @@ namespace Game.Ai.V2
             }
 
             int apBefore = root != null ? root.ActionPoints : 0;
-            // 2026-09-14 review round 4 — a deferred Economy garrison-extraction mission carries a
+            // 2026-09-14 review round 5 — a deferred Economy garrison-extraction mission carries a
             // SYNTHETIC negative MoverArmyId (ProvisioningManager.SyntheticGarrisonExtractionActorId)
             // — the same "actor does not exist yet" pattern ScoutExecutorKind.AirLaunch already uses
             // (there, ReconAirExecutor materializes it; the orchestrator routes those missions to it
             // instead of here). Economy stays on this one path, so materialization happens HERE,
             // first, before Resolve/MissionRevalidator/anything else below ever sees the synthetic
-            // id — by the time execution proceeds past this block, pm.MoverArmyId is always real,
-            // exactly like every other mission kind already assumes.
-            if (pm.Kind == MissionKind.Economy && pm.EconomyExtractionGarrisonArmyId >= 0
-                && !MaterializeEconomyGarrisonBuilder(player, root, ctx, pm, result))
+            // id. It is ALSO a terminal step in its own right — see the helper's own comment for why
+            // this never falls through to movement in the same call.
+            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore))
             {
-                result.StartHex = pm.ExecutionHex;
-                result.FinalHex = pm.ExecutionHex;
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-                result.NeedsReplan = true;
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
                 CompleteResult(result, root);
                 results.Add(result);
-                ReleaseEconomyReservation(player, ctx, pm);
+                if (result.StopReason != ExecutionStopReason.StepCompleted)
+                    ReleaseEconomyReservation(player, ctx, pm);
                 yield break;
             }
             ArmyData army = Resolve(player, pm.MoverArmyId);
@@ -593,40 +602,104 @@ namespace Game.Ai.V2
             return null;
         }
 
-        // 2026-09-14 review round 4 — the one real mutation site for a deferred Economy
-        // garrison-extraction mission. Resolves the SAME pure GarrisonExtractionCandidate
-        // ProvisionEconomy already priced (ProvisioningManager.ResolveGarrisonExtractionCandidate;
-        // world state should be unchanged since — Execution for a mission runs immediately after
-        // its own Provisioning, before the next mission is even selected), applies it for real
-        // (ProvisioningManager.ApplyGarrisonExtraction — ArmyActions.CreateArmy/TransferMember, the
-        // one owner of this mutation, unchanged since round 2), then runs the SAME
-        // FinishEconomyBuilder tail the direct-army path already uses, now against the real live
-        // hero. `pm` is mutated in place — MoverArmyId flips from synthetic to real — so every
-        // caller downstream of this one (ExecuteStep's own Resolve just below, MissionContinuity,
-        // etc.) sees an ordinary, already-real mover from here on.
+        // 2026-09-14 review round 5 — the one real mutation site for a deferred Economy
+        // garrison-extraction mission. Applies the EXACT GarrisonExtractionCandidate pinned onto
+        // `pm` by Provisioning (pm.EconomyExtractionPlan — no re-resolve, see the plan field's own
+        // comment on ProvisionedMission) for real (ProvisioningManager.ApplyGarrisonExtraction —
+        // ArmyActions.CreateArmy/TransferMember, the one owner of this mutation, unchanged since
+        // round 2), then runs the SAME FinishEconomyBuilder tail the direct-army path already uses,
+        // now against the real live hero. `pm` is mutated in place — MoverArmyId flips from
+        // synthetic to real — so every caller downstream of this one (ExecuteStep's own Resolve just
+        // below, MissionContinuity, etc.) sees an ordinary, already-real mover from here on. Callers
+        // must NOT fall through to movement in the same step afterwards (see ExecuteStep/Execute) —
+        // this call alone is already CreateArmy + TransferMember + lightening/reinforcement, one
+        // canonical batch; a move is a separate step.
+        // 2026-09-14 review round 5 (P0 #2, P1 #6) — shared by both execution doors (the batch
+        // Execute() and the incremental ExecuteStep()) so a deferred Economy garrison-extraction
+        // mission is handled identically no matter which one runs it. Fully populates `result` and
+        // returns true when there was something deferred to handle at all (materialization attempted
+        // — success or failure, the caller must add `result` and stop this mission for this call);
+        // returns false when nothing was deferred, so the caller proceeds with its normal
+        // Resolve/mission-kind dispatch untouched.
+        //
+        // On success this is DELIBERATELY a terminal step of its own — it does not fall through to
+        // movement in the same call. MaterializeEconomyGarrisonBuilder alone is already
+        // CreateArmy + TransferMember + lightening/reinforcement (one canonical batch, mirroring the
+        // granularity FinishEconomyBuilder already used for the pre-existing direct-army path);
+        // bundling a MoveArmyRoutine on top of that in the same step would violate the one-mutation-
+        // per-step contract. `pm.MoverArmyId` is flipped from synthetic to real in place, so the
+        // NEXT admission pass finds this mission an ordinary, already-real direct-army mover — ready
+        // to move on its own step, exactly like any in-progress Economy mission already is.
+        private static bool TryHandleDeferredEconomyMaterialization(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
+            int apBefore)
+        {
+            if (pm.Kind != MissionKind.Economy || pm.EconomyExtractionGarrisonArmyId < 0)
+                return false;
+
+            bool materialized = MaterializeEconomyGarrisonBuilder(player, root, ctx, pm, result, apBefore);
+            result.StartHex = pm.ExecutionHex;
+            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            if (!materialized)
+            {
+                result.FinalHex = pm.ExecutionHex;
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.NeedsReplan = true;
+                return true;
+            }
+
+            result.FinalHex = Resolve(player, pm.MoverArmyId)?.Hex ?? pm.ExecutionHex;
+            result.StopReason = ExecutionStopReason.StepCompleted;
+            result.NeedsReplan = false;
+            return true;
+        }
+
         private static bool MaterializeEconomyGarrisonBuilder(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
             ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
             if (garrison == null || pm.EconomyPendingBuilderChoice == null)
                 return false;
 
-            ProvisioningManager.GarrisonExtractionCandidate plan =
-                ProvisioningManager.ResolveGarrisonExtractionCandidate(
-                    player, garrison, commitments: null, session: null, root, root.ActionPoints);
+            // 2026-09-14 review round 5 — materialize the EXACT plan Provisioning already chose and
+            // funded (pm.EconomyExtractionPlan), never a fresh re-resolve: a re-resolve with
+            // commitments:null/session:null runs under weaker constraints than the original choice
+            // and can legally pick a different — or already-claimed — hero/container/tier.
+            ProvisioningManager.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
             if (plan.Tier == ProvisioningManager.GarrisonExtractionTier.None)
                 return false;
             ArmyData materialized = ProvisioningManager.ApplyGarrisonExtraction(
-                player, garrison, plan, ctx, out UnitData extractedHero, out bool containerCreated);
+                player, garrison, plan, ctx, out UnitData extractedHero, out bool containerCreated,
+                out int createdContainerArmyId);
             if (materialized == null)
+            {
+                if (containerCreated)
+                {
+                    // A real mutation happened (AP spent, a new empty army registered) even though
+                    // the hero transfer itself failed — same "kept, never rolled back" rule the
+                    // Create tier already documents. StateChanged/version must honestly reflect it;
+                    // no mover exists for THIS mission this pass, but the world did change.
+                    result.ActualActorArmyId = createdContainerArmyId >= 0
+                        ? createdContainerArmyId : (int?)null;
+                    result.ActorMaterialized = true;
+                }
                 return false;
+            }
 
             List<MissionIntent> standingIntents = MissionIntentRegistry.GetOrCreate(player).All
                 .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
+            // 2026-09-14 review round 5 — the funding envelope for this call is what Provisioning
+            // actually funded THIS mission (pm.ClaimedAp), minus whatever the extraction itself just
+            // spent — never the player's entire current AP pool, which would let Economy silently
+            // overrun the ECO-axis budget other demands were counting on this same pass. The raw pool
+            // check stays live (root.ActionPoints): by Execution time each mission already mutates
+            // AP for real, so there is no session-tracked cross-mission claim left to add back in.
+            float spentSoFar = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            float remainingEnvelope = Mathf.Max(0f, pm.ClaimedAp - spentSoFar);
             ProvisioningResult finished = ProvisioningManager.FinishEconomyBuilder(player, root, ctx,
                 snapshot: null, standingIntents, pm.Mission, pm.Key, pm.EconomyTarget,
                 pm.EconomyPendingBuilderChoice, materialized,
-                apEnvelope: root.ActionPoints, apPoolRemaining: root.ActionPoints);
+                apEnvelope: remainingEnvelope, apPoolRemaining: root.ActionPoints);
             if (!finished.Success || finished.Provisioned == null)
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep failed for {pm.Key}: "
@@ -762,8 +835,12 @@ namespace Game.Ai.V2
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;
-            if (result.StepsMoved > 0 || result.EnteredStealth
-                || result.StealthChanged || result.InfrastructureChanged || result.CombatChanged)
+            // 2026-09-14 review round 5 (P0 #3) — ActorMaterialized (a garrison-extraction
+            // CreateArmy/TransferMember) is a real world mutation with no movement/stealth/
+            // infrastructure/combat signal of its own to piggyback a bump on; it used to leave
+            // V2StateVersion stale despite Outcome.StateChanged already reporting true for it.
+            if (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
+                || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized)
                 V2StateVersion.Bump();
             result.StateVersionAfter = V2StateVersion.Current;
         }
