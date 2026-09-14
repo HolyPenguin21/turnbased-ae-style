@@ -170,16 +170,13 @@ namespace Game.Ai.V2
                 return ids;
 
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            var before = (primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
-            float winBefore = defenders.Count == 0 ? 1f
-                : WorthIt.WinChance(before, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            List<WorthIt.DefenderProfile> primaryBodies = NonAviationProfiles(primary);
 
             var excluded = excludeArmyIds != null ? new HashSet<int>(excludeArmyIds) : new HashSet<int>();
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
             {
-                IReadOnlyList<WorthIt.DefenderProfile> bodies =
-                    candidate.Members ?? System.Array.Empty<WorthIt.DefenderProfile>();
+                List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
                 // Mirrors SparableSupportBodies' minimum-container invariant at snapshot level:
                 // leave at least one total member (a hero may be that retained member). Previously
                 // a single-body army was advertised as support even though execution could transfer
@@ -189,15 +186,96 @@ namespace Game.Ai.V2
                 if (transferable <= 0)
                     continue;
 
-                var after = new List<WorthIt.DefenderProfile>(before);
-                after.AddRange(bodies.Take(transferable));
-                float winAfter = defenders.Count == 0 ? 1f
-                    : WorthIt.WinChance(after, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                if (winAfter > winBefore + 0.001f)
+                List<WorthIt.DefenderProfile> sparable = bodies
+                    .OrderByDescending(ProfileCombatValue)
+                    .Take(transferable)
+                    .ToList();
+                if (TryProjectReinforcement(primaryBodies, sparable, primary.Capacity,
+                        primary.MemberCount, defenders, out _, out _))
                     ids.Add(candidate.ArmyId);
             }
             return ids;
         }
+
+        // GroundCombat is the single owner of reinforcement admission. Both the snapshot candidate
+        // pass and live Provisioning call this projection, so they evaluate the roster the atomic
+        // handoff can ACTUALLY produce: fill free slots, otherwise swap one stronger body for the
+        // weakest non-aviation body. The previous whole-convoy append could approve an impossible
+        // improvement when the primary army was already full.
+        internal static bool TryProjectReinforcement(
+            IReadOnlyList<WorthIt.DefenderProfile> primaryBodies,
+            IReadOnlyList<WorthIt.DefenderProfile> sparableSupportBodies,
+            int primaryCapacity, int primaryMemberCount,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            out List<WorthIt.DefenderProfile> projected, out string why)
+        {
+            why = null;
+            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            var before = (primaryBodies ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
+            projected = new List<WorthIt.DefenderProfile>(before);
+            if (sparableSupportBodies == null || sparableSupportBodies.Count == 0)
+            {
+                why = "support army has no body it may legally spare (a container is never emptied)";
+                return false;
+            }
+
+            int freeSlots = System.Math.Max(0, primaryCapacity - primaryMemberCount);
+            if (freeSlots > 0)
+            {
+                projected.AddRange(sparableSupportBodies.Take(freeSlots));
+            }
+            else
+            {
+                if (before.Count == 0)
+                {
+                    why = "primary is full and has no swappable non-hero body";
+                    return false;
+                }
+                WorthIt.DefenderProfile weakest = before
+                    .OrderBy(p => p.MaxHitPoints > 0f ? p.HitPoints / p.MaxHitPoints : 1f)
+                    .ThenBy(ProfileCombatValue)
+                    .First();
+                WorthIt.DefenderProfile fresh = sparableSupportBodies
+                    .OrderByDescending(ProfileCombatValue)
+                    .FirstOrDefault(p => ProfileCombatValue(p) > ProfileCombatValue(weakest));
+                if (ProfileCombatValue(fresh) <= ProfileCombatValue(weakest))
+                {
+                    why = "primary is full and no support body improves on its weakest member";
+                    return false;
+                }
+                projected.Remove(weakest);
+                projected.Add(fresh);
+            }
+
+            float winBefore = defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(before,
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            float winAfter = defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(projected,
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            if (winAfter <= winBefore + 0.001f)
+            {
+                why = $"projected executable win {winAfter:0.##} does not improve on {winBefore:0.##}";
+                return false;
+            }
+            return true;
+        }
+
+        private static List<WorthIt.DefenderProfile> NonAviationProfiles(ArmySnapshot army)
+        {
+            var result = new List<WorthIt.DefenderProfile>();
+            IReadOnlyList<WorthIt.DefenderProfile> members =
+                army?.Members ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            IReadOnlyList<bool> aviation =
+                army?.NonHeroIsAviation ?? System.Array.Empty<bool>();
+            for (int i = 0; i < members.Count; i++)
+                if (i >= aviation.Count || !aviation[i])
+                    result.Add(members[i]);
+            return result;
+        }
+
+        private static float ProfileCombatValue(WorthIt.DefenderProfile p) =>
+            p.Attack + p.Defense + p.HitPoints + 0.25f * p.Initiative;
 
         private static bool Admissible(ArmySnapshot a, GroundCombatAssemblyRequest r)
         {
