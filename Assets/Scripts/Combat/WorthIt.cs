@@ -137,6 +137,7 @@ namespace Game.Combat
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.Attack);
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.Defense);
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.HitPoints);
+                hash = hash * 31 + System.BitConverter.SingleToInt32Bits(p.MaxHitPoints);
                 hash = hash * 31 + p.Initiative;
                 foreach (UnitTypeTag tag in p.TypeTags.OrderBy(t => (int)t))
                     hash = hash * 31 + (int)tag;
@@ -295,7 +296,7 @@ namespace Game.Combat
                     TypeTags = p.TypeTags,
                     Initiative = p.Initiative,
                     Hp = hp,
-                    MaxHp = hp,
+                    MaxHp = Mathf.Max(hp, p.MaxHitPoints),
                 });
             }
             return list;
@@ -503,7 +504,8 @@ namespace Game.Combat
         // second copy of it anywhere else.
         public static DefenderProfile FromLiveUnit(UnitData unit) =>
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
-                unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList());
+                unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
+                unit.HitPointsMax);
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
         // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
@@ -677,18 +679,24 @@ namespace Game.Combat
             public readonly IReadOnlyList<UnitTypeTag> TypeTags;
             public readonly float Attack;
             public readonly float HitPoints;
+            // True maximum HP when the source is live. Older/remembered profile producers that
+            // only know current HP may omit it; the constructor then conservatively falls back to
+            // HitPoints. The full BattleEstimate tie-break needs this distinction for wounded
+            // attackers, otherwise CriticalAfterBattleChance diverges from the live ArmyData path.
+            public readonly float MaxHitPoints;
             public readonly int Initiative;
             public readonly IReadOnlyList<string> Abilities;
 
             public DefenderProfile(float defense, bool hasCeramicArmor, IReadOnlyList<UnitTypeTag> typeTags = null,
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
-                IReadOnlyList<string> abilities = null)
+                IReadOnlyList<string> abilities = null, float maxHitPoints = 0f)
             {
                 Defense = defense;
                 HasCeramicArmor = hasCeramicArmor;
                 TypeTags = typeTags ?? System.Array.Empty<UnitTypeTag>();
                 Attack = attack;
                 HitPoints = hitPoints;
+                MaxHitPoints = maxHitPoints > 0f ? maxHitPoints : hitPoints;
                 Initiative = initiative;
                 Abilities = abilities ?? (hasCeramicArmor
                     ? (IReadOnlyList<string>)new[] { UnitAbilities.CeramicArmor }

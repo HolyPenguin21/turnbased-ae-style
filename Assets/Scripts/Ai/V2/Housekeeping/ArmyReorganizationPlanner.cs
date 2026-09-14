@@ -34,9 +34,10 @@ namespace Game.Ai.V2
             // could take over. Ranked as a formation-quality term, below command-capacity waste
             // and above generic strength/composition.
             public readonly int FormationDefect;
-            // Local defensive-readiness profile. With deployed enemy field compositions this is
-            // 1 - worst distance-weighted enemy success; without any benchmark it falls back to
-            // canonical AiPower. Higher is always better and no pass/fail threshold exists.
+            // Defensive-readiness profile. With deployed enemies it is threat-first:
+            // worst threat's first real contact defender, that threat's second line, then the next
+            // threat, each using group-local ETA. Without a benchmark it falls back to the
+            // strongest-first canonical AiPower formation profile. Higher is always better.
             public readonly IReadOnlyList<float> FormationStrengths;
             public readonly float NegComposition;
             public readonly int Operations;
@@ -86,10 +87,10 @@ namespace Game.Ai.V2
                     if (av < bv - FloatEps) return 1;
                 }
 
-                // A trailing weaker formation is not automatically better or worse merely because
-                // it exists. Structural defects were already compared above; composition and move
-                // count below decide otherwise-equal prefixes. This keeps empty reusable shells
-                // neutral instead of forcing the planner to seed them.
+                // Threat-backed profiles have a fixed two entries per contactable threat;
+                // the variable-length case is the no-threat AiPower fallback. There, a trailing
+                // weaker formation remains neutral so an empty reusable shell never creates
+                // pressure to seed itself.
                 return 0;
             }
         }
