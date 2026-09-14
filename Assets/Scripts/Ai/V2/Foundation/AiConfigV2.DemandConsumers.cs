@@ -14,8 +14,9 @@ namespace Game.Ai.V2
         // =======================================================================================
         // Severity at/above which a threatened asset counts as genuinely endangered. The Defence
         // DEMAND stubs that used to consume this are gone; it survives as a shared THREAT fact
-        // (Economy escort safety reads it).
-        public const float defenceSeverityTrigger = 0.18f;
+        // (Economy escort safety reads it). Renamed from defenceSeverityTrigger — it was never a
+        // Defence-lane number, just a generic threat-severity gate Defence happened to consume too.
+        public const float threatSeverityTrigger = 0.18f;
         // General combat-power-per-body normalizer (card/upgrade evaluation). Renamed from
         // defencePerBodyPowerEstimate: it was never a Defence-lane number.
         public const float combatPowerPerBodyEstimate = 6f;

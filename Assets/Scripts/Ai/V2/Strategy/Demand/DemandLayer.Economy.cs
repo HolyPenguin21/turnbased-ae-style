@@ -742,7 +742,7 @@ namespace Game.Ai.V2
         internal static bool EconomyBuilderUnderImmediateThreat(
             WorldSnapshot snap, HexCoord hex) =>
             snap?.Threat?.Threats != null && snap.Threat.Threats.Any(t => t?.Asset != null
-                && t.Asset.Hex.Equals(hex) && t.Severity >= AiConfigV2.defenceSeverityTrigger
+                && t.Asset.Hex.Equals(hex) && t.Severity >= AiConfigV2.threatSeverityTrigger
                 && (!t.EnemyEta.HasValue || t.EnemyEta.Value <= 1));
 
         internal static float EconomyRecoveryThreatExposure(WorldSnapshot snap, HexCoord hex) =>

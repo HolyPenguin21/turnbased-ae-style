@@ -252,7 +252,9 @@ namespace Game.Ai.V2
 
             desires.Raw[DesireAxis.Recon] = recon;
             desires.Raw[DesireAxis.Aggression] = aggression;
-            // Defence has no evaluator yet. Economy and Development are real snapshot-pure axes.
+            // AGG-RAID Defence cleanup — the functional Defence demand branch was removed; the axis
+            // is intentionally kept as a reserved seam for a future Active Defence lane, pinned at
+            // zero weight until that lane exists. Economy and Development are real snapshot-pure axes.
             desires.Raw[DesireAxis.Defence] = 0f;
             desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy);
             desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev);
