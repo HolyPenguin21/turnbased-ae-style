@@ -1314,8 +1314,9 @@ namespace Game.Ai.V2
                 // only a still-travelling selected support becomes a durable claim.
                 bool supportExecutedThisTurn = raid != null && o.HasRaidPayload
                     && o.RaidPhase == RaidMissionPhase.Reinforcement
-                    && o.RaidPrimaryArmyId != 0
-                    && o.RaidPrimaryArmyId != o.MoverArmyId.Value;
+                    && o.RaidPrimaryArmyId == raid.PrimaryArmyId
+                    && o.RaidSupportArmyId != 0
+                    && o.RaidSupportArmyId == o.MoverArmyId.Value;
                 if (supportExecutedThisTurn)
                 {
                     if (!o.RaidReinforcementHandoffAttempted && raid.SupportArmyId == 0)
