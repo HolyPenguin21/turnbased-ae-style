@@ -16,9 +16,9 @@ namespace Game.UI
     // Shown the moment a moving army makes contact with an enemy combat-capable army (see
     // HexSelectionController.TryIssueMoveOrder), and again — in its read-only "informational"
     // form (see ShowResolved) — once a delayed battle actually starts at the next turn boundary
-    // (see GameTurnController). One column per participant army (usually 2, but never hardcoded
-    // to exactly that — a neutral army could join later), each showing that side's faction
-    // logo, its commanding hero if any, and a short summary — see BattleParticipantColumnUI.
+    // (see GameTurnController). The popup layout owns two fixed participant slots: attacker
+    // (participants[0]) and defender (participants[1]). Each shows that side's faction logo,
+    // commanding hero if any, and a short army summary.
     //
     // Flanking those, on the outer left/right, one more column per SIDE (not per army) lists
     // every army that side's owner has anywhere on the map (see ArmyButtonRowUI, same
@@ -31,8 +31,14 @@ namespace Game.UI
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private TMP_Text titleText;
-        [SerializeField] private Transform columnContainer;
-        [SerializeField] private BattleParticipantColumnUI columnPrefab;
+        [SerializeField] private Image attackerFactionLogo;
+        [SerializeField] private Image attackerCommanderArt;
+        [SerializeField] private TMP_Text attackerCommanderName;
+        [SerializeField] private TMP_Text attackerArmyInfo;
+        [SerializeField] private Image defenderFactionLogo;
+        [SerializeField] private Image defenderCommanderArt;
+        [SerializeField] private TMP_Text defenderCommanderName;
+        [SerializeField] private TMP_Text defenderArmyInfo;
         [SerializeField] private Button fightButton;
         [SerializeField] private TMP_Text fightButtonLabel;
         [SerializeField] private Button delayButton;
@@ -50,8 +56,6 @@ namespace Game.UI
         [SerializeField] private ArmyViewerModalUI armyViewerModal;
         // For the terrain/building defense preview on the defending column(s) — see Populate.
         [SerializeField] private HexMap map;
-
-        private readonly List<BattleParticipantColumnUI> _columns = new List<BattleParticipantColumnUI>();
 
         // True only for the exact stretch between this popup hiding itself for a side-list click
         // (see ShowSideList) and that same modal closing again — armyViewerModal is one shared
@@ -90,8 +94,39 @@ namespace Game.UI
 
         private void Awake()
         {
+            ResolveFixedSlotBindings();
             if (armyViewerModal != null)
                 armyViewerModal.Closed += OnArmyModalClosed;
+        }
+
+        // The redesigned popup keeps the participant visuals as direct children instead of
+        // instantiating BattleParticipantColumn prefabs. Serialized references remain available
+        // for explicit Inspector wiring; these name-based fallbacks make the already-restructured
+        // scene safe to open before those references are assigned.
+        private void ResolveFixedSlotBindings()
+        {
+            if (attackerFactionLogo == null)
+                attackerFactionLogo = FindPanelComponent<Image>("Attacker_FactionLogo");
+            if (attackerCommanderArt == null)
+                attackerCommanderArt = FindPanelComponent<Image>("Attacker_CommanderArt");
+            if (attackerCommanderName == null)
+                attackerCommanderName = FindPanelComponent<TMP_Text>("Attacker_CommanderName");
+            if (attackerArmyInfo == null)
+                attackerArmyInfo = FindPanelComponent<TMP_Text>("Attacker_ArmyInfo");
+            if (defenderFactionLogo == null)
+                defenderFactionLogo = FindPanelComponent<Image>("Defender_FactionLogo");
+            if (defenderCommanderArt == null)
+                defenderCommanderArt = FindPanelComponent<Image>("Defender_CommanderArt");
+            if (defenderCommanderName == null)
+                defenderCommanderName = FindPanelComponent<TMP_Text>("Defender_CommanderName");
+            if (defenderArmyInfo == null)
+                defenderArmyInfo = FindPanelComponent<TMP_Text>("Defender_ArmyInfo");
+        }
+
+        private T FindPanelComponent<T>(string childName) where T : Component
+        {
+            Transform child = panelRoot != null ? panelRoot.transform.Find(childName) : null;
+            return child != null ? child.GetComponent<T>() : null;
         }
 
         private void OnDestroy()
@@ -187,33 +222,68 @@ namespace Game.UI
             if (titleText != null)
                 titleText.text = $"({hex.Q}, {hex.R}) - {attackerName} attacks {defenderName}";
 
-            UIListUtility.DestroyAndClear(_columns);
-            if (columnContainer != null && columnPrefab != null && participants != null)
-                for (int i = 0; i < participants.Count; i++)
-                {
-                    ArmyData army = participants[i];
-                    bool isDefender = i != 0;
-                    // Same terrain/Base-building defense bonus Ground Combat itself will apply
-                    // (see BattleScreenUI.Combat.cs's BeginAttack) — previewed here on the
-                    // defending side(s) so it's visible before Fight/Delay is even decided, not
-                    // just once the roll happens.
-                    int terrainDefMod = 0;
-                    int buildingDefMod = 0;
-                    if (isDefender && !AviationRules.IsAirArmy(army))
-                    {
-                        if (map != null && map.TryGetTerrainAt(army.Hex, out TerrainTypeEntry terrain))
-                            terrainDefMod = terrain.defenseModifier;
-                        BuildingData building = BuildingRegistry.FindAt(army.Hex);
-                        if (building != null && building.IsBase)
-                            buildingDefMod = building.Defense;
-                    }
+            ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
+            ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
 
-                    BattleParticipantColumnUI column = Instantiate(columnPrefab, columnContainer);
-                    column.Setup(army, ResolveCatalog(army.Owner), isDefender, terrainDefMod, buildingDefMod);
-                    _columns.Add(column);
-                }
+            int terrainDefMod = 0;
+            int buildingDefMod = 0;
+            if (defender != null && !AviationRules.IsAirArmy(defender))
+            {
+                if (map != null && map.TryGetTerrainAt(defender.Hex, out TerrainTypeEntry terrain))
+                    terrainDefMod = terrain.defenseModifier;
+                BuildingData building = BuildingRegistry.FindAt(defender.Hex);
+                if (building != null && building.IsBase)
+                    buildingDefMod = building.Defense;
+            }
+
+            PopulateParticipantSlot(attacker, attackerFactionLogo, attackerCommanderArt,
+                attackerCommanderName, attackerArmyInfo);
+            PopulateParticipantSlot(defender, defenderFactionLogo, defenderCommanderArt,
+                defenderCommanderName, defenderArmyInfo, true, terrainDefMod, buildingDefMod);
 
             PopulateSideLists(hex, participants, observer);
+        }
+
+        private void PopulateParticipantSlot(ArmyData army, Image factionLogo, Image commanderArt,
+            TMP_Text commanderName, TMP_Text armyInfo, bool isDefender = false,
+            int terrainDefMod = 0, int buildingDefMod = 0)
+        {
+            FactionCardCatalog catalog = army != null ? ResolveCatalog(army.Owner) : null;
+            if (factionLogo != null)
+            {
+                factionLogo.sprite = catalog != null ? catalog.logo : null;
+                factionLogo.gameObject.SetActive(factionLogo.sprite != null);
+            }
+
+            var hero = army?.Members.Find(member => member.IsHero);
+            if (commanderArt != null)
+            {
+                commanderArt.sprite = hero != null ? hero.Art : null;
+                commanderArt.gameObject.SetActive(hero != null && commanderArt.sprite != null);
+            }
+            if (commanderName != null)
+            {
+                commanderName.text = hero != null ? hero.Name : string.Empty;
+                commanderName.gameObject.SetActive(hero != null);
+            }
+
+            if (armyInfo == null)
+                return;
+            armyInfo.gameObject.SetActive(army != null);
+            if (army == null)
+            {
+                armyInfo.text = string.Empty;
+                return;
+            }
+
+            int count = army.Members.Count;
+            string heroLine = hero != null
+                ? $"Initiative bonus: {hero.Initiative:+0;-0;+0}\nFate: {hero.Fate}"
+                : "No Hero";
+            string text = $"{army.Name}\n{count} unit{(count == 1 ? "" : "s")}\n{heroLine}";
+            if (isDefender)
+                text += $"\nTerrain Def: {terrainDefMod:+0;-0;+0}\nConstruction Def: {buildingDefMod:+0;-0;+0}";
+            armyInfo.text = text;
         }
 
         // Every distinct owner among participants, in the order it first appears — usually just
