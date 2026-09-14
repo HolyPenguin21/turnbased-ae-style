@@ -105,8 +105,7 @@ namespace Game.Ai.V2
                 // 2026-09-14 review round 6 (P2) — a successful hero extraction IS a genuine
                 // successful action, not merely a state change; it used to report
                 // StateChanged=true/Succeeded=false, which telemetry/WasGenuineExecution read as a
-                // contradiction. ContainerCreated alone (orphan shell, no hero) stays a state change
-                // only — it is not, by itself, this mission succeeding at anything.
+                // contradiction.
                 bool succeeded = ReachedGoal || moved || InfrastructureChanged || CombatChanged
                     || ActorMaterialized || EconomyPrepared;
                 bool changed = moved || EnteredStealth || StealthChanged

@@ -234,11 +234,8 @@ namespace Game.Ai.V2
                     bool raidEngaged = o.MissionKind == MissionKind.Raid
                         && (e.StopReason == ExecutionStopReason.BattleStarted
                             || e.StopReason == ExecutionStopReason.HexEventStarted);
-                    // 2026-09-14 review round 5 (P1 #5) — a garrison-extraction materialization
-                    // (CreateArmy/TransferMember, no movement of its own) is a real world mutation;
-                    // without this it never counted as progress even though the hero left the
-                    // garrison for good this turn. Round 6: ContainerCreated (a kept shell, hero
-                    // transfer failed) is a lesser but still real mutation — also progress.
+                    // Extraction and direct-army preparation are distinct productive mutations:
+                    // the former creates the actor, the latter changes its roster and/or donor intent.
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
                         || e.RaidOperationStarted || raidEngaged
