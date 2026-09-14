@@ -2417,26 +2417,18 @@ namespace Game.Ai.V2
         private static bool ReinforcementImprovesOdds(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, out string why)
         {
-            why = null;
             List<UnitData> sparable = SparableSupportBodies(support);
-            if (sparable.Count == 0)
-            {
-                why = "support army has no body it may legally spare (a container is never emptied)";
-                return false;
-            }
-            var before = primary.Members.Select(WorthIt.FromLiveUnit).ToList();
-            var after = new List<WorthIt.DefenderProfile>(before);
-            after.AddRange(sparable.Select(WorthIt.FromLiveUnit));
-            float winBefore = defenders.Count == 0 ? 1f
-                : WorthIt.WinChance(before, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-            float winAfter = defenders.Count == 0 ? 1f
-                : WorthIt.WinChance(after, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-            if (winAfter <= winBefore + 0.001f)
-            {
-                why = $"projected win {N(winAfter)} does not improve on {N(winBefore)}";
-                return false;
-            }
-            return true;
+            List<WorthIt.DefenderProfile> primaryBodies = primary.Members
+                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .Select(WorthIt.FromLiveUnit)
+                .ToList();
+            List<WorthIt.DefenderProfile> supportBodies = sparable
+                .Select(WorthIt.FromLiveUnit)
+                .ToList();
+            int capacity = ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
+            return GroundCombatAssemblyPlanner.TryProjectReinforcement(
+                primaryBodies, supportBodies, capacity, primary.Members.Count,
+                defenders, out _, out why);
         }
 
         // A support container is never emptied and never gives up its own hero.
