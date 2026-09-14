@@ -178,8 +178,19 @@ namespace Game.Ai.V2
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
             {
+                IReadOnlyList<WorthIt.DefenderProfile> bodies =
+                    candidate.Members ?? System.Array.Empty<WorthIt.DefenderProfile>();
+                // Mirrors SparableSupportBodies' minimum-container invariant at snapshot level:
+                // leave at least one total member (a hero may be that retained member). Previously
+                // a single-body army was advertised as support even though execution could transfer
+                // nothing, producing a permanent select -> reject loop.
+                int transferable = System.Math.Min(bodies.Count,
+                    System.Math.Max(0, candidate.MemberCount - 1));
+                if (transferable <= 0)
+                    continue;
+
                 var after = new List<WorthIt.DefenderProfile>(before);
-                after.AddRange(candidate.Members ?? System.Array.Empty<WorthIt.DefenderProfile>());
+                after.AddRange(bodies.Take(transferable));
                 float winAfter = defenders.Count == 0 ? 1f
                     : WorthIt.WinChance(after, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
                 if (winAfter > winBefore + 0.001f)
