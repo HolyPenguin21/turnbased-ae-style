@@ -134,6 +134,112 @@ namespace Game.Ai.V2
 
     internal static class TaskExecutor
     {
+        // 2026-09-14 review round 7 (P1 — two execution lifecycles) — three helpers factor out
+        // logic Execute() and ExecuteStep() each independently re-implemented: the stale-plan
+        // short-circuit, the mover-resolve-failed short-circuit, and the MissionRevalidator
+        // stale-goal short-circuit. Each is parameterized to reproduce EXACTLY the per-caller
+        // behavior the two loops already had (Execute's batch model never signals NeedsReplan on a
+        // stale mover/goal and logs a "mover gone"/revalidation line ExecuteStep's incremental model
+        // doesn't; ExecuteStep does the opposite) — unifying an unexplained observable difference
+        // silently would risk changing AI behavior for whichever caller didn't have it, so those
+        // differences are preserved as explicit parameters rather than erased.
+        //
+        // Scout dispatch itself (ReconGroundExecutor.Run vs RunStep) stays UNMERGED on purpose —
+        // see docs/ai-economy-mover-materialization-decision-tree.md, "Review round 6", for why:
+        // Execute's multi-step lookahead and ExecuteStep's single-atomic-step contract are two
+        // different behaviors, not two copies of the same one.
+        private static bool TryHandleStalePlan(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
+            List<ExecutionResult> results, bool enforceFreshPlan, bool logStalePlan)
+        {
+            if (!enforceFreshPlan || pm.PlannedAtStateVersion < 0
+                || V2StateVersion.IsCurrent(pm.PlannedAtStateVersion))
+                return false;
+
+            result.StartHex = pm.ExecutionHex;
+            result.FinalHex = pm.ExecutionHex;
+            result.StopReason = ExecutionStopReason.TargetInvalidated;
+            result.NeedsReplan = true;
+            result.ApSpent = 0f;
+            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
+                StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
+            CompleteResult(result, root);
+            results.Add(result);
+            ReleaseEconomyReservation(player, ctx, pm);
+            if (logStalePlan)
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — stale plan "
+                    + $"planned@v{pm.PlannedAtStateVersion}, current=v{V2StateVersion.Current}; no command issued");
+            return true;
+        }
+
+        // Resolves the mover; on success stamps result.StartHex/FinalHex and returns the army via
+        // `army` (caller proceeds). On failure fully populates+adds `result` and returns null.
+        private static bool TryResolveMoverOrHandleGone(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
+            List<ExecutionResult> results, int apBefore, bool setNeedsReplan, bool logMoverGone,
+            string retireReason, out ArmyData army)
+        {
+            army = Resolve(player, pm.MoverArmyId);
+            if (army != null)
+            {
+                result.StartHex = army.Hex;
+                result.FinalHex = army.Hex;
+                return false;
+            }
+
+            result.StartHex = pm.ExecutionHex;
+            result.FinalHex = pm.ExecutionHex;
+            result.StopReason = ExecutionStopReason.MoverLost;
+            result.ApSpent = 0f;
+            if (setNeedsReplan)
+                result.NeedsReplan = true;
+            ApCheck(pm, apBefore, root, result);
+            CompleteResult(result, root);
+            results.Add(result);
+            ReleaseEconomyReservation(player, ctx, pm);
+            ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, retireReason);
+            if (logMoverGone)
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
+            return true;
+        }
+
+        private static bool TryHandleStaleValidity(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ArmyData army, ExecutionResult result,
+            List<ExecutionResult> results, int apBefore, bool setNeedsReplan, bool logRevalidation,
+            string retireReason)
+        {
+            MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
+            if (!MissionRevalidator.IsStale(validity))
+                return false;
+
+            result.FinalHex = army.Hex;
+            result.ApSpent = 0f;
+            result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
+            result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
+            result.DurableRoleContinues = result.ReachedGoal
+                && pm.Mission?.FromDurableIntent == true
+                && pm.Kind == MissionKind.Scout
+                && pm.ScoutKind != ScoutTargetKind.Surveil;
+            result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
+            result.StopReason = validity == MissionValidity.StaleMoverLost
+                ? ExecutionStopReason.MoverLost
+                : validity == MissionValidity.StaleGoalMet
+                    ? ExecutionStopReason.ReachedGoal
+                    : ExecutionStopReason.TargetInvalidated;
+            if (setNeedsReplan)
+                result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
+            ApCheck(pm, apBefore, root, result);
+            CompleteResult(result, root);
+            results.Add(result);
+            ReleaseEconomyReservation(player, ctx, pm);
+            if (validity == MissionValidity.StaleMoverLost)
+                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, retireReason);
+            if (logRevalidation)
+                AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — revalidation: {validity}; "
+                    + "no movement, 0 AP");
+            return true;
+        }
+
         // `snapshot` is passed through to the per-mission executors. ARCH-02 §35 — the terminal
         // air-recon pass is NO LONGER run here: the orchestrator plans it (AirReconPlanner) and
         // runs it (ReconAirExecutor.Execute) as its own stage after this returns.
@@ -175,23 +281,9 @@ namespace Game.Ai.V2
                     ResourcesBefore = AiV2Trace.Stamp(root),
                 };
 
-                if (enforceFreshPlan && pm.PlannedAtStateVersion >= 0
-                    && !V2StateVersion.IsCurrent(pm.PlannedAtStateVersion))
-                {
-                    result.StartHex = pm.ExecutionHex;
-                    result.FinalHex = pm.ExecutionHex;
-                    result.StopReason = ExecutionStopReason.TargetInvalidated;
-                    result.NeedsReplan = true;
-                    result.ApSpent = 0f;
-                    StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
-                        StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    ReleaseEconomyReservation(player, ctx, pm);
-                    AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — stale plan "
-                        + $"planned@v{pm.PlannedAtStateVersion}, current=v{V2StateVersion.Current}; no command issued");
+                if (TryHandleStalePlan(player, root, ctx, pm, result, results,
+                        enforceFreshPlan, logStalePlan: true))
                     continue;
-                }
 
                 int apBefore = root != null ? root.ActionPoints : 0;
                 // 2026-09-14 review round 5 (P1) — this batch loop used to fall straight into
@@ -208,56 +300,18 @@ namespace Game.Ai.V2
                         ReleaseEconomyReservation(player, ctx, pm);
                     continue;
                 }
-                ArmyData army = Resolve(player, pm.MoverArmyId);
-                if (army == null)
-                {
-                    result.StartHex = pm.ExecutionHex;
-                    result.FinalHex = pm.ExecutionHex;
-                    result.StopReason = ExecutionStopReason.MoverLost;
-                    result.ApSpent = 0f;
-                    ApCheck(pm, apBefore, root, result);
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    ReleaseEconomyReservation(player, ctx, pm);
-                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mover gone before execution");
-                    AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — mover #{pm.MoverArmyId} gone before first step");
+                if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
+                        setNeedsReplan: false, logMoverGone: true, "mover gone before execution",
+                        out ArmyData army))
                     continue;
-                }
-
-                result.StartHex = army.Hex;
-                result.FinalHex = army.Hex;
-
-                MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
 
                 // ARCH-02 §35 — the executor does NOT synthesise a replacement mission for a
                 // stale-goal Scout. It records the stale outcome; MissionContinuityLayer.Reconcile
                 // + the mission planner re-target the durable ReconPatrolState on the next pass.
-                if (MissionRevalidator.IsStale(validity))
-                {
-                    result.FinalHex = army.Hex;
-                    result.ApSpent = 0f;
-                    result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
-                    result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
-                    result.DurableRoleContinues = result.ReachedGoal
-                        && pm.Mission?.FromDurableIntent == true
-                        && pm.Kind == MissionKind.Scout
-                        && pm.ScoutKind != ScoutTargetKind.Surveil;
-                    result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
-                    result.StopReason = validity == MissionValidity.StaleMoverLost
-                        ? ExecutionStopReason.MoverLost
-                        : validity == MissionValidity.StaleGoalMet
-                            ? ExecutionStopReason.ReachedGoal
-                            : ExecutionStopReason.TargetInvalidated;
-                    ApCheck(pm, apBefore, root, result);
-                    CompleteResult(result, root);
-                    results.Add(result);
-                    ReleaseEconomyReservation(player, ctx, pm);
-                    if (validity == MissionValidity.StaleMoverLost)
-                        ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId, "mission revalidation lost mover");
-                    AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — revalidation: {validity}; "
-                        + "no movement, 0 AP");
+                if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore,
+                        setNeedsReplan: false, logRevalidation: true,
+                        retireReason: "mission revalidation lost mover"))
                     continue;
-                }
 
                 if (pm.Kind == MissionKind.Scout)
                 {
@@ -330,22 +384,9 @@ namespace Game.Ai.V2
                 ResourcesBefore = AiV2Trace.Stamp(root),
             };
 
-            if (enforceFreshPlan && pm.PlannedAtStateVersion >= 0
-                && !V2StateVersion.IsCurrent(pm.PlannedAtStateVersion))
-            {
-                result.StartHex = pm.ExecutionHex;
-                result.FinalHex = pm.ExecutionHex;
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                result.ApSpent = 0f;
-                StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
-                    StrategicInvalidationReason.External, actorIds: new[] { pm.MoverArmyId });
-                CompleteResult(result, root);
-                results.Add(result);
-                if (result.StopReason != ExecutionStopReason.StepCompleted)
-                    ReleaseEconomyReservation(player, ctx, pm);
+            if (TryHandleStalePlan(player, root, ctx, pm, result, results,
+                    enforceFreshPlan, logStalePlan: false))
                 yield break;
-            }
 
             int apBefore = root != null ? root.ActionPoints : 0;
             // 2026-09-14 review round 5 — a deferred Economy garrison-extraction mission carries a
@@ -366,51 +407,15 @@ namespace Game.Ai.V2
                     ReleaseEconomyReservation(player, ctx, pm);
                 yield break;
             }
-            ArmyData army = Resolve(player, pm.MoverArmyId);
-            if (army == null)
-            {
-                result.StartHex = pm.ExecutionHex;
-                result.FinalHex = pm.ExecutionHex;
-                result.StopReason = ExecutionStopReason.MoverLost;
-                result.ApSpent = 0f;
-                result.NeedsReplan = true;
-                ApCheck(pm, apBefore, root, result);
-                CompleteResult(result, root);
-                results.Add(result);
-                ReleaseEconomyReservation(player, ctx, pm);
-                ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId,
-                    "mover gone before atomic execution");
+            if (TryResolveMoverOrHandleGone(player, root, ctx, pm, result, results, apBefore,
+                    setNeedsReplan: true, logMoverGone: false, "mover gone before atomic execution",
+                    out ArmyData army))
                 yield break;
-            }
 
-            result.StartHex = army.Hex;
-            result.FinalHex = army.Hex;
-            MissionValidity validity = MissionRevalidator.Validate(player, root, ctx, pm);
-            if (MissionRevalidator.IsStale(validity))
-            {
-                result.FinalHex = army.Hex;
-                result.ApSpent = 0f;
-                result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
-                result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
-                result.DurableRoleContinues = result.ReachedGoal
-                    && pm.Mission?.FromDurableIntent == true
-                    && pm.Kind == MissionKind.Scout
-                    && pm.ScoutKind != ScoutTargetKind.Surveil;
-                result.StopReason = validity == MissionValidity.StaleMoverLost
-                    ? ExecutionStopReason.MoverLost
-                    : validity == MissionValidity.StaleGoalMet
-                        ? ExecutionStopReason.ReachedGoal
-                        : ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = validity != MissionValidity.StaleGoalMet;
-                ApCheck(pm, apBefore, root, result);
-                CompleteResult(result, root);
-                results.Add(result);
-                ReleaseEconomyReservation(player, ctx, pm);
-                if (validity == MissionValidity.StaleMoverLost)
-                    ReconPatrolStateRegistry.Retire(player, pm.MoverArmyId,
-                        "atomic mission revalidation lost mover");
+            if (TryHandleStaleValidity(player, root, ctx, pm, army, result, results, apBefore,
+                    setNeedsReplan: true, logRevalidation: false,
+                    retireReason: "atomic mission revalidation lost mover"))
                 yield break;
-            }
 
             if (pm.Kind == MissionKind.Scout)
             {

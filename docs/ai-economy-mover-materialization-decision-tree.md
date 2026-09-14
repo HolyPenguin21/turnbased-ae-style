@@ -1,5 +1,45 @@
 # Economy mover materialization — decision tree (reusable analysis pattern)
 
+## Review round 7 (2026-09-14) — Execute/ExecuteStep dedup; plan-immutability left structurally blocked
+
+Follow-up on round 6's two deliberately-deferred items, per explicit instruction to proceed.
+
+**Done — `Execute`/`ExecuteStep` shared plumbing.** Extracted `TryHandleStalePlan`,
+`TryResolveMoverOrHandleGone`, `TryHandleStaleValidity` — the stale-plan short-circuit, the
+mover-resolve-failed short-circuit, and the `MissionRevalidator` stale-goal short-circuit that both
+loops previously re-implemented independently (~120 duplicated lines total). Each closes exactly one
+of the four things `Classify`/`Execute`/`ExecuteStep` had drifted on: `Execute` never sets
+`NeedsReplan` on a lost/stale mover and logs a debug line each helper's counterpart doesn't;
+`ExecuteStep` does the reverse. Rather than silently unify these (risking an unexplained AI-behavior
+change for whichever caller didn't have it), each helper takes explicit `setNeedsReplan`/
+`logX`/reason-string parameters that reproduce the exact prior per-caller behavior — verified by
+diffing each substituted block against what it replaced before compiling. `dotnet build
+Assembly-CSharp.csproj` — 0 errors/0 warnings.
+
+Scout dispatch itself (`ReconGroundExecutor.Run` vs `RunStep`) stays unmerged, per round 6's own
+reasoning: `Execute` passes the full mission `queue`/`missionIndex` for multi-step lookahead, while
+`ExecuteStep` uses a singleton queue + an explicit `StepControl` — two different execution contracts
+for Scout, not two copies of the same loop. Merging that would change Recon behavior for
+Reaction/legacy callers, outside what a dedup refactor should touch.
+
+**Investigated, NOT done — full plan-immutability at Provisioning.** Traced exactly how far this
+could go without a new failure surface: `PlanEconomyArmyLightening` needs a *live* `ArmyData` to
+plan against — `builder.Hex`, `builder.Members`, `builder.MaxMovement`, plus
+`ArmyActions.CanTransferMembers` capacity checks against the real destination object. For Shell/Host
+tiers the destination container already exists live at Provisioning time (found by
+`ReusableArmySelector.FindReusableAt`/`EconomyHostCandidates`), but the method's own very first gate
+— `!builder.Members.Any(u => u.IsHero)` → bail with an empty plan — means calling it against that
+container *before* the hero is added would just report "nothing to lighten", not the real plan for
+once the hero *is* there. Making this genuinely pre-computable would mean decoupling
+`PlanEconomyArmyLightening` from a live `ArmyData` (a `(hex, projected members, max movement)`
+struct instead) and replicating `ArmyData.MaxMovement`'s live computation for a composition that
+does not exist yet — meaningfully more code and a new place for army-capacity math to silently
+diverge from the real one, with no test coverage and no gameplay-level compiler feedback available in
+this environment to catch it. This is also in direct tension with round 4's own already-accepted
+trade-off: the whole reason materialization moved INTO Execution was that the actor cannot be
+"planned around" before it is real. Left as a genuine open architecture question, not attempted —
+revisit only as an explicit, scoped decision if the user wants the virtual-army design pursued.
+
 ## Review round 6 (2026-09-14) — double version bump, lightening atomicity, snapshot, actor identity
 
 An external review of round 5 found 4×P0/P1-ish issues plus a P2, all fixed this round except the
