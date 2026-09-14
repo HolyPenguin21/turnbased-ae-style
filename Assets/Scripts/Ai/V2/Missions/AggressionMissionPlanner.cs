@@ -336,7 +336,7 @@ namespace Game.Ai.V2
             // §8 — the ground-combat admission registry decides ACTOR feasibility for attacks. A
             // Reinforcement/Return leg with an actor already pinned by Continuity (support /
             // primary) is not an actor-contention decision and is not recorded here. AGG-RAID
-            // P0#1 — an UNPINNED Reinforcement leg (SupportArmyId == 0) IS an actor-contention
+            // P0#1 — an UNPINNED Reinforcement leg (no SupportArmyId yet) IS an actor-contention
             // decision — same as Assault — so it gets its own eligible-candidate recording.
             if (c.Target.Phase == RaidMissionPhase.Assault)
                 GroundCombatAdmissionRegistry.Record(proposal, snap);
