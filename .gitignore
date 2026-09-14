@@ -5,7 +5,8 @@
 [Bb]in/
 [Bb]uild/
 [Bb]uilds/
-[Ll]ogs/
+[Ll]ogs/*
+!/Logs/AiDebug.log
 [Uu]serSettings/
 [Mm]emoryCaptures/
 
