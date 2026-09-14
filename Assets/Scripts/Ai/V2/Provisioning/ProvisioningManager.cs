@@ -638,8 +638,26 @@ namespace Game.Ai.V2
                 plannedExtractUnit = garrisonArmy == null
                     ? null : AiArmyRoles.BestSparableGarrisonRecce(player, garrisonArmy);
                 destinationShell = ResolveArmy(player, exec.MaterializationArmyId);
+                // Review round (2026-09-14) items 4/5 — the live re-check now goes through the SAME
+                // canonical ReusableArmySelector.IsReusableShell predicate Assignment's own shell
+                // search is built on (owner/controller/prison/garrison/aviation/commitment-claim),
+                // not a hand-rolled `Members.Count == 0` check that misses all of those. Also
+                // rejects a shell claimed earlier THIS session (another mission's MoverArmyId already)
+                // and one that already activated this turn (item 4) — ArmyActions.TransferMember
+                // would otherwise charge the incoming unit's ActivationApCost immediately, live,
+                // against root.ActionPoints, an AP spend this pass's ClaimedAp/
+                // ProvisioningSession.ApClaimed accounting has no channel to report without double-
+                // subtracting it. ActorCommitments here mirrors the exact construction
+                // ReconAssignmentPlanner.AssignFunded already used to admit this same pair.
+                ActorCommitments commitments = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All
+                        .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                    session.Snapshot, null);
                 if (garrisonArmy == null || plannedExtractUnit == null
-                    || destinationShell == null || destinationShell.Members.Count != 0)
+                    || destinationShell == null
+                    || !ReusableArmySelector.IsReusableShell(destinationShell, player, commitments)
+                    || session.ClaimedArmyIds.Contains(destinationShell.Id)
+                    || destinationShell.HasActivatedThisTurn)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"assigned garrison #{exec.SourceGarrisonArmyId} / shell #{exec.MaterializationArmyId} "
                         + "is no longer a usable extraction pair"));

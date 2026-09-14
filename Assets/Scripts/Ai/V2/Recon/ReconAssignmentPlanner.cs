@@ -194,6 +194,63 @@ namespace Game.Ai.V2
         //     missions participate (moved here verbatim from ProvisioningManager, spec §14 — the
         //     one-to-one solver + its scoring stay behaviourally identical, only the owner moves).
         // =======================================================================================
+        // =======================================================================================
+        //  GARRISON GROUND ACTOR RESOLUTION — review round (2026-09-14), items 2/3/4. The ONE
+        //  materializable-garrison-candidate primitive both BuildCandidates (real funded assignment)
+        //  and MeasureCapacity (witnessed capacity / stealth witness) build on, so the two can never
+        //  drift into disagreeing about which garrison Recce is usable for which job class again.
+        // =======================================================================================
+        private readonly struct GarrisonGroundActor
+        {
+            public readonly ArmySnapshot Mover;
+            public readonly ArmyData Shell;
+            public GarrisonGroundActor(ArmySnapshot mover, ArmyData shell) { Mover = mover; Shell = shell; }
+        }
+
+        // Item 3 — ReusableArmySelector.FindReusableAt always returns the SAME first shell at a hex,
+        // so a second garrison at that hex (or a second probe within the same batch) would see that
+        // shell as "the" answer even after a first caller already claimed it, and never fall through
+        // to a second, still-free shell at the same hex. This walks ReusableShells directly and picks
+        // the first one NOT already excluded/reserved. Item 4 — a shell that already activated this
+        // turn is excluded here too: ArmyActions.TransferMember would then charge the incoming unit's
+        // ActivationApCost immediately, live, against root.ActionPoints — an actual Provisioning-time
+        // AP spend this pass's ClaimedAp/ProvisioningSession.ApClaimed accounting has no channel to
+        // report without double-subtracting it (the exact problem Economy's now-removed
+        // ProvisioningApSpent field used to paper over). Recon's Shell-tier extraction simply never
+        // picks such a shell — no new field, no second AP-accounting channel.
+        private static ArmyData FindUnreservedShellAt(PlayerSetupData player, HexCoord hex,
+            ActorCommitments commitments, ISet<int> excludeArmyIds, ISet<int> reservedShellIds) =>
+            ReusableArmySelector.ReusableShells(player, commitments).FirstOrDefault(a =>
+                a.Hex.Equals(hex) && !a.HasActivatedThisTurn
+                && (excludeArmyIds == null || !excludeArmyIds.Contains(a.Id))
+                && (reservedShellIds == null || !reservedShellIds.Contains(a.Id)));
+
+        // Item 2 — a single enumeration of (garrison mover, resolved destination shell) pairs for a
+        // given probe target, shared verbatim by BuildCandidates and MeasureCapacity. Garrison
+        // extraction never serves Surveil (ScoutMoverSelector.EligibleGarrisonExtraction's own
+        // restriction — no vantage machinery); every OTHER kind (Explore, Refresh, either stealth-
+        // Required or not) is in scope, matching whatever `probeTarget` actually asks for. Every
+        // accepted pair reserves its shell into `reservedShellIds` so two garrisons competing for the
+        // same hex's shells never both walk away with "the" first one (item 3).
+        private static List<GarrisonGroundActor> MaterializableGarrisonActors(WorldSnapshot snap,
+            PlayerSetupData player, ScoutMissionTarget probeTarget, ISet<int> excludeArmyIds,
+            ActorCommitments commitments, HashSet<int> reservedShellIds)
+        {
+            var result = new List<GarrisonGroundActor>();
+            if (probeTarget.Kind == ScoutTargetKind.Surveil)
+                return result;
+            foreach (ArmySnapshot mover in
+                     ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, probeTarget, excludeArmyIds))
+            {
+                ArmyData shell = FindUnreservedShellAt(player, mover.Hex, commitments, excludeArmyIds, reservedShellIds);
+                if (shell == null)
+                    continue;
+                reservedShellIds?.Add(shell.Id);
+                result.Add(new GarrisonGroundActor(mover, shell));
+            }
+            return result;
+        }
+
         internal static List<ScoutExecutionCandidate> BuildCandidates(WorldSnapshot snap, AiTurnContext ctx,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds,
             PlayerRoot root = null, IReadOnlyList<AirObservationSlot> airPool = null,
@@ -244,27 +301,28 @@ namespace Game.Ai.V2
             // later, transactionally, in ProvisioningManager.Provision if this candidate wins.
             //
             // Task 1 (2026-09-14) — a garrison Recce is only ever promised here if a concrete,
-            // currently-free destination shell already exists AT the garrison's own hex
-            // (ReusableArmySelector.FindReusableAt — the same reusable-shell model Economy's own
-            // extraction trusts). Assignment must never fund a candidate Provisioning has no
-            // container to materialize into; `excludeArmyIds` doubles as the container exclusion set
-            // too, since a shell that wins a mission this pass becomes that mission's MoverArmyId
-            // (Task 3) and is folded into the caller's claimed-ids set for every subsequent mission.
+            // currently-free, not-yet-activated destination shell already exists AT the garrison's
+            // own hex (MaterializableGarrisonActors — the SAME primitive MeasureCapacity's witness
+            // uses, item 2). Assignment must never fund a candidate Provisioning has no container to
+            // materialize into; `excludeArmyIds` doubles as the container exclusion set too, since a
+            // shell that wins a mission this pass becomes that mission's MoverArmyId (Task 3) and is
+            // folded into the caller's claimed-ids set for every subsequent mission. `reservedShellIds`
+            // is scoped to this one BuildCandidates call so two garrisons sharing a hex within the
+            // SAME mission's candidate list compete for distinct shells (item 3) — cross-mission
+            // dedup for the same shell is the batch solver's ActorKey uniqueness, unchanged.
             if (!surveil)
             {
-                foreach (ArmySnapshot mover in
-                         ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, target, excludeArmyIds))
+                var reservedShellIds = new HashSet<int>();
+                foreach (GarrisonGroundActor g in MaterializableGarrisonActors(
+                             snap, player, target, excludeArmyIds, commitments, reservedShellIds))
                 {
-                    ArmyData shell = ReusableArmySelector.FindReusableAt(player, mover.Hex, commitments);
-                    if (shell == null || (excludeArmyIds != null && excludeArmyIds.Contains(shell.Id)))
-                        continue;
                     if (ctx?.Map != null && SafeStepPathing.FindSafePath(
-                            ctx.Map, player, mover.Hex, target.FocusHex, mover.MaxMovement) == null)
+                            ctx.Map, player, g.Mover.Hex, target.FocusHex, g.Mover.MaxMovement) == null)
                         continue;
-                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
-                    list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
+                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, g.Mover, target.FocusHex, stealthRequired);
+                    list.Add(new ScoutExecutionCandidate(g.Mover, target.FocusHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp,
-                        sourceGarrisonArmyId: mover.ArmyId, materializationArmyId: shell.Id));
+                        sourceGarrisonArmyId: g.Mover.ArmyId, materializationArmyId: g.Shell.Id));
                 }
             }
 
@@ -933,13 +991,9 @@ namespace Game.Ai.V2
             var genericProbeTarget = new ScoutMissionTarget
                 { Kind = ScoutTargetKind.Explore, Stealth = StealthRequirement.None, DetectionRisk = 0f };
             var reservedShellIds = new HashSet<int>();
-            foreach (ArmySnapshot g in ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, genericProbeTarget, claimedForGarrison))
-            {
-                ArmyData shell = ReusableArmySelector.FindReusableAt(player, g.Hex, commitments);
-                if (shell == null || claimedForGarrison.Contains(shell.Id) || !reservedShellIds.Add(shell.Id))
-                    continue; // no container to materialize into, or another garrison already claimed it
-                idleActors.Add(g);
-            }
+            foreach (GarrisonGroundActor g in MaterializableGarrisonActors(
+                         snap, player, genericProbeTarget, claimedForGarrison, commitments, reservedShellIds))
+                idleActors.Add(g.Mover);
             int remainingGroundSlots = Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundLaneWitnessed);
             int remainingObsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency - obsLaneWitnessed
                 - capacity.AirborneReconLanes - capacity.SpareAirObservationSorties);
@@ -973,6 +1027,13 @@ namespace Game.Ai.V2
                 var stealthTarget = new ScoutMissionTarget { Stealth = StealthRequirement.Required };
                 ISet<int> claimed = commitments?.ClaimedArmyIdSet;
                 List<ArmySnapshot> stealthActors = EligibleMovers(snap, stealthTarget, claimed);
+                // Item 2 — a stealth-capable garrison Recce (EligibleGarrisonExtraction's own
+                // needStealth gate already requires hidden/CanEnterStealth) with a real destination
+                // shell is stealth-lane capacity too, exactly like its non-stealth counterpart above.
+                var stealthReservedShellIds = new HashSet<int>();
+                foreach (GarrisonGroundActor g in MaterializableGarrisonActors(
+                             snap, player, stealthTarget, claimed, commitments, stealthReservedShellIds))
+                    stealthActors.Add(g.Mover);
                 (stealthGroundWitnessed, stealthObsWitnessed, _, _, _) = SolveReconFlow(
                     ctx, player, snap, stealthActors, stealthGroundRunnable, stealthObservationRunnable,
                     stealthGroundRunnable?.Count ?? 0, stealthObservationRunnable?.Count ?? 0);
@@ -1247,15 +1308,20 @@ namespace Game.Ai.V2
             // id (ResolveArmy(a.ArmyId) would resolve the live garrison, not the not-yet-extracted
             // unit), so it cannot go through the generic CanExecute/EvaluateCandidate live-army path.
             // Mirrors BuildCandidates' own garrison-extraction check exactly: coordinate-based
-            // SafeStepPathing off the synthetic snapshot's own Hex/MaxMovement, ground jobs only
-            // (matches ScoutMoverSelector.EligibleGarrisonExtraction's Surveil exclusion — obs jobs
-            // here are Refresh/Surveil, and a not-yet-extracted Recce cannot serve Surveil vantage
-            // machinery either way).
-            bool CanRun(ArmySnapshot a, ReconObjective job, bool ground)
+            // SafeStepPathing off the synthetic snapshot's own Hex/MaxMovement.
+            //
+            // Review round (2026-09-14, item 2) — the gate is on the JOB's own kind (never Surveil —
+            // matches ScoutMoverSelector.EligibleGarrisonExtraction's exclusion, since a not-yet-
+            // extracted Recce cannot serve Surveil vantage machinery), NOT on which of the two lists
+            // (groundJobs/obsJobs) it came from. `observationRunnable` is Refresh AND Surveil
+            // objectives together — the old `ground`-bool gate blocked a garrison Recce from ever
+            // witnessing a Refresh job just because Refresh lives in the "obs" list, even though
+            // BuildCandidates (real Assignment) already fully supports Refresh for the same actor.
+            bool CanRun(ArmySnapshot a, ReconObjective job)
             {
                 if (!a.RequiresGarrisonExtraction)
                     return CanExecute(ctx, player, snap, a, job.ToTarget());
-                if (!ground)
+                if (job.Kind == ReconObjectiveKind.Surveil)
                     return false;
                 return ctx?.Map == null
                     || SafeStepPathing.FindSafePath(ctx.Map, player, a.Hex, job.FocusHex, a.MaxMovement) != null;
@@ -1266,11 +1332,11 @@ namespace Game.Ai.V2
                 ArmySnapshot a = actors[i];
                 if (groundCap > 0)
                     for (int j = 0; j < groundJobCount; j++)
-                        if (CanRun(a, groundJobs[j], true))
+                        if (CanRun(a, groundJobs[j]))
                             AddFlowEdge(graph, actorBase + i, groundJobBase + j, 1);
                 if (obsCap > 0)
                     for (int j = 0; j < obsJobCount; j++)
-                        if (CanRun(a, obsJobs[j], false))
+                        if (CanRun(a, obsJobs[j]))
                             AddFlowEdge(graph, actorBase + i, obsJobBase + j, 1);
             }
 
