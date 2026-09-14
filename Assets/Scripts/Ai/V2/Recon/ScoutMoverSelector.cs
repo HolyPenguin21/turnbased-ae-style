@@ -77,10 +77,21 @@ namespace Game.Ai.V2
         public readonly HexCoord AirfieldHex;                    // AirLaunch only
         public readonly IReadOnlyList<UnitData> LaunchSubset;    // AirLaunch only
 
+        // Task 1 (2026-09-14, garrison-extraction materialization consistency) — a garrison
+        // candidate's identity is a PAIR: the garrison it would be pulled FROM, and the concrete,
+        // already-resolved empty shell it would be materialized INTO (ReusableArmySelector.
+        // FindReusableAt, resolved once by ReconAssignmentPlanner before this candidate is ever
+        // built — see BuildGroundActors). SourceGarrisonArmyId==0 for every non-garrison candidate
+        // (Army.ArmyId is already the real mover in that case).
+        public readonly int SourceGarrisonArmyId;
+        public readonly int MaterializationArmyId;
+        public bool RequiresGarrisonExtraction => SourceGarrisonArmyId > 0;
+
         public ScoutExecutionCandidate(ArmySnapshot army, HexCoord executionHex, int effActivationAp,
             int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,
             ScoutExecutorKind executorKind = ScoutExecutorKind.Ground, HexCoord airfieldHex = default,
-            IReadOnlyList<UnitData> launchSubset = null, float requiredEnergy = 0f, float routeScore = 0f)
+            IReadOnlyList<UnitData> launchSubset = null, float requiredEnergy = 0f, float routeScore = 0f,
+            int sourceGarrisonArmyId = 0, int materializationArmyId = 0)
         {
             Army = army;
             ExecutionHex = executionHex;
@@ -96,15 +107,22 @@ namespace Game.Ai.V2
             LaunchSubset = launchSubset;
             RequiredEnergy = requiredEnergy;
             RouteScore = routeScore;
+            SourceGarrisonArmyId = sourceGarrisonArmyId;
+            MaterializationArmyId = materializationArmyId;
         }
 
         public bool IsStealthCapableMover => Army != null && (Army.IsHidden || Army.CanEnterStealth);
 
         // The batch solver's one-actor-per-job identity key. A real mover (Ground / AirExisting) is
-        // its own ArmyId; an AirLaunch candidate (no ArmyData yet) is a stable per-airfield synthetic
-        // id, deliberately far outside the real ArmyId range, so two funded missions in the same pass
-        // can never both claim the same airfield's hangar subset.
-        public int ActorKey => Army != null ? Army.ArmyId : SyntheticAirfieldActorId(AirfieldHex);
+        // its own ArmyId; a garrison candidate keys on the DESTINATION SHELL it would materialize
+        // into, not the garrison it would be pulled from — two garrisons (or two missions considering
+        // the same garrison) that would land in the same shell must contend for one slot, exactly
+        // like any other actor uniqueness constraint. An AirLaunch candidate (no ArmyData yet) is a
+        // stable per-airfield synthetic id, deliberately far outside the real ArmyId range, so two
+        // funded missions in the same pass can never both claim the same airfield's hangar subset.
+        public int ActorKey => Army != null
+            ? (RequiresGarrisonExtraction ? MaterializationArmyId : Army.ArmyId)
+            : SyntheticAirfieldActorId(AirfieldHex);
 
         public static int SyntheticAirfieldActorId(HexCoord airfieldHex) =>
             -(2_000_000 + (airfieldHex.Q & 0xFFF) * 4096 + (airfieldHex.R & 0xFFF));

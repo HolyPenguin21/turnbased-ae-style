@@ -196,7 +196,8 @@ namespace Game.Ai.V2
         // =======================================================================================
         internal static List<ScoutExecutionCandidate> BuildCandidates(WorldSnapshot snap, AiTurnContext ctx,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds,
-            PlayerRoot root = null, IReadOnlyList<AirObservationSlot> airPool = null)
+            PlayerRoot root = null, IReadOnlyList<AirObservationSlot> airPool = null,
+            ActorCommitments commitments = null)
         {
             var list = new List<ScoutExecutionCandidate>();
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
@@ -241,17 +242,29 @@ namespace Game.Ai.V2
             // resolve the live GARRISON, not the not-yet-extracted unit. Ground Explore/Refresh only
             // (see ScoutMoverSelector.EligibleGarrisonExtraction); the actual extraction happens
             // later, transactionally, in ProvisioningManager.Provision if this candidate wins.
+            //
+            // Task 1 (2026-09-14) — a garrison Recce is only ever promised here if a concrete,
+            // currently-free destination shell already exists AT the garrison's own hex
+            // (ReusableArmySelector.FindReusableAt — the same reusable-shell model Economy's own
+            // extraction trusts). Assignment must never fund a candidate Provisioning has no
+            // container to materialize into; `excludeArmyIds` doubles as the container exclusion set
+            // too, since a shell that wins a mission this pass becomes that mission's MoverArmyId
+            // (Task 3) and is folded into the caller's claimed-ids set for every subsequent mission.
             if (!surveil)
             {
                 foreach (ArmySnapshot mover in
                          ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, target, excludeArmyIds))
                 {
+                    ArmyData shell = ReusableArmySelector.FindReusableAt(player, mover.Hex, commitments);
+                    if (shell == null || (excludeArmyIds != null && excludeArmyIds.Contains(shell.Id)))
+                        continue;
                     if (ctx?.Map != null && SafeStepPathing.FindSafePath(
                             ctx.Map, player, mover.Hex, target.FocusHex, mover.MaxMovement) == null)
                         continue;
                     ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, target.FocusHex, stealthRequired);
                     list.Add(new ScoutExecutionCandidate(mover, target.FocusHex, pc.EffActivationAp,
-                        pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp));
+                        pc.EtaTurns, pc.Distance, 0f, 0, pc.AlreadyHidden, pc.RequiredAp,
+                        sourceGarrisonArmyId: mover.ArmyId, materializationArmyId: shell.Id));
                 }
             }
 
@@ -397,6 +410,15 @@ namespace Game.Ai.V2
             if (open == null || open.Count == 0)
                 return result;
 
+            // Task 1 (2026-09-14) — one ActorCommitments instance for the whole batch, built the
+            // same way Provisioning itself builds one, so Assignment's shell-freeness check
+            // (ReusableArmySelector.FindReusableAt, inside BuildCandidates) can never see a shell as
+            // free that Provisioning would then see as durably claimed by some OTHER active intent.
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                snap, null);
+
             HashSet<int> ExclusionsFor(FundedEntry fe)
             {
                 // A ProvisioningSession only owns claims made during this one admission. Durable
@@ -497,7 +519,7 @@ namespace Game.Ai.V2
                 exclusions.Add(excluded);
 
                 var target = (ScoutMissionTarget)fe.Mission.Target;
-                cands.Add(BuildCandidates(snap, ctx, player, target, excluded, root, airPool));
+                cands.Add(BuildCandidates(snap, ctx, player, target, excluded, root, airPool, commitments));
             }
 
             int groundActorCap = Mathf.Max(0, ReconConcurrencyPolicy.HardCap - claimedGroundActors);
@@ -898,6 +920,26 @@ namespace Game.Ai.V2
             int obsLaneWitnessed = RevalidateLane(capacity.GenericObservationLaneActors);
 
             var idleActors = armies.Where(a => a != null && capacity.IdleGroundScouts.Contains(a.ArmyId)).ToList();
+            // Task 1 (2026-09-14) — a garrison Recce with a real, resolvable destination shell is
+            // witnessed capacity too, not just a funded-assignment candidate (BuildCandidates): the
+            // SAME materializable-actor model both must agree on, or Demand keeps requesting a fresh
+            // scout that a garrison could already supply. `claimed` folds in commitments (durable
+            // intents) AND every generic lane actor already claimed above, mirroring
+            // ScoutMoverSelector.EligibleGarrisonExtraction's own excludeArmyIds contract; a probe
+            // target with no stealth/Surveil requirement matches IdleGroundScouts' own generic scope.
+            HashSet<int> claimedForGarrison = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
+            claimedForGarrison.UnionWith(capacity.GenericGroundLaneActors);
+            claimedForGarrison.UnionWith(capacity.GenericObservationLaneActors);
+            var genericProbeTarget = new ScoutMissionTarget
+                { Kind = ScoutTargetKind.Explore, Stealth = StealthRequirement.None, DetectionRisk = 0f };
+            var reservedShellIds = new HashSet<int>();
+            foreach (ArmySnapshot g in ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, genericProbeTarget, claimedForGarrison))
+            {
+                ArmyData shell = ReusableArmySelector.FindReusableAt(player, g.Hex, commitments);
+                if (shell == null || claimedForGarrison.Contains(shell.Id) || !reservedShellIds.Add(shell.Id))
+                    continue; // no container to materialize into, or another garrison already claimed it
+                idleActors.Add(g);
+            }
             int remainingGroundSlots = Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundLaneWitnessed);
             int remainingObsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency - obsLaneWitnessed
                 - capacity.AirborneReconLanes - capacity.SpareAirObservationSorties);
@@ -1201,16 +1243,34 @@ namespace Game.Ai.V2
                 AddFlowEdge(graph, groundAgg, sink, groundCap);
             if (obsCap > 0)
                 AddFlowEdge(graph, obsAgg, sink, obsCap);
+            // Task 1 (2026-09-14) — a garrison-extraction ArmySnapshot's ArmyId is the GARRISON's own
+            // id (ResolveArmy(a.ArmyId) would resolve the live garrison, not the not-yet-extracted
+            // unit), so it cannot go through the generic CanExecute/EvaluateCandidate live-army path.
+            // Mirrors BuildCandidates' own garrison-extraction check exactly: coordinate-based
+            // SafeStepPathing off the synthetic snapshot's own Hex/MaxMovement, ground jobs only
+            // (matches ScoutMoverSelector.EligibleGarrisonExtraction's Surveil exclusion — obs jobs
+            // here are Refresh/Surveil, and a not-yet-extracted Recce cannot serve Surveil vantage
+            // machinery either way).
+            bool CanRun(ArmySnapshot a, ReconObjective job, bool ground)
+            {
+                if (!a.RequiresGarrisonExtraction)
+                    return CanExecute(ctx, player, snap, a, job.ToTarget());
+                if (!ground)
+                    return false;
+                return ctx?.Map == null
+                    || SafeStepPathing.FindSafePath(ctx.Map, player, a.Hex, job.FocusHex, a.MaxMovement) != null;
+            }
+
             for (int i = 0; i < actors.Count; i++)
             {
                 ArmySnapshot a = actors[i];
                 if (groundCap > 0)
                     for (int j = 0; j < groundJobCount; j++)
-                        if (CanExecute(ctx, player, snap, a, groundJobs[j].ToTarget()))
+                        if (CanRun(a, groundJobs[j], true))
                             AddFlowEdge(graph, actorBase + i, groundJobBase + j, 1);
                 if (obsCap > 0)
                     for (int j = 0; j < obsJobCount; j++)
-                        if (CanExecute(ctx, player, snap, a, obsJobs[j].ToTarget()))
+                        if (CanRun(a, obsJobs[j], false))
                             AddFlowEdge(graph, actorBase + i, obsJobBase + j, 1);
             }
 

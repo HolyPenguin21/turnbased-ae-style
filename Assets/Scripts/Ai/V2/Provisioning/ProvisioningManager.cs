@@ -33,7 +33,24 @@ namespace Game.Ai.V2
         public string ReservationOwner;
         public MissionIntentKey? EconomyLoanSource;
         public ResourceVector ClaimedPhysical;
+        // AP still needed for EXECUTION to carry this mission out (e.g. Economy travel/build cost).
+        // root.ActionPoints has NOT been debited for this yet. Feeds ProvisioningSession.ApClaimed,
+        // which every mission this pass checks against "root.ActionPoints - session.ApClaimed" —
+        // that formula assumes ClaimedAp is exactly the part root.ActionPoints does not already
+        // reflect, so nothing already spent belongs in here (see ProvisioningApSpent below).
         public float ClaimedAp;
+        // 2026-09-14 review round 3 — AP a Provisioning-time mutation (ArmyActions.CreateArmy, or
+        // TransferMember's activation charge into a container that already acted this turn) has
+        // ALREADY physically deducted from root.ActionPoints by the time this ProvisionedMission
+        // exists. ResourceAllocator.Pack() computes its pool from the FROZEN WorldSnapshot AP
+        // figure, so it has no way to know about this spend on its own — RegisterProvisionSuccess
+        // must be given ClaimedAp + ProvisioningApSpent (the full true cost against that frozen
+        // baseline), while ProvisioningSession.ApClaimed / the raw-pool checks inside
+        // ProvisioningManager itself must keep using ClaimedAp alone (root.ActionPoints there is
+        // already live, so adding this again would double-subtract it). Two consumers, two
+        // different questions — one field cannot answer both, which is exactly the P0 review
+        // round 3 found.
+        public float ProvisioningApSpent;
         // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
@@ -310,11 +327,18 @@ namespace Game.Ai.V2
         // safety gate and mutation path Raid's own donor path already trusts in production). A
         // shell minted here via ArmyActions.CreateArmy but never successfully populated is kept,
         // never rolled back (same rule CardPlayExecutor documents for its own NewArmy path) — it
-        // simply becomes a future Shell-tier candidate.
+        // simply becomes a future Shell-tier candidate. `containerCreated` reports whether
+        // ArmyActions.CreateArmy ACTUALLY ran and spent its AP — true even when the very next
+        // TransferMember into it then fails, so a caller can never lose track of a real,
+        // already-spent cost just because this call returned null overall (2026-09-14 review
+        // round 3 P1 — the caller used to infer this from candidate.Tier, which reflects what was
+        // CHOSEN, not what actually happened).
         private static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
-            GarrisonExtractionCandidate candidate, AiTurnContext ctx, out UnitData extractedHero)
+            GarrisonExtractionCandidate candidate, AiTurnContext ctx,
+            out UnitData extractedHero, out bool containerCreated)
         {
             extractedHero = null;
+            containerCreated = false;
             if (candidate.Tier == GarrisonExtractionTier.None)
                 return null;
 
@@ -325,6 +349,7 @@ namespace Game.Ai.V2
                 container = ArmyActions.CreateArmy(player, garrison.Hex, catalog, ctx.HexSelection);
                 if (container == null)
                     return null;
+                containerCreated = true;
             }
 
             if (!ArmyActions.TransferMember(candidate.Hero, garrison, container, ctx.HexSelection, out string why))
@@ -366,37 +391,14 @@ namespace Game.Ai.V2
                 .ThenBy(a => a.Id);
         }
 
-        // Recon's counterpart to the Economy ApplyGarrisonExtraction pair above — same safety gate
-        // (AiArmyRoles.CanSpareGarrisonMember, via BestSparableGarrisonRecce) and same transfer
-        // primitive (ArmyActions.TransferMember into an already-existing free shell), just for a
-        // Recce-capable unit/hero instead of a mobile_hero. Still Shell-tier only (no Host/Create
-        // fallback) — out of scope for the 2026-09-14 Economy pass; if Recon hits the same
-        // no-free-shell dead end, apply the same three-tier fix here. If no shell is free, or the unit no
-        // longer qualifies by the time this runs, extraction simply fails here and Recon falls back
-        // to its existing card-materialization path, unchanged.
-        private static ArmyData TryExtractGarrisonRecceForScouting(PlayerSetupData player,
-            ArmyData garrison, AiTurnContext ctx, ProvisioningSession session)
-        {
-            UnitData sparable = AiArmyRoles.BestSparableGarrisonRecce(player, garrison);
-            if (sparable == null)
-                return null;
-            ActorCommitments commitments = ActorCommitments.FromIntents(
-                MissionIntentRegistry.GetOrCreate(player).All
-                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
-                session?.Snapshot, null);
-            ArmyData shell = ReusableArmySelector.FindReusableAt(player, garrison.Hex, commitments);
-            if (shell == null)
-                return null;
-            if (!ArmyActions.TransferMember(sparable, garrison, shell, ctx.HexSelection, out string why))
-            {
-                AiDebugLog.WriteVerbose(
-                    $"[AI][V2][Recon] garrison Recce extraction failed: {why}");
-                return null;
-            }
-            AiDebugLog.Write($"[AI][V2][Recon] extracted idle Recce {sparable.Name} "
-                + $"from garrison #{garrison.Id} into #{shell.Id} for scouting duty");
-            return shell;
-        }
+        // 2026-09-14 (garrison recon materialization consistency, Task 2/3) — the old
+        // TryExtractGarrisonRecceForScouting re-searched ReusableArmySelector.FindReusableAt itself
+        // at commit time, a SECOND container search independent of the one
+        // ReconAssignmentPlanner.BuildCandidates already ran to admit the candidate in the first
+        // place — the exact "two owners can silently disagree" gap this pass closes. Provision's
+        // Scout/Ground branch below now resolves the pinned (source garrison, destination shell)
+        // pair Assignment already chose and commits/rolls back that EXACT pair inline; there is no
+        // longer a separate extraction primitive to call.
 
         public static void PreparePass(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, TentativeAllocation allocation,
@@ -603,22 +605,40 @@ namespace Game.Ai.V2
             if (exec.ExecutorKind != ScoutExecutorKind.Ground)
                 return ProvisionAir(player, root, ctx, session, funded, exec, target, key);
 
-            int moverArmyId = exec.Army.ArmyId;
+            // Task 1/2/3 (2026-09-14, garrison recon materialization consistency) — identity uses
+            // the destination SHELL from the start for a garrison candidate (Task 3: the source
+            // garrison id must never leak into MoverArmyId / claims / durable intent), and the pair
+            // Assignment already pinned (BuildCandidates: source garrison + a then-free
+            // ReusableArmySelector shell) is re-resolved here as a pure PREFLIGHT probe — Provisioning
+            // must never re-search for "any" shell, or two funded missions in the same pass could
+            // silently agree on a container Assignment never actually reserved for both (Task 2).
+            int moverArmyId = exec.RequiresGarrisonExtraction ? exec.MaterializationArmyId : exec.Army.ArmyId;
+            ArmyData garrisonArmy = null;
+            ArmyData destinationShell = null;
+            UnitData plannedExtractUnit = null;
             ArmyData army;
-            if (exec.Army.RequiresGarrisonExtraction)
+
+            if (exec.RequiresGarrisonExtraction)
             {
-                ArmyData garrisonArmy = ResolveArmy(player, moverArmyId);
-                army = garrisonArmy == null
-                    ? null : TryExtractGarrisonRecceForScouting(player, garrisonArmy, ctx, session);
+                garrisonArmy = ResolveArmy(player, exec.SourceGarrisonArmyId);
+                plannedExtractUnit = garrisonArmy == null
+                    ? null : AiArmyRoles.BestSparableGarrisonRecce(player, garrisonArmy);
+                destinationShell = ResolveArmy(player, exec.MaterializationArmyId);
+                if (garrisonArmy == null || plannedExtractUnit == null
+                    || destinationShell == null || destinationShell.Members.Count != 0)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"assigned garrison #{exec.SourceGarrisonArmyId} / shell #{exec.MaterializationArmyId} "
+                        + "is no longer a usable extraction pair"));
+                army = null; // not a real mover until TransferMember commits, below
             }
             else
             {
                 army = ResolveArmy(player, moverArmyId);
+                if (army == null || army.Owner != player || army.Members.Count == 0
+                    || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
             }
-            if (army == null || army.Owner != player || army.Members.Count == 0
-                || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
 
             HexCoord focus = target.FocusHex;
             HexCoord executionHex = exec.ExecutionHex;
@@ -665,13 +685,24 @@ namespace Game.Ai.V2
                         $"focus ({focus.Q},{focus.R}) now holds a known army"));
             }
 
-            HexCoord? firstStep = SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex);
-            if (firstStep == null)
+            // Task 2 — preflight approach + AP purely off PRE-mutation data: the real mover for a
+            // normal candidate, or the not-yet-extracted unit's own stats/hex for a garrison one
+            // (the exact same coordinate-based primitive BuildCandidates already used to admit this
+            // candidate — see ReconAssignmentPlanner.BuildCandidates' garrison-extraction branch).
+            HexCoord fromHex = exec.RequiresGarrisonExtraction ? garrisonArmy.Hex : army.Hex;
+            bool hasSafeApproach = exec.RequiresGarrisonExtraction
+                ? SafeStepPathing.FindSafePath(ctx.Map, player, fromHex, executionHex, plannedExtractUnit.MoveMax) != null
+                : SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex) != null;
+            if (!hasSafeApproach)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    $"no safe first step from ({army.Hex.Q},{army.Hex.R}) toward ({executionHex.Q},{executionHex.R})"));
+                    $"no safe first step from ({fromHex.Q},{fromHex.R}) toward ({executionHex.Q},{executionHex.R})"));
 
-            int activationAp = army.HasActivatedThisTurn ? 0 : army.ActivationApCost;
-            bool alreadyHidden = army.Members.Any(mem => mem.IsHidden);
+            int activationAp = exec.RequiresGarrisonExtraction
+                ? plannedExtractUnit.ActivationApCost
+                : (army.HasActivatedThisTurn ? 0 : army.ActivationApCost);
+            bool alreadyHidden = exec.RequiresGarrisonExtraction
+                ? plannedExtractUnit.IsHidden
+                : army.Members.Any(mem => mem.IsHidden);
             bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
             int stealthAp = reserveStealth ? StealthTransitionApCost : 0;
             float realNeed = activationAp + stealthAp;
@@ -686,6 +717,54 @@ namespace Game.Ai.V2
             if (realNeed > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: need {N(realNeed)}, {N(turnApLeft)} left after earlier claims"));
+
+            // Task 2 — COMMIT. Only now, after every check above ran on pre-mutation data, does the
+            // garrison Recce actually leave. `extractedUnit` tracks the EXACT UnitData that moved so
+            // FailAfterRecce can send that same unit back rather than re-deriving "the" Recce from
+            // the shell's roster (a Host-style shared container could, in principle, hold more than
+            // one candidate unit — this project's Shell-tier extraction never does today, but the
+            // tracked reference removes the ambiguity at the source instead of relying on that).
+            UnitData extractedUnit = null;
+            if (exec.RequiresGarrisonExtraction)
+            {
+                if (!ArmyActions.TransferMember(plannedExtractUnit, garrisonArmy, destinationShell, ctx.HexSelection, out string why))
+                {
+                    AiDebugLog.WriteVerbose($"[AI][V2][Recon] garrison Recce extraction failed: {why}");
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"garrison #{exec.SourceGarrisonArmyId} extraction into shell #{exec.MaterializationArmyId} failed: {why}"));
+                }
+                extractedUnit = plannedExtractUnit;
+                army = destinationShell;
+                AiDebugLog.Write($"[AI][V2][Recon] extracted idle Recce {plannedExtractUnit.Name} "
+                    + $"from garrison #{garrisonArmy.Id} into #{destinationShell.Id} for scouting duty");
+            }
+
+            // Every failure branch from here on must go through FailAfterRecce (mirrors Economy's
+            // FailAfterHero) so a future check inserted below this line can never forget to unwind
+            // the extraction and leave the Recce permanently stranded outside its garrison.
+            ProvisioningResult FailAfterRecce(ProvisionFailure failure)
+            {
+                if (extractedUnit == null)
+                    return ProvisioningResult.Fail(failure);
+                bool rolledBack = ArmyActions.TransferMember(
+                    extractedUnit, destinationShell, garrisonArmy, ctx.HexSelection, out string why);
+                if (!rolledBack)
+                    AiDebugLog.Write($"[AI][V2][Recon] garrison extraction rollback FAILED "
+                        + $"#{destinationShell.Id}->#{garrisonArmy.Id}: {why}");
+                bool stateChanged = !rolledBack;
+                return ProvisioningResult.Fail(failure, stateChanged, stateChanged ? 1 : 0);
+            }
+
+            // Task 2 — the one genuine post-commit check TransferMember's own validation does not
+            // already cover end-to-end: the resulting shell must actually BE a usable solo Recce. A
+            // real (non-garrison) mover repeats the same cheap structural predicate already proven
+            // above (harmless — nothing mutated it in between); a freshly extracted garrison Recce
+            // rolls back through FailAfterRecce instead of leaving a phantom army downstream stages
+            // were never told to expect.
+            if (army == null || army.Owner != player || army.Members.Count == 0
+                || !AiArmyRoles.IsSoloRecce(army) || army.CurrentMovement <= 0)
+                return FailAfterRecce(ProvisionFailure.MoverContended(
+                    $"assigned mover #{moverArmyId} is no longer a usable solo Recce"));
 
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -702,7 +781,7 @@ namespace Game.Ai.V2
                 ClaimedPhysical = funded.PhysicalDraw,
                 StealthApReserved = stealthAp > 0,
                 RequiresStealth = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f,
-            });
+            }, extractedUnit != null ? 1 : 0);
         }
 
         internal static bool IsEligibleEconomyRecoveryActor(
@@ -873,8 +952,15 @@ namespace Game.Ai.V2
             ArmyData hero = null;
             ArmyData extractionSourceGarrison = null;
             UnitData extractionHeroUnit = null;           // the EXACT unit that left the garrison
-            bool extractionCreatedContainer = false;      // true once ArmyActions.CreateArmy ran (never rolled back)
+            bool extractionCreatedContainer = false;      // true only if ArmyActions.CreateArmy ACTUALLY ran for the WINNING candidate
             float extractionExtraApSpent = 0f;
+            // 2026-09-14 review round 3 P1 — a candidate that creates a shell (ArmyActions.CreateArmy,
+            // real AP already spent) and then fails its own TransferMember is abandoned by the loop
+            // (it tries the next candidate) without ever being the "winner" below — nothing else here
+            // would ever learn that AP was spent. Accumulated across EVERY candidate this call
+            // attempts, win or lose, and folded into extractionExtraApSpent right after the loop so
+            // no exit path (including total failure / NoMoverExists) can silently drop it.
+            float orphanedCreateApThisCall = 0f;
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
             foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
@@ -884,7 +970,7 @@ namespace Game.Ai.V2
                 ArmyData candidateGarrison = null;
                 UnitData candidateExtractedUnit = null;
                 float candidateExtraApSpent = 0f;
-                bool candidateCreatedContainer = false;
+                bool candidateContainerCreated = false;
                 if (candidate.Route.RequiresGarrisonExtraction)
                 {
                     candidateGarrison = ResolveArmy(player, candidate.Route.ArmyId);
@@ -893,10 +979,11 @@ namespace Game.Ai.V2
                         GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
                             player, candidateGarrison, actorCommitments, session,
                             root, ecoApEnvelopeRemaining);
-                        candidateCreatedContainer = plan.Tier == GarrisonExtractionTier.Create;
                         candidateExtraApSpent = plan.ApCost;
-                        candidateHero = ApplyGarrisonExtraction(
-                            player, candidateGarrison, plan, ctx, out candidateExtractedUnit);
+                        candidateHero = ApplyGarrisonExtraction(player, candidateGarrison, plan,
+                            ctx, out candidateExtractedUnit, out candidateContainerCreated);
+                        if (candidateContainerCreated && candidateHero == null)
+                            orphanedCreateApThisCall += plan.ApCost;
                     }
                     else
                         candidateHero = null;
@@ -910,13 +997,17 @@ namespace Game.Ai.V2
                     extractionSourceGarrison = candidate.Route.RequiresGarrisonExtraction
                         ? candidateGarrison : null;
                     extractionHeroUnit = candidateExtractedUnit;
-                    extractionCreatedContainer = candidateCreatedContainer;
+                    extractionCreatedContainer = candidateContainerCreated;
                     extractionExtraApSpent = candidateExtraApSpent;
                     builderChoice = candidate;
                     hero = candidateHero;
                     break;
                 }
             }
+            extractionExtraApSpent += orphanedCreateApThisCall;
+
+            ProvisioningResult FailNoHero(ProvisionFailure failure) =>
+                ProvisioningResult.Fail(failure, orphanedCreateApThisCall > 0f, orphanedCreateApThisCall > 0f ? 1 : 0);
 
             // 2026-09-14 fix — ApplyGarrisonExtraction (inside the loop above) is a real,
             // authoritative mutation: ArmyActions.TransferMember pulling the hero out of the
@@ -947,18 +1038,22 @@ namespace Game.Ai.V2
                 if (!rolledBack)
                     AiDebugLog.Write($"[AI][V2][Economy] garrison extraction rollback FAILED "
                         + $"#{hero.Id}->#{extractionSourceGarrison.Id}: {why}");
-                bool stateChanged = extractionCreatedContainer || !rolledBack;
+                bool stateChanged = extractionCreatedContainer || extractionExtraApSpent > 0f || !rolledBack;
                 return ProvisioningResult.Fail(failure, stateChanged, stateChanged ? 1 : 0);
             }
             if (hero == null)
             {
+                // orphanedCreateApThisCall can be nonzero even here: some earlier candidate in the
+                // loop above created a shell that then failed its own transfer, before this branch
+                // (no candidate at all ultimately won) was ever reached. Every return in this block
+                // goes through FailNoHero so that spend is never silently dropped.
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
                 {
                     int preferredId = m.PreferredMoverArmyId.Value;
                     ArmyData preferredArmy = ResolveArmy(player, preferredId);
 
                     if (preferredArmy == null)
-                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        return FailNoHero(ProvisionFailure.TargetInvalidated(
                             $"committed economy builder #{preferredId} no longer exists"));
 
                     // Canonical, army-specific safe-route witness (same contract EconomyBuilderRoutes
@@ -970,10 +1065,10 @@ namespace Game.Ai.V2
                     int routeCost = SafeStepPathing.FindSafePathCost(
                         ctx.Map, preferredArmy, target.TargetHex);
                     if (routeCost == int.MaxValue)
-                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        return FailNoHero(ProvisionFailure.NoExecutableStep(
                             $"committed economy builder #{preferredId} has no safe route to the site right now"));
 
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    return FailNoHero(ProvisionFailure.MoverContended(
                         $"committed economy builder #{preferredId} cannot advance this turn"));
                 }
                 // DIAGNOSTIC (kept for FoundBase only, per project owner's request 2026-09-13 — the
@@ -1046,7 +1141,7 @@ namespace Game.Ai.V2
                             + $"=> ELIGIBLE={cMobile && cThreat && cClaimed && cDonorConflict && cPath}");
                     }
                 }
-                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                return FailNoHero(ProvisionFailure.NoMoverExists(
                     "no free hero can advance toward economy site"));
             }
 
@@ -1138,16 +1233,22 @@ namespace Game.Ai.V2
                 Mission = m, Key = key, Kind = MissionKind.Economy,
                 MoverArmyId = hero.Id, FocusHex = target.TargetHex,
                 ExecutionHex = target.TargetHex, EconomyTarget = target,
-                // 2026-09-14 review round 2 — extractionExtraApSpent must NOT be folded into
+                // 2026-09-14 review round 2/3 — extractionExtraApSpent must NOT be folded into
                 // ClaimedAp: it is AP ArmyActions.TransferMember/CreateArmy already deducted for
                 // real from root.ActionPoints during extraction above (the local envelope check
                 // just above already validated it against funded.Tentative.Ap at the point it was
                 // spent). ClaimedAp feeds ProvisioningSession.RegisterSuccess -> session.ApClaimed,
-                // which every OTHER mission this pass checks against "root.ActionPoints -
-                // session.ApClaimed" — root.ActionPoints already reflects the extraction spend, so
-                // adding it into ClaimedAp too would subtract it a second time and starve later
-                // Recon/Economy/Development attempts this same turn for no reason.
-                ClaimedAp = realAp, ClaimedPhysical = CostVector(stageCost),
+                // which every OTHER mission THIS PROVISIONING PASS checks against "root.ActionPoints
+                // - session.ApClaimed" — root.ActionPoints already reflects the extraction spend, so
+                // adding it into ClaimedAp too would subtract it a second time there.
+                // ProvisioningApSpent carries that same already-spent amount to the ONE consumer
+                // that does need it: ResourceAllocator.Pack() computes its pool from the FROZEN
+                // WorldSnapshot AP figure (see ResourceAllocator.cs ~line 613), which has no way to
+                // know about a spend that happened live during Provisioning — RegisterProvisionSuccess
+                // must be called with ClaimedAp + ProvisioningApSpent (all call sites do this; see
+                // Docs/ai-economy-mover-materialization-decision-tree.md).
+                ClaimedAp = realAp, ProvisioningApSpent = extractionExtraApSpent,
+                ClaimedPhysical = CostVector(stageCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
                 // The extraction itself (hero leaving the garrison into a new/borrowed container)
