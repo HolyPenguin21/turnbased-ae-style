@@ -151,6 +151,43 @@ namespace Game.Ai.V2
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
         }
 
+        // AGG-RAID P0#1 — reinforcement support-actor candidates. An EXISTING free ground-combat
+        // army (already on the map, needing no card play / materialization) qualifies as a
+        // Reinforcement support actor when merging its roster into the primary's would improve the
+        // primary's projected WorthIt win chance against the current defenders — the same economics
+        // ProvisioningManager.ReinforcementImprovesOdds re-checks live at execution time, evaluated
+        // here at snapshot granularity so Missions can propose a concrete leg before an actor is
+        // physically claimed. Demand reads this to decide whether a NEW army even needs to be
+        // materialized; Missions/Provisioning read it to run the normal actor-contention batch solve.
+        public static List<int> ReinforcementSupportCandidates(WorldSnapshot snap, int primaryArmyId,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds)
+        {
+            var ids = new List<int>();
+            if (snap?.Self?.Armies == null || primaryArmyId == 0)
+                return ids;
+            ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
+            if (primary == null)
+                return ids;
+
+            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            var before = (primary.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
+            float winBefore = defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(before, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+
+            var excluded = excludeArmyIds != null ? new HashSet<int>(excludeArmyIds) : new HashSet<int>();
+            excluded.Add(primaryArmyId);
+            foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
+            {
+                var after = new List<WorthIt.DefenderProfile>(before);
+                after.AddRange(candidate.Members ?? System.Array.Empty<WorthIt.DefenderProfile>());
+                float winAfter = defenders.Count == 0 ? 1f
+                    : WorthIt.WinChance(after, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                if (winAfter > winBefore + 0.001f)
+                    ids.Add(candidate.ArmyId);
+            }
+            return ids;
+        }
+
         private static bool Admissible(ArmySnapshot a, GroundCombatAssemblyRequest r)
         {
             if (a == null) return false;

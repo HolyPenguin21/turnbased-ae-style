@@ -446,7 +446,8 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (raid target no longer valid)");
                         continue;
                     }
-                    if (ri.Phase == RaidMissionPhase.Return && !ReturnBaseStillValid(snap, player, ri.ReturnHex))
+                    if (ri.Phase == RaidMissionPhase.Return
+                        && !ReturnBaseStillValid(snap, player, ri.PrimaryArmyId, ri.ReturnHex))
                     {
                         // §11 — losing the chosen base is a controlled RETARGET, never a stall.
                         HexCoord? replacement = SelectReturnBase(snap, player, ri.PrimaryArmyId);
@@ -766,6 +767,18 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Reinforcement -> Assault "
                         + "reason=primary_clears_current_target_again");
                 }
+                // AGG-RAID P1#1 — the symmetric direction. This used to be a side effect of
+                // AggressionDemandEvaluator.Build (now a pure snapshot read); Continuity is the sole
+                // owner of durable Phase, so a bound primary that no longer clears its CURRENT
+                // (possibly already re-oriented) target is moved to Reinforcement here, before
+                // Demand/Missions run this same pass.
+                else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId != 0
+                    && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.TargetArmyId))
+                {
+                    ri.Phase = RaidMissionPhase.Reinforcement;
+                    AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Assault -> Reinforcement "
+                        + "reason=primary_no_longer_clears_current_target");
+                }
                 return true;
             }
 
@@ -860,11 +873,28 @@ namespace Game.Ai.V2
             return plan.Feasible;
         }
 
-        // §11 — is the fixed return base still ours?
-        internal static bool ReturnBaseStillValid(WorldSnapshot snap, PlayerSetupData player, HexCoord? hex) =>
-            hex.HasValue && snap?.Known?.Buildings != null
-            && snap.Known.Buildings.Any(b => b.Owner == player && b.Hex.Equals(hex.Value)
+        // §11 / AGG-RAID P1#3 — is the fixed return base still ours AND still structurally
+        // reachable? "Structurally" is the key word: this reads the GENUINE, any-number-of-turns
+        // route-existence fact WorldAnalysis froze onto the primary's ArmySnapshot
+        // (SafeStepPathing.FindSafePath — the same oracle Provisioning uses live), never "reachable
+        // THIS turn" — a merely-temporarily-blocked step must NOT trigger a retarget, only a base
+        // with NO safe route at all.
+        internal static bool ReturnBaseStillValid(WorldSnapshot snap, PlayerSetupData player,
+            int primaryArmyId, HexCoord? hex)
+        {
+            if (!hex.HasValue || snap?.Known?.Buildings == null)
+                return false;
+            bool ownedBase = snap.Known.Buildings.Any(b => b.Owner == player && b.Hex.Equals(hex.Value)
                 && (b.IsBase || b.IsStartingCitadel));
+            if (!ownedBase)
+                return false;
+
+            ArmySnapshot primary = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
+            if (primary != null && primary.IsStructuralRaidActor
+                && !primary.ReachableOwnBaseHexes.Contains(hex.Value))
+                return false;
+            return true;
+        }
 
         // ---------------------------------------------------------------------------------------
         //  §11 — "the most active base", as a PURE lexicographic rule over existing snapshot data
@@ -890,8 +920,18 @@ namespace Game.Ai.V2
             ArmySnapshot primary = snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryArmyId);
             int moveBudget = System.Math.Max(1, primary?.MaxMovement ?? AiConfigV2.etaFallbackMoveBudget);
 
+            // AGG-RAID P1#3 — a structurally reachable base always outranks an unreachable one,
+            // ahead of every other tie-break. Falls back to the old distance-only ordering among
+            // bases with the SAME reachability, and — if genuinely none are reachable right now —
+            // still returns the best-by-distance candidate rather than stranding the operation on a
+            // signal that may only be a transient blockade.
+            bool Reachable(Game.Ai.AiMapMemory.KnownBuilding b) =>
+                primary == null || !primary.IsStructuralRaidActor
+                || primary.ReachableOwnBaseHexes.Contains(b.Hex);
+
             return bases
-                .OrderByDescending(b => BaseCollectedAmount(snap, b.Hex))
+                .OrderByDescending(b => Reachable(b) ? 1 : 0)
+                .ThenByDescending(b => BaseCollectedAmount(snap, b.Hex))
                 .ThenByDescending(b => BaseHasDevelopmentInfrastructure(snap, player, b.Hex) ? 1 : 0)
                 .ThenByDescending(b => BaseOwnPowerAt(snap, b.Hex))
                 .ThenBy(b => BaseThreatSeverityAt(snap, b.Hex))
@@ -1245,6 +1285,14 @@ namespace Game.Ai.V2
                             && raid.PrimaryArmyId != o.MoverArmyId.Value));
                 if (supportExecutedThisTurn)
                 {
+                    // AGG-RAID P0#1 — an EXISTING free army picked fresh this turn by Provisioning's
+                    // batch actor solve (no prior CapabilityDeliveryEvaluator materialization
+                    // handoff) has no durable owner yet. Record it here, the ONE point Continuity
+                    // learns a Reinforcement leg actually executed successfully, or the claim in
+                    // ActorCommitments never applies and the same free army is up for grabs again
+                    // next turn.
+                    if (raid.SupportArmyId == 0)
+                        raid.SupportArmyId = o.MoverArmyId.Value;
                     AiDebugLog.WriteVerbose($"[AI][V2][Raid] {intent.IntentKey} step executed by support "
                         + $"#{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept");
                 }

@@ -79,6 +79,25 @@ namespace Game.Ai.V2
             ByProposal.Add(proposal, new Entry(ids));
         }
 
+        // AGG-RAID P0#1 — mirror of Record() for an UNPINNED Reinforcement leg (no SupportArmyId
+        // yet): the eligible set is every existing free army whose merge with the primary's roster
+        // improves the primary's WorthIt win chance, so PrepareGroundCombatAssignments can run the
+        // same actor-contention batch solve it already runs for Assault instead of leaving the leg
+        // permanently unassignable until a materialization happens to hand it an actor.
+        public static void RecordReinforcement(MissionProposal proposal, WorldSnapshot snap)
+        {
+            if (proposal == null || snap == null || !(proposal.Target is RaidMissionTarget target)
+                || target.Phase != RaidMissionPhase.Reinforcement || target.SupportArmyId != 0)
+                return;
+
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = DefendersFor(snap, target.TargetArmyId);
+            List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
+                snap, target.PrimaryArmyId, defenders, null);
+
+            ByProposal.Remove(proposal);
+            ByProposal.Add(proposal, new Entry(ids));
+        }
+
         public static bool TryGet(MissionProposal proposal, out HashSet<int> ids)
         {
             if (proposal != null && ByProposal.TryGetValue(proposal, out Entry entry))

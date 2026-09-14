@@ -519,6 +519,18 @@ namespace Game.Ai.V2
             pm.RaidLastKnownHex = targetHex;
             pm.RaidTargetIsNeutral = target.Value.Owner != null && target.Value.Owner.IsNeutral;
 
+            // AGG-RAID P0#2 — defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget is
+            // the ONE canonical neutrality decision, already applied by Provisioning before this
+            // step was ever scheduled. A target that flips to a non-neutral owner between
+            // provisioning and this execution step (e.g. another AI player claimed it mid-turn)
+            // must not be attacked — Raid targets neutrals only.
+            if (!RaidObjectiveEvaluator.IsNeutralRaidTarget(target.Value.Owner))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+
             if (army.Hex.Equals(targetHex))
             {
                 result.StopReason = ExecutionStopReason.EnemyDiscovered;

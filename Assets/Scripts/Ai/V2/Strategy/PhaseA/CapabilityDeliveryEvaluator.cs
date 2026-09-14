@@ -162,7 +162,7 @@ namespace Game.Ai.V2
             // ownership straight to Continuity. No parallel generic Housekeeping lease is taken:
             // ActorCommitments already claims a Reinforcement support actor, and a second owner is
             // exactly the class of bug the Economy handoff avoids.
-            if (TryHandoffRaidSupport(player, afterSnap, demand, leased))
+            if (TryHandoffRaidSupport(player, afterSnap, demand, leased, ctx.TurnNumber))
                 return true;
 
             // Economy already has one Continuity owner; a generic lease would add a second one.
@@ -175,8 +175,12 @@ namespace Game.Ai.V2
 
         // AGG-RAID §7 — bind an IndependentFieldArmy delivery to the exact RaidIntent that asked
         // for it. Returns true when the support actor was handed to Continuity.
+        // AGG-RAID P1#1 — this is also the single point that stamps RaidIntent.
+        // ReinforcementRequestedTurn: the demand is "accepted/funded" exactly when a materialization
+        // for its ConsumerIntentKey actually delivered a concrete support army, never merely when
+        // AggressionDemandEvaluator.Build (a pure read) proposed it.
         private static bool TryHandoffRaidSupport(PlayerSetupData player, WorldSnapshot afterSnap,
-            AxisDemand demand, IReadOnlyList<int> leased)
+            AxisDemand demand, IReadOnlyList<int> leased, int turnNumber)
         {
             if (player == null || demand == null
                 || demand.RequestingAxis != DesireAxis.Aggression
@@ -203,6 +207,7 @@ namespace Game.Ai.V2
 
             ri.SupportArmyId = support;
             ri.Phase = RaidMissionPhase.Reinforcement;
+            ri.ReinforcementRequestedTurn = turnNumber;
             AiDebugLog.Write($"[AI][V2][Raid] materialization handoff {intent.IntentKey} "
                 + $"support=#{support} primary=#{ri.PrimaryArmyId} phase=Reinforcement "
                 + "(Continuity owns the actor; no generic housekeeping lease)");

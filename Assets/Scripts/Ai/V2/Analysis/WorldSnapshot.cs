@@ -265,6 +265,14 @@ namespace Game.Ai.V2
         // to avoid pricing a Facility that would merely displace this army's existing collection.
         public ResourceBundle CollectionCapacity;
 
+        // AGG-RAID P1#3 — the GENUINE (structural, any-number-of-turns) route-existence fact for
+        // this own army against every own base hex, computed ONCE here (SafeStepPathing.FindSafePath,
+        // the exact same route oracle Provisioning re-runs live) so a snapshot-only consumer
+        // (Continuity) never has to guess reachability from geometric distance alone. This answers
+        // "does ANY safe route exist at all", never "is it reachable THIS turn" (Provisioning's
+        // CurrentMovement / NoExecutableStep checks own that narrower question). Own armies only.
+        public IReadOnlyList<HexCoord> ReachableOwnBaseHexes = System.Array.Empty<HexCoord>();
+
         // Per-combatant profiles for WorthIt's full-roster Monte Carlo / coverage checks.
         public IReadOnlyList<WorthIt.DefenderProfile> Members;
     }

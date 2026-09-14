@@ -193,15 +193,53 @@ namespace Game.Ai.V2
         }
 
         // §8 Reinforcement: mover = support, target = the primary's CURRENT hex (rendezvous).
+        // AGG-RAID P0#1 — a Reinforcement intent with NO SupportArmyId yet (no materialization
+        // handoff ever happened — the common case for an EXISTING free army that could serve) is
+        // still proposed, provided at least one existing free army would actually improve the
+        // primary's odds. Provisioning's normal ground-combat batch solver (the same one Assault
+        // uses) then picks the concrete actor; Continuity records it durably only once that
+        // provisioning/execution actually succeeds (MissionContinuityLayer.AdvanceIntent).
         private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent)
         {
             RaidIntent ri = intent.Raid;
-            if (ri.PrimaryArmyId == 0 || ri.SupportArmyId == 0)
+            if (ri.PrimaryArmyId == 0)
                 return null;
             ArmySnapshot primary = snap.Self?.Armies?
                 .FirstOrDefault(a => a != null && a.ArmyId == ri.PrimaryArmyId);
             if (primary == null)
                 return null;
+
+            if (ri.SupportArmyId == 0)
+            {
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = KnownDefenders(snap, ri.TargetArmyId);
+                List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
+                    snap, ri.PrimaryArmyId, defenders, null);
+                if (candidates.Count == 0)
+                    return null;
+
+                var unpinned = new RaidMissionTarget
+                {
+                    Phase = RaidMissionPhase.Reinforcement,
+                    PrimaryArmyId = ri.PrimaryArmyId,
+                    SupportArmyId = 0,
+                    DestinationHex = primary.Hex,
+                    TargetArmyId = ri.TargetArmyId,
+                    LastKnownHex = ri.LastKnownHex,
+                    TargetIsNeutral = ri.TargetIsNeutral,
+                    EstimatedEta = 1,
+                    AssemblableWinChance = 1f,
+                    CanCoverAllDefenders = true,
+                };
+                float uvalue = AiConfigV2.raidBaseValueMax;
+                AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
+                    + $"{candidates.Count} existing free candidate(s) for primary #{ri.PrimaryArmyId} "
+                    + $"at ({primary.Hex.Q},{primary.Hex.R})");
+                return new RaidCandidate(unpinned, uvalue, uvalue,
+                    $"Raid #{ri.TargetArmyId} Reinforcement: select an existing free support for "
+                    + $"primary #{ri.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
+                    true, intent.Funding, null);
+            }
+
             var target = new RaidMissionTarget
             {
                 Phase = RaidMissionPhase.Reinforcement,
@@ -283,10 +321,14 @@ namespace Game.Ai.V2
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1.0f;
             // §8 — the ground-combat admission registry decides ACTOR feasibility for attacks. A
-            // Reinforcement/Return leg already has its actor pinned by Continuity (support /
-            // primary), so it is not an actor-contention decision and is not recorded here.
+            // Reinforcement/Return leg with an actor already pinned by Continuity (support /
+            // primary) is not an actor-contention decision and is not recorded here. AGG-RAID
+            // P0#1 — an UNPINNED Reinforcement leg (SupportArmyId == 0) IS an actor-contention
+            // decision — same as Assault — so it gets its own eligible-candidate recording.
             if (c.Target.Phase == RaidMissionPhase.Assault)
                 GroundCombatAdmissionRegistry.Record(proposal, snap);
+            else if (c.Target.Phase == RaidMissionPhase.Reinforcement && c.Target.SupportArmyId == 0)
+                GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);
             return proposal;
         }
 

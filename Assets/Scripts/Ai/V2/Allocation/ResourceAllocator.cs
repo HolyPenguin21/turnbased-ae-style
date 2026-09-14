@@ -157,6 +157,15 @@ namespace Game.Ai.V2
         NoMoverExists,       // transient capability shortage: no executor exists yet (or none with required stealth)
         EnvelopeTooSmall,    // the funded AP envelope cannot cover the real mover's cost — carries RequiredAp for repricing
         NoExecutableStep,    // mover + budget are fine, but no safe first step toward the target exists right now
+        // AGG-RAID P1#3 — Raid Return only: the pinned base has NO safe route AT ALL (the frozen,
+        // any-number-of-turns WorldAnalysis reachability fact says so), as opposed to
+        // NoExecutableStep's narrower "a route exists but today's first step is blocked". Genuine
+        // unreachability is what should make Continuity retarget the base; a transient block should
+        // not. In practice MissionContinuityLayer.ReturnBaseStillValid already retargets a
+        // genuinely-unreachable base at turn-start reconciliation, before Provisioning ever runs —
+        // this classification exists so a same-turn edge case (the fact changed after
+        // reconciliation ran) is never silently misreported as an ordinary retry.
+        DestinationUnreachable,
         TargetSatisfied,     // the objective is already met (Explore focus hex already visited) — drop, not fail
         TargetInvalidated,   // the world changed under the mission (focus hex now holds a known army)
         NoObservationVantage,// Surveil: a capable scout exists, but NO on-map hex within any scout's vision can observe the focus

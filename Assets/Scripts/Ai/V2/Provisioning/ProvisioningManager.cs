@@ -138,6 +138,8 @@ namespace Game.Ai.V2
             new ProvisionFailure(ProvisionFailureKind.EnvelopeTooSmall, ProvisionDisposition.RepriceThisTurn, requirement, d);
         public static ProvisionFailure NoExecutableStep(string d) =>
             new ProvisionFailure(ProvisionFailureKind.NoExecutableStep, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
+        public static ProvisionFailure DestinationUnreachable(string d) =>
+            new ProvisionFailure(ProvisionFailureKind.DestinationUnreachable, ProvisionDisposition.RetryNextTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure TargetSatisfied(string d) =>
             new ProvisionFailure(ProvisionFailureKind.TargetSatisfied, ProvisionDisposition.DropThisTurn, ProvisionRequirement.Zero, d);
         public static ProvisionFailure TargetInvalidated(string d) =>
@@ -560,9 +562,13 @@ namespace Game.Ai.V2
                     if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
                         || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue;
-                    // Non-Assault legs already have their actor pinned by Continuity; they are not
-                    // an actor-contention decision and take no part in the assignment solve.
-                    if (fe.Mission.Target is RaidMissionTarget t && t.Phase != RaidMissionPhase.Assault)
+                    // Non-Assault legs normally already have their actor pinned by Continuity and
+                    // take no part in the assignment solve. AGG-RAID P0#1 — an UNPINNED
+                    // Reinforcement leg (no SupportArmyId yet, i.e. no prior materialization handoff
+                    // assigned one) IS an actor-contention decision for an EXISTING free army and
+                    // must join the same batch solve Assault uses.
+                    if (fe.Mission.Target is RaidMissionTarget t && t.Phase != RaidMissionPhase.Assault
+                        && !(t.Phase == RaidMissionPhase.Reinforcement && t.SupportArmyId == 0))
                         continue;
                     open.Add(fe);
                 }
@@ -2073,9 +2079,19 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"raid target #{target.TargetArmyId} has no current honest sighting; absence is not proof of destruction"));
             }
-            if (sighting.Value.Owner != null && !sighting.Value.Owner.IsNeutral && sighting.Value.Owner.Equals(player))
-                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                    $"raid target #{target.TargetArmyId} is now ours"));
+            // AGG-RAID P0#2 — defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget is
+            // the ONE canonical neutrality decision. Raid targets neutrals only, so ANY non-neutral
+            // owner ends the leg here — "now ours" (captured) is reported as satisfied, any other
+            // non-neutral owner (the target flipped to a different player mid-Raid) is invalidated
+            // so Continuity retargets instead of continuing to attack a now-illegal target.
+            if (!RaidObjectiveEvaluator.IsNeutralRaidTarget(sighting.Value.Owner))
+            {
+                if (sighting.Value.Owner.Equals(player))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"raid target #{target.TargetArmyId} is now ours"));
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"raid target #{target.TargetArmyId} is no longer neutral (now owned by another player)"));
+            }
 
             HexCoord targetHex = sighting.Value.Hex;
             IReadOnlyList<WorthIt.DefenderProfile> defenders =
@@ -2245,8 +2261,23 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"raid return primary #{primary.Id} has no movement left"));
             if (SafeStepPathing.FindNextSafeStep(ctx.Map, primary, home) == null)
-                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    $"no safe first step from ({primary.Hex.Q},{primary.Hex.R}) toward return base ({home.Q},{home.R})"));
+            {
+                // AGG-RAID P1#3 — defensive re-check only; the frozen Analysis reachability fact
+                // (ReturnBaseStillValid) already retargets a genuinely unreachable base at turn-start
+                // reconciliation, before Provisioning ever runs. This classifies the rare same-turn
+                // edge case (the fact changed after reconciliation) distinctly from an ordinary
+                // "blocked only this turn" retry.
+                ArmySnapshot primarySnap = session.Snapshot?.Self?.Armies?
+                    .FirstOrDefault(a => a != null && a.ArmyId == primary.Id);
+                bool genuinelyUnreachable = primarySnap != null && primarySnap.IsStructuralRaidActor
+                    && !primarySnap.ReachableOwnBaseHexes.Contains(home);
+                return ProvisioningResult.Fail(genuinelyUnreachable
+                    ? ProvisionFailure.DestinationUnreachable(
+                        $"return base ({home.Q},{home.R}) has no safe route at all from "
+                        + $"({primary.Hex.Q},{primary.Hex.R})")
+                    : ProvisionFailure.NoExecutableStep(
+                        $"no safe first step from ({primary.Hex.Q},{primary.Hex.R}) toward return base ({home.Q},{home.R})"));
+            }
 
             int activationAp = primary.HasActivatedThisTurn ? 0 : primary.ActivationApCost;
             if (activationAp > funded.Tentative.Ap + eps)
@@ -2293,12 +2324,24 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"raid reinforcement primary #{target.PrimaryArmyId} is gone or no longer a field army"));
 
-            ArmyData support = ResolveArmy(player, target.SupportArmyId);
+            // AGG-RAID P0#1 — an UNPINNED leg (no materialization ever happened) has no
+            // target.SupportArmyId; the concrete actor comes straight out of the SAME
+            // batch-assignment solve PrepareGroundCombatAssignments already runs for Assault.
+            int supportArmyId = target.SupportArmyId;
+            if (supportArmyId == 0)
+            {
+                if (!session.TryGetAssignedRaidActor(key, out supportArmyId) || supportArmyId == 0)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                        $"raid reinforcement for primary #{target.PrimaryArmyId} has no existing free "
+                        + "support army assigned this cycle"));
+            }
+
+            ArmyData support = ResolveArmy(player, supportArmyId);
             if (support == null || support.Owner != player || support.Id == primary.Id
                 || support.Members.Count == 0 || support.IsPrison || support.IsGarrison
                 || support.IsAirfield || AviationRules.IsAirArmy(support))
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
-                    $"raid reinforcement support #{target.SupportArmyId} is not a separate mobile ground army"));
+                    $"raid reinforcement support #{supportArmyId} is not a separate mobile ground army"));
             if (session.ClaimedArmyIds.Contains(support.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"raid reinforcement support #{support.Id} was claimed by an earlier mission this cycle"));

@@ -25,13 +25,14 @@ namespace Game.Ai.V2
     //  It only READS AiAllocatorStateRegistry for cooldowns. Every diagnostic line the pipeline
     //  used to write inline is returned in `Diagnostics` for the caller to replay verbatim.
     //
-    //  AGG-RAID §6 — ONE deliberate exception to "no mutation": when a weakened primary raises a
-    //  reinforcement demand, Build stamps RaidIntent.ReinforcementRequestedTurn (and moves the
-    //  intent into RaidMissionPhase.Reinforcement). That stamp IS the "exactly one support intent
-    //  per weakened primary" invariant, and it must be established at the single point the demand
-    //  is created — otherwise the main Phase-A pass and the bounded reaction probe, which both call
-    //  Build in the same turn, would each raise their own convoy for the same Raid. It is
-    //  idempotent within a turn: a second call in the same turn sees the stamp and creates nothing.
+    //  AGG-RAID P1#1 — Build has NO exception to "no mutation": it is a pure snapshot read even
+    //  for the weakened-primary reinforcement case. The Assault -> Reinforcement phase transition
+    //  belongs to MissionContinuityLayer.AdvanceRaidPhase (it already independently re-verifies the
+    //  primary's state every reconciliation pass); the RaidIntent.ReinforcementRequestedTurn dedup
+    //  stamp — the "exactly one support intent per weakened primary" invariant — is written only
+    //  once a materialization for this exact ConsumerIntentKey is actually accepted/funded
+    //  (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build only READS that stamp to decide
+    //  whether a demand it is about to (re-)propose was already requested this turn.
     // ===========================================================================================
 
     public enum AggressionDemandOutcome
@@ -145,6 +146,22 @@ namespace Game.Ai.V2
                         continue;
                     }
 
+                    // AGG-RAID P0#1 — an EXISTING free army may already be able to serve as
+                    // reinforcement (no materialization needed at all). Only request a NEW
+                    // IndependentFieldArmy when no such existing candidate is available; Missions /
+                    // Provisioning pick the concrete actor through the normal ground-combat batch
+                    // solve once this evaluation reports the target still uncovered.
+                    List<int> existingSupportCandidates = GroundCombatAssemblyPlanner
+                        .ReinforcementSupportCandidates(snap, primaryId, defenders, commitments?.ClaimedArmyIdSet);
+                    if (existingSupportCandidates.Count > 0)
+                    {
+                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
+                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} "
+                            + $"candidates={existingSupportCandidates.Count} "
+                            + "reason=existing_free_army_available_as_support");
+                        continue;
+                    }
+
                     ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
                     float targetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders);
                     float required = UnityEngine.Mathf.Max(1f, targetPower * AiConfigV2.raidCombatPowerMargin);
@@ -162,13 +179,15 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    ri.ReinforcementRequestedTurn = snap.TurnNumber;
-                    if (ri.Phase != RaidMissionPhase.Reinforcement)
-                    {
-                        ri.Phase = RaidMissionPhase.Reinforcement;
-                        diag.Add($"[AI][V2][Demand][Aggression] phase intent={i.IntentKey} "
-                            + "Assault -> Reinforcement reason=primary_fails_worthit_against_current_target");
-                    }
+                    // AGG-RAID P1#1 — Build is a pure snapshot read; it never mutates the real
+                    // RaidIntent. The Assault -> Reinforcement phase transition is
+                    // MissionContinuityLayer.AdvanceRaidPhase's job (it independently re-verifies
+                    // the primary's state every reconciliation pass); the ReinforcementRequestedTurn
+                    // dedup stamp is written only once a materialization for this exact
+                    // ConsumerIntentKey is actually accepted/funded
+                    // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build is called from both
+                    // the main Phase-A pass and the bounded reaction probe — a diagnostic evaluation
+                    // must never be able to commit the real mission to state it may never fund.
                     diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE intent={i.IntentKey} "
                         + $"targetArmy={ri.TargetArmyId} capability=FieldCombatPower "
                         + $"shape=IndependentFieldArmy desired={deficit:0.#} primary={primaryId} "

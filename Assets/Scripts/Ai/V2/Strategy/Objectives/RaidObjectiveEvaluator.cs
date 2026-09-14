@@ -46,9 +46,17 @@ namespace Game.Ai.V2
                 // never re-acquires. An unstarted intent with no sighting is dropped.
                 return intent.OperationStarted;
 
-            // Still there — but no longer a legal raid target if it became ours.
-            return s.Value.Owner == null || s.Value.Owner.IsNeutral || !s.Value.Owner.Equals(SelfOwner(snap));
+            // AGG-RAID P0#2 — Raid targets NEUTRALS ONLY (Active Defence, not yet built, owns enemy
+            // armies). A target that turned into ANY non-neutral player's army — ours included —
+            // ends this objective; the old check only ever asked "not ours", so a neutral that
+            // flipped to a THIRD player's ownership mid-Raid was silently accepted as still valid.
+            return IsNeutralRaidTarget(s.Value.Owner);
         }
+
+        // AGG-RAID P0#2 — the ONE canonical "is this still a legal Raid target" ownership check.
+        // A null owner is an unclaimed neutral encounter army. Everything downstream (Provisioning,
+        // Execution) must call THIS, not re-derive its own neutrality rule.
+        public static bool IsNeutralRaidTarget(PlayerSetupData owner) => owner == null || owner.IsNeutral;
 
         // The tracked target's freshest honest sighting, or null.
         public static AiMapMemory.KnownEnemySighting? FindSighting(WorldSnapshot snap, int trackedArmyId)
@@ -94,12 +102,6 @@ namespace Game.Ai.V2
             bool rememberedNeutral = AiMapMemory.AllKnownNeutralSightings(player)
                 .Any(s => s.ArmyId == targetArmyId);
             return !rememberedEnemy && !rememberedNeutral;
-        }
-
-        private static PlayerSetupData SelfOwner(WorldSnapshot snap)
-        {
-            ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.Owner != null);
-            return a?.Owner;
         }
     }
 }
