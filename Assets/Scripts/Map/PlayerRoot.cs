@@ -78,44 +78,54 @@ namespace Game.Map
 
         // Extra initiative dice bought for this turn's dice-off, on top of InitiativeRules.BaseDice.
         // There is now exactly ONE path to obtain a bonus die: the paid purchase API below. The old
-        // free/random InitiativeDiceAI path is gone, so BonusInitiativeDice and the payment ledger
-        // are a strict 1:1 invariant for the whole round.
-        public int BonusInitiativeDice { get; private set; }
+        // free/random InitiativeDiceAI path is gone, so BonusInitiativeDice and the contribution
+        // ledger are a strict 1:1 invariant for the whole round.
+        //
+        // One entry per 1-unit resource contribution, in the exact order the player spent them —
+        // across the WHOLE turn, not reset per die. A die's progressive cost (see
+        // InitiativeRules.NextBonusDieCost) no longer has to come from one resource in one
+        // purchase: the player can mix any H/E/M/T in any order, one unit per click, and the die
+        // completes automatically once the running total clears its threshold (see
+        // InitiativeRules.CumulativeUnitsForDiceCount). BonusInitiativeDice and "how far into the
+        // current die" are therefore both DERIVED from this list rather than tracked separately,
+        // so refunding a single unit (always the most recent one — see RefundLastInitiativeDie)
+        // can walk back across a just-completed die boundary for free.
+        private readonly List<ResourceType> _initiativeUnitContributions = new List<ResourceType>();
 
-        private readonly struct InitiativePayment
+        public int BonusInitiativeDice
         {
-            public readonly ResourceType Resource;
-            public readonly int Amount;
-
-            public InitiativePayment(ResourceType resource, int amount)
+            get
             {
-                Resource = resource;
-                Amount = amount;
+                int dice = 0;
+                while (dice < Game.Turns.InitiativeRules.MaxBonusDice
+                    && _initiativeUnitContributions.Count >= Game.Turns.InitiativeRules.CumulativeUnitsForDiceCount(dice + 1))
+                    dice++;
+                return dice;
             }
         }
 
-        // One entry per bought die, in purchase order. Current UI semantics are authoritative:
-        // a single die is paid ENTIRELY from one resource type. The amount is stored as well as
-        // the type because the progressive ladder changes after every purchase; refunding must
-        // restore the exact historical price, not recompute today's next-die price.
-        private readonly List<InitiativePayment> _initiativePayments = new List<InitiativePayment>();
+        // Units already paid toward the die currently being assembled — 0 right after a die
+        // completes, resets automatically once BonusInitiativeDice ticks over.
+        public int CurrentDieUnitsContributed =>
+            _initiativeUnitContributions.Count - Game.Turns.InitiativeRules.CumulativeUnitsForDiceCount(BonusInitiativeDice);
 
-        public int NextInitiativeDieCost => Game.Turns.InitiativeRules.NextBonusDieCost(_initiativePayments.Count);
-        public bool CanBuyMoreInitiativeDice => _initiativePayments.Count < Game.Turns.InitiativeRules.MaxBonusDice;
+        // Total cost (in resource units, any mix) of the die currently being assembled.
+        public int NextInitiativeDieCost => Game.Turns.InitiativeRules.NextBonusDieCost(BonusInitiativeDice);
+        public bool CanBuyMoreInitiativeDice => BonusInitiativeDice < Game.Turns.InitiativeRules.MaxBonusDice;
 
         public void ResetBonusInitiativeDice()
         {
-            BonusInitiativeDice = 0;
-            _initiativePayments.Clear();
+            _initiativeUnitContributions.Clear();
         }
 
-        // Canonical initiative purchase path for BOTH the human UI and Strategy V2. One purchase
-        // consumes the full current progressive price from exactly one H/E/M/T stockpile.
+        // Canonical initiative purchase path for BOTH the human UI and Strategy V2. Spends exactly
+        // 1 unit of `resource` toward the die currently being assembled — call repeatedly, mixing
+        // any H/E/M/T in any order the player likes, until NextInitiativeDieCost units are in.
         public bool CanBuyInitiativeDie(ResourceType resource)
         {
             return CanBuyMoreInitiativeDice
                 && _resources.ContainsKey(resource)
-                && GetResource(resource) >= NextInitiativeDieCost;
+                && GetResource(resource) >= 1;
         }
 
         public bool PurchaseInitiativeDie(ResourceType resource)
@@ -123,21 +133,19 @@ namespace Game.Map
             if (!CanBuyInitiativeDie(resource))
                 return false;
 
-            int cost = NextInitiativeDieCost;
-            AddResource(resource, -cost);
-            _initiativePayments.Add(new InitiativePayment(resource, cost));
-            BonusInitiativeDice++;
+            AddResource(resource, -1);
+            _initiativeUnitContributions.Add(resource);
             return true;
         }
 
-        // Refund remains last-purchase-only because undoing an older die while leaving a later,
-        // more expensive die bought would make the progressive ladder ambiguous. The row that
-        // paid the last die is the only one whose "+" button is enabled.
+        // Only the resource that paid the single most recent unit can undo it — same
+        // last-purchase-only rule as before, now at unit granularity, so it can also un-complete
+        // a die that just finished (as long as nothing has been paid toward the next one yet).
         public bool CanRefundInitiativeDie(ResourceType resource)
         {
-            if (_initiativePayments.Count == 0)
+            if (_initiativeUnitContributions.Count == 0)
                 return false;
-            return _initiativePayments[_initiativePayments.Count - 1].Resource == resource;
+            return _initiativeUnitContributions[_initiativeUnitContributions.Count - 1] == resource;
         }
 
         public bool RefundLastInitiativeDie(ResourceType resource)
@@ -145,11 +153,9 @@ namespace Game.Map
             if (!CanRefundInitiativeDie(resource))
                 return false;
 
-            int last = _initiativePayments.Count - 1;
-            InitiativePayment payment = _initiativePayments[last];
-            _initiativePayments.RemoveAt(last);
-            AddResource(payment.Resource, payment.Amount);
-            BonusInitiativeDice--;
+            int last = _initiativeUnitContributions.Count - 1;
+            _initiativeUnitContributions.RemoveAt(last);
+            AddResource(resource, 1);
             return true;
         }
 

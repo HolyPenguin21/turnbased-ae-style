@@ -8,9 +8,11 @@ using UnityEngine;
 namespace Game.UI
 {
     // "Buy Initiative Die" block: shown only for the human player. AI purchases are already
-    // planned/applied by InitiativeCoordinatorV2 before the popup opens. Each row pays the full
-    // progressive price from exactly one resource type — the same purchase semantics the AI uses.
-    // Locked once TurnOrderPopupUI.RollAll fires, so nothing can change after dice start rolling.
+    // planned/applied by InitiativeCoordinatorV2 before the popup opens. Each row spends 1 unit
+    // of that resource per click toward the die currently being assembled — the player can mix
+    // any of the four resources, in any order, to cover one die's progressive cost (see
+    // PlayerRoot.PurchaseInitiativeDie). Locked once TurnOrderPopupUI.RollAll fires, so nothing
+    // can change after dice start rolling.
     public class InitiativeBuyPanelUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
@@ -26,8 +28,11 @@ namespace Game.UI
         private PlayerRoot _root;
         private bool _locked;
 
-        // Cost of the NEXT die: 1 -> 2 -> 4 -> 8 -> 16. Re-read after every buy/refund.
-        private int CurrentPrice => _root != null ? _root.NextInitiativeDieCost : 0;
+        // Total cost of the die currently being assembled: 1 -> 2 -> 4 -> 8 -> 16. Paid off in
+        // 1-unit clicks that can mix any H/E/M/T (see PlayerRoot.PurchaseInitiativeDie), so the
+        // panel shows progress toward it rather than a single one-shot price.
+        private int CurrentDieCost => _root != null ? _root.NextInitiativeDieCost : 0;
+        private int CurrentDieProgress => _root != null ? _root.CurrentDieUnitsContributed : 0;
 
         // Fired whenever a purchase/refund changes the player's bonus dice count, so
         // TurnOrderPopupUI can resize that player's DiceRowUI slots to match.
@@ -79,7 +84,7 @@ namespace Game.UI
                 return;
 
             if (priceText != null)
-                priceText.text = _root.CanBuyMoreInitiativeDice ? CurrentPrice.ToString() : "—";
+                priceText.text = _root.CanBuyMoreInitiativeDice ? $"{CurrentDieProgress}/{CurrentDieCost}" : "—";
             foreach (BuyDiceRowUI row in resourceRows)
                 if (row != null)
                     row.Refresh(_root, _locked);

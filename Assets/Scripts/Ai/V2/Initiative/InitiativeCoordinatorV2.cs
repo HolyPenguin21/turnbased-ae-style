@@ -64,18 +64,33 @@ namespace Game.Ai.V2.Initiative
                     continue;
                 }
 
+                // Each PaymentResources entry still means "fund one whole die from this resource"
+                // (the AI's own planned strategy) — PlayerRoot now only sells dice 1 resource-unit
+                // at a time (see PurchaseInitiativeDie), so funding one die from a single resource
+                // takes that die's whole progressive cost in repeated 1-unit calls.
                 int applied = 0;
                 var spent = new int[4];
                 foreach (ResourceType resource in entry.Plan.PaymentResources)
                 {
-                    if (!entry.Root.CanBuyInitiativeDie(resource))
-                        break;
+                    int dieCost = entry.Root.NextInitiativeDieCost;
+                    int paidThisDie = 0;
+                    for (; paidThisDie < dieCost; paidThisDie++)
+                    {
+                        if (!entry.Root.CanBuyInitiativeDie(resource) || !entry.Root.PurchaseInitiativeDie(resource))
+                            break;
+                    }
 
-                    int price = entry.Root.NextInitiativeDieCost;
-                    if (!entry.Root.PurchaseInitiativeDie(resource))
+                    if (paidThisDie < dieCost)
+                    {
+                        // Partial die bought and can't be completed from this resource — refund
+                        // the units already spent on it so the ledger stays whole-dice-only for
+                        // the AI's own planned strategy, and stop planning further dice this turn.
+                        for (int i = 0; i < paidThisDie; i++)
+                            entry.Root.RefundLastInitiativeDie(resource);
                         break;
+                    }
 
-                    spent[ResourceIndex(resource)] += price;
+                    spent[ResourceIndex(resource)] += dieCost;
                     applied++;
                 }
 

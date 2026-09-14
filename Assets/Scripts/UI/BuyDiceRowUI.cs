@@ -7,9 +7,10 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One resource row in the initiative buy panel: coloured icon + current amount + "-" to pay
-    // the ENTIRE current progressive die price from this resource / "+" to undo the most recent
-    // die when this resource paid for it.
+    // One resource row in the initiative buy panel: coloured icon + current amount + "-" to spend
+    // 1 unit of this resource toward the die currently being assembled / "+" to undo the single
+    // most recent unit spent, only enabled when this resource paid for it (see
+    // PlayerRoot.CanRefundInitiativeDie — always the last contribution, regardless of resource).
     public class BuyDiceRowUI : MonoBehaviour
     {
         [SerializeField] private Image iconImage;

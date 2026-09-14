@@ -220,7 +220,10 @@ namespace Game.UI
             string attackerName = participants != null && participants.Count > 0 ? participants[0].Name : "?";
             string defenderName = participants != null && participants.Count > 1 ? participants[1].Name : "?";
             if (titleText != null)
-                titleText.text = $"({hex.Q}, {hex.R}) - {attackerName} attacks {defenderName}";
+            {
+                (int col, int row) = hex.ToOffset();
+                titleText.text = $"({col}:{row}) - {attackerName} attacks {defenderName}";
+            }
 
             ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
             ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
@@ -258,8 +261,8 @@ namespace Game.UI
             var hero = army?.Members.Find(member => member.IsHero);
             if (commanderArt != null)
             {
-                commanderArt.sprite = hero != null ? hero.Art : null;
-                commanderArt.gameObject.SetActive(hero != null && commanderArt.sprite != null);
+                commanderArt.sprite = EventChoicePopupUI.ResolvePortrait(army);
+                commanderArt.gameObject.SetActive(commanderArt.sprite != null);
             }
             if (commanderName != null)
             {

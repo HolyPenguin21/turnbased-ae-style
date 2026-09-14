@@ -26,6 +26,19 @@ namespace Game.Turns
             return 1 << alreadyPurchased;
         }
 
+        // Total resource units needed to have exactly `diceCount` bonus dice fully paid off —
+        // the running sum of NextBonusDieCost(0..diceCount-1), i.e. 1+2+4+...+2^(diceCount-1) =
+        // 2^diceCount - 1. A single die's cost no longer has to come from one resource in one
+        // purchase (see PlayerRoot.PurchaseInitiativeDie): it can be paid in any mix of 1-unit
+        // H/E/M/T contributions, so completed-dice count and "how far into the current die" are
+        // both derived from this running total rather than counted per-purchase.
+        public static int CumulativeUnitsForDiceCount(int diceCount)
+        {
+            if (diceCount <= 0)
+                return 0;
+            return (1 << diceCount) - 1;
+        }
+
         // AP granted for finishing the initiative roll at a given 0-based rank. Rank 0 (first) is
         // 10, rank 1 (second) is 8, every later rank is 6 — for ANY player count. There is no
         // special two-player rule. This is the single function both the real AP allocation
