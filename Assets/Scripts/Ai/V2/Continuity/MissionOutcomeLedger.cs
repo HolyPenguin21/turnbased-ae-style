@@ -237,10 +237,12 @@ namespace Game.Ai.V2
                     // 2026-09-14 review round 5 (P1 #5) — a garrison-extraction materialization
                     // (CreateArmy/TransferMember, no movement of its own) is a real world mutation;
                     // without this it never counted as progress even though the hero left the
-                    // garrison for good this turn.
+                    // garrison for good this turn. Round 6: ContainerCreated (a kept shell, hero
+                    // transfer failed) is a lesser but still real mutation — also progress.
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
-                        || e.RaidOperationStarted || raidEngaged || e.ActorMaterialized;
+                        || e.RaidOperationStarted || raidEngaged
+                        || e.ActorMaterialized || e.ContainerCreated;
                     if (o.MissionKind == MissionKind.Raid)
                         o.RaidOperationStarted = e.RaidOperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
@@ -315,12 +317,13 @@ namespace Game.Ai.V2
 
             if (o.MissionKind == MissionKind.Economy)
             {
-                // 2026-09-14 review round 5 (P1 #5) — a deferred garrison-extraction step that
-                // materialized a real mover (StopReason MoverLost only because THIS mission has no
-                // mover to advance until next admission's direct-army path finds it) is a
-                // ProductiveStop: the world changed for good. Without this it fell into the default
-                // Failed case even though nothing about the attempt actually failed.
-                if (e.ActorMaterialized && e.StopReason == ExecutionStopReason.MoverLost)
+                // 2026-09-14 review round 5 (P1 #5, extended round 6) — a deferred
+                // garrison-extraction step that materialized a real mover, OR at least kept a newly
+                // created shell (ContainerCreated), (StopReason MoverLost only because THIS mission
+                // has no mover to advance until next admission finds one) is a ProductiveStop: the
+                // world changed for good either way. Without this it fell into the default Failed
+                // case even though nothing about the attempt actually failed.
+                if ((e.ActorMaterialized || e.ContainerCreated) && e.StopReason == ExecutionStopReason.MoverLost)
                 {
                     o.Outcome = ExecutionOutcome.ProductiveStop;
                     return;

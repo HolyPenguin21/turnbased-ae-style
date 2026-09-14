@@ -1,5 +1,43 @@
 # Economy mover materialization — decision tree (reusable analysis pattern)
 
+## Review round 6 (2026-09-14) — double version bump, lightening atomicity, snapshot, actor identity
+
+An external review of round 5 found 4×P0/P1-ish issues plus a P2, all fixed this round except the
+two explicitly deferred items below. Compiled clean (`dotnet build Assembly-CSharp.csproj`, 0/0).
+
+| # | Issue | Fix |
+|---|---|---|
+| P0 | `FinishEconomyBuilder` → `ProvisioningResult.Ok` bumps `V2StateVersion` itself when `preparedMembers > 0`; `TaskExecutor.StampVersion` (the caller's caller) then bumps AGAIN because `ActorMaterialized` is true — one mutation, two version bumps | `ProvisioningResult.Ok`/`FinishEconomyBuilder` gained a `bumpVersion` parameter (default `true`, unchanged for the direct-army Provisioning-time path). `MaterializeEconomyGarrisonBuilder` passes `bumpVersion: false` — `StampVersion` is now the SOLE bump owner for the whole deferred-materialization Execution step. |
+| P0 | `ApplyEconomyArmyLightening`: unload commits, then reinforcement fails — method returns `0`/failure but the already-applied unload is never rolled back, left silently real | Tracks `unloadApplied`; on a reinforcement failure after a successful unload, rolls the unload back via the same `TransferMembersAtomic` primitive (garrison→builder, reversed) before returning failure. Note: the current planner (`PlanEconomyArmyLightening`) never actually produces both `unload` and `reinforcement` non-empty at the same time — this fix removes the dependency on that as an unstated invariant rather than fixing a currently-reachable bug. |
+| P1 | Deferred path called `FinishEconomyBuilder(snapshot: null, ...)` — `WorldAnalysis.KnownThreatsAffectingEconomyRoute` sees zero threats, which can silently empty a `ReinforceAtBase` candidate's escort plan and turn a real escort requirement into a bogus `AssemblyInfeasible` right after the hero was for-real extracted | `snapshot` (already available as a parameter on both `TaskExecutor.Execute`/`ExecuteStep`, populated by the orchestrator) is now threaded through `TryHandleDeferredEconomyMaterialization` → `MaterializeEconomyGarrisonBuilder` → `FinishEconomyBuilder` instead of hardcoding `null`. |
+| P1 | `ActorMaterialized` conflated two different facts: "the world changed" vs. "a real Economy actor now exists". A Create-tier shell with a failed hero transfer set `ActorMaterialized = true` and `ActualActorArmyId = <hero-less shell id>`, which Continuity could track as this mission's mover | New `ExecutionResult.ContainerCreated` field, set instead of `ActorMaterialized` on that specific path; `ActualActorArmyId` is no longer set for a hero-less shell at all. `ActorMaterialized` now means exactly "a real hero-led mover was materialized". `StateChanged`/`StampVersion`/`MissionOutcomeLedger.MadeProgress`/the Economy `ProductiveStop` classification all now check `ActorMaterialized \|\| ContainerCreated` where "the world changed" is the relevant question, and `ActorMaterialized` alone where "a real actor exists" is. |
+| P2 | `Outcome.succeeded` didn't include `ActorMaterialized` — a fully successful hero extraction reported `StateChanged=true, Succeeded=false`, a contradiction telemetry/`WasGenuineExecution` had to work around | `succeeded` now also ORs in `ActorMaterialized` (not `ContainerCreated` — an orphan shell alone is a state change, not this mission succeeding at anything). |
+
+**Deliberately NOT done this round** (both explicitly flagged by the review as pre-existing, larger,
+cross-cutting asks rather than new bugs from round 5):
+
+- **Full plan-immutability at Provisioning** (deciding unload/reinforcement/escort composition
+  before Execution, so Execution is pure validate+apply with zero re-planning). Structurally blocked
+  by the same reason round 3 first noted it: `PlanEconomyArmyLightening` needs a live `ArmyData`
+  (hex, members) to plan against, and for a deferred garrison-extraction candidate that `ArmyData`
+  does not exist until `ApplyGarrisonExtraction` creates/populates it *inside* Execution. Moving this
+  earlier would mean either simulating a virtual not-yet-real army through the planner (meaningfully
+  more code, new failure surface) or reworking `PlanEconomyArmyLightening` to plan off a bare
+  `UnitData` + hex instead of a live army — either is a real design decision, not a bugfix, and is
+  left for an explicit follow-up if the user wants it pursued.
+- **Collapsing `TaskExecutor.Execute` into a thin iterator over `ExecuteStep`** so Reaction gets the
+  identical atomic-step contract. Checked and rejected as a same-round change: `Execute` passes the
+  full `queue`/`missionIndex` list to `ReconGroundExecutor.Run` for Scout missions (multi-step
+  lookahead), while `ExecuteStep` calls `ReconGroundExecutor.RunStep` with a singleton queue and an
+  explicit `StepControl` — these are two different behavioral contracts for Scout, not just two
+  copies of the same loop. Delegating `Execute` to `ExecuteStep` wholesale would change Recon
+  execution semantics for Reaction/legacy callers, well outside this round's Economy-only scope. The
+  concrete bug this created for Economy specifically (Execute not handling the synthetic actor id at
+  all) was already closed in round 5 via the shared `TryHandleDeferredEconomyMaterialization` helper;
+  what remains is the two loops' other shared logic (stale-plan check, revalidation, dispatch,
+  stamping) still being independently implemented. Revisit before Aggression/Defence starts routing
+  Economy missions through `ReactionRoundExecutor` in earnest.
+
 ## Review round 5 (2026-09-14) — plan pinning, atomic step split, envelope fix, batch-door parity
 
 An external review of round 4 (the Execution-move) found six issues, all closed in this round,

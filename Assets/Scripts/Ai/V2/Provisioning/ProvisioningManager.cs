@@ -144,10 +144,17 @@ namespace Game.Ai.V2
         public int StateVersionAfter = -1;
         public int TransferredMemberCount;
 
-        public static ProvisioningResult Ok(ProvisionedMission m, int transferredMemberCount = 0)
+        // 2026-09-14 review round 6 (P0) — `bumpVersion` lets a caller that is itself the SOLE
+        // version-bump owner for its own execution result (TaskExecutor.StampVersion, during the
+        // deferred garrison-extraction Execution step) suppress this constructor's own bump so
+        // V2StateVersion is bumped exactly once per real mutation, not twice. Every other caller
+        // (Provisioning's own direct-army path, which has no separate StampVersion call for this
+        // mutation) keeps the default `true` — unchanged behaviour.
+        public static ProvisioningResult Ok(ProvisionedMission m, int transferredMemberCount = 0,
+            bool bumpVersion = true)
         {
             bool changed = transferredMemberCount > 0;
-            int version = changed ? V2StateVersion.Bump() : V2StateVersion.Current;
+            int version = changed && bumpVersion ? V2StateVersion.Bump() : V2StateVersion.Current;
             if (m != null) m.PlannedAtStateVersion = version;
             return new ProvisioningResult
             {
@@ -1194,7 +1201,7 @@ namespace Game.Ai.V2
             AiTurnContext ctx, WorldSnapshot snapshot, IReadOnlyList<MissionIntent> standingIntents,
             MissionProposal m, StableMissionKey key, EconomyMissionTarget target,
             DemandLayer.EconomyBuilderChoice builderChoice, ArmyData hero,
-            float apEnvelope, float apPoolRemaining)
+            float apEnvelope, float apPoolRemaining, bool bumpVersion = true)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
             MissionIntent donor = standingIntents.FirstOrDefault(i => i != null
@@ -1271,7 +1278,7 @@ namespace Game.Ai.V2
                 ClaimedAp = realAp, ClaimedPhysical = CostVector(stageCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
-            }, preparedMembers);
+            }, preparedMembers, bumpVersion);
         }
 
         // Economy-specific, same-hex preparation belongs here because the target and its route are
@@ -1382,19 +1389,35 @@ namespace Game.Ai.V2
         {
             if (builder == null || garrison == null)
                 return 0;
-            if (unload.Count > 0 && !ArmyActions.TransferMembersAtomic(
-                    unload, builder, garrison, ctx.HexSelection, out string whyUnload))
+            bool unloadApplied = false;
+            if (unload.Count > 0)
             {
-                if (!string.IsNullOrEmpty(whyUnload))
-                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder lighten skipped: {whyUnload}");
-                return 0;
+                if (!ArmyActions.TransferMembersAtomic(
+                        unload, builder, garrison, ctx.HexSelection, out string whyUnload))
+                {
+                    if (!string.IsNullOrEmpty(whyUnload))
+                        AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder lighten skipped: {whyUnload}");
+                    return 0;
+                }
+                unloadApplied = true;
             }
             if (reinforcement.Count > 0 && !ArmyActions.TransferMembersAtomic(
                     reinforcement, garrison, builder, ctx.HexSelection, out string whyAdd))
             {
                 if (!string.IsNullOrEmpty(whyAdd))
                     AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder reinforce skipped: {whyAdd}");
-                return unload.Count;
+                // 2026-09-14 review round 6 (P0) — unload+reinforce is ONE canonical composition
+                // change, not two independent ones: a reinforcement failure must not leave an
+                // already-applied unload silently uncommitted-for (caller reported failure while the
+                // unload stayed real). The current planner never actually produces both non-empty at
+                // once, but this must not depend on that as an unstated invariant. Roll the unload
+                // back so this call is honestly all-or-nothing.
+                if (unloadApplied && !ArmyActions.TransferMembersAtomic(
+                        unload, garrison, builder, ctx.HexSelection, out string whyRollback))
+                    AiDebugLog.Write($"[AI][V2][Economy][WARN] lighten rollback failed for builder "
+                        + $"#{builder.Id} after a reinforce failure: {whyRollback} — roster left "
+                        + "partially unloaded");
+                return 0;
             }
             int changed = unload.Count + reinforcement.Count;
             if (changed > 0)

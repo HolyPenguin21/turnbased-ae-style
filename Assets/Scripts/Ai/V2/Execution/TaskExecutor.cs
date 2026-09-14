@@ -89,6 +89,13 @@ namespace Game.Ai.V2
         // infrastructure signal of its own to piggyback on, but real all the same. See
         // Docs/ai-economy-mover-materialization-decision-tree.md, review round 4.
         public bool ActorMaterialized;
+        // 2026-09-14 review round 6 (P1) — split from ActorMaterialized: a garrison-extraction
+        // CreateArmy that ran but whose immediately-following hero TransferMember failed leaves a
+        // real, kept, but HERO-LESS empty army. That is a genuine world mutation (StateChanged must
+        // see it) but it is NOT an Economy actor — ActorMaterialized/ActualActorArmyId must stay
+        // reserved for "a real hero-led mover now exists", or Continuity would track an empty shell
+        // as this mission's mover.
+        public bool ContainerCreated;
         public bool NeedsReplan;
         public int PlannedAtStateVersion = -1;
         public int StateVersionBefore = -1;
@@ -104,9 +111,15 @@ namespace Game.Ai.V2
             get
             {
                 bool moved = StepsMoved > 0;
-                bool succeeded = ReachedGoal || moved || InfrastructureChanged || CombatChanged;
+                // 2026-09-14 review round 6 (P2) — a successful hero extraction IS a genuine
+                // successful action, not merely a state change; it used to report
+                // StateChanged=true/Succeeded=false, which telemetry/WasGenuineExecution read as a
+                // contradiction. ContainerCreated alone (orphan shell, no hero) stays a state change
+                // only — it is not, by itself, this mission succeeding at anything.
+                bool succeeded = ReachedGoal || moved || InfrastructureChanged || CombatChanged
+                    || ActorMaterialized;
                 bool changed = moved || EnteredStealth || StealthChanged
-                    || InfrastructureChanged || CombatChanged || ActorMaterialized;
+                    || InfrastructureChanged || CombatChanged || ActorMaterialized || ContainerCreated;
                 // ReachedGoal alone remains a stale no-op; capture/ownership mutation is explicit.
                 return new V2ActionOutcome(
                     succeeded: succeeded, stateChanged: changed, apSpent: ApSpent,
@@ -185,7 +198,7 @@ namespace Game.Ai.V2
                 // Resolve(pm.MoverArmyId) below with a deferred Economy mission's SYNTHETIC negative
                 // id and misreport MoverLost every time; ExecuteStep already had the real handling.
                 // Same door both loops must use — see the helper's own comment.
-                if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore))
+                if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore, snapshot))
                 {
                     ApCheck(pm, apBefore, root, result);
                     StampVersion(result);
@@ -343,7 +356,7 @@ namespace Game.Ai.V2
             // first, before Resolve/MissionRevalidator/anything else below ever sees the synthetic
             // id. It is ALSO a terminal step in its own right — see the helper's own comment for why
             // this never falls through to movement in the same call.
-            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore))
+            if (TryHandleDeferredEconomyMaterialization(player, root, ctx, pm, result, apBefore, snapshot))
             {
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
@@ -632,12 +645,13 @@ namespace Game.Ai.V2
         // to move on its own step, exactly like any in-progress Economy mission already is.
         private static bool TryHandleDeferredEconomyMaterialization(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
-            int apBefore)
+            int apBefore, WorldSnapshot snapshot)
         {
             if (pm.Kind != MissionKind.Economy || pm.EconomyExtractionGarrisonArmyId < 0)
                 return false;
 
-            bool materialized = MaterializeEconomyGarrisonBuilder(player, root, ctx, pm, result, apBefore);
+            bool materialized = MaterializeEconomyGarrisonBuilder(
+                player, root, ctx, pm, result, apBefore, snapshot);
             result.StartHex = pm.ExecutionHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             if (!materialized)
@@ -655,7 +669,8 @@ namespace Game.Ai.V2
         }
 
         private static bool MaterializeEconomyGarrisonBuilder(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            WorldSnapshot snapshot)
         {
             ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
             if (garrison == null || pm.EconomyPendingBuilderChoice == null)
@@ -673,16 +688,14 @@ namespace Game.Ai.V2
                 out int createdContainerArmyId);
             if (materialized == null)
             {
+                // 2026-09-14 review round 6 (P1) — an empty shell with no hero is NOT an Economy
+                // actor: ActorMaterialized/ActualActorArmyId must stay strictly "a real hero-led
+                // mover now exists", or Continuity will happily track a hero-less shell as this
+                // mission's mover. The real, honest fact here is a separate one: the WORLD changed
+                // (AP spent, a new empty army registered, kept — same "never rolled back" rule the
+                // Create tier already documents) even though no actor for THIS mission exists yet.
                 if (containerCreated)
-                {
-                    // A real mutation happened (AP spent, a new empty army registered) even though
-                    // the hero transfer itself failed — same "kept, never rolled back" rule the
-                    // Create tier already documents. StateChanged/version must honestly reflect it;
-                    // no mover exists for THIS mission this pass, but the world did change.
-                    result.ActualActorArmyId = createdContainerArmyId >= 0
-                        ? createdContainerArmyId : (int?)null;
-                    result.ActorMaterialized = true;
-                }
+                    result.ContainerCreated = true;
                 return false;
             }
 
@@ -696,10 +709,20 @@ namespace Game.Ai.V2
             // AP for real, so there is no session-tracked cross-mission claim left to add back in.
             float spentSoFar = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             float remainingEnvelope = Mathf.Max(0f, pm.ClaimedAp - spentSoFar);
+            // 2026-09-14 review round 6 (P1) — pass the REAL current snapshot, not null: a null
+            // snapshot makes WorldAnalysis.KnownThreatsAffectingEconomyRoute (inside
+            // PlanEconomyArmyLightening) see zero threats, which can silently starve a
+            // ReinforceAtBase candidate's escort plan and turn an escort requirement into a bogus
+            // AssemblyInfeasible right after the hero was for-real extracted.
+            //
+            // `bumpVersion: false` — StampVersion (the caller's caller, keyed off
+            // ExecutionResult.ActorMaterialized) is the SOLE version-bump owner for this Execution
+            // step; ProvisioningResult.Ok would otherwise also bump when preparedMembers > 0,
+            // double-counting one mutation as two version bumps.
             ProvisioningResult finished = ProvisioningManager.FinishEconomyBuilder(player, root, ctx,
-                snapshot: null, standingIntents, pm.Mission, pm.Key, pm.EconomyTarget,
+                snapshot, standingIntents, pm.Mission, pm.Key, pm.EconomyTarget,
                 pm.EconomyPendingBuilderChoice, materialized,
-                apEnvelope: remainingEnvelope, apPoolRemaining: root.ActionPoints);
+                apEnvelope: remainingEnvelope, apPoolRemaining: root.ActionPoints, bumpVersion: false);
             if (!finished.Success || finished.Provisioned == null)
             {
                 AiDebugLog.Write($"[AI][V2][Economy] materialization prep failed for {pm.Key}: "
@@ -840,7 +863,8 @@ namespace Game.Ai.V2
             // infrastructure/combat signal of its own to piggyback a bump on; it used to leave
             // V2StateVersion stale despite Outcome.StateChanged already reporting true for it.
             if (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
-                || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized)
+                || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
+                || result.ContainerCreated)
                 V2StateVersion.Bump();
             result.StateVersionAfter = V2StateVersion.Current;
         }
