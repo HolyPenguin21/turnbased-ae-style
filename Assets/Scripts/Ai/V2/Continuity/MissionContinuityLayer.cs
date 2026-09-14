@@ -1108,7 +1108,12 @@ namespace Game.Ai.V2
                 // the next ResolveActive pass can re-orient the same primary onto another neutral
                 // or enter Return. Removing it here strands the victorious army and makes the
                 // Assault -> next target / Return phase machine unreachable.
-                if (o.MissionKind == MissionKind.Raid)
+                bool completedRaidAssault = o.MissionKind == MissionKind.Raid
+                    && (o.HasRaidPayload
+                        ? o.RaidPhase == RaidMissionPhase.Assault
+                        : o.Proposal?.Target is RaidMissionTarget raidTarget
+                            && raidTarget.Phase == RaidMissionPhase.Assault);
+                if (completedRaidAssault)
                 {
                     if (intent != null)
                     {
