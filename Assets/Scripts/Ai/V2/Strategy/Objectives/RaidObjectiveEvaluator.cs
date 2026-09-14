@@ -58,6 +58,15 @@ namespace Game.Ai.V2
         // Execution) must call THIS, not re-derive its own neutrality rule.
         public static bool IsNeutralRaidTarget(PlayerSetupData owner) => owner == null || owner.IsNeutral;
 
+        // Snapshot-pure completion edge for the campaign phase machine. Loss of sight is UNKNOWN;
+        // a present sighting with a non-neutral owner is positive proof that this target no longer
+        // belongs to Raid and must trigger next-neutral/Return handling.
+        public static bool IsKnownTargetNoLongerNeutral(WorldSnapshot snap, int targetArmyId)
+        {
+            AiMapMemory.KnownEnemySighting? sighting = FindSighting(snap, targetArmyId);
+            return sighting.HasValue && !IsNeutralRaidTarget(sighting.Value.Owner);
+        }
+
         // The tracked target's freshest honest sighting, or null.
         public static AiMapMemory.KnownEnemySighting? FindSighting(WorldSnapshot snap, int trackedArmyId)
         {
@@ -74,10 +83,11 @@ namespace Game.Ai.V2
         // ---- LIVE (post-execution ledger pass) --------------------------------------------
 
         // Objective completion must be POSITIVE, not inferred from one registry's absence.
-        //  1) If the target id is now ours, it was captured / turned non-hostile -> satisfied.
-        //  2) If any ordinary non-us player still fields it -> not satisfied.
-        //  3) If no ordinary roster resolves it but honest memory still tracks it, this is the
-        //     neutral/fog case -> not satisfied.
+        //  1) If the target id is now ours, it was captured -> satisfied.
+        //  2) If any ordinary non-us player now fields it, it is no longer neutral and therefore
+        //     no longer a legal Raid target -> satisfied for this campaign objective.
+        //  3) If no ordinary roster resolves it but honest neutral memory still tracks it, this is
+        //     the neutral/fog case -> not satisfied.
         //  4) Only absence from both live ownership and honest memory counts as confirmed gone.
         public static bool IsObjectiveSatisfiedLive(PlayerSetupData player, int targetArmyId)
         {
@@ -94,7 +104,7 @@ namespace Game.Ai.V2
                     continue;
                 if (ArmyRegistry.AllForOwner(other)
                     .Any(a => a != null && a.Id == targetArmyId && a.Members.Count > 0))
-                    return false;
+                    return true;
             }
 
             bool rememberedEnemy = AiMapMemory.AllKnownEnemySightings(player)
