@@ -166,7 +166,8 @@ namespace Game.Ai.V2
                     if (provision.Success)
                     {
                         provSession.RegisterSuccess(key, provision.Provisioned);
-                        session.RegisterProvisionSuccess(fe, provision.Provisioned.ClaimedAp, provision.Provisioned.ClaimedPhysical);
+                        session.RegisterProvisionSuccess(fe,
+                            provision.Provisioned.ClaimedAp, provision.Provisioned.ClaimedPhysical);
                         outcomeLedger.RecordProvisionSuccess(fe.Mission, provision.Provisioned);
                         provisioned.Add(provision.Provisioned);
                         AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,

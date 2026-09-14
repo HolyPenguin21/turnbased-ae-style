@@ -34,23 +34,26 @@ namespace Game.Ai.V2
         public MissionIntentKey? EconomyLoanSource;
         public ResourceVector ClaimedPhysical;
         // AP still needed for EXECUTION to carry this mission out (e.g. Economy travel/build cost).
-        // root.ActionPoints has NOT been debited for this yet. Feeds ProvisioningSession.ApClaimed,
-        // which every mission this pass checks against "root.ActionPoints - session.ApClaimed" —
-        // that formula assumes ClaimedAp is exactly the part root.ActionPoints does not already
-        // reflect, so nothing already spent belongs in here (see ProvisioningApSpent below).
         public float ClaimedAp;
-        // 2026-09-14 review round 3 — AP a Provisioning-time mutation (ArmyActions.CreateArmy, or
-        // TransferMember's activation charge into a container that already acted this turn) has
-        // ALREADY physically deducted from root.ActionPoints by the time this ProvisionedMission
-        // exists. ResourceAllocator.Pack() computes its pool from the FROZEN WorldSnapshot AP
-        // figure, so it has no way to know about this spend on its own — RegisterProvisionSuccess
-        // must be given ClaimedAp + ProvisioningApSpent (the full true cost against that frozen
-        // baseline), while ProvisioningSession.ApClaimed / the raw-pool checks inside
-        // ProvisioningManager itself must keep using ClaimedAp alone (root.ActionPoints there is
-        // already live, so adding this again would double-subtract it). Two consumers, two
-        // different questions — one field cannot answer both, which is exactly the P0 review
-        // round 3 found.
-        public float ProvisioningApSpent;
+        // 2026-09-14 review round 4 — Economy garrison-extraction no longer mutates anything during
+        // Provisioning at all (see MaterializeEconomyGarrisonBuilder in TaskExecutor.cs): the round-3
+        // ProvisioningApSpent field this comment used to describe is gone because there is nothing
+        // for it to carry any more — Provisioning only estimates and defers, Execution spends for
+        // real inside its own beforeStep/afterStep window. EconomyExtractionGarrisonArmyId (below) is
+        // the deferred-materialization marker that replaced it.
+        //
+        // >= 0 marks this ProvisionedMission as NOT YET a real mover: MoverArmyId is a synthetic
+        // negative id (SyntheticGarrisonExtractionActorId), and this field names the garrison
+        // TaskExecutor.RunEconomyStep must extract a hero from — mirroring the pattern AirLaunch
+        // already established (ScoutExecutorKind.AirLaunch's synthetic ActorKey + AirfieldHex/
+        // LaunchSubset below materialize the same way, inside ReconAirExecutor). -1 (default) means
+        // MoverArmyId is already a real, resolvable army — the common case, unchanged.
+        public int EconomyExtractionGarrisonArmyId = -1;
+        // The winning DemandLayer.EconomyBuilderChoice for a deferred garrison-extraction mission —
+        // TaskExecutor needs its MinimumEscortCount/Suitability to run the SAME
+        // FinishEconomyBuilder tail ProvisionEconomy itself runs for the non-deferred case. Null
+        // whenever EconomyExtractionGarrisonArmyId is -1 (nothing to carry).
+        internal DemandLayer.EconomyBuilderChoice EconomyPendingBuilderChoice;
         // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
@@ -242,18 +245,29 @@ namespace Game.Ai.V2
         private static bool IsMobileEconomyHero(ArmyData army, PlayerSetupData player) =>
             army != null && army.Owner == player && AiArmyRoles.IsHeroLed(army);
 
-        // 2026-09-14 review round 2 — the garrison-extraction container choice is now a pure,
-        // read-only RESOLVE step (GarrisonExtractionCandidate) that both the real materialization
-        // path (ResolveGarrisonExtractionCandidate + ApplyGarrisonExtraction, called together from
-        // the mover-selection loop in ProvisionEconomy) and the FoundBase diagnostic TRACE call —
-        // the TRACE prints this struct's fields verbatim instead of re-deriving its own copy of the
+        // 2026-09-14 review round 4 — Economy garrison-extraction no longer materializes during
+        // Provisioning at all. ResolveGarrisonExtractionCandidate (pure, unchanged since round 2)
+        // decides the tier here only to produce a conservative pre-mutation cost ESTIMATE for the
+        // funding envelope; the actual ArmyActions.CreateArmy/TransferMember mutation
+        // (ApplyGarrisonExtraction, also unchanged) now runs from
+        // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own beforeStep/
+        // afterStep observation window — mirroring the synthetic-actor-id pattern
+        // ScoutExecutorKind.AirLaunch already established (see SyntheticGarrisonExtractionActorId
+        // below and MoverArmyId's own field comment on ProvisionedMission).
+        internal static int SyntheticGarrisonExtractionActorId(int garrisonArmyId) =>
+            -(3_000_000 + (garrisonArmyId & 0xFFFFFF));
+
+        // The garrison-extraction container choice is a pure, read-only RESOLVE step
+        // (GarrisonExtractionCandidate) that every caller — the Provisioning-time estimate above,
+        // TaskExecutor's real materialization, and the FoundBase diagnostic TRACE — shares. The
+        // TRACE prints this struct's fields verbatim instead of re-deriving its own copy of the
         // eligibility logic (the previous copy drifted out of sync with the real gates: it never
         // accounted for ArmyData.RequiresActivationCharge, an existing hero already in a "host"
         // candidate, or ProvisioningSession.ClaimedArmyIds — see
         // Docs/ai-economy-mover-materialization-decision-tree.md).
-        private enum GarrisonExtractionTier { None, Shell, Host, Create }
+        internal enum GarrisonExtractionTier { None, Shell, Host, Create }
 
-        private readonly struct GarrisonExtractionCandidate
+        internal readonly struct GarrisonExtractionCandidate
         {
             public readonly GarrisonExtractionTier Tier;
             public readonly UnitData Hero;         // the EXACT UnitData that would be extracted
@@ -281,7 +295,7 @@ namespace Game.Ai.V2
         // the ECO-axis envelope and the raw AP pool before it is accepted, so a candidate this
         // pass genuinely cannot afford is skipped in favour of the next one rather than accepted
         // and left to fail downstream.
-        private static GarrisonExtractionCandidate ResolveGarrisonExtractionCandidate(
+        internal static GarrisonExtractionCandidate ResolveGarrisonExtractionCandidate(
             PlayerSetupData player, ArmyData garrison, ActorCommitments commitments,
             ProvisioningSession session, PlayerRoot root, float ecoApEnvelopeRemaining)
         {
@@ -333,7 +347,7 @@ namespace Game.Ai.V2
         // already-spent cost just because this call returned null overall (2026-09-14 review
         // round 3 P1 — the caller used to infer this from candidate.Tier, which reflects what was
         // CHOSEN, not what actually happened).
-        private static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
+        internal static ArmyData ApplyGarrisonExtraction(PlayerSetupData player, ArmyData garrison,
             GarrisonExtractionCandidate candidate, AiTurnContext ctx,
             out UnitData extractedHero, out bool containerCreated)
         {
@@ -948,112 +962,88 @@ namespace Game.Ai.V2
             // whole provisioning attempt if THAT ONE couldn't materialize, even when other
             // eligible, non-garrison candidates were sitting right there in the same ranked list.
             // Walk the ranked list in order and keep trying until one actually produces a hero.
+            // 2026-09-14 review round 4 — garrison extraction no longer mutates here at all. This
+            // loop either finds a hero that ALREADY exists as a real field mover (direct-army
+            // candidates, unchanged from before) or, for a garrison candidate, a viable
+            // GarrisonExtractionCandidate PLAN plus a conservative pre-mutation cost estimate —
+            // never both an army and a plan. The plan's real materialization
+            // (ArmyActions.CreateArmy/TransferMember) happens later, in
+            // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own
+            // beforeStep/afterStep window — see the synthetic-MoverArmyId return further down.
             DemandLayer.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
-            ArmyData extractionSourceGarrison = null;
-            UnitData extractionHeroUnit = null;           // the EXACT unit that left the garrison
-            bool extractionCreatedContainer = false;      // true only if ArmyActions.CreateArmy ACTUALLY ran for the WINNING candidate
-            float extractionExtraApSpent = 0f;
-            // 2026-09-14 review round 3 P1 — a candidate that creates a shell (ArmyActions.CreateArmy,
-            // real AP already spent) and then fails its own TransferMember is abandoned by the loop
-            // (it tries the next candidate) without ever being the "winner" below — nothing else here
-            // would ever learn that AP was spent. Accumulated across EVERY candidate this call
-            // attempts, win or lose, and folded into extractionExtraApSpent right after the loop so
-            // no exit path (including total failure / NoMoverExists) can silently drop it.
-            float orphanedCreateApThisCall = 0f;
+            ArmyData deferredGarrison = null;
+            float deferredEstimatedAp = 0f;
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
+            float rawApRemaining = root.ActionPoints - session.ApClaimed;
+            float eps = AiConfigV2.allocatorSliceEpsilon;
             foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .Where(IsCandidateEligible))
             {
-                ArmyData candidateHero;
-                ArmyData candidateGarrison = null;
-                UnitData candidateExtractedUnit = null;
-                float candidateExtraApSpent = 0f;
-                bool candidateContainerCreated = false;
                 if (candidate.Route.RequiresGarrisonExtraction)
                 {
-                    candidateGarrison = ResolveArmy(player, candidate.Route.ArmyId);
-                    if (candidateGarrison != null)
-                    {
-                        GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
-                            player, candidateGarrison, actorCommitments, session,
-                            root, ecoApEnvelopeRemaining);
-                        candidateExtraApSpent = plan.ApCost;
-                        candidateHero = ApplyGarrisonExtraction(player, candidateGarrison, plan,
-                            ctx, out candidateExtractedUnit, out candidateContainerCreated);
-                        if (candidateContainerCreated && candidateHero == null)
-                            orphanedCreateApThisCall += plan.ApCost;
-                    }
-                    else
-                        candidateHero = null;
-                }
-                else
-                {
-                    candidateHero = ResolveArmy(player, candidate.Route.ArmyId);
-                }
-                if (candidateHero != null)
-                {
-                    extractionSourceGarrison = candidate.Route.RequiresGarrisonExtraction
-                        ? candidateGarrison : null;
-                    extractionHeroUnit = candidateExtractedUnit;
-                    extractionCreatedContainer = candidateContainerCreated;
-                    extractionExtraApSpent = candidateExtraApSpent;
+                    ArmyData candidateGarrison = ResolveArmy(player, candidate.Route.ArmyId);
+                    if (candidateGarrison == null)
+                        continue;
+                    GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
+                        player, candidateGarrison, actorCommitments, session,
+                        root, ecoApEnvelopeRemaining);
+                    if (plan.Tier == GarrisonExtractionTier.None)
+                        continue;
+                    // Conservative pre-mutation estimate: EconomyMissionClaimedAp only ever needs
+                    // UnitData.ActivationApCost sums, not a live ArmyData, and the not-yet-extracted
+                    // hero is solo by construction here — its own stats stand in for what the real
+                    // materialized army will report. This only gates whether the ECO axis funds the
+                    // attempt at all; the AUTHORITATIVE recheck (same FinishEconomyBuilder tail the
+                    // direct-army path below already uses) runs again once the hero is real, inside
+                    // TaskExecutor.MaterializeEconomyGarrisonBuilder.
+                    float estimatedTotal = plan.ApCost + plan.Hero.ActivationApCost
+                        + Mathf.Max(target.BuildApCost, target.MinimumFollowupAp);
+                    if (estimatedTotal > ecoApEnvelopeRemaining + eps
+                        || estimatedTotal > rawApRemaining + eps)
+                        continue;
+                    deferredGarrison = candidateGarrison;
+                    deferredEstimatedAp = estimatedTotal;
                     builderChoice = candidate;
-                    hero = candidateHero;
                     break;
                 }
+                ArmyData a = ResolveArmy(player, candidate.Route.ArmyId);
+                if (a == null)
+                    continue;
+                builderChoice = candidate;
+                hero = a;
+                break;
             }
-            extractionExtraApSpent += orphanedCreateApThisCall;
 
-            ProvisioningResult FailNoHero(ProvisionFailure failure) =>
-                ProvisioningResult.Fail(failure, orphanedCreateApThisCall > 0f, orphanedCreateApThisCall > 0f ? 1 : 0);
-
-            // 2026-09-14 fix — ApplyGarrisonExtraction (inside the loop above) is a real,
-            // authoritative mutation: ArmyActions.TransferMember pulling the hero out of the
-            // garrison into whichever container ResolveGarrisonExtractionCandidate found (an
-            // existing shell, an existing field army it borrowed, or one it just paid to create —
-            // see those methods' own headers). Every check from here down to the
-            // ApplyEconomyArmyLightening call below is still a pure affordability/feasibility check
-            // on `hero`, not a further mutation of its roster — if any of them fails, the hero must
-            // go back to the garrison in the same attempt, or a same-turn reprice retry
-            // (ResourceAllocator's EnvelopeTooSmall -> RepriceThisTurn loop) finds the container it
-            // used already spent/claimed and reports NoMoverExists even though a hero really was
-            // available. FailAfterHero is the single point every such early return below goes
-            // through so the rollback can never be forgotten at a future call site. It reverses
-            // ONLY the exact tracked extractionHeroUnit (never re-derived by scanning `hero.Members`
-            // for "the" hero — a container borrowed via the Host tier can, in principle, already
-            // carry a different hero, and re-deriving would risk sending the WRONG one back). A
-            // container minted via ArmyActions.CreateArmy along the way keeps its already-spent AP
-            // and is simply left behind as a future reusable shell (same "never roll back a paid
-            // empty army" rule CardPlayExecutor's own NewArmy path already documents) — so a Create
-            // extraction always reports a real, permanent StateChanged even when the hero itself
-            // rolls back cleanly.
-            ProvisioningResult FailAfterHero(ProvisionFailure failure)
+            if (deferredGarrison != null)
             {
-                if (extractionHeroUnit == null)
-                    return ProvisioningResult.Fail(failure, extractionCreatedContainer, extractionCreatedContainer ? 1 : 0);
-                bool rolledBack = ArmyActions.TransferMember(
-                    extractionHeroUnit, hero, extractionSourceGarrison, ctx.HexSelection, out string why);
-                if (!rolledBack)
-                    AiDebugLog.Write($"[AI][V2][Economy] garrison extraction rollback FAILED "
-                        + $"#{hero.Id}->#{extractionSourceGarrison.Id}: {why}");
-                bool stateChanged = extractionCreatedContainer || extractionExtraApSpent > 0f || !rolledBack;
-                return ProvisioningResult.Fail(failure, stateChanged, stateChanged ? 1 : 0);
+                // Nothing mutated — transferredMemberCount 0 is honest (ProvisioningResult.Ok's own
+                // "changed = transferredMemberCount > 0" rule). MoverArmyId is a synthetic negative
+                // id, same pattern ScoutExecutorKind.AirLaunch already uses for an actor that does
+                // not exist yet; TaskExecutor.RunEconomyStep detects EconomyExtractionGarrisonArmyId
+                // >= 0 and materializes for real before doing anything else.
+                return ProvisioningResult.Ok(new ProvisionedMission
+                {
+                    Mission = m, Key = key, Kind = MissionKind.Economy,
+                    MoverArmyId = SyntheticGarrisonExtractionActorId(deferredGarrison.Id),
+                    EconomyExtractionGarrisonArmyId = deferredGarrison.Id,
+                    EconomyPendingBuilderChoice = builderChoice,
+                    FocusHex = target.TargetHex, ExecutionHex = deferredGarrison.Hex,
+                    EconomyTarget = target,
+                    ClaimedAp = deferredEstimatedAp,
+                });
             }
+
             if (hero == null)
             {
-                // orphanedCreateApThisCall can be nonzero even here: some earlier candidate in the
-                // loop above created a shell that then failed its own transfer, before this branch
-                // (no candidate at all ultimately won) was ever reached. Every return in this block
-                // goes through FailNoHero so that spend is never silently dropped.
                 if (m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
                 {
                     int preferredId = m.PreferredMoverArmyId.Value;
                     ArmyData preferredArmy = ResolveArmy(player, preferredId);
 
                     if (preferredArmy == null)
-                        return FailNoHero(ProvisionFailure.TargetInvalidated(
+                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                             $"committed economy builder #{preferredId} no longer exists"));
 
                     // Canonical, army-specific safe-route witness (same contract EconomyBuilderRoutes
@@ -1065,10 +1055,10 @@ namespace Game.Ai.V2
                     int routeCost = SafeStepPathing.FindSafePathCost(
                         ctx.Map, preferredArmy, target.TargetHex);
                     if (routeCost == int.MaxValue)
-                        return FailNoHero(ProvisionFailure.NoExecutableStep(
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"committed economy builder #{preferredId} has no safe route to the site right now"));
 
-                    return FailNoHero(ProvisionFailure.MoverContended(
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"committed economy builder #{preferredId} cannot advance this turn"));
                 }
                 // DIAGNOSTIC (kept for FoundBase only, per project owner's request 2026-09-13 — the
@@ -1141,21 +1131,46 @@ namespace Game.Ai.V2
                             + $"=> ELIGIBLE={cMobile && cThreat && cClaimed && cDonorConflict && cPath}");
                     }
                 }
-                return FailNoHero(ProvisionFailure.NoMoverExists(
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "no free hero can advance toward economy site"));
             }
 
+            return FinishEconomyBuilder(player, root, ctx, session.Snapshot, standingIntents,
+                m, key, target, builderChoice, hero,
+                funded.Tentative.Ap, root.ActionPoints - session.ApClaimed);
+        }
+
+        // 2026-09-14 review round 4 — the shared tail for a hero that ALREADY exists as a real,
+        // live field army: donor loan, lightening/reinforcement, the final AP/resource checks, and
+        // the resource reservation. Two callers: ProvisionEconomy itself (direct-army candidates,
+        // unchanged from before this round) and TaskExecutor.MaterializeEconomyGarrisonBuilder
+        // (a garrison-extraction candidate, immediately after ApplyGarrisonExtraction makes `hero`
+        // real). No rollback machinery here on purpose: by construction `hero` is real by the time
+        // this runs either way, so a failure here is an ordinary "this attempt did not complete",
+        // not a mutation to undo — a live army left with a lightened/reinforced roster but no
+        // completed build is exactly the same shape of partial progress a live army left mid-walk
+        // already is, and both are handled the same way next turn (it is found again next admission
+        // pass, this time via the direct-army path). `apEnvelope`/`apPoolRemaining` are the two
+        // Provisioning-time budget concepts as plain numbers so a caller with no FundedEntry/
+        // ProvisioningSession of its own (Execution) can still supply them.
+        internal static ProvisioningResult FinishEconomyBuilder(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, WorldSnapshot snapshot, IReadOnlyList<MissionIntent> standingIntents,
+            MissionProposal m, StableMissionKey key, EconomyMissionTarget target,
+            DemandLayer.EconomyBuilderChoice builderChoice, ArmyData hero,
+            float apEnvelope, float apPoolRemaining)
+        {
+            float eps = AiConfigV2.allocatorSliceEpsilon;
             MissionIntent donor = standingIntents.FirstOrDefault(i => i != null
                 && i.Kind != MissionKind.Economy && i.PreferredMoverArmyId == hero.Id
                 && DemandLayer.EconomyDonorStructurallyEligible(i));
             int distance = SafeStepPathing.FindSafePathCost(ctx.Map, hero, target.TargetHex);
             if (distance == int.MaxValue)
-                return FailAfterHero(ProvisionFailure.NoExecutableStep("no safe economy route"));
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep("no safe economy route"));
             if (donor != null)
             {
                 if (!DemandLayer.EconomyLoanAllowed(donor, target.BuildValue, distance,
                         hero.CurrentMovement, out float loanNet))
-                    return FailAfterHero(ProvisionFailure.MoverContended(
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"loan rejected donor={donor.IntentKey} distance={distance} move={hero.CurrentMovement} net={loanNet:0.##}"));
             }
 
@@ -1163,58 +1178,41 @@ namespace Game.Ai.V2
             bool completionThisTurn = distance <= hero.CurrentMovement;
             ResourceCost stageCost = completionThisTurn ? target.BuildResourceCost : null;
             List<UnitData> lighteningPlan = PlanEconomyArmyLightening(
-                player, hero, target.TargetHex, session.Snapshot, ctx,
+                player, hero, target.TargetHex, snapshot, ctx,
                 builderChoice.MinimumEscortCount, out ArmyData garrison,
                 out List<UnitData> reinforcementPlan);
             if (builderChoice.Suitability == DemandLayer.EconomyArmySuitability.ReinforceAtBase
                 && reinforcementPlan.Count == 0)
-                return FailAfterHero(ProvisionFailure.AssemblyInfeasible(
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{hero.Id} no longer has its planned minimum escort"));
             float realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
                 target.MinimumFollowupAp, lighteningPlan, reinforcementPlan,
                 travelNeeded, completionThisTurn);
-            // extractionExtraApSpent (Variant A — ArmyActions.CreateArmy) is real AP already
-            // deducted from root.ActionPoints by the time we get here, so it must count against
-            // the ECO-axis ENVELOPE (a separate, static budget number that does not shrink on its
-            // own) but must NOT be added again to the raw-pool check below — root.ActionPoints
-            // already reflects that spend, adding it twice would demand the same 2 AP be free
-            // a second time.
-            if (realAp + extractionExtraApSpent > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
-                return FailAfterHero(ProvisionFailure.EnvelopeTooSmall(realAp + extractionExtraApSpent,
+            if (realAp > apEnvelope + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
                     $"economy hero #{hero.Id} needs {realAp:0.##} AP for "
-                    + (completionThisTurn ? "delivery + completion" : "this travel stage")
-                    + (extractionExtraApSpent > 0f ? $" (+{extractionExtraApSpent:0.##} already spent creating its army)" : "")));
-            if (realAp > root.ActionPoints - session.ApClaimed + AiConfigV2.allocatorSliceEpsilon)
-                return FailAfterHero(ProvisionFailure.MoverContended("economy AP no longer available"));
+                    + (completionThisTurn ? "delivery + completion" : "this travel stage")));
+            if (realAp > apPoolRemaining + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended("economy AP no longer available"));
 
             string owner = EconomyMissionPlanner.OwnerKey(key);
             if (!StrategicSpendability.FitsSpendableResources(player, root, ctx,
                     stageCost, owner))
-                return FailAfterHero(ProvisionFailure.EnvelopeTooSmall(
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(realAp, CostVector(stageCost)),
                     "economy completion resources no longer spendable"));
             int preparedMembers = ApplyEconomyArmyLightening(
                 hero, garrison, lighteningPlan, reinforcementPlan, ctx);
             int plannedTransfers = lighteningPlan.Count + reinforcementPlan.Count;
             if (preparedMembers != plannedTransfers)
-                return FailAfterHero(ProvisionFailure.AssemblyInfeasible(
+                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                     $"economy builder #{hero.Id} composition transaction did not commit"));
             // Atomic transfer failure leaves the original roster intact, so claim its real live AP
             // rather than the projected lighter value.
             realAp = EconomyMissionClaimedAp(hero, target.BuildApCost,
                 target.MinimumFollowupAp, null, travelNeeded, completionThisTurn);
-            // 2026-09-14 review round 2 — this was a plain ProvisioningResult.Fail, the one early
-            // return past the extraction that did NOT go through FailAfterHero. The window is
-            // narrow (preparedMembers already matched plannedTransfers above, so this recompute
-            // almost always agrees with the estimate that already cleared the envelope check
-            // earlier), but "almost never" still leaves the hero permanently outside the garrison
-            // with the demand reported as untouched. Note: this only reverses the hero's own
-            // transfer, same as every other FailAfterHero call — a lightening/reinforcement batch
-            // that already ran above is not itself reversed here (ApplyEconomyArmyLightening's own
-            // atomicity already guarantees the ONLY way to reach this line is a fully-applied
-            // batch, so there is no partial roster to unwind).
-            if (realAp + extractionExtraApSpent > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
-                return FailAfterHero(ProvisionFailure.EnvelopeTooSmall(realAp + extractionExtraApSpent,
+            if (realAp > apEnvelope + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(realAp,
                     "economy army could not be lightened within the funded AP envelope"));
             if (completionThisTurn)
                 InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, owner,
@@ -1233,28 +1231,10 @@ namespace Game.Ai.V2
                 Mission = m, Key = key, Kind = MissionKind.Economy,
                 MoverArmyId = hero.Id, FocusHex = target.TargetHex,
                 ExecutionHex = target.TargetHex, EconomyTarget = target,
-                // 2026-09-14 review round 2/3 — extractionExtraApSpent must NOT be folded into
-                // ClaimedAp: it is AP ArmyActions.TransferMember/CreateArmy already deducted for
-                // real from root.ActionPoints during extraction above (the local envelope check
-                // just above already validated it against funded.Tentative.Ap at the point it was
-                // spent). ClaimedAp feeds ProvisioningSession.RegisterSuccess -> session.ApClaimed,
-                // which every OTHER mission THIS PROVISIONING PASS checks against "root.ActionPoints
-                // - session.ApClaimed" — root.ActionPoints already reflects the extraction spend, so
-                // adding it into ClaimedAp too would subtract it a second time there.
-                // ProvisioningApSpent carries that same already-spent amount to the ONE consumer
-                // that does need it: ResourceAllocator.Pack() computes its pool from the FROZEN
-                // WorldSnapshot AP figure (see ResourceAllocator.cs ~line 613), which has no way to
-                // know about a spend that happened live during Provisioning — RegisterProvisionSuccess
-                // must be called with ClaimedAp + ProvisioningApSpent (all call sites do this; see
-                // Docs/ai-economy-mover-materialization-decision-tree.md).
-                ClaimedAp = realAp, ProvisioningApSpent = extractionExtraApSpent,
-                ClaimedPhysical = CostVector(stageCost),
+                ClaimedAp = realAp, ClaimedPhysical = CostVector(stageCost),
                 ReservationOwner = owner,
                 EconomyLoanSource = loan?.IntentKey,
-                // The extraction itself (hero leaving the garrison into a new/borrowed container)
-                // is a real change even when lightening/reinforcement moved nobody else — count it
-                // so StateChanged/V2StateVersion honestly reflect it either way.
-            }, preparedMembers + (extractionHeroUnit != null ? 1 : 0));
+            }, preparedMembers);
         }
 
         // Economy-specific, same-hex preparation belongs here because the target and its route are
