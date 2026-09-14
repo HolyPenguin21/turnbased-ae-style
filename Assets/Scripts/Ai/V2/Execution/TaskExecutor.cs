@@ -624,10 +624,15 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
             int apBefore)
         {
-            if (pm.Kind != MissionKind.Economy || pm.EconomyExtractionGarrisonArmyId < 0)
+            // 2026-09-14 review round 10 (P0) — this door now also covers a DIRECT-army Economy
+            // mission (hero already real) whose composition change and/or donor-loan suspend
+            // Provisioning left pinned but unapplied (pm.EconomyPreparationPending), not only a
+            // garrison-extraction candidate — see ApplyEconomyPreparation's own comment.
+            if (pm.Kind != MissionKind.Economy
+                || (pm.EconomyExtractionGarrisonArmyId < 0 && !pm.EconomyPreparationPending))
                 return false;
 
-            bool materialized = MaterializeEconomyGarrisonBuilder(player, root, ctx, pm, result, apBefore);
+            bool materialized = ApplyEconomyPreparation(player, root, ctx, pm, result, apBefore);
             result.StartHex = pm.ExecutionHex;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             if (!materialized)
@@ -644,47 +649,63 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // 2026-09-14 review round 8 (P0) — Execution no longer re-plans the composition here at
-        // all. Provisioning already computed and pinned the FULL decision (which units to unload/
-        // reinforce, the donor, the authoritative AP) onto `pm.EconomyExtractionPreparation`
-        // (ProvisioningManager.PlanEconomyCompletion, run against a read-only preview — see its own
-        // comment). This function's only job is: apply the pinned hero extraction, cheaply
-        // re-validate the two facts that can actually have shifted since Provisioning within the
-        // same batch pass (AP, resource spendability — never composition/donor/route, which are not
-        // re-derived), apply the pinned Unload/Reinforcement, and stamp the result. No
-        // ProvisioningManager.FinishEconomyBuilder call anywhere in this path any more.
-        private static bool MaterializeEconomyGarrisonBuilder(PlayerSetupData player, PlayerRoot root,
+        // 2026-09-14 review round 10 (P0) — this is now the SOLE apply site for
+        // pm.EconomyExtractionPreparation, for BOTH shapes of pending Economy work: a
+        // garrison-extraction candidate (hero not yet real — EconomyExtractionGarrisonArmyId >= 0)
+        // AND a direct-army candidate whose hero was ALREADY real but whose composition change/
+        // donor-loan suspend Provisioning still left pinned rather than applying itself (round 10 —
+        // the direct-army path used to apply this synchronously inside Provisioning via the now-
+        // deleted FinishEconomyBuilder; no Economy actor is ever mutated inside Provisioning any
+        // more, extracted or not). Execution never re-plans here — Provisioning already computed and
+        // pinned the FULL decision (ProvisioningManager.PlanEconomyCompletion, run against a
+        // read-only preview for the extraction case, the real live hero for the direct case) — this
+        // function only APPLIES the pinned hero extraction (if any) and cheaply re-validates the two
+        // facts that can actually have shifted since Provisioning within the same batch pass (AP,
+        // resource spendability — never composition/donor/route, which are not re-derived).
+        private static bool ApplyEconomyPreparation(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
-            ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
-            if (garrison == null || pm.EconomyPendingBuilderChoice == null)
-                return false;
-
-            // 2026-09-14 review round 5 — materialize the EXACT plan Provisioning already chose and
-            // funded (pm.EconomyExtractionPlan), never a fresh re-resolve: a re-resolve with
-            // commitments:null/session:null runs under weaker constraints than the original choice
-            // and can legally pick a different — or already-claimed — hero/container/tier.
-            ProvisioningManager.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
-            if (plan.Tier == ProvisioningManager.GarrisonExtractionTier.None)
-                return false;
             ProvisioningManager.EconomyCompletionPlan prep = pm.EconomyExtractionPreparation;
             if (!prep.Feasible)
                 return false;   // defensive only — Provisioning only ever defers a feasible plan
 
-            ArmyData materialized = ProvisioningManager.ApplyGarrisonExtraction(
-                player, garrison, plan, ctx, out UnitData extractedHero, out bool containerCreated,
-                out int createdContainerArmyId);
-            if (materialized == null)
+            ArmyData materialized;
+            bool extractionNeeded = pm.EconomyExtractionGarrisonArmyId >= 0;
+            if (extractionNeeded)
             {
-                // 2026-09-14 review round 6 (P1) — an empty shell with no hero is NOT an Economy
-                // actor: ActorMaterialized/ActualActorArmyId must stay strictly "a real hero-led
-                // mover now exists", or Continuity will happily track a hero-less shell as this
-                // mission's mover. The real, honest fact here is a separate one: the WORLD changed
-                // (AP spent, a new empty army registered, kept — same "never rolled back" rule the
-                // Create tier already documents) even though no actor for THIS mission exists yet.
-                if (containerCreated)
-                    result.ContainerCreated = true;
-                return false;
+                ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
+                if (garrison == null)
+                    return false;
+                // 2026-09-14 review round 5 — materialize the EXACT plan Provisioning already chose
+                // and funded (pm.EconomyExtractionPlan), never a fresh re-resolve: a re-resolve with
+                // commitments:null/session:null runs under weaker constraints than the original
+                // choice and can legally pick a different — or already-claimed — hero/container/tier.
+                ProvisioningManager.GarrisonExtractionCandidate plan = pm.EconomyExtractionPlan;
+                if (plan.Tier == ProvisioningManager.GarrisonExtractionTier.None)
+                    return false;
+                materialized = ProvisioningManager.ApplyGarrisonExtraction(
+                    player, garrison, plan, ctx, out UnitData extractedHero, out bool containerCreated,
+                    out int createdContainerArmyId);
+                if (materialized == null)
+                {
+                    // 2026-09-14 review round 6 (P1) — an empty shell with no hero is NOT an Economy
+                    // actor: ActorMaterialized/ActualActorArmyId must stay strictly "a real hero-led
+                    // mover now exists", or Continuity will happily track a hero-less shell as this
+                    // mission's mover. The real, honest fact here is a separate one: the WORLD
+                    // changed (AP spent, a new empty army registered, kept — same "never rolled
+                    // back" rule the Create tier already documents) even though no actor for THIS
+                    // mission exists yet.
+                    if (containerCreated)
+                        result.ContainerCreated = true;
+                    return false;
+                }
+            }
+            else
+            {
+                // Direct-army case — the hero is already a real, live field army; nothing to extract.
+                materialized = Resolve(player, pm.MoverArmyId);
+                if (materialized == null)
+                    return false;
             }
 
             float eps = AiConfigV2.allocatorSliceEpsilon;
@@ -738,9 +759,11 @@ namespace Game.Ai.V2
                 result.ActorMaterialized = true;
                 return false;
             }
-            if (prep.CompletionThisTurn)
-                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber, prep.OwnerKey,
-                    pm.EconomyTarget.BuildResourceCost, pm.EconomyTarget.BuildApCost);
+            // 2026-09-14 review round 10 (P1) — no InfrastructureFulfillment.ReserveEconomyCost call
+            // here any more: Provisioning already reserved it (see the deferred branch of
+            // ProvisionEconomy) the moment this mission committed to being deferred, so the resource
+            // pool is honestly reduced for any OTHER Economy mission provisioned later in the same
+            // batch pass. Reserving again here would double-charge the ledger for one build.
             if (prep.Donor != null)
             {
                 prep.Donor.Status = IntentStatus.Suspended;
@@ -751,14 +774,15 @@ namespace Game.Ai.V2
 
             pm.MoverArmyId = materialized.Id;
             pm.EconomyExtractionGarrisonArmyId = -1;
+            pm.EconomyPreparationPending = false;
             pm.ReservationOwner = prep.OwnerKey;
             pm.EconomyLoanSource = prep.Donor?.IntentKey;
             pm.ClaimedAp = realAp;
             pm.ClaimedPhysical = ProvisioningManager.CostVector(prep.StageCost);
             result.ActualActorArmyId = materialized.Id;
             result.ActorMaterialized = true;
-            AiDebugLog.Write($"[AI][V2][Economy] materialized builder #{materialized.Id} "
-                + $"for {pm.Key} from garrison #{garrison.Id} ({plan.Tier})");
+            AiDebugLog.Write($"[AI][V2][Economy] prepared builder #{materialized.Id} for {pm.Key} "
+                + (extractionNeeded ? "(garrison extraction)" : "(composition/loan only)"));
             return true;
         }
 
