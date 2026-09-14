@@ -38,9 +38,13 @@ namespace Game.Ai.V2
     //     AntiArmor both take a directional ThreatResponseValue off omniscient TrueWorld composition
     //     (real IsAir / real Armored-tagged member). It never becomes normal AI intel.
     //
-    //  BaselineForceReadiness is radar-DEMAND-INDEPENDENT: it gives ForceGrowthValue to an ordinary
-    //  combat body even at AGG = 0 / DEF = 0. It only decides a card is worth MATERIALISING; which
-    //  army/garrison it joins and stack composition stay a separate layer (Housekeeping).
+    //  AGG-RAID "axis-principle" fix — BaselineForceReadiness.Need is radar-DEMAND-INDEPENDENT, but
+    //  ForceGrowthValue itself is NOT: it is gated on BaselineForceReadiness.MilitaryWitnessed (a
+    //  live neutral Raid target, or an asset threat at/above the reserved threatSeverityTrigger).
+    //  Attack/Defence axes create demand; Production reinforces an already-justified demand — it
+    //  must never manufacture its own reason to spend. It only decides a card is worth
+    //  MATERIALISING; which army/garrison it joins and stack composition stay a separate layer
+    //  (Housekeeping).
     // ===========================================================================================
 
     public enum IntendedRole
@@ -135,6 +139,14 @@ namespace Game.Ai.V2
         public readonly RoleCoverage Coverage;
         public readonly int CombatActors;
         public readonly float FreeFieldPower;
+        // AGG-RAID "axis-principle" fix — Attack/Defence axes create demand -> Production
+        // reinforces an already-justified demand; Production must never self-originate a reason to
+        // spend. True only when a live snapshot fact PROVES a military witness exists: a known
+        // neutral Raid target (Aggression) or an asset threat at/above the shared reserved
+        // threatSeverityTrigger (the Defence seam, kept per the AGG-RAID Defence cleanup). Need is
+        // still computed above for its own sake, but ForceGrowthValue must not scale by it unless
+        // this is true.
+        public readonly bool MilitaryWitnessed;
 
         public bool HasAntiAir  => Coverage.Has(IntendedRole.AntiAir);
         public bool HasAntiArmor => Coverage.Has(IntendedRole.AntiArmor);
@@ -142,7 +154,8 @@ namespace Game.Ai.V2
         public bool HasSupport   => Coverage.Has(IntendedRole.Support);
 
         public BaselineForceReadiness(float need, bool hasScout, bool hasFieldBody, bool hasHero,
-            bool hasAir, RoleCoverage coverage, int combatActors, float freeFieldPower)
+            bool hasAir, RoleCoverage coverage, int combatActors, float freeFieldPower,
+            bool militaryWitnessed = false)
         {
             Need = need;
             HasScout = hasScout;
@@ -152,6 +165,7 @@ namespace Game.Ai.V2
             Coverage = coverage;
             CombatActors = combatActors;
             FreeFieldPower = freeFieldPower;
+            MilitaryWitnessed = militaryWitnessed;
         }
 
         public static BaselineForceReadiness Evaluate(WorldSnapshot snap, CapabilityInventory inv)
@@ -239,8 +253,19 @@ namespace Game.Ai.V2
                         + AiConfigV2.baselineReadinessActorGapWeight * actorGap
                         + AiConfigV2.baselineReadinessCoverGapWeight * coverGap;
             float need = Mathf.Clamp01(raw) * Mathf.Lerp(1f, AiConfigV2.baselineReadinessSecureDamp, eco);
+
+            // AGG-RAID "axis-principle" fix — a real, live military witness: a known neutral Raid
+            // target (Aggression), or an asset threat at/above the shared reserved
+            // threatSeverityTrigger (the Defence seam). Neither requires durable intent state — both
+            // are snapshot facts already computed elsewhere for the same purpose (Aggression
+            // objective discovery / DemandLayer.Economy's own threat-severity gate).
+            bool militaryWitnessed =
+                (snap.Known?.NeutralSightings != null && snap.Known.NeutralSightings.Count > 0)
+                || (snap.Threat?.Threats != null && snap.Threat.Threats
+                    .Any(t => t != null && t.Severity >= AiConfigV2.threatSeverityTrigger));
+
             return new BaselineForceReadiness(need, hasScout, hasFieldBody, hasHero, hasAir,
-                coverage, combatActors, freeFieldPower);
+                coverage, combatActors, freeFieldPower, militaryWitnessed);
         }
     }
 
@@ -709,6 +734,12 @@ namespace Game.Ai.V2
             BaselineForceReadiness baseline)
         {
             if (cap != CapabilityKind.FieldCombatPower && cap != CapabilityKind.Hero)
+                return 0f;
+            // AGG-RAID "axis-principle" fix — Attack/Defence axes create demand; Production
+            // reinforces an already-justified demand. Without a live military witness (see
+            // BaselineForceReadiness.MilitaryWitnessed), standing-force Need must not self-originate
+            // a reason to build combat mass with no Raid/Defence/other military witness at all.
+            if (!baseline.MilitaryWitnessed)
                 return 0f;
             float marginal = SurplusCombatReadinessUtility(plan);
             if (marginal <= 0f)
