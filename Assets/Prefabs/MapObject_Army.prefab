@@ -31,6 +31,7 @@ Transform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 300011}
+  - {fileID: 300021}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &300002
@@ -43,10 +44,16 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9c0d1b988a8f435bba1f9bba9250091b, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.MapObjectVisual
-  innerCircle: {fileID: 300012}
-  objectImage: {fileID: 300022}
+  innerCircle: {fileID: 0}
+  objectImage: {fileID: 300012}
+  factionAccent: {fileID: 300022}
+  auxiliaryRenderers: []
+  tintInnerCircle: 0
+  clearFactionAccentOnSetIcon: 1
+  hitRendererOverride: {fileID: 300012}
+  clickRadiusFactor: 0.7
 --- !u!1 &300010
 GameObject:
   m_ObjectHideFlags: 0
@@ -58,7 +65,7 @@ GameObject:
   - component: {fileID: 300011}
   - component: {fileID: 300012}
   m_Layer: 0
-  m_Name: Inner_Circle
+  m_Name: Base
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -74,10 +81,9 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0.6427876, y: 0, z: 0, w: 0.7660445}
   m_LocalPosition: {x: 0, y: 0.1, z: 0}
-  m_LocalScale: {x: 3.9, y: 3.9, z: 1}
+  m_LocalScale: {x: 0.234, y: 0.234, z: 1}
   m_ConstrainProportionsScale: 0
-  m_Children:
-  - {fileID: 300021}
+  m_Children: []
   m_Father: {fileID: 300001}
   m_LocalEulerAnglesHint: {x: 80, y: 0, z: 0}
 --- !u!212 &300012
@@ -127,9 +133,9 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 2
+  m_SortingOrder: 10
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 21300000, guid: 2b3d11e65d754169a06a83a568c8399d, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
@@ -151,7 +157,7 @@ GameObject:
   - component: {fileID: 300021}
   - component: {fileID: 300022}
   m_Layer: 0
-  m_Name: Object_Image
+  m_Name: FactionAccent
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -165,13 +171,13 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 300020}
   serializedVersion: 2
-  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: -0.002, z: -0}
-  m_LocalScale: {x: 0.015, y: 0.015, z: 1}
+  m_LocalRotation: {x: 0.6427876, y: 0, z: 0, w: 0.7660445}
+  m_LocalPosition: {x: 0, y: 0.1, z: 0}
+  m_LocalScale: {x: 0.234, y: 0.234, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 300011}
-  m_LocalEulerAnglesHint: {x: 90, y: 0, z: 0}
+  m_Father: {fileID: 300001}
+  m_LocalEulerAnglesHint: {x: 80, y: 0, z: 0}
 --- !u!212 &300022
 SpriteRenderer:
   serializedVersion: 3
@@ -219,9 +225,9 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 3
+  m_SortingOrder: 9
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 21300000, guid: 2073e2d5ba390b0409dbcb0ba48612b7, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 98ceec58c5c74967a2121ff64d3947a2, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
