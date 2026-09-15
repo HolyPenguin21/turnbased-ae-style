@@ -295,22 +295,22 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.MapFlagAnimator
   targetRenderer: {fileID: 300042}
   frames:
-  - {fileID: 21300000, guid: 30c3fa4e70c84d2399cd59df053e05a3, type: 3}
-  - {fileID: 21300000, guid: 40c4fa4e70c84d2399cd59df053e05a4, type: 3}
-  - {fileID: 21300000, guid: 50c5fa4e70c84d2399cd59df053e05a5, type: 3}
-  - {fileID: 21300000, guid: 70c7fa4e70c84d2399cd59df053e05a7, type: 3}
-  - {fileID: 21300000, guid: 80c8fa4e70c84d2399cd59df053e05a8, type: 3}
-  - {fileID: 21300000, guid: 91d9fa4e70c84d2399cd59df053e05b9, type: 3}
-  - {fileID: 21300000, guid: a2eafa4e70c84d2399cd59df053e05ca, type: 3}
+  - {fileID: 21300000, guid: 2cd6c53b558a94542b4e4d21436a92d5, type: 3}
+  - {fileID: 21300000, guid: ecb1e67a0197ebb40b9604f498a328c9, type: 3}
+  - {fileID: 21300000, guid: e939db7999e88384489b4c37c53c08ba, type: 3}
+  - {fileID: 21300000, guid: 20d47d5b914795b469b360ababc6ce2d, type: 3}
+  - {fileID: 21300000, guid: 6a7b3a4c08aa5024e8feb00266442310, type: 3}
+  - {fileID: 21300000, guid: 79db949b1cf889341b283c17f38c160f, type: 3}
+  - {fileID: 21300000, guid: d07434aa866f1124f8b8d69527df06dc, type: 3}
   logoRenderer: {fileID: 300082}
   logoFrames:
-  - {fileID: 21300000, guid: 033a6cf9fcc292ce384808368c740acd, type: 3}
-  - {fileID: 21300000, guid: 23abe34957dec72ba4a32f86154d82af, type: 3}
-  - {fileID: 21300000, guid: 530ac5fdfc64c5aca0e791c4464c2c01, type: 3}
-  - {fileID: 21300000, guid: 050a5750256af7dbebf9c640db0fa8e0, type: 3}
-  - {fileID: 21300000, guid: f1b6f96f5bdfe024bd10c7d10ed09f5a, type: 3}
-  - {fileID: 21300000, guid: e6cacd04a426b8b07a777d96f5886381, type: 3}
-  - {fileID: 21300000, guid: 1634c32fd73afd023f95a9d6f9e577b3, type: 3}
+  - {fileID: 21300000, guid: 0cca0a00c957c5f4ba4a68bd677cf746, type: 3}
+  - {fileID: 21300000, guid: a40b932973e0e4149a4ef77087dbc570, type: 3}
+  - {fileID: 21300000, guid: b6237d1f889f5c340a84d320828ae05c, type: 3}
+  - {fileID: 21300000, guid: 7e5041bc6431fa545a0f500fecf89a5a, type: 3}
+  - {fileID: 21300000, guid: 4ff242dd3b271b443bd5ff9f16b30af4, type: 3}
+  - {fileID: 21300000, guid: cdd02fb8ca0e5014888d434b578fc37d, type: 3}
+  - {fileID: 21300000, guid: eed33d25c58d6fb4980313a0ef8e7a18, type: 3}
   framesPerSecond: 3.5
   randomizePhase: 1
 --- !u!1 &300050
