@@ -159,7 +159,7 @@ namespace Game.EditorTests
 
             List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
 
-            Assert.That(active, Does.Not.Contain(intent));
+            Assert.That(active, Has.No.Member(intent));
             Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _), Is.False);
         }
 
