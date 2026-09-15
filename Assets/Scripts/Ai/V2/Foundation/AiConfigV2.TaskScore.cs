@@ -35,6 +35,15 @@ namespace Game.Ai.V2
         public const float taskScoreThreatRiskMax = 8f;
         public const float taskScoreDetectionRiskMax = 8f;
 
+        // Phase-A/Phase-B Play-vs-Hold urgency is lifecycle policy, not an intrinsic TaskScore slot,
+        // but migrated world-map demands feed it with TaskScore.Value. Keep one shared conversion
+        // band for every migrated world family instead of resurrecting Recon/Raid/Economy-specific
+        // multipliers. The legacy urgency band was 25..60; the already-established common migration
+        // bridge maps the old 60-point Economy deficit term to canonical 12 (x0.2), hence 5..12.
+        // Development remains on its pre-migration 25..60 band until that non-world family migrates.
+        public const float taskScoreUrgencyRampLo = 5f;
+        public const float taskScoreUrgencyRampHi = 12f;
+
         // Economy actor-loan policy consumes a migrated world-task value, so its policy offsets
         // must live on the same scale instead of reusing the retired Economy site score directly.
         // The old extraction score's dominant deficit term topped out at 60, while the canonical
