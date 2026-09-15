@@ -442,6 +442,28 @@ namespace Game.Ai.V2
                         continue;
                     }
 
+                    // A SupportReturn already satisfied in the fresh snapshot is a continuity fact,
+                    // not a provisioning failure. Resolve it here through the same canonical
+                    // transition Execution uses on physical arrival. Otherwise ProvisionReturn's
+                    // generic TargetSatisfied bypasses Raid phase payload and ReconcileOutcome can
+                    // retire the whole durable campaign instead of only releasing the support.
+                    if (ri.Phase == RaidMissionPhase.SupportReturn
+                        && ri.PrimaryArmyId.HasValue && ri.SupportArmyId.HasValue
+                        && ri.SupportReturnHex.HasValue)
+                    {
+                        ArmySnapshot returningSupport = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                            && a.ArmyId == ri.SupportArmyId.Value);
+                        if (returningSupport != null
+                            && returningSupport.Hex.Equals(ri.SupportReturnHex.Value))
+                        {
+                            int returnedSupportId = returningSupport.ArmyId;
+                            CompleteRaidSupportReturn(player, snap, ri.PrimaryArmyId.Value,
+                                $"support #{returnedSupportId} already home during reconciliation");
+                            intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
+                            intent.StallTurns = 0;
+                        }
+                    }
+
                     // §5/§SupportReturn phase machine. Return and SupportReturn never consult target
                     // validity (their objective is a base, not the Raid target); every other phase
                     // keeps the existing fog!=death rule.
