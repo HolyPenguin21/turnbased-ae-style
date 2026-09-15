@@ -237,7 +237,7 @@ namespace Game.Ai.V2
                     return new List<DemandCandidate>();
                 MaterializationPlan upgrade = candidates[0].plan;
                 upgrade.Score = demand.DevOpportunity.Ev;
-                float decision = upgrade.Score + UrgencyBonus(demand.Value);
+                float decision = upgrade.Score + DemandUrgencyPolicy.Bonus(demand);
                 return new List<DemandCandidate>
                 {
                     new DemandCandidate(upgrade, 0f, upgrade.Score, 0f, decision),
@@ -281,10 +281,9 @@ namespace Game.Ai.V2
             }
 
             // AI-MGR-01 P0 review-r3 — DecisionScore = Play - Hold + urgency, computed ONCE here.
-            // World-map demands use their canonical TaskScore-scale urgency band; Development keeps
-            // the legacy band until its own value path migrates. Cross-demand arbitration still
-            // ranks purely on DecisionScore and never re-applies demand.Value.
-            float urgency = UrgencyBonus(demand);
+            // DemandUrgencyPolicy is the single scale adapter: migrated world tasks and legacy
+            // Development retain their own numeric bands without this layer knowing either one.
+            float urgency = DemandUrgencyPolicy.Bonus(demand);
             float Decide(MaterializationPlan p) =>
                 p.Score - (p.UseBreakdown?.HoldValue ?? 0f)
                 + urgency * GenerationChanceForDecision(p);
@@ -424,7 +423,7 @@ namespace Game.Ai.V2
             {
                 AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
                 float urgency = d != null && CanDeliverDemandOperationally(p, d, snap, player, ctx)
-                    ? UrgencyBonus(d) : 0f;
+                    ? DemandUrgencyPolicy.Bonus(d) : 0f;
                 return p.Score + urgency * GenerationChanceForDecision(p);
             }
 
@@ -509,34 +508,8 @@ namespace Game.Ai.V2
         private static float ResourceCostSum(ResourceCost c) => c == null
             ? 0f : c.human + c.energy + c.materials + c.tech;
 
-        // AI-MGR-01 P0.2 review-r2 — urgency enters the Play-vs-Hold equation (not a hard switch):
-        // a demand's Value ramps a bonus added to every candidate's net decision value, so a real
-        // threat / raid gap keeps materialising even against a card with a high HoldValue, while a
-        // soft baseline demand adds ~nothing and can genuinely lose to Hold.
-        // World-map task families now share TaskScore's 5..12 policy band. Development is explicitly
-        // not migrated yet (AxisDemand's contract), so it continues to use the legacy 25..60 band.
         private static float GenerationChanceForDecision(MaterializationPlan p) =>
             p?.Generation != null ? Mathf.Clamp01(p.Generation.SuccessChance) : 1f;
-
-        private static float UrgencyBonus(AxisDemand demand)
-        {
-            if (demand == null)
-                return 0f;
-            if (demand.RequestingAxis == DesireAxis.Development)
-                return UrgencyBonus(demand.Value);
-            float t = Mathf.Clamp01((demand.Value - AiConfigV2.taskScoreUrgencyRampLo)
-                / Mathf.Max(0.01f, AiConfigV2.taskScoreUrgencyRampHi - AiConfigV2.taskScoreUrgencyRampLo));
-            return t * AiConfigV2.stratHoldUrgencyMax;
-        }
-
-        // Legacy/non-world urgency conversion retained for Development/CardUpgrade until that value
-        // family migrates to TaskScore. Do not use this overload for migrated world-map demands.
-        private static float UrgencyBonus(float demandValue)
-        {
-            float t = Mathf.Clamp01((demandValue - AiConfigV2.stratHoldUrgencyRampLo)
-                / Mathf.Max(0.01f, AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
-            return t * AiConfigV2.stratHoldUrgencyMax;
-        }
 
         // AI-MGR-01 — Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
         // Card x IntendedRole candidate set and returns the best NetScore (play value minus the
