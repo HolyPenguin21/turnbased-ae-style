@@ -20,23 +20,28 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path("Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs")
           text = path.read_text(encoding="utf-8")
-          old = """            if (mover != null && mover.IsStructuralRaidActor
-              && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
-          """
-          new = """            if (mover != null && mover.IsStructuralRaidActor
-              && mover.ReachableOwnBaseHexes.Count > 0
-              && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
-          """
-          count = text.count(old)
-          if count == 0 and new in text:
+          already = "&& mover.ReachableOwnBaseHexes.Count > 0" in text
+          pattern = re.compile(r"(?m)^(\s*)&& !mover\.ReachableOwnBaseHexes\.Contains\(hex\.Value\)\)$")
+          matches = list(pattern.finditer(text))
+          if already:
+              if len(matches) != 1:
+                  raise SystemExit(f"Patch marker exists but validator match count is {len(matches)}")
               print("Patch already applied; nothing to do.")
-          elif count != 1:
-              raise SystemExit(f"Expected exactly one validator match, found {count}")
           else:
-              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+              if len(matches) != 1:
+                  raise SystemExit(f"Expected exactly one validator match, found {len(matches)}")
+              match = matches[0]
+              indent = match.group(1)
+              replacement = (
+                  indent + "&& mover.ReachableOwnBaseHexes.Count > 0\n"
+                  + indent + "&& !mover.ReachableOwnBaseHexes.Contains(hex.Value))"
+              )
+              text = text[:match.start()] + replacement + text[match.end():]
+              path.write_text(text, encoding="utf-8")
           PY
       - name: Verify diff is scoped
         shell: bash
