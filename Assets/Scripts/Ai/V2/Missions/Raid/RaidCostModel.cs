@@ -4,9 +4,10 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Shared physical cost estimator for Raid. If assembly already selected a primary mover, every
-    // cost/distance fact is derived from that exact actor; otherwise one deterministic fallback actor
-    // is selected and used for all dimensions (never AP from one army, distance from another).
+    // Shared physical cost estimator for Raid. If assembly/durable intent selected a primary mover,
+    // every cost/distance fact is derived from that exact actor or remains explicitly unknown if the
+    // actor no longer resolves. A deterministic fallback actor is selected only when no actor was
+    // supplied at all (never AP from one army, distance from another).
     public static class RaidCostModel
     {
         public static MissionRequirements Build(WorldSnapshot snap, RaidMissionTarget target,
@@ -23,19 +24,28 @@ namespace Game.Ai.V2
 
             if (snap?.Self?.Armies != null)
             {
-                var ready = snap.Self.Armies
-                    .Where(a => a != null && !a.IsPrison && !a.IsAir && !a.IsGarrison && !a.IsSoloRecce
-                                && a.MemberCount > 0 && a.CurrentMovement > 0)
-                    .ToList();
-                ArmySnapshot mover = selectedMoverArmyId.HasValue
-                    ? ready.FirstOrDefault(a => a.ArmyId == selectedMoverArmyId.Value)
-                    : null;
-                if (mover == null)
-                    mover = ready
+                ArmySnapshot mover;
+                if (selectedMoverArmyId.HasValue)
+                {
+                    // Preserve actor identity. Do not silently price a durable/preferred actor's
+                    // mission from some other ready army merely because the preferred actor has no
+                    // movement left this turn.
+                    mover = snap.Self.Armies.FirstOrDefault(a =>
+                        a != null && a.ArmyId == selectedMoverArmyId.Value
+                        && !a.IsPrison && !a.IsAir && !a.IsGarrison && !a.IsSoloRecce
+                        && a.MemberCount > 0);
+                }
+                else
+                {
+                    mover = snap.Self.Armies
+                        .Where(a => a != null && !a.IsPrison && !a.IsAir && !a.IsGarrison && !a.IsSoloRecce
+                                    && a.MemberCount > 0 && a.CurrentMovement > 0)
                         .OrderBy(a => HexGridMath.Distance(a.Hex, destination))
                         .ThenBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
                         .ThenBy(a => a.ArmyId)
                         .FirstOrDefault();
+                }
+
                 if (mover != null)
                 {
                     moverKnown = true;
