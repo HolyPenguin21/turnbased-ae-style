@@ -1127,6 +1127,8 @@ namespace Game.Ai.V2
             }
         }
 
+        // AI-MGR §11 — classification is separate from utility. This helper is used only for the
+        // "support hero" hold heuristic, never added directly to score.
         private static bool PlanHeroIsSupport(MaterializationPlan plan)
         {
             CardDefinition def = PlanBaseDef(plan);
@@ -1333,7 +1335,6 @@ namespace Game.Ai.V2
             if (hero) return inv.AvailableHeroes <= 0 ? AiConfigV2.surplusScarcityMed : AiConfigV2.surplusScarcityLow;
             return AiConfigV2.surplusScarcityLow;
         }
-
 
         // Phase-A opportunity cost of spending this exact card body off its best use.
         internal static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
@@ -1589,7 +1590,7 @@ namespace Game.Ai.V2
         private static float BaseCardMarginalGain(ResourceBundle yield, CardDefinition definition,
             ResourceType type)
         {
-            if (yield == null || definition?.grantedAbilities == null
+            if (definition?.grantedAbilities == null
                 || !definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type)))
                 return 0f;
             return Mathf.Max(0f, Mathf.Min(1f, yield.Get(type)));
