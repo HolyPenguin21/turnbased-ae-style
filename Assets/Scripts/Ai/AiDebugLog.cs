@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using UnityEngine;
@@ -23,6 +24,15 @@ namespace Game.Ai
         // open/close overhead of AppendAllText.
         private static StreamWriter _writer;
 
+        // WriteDeduped support — V2's "recompute everything each cycle" architecture (see
+        // AiStrategyV2Pipeline.cs header) re-derives the same objectives/commitments/missions many
+        // times per turn, and most re-derivations conclude exactly what the previous one did. Call
+        // sites that log a per-item, per-cycle status line (an objective ACCEPT, a commitment CLAIM,
+        // an allocator pool dump, ...) use WriteDeduped instead of Write so an unchanged line prints
+        // once and only re-prints when the text actually differs — the raw trace still reflects
+        // every real change, it just stops repeating the same fact turn-cycle after turn-cycle.
+        private static readonly Dictionary<string, string> _dedupLastByKey = new Dictionary<string, string>();
+
         // Full candidate/allocation/snapshot diagnostics are useful while tuning one subsystem,
         // but make the normal whole-game trace hard to read. This is the single verbosity owner
         // for both V1 and V2 logging; decision, action, warning and error lines still use Write.
@@ -40,6 +50,7 @@ namespace Game.Ai
             // Play sessions in the same process — close whatever the previous session left open
             // first, or re-opening the same path below can fail while the old handle lingers.
             CloseSession();
+            _dedupLastByKey.Clear();
             try
             {
                 // Application.dataPath is "<project>/Assets" in the Editor, "<build>_Data" in a
@@ -92,6 +103,22 @@ namespace Game.Ai
         {
             if (!VerboseEnabled)
                 return;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        // dedupKey identifies WHICH recurring thing this line is about (e.g. a target id, an actor
+        // id, an allocator pass name) — distinct keys at the same call site are tracked and printed
+        // independently. Only a byte-for-byte-identical repeat of the previous message for that key
+        // is suppressed, so any real change (a number moving, a decision flipping) still prints.
+        public static void WriteDeduped(string dedupKey, string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            string fullKey = $"{callerFile}:{callerLine}|{dedupKey}";
+            if (_dedupLastByKey.TryGetValue(fullKey, out string last) && last == message)
+                return;
+            _dedupLastByKey[fullKey] = message;
             WriteCore(message, callerFile, callerMember, callerLine);
         }
 

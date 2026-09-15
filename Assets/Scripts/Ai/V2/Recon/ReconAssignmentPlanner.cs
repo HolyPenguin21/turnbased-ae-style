@@ -607,7 +607,8 @@ namespace Game.Ai.V2
             }
 
             if (open.Count > 0)
-                AiDebugLog.Write($"[AI][V2][Recon][Assignment] assignFunded — {open.Count} open, assigned ["
+                AiDebugLog.WriteDeduped("batch",
+                    $"[AI][V2][Recon][Assignment] assignFunded — {open.Count} open, assigned ["
                     + string.Join(" ", result.Assigned.Select(kv =>
                         $"{kv.Key}->{kv.Value.ExecutorKind}#{kv.Value.ActorKey}@({kv.Value.ExecutionHex.Q},{kv.Value.ExecutionHex.R})")) + "]"
                     + (result.Rejected.Count > 0 ? $" rejected [{string.Join(" ", result.Rejected.Select(kv => $"{kv.Key}:{kv.Value}"))}]" : ""));

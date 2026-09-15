@@ -95,7 +95,8 @@ namespace Game.Ai.V2
                         RaidCandidate? sup = ReinforcementCandidate(snap, intent);
                         if (sup.HasValue) incumbents.Add(sup.Value);
                         else
-                            AiDebugLog.Write($"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
+                            AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                                $"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
                                 + $"#{intent.Raid.PrimaryArmyId} waits in place; no support army assigned yet "
                                 + "(Aggression demand owns the request)");
                         continue;
@@ -160,18 +161,23 @@ namespace Game.Ai.V2
                     && GroundCombatAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
                     && eligible.Count == 0)
                 {
-                    AiDebugLog.Write($"[AI][V2]   mission suppress — {StableMissionKey.For(p)} "
+                    string suppressKey = StableMissionKey.For(p).ToString();
+                    AiDebugLog.WriteDeduped(suppressKey,
+                        $"[AI][V2]   mission suppress — {suppressKey} "
                         + "reason=no_ready_raid_actor_after_phaseA");
                     continue;
                 }
 
                 proposals.Add(p);
-                AiDebugLog.Write($"[AI][V2]   raid mission — PROPOSE {StableMissionKey.For(p)}: {p.Explain}; "
+                string missionKey = StableMissionKey.For(p).ToString();
+                AiDebugLog.WriteDeduped(missionKey,
+                    $"[AI][V2]   raid mission — PROPOSE {missionKey}: {p.Explain}; "
                     + $"tier {p.DurableFundingTier}, ap {F(p.Requirements?.ApMinimum ?? 0f)}..{F(p.Requirements?.ApMaximum ?? 0f)}, "
                     + $"readyActors=[{GroundCombatAdmissionRegistry.EligibleIds(p)}]");
             }
             if (proposals.Count == 0)
-                AiDebugLog.Write($"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
+                AiDebugLog.WriteDeduped("none",
+                    $"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
             return proposals;
         }
 

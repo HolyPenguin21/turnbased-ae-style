@@ -89,12 +89,14 @@ namespace Game.Ai.V2
                     if (RaidActorStillValid(actorId, snap, out string reason))
                     {
                         c.Claim(actorId);
-                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
+                        AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
+                            $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
                             + "reason=actor_still_matches_raid_provisioning_gate");
                     }
                     else
                     {
-                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=RELEASE intent={i.IntentKey} actor={actorId} "
+                        AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
+                            $"[AI][V2][Commitment][Raid] decision=RELEASE intent={i.IntentKey} actor={actorId} "
                             + $"reason={reason}");
                     }
                     continue;

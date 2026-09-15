@@ -153,7 +153,8 @@ namespace Game.Ai.V2
                     : obj.NeedsCombatPower ? "assemblability"
                     : obj.NeedsHero ? "hero_availability"
                     : "none";
-                AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=ACCEPT target={obj.Target.DiagnosticLabel} "
+                AiDebugLog.WriteDeduped(obj.Target.DiagnosticLabel,
+                    $"[AI][V2][AggressionObjective] decision=ACCEPT target={obj.Target.DiagnosticLabel} "
                     + $"hex=({obj.LastKnownHex.Q},{obj.LastKnownHex.R}) base={F(obj.BaseValue)} "
                     + $"readyWin={F(obj.ReadyWinChance)} asmWin={F(obj.AssemblableWinChance)} "
                     + $"cover={(obj.CanCoverAllDefenders ? 1 : 0)} gate={(obj.GatePassed ? 1 : 0)} "

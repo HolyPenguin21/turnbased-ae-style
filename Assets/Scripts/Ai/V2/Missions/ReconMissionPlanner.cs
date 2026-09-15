@@ -84,7 +84,8 @@ namespace Game.Ai.V2
                     if (c.HasValue)
                         incumbents.Add(c.Value);
                     else
-                        AiDebugLog.Write($"[AI][V2]   mission — intent {intent.IntentKey} not materialisable this turn");
+                        AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                            $"[AI][V2]   mission — intent {intent.IntentKey} not materialisable this turn");
                 }
 
             var incumbentKeys = new HashSet<MissionIntentKey>();

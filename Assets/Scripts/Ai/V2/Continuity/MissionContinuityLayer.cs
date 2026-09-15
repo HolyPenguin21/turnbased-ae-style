@@ -1118,7 +1118,8 @@ namespace Game.Ai.V2
                     continue;
                 if (!byKey.TryGetValue(intent.IntentKey, out MissionProposal p))
                 {
-                    AiDebugLog.Write($"[AI][V2] continuity — WARN {intent.IntentKey} ({intent.Funding}) "
+                    AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                        $"[AI][V2] continuity — WARN {intent.IntentKey} ({intent.Funding}) "
                         + "not materialised this turn; no funding bound");
                     continue;
                 }

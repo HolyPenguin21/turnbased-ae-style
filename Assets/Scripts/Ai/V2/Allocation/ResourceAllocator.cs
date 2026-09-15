@@ -1245,7 +1245,8 @@ namespace Game.Ai.V2
         {
             if (!AiDebugLog.VerboseEnabled)
             {
-                AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — "
+                AiDebugLog.WriteDeduped($"p{a.PassNumber}",
+                    $"[AI][V2] allocator p{a.PassNumber} — "
                     + $"pool {LogNum(a.InitialPool.Ap)}, locked {LogNum(a.LockedClaim.Ap)}, "
                     + $"funded {a.Funded.Count} ({a.Funded.Count(f => f.IsCommitment)} commit), "
                     + $"deferred {a.Deferred.Count}, unused {LogNum(a.Unused.Ap)}, "
