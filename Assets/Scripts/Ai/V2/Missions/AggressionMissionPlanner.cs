@@ -277,7 +277,7 @@ namespace Game.Ai.V2
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
-            int? costedMover = live.Feasible && live.BaseArmyId > 0
+            int? costedMover = live.Feasible
                 ? live.BaseArmyId : (int?)null;
             if (live.Feasible)
             {
