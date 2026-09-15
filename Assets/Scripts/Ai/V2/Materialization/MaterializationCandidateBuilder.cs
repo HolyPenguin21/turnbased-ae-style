@@ -281,10 +281,10 @@ namespace Game.Ai.V2
             }
 
             // AI-MGR-01 P0 review-r3 — DecisionScore = Play - Hold + urgency, computed ONCE here.
-            // Urgency (a function of demand.Value) is folded in so a real threat lifts every net
-            // value; the cross-demand arbitration in StrategicManager ranks purely on DecisionScore
-            // and never re-applies demand.Value or re-reads the raw play score.
-            float urgency = UrgencyBonus(demand.Value);
+            // World-map demands use their canonical TaskScore-scale urgency band; Development keeps
+            // the legacy band until its own value path migrates. Cross-demand arbitration still
+            // ranks purely on DecisionScore and never re-applies demand.Value.
+            float urgency = UrgencyBonus(demand);
             float Decide(MaterializationPlan p) =>
                 p.Score - (p.UseBreakdown?.HoldValue ?? 0f)
                 + urgency * GenerationChanceForDecision(p);
@@ -415,16 +415,16 @@ namespace Game.Ai.V2
 
             // final closure follow-up §P1 — GLOBAL highest-score arbitration, no residual bucket
             // ordering. Each candidate's Phase-B decision score is its NetScore plus the urgency of
-            // the unresolved demand it would OPERATIONALLY deliver (the same UrgencyBonus ramp Phase
-            // A folds into its DecisionScore). A residual candidate no longer skips ahead of a
-            // higher-scored normal one — it just carries the weight its demand.Value earns. The
-            // returned utility IS this decision score, so StrategicManager compares it directly with
-            // the non-combat lane and never re-adds urgency.
+            // the unresolved demand it would OPERATIONALLY deliver (the same urgency policy Phase A
+            // folds into its DecisionScore). A residual candidate no longer skips ahead of a
+            // higher-scored normal one — it just carries the weight its demand earns. The returned
+            // utility IS this decision score, so StrategicManager compares it directly with the
+            // non-combat lane and never re-adds urgency.
             float DecisionScore(MaterializationPlan p)
             {
                 AxisDemand d = reservation?.BestUnresolvedDemandFor(p);
                 float urgency = d != null && CanDeliverDemandOperationally(p, d, snap, player, ctx)
-                    ? UrgencyBonus(d.Value) : 0f;
+                    ? UrgencyBonus(d) : 0f;
                 return p.Score + urgency * GenerationChanceForDecision(p);
             }
 
@@ -513,12 +513,24 @@ namespace Game.Ai.V2
         // a demand's Value ramps a bonus added to every candidate's net decision value, so a real
         // threat / raid gap keeps materialising even against a card with a high HoldValue, while a
         // soft baseline demand adds ~nothing and can genuinely lose to Hold.
-        // Shared Play-vs-Hold / Phase-B urgency ramp off a demand's Value. Used by Phase A's
-        // DecisionScore and (final closure follow-up §P1) by RankedSurplus's global decision score so
-        // an operational residual competes on score instead of a hard boolean priority.
+        // World-map task families now share TaskScore's 5..12 policy band. Development is explicitly
+        // not migrated yet (AxisDemand's contract), so it continues to use the legacy 25..60 band.
         private static float GenerationChanceForDecision(MaterializationPlan p) =>
             p?.Generation != null ? Mathf.Clamp01(p.Generation.SuccessChance) : 1f;
 
+        private static float UrgencyBonus(AxisDemand demand)
+        {
+            if (demand == null)
+                return 0f;
+            if (demand.RequestingAxis == DesireAxis.Development)
+                return UrgencyBonus(demand.Value);
+            float t = Mathf.Clamp01((demand.Value - AiConfigV2.taskScoreUrgencyRampLo)
+                / Mathf.Max(0.01f, AiConfigV2.taskScoreUrgencyRampHi - AiConfigV2.taskScoreUrgencyRampLo));
+            return t * AiConfigV2.stratHoldUrgencyMax;
+        }
+
+        // Legacy/non-world urgency conversion retained for Development/CardUpgrade until that value
+        // family migrates to TaskScore. Do not use this overload for migrated world-map demands.
         private static float UrgencyBonus(float demandValue)
         {
             float t = Mathf.Clamp01((demandValue - AiConfigV2.stratHoldUrgencyRampLo)
@@ -594,4 +606,3 @@ namespace Game.Ai.V2
 
     }
 }
-
