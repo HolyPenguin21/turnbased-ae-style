@@ -283,7 +283,6 @@ namespace Game.Ai.V2
             {
                 target.ReadyWinChance = readyWin;
                 target.CanCoverAllDefenders = live.CoversAllDefenders;
-                target.PrimaryArmyId = costedMover;
             }
 
             MissionRequirements req = RaidCostModel.Build(snap, target, costedMover);
