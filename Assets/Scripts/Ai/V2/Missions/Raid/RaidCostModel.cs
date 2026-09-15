@@ -66,9 +66,11 @@ namespace Game.Ai.V2
                 ApDesired = activationAp,
                 ApMaximum = Mathf.Max(activationAp, AiConfigV2.raidActivationApMax),
                 RequiresArmy = true,
-                RequiresHero = target.DefenderCount > 0 && !target.CanCoverAllDefenders
-                    ? true
-                    : target.DefenderCount > 0,
+                // Hero is a possible way to satisfy a combat-capability shortage, never a Raid
+                // prerequisite. GroundCombatAssemblyPlanner/WorthIt owns whether the concrete roster
+                // can win; AggressionDemandEvaluator raises a Hero demand only when readiness proves
+                // one is actually missing.
+                RequiresHero = false,
                 CombatPowerMinimum = combatMin,
                 CombatPowerDesired = combatDesired,
                 RequiredCombatTraits = TraitPreference.None,
