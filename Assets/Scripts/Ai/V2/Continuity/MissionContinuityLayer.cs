@@ -1083,7 +1083,7 @@ namespace Game.Ai.V2
                 .ThenBy(b => mover == null ? 0
                     : AiV2Util.CeilDiv(HexGridMath.Distance(mover.Hex, b.Hex), moveBudget))
                 .ThenByDescending(b => b.IsStartingCitadel ? 1 : 0)
-                .ThenBy(b => b.Hex.Q).ThenBy(b.Hex.R)
+                .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
                 .Select(b => (HexCoord?)b.Hex)
                 .FirstOrDefault();
         }
