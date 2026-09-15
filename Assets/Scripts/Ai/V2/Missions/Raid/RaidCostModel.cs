@@ -15,9 +15,11 @@ namespace Game.Ai.V2
             float activationAp = AiConfigV2.raidNotionalActivationAp;
             bool moverKnown = false;
             int eta = Mathf.Max(1, target.EstimatedEta);
-            int distance = Mathf.Max(0, target.EstimatedEta);
             HexCoord destination = target.Phase == RaidMissionPhase.Assault
                 ? target.LastKnownHex : target.DestinationHex;
+            // No actor means there is no actor-specific route yet. Keep the physical unit honest:
+            // use the shared nearest-owned-home hex distance as a notional fallback, never ETA turns.
+            int distance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, destination, 0);
 
             if (snap?.Self?.Armies != null)
             {
