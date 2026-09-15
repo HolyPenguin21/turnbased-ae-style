@@ -1,4 +1,5 @@
 using System.Globalization;
+using Game.Economy;
 using Game.HexGrid;
 using UnityEngine;
 
@@ -13,32 +14,24 @@ namespace Game.Ai.V2
     {
         public readonly float EconomicHexBenefit;
         public readonly float Payback;
-
         public readonly float Airfield;
         public readonly float GlobalCardEffect;
-
         public readonly float InfoGain;
         public readonly float Staleness;
         public readonly float StrategicRelevance;
         public readonly float ThreatDirection;
         public readonly float ContactRelevance;
-
         public readonly float FrontProgress;
         public readonly float CorridorAlignment;
         public readonly float OwnTerritoryProximity;
-
         public readonly float TerrainDefense;
-
         public readonly float MilitaryTargetRelevance;
         public readonly float WinChance;
-
         public readonly float CardPrice;
         public readonly float Delivery;
         public readonly float MoverOpportunityCost;
-
         public readonly float HexThreatRisk;
         public readonly float DetectionRisk;
-
         public readonly float ExistingValueLoss;
 
         public TaskScore(
@@ -119,16 +112,36 @@ namespace Game.Ai.V2
             - score.DetectionRisk
             - score.ExistingValueLoss;
 
-        internal static float EconomicHexBenefit(float physicalMarginalValue, float resourcePriority)
+        internal static float ResourcePriority(EconomyResourceStanding standing,
+            float externalStarvationPressure = 0f)
         {
-            float physical = Mathf.Max(0f, physicalMarginalValue);
+            if (standing == null)
+                return Mathf.Clamp01(externalStarvationPressure);
+            float handShortfall = standing.HandResourceNeed <= AiConfigV2.allocatorSliceEpsilon
+                ? 0f
+                : Mathf.Clamp01((standing.HandResourceNeed - standing.SpendableStockpile)
+                    / standing.HandResourceNeed);
+            float operationalShortfall = standing.ReservedOperationalNeed <= AiConfigV2.allocatorSliceEpsilon
+                ? 0f
+                : Mathf.Clamp01((standing.ReservedOperationalNeed - standing.SpendableStockpile)
+                    / standing.ReservedOperationalNeed);
+            return Mathf.Max(standing.DeficitScore, standing.StarvationPressure,
+                Mathf.Clamp01(externalStarvationPressure), handShortfall, operationalShortfall);
+        }
+
+        internal static float EconomicHexBenefit(float marginalGain, float resourcePriority)
+        {
+            float physical = Mathf.Max(0f, marginalGain);
             if (physical <= AiConfigV2.allocatorSliceEpsilon)
                 return 0f;
 
             float physicalContribution = Mathf.Min(
                 AiConfigV2.taskScoreEconomicPhysicalBenefitMax,
                 physical * AiConfigV2.taskScoreEconomicPhysicalBenefitWeight);
-            float deficitContribution = Mathf.Clamp01(resourcePriority)
+            float marginalGainFactor = Mathf.Clamp01(
+                physical / Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
+                    AiConfigV2.taskScoreEconomicDeficitFullGain));
+            float deficitContribution = Mathf.Clamp01(resourcePriority) * marginalGainFactor
                 * AiConfigV2.taskScoreEconomicDeficitBonusMax;
             return physicalContribution + deficitContribution;
         }
@@ -149,6 +162,18 @@ namespace Game.Ai.V2
         internal static float Delivery(float extraApCost, float travelDistance) =>
             Mathf.Max(0f, extraApCost) * AiConfigV2.taskScoreDeliveryApWeight
             + Mathf.Max(0f, travelDistance) * AiConfigV2.taskScoreTravelWeight;
+
+        internal static int NearestOwnedHomeDistance(WorldSnapshot snap, HexCoord target,
+            int fallbackDistance = 0)
+        {
+            int best = int.MaxValue;
+            if (snap?.Self?.BaseHexes != null)
+                foreach (HexCoord home in snap.Self.BaseHexes)
+                    best = Mathf.Min(best, HexGridMath.Distance(home, target));
+            if (snap?.Self != null)
+                best = Mathf.Min(best, HexGridMath.Distance(snap.Self.Citadel, target));
+            return best == int.MaxValue ? Mathf.Max(0, fallbackDistance) : best;
+        }
 
         internal static float OwnTerritoryProximity(float nearestHomeDistance)
         {
