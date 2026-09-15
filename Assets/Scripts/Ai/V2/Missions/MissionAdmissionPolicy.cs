@@ -56,7 +56,7 @@ namespace Game.Ai.V2
         // Recon:
         //   · same FocusHex
         // Raid:
-        //   · same target army
+        //   · same typed Raid target (neutral army id OR guarded-event hex)
         //   · no distinct ready combat-army assignment for the pair
         //
         // Recon deliberately carries NO actor-pair distinctness check here any more — Generic
@@ -72,7 +72,11 @@ namespace Game.Ai.V2
             if (a.Kind == MissionKind.Raid && b.Kind == MissionKind.Raid
                 && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb)
             {
-                if (ra.TargetArmyId == rb.TargetArmyId)
+                // RaidTargetRef is the canonical identity owner. ArmyId 0 is legitimate and an
+                // EventGuard has no army id until Explore spawns it, so collapsing identity back
+                // to TargetArmyId would make every guarded event look like target #0 and would also
+                // collide with a real neutral Army#0.
+                if (ra.Target.HasValue && rb.Target.HasValue && ra.Target.Equals(rb.Target))
                     return true;
                 return !GroundCombatAdmissionRegistry.PairHasDistinctAssignment(a, b);
             }
