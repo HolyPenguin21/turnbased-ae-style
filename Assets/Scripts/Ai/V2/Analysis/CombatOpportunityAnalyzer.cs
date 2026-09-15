@@ -103,8 +103,8 @@ namespace Game.Ai.V2
         public IReadOnlyList<CombatOpportunity> All = System.Array.Empty<CombatOpportunity>();
         public CombatOpportunity Best = CombatOpportunity.None;
         // AGG-RAID §3 — the NEUTRAL view of the same facts. Raid (this task's Aggression lane)
-        // targets only neutral armies; ordinary enemy armies belong to the future Active Defence /
-        // strategic-offensive lanes and must not by themselves create Raid pressure. `All` stays
+        // targets only neutral armies; ordinary enemy armies belong to future Active Defence work
+        // (still within Aggression) and must not by themselves create Raid pressure. `All` stays
         // the complete, unfiltered fact list for every other consumer.
         public IReadOnlyList<CombatOpportunity> NeutralOpportunities =
             System.Array.Empty<CombatOpportunity>();

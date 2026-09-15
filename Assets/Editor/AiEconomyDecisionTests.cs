@@ -2165,7 +2165,7 @@ namespace Game.EditorTests
             Assert.That(AiStrategyV2Scope.Mode,
                 Is.EqualTo(AiStrategyV2Mode.ReconEconomyDevelopment));
             Assert.That(AiStrategyV2Scope.UsesTypedLoop, Is.True);
-            Assert.That(AiStrategyV2Scope.AxisInScope(DesireAxis.Defence), Is.False);
+            Assert.That(AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression), Is.False);
         }
 
         [Test]

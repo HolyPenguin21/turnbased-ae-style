@@ -7,15 +7,12 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  DESIRE EVALUATORS  (Strategy V2 build-order step 3)
         //  One response-curve evaluator per axis; each raw desire is Σ weighted contributions in
-        //  [0..1], normalised to the simplex exactly once in Radar.Normalize. Recon + Aggression
-        //  are the two live axes; Defence/Economy/Development return a flat placeholder until
-        //  their own evaluators land in later build-order steps.
+        //  [0..1], normalised to the simplex exactly once in Radar.Normalize. All four axes
+        //  (Recon / Aggression / Economy / Development) have real evaluators.
         // =======================================================================================
 
         // ---- smoothing / placeholders / out-of-simplex scalars ---------------------------
         public const float desireSmoothing = 0.40f;          // weight on the previous smoothed value
-        // (removed) desirePlaceholderInactive — DEF/ECO/DEV raw desire is now honestly 0 until each
-        // axis gets a real evaluator; a placeholder radar weight would mis-scale EffectiveValue.
 
         // Radar model #1a — the radar's ONLY effect on decisions is scaling objective/mission VALUE:
         //   EffectiveValue = BaseValue * (floor + (1-floor) * min(1, weight * axisCount))

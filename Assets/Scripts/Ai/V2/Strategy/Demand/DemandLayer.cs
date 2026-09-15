@@ -34,8 +34,8 @@ namespace Game.Ai.V2
                 demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
             // AGG-RAID Defence cleanup — V2 has no Defence mission, only the two demand stubs that
             // used to live here (DefenceDemands -> GarrisonCombatPower, and the AI-MGR-01
-            // BaselineForceReadiness pull charged to the Defence axis). Both are gone; DesireAxis
-            // .Defence remains a reserved, zero-weight axis for the future Active Defence lane.
+            // BaselineForceReadiness pull charged to the old Defence axis). Both are gone, and the
+            // axis itself was removed — Active Defence, when built, lives inside Aggression.
             if (GenerateAxis(DesireAxis.Economy))
             {
                 var timer = System.Diagnostics.Stopwatch.StartNew();

@@ -9,16 +9,16 @@ namespace Game.Ai.V2
     // feature flags: radar allocation, durable intents, capability demand, mission admission and
     // surplus preparation all consult the same switch.
     //
-    //   Full             — all five desire axes (Recon / Aggression / Defence / Economy / Development).
+    //   Full             — all four desire axes (Recon / Aggression / Economy / Development).
+    //                      Active Defence is not a separate axis — it is folded into Aggression.
     //   ReconOnly        — Recon only. Radar is pinned to RCN:1.
-    //   ReconDevelopment — Recon + Development. Aggression / Defence / Economy demand is dropped.
+    //   ReconDevelopment — Recon + Development. Aggression / Economy demand is dropped.
     //                      StrategicManager Phase A/B, Development generation, attach and draw all
     //                      stay.
     //   ReconAggressionEconomyDevelopment
-    //                    — Recon + Economy + Aggression + Development. Defence is deliberately NOT
-    //                      in this mode (no V2 Defence mission exists), and AllowStrategicPressure
-    //                      stays OFF: turning neutral Raid on must never re-enable the old
-    //                      Citadel-pressure advance.
+    //                    — Recon + Economy + Aggression + Development, i.e. the same axes as Full.
+    //                      AllowStrategicPressure stays OFF: turning neutral Raid on must never
+    //                      re-enable the old Citadel-pressure advance.
     public enum AiStrategyV2Mode
     {
         Full,
@@ -31,9 +31,8 @@ namespace Game.Ai.V2
     public static class AiStrategyV2Scope
     {
         // Focused production bring-up: Recon -> Economy -> Aggression demand -> Development/
-        // Production support. Defence alone is disabled here, so radar, demand, proposals,
-        // continuity and typed admission all observe the same boundary. Phase B and Housekeeping
-        // are unaffected, and AllowStrategicPressure stays OFF for every focus scope.
+        // Production support. Phase B and Housekeeping are unaffected, and AllowStrategicPressure
+        // stays OFF for every focus scope.
         public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconAggressionEconomyDevelopment;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
@@ -49,7 +48,7 @@ namespace Game.Ai.V2
 
         private static readonly DesireAxis[] AllAxes =
         {
-            DesireAxis.Recon, DesireAxis.Aggression, DesireAxis.Defence,
+            DesireAxis.Recon, DesireAxis.Aggression,
             DesireAxis.Economy, DesireAxis.Development,
         };
 
@@ -89,7 +88,8 @@ namespace Game.Ai.V2
 
         // AGG-RAID §2 — the SINGLE mission-kind -> desire-axis mapping table. Intent scope and
         // mission scope both consult it, so a new mission kind can never be admitted by one and
-        // silently dropped by the other. ActiveDefence maps to DesireAxis.Defence when it lands.
+        // silently dropped by the other. Active Defence is folded into Aggression, not a separate
+        // axis.
         internal static DesireAxis AxisOf(MissionKind kind)
         {
             switch (kind)
@@ -180,16 +180,16 @@ namespace Game.Ai.V2
         // hand-management pass, not an operational-mission one (see AllowSurplusPreparation). That
         // is exactly why StrategicPressureAdvance's PressureSpend candidate (an army marching on
         // the enemy Citadel — genuine Aggression, not a card play) could slip through Phase B in a
-        // Recon/Economy focus scope even with Aggression desire at zero and Defence disabled: Phase
-        // B never asked. This is the one Phase B decision that IS an operational-mission choice, so
+        // Recon/Economy focus scope even with Aggression desire at zero: Phase B never asked. This
+        // is the one Phase B decision that IS an operational-mission choice, so
         // it consults scope directly rather than being carried along by the hand-management
         // exemption. TempoCandidateProvider is the only consumer; StrategicPressureAdvance and
         // Execution take the resulting candidate/plan as given and do not re-interpret scope.
         public static bool AllowStrategicPressure => !IsFocusScoped;
 
         // AGG-RAID P1#2 — the mission axes with a live, in-turn-re-admittable durable OPERATION
-        // (Recon/Scout, Aggression/Raid, and — once it exists — Active Defence). Economy and
-        // Development are demand-side axes with their own dedicated re-admission gating
+        // (Recon/Scout, Aggression/Raid — Active Defence included, folded into Aggression).
+        // Economy and Development are demand-side axes with their own dedicated re-admission gating
         // (AiStrategyV2Pipeline.TakeTypedTriggers' dirtyStrategicAxes loop) and are deliberately NOT
         // part of this list. Add a new operational mission axis here ONCE and every consumer below
         // (and every follow-up Consume call site) picks it up automatically.

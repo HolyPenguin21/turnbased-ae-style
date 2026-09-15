@@ -114,9 +114,10 @@ namespace Game.Ai.V2
                 return list;
             }
             // AGG-RAID §4 — Raid targets ONLY known neutral armies. An ordinary enemy army belongs
-            // to the future Active Defence / strategic-offensive lane and must never produce a Raid
-            // objective here. NeutralOpportunities is the analyzer's own filtered view of the same
-            // facts; the raw `All` list stays available to every other consumer.
+            // to future Active Defence work (still within this Aggression axis, not yet built) and
+            // must never produce a Raid objective here. NeutralOpportunities is the analyzer's own
+            // filtered view of the same facts; the raw `All` list stays available to every other
+            // consumer.
             IReadOnlyList<CombatOpportunity> candidates = report?.NeutralOpportunities
                 ?? (IReadOnlyList<CombatOpportunity>)System.Array.Empty<CombatOpportunity>();
             if (candidates.Count == 0)

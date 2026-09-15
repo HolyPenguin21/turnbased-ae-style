@@ -46,7 +46,8 @@ namespace Game.Ai.V2
     //  Normalised: sum of all axes == 1. It is an *allocation vector* — each axis is "what share
     //  of the shared resource pool goes here". Independent [0..1] axes were rejected: every action
     //  draws on the same pool, so unbacked independent desires are a false model.
-    //    Final axes: Recon, Aggression, Defence, Economy, Development.  (DesireAxis enum below.)
+    //    Final axes: Recon, Aggression, Economy, Development.  (DesireAxis enum below.) Active
+    //    Defence is not a separate axis — it is folded into Aggression.
     //    Management is NOT an axis — there is no DesireAxis.Management and no ManagementEvaluator.
     //    Card play + capability preparation is a SERVICE, split across two managers:
     //      · StrategicManager (StrategicManager.cs) — the single owner of V2 Unit/Hero/Recce card
@@ -161,13 +162,13 @@ namespace Game.Ai.V2
 
     // Normalised radar axes. Order is the canonical iteration order for every Dictionary<DesireAxis,*>
     // and every log line below. Management is intentionally absent — see the file header.
-    public enum DesireAxis { Recon, Aggression, Defence, Economy, Development }
+    public enum DesireAxis { Recon, Aggression, Economy, Development }
 
     public static class DesireAxes
     {
         public static readonly DesireAxis[] All =
         {
-            DesireAxis.Recon, DesireAxis.Aggression, DesireAxis.Defence,
+            DesireAxis.Recon, DesireAxis.Aggression,
             DesireAxis.Economy, DesireAxis.Development,
         };
 
@@ -177,7 +178,6 @@ namespace Game.Ai.V2
             {
                 case DesireAxis.Recon: return "RCN";
                 case DesireAxis.Aggression: return "AGG";
-                case DesireAxis.Defence: return "DEF";
                 case DesireAxis.Economy: return "ECO";
                 default: return "DEV";
             }
@@ -196,10 +196,8 @@ namespace Game.Ai.V2
                 case DesireAxis.Aggression:
                     return StrategicInvalidationReason.Contact
                         | StrategicInvalidationReason.Actor
-                        | StrategicInvalidationReason.EventState;
-                case DesireAxis.Defence:
-                    return StrategicInvalidationReason.Threat
-                        | StrategicInvalidationReason.Actor;
+                        | StrategicInvalidationReason.EventState
+                        | StrategicInvalidationReason.Threat;
                 case DesireAxis.Economy:
                     // Economy feasibility depends on where a Hero-led builder is NOW, not only
                     // on newly discovered resources. A Recon step can deliver that builder onto
@@ -742,9 +740,9 @@ namespace Game.Ai.V2
                     // mission axis, not only Recon. Without Aggression here, destroying a neutral
                     // published a Contact invalidation that nothing consumed, so the bounded loop
                     // never got a same-turn chance to refresh the objective list, complete the old
-                    // target, select the next one, or start a Return mission. Defence is deliberately
-                    // out of scope for this task (no V2 Defence mission exists yet — it drops out of
-                    // AiStrategyV2Scope.OperationalInvalidationMask automatically once it's added).
+                    // target, select the next one, or start a Return mission. Active Defence is
+                    // folded into Aggression (no separate axis/mission), so this mask needs no
+                    // extra case for it.
                     StrategicInvalidationReason operationalMask =
                         AiStrategyV2Scope.OperationalInvalidationMask;
                     operationalReasons = pending.Reasons & operationalMask;

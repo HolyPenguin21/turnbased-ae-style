@@ -57,9 +57,8 @@ namespace Game.Ai.V2
     //  same analysis and drifting from it.
     //
     //  Smoothing: symmetric low-pass on Recon + Aggression only (AiConfigV2.desireSmoothing).
-    //  DEF/ECO/DEV placeholders and the two out-of-simplex scalars are unsmoothed — a threat
-    //  scalar that means "existential" must react the turn it becomes true. Asymmetric
-    //  rise/fall handling belongs with the Defence evaluator, a later step.
+    //  ECO/DEV placeholders and the two out-of-simplex scalars are unsmoothed — a threat scalar
+    //  that means "existential" must react the turn it becomes true.
     // ===========================================================================================
 
     internal static class Curves
@@ -192,8 +191,8 @@ namespace Game.Ai.V2
 
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
             // AGG-RAID §3 — Aggression desire is computed ONLY from NEUTRAL targets. An ordinary
-            // enemy army must no longer by itself create Raid pressure; that is the future Active
-            // Defence / strategic-offensive lane's job.
+            // enemy army must no longer by itself create Raid pressure; that is future Active
+            // Defence work within this same Aggression axis, not yet built.
             float opportunity = opp.BestNeutralOpportunity.HasTarget
                 ? opp.BestNeutralOpportunity.OpportunityScore : 0f;
 
@@ -252,10 +251,6 @@ namespace Game.Ai.V2
 
             desires.Raw[DesireAxis.Recon] = recon;
             desires.Raw[DesireAxis.Aggression] = aggression;
-            // AGG-RAID Defence cleanup — the functional Defence demand branch was removed; the axis
-            // is intentionally kept as a reserved seam for a future Active Defence lane, pinned at
-            // zero weight until that lane exists. Economy and Development are real snapshot-pure axes.
-            desires.Raw[DesireAxis.Defence] = 0f;
             desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy);
             desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev);
 
