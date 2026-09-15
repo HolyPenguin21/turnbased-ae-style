@@ -50,21 +50,21 @@ namespace Game.Ai.V2
         //  admission ordering, the resource envelope and the assembly/continuity guards. Cross-lane
         //  ordering stays on BaseValue, AP budget stays on the radar / AxisBudgetLedger.
         // =======================================================================================
-        // A known enemy/neutral army sighting becomes a Raid AggressionObjective only if its
-        // intrinsic strategic merit clears this. Merit is target value + a small closeness term —
-        // NOT feasibility (a target we cannot beat yet still produces an objective so the Demand
-        // layer can ask for the missing combat capability; see spec §11).
-        public const float raidObjectiveMinBaseValue = 8f;
-        // Raid BaseValue = Lerp(min, max, quality); quality blends target value and base-proximity.
+        // A known neutral target becomes a Raid AggressionObjective only if its canonical TaskScore
+        // has some real strategic merit. This threshold is on the unified TaskScore scale (where
+        // MilitaryTargetRelevance tops out at 12), not the retired Raid-local 12..90 Lerp scale.
+        // Feasibility is still NOT part of this discovery gate: an objective may survive so Demand
+        // can ask for the missing combat capability; WorthIt/assembly remain the execution owners.
+        public const float raidObjectiveMinBaseValue = 0.25f;
+        // Legacy lifecycle/continuity constants below are not intrinsic TaskScore transforms.
         public const float raidBaseValueMin = 12f;
         public const float raidBaseValueMax = 90f;
         public const float raidValueWeight = 0.75f;
         public const float raidProximityWeight = 0.25f;
-        public const int raidProximityRampLo = 3;   // target this close to a base -> proximity term 1
-        public const int raidProximityRampHi = 16;  // this far or more -> proximity term 0
-        // LocalAdmissionScore = BaseValue * AggRaidOpportunity sub-driver * a feasibility factor
-        // (Lerp(floor, 1, assemblableWinChance)). Ranks Raid alternatives WITHIN the Aggression lane
-        // only; never re-applies the whole Aggression radar weight (spec §10).
+        public const int raidProximityRampLo = 3;
+        public const int raidProximityRampHi = 16;
+        // Retained for legacy/non-migrated consumers only. Migrated Raid TaskScore admission does
+        // not multiply intrinsic value by a family-specific feasibility factor.
         public const float raidLocalFeasibilityFloor = 0.25f;
         // N — how many Raid alternatives AggressionMissionPlanner hands downstream (beam width).
         // Execution capacity is bounded by real armies / heroes / commitments / resources, NOT a
