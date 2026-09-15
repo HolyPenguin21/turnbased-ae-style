@@ -434,12 +434,19 @@ namespace Game.Ai.V2
 
                     // §5 actor ownership — a LOST PRIMARY ends the operation. Any support is
                     // released with it (ActorCommitments stops claiming the moment the intent dies).
-                    if (ri.OperationStarted && ri.PrimaryArmyId.HasValue
-                        && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value))
+                    // Return is phase-sensitive: once the objective is homeward movement, the same
+                    // live/non-empty ground-container gate used by ProvisionReturn is sufficient.
+                    // Combat phases, including SupportReturn (where primary still holds the target),
+                    // retain the strict structural Raid gate.
+                    bool primaryActorAlive = ri.PrimaryArmyId.HasValue
+                        && (ri.Phase == RaidMissionPhase.Return
+                            ? RaidSupportActorAlive(snap, ri.PrimaryArmyId.Value)
+                            : RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value));
+                    if (ri.OperationStarted && ri.PrimaryArmyId.HasValue && !primaryActorAlive)
                     {
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — primary "
-                            + $"#{ri.PrimaryArmyId.Value} is no longer a usable ground combat army "
+                            + $"#{ri.PrimaryArmyId.Value} is no longer usable for phase {ri.Phase} "
                             + $"(support #{(ri.SupportArmyId.HasValue ? ri.SupportArmyId.Value.ToString() : "none")} released)");
                         continue;
                     }
@@ -791,16 +798,15 @@ namespace Game.Ai.V2
         // =====================================================================================
 
         // Is the durable primary still the kind of army Raid provisioning would accept? Uses the
-        // SAME structural snapshot predicate ActorCommitments applies, so continuity and the
-        // commitment view can never disagree about whether the primary survived.
+        // SAME structural snapshot predicate ActorCommitments applies in combat phases.
         internal static bool RaidPrimaryActorAlive(WorldSnapshot snap, int armyId)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
             return a != null && a.IsStructuralRaidActor;
         }
 
-        // A support actor only has to be a live, mobile, non-air ground container — it is carrying
-        // bodies to the primary, not fighting on its own.
+        // A support/return actor only has to be a live, mobile, non-air ground container — during
+        // these transit legs it is carrying bodies or itself home, not qualifying for fresh combat.
         internal static bool RaidSupportActorAlive(WorldSnapshot snap, int armyId)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
@@ -1793,4 +1799,3 @@ namespace Game.Ai.V2
                     : "?";
     }
 }
-
