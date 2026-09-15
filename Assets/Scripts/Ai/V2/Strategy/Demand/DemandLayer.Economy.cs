@@ -10,10 +10,6 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // EconomyDemands and every Economy-only private helper (AddBaseCandidates, EconomyHeroPrerequisite, HasActiveEconomyBuildIntent, IsActiveBaseCommitment, HasActiveEconomyIntentAtHexOfKind, EconomyBuilderChoice, SelectEconomyBuilder, and the rest of the Economy vertical slice).
-    // File-split (mechanical, no behaviour change) from DemandLayer.cs — see
-    // Docs/ai-v2-file-split-refactor-tasks.md Task 4. Still exactly the DemandLayer
-    // class; only this axis's slice moved to its own file.
     public static partial class DemandLayer
     {
         internal static IEnumerable<AxisDemand> EconomyDemands(WorldSnapshot s, DesireBreakdown b,
@@ -32,55 +28,65 @@ namespace Game.Ai.V2
             int rejectedPayback = 0;
             int rejectedStrategicValue = 0;
             int rejectedDeliveryValue = 0;
+
             foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities
                 ?? System.Array.Empty<EconomyExtractionOpportunity>())
             {
                 if (!standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs))
                     continue;
-                float resourcePriority = EconomyResourcePriority(rs);
                 CardDefinition def = ExtractionDefinition(ctx, site.ResourceType);
                 if (ctx?.GameConfig != null && def == null)
                     continue;
-                float starvation = Mathf.Max(rs.StarvationPressure,
-                    ResourceStarvationRegistry.Pressure(player, site.ResourceType));
-                resourcePriority = Mathf.Max(resourcePriority, starvation);
+
+                float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
+                float resourcePriority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
+
                 float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
-                float preliminaryPayback = EconomyPaybackTurns(
-                    gain, resourceCost, def?.apCost ?? 0f);
-                float preliminaryValue = ScoreEconomySite(
-                    resourcePriority, gain,
-                    site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
-                    0f, 0f, 0f, resourceCost, def?.apCost ?? 0f,
-                    preliminaryPayback);
-                EconomyBuilderChoice builder = SelectEconomyBuilder(
-                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
-                    preliminaryValue, def?.apCost ?? 0f, includeReturn: true);
-                float travel = builder?.Route.TravelCost
-                    ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
-                float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
-                float opportunity = EconomyMissionOpportunityCost(builder, activeIntents);
-                float assignmentAp = builder?.TotalAssignmentApCost ?? (def?.apCost ?? 0f);
-                float payback = EconomyPaybackTurns(gain, resourceCost, assignmentAp);
+                float cardAp = def?.apCost ?? 0f;
+                float payback = EconomyPaybackTurns(gain, resourceCost, cardAp);
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
                 {
                     rejectedPayback++;
                     continue;
                 }
-                float strategicValue = ScoreEconomySite(
-                    resourcePriority, gain,
-                    site.BaseNetworkSynergy, site.NearbyResourceClusterValue,
-                    0f, exposure, 0f, resourceCost, def?.apCost ?? 0f,
-                    preliminaryPayback);
-                float deliveryApCost = Mathf.Max(0f,
-                    assignmentAp - (def?.apCost ?? 0f));
-                float value = strategicValue
-                    - AiConfigV2.economyBuildApPenalty * deliveryApCost
-                    - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travel)
-                    - Mathf.Max(0f, opportunity);
-                if (strategicValue <= AiConfigV2.allocatorSliceEpsilon)
+
+                float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
+                int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
+                var siteOnlyScore = new TaskScore(
+                    economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(gain, resourcePriority),
+                    payback: TaskScoreEvaluator.Payback(payback),
+                    ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                    cardPrice: TaskScoreEvaluator.CardPrice(cardAp, resourceCost),
+                    hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+
+                EconomyBuilderChoice builder = SelectEconomyBuilder(
+                    s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
+                    siteOnlyScore.Value, cardAp, includeReturn: true);
+                float travel = builder?.Route.TravelCost
+                    ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
+                float opportunity = EconomyMissionOpportunityCost(builder, activeIntents);
+                float assignmentAp = builder?.TotalAssignmentApCost ?? cardAp;
+                float extraAp = Mathf.Max(0f, assignmentAp - cardAp);
+
+                var score = new TaskScore(
+                    economicHexBenefit: siteOnlyScore.EconomicHexBenefit,
+                    payback: siteOnlyScore.Payback,
+                    ownTerritoryProximity: siteOnlyScore.OwnTerritoryProximity,
+                    cardPrice: siteOnlyScore.CardPrice,
+                    delivery: TaskScoreEvaluator.Delivery(extraAp, travel),
+                    moverOpportunityCost: Mathf.Max(0f, opportunity),
+                    hexThreatRisk: siteOnlyScore.HexThreatRisk);
+                float value = score.Value;
+                TaskScoreDiagnostics.Log("Extraction", site.Hex, score,
+                    $"resource={site.ResourceType} priority={resourcePriority:0.###} "
+                    + $"marginalGain={gain:0.###} paybackTurns={payback:0.###} cardAp={cardAp:0.###} "
+                    + $"resourceCost={resourceCost:0.###} distance={travel:0.###} extraAp={extraAp:0.###} "
+                    + $"exposure={exposure:0.###} moverOpportunity={opportunity:0.###}");
+
+                if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon)
                 {
                     rejectedStrategicValue++;
                     continue;
@@ -91,6 +97,7 @@ namespace Game.Ai.V2
                     else rejectedDeliveryValue++;
                     continue;
                 }
+
                 candidates.Add(new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,
@@ -102,7 +109,7 @@ namespace Game.Ai.V2
                     EconomyBuildApCost = def?.apCost ?? 0,
                     MinimumFollowupAp = def?.apCost ?? 0,
                     EconomyExpectedIncomeGain = gain,
-                    EconomySiteValue = strategicValue,
+                    EconomySiteValue = siteOnlyScore.Value,
                     EconomyTravelCost = travel,
                     EconomyThreatExposure = exposure,
                     EconomyHeroOpportunityCost = opportunity,
@@ -112,15 +119,11 @@ namespace Game.Ai.V2
                     EconomyProjectedActivationApCost = builder?.ProjectedActivationApCost ?? 0,
                     EconomyProjectedMaxMovement = builder?.ProjectedMaxMovement ?? 0,
                     EconomyBuilderRoutes = site.BuilderRoutes,
-                    Value = value,
-                    Explain = $"{site.ResourceType} deficit={rs.DeficitScore:0.##} "
-                        + $"resourcePriority={resourcePriority:0.##} marginalGain={gain:0.#} effectiveYield={site.EffectiveYield} "
-                        + $"alreadyCollected={site.CurrentBuildingCollection} "
-                        + $"network={site.BaseNetworkSynergy:0.##} "
-                        + $"cluster={site.NearbyResourceClusterValue:0.##} "
-                        + $"site={strategicValue:0.##} delivery={value:0.##} "
-                        + $"travel={travel:0.#} exposure={exposure:0.##} "
-                        + $"heroCost={opportunity:0.##}",
+                    WorldTaskScore = score,
+                    Value = score.Value,
+                    Explain = $"{site.ResourceType} task={score.Value:0.##} priority={resourcePriority:0.##} "
+                        + $"marginalGain={gain:0.##} payback={payback:0.##} "
+                        + $"travel={travel:0.##} exposure={exposure:0.##} moverOpp={opportunity:0.##}",
                 });
             }
 
@@ -128,36 +131,21 @@ namespace Game.Ai.V2
                 s, candidates, player, ctx, activeIntents, commitments,
                 out int baseNoBuilder, out int baseStrategicValue,
                 out int baseDeliveryValue, out int baseThreshold);
-            // Resource need is a strategic decision; builder convenience chooses a site only
-            // after a resource has survived feasibility/payback filtering. This prevents a scout
-            // standing on a low-priority resource from silently replacing the hand bottleneck.
+
             IOrderedEnumerable<AxisDemand> extractionRanked = candidates
                 .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
                     && x.EconomyResourceType.HasValue
-                    // A FoundBase intent already owns this hex — extraction must not propose a
-                    // competing build on the same target.
                     && !HasActiveEconomyIntentAtHexOfKind(
                         activeIntents, x.TargetHex, EconomyTaskKind.FoundBase))
-                // A builder already committed and en route (or standing) on this target must not
-                // lose its slot to .Take(N) just because some other resource's priority ticked up
-                // this pass — mirrors baseRanked's IsActiveBaseCommitment precedence below.
                 .OrderByDescending(x => HasActiveEconomyBuildIntent(activeIntents, x) ? 1 : 0)
-                .ThenByDescending(x => standings.TryGetValue(
-                        x.EconomyResourceType.Value, out EconomyResourceStanding rs)
-                    ? Mathf.Max(EconomyResourcePriority(rs),
-                        ResourceStarvationRegistry.Pressure(
-                            player, x.EconomyResourceType.Value))
-                    : 0f)
-                .ThenByDescending(x => x.EconomySiteValue)
+                .ThenByDescending(x => x.Value)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
                 .ThenBy(x => x.EconomyTravelCost)
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
+
             IOrderedEnumerable<AxisDemand> baseRanked = candidates
                 .Where(x => x.Capability == CapabilityKind.EconomicExpansionBase
-                    // An active BuildExtraction intent already owns this hex — a fresh Base
-                    // candidate must not propose converting/competing for the same target while
-                    // that extraction is still in flight.
                     && !HasActiveEconomyIntentAtHexOfKind(
                         activeIntents, x.TargetHex, EconomyTaskKind.BuildExtraction))
                 .OrderByDescending(x => IsActiveBaseCommitment(
@@ -168,13 +156,13 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.EconomyTravelCost)
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
+
             List<AxisDemand> selected = extractionRanked
                 .Take(Mathf.Max(0, AiConfigV2.economyMaxInfrastructureDemandsPerTurn))
                 .Concat(baseRanked.Take(
                     Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
                 .ToList();
-            // One existing builder and one physical Base card can justify only one operation
-            // in this admission. Commitment wins; otherwise compare full delivered merit.
+
             var selectedHexes = new HashSet<HexCoord>();
             var selectedBuilders = new HashSet<int>();
             var selectedCards = new HashSet<CardData>();
@@ -194,12 +182,9 @@ namespace Game.Ai.V2
                     if (d.EconomyBuildCard != null) selectedCards.Add(d.EconomyBuildCard);
                     return true;
                 }).ToList();
+
             foreach (AxisDemand demand in selected)
             {
-                // A Phase-A Hero handoff already has one concrete actor and target owned by
-                // Continuity. If that actor is temporarily composition-ineligible, its durable
-                // mission must retry/defer; requesting another Hero for the same operation would
-                // grow the roster every settled pass and create a second owner for one need.
                 if (!demand.EconomyPreferredBuilderArmyId.HasValue
                     && HasActiveEconomyBuildIntent(activeIntents, demand))
                 {
@@ -217,6 +202,7 @@ namespace Game.Ai.V2
                     + $"rejected={Mathf.Max(0, candidates.Count - selected.Count)}");
                 yield return emitted;
             }
+
             AiDebugLog.Write($"[AI][V2][Economy][BaseCandidates] {baseSummary}");
             int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback
                 + rejectedStrategicValue + baseStrategicValue
@@ -235,8 +221,6 @@ namespace Game.Ai.V2
             Capability = CapabilityKind.Hero,
             DesiredAmount = 1f,
             TargetHex = source.TargetHex,
-            // Preserve the exact operation through Hero materialization. H/E/M/T stay free until
-            // a builder route exists because deferred reservations never admit Hero capability.
             EconomyResourceType = source.EconomyResourceType,
             EconomyBuildCard = source.EconomyBuildCard,
             EconomyBuildResourceCost = source.EconomyBuildResourceCost,
@@ -254,6 +238,7 @@ namespace Game.Ai.V2
             EconomyProjectedActivationApCost = source.EconomyProjectedActivationApCost,
             EconomyProjectedMaxMovement = source.EconomyProjectedMaxMovement,
             EconomyBuilderRoutes = source.EconomyBuilderRoutes,
+            WorldTaskScore = source.WorldTaskScore,
             Value = source.Value,
             Explain = source.Explain + "; prerequisite=mobile_hero",
         };
@@ -304,15 +289,6 @@ namespace Game.Ai.V2
                     || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
                 .ThenBy(x => x.Suitability == EconomyArmySuitability.Ready ? 0
                     : x.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
-                // A home-vocation hero (HeroRoleEvaluator — low MoveMax / Researcher / Assembler /
-                // ApBonus) is worth more standing garrison duty than travelling to build, but that
-                // preference must stay a bounded ranking cost, not an absolute veto a large
-                // travel-cost gap can never overturn — a home hero one step away must still beat a
-                // field hero eight steps away. Folded into the AP-cost tiebreaker itself (a sort-key
-                // adjustment only: the real TotalAssignmentApCost on the winning choice, which flows
-                // into AxisDemand.EconomyAssignmentApCost / delivery telemetry, is left untouched).
-                // Gated on !IsOnTarget: a home hero building right on its own garrison hex isn't
-                // travelling anywhere, so there is nothing here to protect it from.
                 .ThenBy(x => x.TotalAssignmentApCost
                     + (!x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true
                         ? AiConfigV2.economyHomeHeroAssignmentApPenalty : 0f))
@@ -323,8 +299,6 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
-        // Analysis replaces snapshots on every operational/knowledge refresh. Reuse only exact
-        // read-only assessments within that snapshot; weak keys cannot retain old turns/players.
         private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
             Dictionary<(HexCoord, EconomyBuilderRouteSnapshot, ArmySnapshot, float, bool), EconomyBuilderChoice>>
             EconomyAssessmentCache = new System.Runtime.CompilerServices.ConditionalWeakTable<WorldSnapshot,
@@ -356,14 +330,6 @@ namespace Game.Ai.V2
                 if (army == null)
                     return choice;
 
-                // A garrison-hero-extraction row prices only the one sparable hero (already
-                // computed in WorldAnalysis.Economy.EconomyBuilderRoutes via AiArmyRoles.
-                // BestSparableEconomyHero) — `army` here is still the GARRISON's own full-roster
-                // snapshot, which does not describe that hero's future 1-member field roster, so
-                // none of the below escort-augmentation math (built for an already-separate field
-                // army) applies. Escort, if any is warranted, is decided the normal way afterward by
-                // ProvisioningManager.PlanEconomyArmyLightening once the hero is a real separate
-                // ArmyData — same as for every other freshly formed economy mover today.
                 if (route.RequiresGarrisonExtraction)
                 {
                     choice.Suitability = EconomyArmySuitability.Ready;
@@ -374,23 +340,11 @@ namespace Game.Ai.V2
                     return choice;
                 }
 
-                // A known NEUTRAL sighting on the route only ever means "occupies that one hex"
-                // (WorldAnalysis.Economy.KnownThreatsAffectingEconomyRoute already keeps it off the
-                // route unless the mover would have to stand on it — SafeStepPathing separately
-                // refuses to path through it at all). It is a stationary, non-chasing blocker: an
-                // economy mover routing past/near it is never forced to fight it, unlike a real
-                // enemy player army, which can reposition to intercept. Only enemy sightings should
-                // demand a roster that can win the fight — a neutral must never gate builder
-                // eligibility on combat strength this early stage has no aggression capability to
-                // provide yet.
                 List<AiMapMemory.KnownEnemySighting> threats = (route.RouteThreats
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                     .Where(t => t.Owner?.IsNeutral != true)
                     .ToList();
                 bool atBase = snap?.Self?.BaseHexes?.Contains(army.Hex) == true;
-                // Analysis already attached honestly-witnessed threats that can affect the exact
-                // SafeStepPathing route. A clean route is evidence, not a proximity guess, and remains
-                // the fog-honest answer. No separate base-adjacency requirement on top of it.
                 bool safeRear = threats.Count == 0;
                 int minimumEscort = safeRear ? 0 : 1;
                 choice.MinimumEscortCount = minimumEscort;
@@ -405,9 +359,6 @@ namespace Game.Ai.V2
                     List<int> retained = atBase
                         ? MinimumSafeEconomyEscortIndices(army, threats, minimumEscort)
                         : currentIndices;
-                    // Field composition is immutable for Economy: a suitable field army travels as
-                    // one actor and must be priced whole. Only a Base/Citadel candidate may project
-                    // the minimum retained subset that Provisioning can actually unload atomically.
                     int smallest = retained?.Count ?? current.Count;
                     choice.MinimumEscortCount = smallest;
                     int knownBodyAp = army.NonHeroActivationApCosts?.Sum() ?? 0;
@@ -436,17 +387,10 @@ namespace Game.Ai.V2
                     return choice;
                 }
 
-                // Field rosters are immutable for Economy. A deficient field army is rejected here,
-                // before its AP reaches Allocation. Only a Base/Citadel garrison may supply the exact
-                // minimum missing escort.
                 if (!atBase || snap?.Self?.Armies == null)
                     return choice;
                 ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a != null
                     && a.IsGarrison && a.Hex.Equals(army.Hex));
-                // Mirror ProvisioningManager.PlanEconomyArmyLightening's hard gate here: a garrison
-                // already activated this turn cannot actually hand over an escort, so do not score
-                // ReinforceAtBase as viable and let Provisioning discover that as AssemblyInfeasible
-                // (which also burns a 2-turn structural cooldown on the whole delivery for nothing).
                 if (garrison == null || garrison == army)
                     return choice;
                 if (garrison.HasActivatedThisTurn)
@@ -622,16 +566,11 @@ namespace Game.Ai.V2
                 }
                 if (army.IsGarrison)
                 {
-                    // Only a garrison-hero-extraction row (WorldAnalysis.Economy.
-                    // EconomyBuilderRoutes) may reach this point off-target — every other Garrison
-                    // row was already handled above or never generated in the first place.
                     if (!route.RequiresGarrisonExtraction)
                         continue;
                 }
                 else if (!army.IsMobileEconomyBuilder)
-                {
                     continue;
-                }
 
                 MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
                 bool claimed = commitments != null && commitments.IsArmyClaimed(army.ArmyId);
@@ -639,19 +578,13 @@ namespace Game.Ai.V2
                 {
                     if (assignment.Kind == MissionKind.Economy)
                     {
-                        // A ReturnBuilder walks home with no build of its own to protect —
-                        // EconomyDonorStructurallyEligible already recognizes it as a structurally
-                        // eligible donor, so it is not gated on matching the recovery destination
-                        // the way a genuine in-progress build (FoundBase/BuildExtraction) still is.
                         if (!EconomyDonorStructurallyEligible(assignment)
                             && (assignment.Economy == null
                                 || !assignment.Economy.TargetHex.Equals(target)))
                             continue;
                     }
                     else if (!EconomyDonorStructurallyEligible(assignment))
-                    {
                         continue;
-                    }
                 }
                 if (claimed && assignment == null)
                     continue;
@@ -661,8 +594,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // Tests and snapshot-only simulations may construct opportunities without the production
-        // Analysis route list. Preserve their structural semantics without any live-registry read.
         private static IReadOnlyList<EconomyBuilderRouteSnapshot> SnapshotFallbackRoutes(
             WorldSnapshot snap, HexCoord target)
         {
@@ -709,8 +640,6 @@ namespace Game.Ai.V2
             activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                 && i.PreferredMoverArmyId == armyId);
 
-        // Economy borrows an actor, not its entire combat value. Idle/current-Economy builders
-        // lose no active mission; a permitted Recon/Raid loan pays the existing continuation loss.
         private static float EconomyMissionOpportunityCost(EconomyBuilderChoice builder,
             IReadOnlyList<MissionIntent> activeIntents)
         {
@@ -726,11 +655,6 @@ namespace Game.Ai.V2
         {
             if (donor == null)
                 return false;
-            // A builder walking home after completing its build (ReturnBuilder) protects no active
-            // build and no combat/recon commitment — its Hard funding exists only to survive Phase B
-            // trimming during the walk, not to express opportunity cost the way the donor kinds
-            // below do. It is eligible for a fresh Economy assignment regardless of that tier, so
-            // this check must run BEFORE the funding-tier gate that governs every other donor kind.
             if (donor.Kind == MissionKind.Economy)
                 return donor.Economy?.Kind == EconomyTaskKind.ReturnBuilder;
             if (donor.Funding != CommitmentTier.None && donor.Funding != CommitmentTier.Soft)
@@ -746,7 +670,7 @@ namespace Game.Ai.V2
             int routeCost, int movementAvailable, out float netValue)
         {
             netValue = buildValue - AiConfigV2.economyLoanContinuationLoss
-                - Mathf.Max(0, routeCost) * AiConfigV2.economySiteTravelPenalty;
+                - TaskScoreEvaluator.Delivery(0f, Mathf.Max(0, routeCost));
             return EconomyDonorStructurallyEligible(donor)
                 && routeCost <= movementAvailable
                 && netValue >= AiConfigV2.economyLoanHysteresisThreshold;
@@ -765,38 +689,6 @@ namespace Game.Ai.V2
             float resourceCost, float assignmentApCost) => expectedIncomeGain <= 0f
                 ? float.PositiveInfinity
                 : Mathf.Max(0f, resourceCost) / expectedIncomeGain;
-
-        private static float EconomyResourcePriority(EconomyResourceStanding standing)
-        {
-            float handShortfall = standing.HandResourceNeed <= AiConfigV2.allocatorSliceEpsilon
-                ? 0f
-                : Mathf.Clamp01((standing.HandResourceNeed - standing.SpendableStockpile)
-                    / standing.HandResourceNeed);
-            float operationalShortfall =
-                standing.ReservedOperationalNeed <= AiConfigV2.allocatorSliceEpsilon
-                    ? 0f
-                    : Mathf.Clamp01((standing.ReservedOperationalNeed
-                            - standing.SpendableStockpile)
-                        / standing.ReservedOperationalNeed);
-            return Mathf.Max(standing.DeficitScore, standing.StarvationPressure,
-                handShortfall, operationalShortfall);
-        }
-
-        internal static float ScoreEconomySite(float deficit, float expectedIncomeGain,
-            float baseNetworkSynergy, float nearbyResourceClusterValue, float travelCost,
-            float threatExposure, float heroOpportunityCost, float resourceCost,
-            float assignmentApCost, float paybackTurns) =>
-            AiConfigV2.economySiteDeficitValue * Mathf.Clamp01(deficit)
-            + AiConfigV2.economySiteIncomeGainValue * Mathf.Max(0f, expectedIncomeGain)
-            + AiConfigV2.economySiteBaseSynergyValue * Mathf.Clamp01(baseNetworkSynergy)
-            + AiConfigV2.economySiteClusterValue * Mathf.Max(0f, nearbyResourceClusterValue)
-            + AiConfigV2.economyExtractionPaybackValue
-                * Mathf.Clamp01(1f - paybackTurns / AiConfigV2.economyExtractionMaxPaybackTurns)
-            - AiConfigV2.economyBuildResourcePenalty * Mathf.Max(0f, resourceCost)
-            - AiConfigV2.economyBuildApPenalty * Mathf.Max(0f, assignmentApCost)
-            - AiConfigV2.economySiteTravelPenalty * Mathf.Max(0f, travelCost)
-            - AiConfigV2.economySiteThreatPenalty * Mathf.Clamp01(threatExposure)
-            - AiConfigV2.economySiteHeroOpportunityPenalty * Mathf.Max(0f, heroOpportunityCost);
 
         private static string AddBaseCandidates(WorldSnapshot s, List<AxisDemand> output,
             PlayerSetupData player, AiTurnContext ctx,
@@ -835,16 +727,57 @@ namespace Game.Ai.V2
                         thresholdRejected++;
                         continue;
                     }
-                    if (HasActiveEconomyIntentAtHexOfKind(activeIntents, site.Hex, EconomyTaskKind.BuildExtraction))
+                    if (HasActiveEconomyIntentAtHexOfKind(activeIntents, site.Hex,
+                        EconomyTaskKind.BuildExtraction))
                         continue;
+
                     bool committed = IsActiveBaseCommitment(activeIntents, site.Hex, card);
-                    StrategicCardEvaluator.BaseSiteValue score =
+                    StrategicCardEvaluator.BaseSiteValue facts =
                         StrategicCardEvaluator.ScoreBaseSite(s, site, card);
-                    float hexYield = score.HexYield;
-                    float global = score.GlobalEffect;
-                    float airfield = score.Airfield;
-                    float reasonValue = score.ReasonValue;
-                    bool meaningful = reasonValue > AiConfigV2.allocatorSliceEpsilon || committed;
+
+                    // Only card-semantic facts are consumed from StrategicCardEvaluator. Its legacy
+                    // bespoke ReasonValue/StrategicValue are deliberately ignored by TaskScore.
+                    float economicGainFact = Mathf.Max(0f, facts.HexYield);
+                    float paybackTurns = economicGainFact > AiConfigV2.allocatorSliceEpsilon
+                        ? EconomyPaybackTurns(economicGainFact,
+                            StrategicCardEvaluator.ResourceCostSum(card.EffectivePlayResourceCost),
+                            card.EffectivePlayApCost)
+                        : float.PositiveInfinity;
+                    int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
+                    float resourceCost = StrategicCardEvaluator.ResourceCostSum(
+                        card.EffectivePlayResourceCost);
+                    float basePriority = BaseResourcePriority(s, card, site);
+                    float economic = TaskScoreEvaluator.EconomicHexBenefit(
+                        economicGainFact, basePriority);
+                    float payback = economicGainFact > AiConfigV2.allocatorSliceEpsilon
+                        ? TaskScoreEvaluator.Payback(paybackTurns) : 0f;
+                    float airfield = TaskScoreEvaluator.Airfield(facts.Airfield);
+                    float global = Mathf.Clamp(facts.GlobalEffect, 0f,
+                        AiConfigV2.taskScoreGlobalCardEffectMax);
+                    float front = TaskScoreEvaluator.FrontProgress(site.ForwardProgressValue);
+                    float corridor = TaskScoreEvaluator.CorridorAlignment(site.CorridorAlignmentValue);
+                    float proximity = TaskScoreEvaluator.OwnTerritoryProximity(homeDistance);
+                    float defense = TaskScoreEvaluator.TerrainDefense(site.DefenseBonusValue);
+                    float cardPrice = TaskScoreEvaluator.CardPrice(
+                        card.EffectivePlayApCost, resourceCost);
+                    float risk = TaskScoreEvaluator.HexThreatRisk(facts.Exposure);
+                    float existingLoss = site.ConvertsOwnedExtractionSite
+                        ? TaskScoreEvaluator.EconomicHexBenefit(site.LostExtractionIncome, 0f)
+                        : 0f;
+
+                    var siteOnlyScore = new TaskScore(
+                        economicHexBenefit: economic,
+                        payback: payback,
+                        airfield: airfield,
+                        globalCardEffect: global,
+                        frontProgress: front,
+                        corridorAlignment: corridor,
+                        ownTerritoryProximity: proximity,
+                        terrainDefense: defense,
+                        cardPrice: cardPrice,
+                        hexThreatRisk: risk,
+                        existingValueLoss: existingLoss);
+                    bool meaningful = siteOnlyScore.Value > AiConfigV2.allocatorSliceEpsilon || committed;
                     if (!meaningful)
                     {
                         strategicValueRejected++;
@@ -853,7 +786,7 @@ namespace Game.Ai.V2
 
                     EconomyBuilderChoice builder = SelectEconomyBuilder(
                         s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
-                        reasonValue, card.EffectivePlayApCost, includeReturn: false);
+                        siteOnlyScore.Value, card.EffectivePlayApCost, includeReturn: false);
                     bool structuralRoute = site.PreparationTravelCost < int.MaxValue
                         || HasStructuralEconomyBuilderRoute(s, site.Hex, site.BuilderRoutes);
                     if (!structuralRoute)
@@ -862,33 +795,34 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    float travel = builder?.Route.TravelCost
-                        ?? site.PreparationTravelCost;
-                    float exposure = score.Exposure;
+                    float travel = builder?.Route.TravelCost ?? site.PreparationTravelCost;
                     float heroCost = EconomyMissionOpportunityCost(builder, activeIntents);
-                    float assignmentAp = builder?.TotalAssignmentApCost
-                        ?? card.EffectivePlayApCost;
-                    float intrinsicBuildCost = score.IntrinsicBuildCost;
-                    // 2026-09-15 — decoupled from economyBuildApPenalty (still used unchanged for
-                    // intrinsicBuildCost's fixed card-AP cost above, and for the Extraction-facility
-                    // path's own deliveryApCost near the top of this file). A Base is a rarer, more
-                    // strategic investment than a routine extractor — see
-                    // economyBaseDeliveryApPenalty's own comment for the calibration this and
-                    // economySiteTravelPenalty below were tuned against.
-                    float deliveryApCost = Mathf.Max(0f,
-                            assignmentAp - card.EffectivePlayApCost)
-                        * AiConfigV2.economyBaseDeliveryApPenalty;
-                    float extractionLossPenalty = score.ExtractionLossPenalty;
-                    float strategicValue = score.StrategicValue;
-                    float value = strategicValue - deliveryApCost
-                        - AiConfigV2.economySiteTravelPenalty * travel
-                        - Mathf.Max(0f, heroCost);
-                    AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseCandidate] "
-                        + $"card={card.Definition.displayName} target=({site.Hex.Q},{site.Hex.R}) "
-                        + $"reason={reasonValue:0.##} buildCost={intrinsicBuildCost:0.##} "
-                        + $"deliveryApCost={deliveryApCost:0.##} extractionLoss={extractionLossPenalty:0.##} "
-                        + $"site={strategicValue:0.##} "
-                        + $"delivery={value:0.##} committed={committed} decision=stage");
+                    float assignmentAp = builder?.TotalAssignmentApCost ?? card.EffectivePlayApCost;
+                    float extraAp = Mathf.Max(0f, assignmentAp - card.EffectivePlayApCost);
+                    var score = new TaskScore(
+                        economicHexBenefit: economic,
+                        payback: payback,
+                        airfield: airfield,
+                        globalCardEffect: global,
+                        frontProgress: front,
+                        corridorAlignment: corridor,
+                        ownTerritoryProximity: proximity,
+                        terrainDefense: defense,
+                        cardPrice: cardPrice,
+                        delivery: TaskScoreEvaluator.Delivery(extraAp, travel),
+                        moverOpportunityCost: Mathf.Max(0f, heroCost),
+                        hexThreatRisk: risk,
+                        existingValueLoss: existingLoss);
+                    float value = score.Value;
+
+                    TaskScoreDiagnostics.Log("Base", site.Hex, score,
+                        $"economicGain={economicGainFact:0.###} resourcePriority={basePriority:0.###} "
+                        + $"paybackTurns={(float.IsInfinity(paybackTurns) ? -1f : paybackTurns):0.###} "
+                        + $"airfieldRaw={facts.Airfield:0.###} globalRaw={facts.GlobalEffect:0.###} "
+                        + $"frontRaw={site.ForwardProgressValue:0.###} corridorRaw={site.CorridorAlignmentValue:0.###} "
+                        + $"spacingDiagnostic={site.SpacingScore:0.###} defenseRaw={site.DefenseBonusValue:0.###} "
+                        + $"distance={travel:0.###} extraAp={extraAp:0.###} exposure={facts.Exposure:0.###} "
+                        + $"lostExtraction={site.LostExtractionIncome:0.###} moverOpportunity={heroCost:0.###}");
 
                     meaningfulDemands.Add(new AxisDemand
                     {
@@ -900,42 +834,28 @@ namespace Game.Ai.V2
                         EconomyBuildResourceCost = card.EffectivePlayResourceCost,
                         EconomyBuildApCost = card.EffectivePlayApCost,
                         MinimumFollowupAp = card.EffectivePlayApCost,
-                        EconomyExpectedIncomeGain = site.HexYield.Sum,
-                        EconomySiteValue = strategicValue,
+                        EconomyExpectedIncomeGain = economicGainFact,
+                        EconomySiteValue = siteOnlyScore.Value,
                         EconomyTravelCost = travel,
-                        EconomyThreatExposure = exposure,
+                        EconomyThreatExposure = facts.Exposure,
                         EconomyHeroOpportunityCost = heroCost,
                         EconomyAssignmentApCost = assignmentAp,
+                        EconomyPaybackTurns = paybackTurns,
                         EconomyPreferredBuilderArmyId = builder?.Army.ArmyId,
                         EconomyProjectedActivationApCost = builder?.ProjectedActivationApCost ?? 0,
                         EconomyProjectedMaxMovement = builder?.ProjectedMaxMovement ?? 0,
                         EconomyBuilderRoutes = site.BuilderRoutes,
-                        Value = value,
-                        Explain = $"Base reason={reasonValue:0.##} "
-                            + $"yield={hexYield:0.##} "
-                            + $"airfield={airfield:0.##} "
-                            + $"forward={site.ForwardProgressValue:0.##} "
-                            + $"corridor={site.CorridorAlignmentValue:0.##} "
-                            + $"spacing={site.SpacingScore:0.##} defense={site.DefenseBonusValue:0.##} "
-                            + $"global={global:0.##} "
-                            + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##} "
-                            + $"extractionLoss={extractionLossPenalty:0.##}",
+                        WorldTaskScore = score,
+                        Value = score.Value,
+                        Explain = $"Base task={score.Value:0.##} economic={economic:0.##} "
+                            + $"payback={payback:0.##} airfield={airfield:0.##} global={global:0.##} "
+                            + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
+                            + $"defense={defense:0.##} spacing={site.SpacingScore:0.##}(diagnostic) "
+                            + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
+                            + $"moverOpp={heroCost:0.##} risk={risk:0.##} existingLoss={existingLoss:0.##}",
                     });
                 }
 
-            // Stage the best meaningful, legal and safely-routable Base before value admission.
-            // This is what lets the existing continuity urgency accumulate from a negative score.
-            // An active commitment (a mission already delivering an actor there) still wins
-            // outright — that is real in-flight work, not a candidate preference. Below that,
-            // "already staged" is only a hysteresis bonus on top of Value, not a categorical
-            // priority tier: a stale staged hex (e.g. yield=0) must still lose to a newly known
-            // site once that site's Value clears the staged one by more than the threshold, so
-            // urgency can no longer keep compounding on a target that real information has
-            // superseded. A small margin stays inside the threshold and does not flip staging.
-            // 2026-09-15 round 18 — this margin is economyBaseStagingHysteresisThreshold (small,
-            // anti-jitter only), NOT economyBaseSwitchHysteresisThreshold (the much larger
-            // post-commitment one in StrategicPhaseA) — see that constant's comment for why the two
-            // can no longer share one number.
             AxisDemand stagedBase = meaningfulDemands
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
@@ -947,8 +867,8 @@ namespace Game.Ai.V2
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
                 .FirstOrDefault();
             bool urgencyEligible = stagedBase?.TargetHex != null;
-            float urgency = intentState.MarkBaseExpansionCandidate(s.TurnNumber, stagedBase?.EconomyBuildCard,
-                    stagedBase?.TargetHex, urgencyEligible);
+            float urgency = intentState.MarkBaseExpansionCandidate(s.TurnNumber,
+                stagedBase?.EconomyBuildCard, stagedBase?.TargetHex, urgencyEligible);
 
             foreach (AxisDemand demand in meaningfulDemands)
             {
@@ -993,14 +913,27 @@ namespace Game.Ai.V2
                 ? $"considered={considered} kept={kept} best=none "
                     + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
-                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.EconomySiteValue:0.##} "
+                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.Value:0.##} "
                     + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
 
-        // Cross-family guard: extraction and base candidates are ranked/selected independently
-        // (see EconomyDemands), so nothing else stops a fresh candidate of one family from
-        // targeting a hex already owned by an active intent of the OTHER family. This is the
-        // only place that checks across EconomyTaskKind.
+        private static float BaseResourcePriority(WorldSnapshot snap, CardData card,
+            EconomyBaseOpportunity site)
+        {
+            if (snap?.Economy?.PerType == null || card?.Definition?.grantedAbilities == null)
+                return 0f;
+            float best = 0f;
+            foreach (ResourceType type in ResourceBundle.All)
+            {
+                if (!card.Definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type))
+                    || site.HexYield.Get(type) <= 0f)
+                    continue;
+                EconomyResourceStanding standing = snap.Economy.PerType.FirstOrDefault(x => x.Type == type);
+                best = Mathf.Max(best, TaskScoreEvaluator.ResourcePriority(standing));
+            }
+            return best;
+        }
+
         private static bool HasActiveEconomyIntentAtHexOfKind(IReadOnlyList<MissionIntent> intents,
             HexCoord? target, EconomyTaskKind kind)
         {
@@ -1055,17 +988,5 @@ namespace Game.Ai.V2
             int index = (int)type;
             return cards != null && index >= 0 && index < cards.Length ? cards[index] : null;
         }
-
-        // ---------------------------------------------------------------------------------------
-        //  DEV — three staged shapes (the radar no longer gates on facility+hero; the demand layer
-        //  bootstraps each missing prerequisite the way Recon bootstraps a scout):
-        //    · no Research/Production facility yet -> ONE DevelopmentInfrastructure gap demand.
-        //    · facility built but UNSTAFFED -> ONE DevelopmentOperator demand @the facility hex
-        //      (play a Research/Production hero card onto it). No offerings exist without an
-        //      operator, so CardUpgrade is not emitted this turn.
-        //    · facility staffed -> ONE CardUpgrade demand PER scored DevelopmentOpportunity, each
-        //      carrying its opportunity handle. Phase A runs the carried opportunity verbatim.
-        // ---------------------------------------------------------------------------------------
     }
 }
-
