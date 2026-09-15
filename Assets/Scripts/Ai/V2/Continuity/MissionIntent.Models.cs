@@ -148,7 +148,24 @@ namespace Game.Ai.V2
 
         // AGG-RAID §4/§5 — the execution phase of this one Raid operation (Assault ->
         // Reinforcement -> SupportReturn -> Assault -> ... -> Return). NOT an objective type.
-        public RaidMissionPhase Phase = RaidMissionPhase.Assault;
+        // ReinforcementRequestedTurn belongs to one reinforcement cycle, not to the durable Raid.
+        // Any phase transition invalidates that age. A repeated Reinforcement assignment keeps it
+        // only while the same support convoy is still bound; without support it starts a fresh
+        // request cycle and must not inherit an old timeout.
+        private RaidMissionPhase _phase = RaidMissionPhase.Assault;
+        public RaidMissionPhase Phase
+        {
+            get => _phase;
+            set
+            {
+                bool sameLiveReinforcementCycle = _phase == RaidMissionPhase.Reinforcement
+                    && value == RaidMissionPhase.Reinforcement
+                    && SupportArmyId.HasValue;
+                if (!sameLiveReinforcementCycle)
+                    ReinforcementRequestedTurn = -1;
+                _phase = value;
+            }
+        }
 
         // THE primary raiding army. This is the SINGLE storage for that concept: MissionIntent
         // .PreferredMoverArmyId is a pass-through projection onto this field for a Raid intent

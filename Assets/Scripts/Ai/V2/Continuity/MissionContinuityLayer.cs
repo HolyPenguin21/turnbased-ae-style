@@ -435,28 +435,59 @@ namespace Game.Ai.V2
                             + $"released support claim, primary raid kept, phase={ri.Phase} "
                             + $"(primaryNowClears={(nowClears ? 1 : 0)})");
                     }
-                    // §SupportReturn — the displaced support died on the way home. Release its claim
-                    // and continue the Raid from the primary's own state alone; the primary was never
-                    // touched by this leg, so no re-check against the target is needed here.
-                    else if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.SupportReturn
+                    // §SupportReturn — a lost returning support must close the return leg as well as
+                    // release the actor claim. Reuse the same lifecycle transition as physical
+                    // arrival so Phase cannot remain SupportReturn with no support actor.
+                    else if (ri.SupportArmyId.HasValue && ri.PrimaryArmyId.HasValue
+                        && ri.Phase == RaidMissionPhase.SupportReturn
                         && !RaidSupportActorAlive(snap, ri.SupportArmyId.Value))
                     {
                         int lostSupportId = ri.SupportArmyId.Value;
-                        ri.SupportArmyId = null;
-                        AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{lostSupportId} lost "
-                            + "en route home; released claim, primary raid continues");
+                        CompleteRaidSupportReturn(player, snap, ri.PrimaryArmyId.Value,
+                            $"support #{lostSupportId} lost en route home");
+                        intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
+                        intent.StallTurns = 0;
                     }
 
                     // §5 actor ownership — a LOST PRIMARY ends the operation. Any support is
                     // released with it (ActorCommitments stops claiming the moment the intent dies).
-                    if (ri.OperationStarted && ri.PrimaryArmyId.HasValue
-                        && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value))
+                    // Return is phase-sensitive: once the objective is homeward movement, the same
+                    // live/non-empty ground-container gate used by ProvisionReturn is sufficient.
+                    // Combat phases, including SupportReturn (where primary still holds the target),
+                    // retain the strict structural Raid gate.
+                    bool primaryActorAlive = ri.PrimaryArmyId.HasValue
+                        && (ri.Phase == RaidMissionPhase.Return
+                            ? RaidSupportActorAlive(snap, ri.PrimaryArmyId.Value)
+                            : RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value));
+                    if (ri.OperationStarted && ri.PrimaryArmyId.HasValue && !primaryActorAlive)
                     {
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — primary "
-                            + $"#{ri.PrimaryArmyId.Value} is no longer a usable ground combat army "
+                            + $"#{ri.PrimaryArmyId.Value} is no longer usable for phase {ri.Phase} "
                             + $"(support #{(ri.SupportArmyId.HasValue ? ri.SupportArmyId.Value.ToString() : "none")} released)");
                         continue;
+                    }
+
+                    // A SupportReturn already satisfied in the fresh snapshot is a continuity fact,
+                    // not a provisioning failure. Resolve it here through the same canonical
+                    // transition Execution uses on physical arrival. Otherwise ProvisionReturn's
+                    // generic TargetSatisfied bypasses Raid phase payload and ReconcileOutcome can
+                    // retire the whole durable campaign instead of only releasing the support.
+                    if (ri.Phase == RaidMissionPhase.SupportReturn
+                        && ri.PrimaryArmyId.HasValue && ri.SupportArmyId.HasValue
+                        && ri.SupportReturnHex.HasValue)
+                    {
+                        ArmySnapshot returningSupport = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                            && a.ArmyId == ri.SupportArmyId.Value);
+                        if (returningSupport != null
+                            && returningSupport.Hex.Equals(ri.SupportReturnHex.Value))
+                        {
+                            int returnedSupportId = returningSupport.ArmyId;
+                            CompleteRaidSupportReturn(player, snap, ri.PrimaryArmyId.Value,
+                                $"support #{returnedSupportId} already home during reconciliation");
+                            intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
+                            intent.StallTurns = 0;
+                        }
                     }
 
                     // §5/§SupportReturn phase machine. Return and SupportReturn never consult target
@@ -784,16 +815,15 @@ namespace Game.Ai.V2
         // =====================================================================================
 
         // Is the durable primary still the kind of army Raid provisioning would accept? Uses the
-        // SAME structural snapshot predicate ActorCommitments applies, so continuity and the
-        // commitment view can never disagree about whether the primary survived.
+        // SAME structural snapshot predicate ActorCommitments applies in combat phases.
         internal static bool RaidPrimaryActorAlive(WorldSnapshot snap, int armyId)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
             return a != null && a.IsStructuralRaidActor;
         }
 
-        // A support actor only has to be a live, mobile, non-air ground container — it is carrying
-        // bodies to the primary, not fighting on its own.
+        // A support/return actor only has to be a live, mobile, non-air ground container — during
+        // these transit legs it is carrying bodies or itself home, not qualifying for fresh combat.
         internal static bool RaidSupportActorAlive(WorldSnapshot snap, int armyId)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
@@ -958,9 +988,9 @@ namespace Game.Ai.V2
                 + $"primary #{primaryArmyId} holds target {ri.Target.DiagnosticLabel} {detail}");
         }
 
-        // AGG-RAID §SupportReturn — the support army has arrived home. Release its claim, clear the
-        // leg, and re-evaluate the primary against the current target exactly like any other
-        // reinforcement-completion edge.
+        // AGG-RAID §SupportReturn — the return leg ended (arrival or actor loss). Release its claim,
+        // clear the leg, and re-evaluate the primary against the current target exactly like any
+        // other reinforcement-completion edge.
         internal static void CompleteRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
             int primaryArmyId, string detail)
         {
@@ -983,13 +1013,13 @@ namespace Game.Ai.V2
                 // machine pick the next target (or Return) on the next ResolveActive pass; parking
                 // in Assault here is a safe default since AdvanceRaidPhase re-derives everything.
                 ri.Phase = RaidMissionPhase.Assault;
-                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; target already "
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; target already "
                     + $"resolved while away — will re-orient next pass {detail}");
                 return;
             }
             bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
             ri.Phase = nowClears ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
-            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; released — "
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; released — "
                 + $"phase={ri.Phase} primaryClears={(nowClears ? 1 : 0)} {detail}");
         }
 
@@ -1027,6 +1057,7 @@ namespace Game.Ai.V2
                 ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == moverArmyId.Value)
                 : null;
             if (mover != null && mover.IsStructuralRaidActor
+                && mover.ReachableOwnBaseHexes.Count > 0
                 && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
                 return false;
             return true;
@@ -1785,4 +1816,3 @@ namespace Game.Ai.V2
                     : "?";
     }
 }
-

@@ -16,11 +16,11 @@ namespace Game.Ai.V2
     //  gain persistent missions.
     //
     //  An intent's PreferredMoverArmyId is only claimed while the actor is STILL VALID for that
-    //  intent. For Raid that means the same structural actor shape ProvisioningManager accepts:
-    //  a real ground field army, not prison/airfield/air/Recce and not a lone hero awaiting escort.
-    //  If battle damage leaves a started Raid as only a hero, the INTENT may survive but the actor
-    //  claim is released; DemandLayer can then ask StrategicManager for the missing escort instead
-    //  of incorrectly declaring the objective covered by an actor provisioning will reject.
+    //  intent. Active Raid combat phases use the same structural actor shape ProvisioningManager
+    //  accepts: a real ground field army, not prison/airfield/air/Recce and not a lone hero awaiting
+    //  escort. Raid Return is deliberately different: the objective is to bring the surviving
+    //  ground container home, so it keeps the claim while it still matches ProvisionReturn's
+    //  live/non-empty ground-container contract even if battle damage made it combat-ineligible.
     // ===========================================================================================
     public sealed class ActorCommitments
     {
@@ -86,6 +86,26 @@ namespace Game.Ai.V2
                 if (i.Kind == MissionKind.Raid)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;
+                    if (raid != null && raid.Phase == RaidMissionPhase.Return)
+                    {
+                        ArmySnapshot returningPrimary = snap.Self.Armies.FirstOrDefault(a => a != null
+                            && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
+                        if (returningPrimary != null)
+                        {
+                            c.Claim(actorId);
+                            AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
+                                $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
+                                + "reason=return_actor_still_matches_ground_container_gate");
+                        }
+                        else
+                        {
+                            AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
+                                $"[AI][V2][Commitment][Raid] decision=RELEASE intent={i.IntentKey} actor={actorId} "
+                                + "reason=return_actor_missing_or_non_ground_container");
+                        }
+                        continue;
+                    }
+
                     if (RaidActorStillValid(actorId, snap, out string reason))
                     {
                         c.Claim(actorId);

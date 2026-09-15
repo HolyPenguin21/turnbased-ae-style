@@ -418,6 +418,20 @@ namespace Game.Ai.V2
                     o.StructuralFailure = true;
                     break;
                 case ProvisionFailureKind.TargetSatisfied:
+                    // SupportReturn is a sub-leg of one durable Raid campaign. ProvisionReturn can
+                    // discover that the support is already standing at its fixed home before an
+                    // executor is ever created. Reporting that as Completed+ObjectiveSatisfied
+                    // would make generic continuity retire the WHOLE Raid. Keep the campaign alive;
+                    // ResolveActive owns the canonical CompleteRaidSupportReturn transition and will
+                    // consume this already-home fact on the next reconciliation/reaction pass.
+                    if (o.MissionKind == MissionKind.Raid
+                        && o.Proposal?.Target is RaidMissionTarget raidTarget
+                        && raidTarget.Phase == RaidMissionPhase.SupportReturn)
+                    {
+                        o.Outcome = ExecutionOutcome.ProductiveStop;
+                        o.MadeProgress = true;
+                        break;
+                    }
                     // Review P1 #2 — provisioning short-circuited because the focus hex was
                     // already visited/refreshed by an earlier action this turn. No mover was
                     // assigned; the durable actor lives on the existing MissionIntent, so mark
