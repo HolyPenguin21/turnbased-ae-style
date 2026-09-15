@@ -100,13 +100,17 @@ namespace Game.Ai.V2
         {
             if (m == null) return 0f;
             float score = m.LocalAdmissionScore;
-            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget target)
+            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget)
             {
                 float completionCost = Mathf.Max(1f, m.Requirements?.ApDesired ?? 0f)
                     + Mathf.Max(0f, m.Requirements?.EstimatedDistance ?? 0f);
                 float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
                     ? AiConfigV2.economySameTurnCompletionBonus : 0f;
-                score = m.EffectiveValue + target.BuildValue + sameTurn
+                // EffectiveValue already carries the mission's intrinsic BaseValue (Economy's
+                // BuildValue/site TaskScore) through the shared radar scaling. Adding BuildValue
+                // again would count the same world fact twice. Only lane-local lifecycle urgency
+                // above BaseValue and completion policy are layered on top here.
+                score = m.EffectiveValue + sameTurn
                     + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue)
                     - AiConfigV2.economyAdmissionCompletionCostWeight * completionCost;
             }
