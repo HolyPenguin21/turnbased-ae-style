@@ -34,5 +34,14 @@ namespace Game.Ai.V2
         public const float taskScoreTravelWeight = 0.5f;
         public const float taskScoreThreatRiskMax = 8f;
         public const float taskScoreDetectionRiskMax = 8f;
+
+        // Economy actor-loan policy consumes a migrated world-task value, so its policy offsets
+        // must live on the same scale instead of reusing the retired Economy site score directly.
+        // The old extraction score's dominant deficit term topped out at 60, while the canonical
+        // TaskScore deficit bonus tops out at 12: preserving the former relative policy therefore
+        // maps continuation loss 20 -> 4 and hysteresis 8 -> 1.6. These are policy offsets, not
+        // intrinsic TaskScore slots, and legacy constants remain available to non-migrated paths.
+        public const float taskScoreEconomyLoanContinuationLoss = 4f;
+        public const float taskScoreEconomyLoanHysteresisThreshold = 1.6f;
     }
 }
