@@ -353,6 +353,8 @@ namespace Game.Ai.V2
                         if (suitability.Suitability != DemandLayer.EconomyArmySuitability.Ineligible
                             || suitability.IneligibleReason == "escort_activated_this_turn")
                             break;
+                        // A composition failure does not heal when movement resets. Release the
+                        // outbound envelope and let the existing recovery lifecycle own the actor.
                         StrategicResourceReservationLedger.ReleaseByOwner(player, snap.TurnNumber,
                             EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
                         AiDebugLog.Write($"[AI][V2][Economy] recover {intent.IntentKey} actor=#{actor.ArmyId} "
@@ -363,9 +365,12 @@ namespace Game.Ai.V2
                             Capability = CapabilityKind.EconomicInfrastructure,
                             TargetHex = ei.TargetHex, EconomySiteValue = ei.BuildValue,
                         }, actor.ArmyId, snap.TurnNumber);
+                        // Publish a replacement recovery in this same pass so downstream actor
+                        // commitments cannot briefly expose the returning builder as unassigned.
                         if (state.TryGet(intent.IntentKey, out MissionIntent recovery)
                             && recovery.Economy?.Kind == EconomyTaskKind.ReturnBuilder)
                             active.Add(recovery);
+                        // Recovery may instead have released the actor at a protected hex.
                         recoveredBuilder = true;
                         break;
                     }
@@ -390,6 +395,16 @@ namespace Game.Ai.V2
                         continue;
                     }
 
+                    // §5 actor ownership — a LOST SUPPORT actor releases only the support claim;
+                    // the primary Raid survives untouched. Only revert to Assault if the primary can
+                    // actually clear the target alone (same PrimaryClearsTarget gate AdvanceRaidPhase
+                    // uses below) — otherwise this reset would set Phase=Assault BEFORE
+                    // AdvanceRaidPhase runs later in this same pass, and its own analogous re-check
+                    // (`ri.Phase == RaidMissionPhase.Reinforcement && ...`) would then silently no-op
+                    // because Phase is already Assault, letting a still-too-weak primary be proposed
+                    // for an ordinary Assault this step. A support in SupportReturn is walking home
+                    // after a successful swap, not carrying reinforcement — its loss there is handled
+                    // separately, below, without reverting the phase.
                     if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.Reinforcement
                         && !RaidSupportActorAlive(snap, ri.SupportArmyId.Value))
                     {
@@ -403,6 +418,9 @@ namespace Game.Ai.V2
                             + $"released support claim, primary raid kept, phase={ri.Phase} "
                             + $"(primaryNowClears={(nowClears ? 1 : 0)})");
                     }
+                    // §SupportReturn — the displaced support died on the way home. Release its claim
+                    // and continue the Raid from the primary's own state alone; the primary was never
+                    // touched by this leg, so no re-check against the target is needed here.
                     else if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.SupportReturn
                         && !RaidSupportActorAlive(snap, ri.SupportArmyId.Value))
                     {
@@ -412,6 +430,8 @@ namespace Game.Ai.V2
                             + "en route home; released claim, primary raid continues");
                     }
 
+                    // §5 actor ownership — a LOST PRIMARY ends the operation. Any support is
+                    // released with it (ActorCommitments stops claiming the moment the intent dies).
                     if (ri.OperationStarted && ri.PrimaryArmyId.HasValue
                         && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value))
                     {
@@ -422,28 +442,9 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    // A support Return that is already complete at the fresh-snapshot boundary is a
-                    // Continuity fact, not a provisioning failure. Resolve it here through the SAME
-                    // canonical transition Execution calls on arrival. Otherwise ProvisionReturn's
-                    // generic TargetSatisfied would bypass the phase payload and ReconcileOutcome
-                    // would retire the whole Raid instead of only releasing the support actor.
-                    if (ri.Phase == RaidMissionPhase.SupportReturn
-                        && ri.PrimaryArmyId.HasValue && ri.SupportArmyId.HasValue
-                        && ri.SupportReturnHex.HasValue)
-                    {
-                        ArmySnapshot returningSupport = snap?.Self?.Armies?.FirstOrDefault(a => a != null
-                            && a.ArmyId == ri.SupportArmyId.Value);
-                        if (returningSupport != null
-                            && returningSupport.Hex.Equals(ri.SupportReturnHex.Value))
-                        {
-                            int returnedSupportId = returningSupport.ArmyId;
-                            CompleteRaidSupportReturn(player, snap, ri.PrimaryArmyId.Value,
-                                $"support #{returnedSupportId} already home during reconciliation");
-                            intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
-                            intent.StallTurns = 0;
-                        }
-                    }
-
+                    // §5/§SupportReturn phase machine. Return and SupportReturn never consult target
+                    // validity (their objective is a base, not the Raid target); every other phase
+                    // keeps the existing fog!=death rule.
                     bool isReturnLeg = ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn;
                     if (!isReturnLeg
                         && !AdvanceRaidPhase(player, snap, intent, ri, aggressionObjectives,
@@ -463,6 +464,7 @@ namespace Game.Ai.V2
                     if (ri.Phase == RaidMissionPhase.Return
                         && !ReturnBaseStillValid(snap, player, ri.PrimaryArmyId, ri.ReturnHex))
                     {
+                        // §11 — losing the chosen base is a controlled RETARGET, never a stall.
                         HexCoord? replacement = SelectReturnBase(snap, player, ri.PrimaryArmyId);
                         if (replacement == null)
                         {
@@ -476,12 +478,17 @@ namespace Game.Ai.V2
                         ri.ReturnHex = replacement;
                         intent.StallTurns = 0;
                     }
+                    // §SupportReturn — same controlled-retarget rule for the support's own home.
+                    // Losing the support (already handled above) always releases the claim before
+                    // this point can even run against a stale actor.
                     if (ri.Phase == RaidMissionPhase.SupportReturn && ri.SupportArmyId.HasValue
                         && !ReturnBaseStillValid(snap, player, ri.SupportArmyId, ri.SupportReturnHex))
                     {
                         HexCoord? replacement = SelectReturnBase(snap, player, ri.SupportArmyId);
                         if (replacement == null)
                         {
+                            // §SupportReturn — no own base to send it to must never wedge the Raid:
+                            // release the support and let the primary carry on being re-evaluated.
                             AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{ri.SupportArmyId.Value} "
                                 + "has no reachable home base — released, primary continues "
                                 + "reason=no_replacement_base_for_support_return");
@@ -512,12 +519,27 @@ namespace Game.Ai.V2
 
                 ScoutIntent s = intent.Scout;
                 if (s == null) { dead.Add(intent.IntentKey); continue; }
+
+                // A donor parked on an Economy loan (SuspendReason.EconomyLoan) keeps its pre-loan
+                // identity untouched. ProvisioningManager is the sole owner of granting the loan;
+                // RepayEconomyLoan is the only place that resumes it, and it does so by re-finding
+                // this exact IntentKey via the borrowing Economy intent's LoanSource. Refocusing (or
+                // retiring, if no runnable waypoint remains) a stale objective here would rekey or
+                // delete that identity mid-loan; the orphan-repair pass above then finds no live
+                // Economy intent pointing at the surviving key and wrongly reactivates the donor
+                // while its actor is still out on loan — one actor claimed by two active intents.
+                // Leave it parked; its waypoint is stale by definition anyway once it resumes.
                 if (intent.Status == IntentStatus.Suspended
                     && intent.Suspended == SuspendReason.EconomyLoan)
                     continue;
 
                 if (!ScoutObjectiveEvaluator.IsIntentStillValid(snap, s))
                 {
+                    // Spec §1/§7/§50-52 — the focus hex is a live waypoint, not the durable
+                    // identity. Re-point it at the nearest still-runnable Explore frontier / stale
+                    // Refresh hex not already owned by another scout intent, re-key the ledger row
+                    // in place, and keep the intent (with its CreatedTurn / PreferredMoverArmyId /
+                    // accumulated progress). Only genuine exhaustion retires it.
                     MissionIntentKey oldKey = intent.IntentKey;
                     if (TryRefocusScoutIntent(snap, s, scoutFoci))
                     {
@@ -564,6 +586,9 @@ namespace Game.Ai.V2
             foreach (MissionIntentKey k in dead)
                 state.Remove(k);
 
+            // Apply the in-place re-keys after the enumeration so the live dictionary is never
+            // mutated mid-iteration. The intent object (and all its accumulated state) is kept;
+            // only its dictionary slot moves to the new focus-hex key.
             foreach ((MissionIntentKey oldKey, MissionIntent it) in rekeys)
             {
                 state.Remove(oldKey);
@@ -583,9 +608,18 @@ namespace Game.Ai.V2
                         $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
                         + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
 
+            // §P1 — if desired concurrency has fallen below the number of active durable Scout
+            // lanes (map mostly explored, fewer reachable regions), retire the surplus lanes
+            // instead of carrying them forever. A "not create more" cap alone leaves earlier
+            // lanes alive; this actively sheds them.
             if (reconObjectives != null)
                 TrimSurplusReconLanes(player, active, state, snap, reconObjectives);
 
+            // Spec §1/§10 invariant — one physical Recon actor owns at most one active durable
+            // role. Prevention lives in ReconAssignmentPlanner, but persisted saves/log replays may
+            // already contain a collision. Repair it here at the continuity boundary: keep the role
+            // most recently reconciled/progressed by the physical actor and unbind the rest. The
+            // objectives remain alive and may acquire another actor; no mission is silently deleted.
             foreach (IGrouping<int, MissionIntent> g in active
                 .Where(i => i.Kind == MissionKind.Scout && i.Scout != null && i.PreferredMoverArmyId.HasValue)
                 .GroupBy(i => i.PreferredMoverArmyId.Value))
@@ -610,15 +644,23 @@ namespace Game.Ai.V2
             return active;
         }
 
+        // A mover that already advanced this turn owns its lane through the productive typed loop.
+        // Reconciliation may run repeatedly after each step; trimming it here would manufacture
+        // surplus churn and immediately recreate effectively the same intent.
         internal static bool IsProductiveReconLaneThisTurn(MissionIntent intent, int turn) =>
             intent != null && intent.Kind == MissionKind.Scout && intent.Scout != null
             && intent.PreferredMoverArmyId.HasValue && intent.LastProgressTurn == turn;
 
+        // §P1 — GRADUAL contraction of durable Scout lanes toward desired concurrency: at most
+        // maxReconLaneTrimPerTurn shed per turn, only Soft/None-funded lanes, and the target floor
+        // already accounts for any Hard-funded lanes that are being kept regardless.
         private static void TrimSurplusReconLanes(PlayerSetupData player, List<MissionIntent> active,
             MissionIntentState state, WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
             var airActorIds = new HashSet<int>((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null && a.IsAir).Select(a => a.ArmyId));
+            // DesiredTotal/HardCap govern physical ground scout lanes. Air intents use the
+            // independent aviation capacity policy and must survive this contraction pass.
             var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
                 && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
                 .ToList();
@@ -641,6 +683,7 @@ namespace Game.Ai.V2
                 .ThenByDescending(i => i.IntentKey)
                 .ToList();
             int hardKept = scoutLanes.Count - shedable.Count;
+            // How many shedable lanes exceed the room left under `desired` after the Hard lanes.
             int surplus = shedable.Count - System.Math.Max(0, desired - hardKept);
             if (surplus <= 0)
                 return;
@@ -654,6 +697,8 @@ namespace Game.Ai.V2
                 active.Remove(v);
                 if (v.PreferredMoverArmyId.HasValue)
                 {
+                    // A contraction decision is turn-wide. Do not let the same actor immediately
+                    // acquire a fresh Recon mission later in this turn's bounded replans.
                     state.MarkReconActorTrimmed(snap.TurnNumber,
                         v.PreferredMoverArmyId.Value);
                     ReconPatrolStateRegistry.Retire(player,
@@ -666,6 +711,10 @@ namespace Game.Ai.V2
             }
         }
 
+        // Spec §1 — re-point a stale ground scout intent's live waypoint at the nearest still-
+        // runnable hex of its own kind, avoiding hexes already owned by another scout intent.
+        // Mutates s.FocusHex and the shared ownedFoci set. Returns false only when nothing runnable
+        // remains, in which case the caller retires the intent.
         private static bool TryRefocusScoutIntent(WorldSnapshot snap, ScoutIntent s, HashSet<HexCoord> ownedFoci)
         {
             if (snap?.MapKnowledge == null || s == null || s.Kind == ScoutTargetKind.Surveil)
@@ -713,29 +762,48 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // =====================================================================================
+        //  AGG-RAID §5 / §11 — the Raid phase machine and its actor/base helpers.
+        // =====================================================================================
+
+        // Is the durable primary still the kind of army Raid provisioning would accept? Uses the
+        // SAME structural snapshot predicate ActorCommitments applies, so continuity and the
+        // commitment view can never disagree about whether the primary survived.
         internal static bool RaidPrimaryActorAlive(WorldSnapshot snap, int armyId)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
             return a != null && a.IsStructuralRaidActor;
         }
 
+        // A support actor only has to be a live, mobile, non-air ground container — it is carrying
+        // bodies to the primary, not fighting on its own.
         internal static bool RaidSupportActorAlive(WorldSnapshot snap, int armyId)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == armyId);
             return a != null && !a.IsPrison && !a.IsAir && a.MemberCount > 0;
         }
 
+        // The §5 transition table, run once per reconciliation pass against FRESH objectives:
+        //   target completed -> next neutral exists -> primary clears it   => Assault
+        //                                           -> primary too weak    => Reinforcement
+        //                    -> no neutral targets left                    => Return
+        // Returns false only when the operation cannot continue in any phase (caller retires it).
         private static bool AdvanceRaidPhase(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, RaidIntent ri,
             IReadOnlyList<AggressionObjective> aggressionObjectives,
             HashSet<RaidTargetRef> activeRaidTargets,
             List<(MissionIntentKey Old, MissionIntent Intent)> rekeys)
         {
+            // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
+            // positive live read (ours / another player's roster / honest map memory / event-guard
+            // Consumed state, per target kind).
             bool targetGone = ri.Target.HasValue
                 && (RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, ri.Target)
                     || RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target));
             if (!targetGone)
             {
+                // A Reinforcement whose primary has since become strong enough again returns to
+                // Assault on its own; Provisioning re-checks this after every roster transfer too.
                 if (ri.Phase == RaidMissionPhase.Reinforcement && !ri.SupportArmyId.HasValue
                     && PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
                 {
@@ -743,6 +811,11 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Reinforcement -> Assault "
                         + "reason=primary_clears_current_target_again");
                 }
+                // AGG-RAID P1#1 — the symmetric direction. This used to be a side effect of
+                // AggressionDemandEvaluator.Build (now a pure snapshot read); Continuity is the sole
+                // owner of durable Phase, so a bound primary that no longer clears its CURRENT
+                // (possibly already re-oriented) target is moved to Reinforcement here, before
+                // Demand/Missions run this same pass.
                 else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId.HasValue
                     && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
                 {
@@ -782,6 +855,8 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            // Re-orient the SAME durable operation onto the next neutral (identity is the target
+            // itself, so the registry slot is re-keyed in place — accumulated AP/steps kept).
             MissionIntentKey oldKey = intent.IntentKey;
             activeRaidTargets.Remove(ri.Target);
             ri.Target = next.Target;
@@ -794,6 +869,8 @@ namespace Game.Ai.V2
             intent.StallTurns = 0;
             intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
 
+            // §5 — the new target is a FRESH decision: the primary is re-checked against the strict
+            // start gate, never against the stale gate that admitted the previous target.
             bool strongEnough = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
             ri.Phase = strongEnough ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
             if (strongEnough)
@@ -806,6 +883,9 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // AGG-RAID §9/§10 — Execution has finished the atomic rendezvous handoff. Continuity (the
+        // sole owner of intent state) releases the support claim and returns the operation to
+        // Assault ONLY when the post-transfer roster actually re-cleared the shared estimator.
         internal static void CompleteRaidReinforcement(PlayerSetupData player, int primaryArmyId,
             bool rosterVerified, string detail)
         {
@@ -824,6 +904,10 @@ namespace Game.Ai.V2
                 + $"phase={ri.Phase} verified={(rosterVerified ? 1 : 0)} {detail}");
         }
 
+        // AGG-RAID §SupportReturn — a full/full swap displaced a primary member into support;
+        // Execution has finished the swap and now hands the support army a Return leg home while
+        // the primary stays put on the target. Called once, from the same execution step that ran
+        // ArmyActions.SwapMembers.
         internal static void BeginRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
             int primaryArmyId, int supportArmyId, string detail)
         {
@@ -838,6 +922,8 @@ namespace Game.Ai.V2
             HexCoord? home = SelectReturnBase(snap, player, supportArmyId);
             if (home == null)
             {
+                // No base to send it home to — never block the Raid on this. Release the support
+                // right away and let the usual reinforcement-loss path re-evaluate the primary.
                 ri.SupportArmyId = null;
                 ri.ReinforcementRequestedTurn = -1;
                 bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
@@ -855,6 +941,9 @@ namespace Game.Ai.V2
                 + $"primary #{primaryArmyId} holds target {ri.Target.DiagnosticLabel} {detail}");
         }
 
+        // AGG-RAID §SupportReturn — the support army has arrived home. Release its claim, clear the
+        // leg, and re-evaluate the primary against the current target exactly like any other
+        // reinforcement-completion edge.
         internal static void CompleteRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
             int primaryArmyId, string detail)
         {
@@ -873,6 +962,9 @@ namespace Game.Ai.V2
                 && !RaidObjectiveEvaluator.IsKnownTargetNoLongerNeutral(snap, ri.Target);
             if (!stillHasTarget)
             {
+                // The target finished while support was walking home — let the ordinary phase
+                // machine pick the next target (or Return) on the next ResolveActive pass; parking
+                // in Assault here is a safe default since AdvanceRaidPhase re-derives everything.
                 ri.Phase = RaidMissionPhase.Assault;
                 AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; target already "
                     + $"resolved while away — will re-orient next pass {detail}");
@@ -884,6 +976,8 @@ namespace Game.Ai.V2
                 + $"phase={ri.Phase} primaryClears={(nowClears ? 1 : 0)} {detail}");
         }
 
+        // §5/§6 — the one shared "can the primary take THIS target right now" question. Fresh
+        // target => fresh start gate.
         internal static bool PrimaryClearsTarget(WorldSnapshot snap, PlayerSetupData player,
             int? primaryArmyId, RaidTargetRef target)
         {
@@ -895,6 +989,13 @@ namespace Game.Ai.V2
             return plan.Feasible;
         }
 
+        // §11 / AGG-RAID P1#3 — is the fixed return base still ours AND still structurally
+        // reachable? "Structurally" is the key word: this reads the GENUINE, any-number-of-turns
+        // route-existence fact WorldAnalysis froze onto the mover's ArmySnapshot
+        // (SafeStepPathing.FindSafePath — the same oracle Provisioning uses live), never "reachable
+        // THIS turn" — a merely-temporarily-blocked step must NOT trigger a retarget, only a base
+        // with NO safe route at all. Shared by the primary's Return leg and the support's
+        // SupportReturn leg — `moverArmyId` is whichever of the two is walking home.
         internal static bool ReturnBaseStillValid(WorldSnapshot snap, PlayerSetupData player,
             int? moverArmyId, HexCoord? hex)
         {
@@ -914,6 +1015,17 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // ---------------------------------------------------------------------------------------
+        //  §11 — "the most active base", as a PURE lexicographic rule over existing snapshot data
+        //  (KnownBuilding / Self.Armies / ThreatModel). Deliberately a small function, not a new
+        //  manager. Order:
+        //    1. max total collected amounts at that base this turn
+        //    2. has working Research/Production/Barracks infrastructure
+        //    3. max own field+garrison power standing there
+        //    4. min current threat severity
+        //    5. min ETA for the returning army
+        //    6. starting Citadel first, then coordinates (stable tie-break only)
+        // ---------------------------------------------------------------------------------------
         internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int? moverArmyId)
         {
             if (snap?.Known?.Buildings == null || player == null)
@@ -928,6 +1040,12 @@ namespace Game.Ai.V2
                 ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == moverArmyId.Value)
                 : null;
             int moveBudget = System.Math.Max(1, mover?.MaxMovement ?? AiConfigV2.etaFallbackMoveBudget);
+
+            // AGG-RAID P1#3 — a structurally reachable base always outranks an unreachable one,
+            // ahead of every other tie-break. Falls back to the old distance-only ordering among
+            // bases with the SAME reachability, and — if genuinely none are reachable right now —
+            // still returns the best-by-distance candidate rather than stranding the operation on a
+            // signal that may only be a transient blockade.
             bool Reachable(Game.Ai.AiMapMemory.KnownBuilding b) =>
                 mover == null || !mover.IsStructuralRaidActor
                 || mover.ReachableOwnBaseHexes.Contains(b.Hex);
@@ -1017,6 +1135,8 @@ namespace Game.Ai.V2
             return commitments;
         }
 
+        // Mid-turn variant: apply exactly one settled outcome without aging, stalling or
+        // reaping unrelated intents. ReconcileAfterTurn remains the sole end-of-turn sweep owner.
         public static void ReconcileStep(PlayerSetupData player, int turn,
             MissionTurnOutcome outcome)
         {
@@ -1069,6 +1189,9 @@ namespace Game.Ai.V2
             state.ReconcileBaseExpansionWait(turn, outcomes);
         }
 
+        // Same fallback MissionIntentState's own Base-expansion outcome matching uses: a
+        // materialized outcome carries its EconomyTarget directly, but a fresh mission that failed
+        // provisioning before ever producing a ProvisionedMission only has it on the proposal.
         private static bool TryGetEconomyTarget(MissionTurnOutcome o, out EconomyMissionTarget target)
         {
             if (o.HasEconomyPayload)
@@ -1106,6 +1229,11 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
             {
+                // Raid completion ends only the CURRENT neutral target, not the durable campaign.
+                // Keep (or create, when the first attack completed immediately) the operation so
+                // the next ResolveActive pass can re-orient the same primary onto another neutral
+                // or enter Return. Removing it here strands the victorious army and makes the
+                // Assault -> next target / Return phase machine unreachable.
                 bool completedRaidAssault = o.MissionKind == MissionKind.Raid
                     && (o.HasRaidPayload
                         ? o.RaidPhase == RaidMissionPhase.Assault
@@ -1130,15 +1258,31 @@ namespace Game.Ai.V2
                 }
 
                 RepayEconomyLoan(state, intent, o);
+                // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
+                // OTHER than this actor's own execution reaching goal (another scout opened it
+                // mid-turn, or provisioning found it already live-satisfied) is a satisfied
+                // WAYPOINT, not a finished role. KEEP — or, for a fresh mission that really
+                // began executing this turn, CREATE — the durable ground-scout intent so
+                // ActorCommitments retains the scout and ResolveActive re-focuses it next turn
+                // (its hex now fails IsIntentStillValid). Mirrors the own-execution
+                // ExecutionResult.DurableRoleContinues ProductiveStop path. Surveil and genuine
+                // own-execution completions still retire.
                 if (o.ObjectiveSatisfiedExternally)
                 {
                     bool existingScoutRole = intent != null
                         && intent.Scout != null && intent.Scout.Kind != ScoutTargetKind.Surveil;
+                    // Fresh role: the mission was provisioned AND executed at least one step
+                    // this turn (so ReconPatrolState already exists). A provisioning-only
+                    // TargetSatisfied for a never-executed fresh mission has HasScoutPayload ==
+                    // false / MadeProgress == false and is correctly NOT made durable.
                     bool freshScoutRole = intent == null && o.HasScoutPayload && o.MadeProgress
                         && o.ScoutKind != ScoutTargetKind.Surveil;
 
                     if (existingScoutRole)
                     {
+                        // Count the AP / steps the scout actually spent before the waypoint
+                        // was taken (accumulated-state preservation), same as any other
+                        // productive turn — AdvanceIntent owns that accounting.
                         o.MadeProgress = true;
                         AdvanceIntent(intent, o, turn, state, allocState);
                         AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} waypoint satisfied "
@@ -1165,6 +1309,9 @@ namespace Game.Ai.V2
 
             if (o.StructuralFailure)
             {
+                // A failed support roster invalidates only that reinforcement assignment, not the
+                // durable Raid campaign or its neutral target. Provisioning classifies a missing
+                // primary/target separately; AssemblyInfeasible here is therefore support-local.
                 if (raidReinforcementOutcome && intent?.Raid != null
                     && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible)
                 {
@@ -1220,9 +1367,32 @@ namespace Game.Ai.V2
                     intent.StallTurns = 0;
                     return;
                 }
+                // Outbound Economy commitments (BuildExtraction/FoundBase) preserve their assigned
+                // builder only on genuinely transient capability failures (NoMoverExists /
+                // MoverContended) — AdvanceIntent suspends+preserves the intent for exactly this
+                // case (SuspendReason.CapabilityUnavailable), and these two kinds do NOT age out
+                // through StallTurns/ShouldReap on purpose (retiring here would let a fresh
+                // materialization hand a second builder the same target next admission pass while
+                // the first was still mid-route). Provisioning reports a missing committed actor as
+                // TargetInvalidated, which is handled by the Failed branch above (Outcome.Failed,
+                // not routed through transientCapability at all). A missing live safe route is
+                // reported as NoExecutableStep and, for an outbound Economy outcome with no
+                // progress, is not transientCapability either, so it reaches the cleanup below.
+                // Neither NoMoverExists nor MoverContended is claimed to be always-transient in some
+                // absolute sense — this fix only stops a proven route failure from being mistaken
+                // for one; a mover that stays stuck for some other eligibility reason with a route
+                // that does exist is unaffected. ReturnBuilder (the return-trip leg) has its own,
+                // deliberately unconditional preservation rule above (returnBuilderOutcome) and is
+                // not affected by any of this.
                 bool capabilityFailure = o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
                     || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended;
 
+                // P1 fix: a FoundBase project that never got far enough to become a durable intent
+                // (no actor at all — provisioning failed on the very first attempt) must still count
+                // toward the delivery-failure streak, or that project can retry forever without ever
+                // reaching AdvanceIntent's own call (below), which only fires once intent != null.
+                // This is the ONE registration point for the no-intent case; AdvanceIntent's call
+                // only fires for an existing intent, so the two never double-count the same outcome.
                 if (capabilityFailure && intent == null
                     && TryGetEconomyTarget(o, out EconomyMissionTarget freshTarget)
                     && freshTarget.Kind == EconomyTaskKind.FoundBase)
@@ -1274,7 +1444,17 @@ namespace Game.Ai.V2
             if (o.MoverArmyId.HasValue)
             {
                 ReleaseOtherReconActorClaims(state, intent, o.MoverArmyId.Value);
+                // AGG-RAID §5 (critical) — for a Raid the executor of a given turn may be the
+                // SUPPORT army (Reinforcement transit / handoff), not the primary. Generic code
+                // must never let that support id overwrite PrimaryArmyId and silently orphan the
+                // real raiding force. Only a mover that IS (or is taking over as) the primary may
+                // rewrite it: a support-executed step leaves the primary untouched.
                 RaidIntent raid = intent.Raid;
+                // Actor role is taken from the immutable provisioned outcome. Execution may already
+                // have called CompleteRaidReinforcement, clearing SupportArmyId and switching the
+                // live intent to Assault; inspecting that mutated phase here used to misclassify the
+                // convoy as the new primary. A completed handoff deliberately releases the convoy;
+                // only a still-travelling selected support becomes a durable claim.
                 bool supportExecutedThisTurn = raid != null && o.HasRaidPayload
                     && (o.RaidPhase == RaidMissionPhase.Reinforcement || o.RaidPhase == RaidMissionPhase.SupportReturn)
                     && o.RaidPrimaryArmyId == raid.PrimaryArmyId
@@ -1289,6 +1469,9 @@ namespace Game.Ai.V2
                         + $"#{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept; "
                         + $"handoffAttempted={(o.RaidReinforcementHandoffAttempted ? 1 : 0)}");
                 }
+                // Economy actor ownership is durable. A replacement may only happen after
+                // ResolveActive retires a structurally invalid intent; an ordinary retry cannot
+                // atomically rewrite the mover behind continuity's back.
                 else if (intent.Kind != MissionKind.Economy
                     || !intent.PreferredMoverArmyId.HasValue
                     || intent.PreferredMoverArmyId.Value == o.MoverArmyId.Value)
@@ -1350,6 +1533,15 @@ namespace Game.Ai.V2
                 intent.Status = IntentStatus.Suspended;
                 intent.Suspended = SuspendReason.CapabilityUnavailable;
 
+                // Base expansion is deliberately exempt from StallTurns/ShouldReap aging (see the
+                // comment above transientCapability in ReconcileOutcome) so an in-progress delivery
+                // survives a transient blip. That exemption previously had no upper bound: the same
+                // stuck project — NoMoverExists / MoverContended, turn after turn — never triggered
+                // the existing MissionIntentState delivery-failure cooldown because nothing called
+                // it. Wire it here, the one place this intent is suspended for that reason. A gap
+                // turn without a capability failure (real progress or a different suspend reason)
+                // breaks RecordBaseExpansionDeliveryFailure's consecutive-turn streak on its own —
+                // no separate reset is needed.
                 if (!o.MadeProgress && intent.Kind == MissionKind.Economy
                     && intent.Economy?.Kind == EconomyTaskKind.FoundBase
                     && state.RecordBaseExpansionDeliveryFailure(
@@ -1399,6 +1591,13 @@ namespace Game.Ai.V2
             }
         }
 
+        // Spec §1/§10 — the physical scout that produced this fresh scout outcome already owns a
+        // durable Recon role (Explore / Refresh / Surveil) under a different key: a new
+        // opportunistic mission ran on a mover continuity already tracks. Re-point that existing
+        // role at the new objective and re-key its registry slot, preserving CreatedTurn /
+        // TurnsActive / CumulativeApSpent / StepsMovedTotal / PreferredMoverArmyId, instead of
+        // creating a second durable intent for the same physical actor. Ownership is actor-
+        // exclusive across all three Recon sub-kinds. Returns true when it absorbed the outcome.
         private static bool TryAbsorbIntoExistingActorRole(MissionIntentState state,
             MissionTurnOutcome o, int turn, AiAllocatorState allocState)
         {
@@ -1424,6 +1623,8 @@ namespace Game.Ai.V2
             owner.Scout.Kind = o.ScoutKind;
             owner.Scout.RequiresStealth = o.ScoutRequiresStealth;
             owner.Scout.TrackedArmyId = o.ScoutKind == ScoutTargetKind.Surveil ? o.TrackedArmyId : null;
+            // A durable Surveil role keeps the Soft funding that marks it as a bound surveillance
+            // commitment; switching to Explore/Refresh drops back to an unfunded frontier role.
             owner.Funding = o.ScoutKind == ScoutTargetKind.Surveil
                 ? (owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.Soft)
                 : (owner.Funding == CommitmentTier.Hard ? CommitmentTier.Hard : CommitmentTier.None);
@@ -1438,6 +1639,11 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Shared skeleton for the three Create*Intent methods below — was three independent,
+        // hand-written copies of the same 12-field MissionIntent construction (see
+        // Docs/ai-duplicate-methods-analysis.md, group M). Collapsing them here means a future
+        // field added to MissionIntent only has to be wired up once, instead of risking a silently
+        // half-initialized intent from a copy nobody remembered to update.
         private static MissionIntent NewIntent(MissionTurnOutcome o, int turn, MissionKind kind,
             CommitmentTier funding, object objective)
         {
@@ -1534,6 +1740,9 @@ namespace Game.Ai.V2
             if (i.Kind == MissionKind.Raid)
                 return i.StallTurns >= AiConfigV2.raidIntentStallTurns
                     || i.TurnsActive >= AiConfigV2.raidIntentMaxTurns;
+            // Explore/Refresh are durable roles whose waypoint is re-focused by ResolveActive.
+            // Productive movement resets StallTurns; absolute age must not turn that success into
+            // IntentReapedStall. Objective exhaustion/invalidity is handled separately above.
             if (i.Kind == MissionKind.Scout)
                 return i.StallTurns >= AiConfigV2.commitmentStallTurns;
             return i.StallTurns >= AiConfigV2.commitmentStallTurns
@@ -1559,3 +1768,4 @@ namespace Game.Ai.V2
                     : "?";
     }
 }
+
