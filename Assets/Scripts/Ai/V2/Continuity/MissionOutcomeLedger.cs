@@ -45,7 +45,10 @@ namespace Game.Ai.V2
         public bool HasScoutPayload;
         public MissionKind MissionKind = MissionKind.Scout;
         public bool HasRaidPayload;
-        public int RaidTargetArmyId;
+        // Single source of truth for the target of this outcome. RaidTargetArmyId below is a
+        // read-only projection for existing non-Raid/logging readers — never a second settable copy.
+        public RaidTargetRef RaidTarget;
+        public int RaidTargetArmyId => RaidTarget.Kind == RaidTargetKind.NeutralArmy ? RaidTarget.ArmyId : 0;
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
         public bool RaidOperationStarted;
@@ -53,8 +56,8 @@ namespace Game.Ai.V2
         // these immutable facts instead of inspecting RaidIntent.Phase after Execution may already
         // have advanced it.
         public RaidMissionPhase RaidPhase;
-        public int RaidPrimaryArmyId;
-        public int RaidSupportArmyId;
+        public int? RaidPrimaryArmyId;
+        public int? RaidSupportArmyId;
         public bool RaidReinforcementHandoffAttempted;
         public bool HasEconomyPayload;
         public EconomyMissionTarget EconomyTarget;
@@ -158,7 +161,7 @@ namespace Game.Ai.V2
                     // already met" just because the (by definition already dead) previous target no
                     // longer exists — that would retire the whole operation mid-leg.
                     satisfied = pm.RaidPhase == RaidMissionPhase.Assault
-                        && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTargetArmyId);
+                        && RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, pm.RaidTarget);
                 }
                 else if (pm.Kind == MissionKind.Economy)
                 {
@@ -211,7 +214,7 @@ namespace Game.Ai.V2
                     if (r.Provisioned.Kind == MissionKind.Raid)
                     {
                         o.HasRaidPayload = true;
-                        o.RaidTargetArmyId = r.Provisioned.RaidTargetArmyId;
+                        o.RaidTarget = r.Provisioned.RaidTarget;
                         o.RaidLastKnownHex = r.Provisioned.RaidLastKnownHex;
                         o.RaidTargetIsNeutral = r.Provisioned.RaidTargetIsNeutral;
                         o.RaidPhase = r.Provisioned.RaidPhase;

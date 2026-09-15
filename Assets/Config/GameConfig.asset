@@ -375,11 +375,11 @@ MonoBehaviour:
     groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
     terrainTypes:
     - terrainName: City ruins
-      texture: {fileID: 2800000, guid: 3d641b1972c92c6458b6abd22b4e2593, type: 3}
+      texture: {fileID: 2800000, guid: 06c0a85340f07ab4c9835e37b8d15123, type: 3}
       alternativeTextures:
-      - {fileID: 2800000, guid: fa361a03f44939349882de2867f5a724, type: 3}
-      - {fileID: 2800000, guid: 7e7b0dfef1fbaf34eb707c06b020bc41, type: 3}
-      - {fileID: 2800000, guid: c3d440d085ad7c249a5ca63365ba6838, type: 3}
+      - {fileID: 2800000, guid: 353be55a0458c2148af5d2febe76f0ae, type: 3}
+      - {fileID: 2800000, guid: 7e61c22c02e2573479141d755a361f10, type: 3}
+      - {fileID: 2800000, guid: b9e07fcd7be42254a9ca4611ceb87fdf, type: 3}
       baselineWeight: 5
       resourceYields:
         human: 0
@@ -389,15 +389,15 @@ MonoBehaviour:
       moveCost: 1
       defenseModifier: 1
     - terrainName: Desert
-      texture: {fileID: 2800000, guid: b735d60120e9c464f8406fa1c2ea2301, type: 3}
+      texture: {fileID: 2800000, guid: cc69b687163987f4aaee72f259d23275, type: 3}
       alternativeTextures:
-      - {fileID: 2800000, guid: a9732629fd244ba4fae01e7e94612ebf, type: 3}
-      - {fileID: 2800000, guid: 83c1fc375e2ee1a44a275661b2f8aa05, type: 3}
-      - {fileID: 2800000, guid: cd7198626cb935b4da570bd20470d18a, type: 3}
-      - {fileID: 2800000, guid: 9236d9ddf68652d4195348157ece9cfd, type: 3}
-      - {fileID: 2800000, guid: d317115ae4e7fa346a45aba6b4140975, type: 3}
-      - {fileID: 2800000, guid: 33171a493fee2ae43a8b34975abe8db9, type: 3}
-      - {fileID: 2800000, guid: 9feac9596bcabd64298ef018ac56b8f5, type: 3}
+      - {fileID: 2800000, guid: 918ed519ed841a54588912136ee3bba2, type: 3}
+      - {fileID: 2800000, guid: a9ffb72fb0cd9194ea8f683229151956, type: 3}
+      - {fileID: 2800000, guid: fccdd79fde2f05b41ba2b91e2664da30, type: 3}
+      - {fileID: 2800000, guid: 537c2f6614e077446aaab50984a94ba1, type: 3}
+      - {fileID: 2800000, guid: ee16ad4217af01c4a9df7afd234dff7a, type: 3}
+      - {fileID: 2800000, guid: a081bc0b635257b4da0fe4a78cffe18e, type: 3}
+      - {fileID: 2800000, guid: a86ee867fe741844e95852966b92d9ea, type: 3}
       baselineWeight: 90
       resourceYields:
         human: 0
@@ -407,11 +407,11 @@ MonoBehaviour:
       moveCost: 1
       defenseModifier: 0
     - terrainName: Mountains
-      texture: {fileID: 2800000, guid: 731e584aa338c0b489cae06fc4425dcb, type: 3}
+      texture: {fileID: 2800000, guid: 74bfa362df5a7a14d9b4dbb1128501b6, type: 3}
       alternativeTextures:
-      - {fileID: 2800000, guid: 516120d431cf6294f9ccb0be7ef3bce4, type: 3}
-      - {fileID: 2800000, guid: 2f2921de3446ac641b7ede1a69a04c2b, type: 3}
-      - {fileID: 2800000, guid: 4b7128a39fdd8b14199f14ff57fcb343, type: 3}
+      - {fileID: 2800000, guid: 9d26127d93710eb43984f68555f57821, type: 3}
+      - {fileID: 2800000, guid: d67fdfd315735f848be1123786255afb, type: 3}
+      - {fileID: 2800000, guid: 561ec0444a2e45d4aa5fb2b3644af51e, type: 3}
       baselineWeight: 10
       resourceYields:
         human: 0
@@ -421,11 +421,11 @@ MonoBehaviour:
       moveCost: 3
       defenseModifier: 2
     - terrainName: Rock desert
-      texture: {fileID: 2800000, guid: 6793c8bf962c3034cba2510e314f4c96, type: 3}
+      texture: {fileID: 2800000, guid: 05e651b1c6ceef94d8dadfeeaead2433, type: 3}
       alternativeTextures:
-      - {fileID: 2800000, guid: 3f834918804ff0a4e8332170c3e84182, type: 3}
-      - {fileID: 2800000, guid: 2d0b090b16ecd5a46ae32588cf2d90fb, type: 3}
-      - {fileID: 2800000, guid: e349ebdda2a84bb47acd9fcd3cdf8aec, type: 3}
+      - {fileID: 2800000, guid: 3c4c4e67cc226924881db590152eacae, type: 3}
+      - {fileID: 2800000, guid: 6d400a2c4b82092409836eae34cbe6cf, type: 3}
+      - {fileID: 2800000, guid: 59ad39281c1e965448819108a0219604, type: 3}
       baselineWeight: 10
       resourceYields:
         human: 0
@@ -435,11 +435,11 @@ MonoBehaviour:
       moveCost: 1
       defenseModifier: 1
     - terrainName: Sand dunes
-      texture: {fileID: 2800000, guid: 8ec5a5036cca37a419ab1383cfdf3ee7, type: 3}
+      texture: {fileID: 2800000, guid: b9242a52e05ddbe42abac1d922f63983, type: 3}
       alternativeTextures:
-      - {fileID: 2800000, guid: a8857410d73cdcc4487d32e9acbeb907, type: 3}
-      - {fileID: 2800000, guid: b113b86060a2c6c4db9f755254339488, type: 3}
-      - {fileID: 2800000, guid: e08d2106900c56d40b3e9a0d4f1b7655, type: 3}
+      - {fileID: 2800000, guid: c62c900940ca6a14d8fdd402d7bd4869, type: 3}
+      - {fileID: 2800000, guid: 55eb96ad3668c514383a9d36c7081560, type: 3}
+      - {fileID: 2800000, guid: 06f4cbc3ef1e1f048982185c6c5d2f57, type: 3}
       baselineWeight: 10
       resourceYields:
         human: 0

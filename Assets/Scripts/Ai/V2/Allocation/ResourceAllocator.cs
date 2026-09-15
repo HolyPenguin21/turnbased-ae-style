@@ -195,14 +195,39 @@ namespace Game.Ai.V2
         public readonly int TargetId;
         public readonly int Q;
         public readonly int R;
+        // Default NeutralArmy so every non-Raid key (Economy, Scout) is unaffected by this field.
+        public readonly RaidTargetKind TargetKind;
 
-        public StableMissionKey(MissionKind kind, int subKind, int targetId, int q, int r)
+        public StableMissionKey(MissionKind kind, int subKind, int targetId, int q, int r,
+            RaidTargetKind targetKind = RaidTargetKind.NeutralArmy)
         {
             Kind = kind;
             SubKind = subKind;
             TargetId = targetId;
             Q = q;
             R = r;
+            TargetKind = targetKind;
+        }
+
+        // Single owner of Raid key encoding — no other class should hand-assemble a Raid
+        // StableMissionKey. Distinguishes a neutral army #0 from an event guard at (0,0) via
+        // TargetKind, since both would otherwise collapse to the same numeric identity.
+        // Assault-only variant for a raw target (e.g. an AggressionObjective not yet a full
+        // RaidMissionTarget) — same encoding as ForRaid's Assault branch, kept as one call site.
+        public static StableMissionKey ForRaidAssault(RaidTargetRef target) =>
+            target.Kind == RaidTargetKind.NeutralArmy
+                ? new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, target.ArmyId, 0, 0, RaidTargetKind.NeutralArmy)
+                : new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, 0, target.Hex.Q, target.Hex.R, RaidTargetKind.EventGuard);
+
+        public static StableMissionKey ForRaid(RaidMissionTarget rt)
+        {
+            if (rt.Phase == RaidMissionPhase.Assault)
+                return ForRaidAssault(rt.Target);
+            if (rt.Phase == RaidMissionPhase.SupportReturn)
+                return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.SupportReturn,
+                    rt.SupportArmyId ?? 0, rt.DestinationHex.Q, rt.DestinationHex.R);
+            return new StableMissionKey(MissionKind.Raid, (int)rt.Phase, rt.PrimaryArmyId ?? 0,
+                rt.DestinationHex.Q, rt.DestinationHex.R);
         }
 
         public static StableMissionKey For(MissionProposal m)
@@ -212,20 +237,15 @@ namespace Game.Ai.V2
                 int targetId = t.Kind == ScoutTargetKind.Surveil ? (t.Contact?.Army?.ArmyId ?? 0) : 0;
                 return new StableMissionKey(MissionKind.Scout, (int)t.Kind, targetId, t.FocusHex.Q, t.FocusHex.R);
             }
-            // Step 9 — Raid identity is the tracked target army (spec §25). Hex is telemetry /
-            // tie-break only, so it stays out of the key: a moving target is the same mission.
-            // AGG-RAID §8 — the attempt key now includes the PHASE, so an attack cooldown can never
-            // be confused with a return cooldown, a support convoy is never counted as the
-            // primary's own attempt, and two identical support convoys can never be created for the
-            // same Raid.
-            //   Assault       : target army id
-            //   Reinforcement : primary army id + rendezvous hex
-            //   Return        : primary army id + return hex
+            // Step 9 — Raid identity is the tracked target (spec §25). Hex is telemetry /
+            // tie-break only for a NeutralArmy target, so it stays out of the key there: a moving
+            // target is the same mission. AGG-RAID §8 — the attempt key now includes the PHASE, so
+            // an attack cooldown can never be confused with a return cooldown, a support convoy is
+            // never counted as the primary's own attempt, and two identical support convoys can
+            // never be created for the same Raid. See StableMissionKey.ForRaid for the exact
+            // encoding per phase — this is the ONLY call site that should build one.
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
-                return rt.Phase == RaidMissionPhase.Assault
-                    ? new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, rt.TargetArmyId, 0, 0)
-                    : new StableMissionKey(MissionKind.Raid, (int)rt.Phase, rt.PrimaryArmyId,
-                        rt.DestinationHex.Q, rt.DestinationHex.R);
+                return ForRaid(rt);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
@@ -236,9 +256,10 @@ namespace Game.Ai.V2
         }
 
         public bool Equals(StableMissionKey o) =>
-            Kind == o.Kind && SubKind == o.SubKind && TargetId == o.TargetId && Q == o.Q && R == o.R;
+            Kind == o.Kind && SubKind == o.SubKind && TargetId == o.TargetId && Q == o.Q && R == o.R
+            && TargetKind == o.TargetKind;
         public override bool Equals(object obj) => obj is StableMissionKey o && Equals(o);
-        public override int GetHashCode() => ((int)Kind, SubKind, TargetId, Q, R).GetHashCode();
+        public override int GetHashCode() => ((int)Kind, SubKind, TargetId, Q, R, (int)TargetKind).GetHashCode();
         public override string ToString() =>
             Kind == MissionKind.Scout
                 ? (TargetId != 0
@@ -246,7 +267,7 @@ namespace Game.Ai.V2
                     : $"{Kind}({(ScoutTargetKind)SubKind} {Q},{R})")
                 : Kind == MissionKind.Raid
                     ? (SubKind == (int)RaidMissionPhase.Assault
-                        ? $"Raid(#{TargetId})"
+                        ? (TargetKind == RaidTargetKind.EventGuard ? $"Raid(Guard@{Q},{R})" : $"Raid(#{TargetId})")
                         : $"Raid({(RaidMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.Economy
                         ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
@@ -257,6 +278,7 @@ namespace Game.Ai.V2
             int c = Kind.CompareTo(o.Kind); if (c != 0) return c;
             c = SubKind.CompareTo(o.SubKind); if (c != 0) return c;
             c = TargetId.CompareTo(o.TargetId); if (c != 0) return c;
+            c = ((int)TargetKind).CompareTo((int)o.TargetKind); if (c != 0) return c;
             c = Q.CompareTo(o.Q); if (c != 0) return c;
             return R.CompareTo(o.R);
         }

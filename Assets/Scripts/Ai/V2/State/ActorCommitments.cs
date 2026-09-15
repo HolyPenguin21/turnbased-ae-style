@@ -31,13 +31,12 @@ namespace Game.Ai.V2
         // Live copy for the shared eligibility primitive (ScoutMoverSelector.Eligible takes an ISet).
         public HashSet<int> ClaimedArmyIdSet => new HashSet<int>(_claimedArmyIds);
 
-        public bool IsArmyClaimed(int armyId) => armyId != 0 && _claimedArmyIds.Contains(armyId);
+        // armyId here is always an already-resolved concrete actor id, never a "no army" signal —
+        // 0 is a legitimate ArmyData.Id (see ArmyData identity sequencing) and must be claimable
+        // exactly like any other id.
+        public bool IsArmyClaimed(int armyId) => _claimedArmyIds.Contains(armyId);
 
-        public void Claim(int armyId)
-        {
-            if (armyId != 0)
-                _claimedArmyIds.Add(armyId);
-        }
+        public void Claim(int armyId) => _claimedArmyIds.Add(armyId);
 
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
             WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
@@ -56,19 +55,20 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent i in intents)
             {
-                // AGG-RAID §5 — the SUPPORT actor of a Raid in Reinforcement is claimed
-                // independently of the primary: Housekeeping (and every other mission lane) must
-                // never see the convoy as a free army while it is carrying reinforcement. It is
-                // claimed ONLY in the Reinforcement phase, and losing it releases just this claim.
+                // AGG-RAID §5/§SupportReturn — the SUPPORT actor of a Raid is claimed independently
+                // of the primary while it is either carrying reinforcement TO the primary
+                // (Reinforcement) or walking a displaced member back home AFTER a full/full swap
+                // (SupportReturn): Housekeeping (and every other mission lane) must never see the
+                // convoy as a free army during either leg. Losing it releases just this claim.
                 RaidIntent raid = i?.Raid;
-                if (raid != null && raid.SupportArmyId != 0
-                    && raid.Phase == RaidMissionPhase.Reinforcement
-                    && snap.Self.Armies.Any(a => a != null && a.ArmyId == raid.SupportArmyId
+                if (raid != null && raid.SupportArmyId.HasValue
+                    && (raid.Phase == RaidMissionPhase.Reinforcement || raid.Phase == RaidMissionPhase.SupportReturn)
+                    && snap.Self.Armies.Any(a => a != null && a.ArmyId == raid.SupportArmyId.Value
                         && !a.IsPrison && !a.IsAir && a.MemberCount > 0))
                 {
-                    c.Claim(raid.SupportArmyId);
+                    c.Claim(raid.SupportArmyId.Value);
                     AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
-                        + $"support={raid.SupportArmyId} reason=reinforcement_convoy_in_transit");
+                        + $"support={raid.SupportArmyId.Value} phase={raid.Phase} reason=support_actor_en_route");
                 }
 
                 if (i?.PreferredMoverArmyId == null)
@@ -144,9 +144,9 @@ namespace Game.Ai.V2
         private static bool RaidActorStillValid(int armyId, WorldSnapshot snap, out string reason)
         {
             reason = null;
-            if (armyId == 0 || snap?.Self?.Armies == null)
+            if (snap?.Self?.Armies == null)
             {
-                reason = "missing_actor_or_snapshot";
+                reason = "missing_snapshot";
                 return false;
             }
 

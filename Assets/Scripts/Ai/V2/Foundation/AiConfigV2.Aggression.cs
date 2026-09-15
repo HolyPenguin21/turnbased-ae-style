@@ -79,9 +79,6 @@ namespace Game.Ai.V2
         // CombatPower the requirement projection asks for when no ready force clears the target:
         // the target's own EffectiveArmyPower times this margin.
         public const float raidCombatPowerMargin = 1.25f;
-        // A target with more known defenders than this is an army-vs-army fight, not a raid — no
-        // Raid objective (parity with V1 AiConfig.raidTargetMaxDefenders).
-        public const int raidTargetMaxDefenders = 4;
         // Continuity: a started Raid intent is reaped after this many stalled turns / absolute
         // turns, same shape as the shared commitment* caps but a touch more patient (assembly +
         // travel is slower than a scout leg).

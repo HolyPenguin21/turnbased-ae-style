@@ -24,7 +24,6 @@ namespace Game.Ai
         public const float aggressionBaseWeight = 100f;
         public const float raidMinimumWinChance = 0.65f;
         public const int raidThreatRadius = 2;
-        public const int raidTargetMaxDefenders = 4;
         public const int raidAssembleMaxTurns = 6;
         public const int raidPlanRejectCooldownTurns = 3;
 

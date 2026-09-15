@@ -95,7 +95,7 @@ namespace Game.Ai.V2
             //  and the intent hung until stall/reap. Here the primary is re-tested against the
             //  CURRENT (already re-oriented) target through the SAME gate Provisioning will use.
             // ===================================================================================
-            var coveredTargets = new HashSet<int>();
+            var coveredTargets = new HashSet<RaidTargetRef>();
             var reinforcementDemands = new List<AxisDemand>();
             if (activeIntents != null)
                 foreach (MissionIntent i in activeIntents)
@@ -104,37 +104,38 @@ namespace Game.Ai.V2
                     if (ri == null)
                         continue;
 
-                    // A Return leg consumes no target and needs no combat capability at all.
-                    if (ri.Phase == RaidMissionPhase.Return)
+                    // A Return/SupportReturn leg consumes no target and needs no combat capability
+                    // at all — the target (if any) is already handled or irrelevant to this leg.
+                    if (ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn)
                     {
-                        coveredTargets.Add(ri.TargetArmyId);
+                        if (ri.Target.HasValue) coveredTargets.Add(ri.Target);
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + "reason=raid_in_return_phase");
+                            + $"reason=raid_in_{ri.Phase.ToString().ToLowerInvariant()}_phase");
                         continue;
                     }
 
-                    int primaryId = ri.PrimaryArmyId;
-                    if (primaryId == 0 || commitments == null || !commitments.IsArmyClaimed(primaryId))
+                    if (!ri.PrimaryArmyId.HasValue || commitments == null || !commitments.IsArmyClaimed(ri.PrimaryArmyId.Value))
                         continue;   // no bound primary yet -> ordinary fresh-objective handling below
+                    int primaryId = ri.PrimaryArmyId.Value;
 
-                    coveredTargets.Add(ri.TargetArmyId);
+                    if (ri.Target.HasValue) coveredTargets.Add(ri.Target);
 
-                    IReadOnlyList<WorthIt.DefenderProfile> defenders = RaidDefenders(snap, ri.TargetArmyId);
+                    IReadOnlyList<WorthIt.DefenderProfile> defenders = RaidDefenders(snap, ri.Target);
                     GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
                         snap, defenders, primaryId, AiConfigV2.raidMinViableWinChance);
                     if (primaryPlan.Feasible)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} "
+                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} "
                             + $"win={primaryPlan.ProjectedWinChance:0.00} "
                             + "reason=primary_clears_worthit_against_current_target");
                         continue;
                     }
 
-                    if (ri.SupportArmyId != 0)
+                    if (ri.SupportArmyId.HasValue)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} support={ri.SupportArmyId} "
+                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} support={ri.SupportArmyId.Value} "
                             + "reason=reinforcement_already_assigned_or_en_route");
                         continue;
                     }
@@ -156,7 +157,7 @@ namespace Game.Ai.V2
                     if (existingSupportCandidates.Count > 0)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} "
+                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} "
                             + $"candidates={existingSupportCandidates.Count} "
                             + "reason=existing_free_army_available_as_support");
                         continue;
@@ -173,7 +174,7 @@ namespace Game.Ai.V2
                     if (!CanDeliverIndependentFieldArmy(snap, inv))
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER intent={i.IntentKey} "
-                            + $"targetArmy={ri.TargetArmyId} primary={primaryId} "
+                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} "
                             + $"reason=no_independent_field_army_deliverable deficit={deficit:0.#} "
                             + $"freePower={inv.RaidAvailableFieldPower:0.#} shells={inv.ReusableEmptyArmies.Count}");
                         continue;
@@ -189,7 +190,7 @@ namespace Game.Ai.V2
                     // the main Phase-A pass and the bounded reaction probe — a diagnostic evaluation
                     // must never be able to commit the real mission to state it may never fund.
                     diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE intent={i.IntentKey} "
-                        + $"targetArmy={ri.TargetArmyId} capability=FieldCombatPower "
+                        + $"target={ri.Target.DiagnosticLabel} capability=FieldCombatPower "
                         + $"shape=IndependentFieldArmy desired={deficit:0.#} primary={primaryId} "
                         + $"required={required:0.#} have={(primary?.EffectiveArmyPower ?? 0f):0.#} "
                         + $"rendezvous=({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}) "
@@ -206,7 +207,7 @@ namespace Game.Ai.V2
                         MinimumFollowupAp = 0f,
                         TargetHex = primary?.Hex,
                         Value = AiConfigV2.raidBaseValueMax,
-                        Explain = $"raid #{ri.TargetArmyId}: primary #{primaryId} no longer clears WorthIt "
+                        Explain = $"raid {ri.Target.DiagnosticLabel}: primary #{primaryId} no longer clears WorthIt "
                             + $"({(primary?.EffectiveArmyPower ?? 0f):0.#} of {required:0.#} needed); "
                             + $"deliver ~{deficit:0.#} field power as a SEPARATE support army to "
                             + $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)})",
@@ -220,9 +221,9 @@ namespace Game.Ai.V2
             // effect. null == no state yet == no cooldowns.
             AiAllocatorState cooldownState = AiAllocatorStateRegistry.Peek(player);
 
-            foreach (AggressionObjective o in objectives.OrderByDescending(x => x.BaseValue).ThenBy(x => x.TargetArmyId))
+            foreach (AggressionObjective o in objectives.OrderByDescending(x => x.BaseValue).ThenBy(x => x.Target.DiagnosticLabel))
             {
-                if (coveredTargets.Contains(o.TargetArmyId))
+                if (coveredTargets.Contains(o.Target))
                     continue;
                 StableMissionKey key = RaidKey(o);
                 if (cooldownState != null
@@ -235,11 +236,11 @@ namespace Game.Ai.V2
                 }
 
                 RaidOperationalReadiness readiness = RaidOperationalReadiness.Evaluate(
-                    snap, o, RaidDefenders(snap, o.TargetArmyId), commitments, inv);
+                    snap, o, RaidDefenders(snap, o.Target), commitments, inv);
                 if (readiness.ReadyExecutable)
                 {
                     readyList.Add((o, readiness.ReadyPlan));
-                    diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED targetArmy={o.TargetArmyId} "
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={o.Target.DiagnosticLabel} "
                         + $"reason=ready_free_army_clears_shared_readiness actor={readiness.ReadyPlan.BaseArmyId} "
                         + $"win={readiness.ReadyPlan.ProjectedWinChance:0.00} "
                         + $"cover={(readiness.ReadyPlan.CoversAllDefenders ? 1 : 0)} "
@@ -286,7 +287,7 @@ namespace Game.Ai.V2
                 // executable only because no legal same-hex formation clears the estimator. That
                 // is an organization gap owned by RaidAssembly / Housekeeping / the bounded
                 // re-admission — buying more FieldCombatPower would not help.
-                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER targetArmy={chosen.TargetArmyId} "
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={chosen.Target.DiagnosticLabel} "
                     + $"reason=assembly_gap detail=\"{chosenReadiness.AssemblyReason}\" "
                     + $"freePower={inv.RaidAvailableFieldPower:0.#} requiredPower={chosenReadiness.RequiredPower:0.#} "
                     + $"freeHeroes={inv.AvailableHeroes} committedHeroes={inv.CommittedHeroes} blocked={blocked} "
@@ -302,7 +303,7 @@ namespace Game.Ai.V2
 
             if (chosenReadiness.NeedsHero)
             {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
+                diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE target={chosen.Target.DiagnosticLabel} "
                     + $"capability=Hero desired=1 reason=no_free_deployed_hero freeHeroes={inv.AvailableHeroes} "
                     + $"committedHeroes={inv.CommittedHeroes} blocked={blocked} readiness=REJECT "
                     + $"detail=\"{chosenReadiness.ReadyReason}\"");
@@ -315,14 +316,14 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = 0f,
                     TargetHex = chosen.LastKnownHex,
                     Value = chosen.BaseValue,
-                    Explain = $"raid #{chosen.TargetArmyId} needs a free deployed hero; free {inv.AvailableHeroes}, "
+                    Explain = $"raid {chosen.Target.DiagnosticLabel} needs a free deployed hero; free {inv.AvailableHeroes}, "
                         + $"committed {inv.CommittedHeroes}; blocked targets {blocked}; {chosenReadiness.ReadyReason}",
                 });
             }
 
             if (chosenReadiness.NeedsPower)
             {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE targetArmy={chosen.TargetArmyId} "
+                diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE target={chosen.Target.DiagnosticLabel} "
                     + $"capability=FieldCombatPower desired={chosenReadiness.RequestedPower:0.#} "
                     + $"reason={chosenReadiness.PowerReason} freePower={inv.RaidAvailableFieldPower:0.#} "
                     + $"committedPower={inv.CommittedFieldCombatPower:0.#} requiredPower={chosenReadiness.RequiredPower:0.#} "
@@ -338,7 +339,7 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = 0f,
                     TargetHex = chosen.LastKnownHex,
                     Value = chosen.BaseValue,
-                    Explain = $"raid #{chosen.TargetArmyId} needs ~{chosenReadiness.RequestedPower:0.#} more free field capability "
+                    Explain = $"raid {chosen.Target.DiagnosticLabel} needs ~{chosenReadiness.RequestedPower:0.#} more free field capability "
                         + $"({chosenReadiness.PowerReason}; free {inv.RaidAvailableFieldPower:0.#}, committed "
                         + $"{inv.CommittedFieldCombatPower:0.#}, required {chosenReadiness.RequiredPower:0.#}; "
                         + $"blocked targets {blocked}; {chosenReadiness.ReadyReason})",
@@ -371,15 +372,12 @@ namespace Game.Ai.V2
             return false;
         }
 
-        // SubKind is (int)RaidMissionPhase.Assault, NOT (int)AggressionObjectiveKind.Raid — this key
-        // gates cooldowns for a fresh/incumbent ASSAULT attempt on this target army, and must match
-        // ResourceAllocator.cs's own StableMissionKey construction for a Raid Assault mission exactly
-        // (both currently evaluate to 0, but that is coincidental; spelled out explicitly here so the
-        // two never silently diverge if either enum gains members).
+        // Gates cooldowns for a fresh/incumbent ASSAULT attempt on this target. Delegates to
+        // StableMissionKey.ForRaidAssault, the single owner of this encoding — never hand-built here.
         internal static StableMissionKey RaidKey(AggressionObjective o) =>
-            new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, o.TargetArmyId, 0, 0);
+            StableMissionKey.ForRaidAssault(o.Target);
 
-        internal static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, int targetArmyId) =>
-            AiV2Util.KnownDefenders(snap, targetArmyId);
+        internal static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, RaidTargetRef target) =>
+            AiV2Util.KnownDefenders(snap, target);
     }
 }

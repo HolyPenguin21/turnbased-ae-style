@@ -52,9 +52,12 @@ namespace Game.Ai.V2
         public readonly HexCoord TargetHex;
         // Step 9 — the STABLE strategic identity of a Raid target (spec §7). The last-known hex is
         // only the target's current position; a moving army must stay the SAME objective, so
-        // AggressionObjective / RaidIntent / StableMissionKey all key off this, not the hex. 0 for
-        // a target with no tracked army id (should not happen for a sighting-sourced opportunity).
-        public readonly int TargetArmyId;
+        // AggressionObjective / RaidIntent / StableMissionKey all key off Target, not the hex.
+        // Single source of truth for both a physical neutral army (ArmyId, which may legitimately
+        // be 0) and an event guard (stable hex, no ArmyId). TargetArmyId below is a read-only
+        // projection for existing non-Raid/logging readers — never a second settable field.
+        public readonly RaidTargetRef Target;
+        public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
         public readonly PlayerSetupData TargetOwner;
         public readonly bool TargetIsNeutral;
         public readonly int DefenderCount;
@@ -70,13 +73,13 @@ namespace Game.Ai.V2
         public readonly bool GatePassed;              // CanCoverAll AND win >= min; hero is optional
         public readonly float OpportunityScore;       // 0..1 — exactly 0 when GatePassed is false
 
-        public CombatOpportunity(bool hasTarget, HexCoord targetHex, int targetArmyId, PlayerSetupData targetOwner, bool targetIsNeutral,
+        public CombatOpportunity(bool hasTarget, HexCoord targetHex, RaidTargetRef target, PlayerSetupData targetOwner, bool targetIsNeutral,
             int defenderCount, float readyWinChance, float assemblableWinChance, bool canCoverAll, float battleCostProxy,
             int eta, float targetValue, float confidence, bool gatePassed, float opportunityScore)
         {
             HasTarget = hasTarget;
             TargetHex = targetHex;
-            TargetArmyId = targetArmyId;
+            Target = target;
             TargetOwner = targetOwner;
             TargetIsNeutral = targetIsNeutral;
             DefenderCount = defenderCount;
@@ -92,7 +95,7 @@ namespace Game.Ai.V2
         }
 
         public static CombatOpportunity None =>
-            new CombatOpportunity(false, default, 0, null, false, 0, 0f, 0f, false, 0f, 0, 0f, 0f, false, 0f);
+            new CombatOpportunity(false, default, RaidTargetRef.None, null, false, 0, 0f, 0f, false, 0f, 0, 0f, 0f, false, 0f);
     }
 
     public sealed class CombatOpportunityReport
@@ -219,7 +222,7 @@ namespace Game.Ai.V2
                 all.Add(new CombatOpportunity(
                     hasTarget: true,
                     targetHex: t.Hex,
-                    targetArmyId: t.ArmyId,
+                    target: RaidTargetRef.ForNeutralArmy(t.ArmyId),
                     targetOwner: t.Owner,
                     targetIsNeutral: t.Owner != null && t.Owner.IsNeutral,
                     defenderCount: defenders.Count,
@@ -232,6 +235,58 @@ namespace Game.Ai.V2
                     confidence: confidence,
                     gatePassed: gate,
                     opportunityScore: score));
+            }
+
+            // Known event guards — the same estimator, same gates, just a hex-keyed defender source
+            // instead of an army sighting (event guards have no ArmyId until actually spawned).
+            if (snap.Known.EventGuards != null)
+            {
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                {
+                    IReadOnlyList<WorthIt.DefenderProfile> defenders = g.Defenders
+                        ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
+
+                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                    float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                    bool cover = WorthIt.CanDamageAll(assemblableRoster, defenders, 0f);
+
+                    int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
+                    int eta = CeilDiv(minDist, moverBudget);
+
+                    float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
+                        AiPower.EffectiveArmyPowerFromProfiles(defenders) / AiConfigV2.assetValueArmyPowerDivisor);
+                    float confidence = ConfidenceFor(snap, g.Hex);
+
+                    bool gate = cover && asmWin >= AiConfigV2.opportunityMinViableWinChance;
+                    float score = 0f;
+                    if (gate)
+                    {
+                        float effValue = Mathf.Max(targetValue, AiConfigV2.opportunityBeatableValueFloor);
+                        float valueTerm = Mathf.Clamp01(effValue / Mathf.Max(0.0001f, AiConfigV2.opportunityValueNorm));
+                        float etaTerm = 1f / (1f + AiConfigV2.opportunityEtaWeight * Mathf.Max(0, eta));
+                        float costTerm = Mathf.Clamp01(1f - AiConfigV2.opportunityCostWeight * (1f - asmWin));
+                        float raw = asmWin * valueTerm * etaTerm * costTerm * confidence;
+                        score = Mathf.Clamp01(raw / Mathf.Max(0.0001f, AiConfigV2.opportunityScoreNorm));
+                    }
+
+                    // An event guard is always a neutral Raid target — it has no owner to check.
+                    all.Add(new CombatOpportunity(
+                        hasTarget: true,
+                        targetHex: g.Hex,
+                        target: RaidTargetRef.ForEventGuard(g.Hex),
+                        targetOwner: null,
+                        targetIsNeutral: true,
+                        defenderCount: defenders.Count,
+                        readyWinChance: readyWin,
+                        assemblableWinChance: asmWin,
+                        canCoverAll: cover,
+                        battleCostProxy: 1f - asmWin,
+                        eta: eta,
+                        targetValue: targetValue,
+                        confidence: confidence,
+                        gatePassed: gate,
+                        opportunityScore: score));
+                }
             }
 
             report.All = all;
