@@ -53,7 +53,11 @@ namespace Game.Ai.V2
     {
         public string TraceId;
         public DesireAxis RequestingAxis;
+        // Legacy transport value. Migrated world-map demand families assign this from
+        // WorldTaskScore.Value; non-world families (Development/Production) keep their existing
+        // value path until their own migration.
         public float Value;
+        public TaskScore WorldTaskScore;
         public HexCoord? TargetHex;
         public CapabilityKind Capability;
         public float DesiredAmount;
