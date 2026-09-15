@@ -176,6 +176,8 @@ namespace Game.Ai.V2
         }
 
         // Return/support-return are lifecycle/continuity legs, not fresh strategic target scoring.
+        // Their execution priority is owned by the durable Hard commitment; intrinsic TaskScore
+        // stays neutral so lifecycle work cannot out-rank unrelated lanes through a legacy scale.
         private static RaidCandidate? ReturnCandidate(MissionIntent intent, RaidMissionPhase phase,
             int? moverArmyId, HexCoord? homeHex)
         {
@@ -195,18 +197,19 @@ namespace Game.Ai.V2
                 AssemblableWinChance = 1f,
                 CanCoverAllDefenders = true,
             };
-            float value = AiConfigV2.raidBaseValueMin;
+            float value = default(TaskScore).Value;
             string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN" : "RETURN";
             string role = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
             AiDebugLog.Write($"[AI][V2]   raid mission — {label} {intent.IntentKey}: {role} "
                 + $"#{moverArmyId.Value} -> ({homeHex.Value.Q},{homeHex.Value.R})");
             return new RaidCandidate(target, value, value,
                 $"Raid {ri.Target.DiagnosticLabel} {phase}: {role} #{moverArmyId.Value} to base "
-                + $"({homeHex.Value.Q},{homeHex.Value.R})",
+                + $"({homeHex.Value.Q},{homeHex.Value.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
                 true, intent.Funding, moverArmyId, moverArmyId);
         }
 
-        // Reinforcement is a durable continuation leg. Target discovery/value is not recomputed here.
+        // Reinforcement is a durable continuation leg. Target discovery/value is not recomputed here;
+        // its Hard commitment, not a synthetic strategic value, owns continuation priority.
         private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent)
         {
             RaidIntent ri = intent.Raid;
@@ -239,11 +242,11 @@ namespace Game.Ai.V2
                     AssemblableWinChance = 1f,
                     CanCoverAllDefenders = true,
                 };
-                float uvalue = AiConfigV2.raidBaseValueMax;
+                float value = default(TaskScore).Value;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
                     + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
-                return new RaidCandidate(unpinned, uvalue, uvalue,
-                    $"Raid {ri.Target.DiagnosticLabel} Reinforcement: select an existing free support for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})",
+                return new RaidCandidate(unpinned, value, value,
+                    $"Raid {ri.Target.DiagnosticLabel} Reinforcement: select an existing free support for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
                     true, intent.Funding, null, null);
             }
 
@@ -260,11 +263,11 @@ namespace Game.Ai.V2
                 AssemblableWinChance = 1f,
                 CanCoverAllDefenders = true,
             };
-            float value = AiConfigV2.raidBaseValueMax;
+            float value = default(TaskScore).Value;
             AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE {intent.IntentKey}: support "
                 + $"#{ri.SupportArmyId.Value} -> primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
             return new RaidCandidate(target, value, value,
-                $"Raid {ri.Target.DiagnosticLabel} Reinforcement: support #{ri.SupportArmyId.Value} joins primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})",
+                $"Raid {ri.Target.DiagnosticLabel} Reinforcement: support #{ri.SupportArmyId.Value} joins primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
                 true, intent.Funding, ri.SupportArmyId, ri.SupportArmyId);
         }
 
