@@ -115,8 +115,6 @@ namespace Game.Ai.V2
         internal static float ResourcePriority(EconomyResourceStanding standing,
             float externalStarvationPressure = 0f)
         {
-            if (standing == null)
-                return Mathf.Clamp01(externalStarvationPressure);
             float handShortfall = standing.HandResourceNeed <= AiConfigV2.allocatorSliceEpsilon
                 ? 0f
                 : Mathf.Clamp01((standing.HandResourceNeed - standing.SpendableStockpile)
