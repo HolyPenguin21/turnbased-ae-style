@@ -30,7 +30,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
-  - {fileID: 300011}
+  - {fileID: 9109900807044880017}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1514539978742884714
@@ -45,8 +45,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fbac6dcd4f5bc7e4b9667cd66b4fe0ef, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.EventMarkerVisual
-  image: {fileID: 300012}
---- !u!1 &300010
+  image: {fileID: 0}
+--- !u!1 &6004235396933134943
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -54,8 +54,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 300011}
-  - component: {fileID: 300012}
+  - component: {fileID: 9109900807044880017}
+  - component: {fileID: 5714121333054618871}
   m_Layer: 0
   m_Name: Inner_Circle
   m_TagString: Untagged
@@ -63,29 +63,29 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!4 &300011
+--- !u!4 &9109900807044880017
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 300010}
+  m_GameObject: {fileID: 6004235396933134943}
   serializedVersion: 2
   m_LocalRotation: {x: 0.6427876, y: 0, z: 0, w: 0.7660445}
   m_LocalPosition: {x: 0, y: 0.1, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.02, y: 0.02, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 300001}
   m_LocalEulerAnglesHint: {x: 80, y: 0, z: 0}
---- !u!212 &300012
+--- !u!212 &5714121333054618871
 SpriteRenderer:
   serializedVersion: 3
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 300010}
+  m_GameObject: {fileID: 6004235396933134943}
   m_Enabled: 1
   m_CastShadows: 0
   m_ReceiveShadows: 0
@@ -127,7 +127,7 @@ SpriteRenderer:
   m_SortingLayer: 0
   m_SortingOrder: 2
   m_MaskInteraction: 0
-  m_Sprite: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}
+  m_Sprite: {fileID: 21300000, guid: a306c3b30f786044088744ff0a766509, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
