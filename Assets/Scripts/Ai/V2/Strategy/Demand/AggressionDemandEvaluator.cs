@@ -77,12 +77,13 @@ namespace Game.Ai.V2
                 eval.Reason = "no_self_snapshot";
                 return eval;
             }
-            if (objectives == null || objectives.Count == 0)
-            {
-                diag.Add("[AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives");
-                eval.Reason = "no_frozen_aggression_objectives";
-                return eval;
-            }
+
+            // An empty frozen objective list means only "no fresh target survived discovery this
+            // pass". Durable Raid intents are independent continuity state and must still be
+            // re-tested below: otherwise a weakened active Raid gets a reinforcement demand when
+            // any unrelated fresh target exists, but loses the exact same demand when the unrelated
+            // target disappears. That makes continuity depend on an unrelated map objective.
+            objectives ??= System.Array.Empty<AggressionObjective>();
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
 
