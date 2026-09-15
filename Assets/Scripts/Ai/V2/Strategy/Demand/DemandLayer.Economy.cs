@@ -639,8 +639,13 @@ namespace Game.Ai.V2
                 {
                     if (assignment.Kind == MissionKind.Economy)
                     {
-                        if (assignment.Economy == null
-                            || !assignment.Economy.TargetHex.Equals(target))
+                        // A ReturnBuilder walks home with no build of its own to protect —
+                        // EconomyDonorStructurallyEligible already recognizes it as a structurally
+                        // eligible donor, so it is not gated on matching the recovery destination
+                        // the way a genuine in-progress build (FoundBase/BuildExtraction) still is.
+                        if (!EconomyDonorStructurallyEligible(assignment)
+                            && (assignment.Economy == null
+                                || !assignment.Economy.TargetHex.Equals(target)))
                             continue;
                     }
                     else if (!EconomyDonorStructurallyEligible(assignment))
@@ -719,8 +724,16 @@ namespace Game.Ai.V2
 
         internal static bool EconomyDonorStructurallyEligible(MissionIntent donor)
         {
-            if (donor == null || (donor.Funding != CommitmentTier.None
-                && donor.Funding != CommitmentTier.Soft))
+            if (donor == null)
+                return false;
+            // A builder walking home after completing its build (ReturnBuilder) protects no active
+            // build and no combat/recon commitment — its Hard funding exists only to survive Phase B
+            // trimming during the walk, not to express opportunity cost the way the donor kinds
+            // below do. It is eligible for a fresh Economy assignment regardless of that tier, so
+            // this check must run BEFORE the funding-tier gate that governs every other donor kind.
+            if (donor.Kind == MissionKind.Economy)
+                return donor.Economy?.Kind == EconomyTaskKind.ReturnBuilder;
+            if (donor.Funding != CommitmentTier.None && donor.Funding != CommitmentTier.Soft)
                 return false;
             if (donor.Kind == MissionKind.Scout)
                 return donor.Scout != null && donor.Scout.Kind != ScoutTargetKind.Surveil;
@@ -856,9 +869,15 @@ namespace Game.Ai.V2
                     float assignmentAp = builder?.TotalAssignmentApCost
                         ?? card.EffectivePlayApCost;
                     float intrinsicBuildCost = score.IntrinsicBuildCost;
+                    // 2026-09-15 — decoupled from economyBuildApPenalty (still used unchanged for
+                    // intrinsicBuildCost's fixed card-AP cost above, and for the Extraction-facility
+                    // path's own deliveryApCost near the top of this file). A Base is a rarer, more
+                    // strategic investment than a routine extractor — see
+                    // economyBaseDeliveryApPenalty's own comment for the calibration this and
+                    // economySiteTravelPenalty below were tuned against.
                     float deliveryApCost = Mathf.Max(0f,
                             assignmentAp - card.EffectivePlayApCost)
-                        * AiConfigV2.economyBuildApPenalty;
+                        * AiConfigV2.economyBaseDeliveryApPenalty;
                     float extractionLossPenalty = score.ExtractionLossPenalty;
                     float strategicValue = score.StrategicValue;
                     float value = strategicValue - deliveryApCost
@@ -894,9 +913,11 @@ namespace Game.Ai.V2
                         Value = value,
                         Explain = $"Base reason={reasonValue:0.##} "
                             + $"yield={hexYield:0.##} "
-                            + $"pressure={site.InfrastructurePressure:0.##} airfield={airfield:0.##} "
+                            + $"airfield={airfield:0.##} "
                             + $"forward={site.ForwardProgressValue:0.##} "
-                            + $"corridor={site.CorridorAlignmentValue:0.##} global={global:0.##} "
+                            + $"corridor={site.CorridorAlignmentValue:0.##} "
+                            + $"spacing={site.SpacingScore:0.##} defense={site.DefenseBonusValue:0.##} "
+                            + $"global={global:0.##} "
                             + $"buildCost={intrinsicBuildCost:0.##} deliveryApCost={deliveryApCost:0.##} "
                             + $"extractionLoss={extractionLossPenalty:0.##}",
                     });
@@ -911,12 +932,16 @@ namespace Game.Ai.V2
             // site once that site's Value clears the staged one by more than the threshold, so
             // urgency can no longer keep compounding on a target that real information has
             // superseded. A small margin stays inside the threshold and does not flip staging.
+            // 2026-09-15 round 18 — this margin is economyBaseStagingHysteresisThreshold (small,
+            // anti-jitter only), NOT economyBaseSwitchHysteresisThreshold (the much larger
+            // post-commitment one in StrategicPhaseA) — see that constant's comment for why the two
+            // can no longer share one number.
             AxisDemand stagedBase = meaningfulDemands
                 .OrderByDescending(d => IsActiveBaseCommitment(
                     activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
                 .ThenByDescending(d => d.Value
                     + (intentState.IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex)
-                        ? AiConfigV2.economyBaseSwitchHysteresisThreshold : 0f))
+                        ? AiConfigV2.economyBaseStagingHysteresisThreshold : 0f))
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)

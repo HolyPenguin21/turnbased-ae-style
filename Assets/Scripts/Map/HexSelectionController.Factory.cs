@@ -138,11 +138,12 @@ namespace Game.Map
 
         // Spawns a brand-new Base building at `hex` for `owner` — used by CardHandUI when a
         // CardType.Base card is played onto an empty hex (see CardHandUI.TryPlayCard). Uses the
-        // same buildingMarkerPrefab (and owner's own FactionCardCatalog.citadelIcon) the
-        // auto-placed citadel already uses — no visual distinction yet between "the citadel" and
-        // a player-built Base. Position/offset resolution is left entirely to the RestackArmiesOn
-        // call at the end, same as CitadelSetupController relies on its own one-off
-        // HexObjectLayout call before either the registry or RestackArmiesOn existed.
+        // same owner's own FactionCardCatalog.basePrefab (falling back to GameConfig.
+        // buildingMarkerPrefab) the auto-placed citadel already uses — no visual distinction yet
+        // between "the citadel" and a player-built Base. Position/offset resolution is left
+        // entirely to the RestackArmiesOn call at the end, same as CitadelSetupController relies
+        // on its own one-off HexObjectLayout call before either the registry or RestackArmiesOn
+        // existed.
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
             if (gameConfig == null || gameConfig.buildingMarkerPrefab == null || map == null || owner == null || definition == null)
@@ -151,11 +152,13 @@ namespace Game.Map
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
                 : null;
+            MapObjectVisual basePrefab = ownerCatalog != null && ownerCatalog.basePrefab != null
+                ? ownerCatalog.basePrefab : gameConfig.buildingMarkerPrefab;
 
             var building = new BuildingData
             {
                 Name = definition.displayName, Hex = hex, Owner = owner,
-                Visual = CreateBuildingMarker(hex, owner, gameConfig.buildingMarkerPrefab, ownerCatalog?.citadelIcon),
+                Visual = CreateBuildingMarker(hex, owner, basePrefab, ownerCatalog?.citadelIcon),
                 Art = definition.art,
                 DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
                 Level = 1,

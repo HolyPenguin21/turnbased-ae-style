@@ -154,10 +154,6 @@ namespace Game.Ai.V2
                     snap.MapKnowledge?.EverSeenHexSet
                     ?? snap.MapKnowledge?.VisitedHexSet
                     ?? (ISet<HexCoord>)new HashSet<HexCoord>());
-                int ownedExtractionSites = knownBuildings.Values.Count(b => b.Owner == player
-                    && !b.IsBase && knownSites.Contains(b.Hex));
-                float infrastructurePressure = Mathf.Clamp01(ownedExtractionSites
-                    / Mathf.Max(1f, snap.Self.BaseHexes.Count * 3f));
                 var directionalSites = new HashSet<HexCoord>();
                 bool hasDirection = TrySelectBaseExpansionDirection(snap, player,
                     out HexCoord targetCitadel, out HexCoord anchor);
@@ -203,6 +199,17 @@ namespace Game.Ai.V2
                         if (preparationTravel == int.MaxValue)
                             continue;
 
+                        // 2026-09-15 — structural terrain fact, same pattern as HexYield/SpacingScore:
+                        // Analysis reads the one canonical source (TerrainTypeEntry.defenseModifier,
+                        // the same field combat/threat code already reads — see WorthIt.cs,
+                        // HexSelectionController.Visuals.cs), Evaluation is the only place that
+                        // weighs it.
+                        float defenseBonus = 0f;
+                        if (ctx?.Map != null && ctx.Map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain)
+                            && terrain != null)
+                            defenseBonus = Mathf.Clamp01(terrain.defenseModifier
+                                / Mathf.Max(1f, AiConfigV2.economyBaseMaxDefenseModifier));
+
                         float forwardProgress = 0f;
                         float corridorAlignment = 0f;
                         if (hasDirection)
@@ -224,9 +231,10 @@ namespace Game.Ai.V2
                             Hex = hex,
                             PreparationTravelCost = preparationTravel,
                             HexYield = BaseUncollectedYield(snap, hex, knownSites, hasBuilding, knownBuilding),
-                            InfrastructurePressure = infrastructurePressure,
                             ForwardProgressValue = forwardProgress,
                             CorridorAlignmentValue = corridorAlignment,
+                            SpacingScore = BaseSpacingScore(supportDistance),
+                            DefenseBonusValue = defenseBonus,
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
                             LostExtractionIncome = lostExtractionIncome,
                             BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, hex),
@@ -327,6 +335,25 @@ namespace Game.Ai.V2
             HexCoord candidate) => ownBases != null && ownBases.Count > 0
             && ownBases.Min(h => HexGridMath.Distance(h, candidate))
                 >= AiConfigV2.economyBaseMinSpacing;
+
+        // 2026-09-15 — graded companion to MeetsBaseSpacing's hard gate (see
+        // EconomyBaseOpportunity.SpacingScore's own comment). `d` is the same
+        // "distance to nearest owned base" MeetsBaseSpacing already gates on — never recomputed
+        // differently, just scored instead of thresholded. Variant A (linear ramp to the ideal,
+        // linear decay past it), chosen over a plateau or Gaussian for how directly its two
+        // calibration points translate into the lerp/decay parameters below.
+        internal static float BaseSpacingScore(int d)
+        {
+            int min = AiConfigV2.economyBaseMinSpacing;
+            int ideal = AiConfigV2.economyBaseIdealSpacing;
+            if (d <= min)
+                return AiConfigV2.economyBaseSpacingScoreAtMin;
+            if (d <= ideal)
+                return Mathf.Lerp(AiConfigV2.economyBaseSpacingScoreAtMin, 1f,
+                    (d - min) / (float)Mathf.Max(1, ideal - min));
+            return Mathf.Clamp01(1f
+                - (d - ideal) * AiConfigV2.economyBaseSpacingDecayPerHex);
+        }
 
         internal static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
             WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target,

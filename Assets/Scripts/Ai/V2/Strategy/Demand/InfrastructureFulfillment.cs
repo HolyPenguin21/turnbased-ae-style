@@ -156,10 +156,22 @@ namespace Game.Ai.V2
         }
 
         // A selected infrastructure demand already has a valuable legal site and a snapshot-witnessed
-        // builder route. Protect its persistent build vector before Phase B for the whole delivery,
-        // not only once the actor enters a one-turn movement radius. The reservation is turn-scoped,
-        // so the fresh Demand/Analysis pass must prove this route again every turn; a missing-builder
-        // Hero prerequisite never reaches this method and therefore cannot lock its own creation cost.
+        // builder route. This is the FIRST-SIGHT gate only, called from StrategicPhaseA exclusively
+        // when no durable Economy intent exists yet for ANY target this turn (protectedActiveEconomyBuild
+        // == null short-circuits this entirely otherwise) — so it can never fire on a genuinely
+        // continuing multi-turn delivery. Once Provisioning binds a builder that cannot finish this
+        // turn, it hands the delivery to Continuity (MissionContinuityLayer.BeginEconomyDelivery,
+        // called from ProvisioningManager.ProvisionEconomy's direct-army path), and from the NEXT
+        // turn on StrategicPhaseA's protectedActiveEconomyBuild protects the full H/E/M/T vector
+        // unconditionally, regardless of remaining travel distance. Only WHILE that durable identity
+        // does not exist yet — i.e. exactly the turn a distant candidate is first scored — does this
+        // one-turn commitment horizon apply, so a merely-discovered distant site does not freeze
+        // resources other axes could still spend for however many turns it takes to become reachable.
+        // (2026-09-15 audit: an earlier version of this method dropped the horizon entirely because,
+        // before the durable-intent handoff above existed, THIS method was the only per-turn
+        // protection for an already-existing builder's whole multi-turn walk — removing the horizon
+        // then was the only way to avoid the walk's resources being spent out from under it turns
+        // before arrival. That gap is now closed by the handoff, so the horizon is safe to restore.)
         internal static bool ShouldReserveDeferredEconomyResources(
             WorldSnapshot snap, AxisDemand demand)
         {
@@ -171,7 +183,8 @@ namespace Game.Ai.V2
                     && a.ArmyId == route.ArmyId && a.HasHero && !a.IsPrison && !a.IsAir
                     && (a.IsMobileEconomyBuilder
                         || (a.IsGarrison && a.Hex.Equals(demand.TargetHex ?? a.Hex))));
-                if (actor != null && route.TravelCost >= 0 && route.TravelCost < int.MaxValue)
+                if (actor != null && (route.IsOnTarget
+                        || route.TravelCost <= UnityEngine.Mathf.Max(0, actor.MaxMovement)))
                     return true;
             }
             return false;
@@ -201,10 +214,22 @@ namespace Game.Ai.V2
                 return;
 
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
+            // 2026-09-15 round 18 — FoundBase only. Observed in the wild: the deferred-resource hold
+            // above protected H/E/M/T for a committed Base build turn after turn, but reserved no AP
+            // at all, so StrategicPhaseB's tempo/card spend was always free to spend the pool down
+            // first — the committed builder then failed EnvelopeTooSmall/InsufficientBudget by
+            // exactly the 1 AP tempo had just taken, turn after turn, with no card played to show for
+            // it either. A rarer, already-in-flight Base build's own completion AP now holds the same
+            // way its resources already did. BuildExtraction is deliberately left alone — it wasn't
+            // observed starving this way, and it is common enough that reserving its AP every turn
+            // would visibly shrink Phase B's normal tempo budget for no observed benefit.
+            float followupAp = economy.Kind == EconomyTaskKind.FoundBase
+                ? UnityEngine.Mathf.Max(economy.BuildApCost, economy.MinimumFollowupAp)
+                : 0f;
             ReserveDeferredEconomyResourcesCore(player, turn, owner, new AxisDemand
             {
                 EconomyBuildResourceCost = economy.BuildResourceCost,
-            });
+            }, followupAp);
         }
 
         // A bare EconomyHeroPrerequisite demand (Capability.Hero, no builder identified yet) can
@@ -235,11 +260,11 @@ namespace Game.Ai.V2
         }
 
         private static void ReserveDeferredEconomyResourcesCore(
-            PlayerSetupData player, int turn, string owner, AxisDemand demand)
+            PlayerSetupData player, int turn, string owner, AxisDemand demand, float buildAp = 0f)
         {
             if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                     StrategicReservationReason.EconomyDeferredBuild,
-                    demand.EconomyBuildResourceCost, 0f))
+                    demand.EconomyBuildResourceCost, buildAp))
                 return;
             StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner,
@@ -247,7 +272,7 @@ namespace Game.Ai.V2
             if (StrategicResourceReservationLedger.HasReason(player, turn,
                     StrategicReservationReason.EconomyBuildCompletion))
                 return;
-            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, 0f,
+            ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, buildAp,
                 StrategicReservationReason.EconomyDeferredBuild);
         }
 

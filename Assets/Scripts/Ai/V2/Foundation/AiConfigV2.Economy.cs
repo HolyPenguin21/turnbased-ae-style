@@ -15,6 +15,10 @@ namespace Game.Ai.V2
         public const float economyOperationalPaydownHorizonTurns = 1f;
         public const float economyDeckNeedDiscount = 0.35f;
         public const float economyRunwayHorizonTurns = 3f;
+        // 2026-09-15 — normalizes the turns-to-afford bottleneck (see EconomyStanding.
+        // CalculateResource's incomeGap) into the same [0,1] scale the rest of the deficit
+        // composite uses: turnsToAfford==this many turns already saturates incomeGap to 1.0.
+        public const float economyBottleneckReferenceTurns = 10f;
         public const float economyIncomeGapWeight = 0.30f;
         public const float economyRelativeGapWeight = 0.20f;
         public const float economyRunwayGapWeight = 0.25f;
@@ -29,7 +33,14 @@ namespace Game.Ai.V2
         // support radius; resource priority is still decided separately in DemandLayer.
         public const float economySiteBaseSynergyValue = 14f;
         public const float economySiteClusterValue = 6f;
-        public const float economySiteTravelPenalty = 2.5f;
+        // 2026-09-15 — recalibrated down from 2.5 (project owner's own target: a near-zero score
+        // should mean a genuinely far corner of the map, not "anywhere more than a few hexes from
+        // home" — even a site right up against the enemy citadel should stay clearly worth
+        // building, e.g. for its aviation-range value). Shared by every Economy site-value formula
+        // in this file (extraction, loan-net, Base) — lowering it uniformly makes distance cost
+        // less across the board, consistent with this same session's other Economy-starvation
+        // fixes, not a Base-only exception.
+        public const float economySiteTravelPenalty = 0.8f;
         public const float economySiteThreatPenalty = 18f;
         public const float economySiteHeroOpportunityPenalty = 0.35f;
         // Net-new-yield weight: site.HexYield is now IncomeProjection-derived marginal income
@@ -40,7 +51,6 @@ namespace Game.Ai.V2
         // term for the same reason (it modeled the identical "is this hex already productive"
         // question with a flat 0.5/1.0 guess instead of the real marginal number).
         public const float economyBaseHexYieldValue = 10f;
-        public const float economyBaseInfrastructurePressureValue = 10f;
         public const float economyBaseAirfieldValue = 8f;
         public const float economyBaseForwardProgressValue = 8f;
         public const float economyBaseCorridorAlignmentValue = 8f;
@@ -50,16 +60,58 @@ namespace Game.Ai.V2
         public const float economyBaseExtractionLossPenalty = 10f;
         public const float economyBuildResourcePenalty = 1.5f;
         public const float economyBuildApPenalty = 4f;
+        // 2026-09-15 — Base's OWN multiplier for deliveryApCost (extra activation-AP the walk
+        // itself costs beyond the card's own play cost), decoupled from economyBuildApPenalty
+        // (down from reusing that 4). Calibrated together with economySiteTravelPenalty(0.8) so a
+        // site near this game's own observed map-edge distance (citadel-to-citadel ~11 hexes,
+        // 108-hex map) nets close to zero, while a moderate/near-enemy distance (~5-6 hexes) stays
+        // clearly positive — per the project owner's explicit target, not derived from a formula.
+        // Extraction's own deliveryApCost (near the top of DemandLayer.Economy.cs) still uses
+        // economyBuildApPenalty unchanged — a routine, usually-nearby investment, not recalibrated
+        // this round.
+        public const float economyBaseDeliveryApPenalty = 1.5f;
         public const float economyExtractionMaxPaybackTurns = 8f;
         public const float economyExtractionPaybackValue = 8f;
         public const float economyBaseDemandMinValue = 12f;
         public const int economyResourceClusterRadius = 2;
         public const int economyBaseFoundScanRadius = 3;
         public const int economyBaseMinSpacing = 3;
+        // 2026-09-15 — graded reward on top of the economyBaseMinSpacing hard gate (see
+        // EconomyBaseOpportunity.SpacingScore). A site exactly at the minimum legal distance is
+        // usable but cramped (80%); economyBaseIdealSpacing is the sweet spot (100%) — close enough
+        // to stay inside the support network, far enough not to overlap an existing base's
+        // catchment; score ramps linearly from the gate up to the ideal, then decays linearly past
+        // it at economyBaseSpacingDecayPerHex per extra hex, floored at 0.
+        public const int economyBaseIdealSpacing = 4;
+        public const float economyBaseSpacingScoreAtMin = 0.8f;
+        public const float economyBaseSpacingDecayPerHex = 0.15f;
+        public const float economyBaseSpacingValue = 8f;
+        // 2026-09-15 — priority order per project owner: (1) most distinct resource types on the
+        // hex, with genuine per-type deficit allowed to override that ordering (already how
+        // hexYield's deficit-weighted sum behaves, no change needed there); (2) a single resource;
+        // (3) a defense-only hex. A combo (resource + defense) should add on top of the resource
+        // score but still lose to a purely better resource site. Weight kept below
+        // economyBaseHexYieldValue(10)/economyBaseSpacingValue(8)/forward/corridor(8 each) so a
+        // defense bonus alone can add to a site's score but cannot out-rank an extra resource type.
+        public const float economyBaseMaxDefenseModifier = 2f;   // normalizer — current terrain catalog's max defenseModifier
+        public const float economyBaseDefenseBonusValue = 4f;
         public const float economyBaseUrgencyPerDeferredTurn = 12f;
-        // Margin a rival Base site's Value must clear the currently staged site's Value by before
-        // it replaces it as the staged target. Keeps a small edge from causing per-turn flip-flops
-        // while still letting a decisively better known site override a stale staged hex.
+        // 2026-09-15 round 18 — split from one shared constant into two, because the two decisions
+        // it gated are not the same size of commitment. Pre-commitment staging (no mover moving,
+        // nothing spent) must track whichever hex is genuinely best RIGHT NOW almost every turn —
+        // a small anti-jitter margin only, so accumulating urgency (economyBaseUrgencyPerDeferredTurn,
+        // clears economyBaseDemandMinValue in as little as 1-2 turns) always attaches to the current
+        // best candidate rather than force-admitting a stale hex a fresh, clearly-better site has
+        // already outclassed (observed in the wild: a staged hex value=-17.7 got built while a fresh
+        // hex value=-8.77 sat un-staged the whole time — an 8.93 gap the old shared threshold=10
+        // never cleared). Post-commitment release (a real mover already walking, resources already
+        // reserved) keeps the old, larger margin — abandoning sunk travel/reservations for a merely
+        // marginal improvement is real churn, not staging noise.
+        public const float economyBaseStagingHysteresisThreshold = 3f;
+        // Margin a rival Base site's Value must clear an ALREADY-COMMITTED active Base build's Value
+        // by before StrategicPhaseA releases that commitment (mover mid-journey, resources reserved)
+        // in favour of the rival. See economyBaseStagingHysteresisThreshold above for the
+        // pre-commitment staging margin — no longer the same number.
         public const float economyBaseSwitchHysteresisThreshold = 10f;
         public const float economySameTurnCompletionBonus = 8f;
         public const float economyAdmissionCompletionCostWeight = 1f;

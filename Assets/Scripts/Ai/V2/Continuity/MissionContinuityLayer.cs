@@ -49,15 +49,23 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Materialization has delivered the Hero for one concrete Economy prerequisite. The
-        // transaction-local capability lease ends at this handoff; Continuity immediately becomes
-        // the sole owner of the actor and exact build objective.
+        // Materialization has delivered the Hero for one concrete Economy prerequisite (Capability.
+        // Hero), OR Provisioning has just bound an ALREADY-EXISTING mobile builder to a multi-turn
+        // delivery (Capability.EconomicInfrastructure/EconomicExpansionBase — see the direct-army
+        // path in ProvisioningManager.ProvisionEconomy). Either way, the transaction-local capability
+        // lease ends at this handoff; Continuity immediately becomes the sole owner of the actor and
+        // exact build objective — StrategicPhaseA's protectedActiveEconomyBuild then protects the
+        // full H/E/M/T vector every following turn regardless of remaining travel distance, so
+        // InfrastructureFulfillment's own one-turn horizon only ever has to cover the turn BEFORE
+        // this intent exists.
         internal static MissionIntent BeginEconomyDelivery(PlayerSetupData player,
             AxisDemand demand, int builderArmyId, int turn)
         {
             if (player == null || demand?.TargetHex == null
                 || demand.RequestingAxis != DesireAxis.Economy
-                || demand.Capability != CapabilityKind.Hero)
+                || (demand.Capability != CapabilityKind.Hero
+                    && demand.Capability != CapabilityKind.EconomicInfrastructure
+                    && demand.Capability != CapabilityKind.EconomicExpansionBase))
                 return null;
 
             EconomyTaskKind kind = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
@@ -101,10 +109,19 @@ namespace Game.Ai.V2
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             foreach (MissionIntent stale in state.All.Where(i => i != null
                          && i.Kind == MissionKind.Economy
-                         && i.Economy?.Kind != EconomyTaskKind.ReturnBuilder
-                         && (!i.IntentKey.Equals(intent.IntentKey)
-                             || i.PreferredMoverArmyId != builderArmyId)).ToList())
+                         && (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder
+                             // The same actor cannot hold both a recovery walk and this fresh
+                             // delivery handoff — the new assignment supersedes its own recovery.
+                             // A ReturnBuilder belonging to a DIFFERENT actor is untouched.
+                             ? i.PreferredMoverArmyId == builderArmyId
+                             : (!i.IntentKey.Equals(intent.IntentKey)
+                                 || i.PreferredMoverArmyId != builderArmyId))).ToList())
+            {
+                if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
+                    && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
+                    ResumeEconomyLender(staleLender);
                 state.Remove(stale.IntentKey);
+            }
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] materialization handoff {intent.IntentKey} "
                 + $"actor=#{builderArmyId} funding=Soft");

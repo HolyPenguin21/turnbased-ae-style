@@ -246,7 +246,9 @@ namespace Game.Setup
 
             FactionCardCatalog catalog = ResolveCatalog(player);
 
-            MapObjectVisual marker = Instantiate(gameConfig.buildingMarkerPrefab);
+            MapObjectVisual prefab = catalog != null && catalog.basePrefab != null
+                ? catalog.basePrefab : gameConfig.buildingMarkerPrefab;
+            MapObjectVisual marker = Instantiate(prefab);
             Vector3 offset = new Vector3(offset2D.x, 0f, offset2D.y) * map.OuterRadius;
             marker.transform.position = map.HexToWorld(hex) + offset;
             marker.SetColor(PlayerColorPalette.Colors[player.ColorIndex]);

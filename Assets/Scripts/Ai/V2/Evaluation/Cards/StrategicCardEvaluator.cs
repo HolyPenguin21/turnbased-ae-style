@@ -1558,10 +1558,11 @@ namespace Game.Ai.V2
             float global = BaseGlobalEffectValue(s, card.Definition);
             float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
             float reasonValue = AiConfigV2.economyBaseHexYieldValue * hexYield
-                + AiConfigV2.economyBaseInfrastructurePressureValue * site.InfrastructurePressure
                 + AiConfigV2.economyBaseAirfieldValue * airfield
                 + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
                 + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
+                + AiConfigV2.economyBaseSpacingValue * site.SpacingScore
+                + AiConfigV2.economyBaseDefenseBonusValue * site.DefenseBonusValue
                 + AiConfigV2.economyBaseGlobalEffectValue * global;
             float intrinsicBuildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
                 + ResourceCostSum(card.EffectivePlayResourceCost) * AiConfigV2.economyBuildResourcePenalty;

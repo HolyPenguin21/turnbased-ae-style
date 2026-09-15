@@ -17,8 +17,9 @@ namespace Game.Turns
 
         // Progressive purchase cost: the Nth bonus die (1-based N) costs 2^(N-1) resource units,
         // so the ladder is 1, 2, 4, 8, 16. `alreadyPurchased` is how many bonus dice this player
-        // has already bought this turn (0 => the first die, cost 1). One die is paid ENTIRELY from
-        // one Human/Energy/Materials/Tech stockpile; human UI and AI use the same PlayerRoot API.
+        // has already bought this turn (0 => the first die, cost 1). A die's cost can be paid
+        // from any mix of Human/Energy/Materials/Tech, one unit at a time (see PlayerRoot.
+        // PurchaseInitiativeDie); human UI and AI use the same PlayerRoot API.
         public static int NextBonusDieCost(int alreadyPurchased)
         {
             if (alreadyPurchased < 0)

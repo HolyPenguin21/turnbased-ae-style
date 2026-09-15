@@ -1149,9 +1149,12 @@ namespace Game.EditorTests
                 {
                     // CapacityValue/NearbyResourceClusterValue/NetworkExpansionValue folded away
                     // (2026-09-14 base-site scoring cleanup — see StrategicCardEvaluator.
-                    // ScoreBaseSite); the surviving fields below stand in purely to keep this
-                    // fixture's reasonValue comfortably above the admission threshold.
-                    Hex = new HexCoord(3, 0), InfrastructurePressure = 1f,
+                    // ScoreBaseSite); InfrastructurePressure removed outright (2026-09-15, per
+                    // project owner — a founded Base is already valuable and already gated hard
+                    // enough without also waiting on existing-base facility saturation).
+                    // SpacingScore stands in to keep this fixture's reasonValue comfortably above
+                    // the admission threshold.
+                    Hex = new HexCoord(3, 0), SpacingScore = 1.25f,
                     ForwardProgressValue = 1f, CorridorAlignmentValue = 1f,
                 },
             };
@@ -1179,9 +1182,10 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    // CapacityValue removed (2026-09-14 cleanup) — InfrastructurePressure stands
-                    // in to keep this fixture's reasonValue negative, same test intent.
-                    Hex = incumbentHex, InfrastructurePressure = -1f,
+                    // CapacityValue removed (2026-09-14 cleanup); InfrastructurePressure removed
+                    // outright (2026-09-15). SpacingScore stands in to keep this fixture's
+                    // reasonValue negative, same test intent.
+                    Hex = incumbentHex, SpacingScore = -1.25f,
                 },
             };
             var incumbent = new MissionIntent
@@ -1381,6 +1385,57 @@ namespace Game.EditorTests
                 null, null, 50f, 1f, includeReturn: true);
 
             Assert.That(choice.Army.ArmyId, Is.EqualTo(20));
+        }
+
+        // AI economy commitment/recovery audit (2026-09-15) — a builder walking home
+        // (ReturnBuilder) has no build of its own to protect and must remain a candidate for a
+        // fresh Economy opportunity, exactly like an idle Recon/Raid donor, instead of being
+        // structurally excluded just because its recovery TargetHex differs from the new site.
+        [Test]
+        public void EconomyBuilderSelection_ReturnBuilderActorEligibleForFreshOpportunity()
+        {
+            HexCoord shelter = new HexCoord(9, 9);
+            HexCoord newTarget = new HexCoord(2, 0);
+            ArmySnapshot builder = EconomyBuilder(60, 1, 0f);
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
+            snapshot.Self.Armies = new[] { builder };
+            MissionIntent recovery = ReturnBuilderIntent(builder.ArmyId, shelter);
+
+            DemandLayer.EconomyBuilderChoice choice = DemandLayer.SelectEconomyBuilder(
+                snapshot, newTarget, new[] { BuilderRoute(builder, travel: 2, back: 2, activation: 1) },
+                new[] { recovery }, null, 50f, 1f, includeReturn: true);
+
+            Assert.That(choice, Is.Not.Null);
+            Assert.That(choice.Army.ArmyId, Is.EqualTo(builder.ArmyId));
+        }
+
+        // AI economy commitment/recovery audit (2026-09-15) — ProvisioningManager's own actor-
+        // conflict gates (IsCandidateEligible / PlanEconomyCompletion) call this SAME shared
+        // predicate, not a copy of the TargetHex check above. Fixing only EconomyBuilderCandidates
+        // would still leave Provisioning refusing to actually assign a redirected ReturnBuilder
+        // actor, since a Hard-funded ReturnBuilder intent used to universally fail this check
+        // (Economy is not Scout/Raid, and Hard funding fails the tier gate on top of that).
+        [Test]
+        public void EconomyDonorStructurallyEligible_ReturnBuilderIsEligibleDespiteHardFunding()
+        {
+            MissionIntent recovery = ReturnBuilderIntent(70, new HexCoord(9, 9));
+            Assert.That(recovery.Funding, Is.EqualTo(CommitmentTier.None).Or.Not.EqualTo(CommitmentTier.Hard),
+                "sanity: this test only proves something if recovery funding actually blocks the old tier gate");
+            recovery.Funding = CommitmentTier.Hard;
+
+            Assert.That(DemandLayer.EconomyDonorStructurallyEligible(recovery), Is.True);
+
+            var inProgressBuild = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Funding = CommitmentTier.Soft,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.BuildExtraction, TargetHex = new HexCoord(3, 3),
+                },
+            };
+            Assert.That(DemandLayer.EconomyDonorStructurallyEligible(inProgressBuild), Is.False,
+                "a genuine in-progress build must still require the existing TargetHex match, " +
+                "not fall through as a donor");
         }
 
         [Test]
@@ -1637,10 +1692,11 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup) —
-                    // InfrastructurePressure/ForwardProgressValue keep this fixture's reasonValue
-                    // in the same "positive but not yet admitted" range the test exercises.
-                    Hex = new HexCoord(4, 0), InfrastructurePressure = 1f,
+                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
+                    // InfrastructurePressure removed outright (2026-09-15). SpacingScore/
+                    // ForwardProgressValue keep this fixture's reasonValue in the same "positive
+                    // but not yet admitted" range the test exercises.
+                    Hex = new HexCoord(4, 0), SpacingScore = 1.25f,
                     ForwardProgressValue = 1f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 4, 0, 1) },
                 },
@@ -1688,10 +1744,11 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup) —
-                    // InfrastructurePressure(1.2)*10=12 stands in for the old capacity(1)*12=12,
-                    // same reasonValue this boundary test (below-threshold-then-admitted) depends on.
-                    Hex = new HexCoord(3, 0), InfrastructurePressure = 1.2f,
+                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
+                    // InfrastructurePressure removed outright (2026-09-15). SpacingScore(1.5)*8=12
+                    // stands in for the old pressure(1.2)*10=12, same reasonValue this boundary
+                    // test (below-threshold-then-admitted) depends on.
+                    Hex = new HexCoord(3, 0), SpacingScore = 1.5f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -1739,10 +1796,11 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup) — same
-                    // InfrastructurePressure(1.2)*10=12 stand-in as the fixture above.
+                    // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
+                    // InfrastructurePressure removed outright (2026-09-15) — same
+                    // SpacingScore(1.5)*8=12 stand-in as the fixture above.
                     Hex = new HexCoord(3, 0),
-                    InfrastructurePressure = 1.2f,
+                    SpacingScore = 1.5f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -2278,6 +2336,53 @@ namespace Game.EditorTests
             }
         }
 
+        // AI economy commitment/recovery audit (2026-09-15) — once a ReturnBuilder actor becomes
+        // eligible for a fresh Economy opportunity again, the same actor must never end up holding
+        // both its recovery walk AND a new delivery handoff at once. BeginEconomyDelivery must
+        // retire its own ReturnBuilder recovery and resume any donor waiting on that recovery.
+        [Test]
+        public void BeginEconomyDelivery_SupersedesReturnBuilderForSameActor_AndResumesLoanedDonor()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            int armyId = 91;
+            HexCoord shelter = new HexCoord(9, 9);
+            var donor = new MissionIntent
+            {
+                Kind = MissionKind.Scout,
+                Status = IntentStatus.Suspended,
+                Suspended = SuspendReason.EconomyLoan,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(5, 5) },
+            };
+            donor.IntentKey = MissionIntentKey.For(donor);
+            MissionIntent recovery = ReturnBuilderIntent(armyId, shelter, loaned: true, loanSource: donor.IntentKey);
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(donor);
+            state.Put(recovery);
+            try
+            {
+                var demand = new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.Hero,
+                    TargetHex = new HexCoord(2, 0),
+                    EconomyResourceType = ResourceType.Materials,
+                };
+
+                MissionIntent fresh = MissionContinuityLayer.BeginEconomyDelivery(
+                    player, demand, builderArmyId: armyId, turn: 9);
+
+                Assert.That(state.TryGet(recovery.IntentKey, out _), Is.False,
+                    "a fresh delivery handoff for the same actor must retire its own ReturnBuilder recovery");
+                Assert.That(state.TryGet(fresh.IntentKey, out _), Is.True);
+                Assert.That(donor.Status, Is.EqualTo(IntentStatus.Active));
+                Assert.That(donor.Suspended, Is.EqualTo(SuspendReason.None));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
+        }
+
         [Test]
         public void PhaseBSurplus_ExcludesEconomyMissionOwnedArmy()
         {
@@ -2528,6 +2633,10 @@ namespace Game.EditorTests
             StrategicResourceReservationLedger.BeginTurn(player, 12);
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
             ArmySnapshot builder = EconomyBuilder(61, 2, 5f);
+            // Both routes must clear the one-turn commitment horizon (2026-09-15 audit) — this test
+            // is about the ledger replacing one deferred owner with another, not about the horizon
+            // itself (see EconomyResourceReserve_OneTurnHorizonAppliesBeforeDurableIntentExists).
+            builder.MaxMovement = 4;
             snapshot.Self.Armies = new[] { builder };
             AxisDemand first = DeferredEconomyDemand(
                 builder, new HexCoord(3, 0), ResourceType.Human, human: 2, materials: 0);
@@ -2727,8 +2836,16 @@ namespace Game.EditorTests
             Assert.That(reservation.ClaimsEconomyBuildCard(duplicate), Is.False);
         }
 
+        // AI economy commitment/recovery audit (2026-09-15) — superseded by the durable-intent
+        // handoff. ShouldReserveDeferredEconomyResources now runs ONLY on the turn before a durable
+        // Economy intent exists (StrategicPhaseA.protectedActiveEconomyBuild short-circuits it to
+        // empty otherwise), so it applies a one-turn commitment horizon instead of protecting an
+        // arbitrarily distant route. The "protect a genuinely multi-turn delivery across turns"
+        // guarantee this test used to encode now lives in ProvisioningManager.ProvisionEconomy's
+        // direct-army path calling MissionContinuityLayer.BeginEconomyDelivery once the builder
+        // cannot finish this turn — see EconomyDirectAssignment_BecomesDurableIntentWhenNotCompletingThisTurn.
         [Test]
-        public void EconomyResourceReserve_PersistsWhileConfirmedBuilderRouteIsMultiTurn()
+        public void EconomyResourceReserve_OneTurnHorizonAppliesBeforeDurableIntentExists()
         {
             var builder = new ArmySnapshot
             {
@@ -2754,8 +2871,24 @@ namespace Game.EditorTests
             };
 
             Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
-                snap, demand), Is.True,
-                "A valid multi-turn delivery must protect its build vector before Phase B.");
+                snap, demand), Is.False,
+                "a route beyond the builder's own movement budget must not freeze resources " +
+                "on the very first turn the site is scored — that is what the durable-intent " +
+                "handoff is for once the delivery actually starts");
+
+            demand.EconomyBuilderRoutes = new[]
+            {
+                new EconomyBuilderRouteSnapshot { ArmyId = 7, TravelCost = 3, IsOnTarget = false },
+            };
+            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+                snap, demand), Is.True, "on-target-next-turn must reserve");
+
+            demand.EconomyBuilderRoutes = new[]
+            {
+                new EconomyBuilderRouteSnapshot { ArmyId = 7, TravelCost = 0, IsOnTarget = true },
+            };
+            Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
+                snap, demand), Is.True, "already on target must always reserve");
 
             demand.EconomyBuilderRoutes = new[]
             {
@@ -2766,6 +2899,43 @@ namespace Game.EditorTests
             };
             Assert.That(InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(
                 snap, demand), Is.False);
+        }
+
+        // AI economy commitment/recovery audit (2026-09-15) — the other half of the split: once
+        // Provisioning commits an ALREADY-EXISTING builder to a delivery it cannot finish this turn,
+        // BeginEconomyDelivery must accept the direct (non-Hero) capability and create the same kind
+        // of durable intent the Hero-materialization path creates, so StrategicPhaseA's
+        // protectedActiveEconomyBuild takes over full protection from the next turn on.
+        [Test]
+        public void EconomyDirectAssignment_BecomesDurableIntentWhenNotCompletingThisTurn()
+        {
+            var player = new Game.Players.PlayerSetupData();
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(5, -2),
+                EconomyResourceType = ResourceType.Materials,
+                EconomyBuildResourceCost = new ResourceCost { materials = 4 },
+                EconomyBuildApCost = 2,
+                EconomySiteValue = 30f,
+            };
+            try
+            {
+                MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+                    player, demand, builderArmyId: 42, turn: 3);
+
+                Assert.That(intent, Is.Not.Null,
+                    "the direct (already-existing-builder) path must be able to create a durable " +
+                    "intent too, not only the Hero-materialization path");
+                Assert.That(intent.Economy.Kind, Is.EqualTo(EconomyTaskKind.BuildExtraction));
+                Assert.That(intent.PreferredMoverArmyId, Is.EqualTo(42));
+                Assert.That(intent.Economy.TargetHex, Is.EqualTo(demand.TargetHex.Value));
+            }
+            finally
+            {
+                MissionIntentRegistry.Clear();
+            }
         }
 
         [Test]
@@ -3070,14 +3240,14 @@ namespace Game.EditorTests
             snapshot.Self.Armies = new[] { builder };
 
             // CapacityValue/NearbyResourceClusterValue/LogisticsValue/NetworkExpansionValue removed
-            // (2026-09-14 base-site scoring cleanup) — dropped rather than replaced here since
-            // neither site needs them to preserve the test's actual point: "strategic" wins on
-            // real resource yield + corridor alignment despite being the less convenient delivery
-            // for the builder.
+            // (2026-09-14 base-site scoring cleanup); InfrastructurePressure removed outright
+            // (2026-09-15) — dropped rather than replaced here since neither site needs them to
+            // preserve the test's actual point: "strategic" wins on real resource yield + corridor
+            // alignment despite being the less convenient delivery for the builder (dropping
+            // "convenient"'s pressure term only strengthens that margin).
             EconomyBaseOpportunity convenient = new EconomyBaseOpportunity
             {
                 Hex = new HexCoord(3, 1),
-                InfrastructurePressure = 1f,
                 ForwardProgressValue = 0.3f,
                 CorridorAlignmentValue = 0.5f,
                 BuilderRoutes = new[] { BuilderRoute(builder, 0, 3, 1) },

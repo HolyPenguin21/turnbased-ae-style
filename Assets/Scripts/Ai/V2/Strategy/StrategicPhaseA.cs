@@ -108,39 +108,63 @@ namespace Game.Ai.V2
             demands ??= System.Array.Empty<AxisDemand>();
 
             // A target-specific Economy build may deliberately emit no repeated demand once
-            // Continuity owns its builder. That active intent outranks every fresh build for the
-            // single deferred-resource hold and must be protected before any early return.
-            MissionIntent protectedActiveEconomyBuild = activeIntents?
+            // Continuity owns its builder. That active intent outranks every fresh build for its
+            // own deferred-resource hold and must be protected before any early return.
+            // 2026-09-15 — split into one independent slot PER EconomyTaskKind (was a single shared
+            // slot ranked by raw BuildValue across both kinds — project owner's own audit found
+            // that a BuildExtraction's BuildValue is structurally an order of magnitude higher than
+            // a FoundBase's (extraction apCost~1 vs a Base's ~28), so the old shared slot meant a
+            // concurrently active extraction ALWAYS won it and a Base's build resources were never
+            // protected while any extraction was also walking — an artifact of the two kinds never
+            // being comparable on raw BuildValue, not an intended priority. Base now gets its own
+            // dedicated protection; it no longer competes with Extraction for one shared slot.
+            MissionIntent PickProtectedActiveBuild(EconomyTaskKind kind) => activeIntents?
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.Economy && i.Economy != null
-                    && (i.Economy.Kind == EconomyTaskKind.BuildExtraction
-                        || i.Economy.Kind == EconomyTaskKind.FoundBase))
+                    && i.Economy.Kind == kind)
                 .OrderByDescending(i => i.Funding)
                 .ThenByDescending(i => i.Economy.BuildValue)
                 .ThenBy(i => i.CreatedTurn)
                 .ThenBy(i => i.IntentKey)
                 .FirstOrDefault();
-            if (protectedActiveEconomyBuild != null)
+            MissionIntent protectedActiveExtraction = PickProtectedActiveBuild(EconomyTaskKind.BuildExtraction);
+            MissionIntent protectedActiveBase = PickProtectedActiveBuild(EconomyTaskKind.FoundBase);
+
+            void ProtectActiveEconomyBuild(MissionIntent active)
             {
-                // Exception to the otherwise-absolute protection above, scoped to FoundBase only:
-                // per the project owner's own call, a Base site must keep reacting to newly-known
-                // hexes even after commitment, not just while still staged (DemandLayer.Economy.
-                // AddBaseCandidates already does this for an uncommitted candidate — see
+                InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                    player, ctx.TurnNumber, active);
+                if (active.Economy.BuildCard != null)
+                    result.Reservation.ClaimedEconomyBuildCards.Add(active.Economy.BuildCard);
+                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
+                    + $"{active.Economy.Kind} "
+                    + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");
+            }
+
+            if (protectedActiveExtraction != null)
+                ProtectActiveEconomyBuild(protectedActiveExtraction);
+
+            if (protectedActiveBase != null)
+            {
+                // Exception, scoped to FoundBase only (unchanged behaviour from before the split,
+                // just evaluated against Base's own slot instead of a shared one): per the project
+                // owner's own call, a Base site must keep reacting to newly-known hexes even after
+                // commitment, not just while still staged (DemandLayer.Economy.AddBaseCandidates
+                // already does this for an uncommitted candidate — see
                 // economyBaseSwitchHysteresisThreshold). Only safe to release while the founding
                 // card is still physically in hand (nothing irreversible spent yet) and only for a
                 // fresh candidate that clears the SAME hysteresis margin — one threshold, one rule,
                 // now applied at both stages instead of just the first.
                 AxisDemand supersedingBaseSite = null;
-                if (protectedActiveEconomyBuild.Economy.Kind == EconomyTaskKind.FoundBase
-                    && protectedActiveEconomyBuild.Economy.BuildCard != null
-                    && hand.Hand.Contains(protectedActiveEconomyBuild.Economy.BuildCard))
+                if (protectedActiveBase.Economy.BuildCard != null
+                    && hand.Hand.Contains(protectedActiveBase.Economy.BuildCard))
                 {
                     supersedingBaseSite = demands
                         .Where(d => d != null && d.RequestingAxis == DesireAxis.Economy
                             && d.Capability == CapabilityKind.EconomicExpansionBase
                             && d.TargetHex.HasValue
-                            && !d.TargetHex.Value.Equals(protectedActiveEconomyBuild.Economy.TargetHex)
-                            && d.Value > protectedActiveEconomyBuild.Economy.BuildValue
+                            && !d.TargetHex.Value.Equals(protectedActiveBase.Economy.TargetHex)
+                            && d.Value > protectedActiveBase.Economy.BuildValue
                                 + AiConfigV2.economyBaseSwitchHysteresisThreshold)
                         .OrderByDescending(d => d.Value)
                         .FirstOrDefault();
@@ -148,26 +172,21 @@ namespace Game.Ai.V2
                 if (supersedingBaseSite != null)
                 {
                     AiDebugLog.Write($"[AI][V2]   strat.A economy hold — released active "
-                        + $"{protectedActiveEconomyBuild.Economy.Kind} "
-                        + $"@({protectedActiveEconomyBuild.Economy.TargetHex.Q},"
-                        + $"{protectedActiveEconomyBuild.Economy.TargetHex.R}) "
-                        + $"value={protectedActiveEconomyBuild.Economy.BuildValue:0.##}: newly-known "
+                        + $"{protectedActiveBase.Economy.Kind} "
+                        + $"@({protectedActiveBase.Economy.TargetHex.Q},"
+                        + $"{protectedActiveBase.Economy.TargetHex.R}) "
+                        + $"value={protectedActiveBase.Economy.BuildValue:0.##}: newly-known "
                         + $"@({supersedingBaseSite.TargetHex.Value.Q},{supersedingBaseSite.TargetHex.Value.R}) "
                         + $"value={supersedingBaseSite.Value:0.##} clears the hysteresis margin");
+                    protectedActiveBase = null;   // released — Base slot is free this pass
                 }
                 else
                 {
-                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
-                        player, ctx.TurnNumber, protectedActiveEconomyBuild);
-                    if (protectedActiveEconomyBuild.Economy.BuildCard != null)
-                        result.Reservation.ClaimedEconomyBuildCards.Add(
-                            protectedActiveEconomyBuild.Economy.BuildCard);
-                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
-                        + $"{protectedActiveEconomyBuild.Economy.Kind} "
-                        + $"@({protectedActiveEconomyBuild.Economy.TargetHex.Q},"
-                        + $"{protectedActiveEconomyBuild.Economy.TargetHex.R}) before card arbitration");
+                    ProtectActiveEconomyBuild(protectedActiveBase);
                 }
             }
+            bool anyProtectedActiveEconomyBuild =
+                protectedActiveExtraction != null || protectedActiveBase != null;
 
             foreach (AxisDemand economyDemand in demands.Where(d => d != null
                          && d.RequestingAxis == DesireAxis.Economy
@@ -221,7 +240,7 @@ namespace Game.Ai.V2
             var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred).ToList();
             if (states.Count == 0 && deferredStates.Count == 0)
             {
-                if (economyAxisAuthoritative && protectedActiveEconomyBuild == null)
+                if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
                     InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
                 return result;
             }
@@ -232,7 +251,7 @@ namespace Game.Ai.V2
             //     value/telemetry; AP comes from the shared pool. Handled here once, then blocked so the generic
             //     loop does not emit a spurious "no feasible chain" for a capability it can't match.
             // Establish the existing single Economy hold BEFORE infrastructure can spend it.
-            var economyBuildObligations = protectedActiveEconomyBuild != null
+            var economyBuildObligations = anyProtectedActiveEconomyBuild
                 ? new List<AxisDemand>()
                 : states.Select(s => s.Demand)
                     .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
@@ -264,7 +283,7 @@ namespace Game.Ai.V2
                     + $"{protectedEconomyBuild.Capability} @({protectedEconomyBuild.TargetHex?.Q},"
                     + $"{protectedEconomyBuild.TargetHex?.R}) before card arbitration");
             }
-            else if (economyAxisAuthoritative && protectedActiveEconomyBuild == null)
+            else if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
             {
                 // No obligation survived selection — but only clear when this call actually had
                 // Economy's authoritative view. A dirty-axis subset that never included Economy

@@ -8,16 +8,16 @@ namespace Game.Ai.V2.Initiative
 {
     public sealed class InitiativePlan
     {
-        public readonly List<ResourceType> PaymentResources; // one H/E/M/T source per die, in purchase order
+        public readonly List<ResourceType> PaymentUnits; // one H/E/M/T entry per resource unit spent, in purchase order
         public readonly int DiceToBuy;
         public readonly float NetValue;
         public readonly float ResourceOpportunityCost;
         public readonly string Rationale;
 
-        public InitiativePlan(List<ResourceType> paymentResources, int diceToBuy, float netValue,
+        public InitiativePlan(List<ResourceType> paymentUnits, int diceToBuy, float netValue,
             float oppCost, string rationale)
         {
-            PaymentResources = paymentResources ?? new List<ResourceType>();
+            PaymentUnits = paymentUnits ?? new List<ResourceType>();
             DiceToBuy = diceToBuy;
             NetValue = netValue;
             ResourceOpportunityCost = oppCost;
@@ -52,9 +52,11 @@ namespace Game.Ai.V2.Initiative
 
             for (int n = 1; n <= InitiativeRules.MaxBonusDice; n++)
             {
-                // Feasibility comes from the REAL payment rule, not from a summed H+E+M+T unit
-                // total. If N dice are impossible then N+1 is impossible too because it contains
-                // the same first N purchases plus another more expensive one.
+                // Mixing resources per unit (see InitiativeFundingOptimizer) means feasibility
+                // really is just "summed H+E+M+T stock covers the summed price of N dice" now.
+                // Still monotonic: the greedy allocation for N dice is a strict prefix of the
+                // one for N+1 (same cheapest-unit-first order, just more units demanded), so if
+                // N is infeasible, N+1 — needing that same prefix plus more — is too.
                 InitiativeFundingResult funding = InitiativeFundingOptimizer.Plan(analysis, 0, n);
                 if (!funding.Feasible)
                     break;
@@ -83,7 +85,7 @@ namespace Game.Ai.V2.Initiative
                     string why = $"{n} dice: ΔEAp={F(expectedApGain)}*apP={F(analysis.ApPressure)} -> apBen={F(apBenefit)}, "
                         + $"ΔEarly={F(earlinessGain)}*toP={F(analysis.TurnOrderPressure)} -> tempo={F(tempoBenefit)}, "
                         + $"gross={F(gross)} - oppCost={F(funding.TotalOpportunityCost)} = net {F(net)}";
-                    best = new InitiativePlan(funding.PaymentResources, n, net,
+                    best = new InitiativePlan(funding.PaymentUnits, n, net,
                         funding.TotalOpportunityCost, why);
                 }
             }

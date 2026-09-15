@@ -1257,12 +1257,51 @@ namespace Game.Ai.V2
                                 : ResolveGarrisonExtractionCandidate(player, g, actorCommitments,
                                     session, root, funded.Tentative.Ap);
                             bool cContainerG = containerPlan.Tier != GarrisonExtractionTier.None;
+                            bool shallowEligibleG = g != null && sparable != null && cThreatG
+                                && cClaimedG && cPathG && cContainerG;
+                            // 2026-09-15 — the shallow gates above (mirrored from the real loop's
+                            // IsCandidateEligible + ResolveGarrisonExtractionCandidate) are NOT the
+                            // whole real gate any more: since review round 8/9/10 the real loop also
+                            // runs the roughEstimate AP pre-check and the full PlanEconomyCompletion
+                            // (donor loan, real path for the PREVIEW army, composition/lightening,
+                            // authoritative AP, StrategicSpendability) before accepting a candidate —
+                            // see line ~1122-1141 above. "ELIGIBLE=True" here used to mean nothing
+                            // beyond "a container tier exists", which is exactly the stale-diagnostic
+                            // trap this same file's history (see docs/ai-economy-mover-materialization-
+                            // decision-tree.md, "Known trap") already burned us on once. Replicate the
+                            // SAME two downstream checks, read-only, so the real rejection reason is
+                            // visible instead of falling through to the generic NoMoverExists below.
+                            string prepDetailG = "n/a";
+                            bool prepFeasibleG = false;
+                            if (shallowEligibleG)
+                            {
+                                float roughEstimateG = containerPlan.ApCost;
+                                if (roughEstimateG > ecoApEnvelopeRemaining + eps
+                                    || roughEstimateG > rawApRemaining + eps)
+                                {
+                                    prepDetailG = $"RoughEstimateTooBig ap={roughEstimateG:0.##} "
+                                        + $"ecoEnvelope={ecoApEnvelopeRemaining:0.##} rawPool={rawApRemaining:0.##}";
+                                }
+                                else
+                                {
+                                    ArmyData previewG = BuildGarrisonExtractionPreview(player, g, containerPlan);
+                                    int identityArmyIdG = containerPlan.Container?.Id ?? -1;
+                                    EconomyCompletionPlan prepG = PlanEconomyCompletion(player, root, ctx,
+                                        session.Snapshot, standingIntents, key, target, x, previewG,
+                                        identityArmyIdG, ecoApEnvelopeRemaining, rawApRemaining, containerPlan.ApCost);
+                                    prepFeasibleG = prepG.Feasible;
+                                    prepDetailG = prepG.Feasible
+                                        ? $"Feasible realAp={prepG.RealAp:0.##} completionThisTurn={prepG.CompletionThisTurn}"
+                                        : $"{prepG.Failure.Kind} — {prepG.Failure.Detail}";
+                                }
+                            }
                             AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} (garrison-extraction) "
                                 + $"resolved={g != null} sparableHero={sparable != null} "
                                 + $"notUnderImmediateThreat={cThreatG} notClaimedThisPass={cClaimedG} hasPath={cPathG} "
                                 + $"container={(cContainerG ? containerPlan.Tier.ToString() : containerPlan.Reason)} "
                                 + (cContainerG ? $"containerApCost={containerPlan.ApCost:0.##} " : "")
-                                + $"=> ELIGIBLE={g != null && sparable != null && cThreatG && cClaimedG && cPathG && cContainerG}");
+                                + $"shallowEligible={shallowEligibleG} plan=[{prepDetailG}] "
+                                + $"=> ELIGIBLE={shallowEligibleG && prepFeasibleG}");
                             continue;
                         }
                         ArmyData a = ResolveArmy(player, x.Route.ArmyId);
@@ -1283,13 +1322,33 @@ namespace Game.Ai.V2
                             ? (HexCoord?)null
                             : SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex);
                         bool cPath = atTarget || (a.CurrentMovement > 0 && nextStep.HasValue);
+                        bool shallowEligible = cMobile && cThreat && cClaimed && cDonorConflict && cPath;
+                        // 2026-09-15 — same reasoning as the garrison-extraction branch above: the
+                        // shallow checks here are only a mirror of IsCandidateEligible, not of the
+                        // full PlanEconomyCompletion the real loop (line ~1305) runs against this
+                        // exact army once selected. Replicate that final gate too so a direct-army
+                        // candidate that looks ELIGIBLE here but fails on donor loan / AP / spendable
+                        // resources shows its real reason instead of the generic NoMoverExists below.
+                        string prepDetail = "n/a";
+                        bool prepFeasible = false;
+                        if (shallowEligible)
+                        {
+                            EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
+                                session.Snapshot, standingIntents, key, target, x, a, a.Id,
+                                ecoApEnvelopeRemaining, rawApRemaining);
+                            prepFeasible = prep.Feasible;
+                            prepDetail = prep.Feasible
+                                ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
+                                : $"{prep.Failure.Kind} — {prep.Failure.Detail}";
+                        }
                         AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
                             + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
                             + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
                             + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
                             + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
                             + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
-                            + $"=> ELIGIBLE={cMobile && cThreat && cClaimed && cDonorConflict && cPath}");
+                            + $"shallowEligible={shallowEligible} plan=[{prepDetail}] "
+                            + $"=> ELIGIBLE={shallowEligible && prepFeasible}");
                     }
                 }
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
@@ -1314,6 +1373,28 @@ namespace Game.Ai.V2
             if (directPrep.CompletionThisTurn)
                 InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
                     directPrep.OwnerKey, target.BuildResourceCost, target.BuildApCost);
+            else
+                // AI economy commitment/recovery audit (2026-09-15) — this hero cannot finish the
+                // build this turn, so it is genuinely a multi-turn delivery starting or continuing.
+                // Give Continuity a durable identity for it (mirrors the Hero-materialization path
+                // in CapabilityDeliveryEvaluator) so StrategicPhaseA's protectedActiveEconomyBuild
+                // protects the full H/E/M/T vector every later turn regardless of remaining travel —
+                // without this, InfrastructureFulfillment.ShouldReserveDeferredEconomyResources'
+                // one-turn horizon would have to (and used to) protect unconditionally on every turn
+                // of the walk, freezing resources far earlier than necessary on the very first turn.
+                MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = target.Kind == EconomyTaskKind.FoundBase
+                        ? CapabilityKind.EconomicExpansionBase : CapabilityKind.EconomicInfrastructure,
+                    TargetHex = target.TargetHex,
+                    EconomyResourceType = target.ResourceType,
+                    EconomyBuildCard = target.BuildCard,
+                    EconomyBuildResourceCost = target.BuildResourceCost,
+                    EconomyBuildApCost = target.BuildApCost,
+                    MinimumFollowupAp = target.MinimumFollowupAp,
+                    EconomySiteValue = target.BuildValue,
+                }, hero.Id, ctx.TurnNumber);
 
             // "Pending" means Execution still has real work to do before movement: an actual
             // composition change, OR a donor loan that must be suspended (bookkeeping only, but

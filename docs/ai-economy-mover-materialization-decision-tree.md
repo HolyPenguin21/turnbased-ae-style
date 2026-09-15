@@ -1,5 +1,275 @@
 # Economy mover materialization — decision tree (reusable analysis pattern)
 
+## Review round 17 (2026-09-15) — Base and Extraction no longer share one protection slot
+
+Found while investigating the project owner's question "is there some Economy-mission limit
+blocking FoundBase while everyone's busy building facilities?" — yes:
+`StrategicPhaseA.FulfillDemands`' `protectedActiveEconomyBuild` (the mechanism that shields an
+active Economy build's H/E/M/T from being spent by Phase B card-play this same turn) picked
+**exactly one** active intent across BOTH `EconomyTaskKind.BuildExtraction` and `FoundBase`,
+ranked by `Funding` (tied — both start `CommitmentTier.Soft` via the same `BeginEconomyDelivery`,
+only promoted to `Hard` once `EconomyBuildCompleted`, i.e. right at the end) then raw
+`Economy.BuildValue`. Extraction's `BuildValue` is structurally an order of magnitude higher than
+a Base's (`apCost≈1` vs a Base's `≈28` build cost, confirmed against real log numbers: extraction
+sites routinely score `val 40-70+`, Base scores `-10..+3` even after round 16's recalibration) — so
+whenever both kinds were simultaneously active, Extraction won the single slot **every time**,
+meaning a Base's build resources were never protected while any Extraction was also walking. Not a
+deliberate priority; an artifact of two structurally-incomparable kinds sharing one value-ranked
+slot. Real log evidence: `AiDebug.log` (2026-09-15 13:49:50 session) shows "protected active
+BuildExtraction" firing on a DIFFERENT hex nearly every turn (0,2 → 3,4 → 10,0 → 7,2 → ...) across
+T5-T11, "protected active FoundBase" never once, while a FoundBase demand for (8,2) sat at
+`urgency=36→108` the whole time.
+
+**Fix, per explicit project-owner instruction ("нужно чтобы на базу полностью выделялась отдельная
+армия и не конфликтовала с фасилити" — Base must get its own dedicated protection, not compete with
+Extraction) — structural separation, not a value-based exception.** `StrategicPhaseA.cs`:
+`protectedActiveEconomyBuild` (single) replaced with `protectedActiveExtraction` +
+`protectedActiveBase`, computed independently via a local `PickProtectedActiveBuild(kind)` (same
+Funding/BuildValue/CreatedTurn/IntentKey ordering, just pre-filtered to one kind each). Both get
+protected (resource-reserved, build card claimed) when active — via a shared
+`ProtectActiveEconomyBuild(active)` local, not two copies of the reservation/logging code. The
+FoundBase-only "release for a decisively better newly-known site" exception (hysteresis-gated,
+unchanged math) now attaches to `protectedActiveBase` specifically instead of firing whenever
+whichever kind happened to win the old shared slot was a Base. Every downstream read of the old
+single flag (`economyBuildObligations`'s gate, the two `ClearDeferredEconomyResources` early-outs)
+switched to `anyProtectedActiveEconomyBuild = protectedActiveExtraction != null ||
+protectedActiveBase != null` — same "don't look for a third fresh obligation / don't clear the hold"
+semantics as before, just aware there can now be two occupied slots instead of one.
+
+Two simultaneously-reserved owners (Base's and Extraction's, distinct `EconomyMissionPlanner.OwnerKey`
+per intent) is not a new failure mode: `StrategicSpendability.FitsSpendableResources`'s existing
+`excludeOwner` parameter already handles a mission correctly excluding its own hold while still
+seeing every other reservation against the shared pool (this is the same mechanism round-11's
+history already relied on for concurrent Economy missions generally) — if the player genuinely
+cannot afford both at once, the one that runs out honestly fails on real scarcity at spend time,
+not on this artificial single-slot competition. That is a correct, expected outcome this change
+does not try to prevent.
+
+`dotnet build` on both `Assembly-CSharp.csproj` and `Assembly-CSharp-Editor.csproj` — 0 errors/0
+warnings. Editor tests grepped for two-simultaneous-active-Economy-intent scenarios (none found —
+every existing `AiEconomyDecisionTests.cs` fixture that sets up an active Economy intent sets up
+exactly one, so `PickProtectedActiveBuild` degenerates to the old single-pick behaviour for all of
+them; not individually re-verified by hand this round given the volume). **NOT play-tested in Unity
+yet** — next session should confirm "protected active BuildExtraction" and "protected active
+FoundBase" can both appear in the same turn's log once a Base delivery is underway, and that a Base
+finally completing is not blocked by a concurrently-protected Extraction the way it structurally was
+before this round.
+
+## Review round 16 (2026-09-15) — defense-bonus site term + delivery-cost recalibration
+
+Two independent project-owner requests, same session.
+
+**Defense-bonus hex term.** Added `EconomyBaseOpportunity.DefenseBonusValue` — the hex's own
+`TerrainTypeEntry.defenseModifier` (the same field combat/threat code already reads —
+`WorthIt.cs`, `HexSelectionController.Visuals.cs` — no second terrain-reading path introduced),
+normalized `Clamp01(defenseModifier / economyBaseMaxDefenseModifier(2))`, computed in
+`WorldAnalysis.Economy.cs` right next to `SpacingScore` (same pattern: Analysis reads the
+structural fact, Evaluation weighs it). Weighted into `ScoreBaseSite`'s `reasonValue` at
+`economyBaseDefenseBonusValue=4` — deliberately below every resource-related term (`hexYield=10`,
+`forward`/`corridor`/`spacing=8` each) per the project owner's stated priority: (1) most distinct
+resource types on the hex, with a genuine per-type deficit allowed to override that (already how
+`hexYield`'s deficit-weighted sum behaves — no change needed there, see round 15's design
+conversation), (2) a single resource, (3) a defense-only hex — and a resource+defense combo should
+add on top of the resource score but still lose to a purely better resource site. At weight 4 vs
+resource terms' 8-10, a defense bonus alone can never out-rank an extra resource type, only pad an
+otherwise-tied comparison.
+
+**Delivery-cost recalibration** (`economySiteTravelPenalty` 2.5→0.8, new
+`economyBaseDeliveryApPenalty=1.5` decoupled from `economyBuildApPenalty` for Base's own
+`deliveryApCost` specifically). Explicit project-owner calibration target, not derived from a
+formula: a near-zero site `value` should mean a genuinely far corner of the map — even a site right
+up against the enemy citadel should stay clearly worth building (e.g. for its aviation-range value),
+which round 13-15's fixes (spacing/pressure-removal/turns-to-afford) improved the REWARD side of but
+never touched the delivery-COST side that was independently capable of sinking `value` regardless.
+`economySiteTravelPenalty` is shared by every Economy site-value formula in `DemandLayer.Economy.cs`
+(extraction, loan-net, Base) — lowered uniformly, not a Base-only carve-out, consistent with this
+whole session's direction (distance should cost less everywhere in Economy, not just for Base).
+`economyBaseDeliveryApPenalty` is new and Base-only, decoupled from `economyBuildApPenalty` (which
+stays unchanged for the fixed card-AP-cost term inside `intrinsicBuildCost`, and for Extraction's
+own unrelated `deliveryApCost` near the top of the same file — a routine, usually-nearby investment
+not recalibrated this round).
+
+`dotnet build` on both `Assembly-CSharp.csproj` and `Assembly-CSharp-Editor.csproj` — 0 errors/0
+warnings. **NOT play-tested in Unity yet** — next session should confirm `defense=` appears in the
+`Base reason=...` log line and that `value` for a near-enemy, well-aligned site (high
+`forward`/`corridor`) no longer bottoms out purely from travel distance the way it did before this
+round.
+
+## Review round 15 (2026-09-15) — `incomeGap` replaced with a turns-to-afford bottleneck
+
+Project owner's own model, not a bug fix. Old `incomeGap` compared the current income RATE to a
+computed target rate (`target = max(opponentMedianIncome, cardCadence)`,
+`cardCadence = max(deckNeed/8turns, handNeed/2turns, reservedOpNeed/1turn)`) — a resource with a
+high but insufficient income could still look "fine" if its target happened to be close, while the
+actually-correct question is simpler: *how many turns until stock + income×turns covers everything
+I need to play?* Worked example from the design conversation: H (stock 3, income +2) needs 5 turns
+to afford hand+deck; E (stock 2, income +1) needs only 3. H is the real bottleneck despite the
+higher raw income — the old rate-based `incomeGap` could not express this (a resource can have
+both a high income AND an even larger total need).
+
+**Changed**: only the `incomeGap` local variable inside `EconomyStanding.CalculateResource`
+(`WorldSnapshot.cs`) — now `Clamp01(turnsToAfford / economyBottleneckReferenceTurns(10))` where
+`turnsToAfford = max(0, (handNeed + remainingDeckNeed − spendableStockpile) / ownIncome)`, undiscounted
+("играть всё, в вакууме" — no `economyDeckNeedDiscount`, unlike `runway`'s `wanted`).
+**Deliberately NOT changed**: `target`/`cardCadence`/`IncomeTarget` — verified first
+(`HoldEvaluator.cs:62-64`, `StrategicPhaseB.cs:317`) that `IncomeTarget` is a shared field consumed
+elsewhere as a per-turn RATE (`runwayTarget = IncomeTarget × tempoHoldOverstockRunwayHorizon` for
+the overstock/hold decision) — repurposing it here would have silently changed that unrelated
+consumer. `target`/`cardCadence` still compute and still feed `IncomeTarget` exactly as before;
+`incomeGap` (used only inside this same function's `deficit` composite) now derives from a separate,
+parallel calculation instead. `relativeGap`/`runway`/`operational`/`starvation` — untouched.
+
+New constant `economyBottleneckReferenceTurns=10` (`AiConfigV2.Economy.cs`) — the turns count at
+which `incomeGap` saturates to 1.0; open to retuning once play-tested.
+
+Deliberately out of scope this round (explicit project-owner request): aviation sortie energy need
+and Production/Research facility upkeep are NOT folded into `totalCardNeed` — grepped first and
+confirmed neither currently feeds `StrategicResourceReservationLedger` or any Economy need bundle at
+all (`AviationSortieReservationEvaluator`/`ReconAirEnergyPolicy` and
+`DevelopmentOpportunityEvaluator` each estimate their own cost only for their own axis, in
+isolation). Revisit as an explicit, separate follow-up if the user wants the bottleneck to also
+reflect recurring Production/aviation draw, not just hand+deck card cost.
+
+Verified against `Assets/Editor/AiEconomyDecisionTests.cs`'s three existing `CalculateResource`
+tests by hand (no Unity test runner available in this environment, `dotnet build` is the only
+compiler feedback, same limitation every round in this file has noted) — all three still pass
+under the new formula, each for a different reason than the one it was written to test:
+`ResourceDeficit_HandNeedOutweighsEquivalentDeckNeed` now passes via the untouched `runway` term
+(its `economyDeckNeedDiscount` still favors hand over deck) rather than `incomeGap` (which is now
+symmetric for equal total hand/deck need); `..._OpponentMedianGapRaisesPressure` passes via
+`relativeGap`; `..._OperationalReservationRaisesMatchingPressure` passes via `operational`. Not
+edited since nothing is actually broken, but flagged here in case a future round changes any of
+those three other terms too and inadvertently removes the only signal keeping one of these tests
+meaningful. `dotnet build` on both `Assembly-CSharp.csproj` and `Assembly-CSharp-Editor.csproj` —
+0 errors/0 warnings. **NOT play-tested in Unity yet.**
+
+## Review round 14 (2026-09-15) — `InfrastructurePressure` removed from base-site scoring
+
+Project owner's call, not a bug fix: `EconomyBaseOpportunity.InfrastructurePressure`
+(`ownedExtractionSites / (ownBases×3)`, weight 10 in `ScoreBaseSite`'s `reasonValue` — same scale
+as `hexYield`, the single heaviest term) made a new Base's score climb only as the AI's EXISTING
+base(s) filled up with extraction facilities. Traced with real log numbers (round 13's data): at
+`pressure=0.67` (2 extractors / 1 base) `reasonValue` stayed under `intrinsicBuildCost` (~28) on
+every attempt but one; only once `pressure` reached `1.0` (3+ extractors) did `reasonValue` get
+close to clearing that bar. Net effect: the AI's model treated founding a NEW base as a *consequence*
+of saturating the old one, sequencing Economy's own two expansion levers (extractors now, a base
+only once extractors run out of room) instead of letting them compete on their own separate merits —
+a Base already produces its own income, AP, visibility and army support the moment it exists, and is
+already hard-gated by `MeetsBaseSpacing`/direction/threat/no-double-coverage; it does not need
+facility saturation as an additional precondition on top of all that.
+
+**Removed outright** (not zero-weighted — a dead 0× term left in the formula is not what "remove"
+means): `EconomyBaseOpportunity.InfrastructurePressure` field (`WorldSnapshot.cs`), its computation
+(`ownedExtractionSites`/`infrastructurePressure`, `WorldAnalysis.Economy.cs`), its weighted term in
+`ScoreBaseSite` and the `economyBaseInfrastructurePressureValue=10` constant
+(`StrategicCardEvaluator.cs`/`AiConfigV2.Economy.cs`), and the `pressure=...` log field
+(`DemandLayer.Economy.cs`'s `Explain`). Single owner throughout (grepped for every reference before
+touching anything) — no duplicate implementation existed anywhere else to also clean up.
+`Assets/Editor/AiEconomyDecisionTests.cs` constructs `EconomyBaseOpportunity` object-initializers
+directly in 5 places that set `InfrastructurePressure` as an arbitrary reasonValue lever (per those
+tests' own comments, never about real infrastructure semantics) — 4 were repointed at `SpacingScore`
+(round 13's new field, same per-hex 0..1 scoring role) with adjusted magnitudes to preserve each
+fixture's exact prior `reasonValue` where a test asserts a specific boundary/threshold, and the 5th
+(a "strategic site beats convenient site" comparison) had it dropped outright since removing it only
+widens the margin the test already asserts. `dotnet build` on both `Assembly-CSharp.csproj` and
+`Assembly-CSharp-Editor.csproj` — 0 errors/0 warnings. **NOT play-tested in Unity yet** — next
+session should confirm Base `reasonValue` no longer depends on `pressure` (field is gone from the
+log line entirely) and see whether early-game Base founding becomes viable sooner.
+
+## Review round 13 (2026-09-15) — graded base-spacing score + true root cause found via round 12's TRACE
+
+Round 12's extended TRACE fired for real on the next playtest and, for once, told the truth:
+`FoundBase (2,6) — FAIL NoMoverExists`, and the new `plan=[...]` line underneath it read
+`EnvelopeTooSmall — economy hero #28 needs 1 AP for this travel stage`. Cross-referenced against
+`ResourceAllocator.LogDump`'s own per-candidate fund line for the same attempt:
+
+```
+fund [Scout(Refresh 4,3)]      eff  35.50  ap 1.00  axes[RCN]
+fund [Raid(Guard@4,-2)]        eff  30.34  ap 3.00  axes[AGG]
+fund [Economy(FoundBase 2,6)]  eff  -3.50  ap 0.00  axes[ECO]   <- negative eff, funded last, gets 0
+```
+
+The allocator funds strictly in descending `eff` order — a FoundBase demand with negative `eff`
+receives exactly 0 AP whenever ANY positive-`eff` demand exists that turn (Recon/Aggression routinely
+score +30..+35), regardless of the "forced residual" urgency mechanism that keeps the demand itself
+alive as a *target*. Traced why `eff` goes negative: `DemandLayer.Economy.AddBaseCandidates`
+(`value = strategicValue - deliveryApCost - economySiteTravelPenalty*travel - heroCost`) stacks THREE
+separate, distance-correlated penalties (extraction-turn AP cost, raw travel-hex cost, and hero
+opportunity cost) against `strategicValue` (~20-30) — for any site more than a couple hexes from the
+mover's current position, the three penalties reliably outweigh it. Real log example: target (0,0),
+`site=-7.92 delivery=-48.92`.
+
+**What this round changed**: NOT the delivery-cost penalties above (a separate, larger question,
+deliberately left alone this round) — the POSITIVE side of `strategicValue`. `ForwardProgressValue`/
+`CorridorAlignmentValue` already reward direction-toward-the-nearest-enemy-citadel and reward staying
+on the direct corridor, but nothing previously scored the *spacing* distance itself
+(`MeetsBaseSpacing`/`economyBaseMinSpacing=3` was a pure 0/1 gate — a site exactly at the legal
+minimum scored the same as one comfortably spaced, once both cleared the gate). Added
+`EconomyBaseOpportunity.SpacingScore` (`WorldAnalysis.Economy.cs`, new `BaseSpacingScore(int d)`
+next to `MeetsBaseSpacing`, same `d` — never recomputed differently): linear ramp from
+`economyBaseSpacingScoreAtMin=0.8` at `d=economyBaseMinSpacing(3)` up to `1.0` at
+`economyBaseIdealSpacing(4)`, then linear decay at `economyBaseSpacingDecayPerHex=0.15`/hex past the
+ideal, floored at 0 (`AiConfigV2.Economy.cs`). Weighted into `StrategicCardEvaluator.ScoreBaseSite`'s
+`reasonValue` at `economyBaseSpacingValue=8` — same scale as `economyBaseForwardProgressValue`/
+`economyBaseCorridorAlignmentValue` (also 8). Logged alongside them in `DemandLayer.Economy.cs`'s
+`Explain` string (`spacing=...`) so the next TRACE session shows it directly. Real hexes from this
+session (Halden citadel (0,5), enemy Tessek citadel (11,0)): the T13 target (2,6) sits at d=3 from
+the own citadel (own-base spacing floor) and d=9 from the enemy (closest of the candidates seen,
+`forward=0.18` matches the log) — under the new formula that site's `SpacingScore` is exactly `0.8`
+(previously contributed nothing beyond the pass/fail gate).
+
+Deliberately scoped narrow: `TrySelectBaseExpansionDirection` (`anchor` = whichever OWNED base is
+closest to the nearest enemy citadel, `targetCitadel` = that nearest enemy citadel) and
+`MeetsBaseSpacing`'s `d` (= distance to the NEAREST of ALL owned bases) already generalize correctly
+to a 3rd/4th base with zero code changes — verified by reading, not assumed; documented here so the
+next session doesn't have to re-derive it. This round does not touch the delivery-cost penalty stack
+that is the actual reason `eff` goes negative — `SpacingScore` raises `strategicValue`, which the
+`deliveryApCost`/`travel`/`heroCost` terms still subtract from afterward; a well-placed but currently
+mover-far base can still net negative. `dotnet build` on both `Assembly-CSharp.csproj` and
+`Assembly-CSharp-Editor.csproj` — 0 errors/0 warnings. Editor test file
+`Assets/Editor/AiEconomyDecisionTests.cs` constructs `EconomyBaseOpportunity` directly in several
+places and does not set the new `SpacingScore` field (defaults to 0, i.e. no bonus/no penalty in
+those synthetic cases) — left as-is per the project's own no-test-writing convention; not a
+compile/behavior break. **NOT play-tested in Unity yet.**
+
+## Review round 12 (2026-09-15) — TRACE now runs the real `PlanEconomyCompletion` gate too
+
+First real Unity playtest of round 11 happened (`AiDebug.log`, 2026-09-15): across 18 turns / 2
+players, `EconomicInfrastructure` (extractor) built 5 times; `EconomicExpansionBase` (Concord Base /
+Ashen Base) built **0** times. Traced one concrete failure (Ysolde, turn 6, target (3,2)):
+
+```
+[TRACE] rankedBuildersTotal=1
+[TRACE] #0 (garrison-extraction) ... container=Shell containerApCost=0 => ELIGIBLE=True
+[Loop] provision ... Economy(FoundBase 3,2) — FAIL NoMoverExists "no free hero can advance..."
+```
+
+`ELIGIBLE=True` directly contradicted the real outcome one line later — the exact "stale diagnostic
+trace" trap this file's own history already named once (round 2, see below), reopened one layer
+downstream: round 8/9/10 added `PlanEconomyCompletion`/`prep.Feasible` as a SECOND real gate in the
+actual loop (donor loan legality, real path for the projected/preview army, composition/lightening
+AP, `StrategicSpendability.FitsSpendableResources`) — but the TRACE block only ever mirrored the
+FIRST gate (`IsCandidateEligible` + `ResolveGarrisonExtractionCandidate`/container tier). Any
+candidate that cleared the first gate and failed the second fell through to the generic catch-all
+`NoMoverExists("no free hero can advance toward economy site")` at the bottom of the method — the
+real reason (`EnvelopeTooSmall`, `NoExecutableStep`, `MoverContended` donor rejection, or resources no
+longer spendable) was computed, then discarded, never logged.
+
+**Fix (diagnostic-only, no gameplay-logic change)**: both TRACE branches (garrison-extraction and
+direct-army) now call the SAME `PlanEconomyCompletion` the real loop calls, against the same
+preview/army, with the same envelope — and print `prep.Feasible` plus, on failure,
+`prep.Failure.Kind`/`prep.Failure.Detail` verbatim. `ELIGIBLE` is now `shallowEligible &&
+prepFeasible` — it can no longer say `True` while the real loop is about to reject the same
+candidate. Follows this file's own established rule ("single owner, no second implementation to keep
+in sync" — round 2's fix for the container-tier trace, extended to the plan-level trace). No new
+class, no new resolver — reuses `PlanEconomyCompletion`/`BuildGarrisonExtractionPreview` exactly as
+the real loop does. `dotnet build Assembly-CSharp.csproj` — 0 errors/0 warnings.
+
+**Not yet done**: the actual root cause of why `PlanEconomyCompletion` rejects FoundBase candidates
+turn after turn (which of `EnvelopeTooSmall`/`NoExecutableStep`/`MoverContended`/spendable-resources
+it actually is) is still unknown — that is exactly what the extended TRACE will reveal on the next
+playtest. Revisit this section once that log line exists; do not guess ahead of it.
+
 ## Review round 11 (2026-09-14) — atomic Economy preparation
 
 | Issue in `ae96a80` | Root cause and correction |

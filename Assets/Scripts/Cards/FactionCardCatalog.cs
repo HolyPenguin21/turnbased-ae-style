@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -33,6 +34,11 @@ namespace Game.Cards
         // CitadelSetupController.SpawnCitadelMarker). Left unassigned, the marker just keeps
         // whatever icon its prefab already has baked in.
         [Header("Map Icons")]
+        // Faction-sculpted Base/Citadel marker — a distinct mesh/art per faction, not just a
+        // swapped icon sprite on a shared shape (see CitadelSetupController.SpawnCitadelMarker,
+        // HexSelectionController.Factory.SpawnBuilding). Left unassigned, spawning falls back to
+        // GameConfig.buildingMarkerPrefab, same "keeps the default" convention as citadelIcon.
+        public MapObjectVisual basePrefab;
         public Sprite citadelIcon;
         public Sprite facilityIcon;
         public Sprite armyIcon;

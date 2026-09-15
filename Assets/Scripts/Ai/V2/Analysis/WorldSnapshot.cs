@@ -568,9 +568,21 @@ namespace Game.Ai.V2
         // StrategicCardEvaluator.BaseHexYieldValue, which applies that per-card gate). Converting
         // an already-productive site no longer scores as if starting from zero.
         public ResourceBundle HexYield;
-        public float InfrastructurePressure;
         public float ForwardProgressValue;
         public float CorridorAlignmentValue;
+        // Graded reward for how far this site sits from the nearest owned base — MeetsBaseSpacing
+        // (economyBaseMinSpacing) is a hard 0/1 gate on this same distance; this is a SEPARATE,
+        // continuous 0..1 score on top of a candidate that already cleared that gate. Peaks at
+        // economyBaseIdealSpacing (a well-connected forward hex, neither cramped against an
+        // existing base nor an isolated outpost), ramps up from the gate floor below the ideal and
+        // decays gradually above it. See AiConfigV2.economyBaseSpacingScoreAtMin/economyBaseIdealSpacing.
+        public float SpacingScore;
+        // Terrain-only defense bonus of the hex itself (TerrainTypeEntry.defenseModifier,
+        // normalized 0..1), independent of any garrison/army sitting on it — a structural site
+        // fact, same status as HexYield. Deliberately a SMALL weight relative to resource terms
+        // (see AiConfigV2.economyBaseDefenseBonusValue's own comment): a defensible-but-empty hex
+        // must not outscore a genuinely resource-rich one, only add on top of it.
+        public float DefenseBonusValue;
         public bool ConvertsOwnedExtractionSite;
         // Total per-turn income (summed across all ResourceType) the currently-owned extraction
         // facility at this hex is actually collecting. Zero unless ConvertsOwnedExtractionSite.
@@ -648,8 +660,24 @@ namespace Game.Ai.V2
                 remainingDeckNeed / Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns),
                 handNeed / Mathf.Max(1f, AiConfigV2.economyHandPaydownHorizonTurns),
                 reservedOperationalNeed / Mathf.Max(1f, AiConfigV2.economyOperationalPaydownHorizonTurns));
+            // `target`/`cardCadence` stay exactly as before — IncomeTarget (stored below) still
+            // feeds HoldEvaluator's overstock-runway math as a per-turn RATE
+            // (runwayTarget = IncomeTarget × tempoHoldOverstockRunwayHorizon) and StrategicPhaseB/
+            // DesireEvaluators read it the same way; repurposing it here would silently change
+            // those unrelated consumers' behaviour.
             float target = Mathf.Max(opponentMedianIncome, cardCadence);
-            float incomeGap = Mathf.Clamp01((target - ownIncome) / Mathf.Max(target, 0.0001f));
+            // 2026-09-15 — incomeGap itself replaced with a turns-to-afford bottleneck (project
+            // owner's own model, see docs/ai-economy-mover-materialization-decision-tree.md):
+            // instead of comparing the current income RATE to a target rate, solve directly for
+            // how many turns until spendableStockpile + ownIncome×turns covers the FULL,
+            // undiscounted hand+deck need ("play everything, in a vacuum"). The resource with the
+            // largest turnsToAfford is the true bottleneck — a high-income resource with an even
+            // larger total need can still be worse off than a low-income one with modest need,
+            // which the old rate-vs-target comparison could not express.
+            float totalCardNeed = handNeed + remainingDeckNeed;
+            float turnsToAfford = totalCardNeed <= spendableStockpile ? 0f
+                : (totalCardNeed - spendableStockpile) / Mathf.Max(ownIncome, 0.0001f);
+            float incomeGap = Mathf.Clamp01(turnsToAfford / AiConfigV2.economyBottleneckReferenceTurns);
             float relativeGap = Mathf.Clamp01((opponentMedianIncome - ownIncome)
                 / Mathf.Max(opponentMedianIncome, 1f));
             float wanted = handNeed
