@@ -1034,6 +1034,7 @@ namespace Game.Ai.V2
                 ? snap.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == moverArmyId.Value)
                 : null;
             if (mover != null && mover.IsStructuralRaidActor
+                && mover.ReachableOwnBaseHexes.Count > 0
                 && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
                 return false;
             return true;
