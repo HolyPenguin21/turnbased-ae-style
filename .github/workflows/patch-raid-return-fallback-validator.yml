@@ -1,0 +1,54 @@
+name: Patch Raid return fallback validator
+
+on:
+  push:
+    branches:
+      - fix/raid-return-fallback-validator
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/raid-return-fallback-validator
+      - name: Apply exact validator patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs")
+          text = path.read_text(encoding="utf-8")
+          old = """            if (mover != null && mover.IsStructuralRaidActor
+                && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
+"""
+          new = """            if (mover != null && mover.IsStructuralRaidActor
+                && mover.ReachableOwnBaseHexes.Count > 0
+                && !mover.ReachableOwnBaseHexes.Contains(hex.Value))
+"""
+          count = text.count(old)
+          if count == 0 and new in text:
+              print("Patch already applied; nothing to do.")
+          elif count != 1:
+              raise SystemExit(f"Expected exactly one validator match, found {count}")
+          else:
+              path.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Verify diff is scoped
+        shell: bash
+        run: |
+          git diff --check
+          git diff -- Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs
+      - name: Commit patch when needed
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs
+          git commit -m "Keep Raid return fallback stable"
+          git push origin HEAD:fix/raid-return-fallback-validator
