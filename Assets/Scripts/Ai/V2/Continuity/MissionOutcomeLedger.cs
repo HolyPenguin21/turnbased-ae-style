@@ -327,6 +327,18 @@ namespace Game.Ai.V2
                     case ExecutionStopReason.MoveRejected:
                         o.Outcome = ExecutionOutcome.Blocked;
                         break;
+                    case ExecutionStopReason.MoverLost:
+                    case ExecutionStopReason.TargetInvalidated:
+                        // Reinforcement and SupportReturn are support-mover legs of a durable Raid.
+                        // A missing/stale support must not retire the primary campaign; ResolveActive
+                        // owns the canonical support cleanup/replacement on the next reaction pass.
+                        // The same stop remains fatal for Assault/Return where the mover is primary.
+                        o.Outcome = o.HasRaidPayload
+                            && (o.RaidPhase == RaidMissionPhase.Reinforcement
+                                || o.RaidPhase == RaidMissionPhase.SupportReturn)
+                            ? ExecutionOutcome.Blocked
+                            : ExecutionOutcome.Failed;
+                        break;
                     default:
                         o.Outcome = ExecutionOutcome.Failed;
                         break;
@@ -442,6 +454,17 @@ namespace Game.Ai.V2
                     o.ObjectiveSatisfiedExternally = true;
                     break;
                 case ProvisionFailureKind.TargetInvalidated:
+                    // ProvisionReturn uses TargetInvalidated when the SupportReturn mover vanished
+                    // or stopped being a usable field army. That invalidates only the support leg,
+                    // not the durable primary Raid. Return/Assault/Reinforcement target invalidation
+                    // keeps its existing failure semantics (notably a lost primary in Reinforcement).
+                    if (o.MissionKind == MissionKind.Raid
+                        && o.Proposal?.Target is RaidMissionTarget invalidRaidTarget
+                        && invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn)
+                    {
+                        o.Outcome = ExecutionOutcome.Blocked;
+                        break;
+                    }
                     o.Outcome = ExecutionOutcome.Failed;
                     break;
                 default:
