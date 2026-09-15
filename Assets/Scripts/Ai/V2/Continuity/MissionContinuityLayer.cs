@@ -418,16 +418,18 @@ namespace Game.Ai.V2
                             + $"released support claim, primary raid kept, phase={ri.Phase} "
                             + $"(primaryNowClears={(nowClears ? 1 : 0)})");
                     }
-                    // §SupportReturn — the displaced support died on the way home. Release its claim
-                    // and continue the Raid from the primary's own state alone; the primary was never
-                    // touched by this leg, so no re-check against the target is needed here.
-                    else if (ri.SupportArmyId.HasValue && ri.Phase == RaidMissionPhase.SupportReturn
+                    // §SupportReturn — a lost returning support must close the return leg as well as
+                    // release the actor claim. Reuse the same lifecycle transition as physical
+                    // arrival so Phase cannot remain SupportReturn with no support actor.
+                    else if (ri.SupportArmyId.HasValue && ri.PrimaryArmyId.HasValue
+                        && ri.Phase == RaidMissionPhase.SupportReturn
                         && !RaidSupportActorAlive(snap, ri.SupportArmyId.Value))
                     {
                         int lostSupportId = ri.SupportArmyId.Value;
-                        ri.SupportArmyId = null;
-                        AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support #{lostSupportId} lost "
-                            + "en route home; released claim, primary raid continues");
+                        CompleteRaidSupportReturn(player, snap, ri.PrimaryArmyId.Value,
+                            $"support #{lostSupportId} lost en route home");
+                        intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
+                        intent.StallTurns = 0;
                     }
 
                     // §5 actor ownership — a LOST PRIMARY ends the operation. Any support is
@@ -963,9 +965,9 @@ namespace Game.Ai.V2
                 + $"primary #{primaryArmyId} holds target {ri.Target.DiagnosticLabel} {detail}");
         }
 
-        // AGG-RAID §SupportReturn — the support army has arrived home. Release its claim, clear the
-        // leg, and re-evaluate the primary against the current target exactly like any other
-        // reinforcement-completion edge.
+        // AGG-RAID §SupportReturn — the return leg ended (arrival or actor loss). Release its claim,
+        // clear the leg, and re-evaluate the primary against the current target exactly like any
+        // other reinforcement-completion edge.
         internal static void CompleteRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
             int primaryArmyId, string detail)
         {
@@ -988,13 +990,13 @@ namespace Game.Ai.V2
                 // machine pick the next target (or Return) on the next ResolveActive pass; parking
                 // in Assault here is a safe default since AdvanceRaidPhase re-derives everything.
                 ri.Phase = RaidMissionPhase.Assault;
-                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; target already "
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; target already "
                     + $"resolved while away — will re-orient next pass {detail}");
                 return;
             }
             bool nowClears = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
             ri.Phase = nowClears ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
-            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support home; released — "
+            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return ended; released — "
                 + $"phase={ri.Phase} primaryClears={(nowClears ? 1 : 0)} {detail}");
         }
 
@@ -1081,7 +1083,7 @@ namespace Game.Ai.V2
                 .ThenBy(b => mover == null ? 0
                     : AiV2Util.CeilDiv(HexGridMath.Distance(mover.Hex, b.Hex), moveBudget))
                 .ThenByDescending(b => b.IsStartingCitadel ? 1 : 0)
-                .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
+                .ThenBy(b => b.Hex.Q).ThenBy(b.Hex.R)
                 .Select(b => (HexCoord?)b.Hex)
                 .FirstOrDefault();
         }
