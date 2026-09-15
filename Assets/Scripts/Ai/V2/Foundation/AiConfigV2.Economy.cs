@@ -36,10 +36,8 @@ namespace Game.Ai.V2
         // 2026-09-15 — recalibrated down from 2.5 (project owner's own target: a near-zero score
         // should mean a genuinely far corner of the map, not "anywhere more than a few hexes from
         // home" — even a site right up against the enemy citadel should stay clearly worth
-        // building, e.g. for its aviation-range value). Shared by every Economy site-value formula
-        // in this file (extraction, loan-net, Base) — lowering it uniformly makes distance cost
-        // less across the board, consistent with this same session's other Economy-starvation
-        // fixes, not a Base-only exception.
+        // building, e.g. for its aviation-range value). Kept for legacy/non-TaskScore consumers;
+        // migrated world-task delivery uses TaskScoreEvaluator.Delivery instead.
         public const float economySiteTravelPenalty = 0.8f;
         public const float economySiteThreatPenalty = 18f;
         public const float economySiteHeroOpportunityPenalty = 0.35f;
@@ -115,8 +113,11 @@ namespace Game.Ai.V2
         public const float economyBaseSwitchHysteresisThreshold = 10f;
         public const float economySameTurnCompletionBonus = 8f;
         public const float economyAdmissionCompletionCostWeight = 1f;
-        public const float economyLoanHysteresisThreshold = 8f;
-        public const float economyLoanContinuationLoss = 20f;
+        // Actor-loan admission now consumes TaskScore.Value. Keep the public Economy policy names
+        // as aliases so all existing consumers share the same migrated scale rather than mixing the
+        // old 60-point extraction deficit band with the new 12-point canonical deficit band.
+        public const float economyLoanHysteresisThreshold = taskScoreEconomyLoanHysteresisThreshold;
+        public const float economyLoanContinuationLoss = taskScoreEconomyLoanContinuationLoss;
         // Bounded AP-equivalent penalty added to a home-vocation hero's TotalAssignmentApCost when
         // ranking economy builders (RankEconomyBuilders) — a small, real cost a large travel-cost
         // gap can still outweigh, not a hard preference that always wins ties regardless of
