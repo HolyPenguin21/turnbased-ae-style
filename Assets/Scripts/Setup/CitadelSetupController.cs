@@ -241,14 +241,14 @@ namespace Game.Setup
         // created, at the end of the whole step (see CreatePlayerRoots).
         private void SpawnCitadelMarker(PlayerSetupData player, HexCoord hex, Vector2 offset2D)
         {
-            if (gameConfig == null || gameConfig.buildingMarkerPrefab == null || map == null)
+            if (map == null)
                 return;
 
             FactionCardCatalog catalog = ResolveCatalog(player);
+            if (catalog == null || catalog.citadelPrefab == null)
+                return;
 
-            MapObjectVisual prefab = catalog != null && catalog.basePrefab != null
-                ? catalog.basePrefab : gameConfig.buildingMarkerPrefab;
-            MapObjectVisual marker = Instantiate(prefab);
+            MapObjectVisual marker = Instantiate(catalog.citadelPrefab);
             Vector3 offset = new Vector3(offset2D.x, 0f, offset2D.y) * map.OuterRadius;
             marker.transform.position = map.HexToWorld(hex) + offset;
             marker.SetColor(PlayerColorPalette.Colors[player.ColorIndex]);

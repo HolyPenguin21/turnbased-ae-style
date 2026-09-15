@@ -19,10 +19,6 @@ namespace Game.Core
     public class GameConfig : ScriptableObject
     {
         [Header("Map Objects")]
-        // Two variants of the same coloured-circle-plus-icon visual: buildings and units sit
-        // at different spots on the same hex (and can overlap a little — that's fine), so they
-        // need their own prefab each rather than sharing one MapObject.
-        public MapObjectVisual buildingMarkerPrefab;
         // A hex only ever shows one visible marker per owner, standing in for that owner's
         // whole presence there — one army marker at a time (see HexSelectionController.
         // RestackArmiesOn), never one per individual unit; a unit has no map presence of its
@@ -34,8 +30,9 @@ namespace Game.Core
         // just because fog covers the hex afterward, same "remembered once seen" exception the
         // resource row already gets (see MapEventDisplay, VisionSystem.
         // HasEverSeenByCurrentViewer). Only removed once the event's reward is actually claimed.
-        // Unlike buildingMarkerPrefab/armyMarkerPrefab, never goes through HexObjectLayout —
-        // always sits at eventIconOffset regardless of what else shares the hex.
+        // Unlike a Base/Citadel marker (FactionCardCatalog.basePrefab) or armyMarkerPrefab,
+        // never goes through HexObjectLayout — always sits at eventIconOffset regardless of
+        // what else shares the hex.
         public EventMarkerVisual eventMarkerPrefab;
         public Vector2 eventIconOffset = Vector2.zero;
         // Where each sits within its hex, in hex-radius units (x = left/right, y = the world Z
@@ -120,9 +117,10 @@ namespace Game.Core
         // buttons — same shared-prefab reasoning as armyButtonPrefab above.
         public ResourceActionButtonUI resourceActionButtonPrefab;
         // The marker for a hero-built resource site (see HexSelectionController.
-        // TryBuildExtractionFacility) — a distinct prefab from buildingMarkerPrefab, not just a
-        // different icon swapped in at runtime, since its icon is baked directly onto its own
-        // Object_Image sprite rather than set via MapObjectVisual.SetIcon.
+        // TryBuildExtractionFacility) — a distinct prefab from the per-faction Base/Citadel
+        // marker (FactionCardCatalog.basePrefab), not just a different icon swapped in at
+        // runtime, since its icon is baked directly onto its own Object_Image sprite rather
+        // than set via MapObjectVisual.SetIcon.
         public MapObjectVisual facilityMarkerPrefab;
         // A hero-built resource site has no CardDefinition of its own to source stats from
         // (unlike a citadel/card-built Base, which now reads its own card's hitPoints/

@@ -138,27 +138,26 @@ namespace Game.Map
 
         // Spawns a brand-new Base building at `hex` for `owner` — used by CardHandUI when a
         // CardType.Base card is played onto an empty hex (see CardHandUI.TryPlayCard). Uses the
-        // same owner's own FactionCardCatalog.basePrefab (falling back to GameConfig.
-        // buildingMarkerPrefab) the auto-placed citadel already uses — no visual distinction yet
-        // between "the citadel" and a player-built Base. Position/offset resolution is left
-        // entirely to the RestackArmiesOn call at the end, same as CitadelSetupController relies
-        // on its own one-off HexObjectLayout call before either the registry or RestackArmiesOn
-        // existed.
+        // owner's own FactionCardCatalog.basePrefab — a distinct marker from the auto-placed
+        // starting citadel's own citadelPrefab (see CitadelSetupController.SpawnCitadelMarker).
+        // Position/offset resolution is left entirely to the RestackArmiesOn call at the end,
+        // same as CitadelSetupController relies on its own one-off HexObjectLayout call before
+        // either the registry or RestackArmiesOn existed.
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
-            if (gameConfig == null || gameConfig.buildingMarkerPrefab == null || map == null || owner == null || definition == null)
+            if (map == null || owner == null || definition == null)
                 return null;
 
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
                 : null;
-            MapObjectVisual basePrefab = ownerCatalog != null && ownerCatalog.basePrefab != null
-                ? ownerCatalog.basePrefab : gameConfig.buildingMarkerPrefab;
+            if (ownerCatalog == null || ownerCatalog.basePrefab == null)
+                return null;
 
             var building = new BuildingData
             {
                 Name = definition.displayName, Hex = hex, Owner = owner,
-                Visual = CreateBuildingMarker(hex, owner, basePrefab, ownerCatalog?.citadelIcon),
+                Visual = CreateBuildingMarker(hex, owner, ownerCatalog.basePrefab, ownerCatalog.citadelIcon),
                 Art = definition.art,
                 DetailArt = definition.detailArt != null ? definition.detailArt : definition.art,
                 Level = 1,
@@ -207,8 +206,9 @@ namespace Game.Map
 
         // Shared marker-instantiate-and-position logic for anything BuildingRegistry ends up
         // holding — SpawnBuilding (a dragged CardType.Base card) and TryBuildExtractionFacility
-        // (a hero-built resource site) each use their own prefab (buildingMarkerPrefab vs.
-        // facilityMarkerPrefab — distinct visuals, not just a different icon on the same one).
+        // (a hero-built resource site) each use their own prefab (the owner's FactionCardCatalog.
+        // basePrefab vs. GameConfig.facilityMarkerPrefab — distinct visuals, not just a
+        // different icon on the same one).
         // `icon` is optional: facilityMarkerPrefab bakes its own icon directly onto its
         // Object_Image sprite, so passing null there leaves that alone instead of blanking it.
         private MapObjectVisual CreateBuildingMarker(HexCoord hex, PlayerSetupData owner, MapObjectVisual prefab, Sprite icon = null)

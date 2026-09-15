@@ -1295,6 +1295,8 @@ MonoBehaviour:
       removeAbilities: []
       addAbilities: []
       statChanges: []
+  citadelPrefab: {fileID: 300002, guid: 32d3700f525ecfd4392314f143a8fd85, type: 3}
+  basePrefab: {fileID: 300002, guid: 344324a29ce74294c80618317a14651a, type: 3}
   citadelIcon: {fileID: 21300000, guid: 1516ea2e7fc6c9347bee792bd7062f9e, type: 3}
   facilityIcon: {fileID: 21300000, guid: 97e6eb8668422a8409c2e3029da48880, type: 3}
   armyIcon: {fileID: 21300000, guid: af7f2ad35e7686c4bad4ff88fe20ebfd, type: 3}
