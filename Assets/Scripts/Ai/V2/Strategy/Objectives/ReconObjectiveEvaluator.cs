@@ -10,8 +10,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  One frozen turn produces three explicit Recon opportunity classes:
     //    Explore  — never/ground-unvisited frontier information.
-    //    Refresh  — previously observed map information whose IntelAge is stale again.
-    //    Surveil  — stale last-known enemy contact that requires an observation vantage.
+    //    Refresh  — stale previously-observed information; ground route/terrain witness.
+    //    Surveil  — stale enemy contact; observation-vantage semantics in provisioning.
     // ===========================================================================================
     public enum ReconObjectiveKind { Explore, Refresh, Surveil }
 
@@ -90,7 +90,7 @@ namespace Game.Ai.V2
             if (contacts != null)
                 foreach (EnemyContactSnapshot c in contacts)
                     if (c.Source == ContactSource.Honest && c.Knowledge == ContactKnowledge.LastKnown
-                        && c.Position.HasValue && c.Army != null && c.Army.ArmyId > 0)
+                        && c.Position.HasValue && c.Army != null)
                         list.Add(BuildSurveil(snap, c));
 
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
