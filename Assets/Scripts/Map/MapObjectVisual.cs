@@ -17,6 +17,12 @@ namespace Game.Map
         [SerializeField] private SpriteRenderer factionAccent;
         [SerializeField] private SpriteRenderer[] auxiliaryRenderers;
         [SerializeField] private bool tintInnerCircle = true;
+        // Some layered markers use Object_Image as the neutral/base layer and factionAccent as
+        // a matching colour layer. If SetIcon replaces that marker with a fundamentally
+        // different icon (the army prefab does this for aviation), the old accent must not
+        // remain behind the replacement sprite. Off by default so existing rich building
+        // prefabs keep their authored accent when their icon changes.
+        [SerializeField] private bool clearFactionAccentOnSetIcon;
         [SerializeField] private SpriteRenderer hitRendererOverride;
 
         // Fraction of the marker's own art half-width that actually counts as a click on it
@@ -37,6 +43,8 @@ namespace Game.Map
         {
             if (objectImage != null)
                 objectImage.sprite = icon;
+            if (clearFactionAccentOnSetIcon && factionAccent != null)
+                factionAccent.sprite = null;
         }
 
         // Copies the complete rendered marker state into a separate last-seen snapshot. A
@@ -109,7 +117,7 @@ namespace Game.Map
 
         // Whether the last SetVisible call left this marker showing — used to tell an owner's
         // currently-representative army marker (see HexSelectionController.RestackArmiesOn)
-        // apart from one of their other armies sharing the same hex, which stays instantiated
+        // apart from one of their other armies sharing the hex, which stays instantiated
         // but hidden rather than destroyed.
         public bool IsVisible
         {
