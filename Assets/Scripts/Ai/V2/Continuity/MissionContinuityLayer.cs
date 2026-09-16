@@ -128,6 +128,62 @@ namespace Game.Ai.V2
             return intent;
         }
 
+        // The existing Continuity owner performs the only Base commitment switch. Same
+        // card/actor are mandatory: no double-booking, no accidental donor/loan release.
+        // Release the old reservation owner before rekeying; Phase A then reserves the new
+        // target using the SAME intent object already referenced by the active-intent list.
+        internal static bool TryRetargetCommittedBase(PlayerSetupData player,
+            MissionIntent incumbent, AxisDemand challenger, int turn)
+        {
+            if (player == null || !DemandLayer.CanReplaceCommittedBase(incumbent, challenger)
+                || (incumbent.LastProgressTurn == turn && incumbent.StepsMovedTotal > 0))
+                return false; // an actor that already advanced this turn cannot be rerouted mid-step
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            MissionIntentKey oldKey = incumbent.IntentKey;
+            if (!state.TryGet(oldKey, out MissionIntent owned)
+                || !object.ReferenceEquals(owned, incumbent))
+                return false;
+            HexCoord target = challenger.TargetHex.Value;
+            var newKey = new MissionIntentKey(MissionKind.Economy,
+                (int)EconomyTaskKind.FoundBase, 0, target.Q, target.R);
+            if (state.TryGet(newKey, out MissionIntent occupied)
+                && !object.ReferenceEquals(occupied, incumbent))
+                return false;
+
+            string oldOwner = EconomyMissionPlanner.OwnerKey(incumbent.LastAttemptKey);
+            string oldTargetOwner = InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
+            {
+                Capability = CapabilityKind.EconomicExpansionBase,
+                TargetHex = incumbent.Economy.TargetHex,
+            });
+            StrategicResourceReservationLedger.ReleaseByOwner(player, turn, oldOwner);
+            if (oldTargetOwner != oldOwner)
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn, oldTargetOwner);
+            state.Remove(oldKey);
+            EconomyIntent objective = incumbent.Economy;
+            objective.TargetHex = target;
+            objective.BuildCard = challenger.EconomyBuildCard;
+            objective.BuildResourceCost = challenger.EconomyBuildResourceCost;
+            objective.BuildApCost = challenger.EconomyBuildApCost;
+            objective.MinimumFollowupAp = challenger.MinimumFollowupAp;
+            objective.IntrinsicValue = challenger.Value;
+            objective.BuildValue = challenger.EconomySiteValue;
+            objective.BuilderArmyId = incumbent.PreferredMoverArmyId;
+            objective.ProjectedActivationApCost = challenger.EconomyProjectedActivationApCost;
+            objective.ProjectedMaxMovement = challenger.EconomyProjectedMaxMovement;
+            incumbent.IntentKey = newKey;
+            incumbent.LastAttemptKey = new StableMissionKey(MissionKind.Economy,
+                (int)EconomyTaskKind.FoundBase, 0, target.Q, target.R);
+            incumbent.CreatedTurn = turn;
+            incumbent.TurnsActive = 1;
+            incumbent.LastProgressTurn = turn;
+            incumbent.StallTurns = 0;
+            incumbent.StepsMovedTotal = 0;
+            incumbent.CumulativeApSpent = 0f;
+            state.Put(incumbent);
+            return true;
+        }
+
         internal static void BeginEconomyBuilderRecovery(PlayerSetupData player,
             WorldSnapshot snap, AxisDemand completedDemand, int builderArmyId, int turn)
         {

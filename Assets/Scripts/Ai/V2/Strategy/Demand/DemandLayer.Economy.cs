@@ -166,10 +166,17 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
 
+            // Select a Base challenger BEFORE the cap of one. That cap governs executable
+            // demands, not the number of sites permitted into the hysteresis comparison.
+            // Only a candidate that can reuse the incumbent's EXACT card and actor may
+            // replace a live commitment; changing actors requires separate provisioning.
+            AxisDemand selectedBase = SelectBaseDemandForCurrentCommitment(
+                baseRanked.ToList(), activeIntents);
             List<AxisDemand> selected = extractionRanked
                 .Take(Mathf.Max(0, AiConfigV2.economyMaxInfrastructureDemandsPerTurn))
-                .Concat(baseRanked.Take(
-                    Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
+                .Concat(selectedBase != null
+                    && AiConfigV2.economyMaxExpansionBaseDemandsPerTurn > 0
+                        ? new[] { selectedBase } : System.Array.Empty<AxisDemand>())
                 .ToList();
 
             var selectedHexes = new HashSet<HexCoord>();
@@ -952,6 +959,65 @@ namespace Game.Ai.V2
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.Value:0.##} "
                     + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
+
+        // One Base selection decision owner. The incumbent's current fully delivered score
+        // wins over its captured score when a same-card/same-actor candidate is still present.
+        // Never compare the challenger's full Value against Economy.BuildValue (site only).
+        internal static AxisDemand SelectBaseDemandForCurrentCommitment(
+            IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
+        {
+            AxisDemand first = ranked?.FirstOrDefault();
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
+                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
+                && i.Economy?.Kind == EconomyTaskKind.FoundBase
+                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+            if (first == null || incumbent == null)
+                return first;
+
+            AxisDemand refreshed = ranked.FirstOrDefault(d => d != null
+                && d.TargetHex.HasValue && d.TargetHex.Value.Equals(incumbent.Economy.TargetHex)
+                && d.EconomyBuildCard == incumbent.Economy.BuildCard
+                && d.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId);
+            float? incumbentValue = refreshed != null ? refreshed.Value
+                : incumbent.Economy.IntrinsicValue;
+            if (!incumbentValue.HasValue)
+                return first;  // no canonical comparator; keep the existing commitment
+
+            AxisDemand challenger = null;
+            foreach (AxisDemand candidate in ranked)
+            {
+                if (candidate == null || candidate.EconomyBuildCard != incumbent.Economy.BuildCard
+                    || candidate.EconomyPreferredBuilderArmyId != incumbent.PreferredMoverArmyId
+                    || !candidate.TargetHex.HasValue
+                    || candidate.TargetHex.Value.Equals(incumbent.Economy.TargetHex))
+                    continue;
+                candidate.EconomySwitchIncumbentValue = incumbentValue.Value;
+                if (!CanReplaceCommittedBase(incumbent, candidate))
+                    continue;
+                if (challenger == null || candidate.Value > challenger.Value)
+                    challenger = candidate;
+            }
+            return challenger ?? first;
+        }
+
+        // One hysteresis/admission predicate reused by Demand, Phase A and Continuity.
+        // Explicit scan provenance prevents a stale site-only score from authorizing a switch.
+        internal static bool CanReplaceCommittedBase(MissionIntent incumbent, AxisDemand rival) =>
+            incumbent != null && incumbent.Status == IntentStatus.Active
+            && incumbent.Kind == MissionKind.Economy
+            && incumbent.Economy?.Kind == EconomyTaskKind.FoundBase
+            && incumbent.PreferredMoverArmyId.HasValue
+            && incumbent.Economy.BuildCard != null
+            && rival?.RequestingAxis == DesireAxis.Economy
+            && rival.Capability == CapabilityKind.EconomicExpansionBase
+            && rival.TargetHex.HasValue
+            && !rival.TargetHex.Value.Equals(incumbent.Economy.TargetHex)
+            && rival.EconomyBuildCard == incumbent.Economy.BuildCard
+            && rival.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId
+            && rival.EconomySwitchIncumbentValue.HasValue
+            && rival.Value >= AiConfigV2.economyBaseDemandMinValue
+            && rival.Value > rival.EconomySwitchIncumbentValue.Value
+                + AiConfigV2.economyBaseSwitchHysteresisThreshold;
 
         // This criterion gates ONLY continuity staging; canonical net-value admission still
         // applies afterwards. Avoid letting the generic home-proximity bonus create fake projects.
