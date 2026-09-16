@@ -11,14 +11,48 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: refactor/unified-task-score
-          fetch-depth: 2
-      - name: Require reviewed starting point
+          fetch-depth: 4
+      - name: Verify reviewed history and recover original intact patch
         run: |
-          test "$(git rev-parse HEAD^)" = "effb52406ba7609d62e4d0127e28506f0ca17598"
+          test "$(git rev-parse HEAD^)" = "5c963eca20d5cb12d7b760e5c1abc0d8bcd2c741"
+          git cat-file -e effb52406ba7609d62e4d0127e28506f0ca17598^{commit}
       - name: Apply strictly matched Economy edits
-        env:
-          PAYLOAD: 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
-        run: python3 -c 'import os,base64,zlib; exec(zlib.decompress(base64.b64decode(os.environ["PAYLOAD"])) .decode())'
+        run: |
+          python3 - <<'PY'
+          import subprocess, base64, zlib
+          old_workflow = subprocess.check_output(['git', 'show', 'effb52406ba7609d62e4d0127e28506f0ca17598:.github/workflows/taskscore-economy-once.yml'], text=True)
+          encoded = [line.split('PAYLOAD: ',1)[1].strip() for line in old_workflow.splitlines() if 'PAYLOAD: ' in line]
+          assert len(encoded)==1
+          script=zlib.decompress(base64.b64decode(encoded[0])).decode()
+          lines=script.splitlines()
+          positions=[i for i,line in enumerate(lines) if line.startswith("edit(tests, 'using System.Collections.Generic;")]
+          assert len(positions)==1, positions
+          old_header = '''#if UNITY_INCLUDE_TESTS
+          using System;
+          using System.Collections.Generic;
+          using System.Collections.Generic;
+          using Game.Ai.V2;
+          using Game.Combat;
+          using Game.HexGrid;
+          using Game.Players;
+          using NUnit.Framework;
+          '''
+          new_header = '''#if UNITY_INCLUDE_TESTS
+          using System;
+          using System.Collections.Generic;
+          using System.Linq;
+          using Game.Ai.V2;
+          using Game.Combat;
+          using Game.Economy;
+          using Game.HexGrid;
+          using Game.Players;
+          using NUnit.Framework;
+          '''
+          old_header='\n'.join(line.removeprefix('          ') for line in old_header.splitlines())+'\n'
+          new_header='\n'.join(line.removeprefix('          ') for line in new_header.splitlines())+'\n'
+          lines[positions[0]]='edit(tests, '+repr(old_header)+', '+repr(new_header)+')'
+          exec('\n'.join(lines))
+          PY
       - name: Check exact scope and commit code only
         run: |
           git diff --check
