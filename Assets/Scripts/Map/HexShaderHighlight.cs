@@ -183,6 +183,8 @@ namespace Game.Map
             var pixels = new Color32[PaintTextureSize * PaintTextureSize];
             float pixelWorld = (half * 2f) / PaintTextureSize;
             float safeRadius = Mathf.Max(radius, 0.001f);
+            float feather = Mathf.Max(pixelWorld * 0.72f, lineWidth * 0.015f);
+            float maxPaintDistance = lineWidth * 0.5f * 1.12f * 1.05f + feather;
 
             for (int y = 0; y < PaintTextureSize; y++)
             {
@@ -194,6 +196,16 @@ namespace Game.Map
                     float u = (x + 0.5f) / PaintTextureSize;
                     float localX = Mathf.Lerp(-half, half, u);
                     var p = new Vector2(localX, localZ);
+                    float distance = Mathf.Abs(HexSignedDistance(p, radius));
+
+                    // The expensive paint noise only matters in a narrow band around the hex.
+                    // Reject the rest of the 512x512 texture before any Perlin calls so the extra
+                    // texture detail does not introduce a noticeable first-selection hitch.
+                    if (distance > maxPaintDistance)
+                    {
+                        pixels[y * PaintTextureSize + x] = new Color32(255, 255, 255, 0);
+                        continue;
+                    }
 
                     float nx = localX / safeRadius;
                     float nz = localZ / safeRadius;
@@ -210,8 +222,6 @@ namespace Game.Map
 
                     // About one source pixel of AA is enough to stop shimmer but keeps the edge
                     // visibly sharper than the previous soft shader contour.
-                    float feather = Mathf.Max(pixelWorld * 0.72f, lineWidth * 0.015f);
-                    float distance = Mathf.Abs(HexSignedDistance(p, radius));
                     float ring = 1f - SmoothStep(
                         Mathf.Max(0f, halfLine - feather),
                         halfLine + feather,
