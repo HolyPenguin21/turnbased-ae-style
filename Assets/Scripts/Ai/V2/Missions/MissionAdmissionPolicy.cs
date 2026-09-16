@@ -102,17 +102,16 @@ namespace Game.Ai.V2
             float score = m.LocalAdmissionScore;
             if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget)
             {
-                float completionCost = Mathf.Max(1f, m.Requirements?.ApDesired ?? 0f)
-                    + Mathf.Max(0f, m.Requirements?.EstimatedDistance ?? 0f);
                 float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
                     ? AiConfigV2.economySameTurnCompletionBonus : 0f;
-                // EffectiveValue already carries the mission's intrinsic BaseValue (Economy's
-                // BuildValue/site TaskScore) through the shared radar scaling. Adding BuildValue
-                // again would count the same world fact twice. Only lane-local lifecycle urgency
-                // above BaseValue and completion policy are layered on top here.
+                // TaskScore already priced the card AP/resources and the actor's delivery AP/
+                // distance once. EffectiveValue transports that intrinsic value through the shared
+                // Radar policy. Subtracting ApDesired + EstimatedDistance again here was an
+                // Economy-only second physical-cost scorer and changed cross-lane ordering.
+                // Keep only genuine admission policy: same-turn scheduling and urgency above the
+                // intrinsic BaseValue; neither is written back into TaskScore.
                 score = m.EffectiveValue + sameTurn
-                    + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue)
-                    - AiConfigV2.economyAdmissionCompletionCostWeight * completionCost;
+                    + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue);
             }
             return AdmissionRank(score, m.FromDurableIntent, m.DurableFundingTier);
         }
