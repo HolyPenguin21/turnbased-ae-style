@@ -764,7 +764,7 @@ namespace Game.Ai.V2
                     foreach (ResourceType type in ResourceBundle.All)
                     {
                         float typeGain = StrategicCardEvaluator.BaseCardMarginalGain(
-                            site.HexYield, card.Definition, type);
+                            s, site, card.Definition, type);
                         if (typeGain <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
                         float priority = s.Economy.PerType
@@ -789,9 +789,9 @@ namespace Game.Ai.V2
                     float cardPrice = TaskScoreEvaluator.CardPrice(
                         card.EffectivePlayApCost, resourceCost);
                     float risk = TaskScoreEvaluator.HexThreatRisk(facts.Exposure);
-                    float existingLoss = site.ConvertsOwnedExtractionSite
-                        ? TaskScoreEvaluator.EconomicHexBenefit(site.LostExtractionIncome, 0f)
-                        : 0f;
+                    // InfrastructureActions.TryFoundBase carries the extraction facilities
+                    // into the new Base: their production is preserved, not lost.
+                    float existingLoss = 0f;
 
                     var siteOnlyScore = new TaskScore(
                         economicHexBenefit: economic,

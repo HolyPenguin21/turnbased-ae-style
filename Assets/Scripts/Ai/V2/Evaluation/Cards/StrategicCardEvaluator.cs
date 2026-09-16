@@ -1556,7 +1556,7 @@ namespace Game.Ai.V2
         internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
             CardData card)
         {
-            float marginalHexYield = BaseCardMarginalYield(site.HexYield, card.Definition);
+            float marginalHexYield = BaseCardMarginalYield(s, site, card.Definition);
             // Keep the legacy BaseSiteValue strategic fields behaviorally stable for any remaining
             // diagnostic/test consumers. TaskScore consumes only the pure marginalHexYield above.
             float legacyWeightedHexYield = BaseHexYieldValue(s, site.HexYield, card.Definition);
@@ -1594,6 +1594,32 @@ namespace Game.Ai.V2
                 || !definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type)))
                 return 0f;
             return Mathf.Max(0f, Mathf.Min(1f, yield.Get(type)));
+        }
+
+        // Net OWNER gain, not the gross Base collection. A Base takes the first cut,
+        // and can displace our own army's collection without raising the owner's income.
+        internal static float BaseCardMarginalYield(WorldSnapshot s, EconomyBaseOpportunity site,
+            CardDefinition definition) => ResourceBundle.All.Sum(type =>
+                BaseCardMarginalGain(s, site, definition, type));
+
+        internal static float BaseCardMarginalGain(WorldSnapshot s, EconomyBaseOpportunity site,
+            CardDefinition definition, ResourceType type)
+        {
+            int addedCapacity = Mathf.RoundToInt(BaseCardMarginalGain(site.HexYield, definition, type));
+            if (addedCapacity <= 0)
+                return 0f;
+            int remainingYield = Mathf.RoundToInt(site.HexYield.Get(type));
+            int ownArmyCollectors = Mathf.RoundToInt((s?.Self?.Armies
+                ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null && a.Hex.Equals(site.Hex))
+                .Sum(a => a.CollectionCapacity.Get(type)));
+            bool armiesCanCollect = !(s?.Known?.EnemySightings
+                ?? System.Array.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
+                .Any(enemy => enemy.Hex.Equals(site.Hex));
+            // BaseUncollectedYield has already subtracted existing building collection:
+            // work on the remainder to avoid charging carried-over facilities twice.
+            return IncomeProjection.MarginalOwnerCollectionAtHex(
+                remainingYield, 0, addedCapacity, ownArmyCollectors, armiesCanCollect);
         }
 
         // `yield` is the hex's remaining UNCOLLECTED amount per type (structural site fact, see
