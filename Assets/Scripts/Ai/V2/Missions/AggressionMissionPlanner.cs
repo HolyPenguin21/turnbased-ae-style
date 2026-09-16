@@ -140,7 +140,7 @@ namespace Game.Ai.V2
                     // whichever fresh army happens to be cheaper. Pin the existing primary BEFORE
                     // assembly and Fold, using the existing continuation gate only if started.
                     incumbents.Add(ToCandidate(snap, o, breakdown,
-                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted)
+                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted, durableClaimedActors)
                         .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
