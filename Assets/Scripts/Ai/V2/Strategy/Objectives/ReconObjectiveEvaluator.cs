@@ -8,10 +8,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  RECON OBJECTIVE EVALUATOR
     // ===========================================================================================
-    //  One frozen turn produces three explicit Recon opportunity classes:
-    //    Explore  — never/ground-unvisited frontier information.
-    //    Refresh  — stale previously-observed information; ground route/terrain witness.
-    //    Surveil  — stale enemy contact; observation-vantage semantics in provisioning.
+    // One frozen turn produces three explicit Recon opportunity classes:
+    // Explore — never/ground-unvisited frontier information;
+    // Refresh — stale previously-observed information;
+    // Surveil — stale enemy contact; observation-vantage semantics in provisioning.
     // ===========================================================================================
     public enum ReconObjectiveKind { Explore, Refresh, Surveil }
 
@@ -191,7 +191,9 @@ namespace Game.Ai.V2
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.ApDesired, cost.EtaTurns,
+                // ApDesired is THIS TURN only (zero when the actor was already activated).
+                // Later turns reactivate at RecurringActivationAp; never reserve those future AP.
+                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
                     AiConfigV2.taskScoreCardPriceApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconExplore", hex, score,
@@ -225,7 +227,7 @@ namespace Game.Ai.V2
                 ?? (mk?.AllHexes != null ? new HashSet<HexCoord>(mk.AllHexes) : null);
             foreach (HexCoord n in HexGridMath.Neighbors(focus))
             {
-                if (onMap != null && !onMap.Contains(n)) continue;
+                if (onMap != null && onMap.Contains(n) == false) continue;
                 if (mk?.VisitedHexSet != null && mk.VisitedHexSet.Contains(n)) continue;
                 if (mk != null && mk.IsBlockedForScout(n, stealthCapable: false)) continue;
                 sum += HexObservationRetention(snap, n, floor);
@@ -270,7 +272,7 @@ namespace Game.Ai.V2
                 threatDirection: TaskScoreEvaluator.ThreatDirection(directionalRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.ApDesired, cost.EtaTurns,
+                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
                     AiConfigV2.taskScoreCardPriceApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconRefresh", hex, score,
@@ -332,7 +334,7 @@ namespace Game.Ai.V2
                 contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.ApDesired, cost.EtaTurns,
+                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
                     AiConfigV2.taskScoreCardPriceApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconSurveil", pos, score,
