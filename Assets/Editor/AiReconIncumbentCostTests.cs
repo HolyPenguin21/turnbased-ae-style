@@ -77,6 +77,33 @@ namespace Game.EditorTests
                 "pricing may consider another eligible mover but must not bind it here");
         }
 
+        [Test]
+        public void ActivatedScout_MultiTurnExploreStillPaysFutureActivationsInScore()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon cost regression" };
+            HexCoord distantFocus = new HexCoord(8, 3);
+            WorldSnapshot snap = Snapshot(player, distantFocus);
+            var armies = (List<ArmySnapshot>)snap.Self.Armies;
+            armies[0].HasActivatedThisTurn = true;
+            armies[0].CurrentMovement = 1;
+            armies[1].CurrentMovement = 0;
+
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap,
+                new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = distantFocus });
+            Assert.That(cost.ApDesired, Is.EqualTo(0f), "activation was already paid this turn");
+            Assert.That(cost.RecurringActivationAp, Is.EqualTo(4f));
+            Assert.That(cost.EtaTurns, Is.EqualTo(3));
+
+            ReconObjective objective = ReconObjectiveEvaluator.BuildExplore(snap, distantFocus,
+                freshNeighbors: 6, distFromBase: 5, enemyExposure: false,
+                stealthDetectionRisk: false);
+            Assert.That(objective.TaskScore.CardPrice, Is.EqualTo(0f));
+            Assert.That(objective.TaskScore.Delivery,
+                Is.EqualTo(8f * AiConfigV2.taskScoreCardPriceApWeight).Within(0.001f),
+                "two later turns require two REAL 4-AP activations, even if this turn is free");
+            Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
+        }
+
         private static MissionIntent Incumbent(HexCoord focus, int armyId)
         {
             var intent = new MissionIntent
