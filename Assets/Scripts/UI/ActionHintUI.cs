@@ -4,7 +4,7 @@ using UnityEngine;
 namespace Game.UI
 {
     // A non-blocking, persistent caption for a multi-step input mode — currently just the
-    // equipment-attach flow (see CardHandUI.BeginAttachMode). Unlike SpawnHintPopupUI, this one
+    // equipment-attach flow (see CardHandUI.BeginAttachMode). Unlike PopupPanelUI, this one
     // has NO confirm button, raises no events, and is deliberately NOT folded into
     // GameTurnController.InputBlocked/CardDraggingBlocked: it stays up for the whole duration of
     // the mode while the player keeps navigating the map and clicking cards/panels underneath it.
@@ -19,9 +19,9 @@ namespace Game.UI
 
         public bool IsShowing => panelRoot != null && panelRoot.activeSelf;
 
-        // Relies solely on the scene's own initial inactive state for "hidden until shown" — same
-        // reasoning as SpawnHintPopupUI.Awake: panelRoot may be this component's own GameObject,
-        // so a SetActive(false) here could undo the very activation that ran Awake.
+        // Relies solely on the scene's own initial inactive state for "hidden until shown" —
+        // panelRoot may be this component's own GameObject, so a SetActive(false) here could
+        // undo the very activation that ran Awake.
         public void Show(string message)
         {
             if (infoText != null)

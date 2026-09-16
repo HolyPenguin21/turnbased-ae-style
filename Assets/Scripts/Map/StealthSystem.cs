@@ -70,7 +70,7 @@ namespace Game.Map
 
         // Per-detector queue of "you just spotted X at H" lines, drained at the start of that
         // detector's own next turn (see GameTurnController.OnTurnConfirmed — shown via
-        // SpawnHintPopupUI right after the aviation end-of-turn damage messages). ONLY the
+        // popupPanel right after the aviation end-of-turn damage messages). ONLY the
         // player who rolled the successful detection ever sees these; the hidden unit's owner
         // is still told nothing (design §4/§16). A fresh detection of the same (unit, observer)
         // pair is not re-announced while the previous one is still live.

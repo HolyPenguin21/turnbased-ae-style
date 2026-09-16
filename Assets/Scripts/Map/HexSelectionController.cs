@@ -409,7 +409,7 @@ namespace Game.Map
         // placement is still in progress. Once it's started, only a human's own turn (not the
         // dice-off, not an AI/Neutral turn, both of which leave CurrentPlayer without a human
         // owner) lets the player touch the map — and even then, only after they've dismissed
-        // TurnInfoPopupUI's Confirm button (TurnConfirmed), not the instant it becomes their turn.
+        // popupPanel's Confirm button (TurnConfirmed), not the instant it becomes their turn.
         private bool IsInputAllowed()
         {
             if (turnController == null)

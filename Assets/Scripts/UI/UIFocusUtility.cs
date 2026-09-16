@@ -19,7 +19,7 @@ namespace Game.UI
         }
 
         // The "Space bar as a shortcut for whatever this popup's own primary button does" check,
-        // duplicated identically across half a dozen popups (SpawnHintPopupUI, TurnInfoPopupUI,
+        // duplicated identically across half a dozen popups (PopupPanelUI,
         // BattleArrangePopupUI, TurnOrderPopupUI, MainMenuController) before being pulled out
         // here — each caller still owns its OWN guard conditions (is the popup showing, is the
         // button interactable, etc.), only the actual key-poll was ever truly identical.

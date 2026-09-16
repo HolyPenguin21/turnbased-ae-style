@@ -5,7 +5,7 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // The very first thing shown when a battle opens for the local human side — "Arrange your
-    // units for the battle" + Ok. Same panelRoot+button shape as SpawnHintPopupUI, but with a
+    // units for the battle" + Ok. Same panelRoot+button shape as PopupPanelUI, but with a
     // caller-supplied callback instead of a bare dismiss (see BattleScreenUI.Show, which uses
     // the Ok click to actually enter the Arrangement phase rather than just closing a hint).
     public class BattleArrangePopupUI : MonoBehaviour

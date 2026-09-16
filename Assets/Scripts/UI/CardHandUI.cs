@@ -1075,7 +1075,7 @@ namespace Game.UI
         // Left-clicked a Unit/Hero card still in this hand — attach to it before it's ever
         // deployed (the grant rides along on CardData.Equipment; see ArmyActions.DeployUnitFromCard).
         // Success is silent (the card's own face updates); only a failure raises the blocking
-        // SpawnHintPopupUI, same as before — after the caption is already gone.
+        // popupPanel hint, same as before — after the caption is already gone.
         public void TryAttachToHandCard(CardData targetCard)
         {
             if (_pendingEquipment == null || targetCard == null || targetCard == _pendingEquipment)

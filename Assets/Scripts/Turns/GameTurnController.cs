@@ -85,10 +85,6 @@ namespace Game.Turns
         // Hidden until the game actually starts — see BeginGame.
         [SerializeField] private ResourceBarUI resourceBar;
 
-        // Shown every player-turn transition; gates the human's own map input — see
-        // HexSelectionController.IsInputAllowed.
-        [SerializeField] private TurnInfoPopupUI turnInfoPopup;
-
         // Hidden until the game actually starts — see BeginGame. Same trigger as resourceBar.
         [SerializeField] private CardHandUI cardHand;
         // Gameplay-side deck source for pre-turn Initiative resource-demand analysis. Existing
@@ -102,14 +98,16 @@ namespace Game.Turns
         [SerializeField] private RtsCameraController cameraController;
         [SerializeField] private HexSelectionController hexSelectionController;
 
-        // Blocking "can't do that" hint (e.g. tried to deploy a card on a hex with no
-        // Barracks) — shown by CardHandUI. While it's up, both map input
+        // Single shared modal for both the every-turn handoff ("Current turn: X" / "Your turn,
+        // X" + Confirm — gates the human's own map input, see HexSelectionController.
+        // IsInputAllowed) and blocking "can't do that" hints (e.g. tried to deploy a card on a
+        // hex with no Barracks) shown by CardHandUI. While a hint is up, both map input
         // (HexSelectionController.IsInputAllowed) and card dragging (CardHandUI.CanDragCards)
         // stop, the same way a turn handoff does, until dismissed.
-        [SerializeField] private SpawnHintPopupUI spawnHintPopup;
+        [SerializeField] private PopupPanelUI popupPanel;
 
         // While the Army Viewer is open, map clicks need to stay locked out (folded into
-        // InputBlocked below, same as spawnHintPopup) — but card dragging must NOT be, since
+        // InputBlocked below, same as popupPanel) — but card dragging must NOT be, since
         // dragging a Unit/Hero card from hand onto the open modal's grid is exactly how it
         // deploys straight into that army (see CardHandUI.TryPlayCard). Hence the separate,
         // narrower CardDraggingBlocked below instead of just reusing InputBlocked everywhere.
@@ -170,7 +168,7 @@ namespace Game.Turns
         // of them raises VisibilityChanged, never on a timer/every frame.
         private void RecomputeBlockedState()
         {
-            bool newInputBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
+            bool newInputBlocked = (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsShowing)
                 || (baseViewerModal != null && baseViewerModal.IsShowing)
                 || (researchProductionModal != null && researchProductionModal.IsShowing)
@@ -180,7 +178,7 @@ namespace Game.Turns
                 || (eventRewardPopup != null && eventRewardPopup.IsShowing)
                 || (aviationAttackPopup != null && aviationAttackPopup.IsShowing)
                 || (aaChoicePopup != null && aaChoicePopup.IsShowing);
-            bool newCardDraggingBlocked = (spawnHintPopup != null && spawnHintPopup.IsShowing)
+            bool newCardDraggingBlocked = (popupPanel != null && popupPanel.IsShowing)
                 || (armyViewerModal != null && armyViewerModal.IsRenamePopupShowing)
                 // Research/Production picker is NOT a card drop-target (unlike Army/Base Viewer,
                 // which take Unit/Hero and Facility drops respectively), so the hand must be
@@ -209,7 +207,7 @@ namespace Game.Turns
 
         public void ShowSpawnHint(string message)
         {
-            spawnHintPopup?.Show(message);
+            popupPanel?.ShowHint(message);
         }
 
         public int TurnNumber { get; private set; }
@@ -220,8 +218,8 @@ namespace Game.Turns
         // selection animation is allowed to play (only the current player's own units).
         public PlayerSetupData CurrentPlayer { get; private set; }
 
-        // False from the moment a turn starts until the human clicks Confirm on
-        // TurnInfoPopupUI — HexSelectionController won't allow map input until this is true,
+        // False from the moment a turn starts until the human clicks Confirm on the shared
+        // popupPanel — HexSelectionController won't allow map input until this is true,
         // even once CurrentPlayer is already the human. Meaningless (left false) for AI/Neutral
         // turns, which never check it.
         public bool TurnConfirmed { get; private set; }
@@ -271,8 +269,8 @@ namespace Game.Turns
             Game.Map.VisionSystem.DebugRevealAll = debugRevealFullMap;
             AiDebugLog.VerboseEnabled = debugVerboseAiLog;
             BuildingRegistry.BuildingDestroyed += OnBuildingDestroyed;
-            if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged += RecomputeBlockedState;
-            if (spawnHintPopup != null) spawnHintPopup.Hidden += ShowNextAviationMessage;
+            if (popupPanel != null) popupPanel.VisibilityChanged += RecomputeBlockedState;
+            if (popupPanel != null) popupPanel.Hidden += ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged += RecomputeBlockedState;
             if (researchProductionModal != null) researchProductionModal.VisibilityChanged += RecomputeBlockedState;
@@ -288,8 +286,8 @@ namespace Game.Turns
         private void OnDisable()
         {
             BuildingRegistry.BuildingDestroyed -= OnBuildingDestroyed;
-            if (spawnHintPopup != null) spawnHintPopup.VisibilityChanged -= RecomputeBlockedState;
-            if (spawnHintPopup != null) spawnHintPopup.Hidden -= ShowNextAviationMessage;
+            if (popupPanel != null) popupPanel.VisibilityChanged -= RecomputeBlockedState;
+            if (popupPanel != null) popupPanel.Hidden -= ShowNextAviationMessage;
             if (armyViewerModal != null) armyViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (baseViewerModal != null) baseViewerModal.VisibilityChanged -= RecomputeBlockedState;
             if (researchProductionModal != null) researchProductionModal.VisibilityChanged -= RecomputeBlockedState;
@@ -439,9 +437,9 @@ namespace Game.Turns
                 endTurnButton.interactable = TurnConfirmed && !InputBlocked && !_attachModeActive;
         }
 
-        // The same physical Enter press that just dismissed TurnInfoPopupUI's "Your turn, X"
+        // The same physical Enter press that just dismissed popupPanel's "Your turn, X"
         // popup — Unity's own Submit action fires on Enter too, straight to whichever Selectable
-        // is currently selected, entirely separate from TurnInfoPopupUI's own Update (that one
+        // is currently selected, entirely separate from PopupPanelUI's own Update (that one
         // only polls Space, see its own comment) — must never ALSO end the turn below in that
         // same frame. OnTurnConfirmed flips endTurnButton.interactable to true synchronously as
         // part of handling that Submit, so without this guard the Enter-key poll right below sees
@@ -685,8 +683,8 @@ namespace Game.Turns
 
             if (endTurnButton != null)
                 endTurnButton.interactable = false;
-            if (turnInfoPopup != null)
-                turnInfoPopup.Hide();
+            if (popupPanel != null)
+                popupPanel.Hide();
 
             if (turnOrderPopup == null || GameSession.Players == null || GameSession.Players.Count == 0)
                 return;
@@ -1017,7 +1015,7 @@ namespace Game.Turns
             TurnChanging?.Invoke();
             _currentPlayerIndex = index;
             TurnConfirmed = false;
-            // Re-enabled only once TurnConfirmed (human, after dismissing TurnInfoPopupUI) —
+            // Re-enabled only once TurnConfirmed (human, after dismissing the shared popupPanel) —
             // see OnTurnConfirmed. Button itself stays visible the whole time, this is the only
             // state that changes.
             if (endTurnButton != null)
@@ -1028,8 +1026,8 @@ namespace Game.Turns
             {
                 CurrentPlayer = null;
                 ReplenishMoveForOwner(null);
-                if (turnInfoPopup != null)
-                    turnInfoPopup.ShowForOther(null);
+                if (popupPanel != null)
+                    popupPanel.ShowForOther(null);
                 TurnStateChanged?.Invoke();
                 StartCoroutine(PassAfterDelay(BeginNewTurn));
                 return;
@@ -1067,17 +1065,17 @@ namespace Game.Turns
             {
                 cardHand?.HideAiHandDebug();
                 resourceBar?.HideRootDebug();
-                if (turnInfoPopup != null)
-                    turnInfoPopup.ShowForHuman(player, OnTurnConfirmed);
+                if (popupPanel != null)
+                    popupPanel.ShowForHuman(player, OnTurnConfirmed);
             }
             else
             {
-                // An AI detector never gets the SpawnHintPopupUI (that's human turn-start
+                // An AI detector never gets a spawn-hint popup (that's human turn-start
                 // only, via OnTurnConfirmed) — drop its queued detection notices here so they
                 // don't accumulate forever.
                 StealthSystem.TakeDetectionNotices(player);
-                if (turnInfoPopup != null)
-                    turnInfoPopup.ShowForOther(player);
+                if (popupPanel != null)
+                    popupPanel.ShowForOther(player);
                 // debugWatchAiTurns' hand/resources half (see ShowAiHandDebug/ShowRootDebug's
                 // own comments) — shown before RunTurn starts so both are already visible for the
                 // very first decision; both stay live for the rest of the turn off their own
@@ -1094,8 +1092,8 @@ namespace Game.Turns
             }
         }
 
-        // Fired by TurnInfoPopupUI's Confirm button — the only thing that actually lets the
-        // human touch the map (and end their turn) this turn — see
+        // Fired by the shared popupPanel's Confirm button — the only thing that actually lets
+        // the human touch the map (and end their turn) this turn — see
         // HexSelectionController.IsInputAllowed.
         private void OnTurnConfirmed()
         {
@@ -1103,8 +1101,8 @@ namespace Game.Turns
             _turnConfirmedFrame = Time.frameCount;
             if (endTurnButton != null)
                 endTurnButton.interactable = true;
-            if (turnInfoPopup != null)
-                turnInfoPopup.Hide();
+            if (popupPanel != null)
+                popupPanel.Hide();
             if (CurrentPlayer != null)
             {
                 bool anyQueued = false;
@@ -1117,7 +1115,7 @@ namespace Game.Turns
                 }
                 // Stealth-detection announcements — shown to (and only to) the player who
                 // rolled the successful detection, right AFTER the aviation damage messages
-                // and through the same one-at-a-time SpawnHintPopupUI queue. The hidden
+                // and through the same one-at-a-time popupPanel queue. The hidden
                 // unit's owner is still told nothing (design §4/§16).
                 foreach (string notice in StealthSystem.TakeDetectionNotices(CurrentPlayer))
                 {
@@ -1191,9 +1189,9 @@ namespace Game.Turns
 
         private void ShowNextAviationMessage()
         {
-            if (spawnHintPopup == null || spawnHintPopup.IsShowing || _aviationMessageQueue.Count == 0)
+            if (popupPanel == null || popupPanel.IsShowing || _aviationMessageQueue.Count == 0)
                 return;
-            spawnHintPopup.Show(_aviationMessageQueue.Dequeue());
+            popupPanel.ShowHint(_aviationMessageQueue.Dequeue());
         }
     }
 }

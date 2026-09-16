@@ -15,7 +15,7 @@ namespace Game.UI
     // EventChoicePopupUI (see EventChoicePopupUI.ResolvePortrait), one summary sentence
     // describing what was granted, and the rewarded card's own detail art if a card was part of
     // it — no per-reward row list. Reuses the project's established Space-confirm convention (see
-    // CLAUDE.md, UIFocusUtility.WasSpacePressed()) exactly like SpawnHintPopupUI — a plain
+    // CLAUDE.md, UIFocusUtility.WasSpacePressed()) exactly like PopupPanelUI — a plain
     // acknowledgement, not a decision, unlike EventChoicePopupUI.
     public class EventRewardPopupUI : MonoBehaviour
     {
