@@ -20,7 +20,7 @@ namespace Game.Ai.V2
                 payback: TaskScoreEvaluator.Payback(paybackTurns),
                 cardPrice: TaskScoreEvaluator.CardPrice(
                     Mathf.Max(0f, assignmentApCost), Mathf.Max(0f, resourceCost)),
-                delivery: TaskScoreEvaluator.Delivery(0f, Mathf.Max(0f, travelCost)),
+                delivery: Mathf.Max(0f, travelCost) * AiConfigV2.taskScoreReactivationApWeight,
                 moverOpportunityCost: Mathf.Max(0f, heroOpportunityCost),
                 hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(threatExposure));
             return score.Value;

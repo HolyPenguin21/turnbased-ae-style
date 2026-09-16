@@ -123,9 +123,9 @@ namespace Game.Ai.V2
                             intent.PreferredMoverArmyId);
                         var staleTask = new TaskScore(
                             staleness: TaskScoreEvaluator.StaleIntelPenalty(1f),
-                            cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreRaidActivationApWeight,
+                            cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreReactivationApWeight,
                             delivery: TaskScoreEvaluator.DeliveryFromEta(staleCost.ApDesired,
-                                staleCost.EtaTurns, AiConfigV2.taskScoreRaidActivationApWeight));
+                                staleCost.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
                         float staleValue = staleTask.Value;
                         TaskScoreDiagnostics.Log("Raid", intent.Raid.LastKnownHex, staleTask,
                             $"continuation=tracking_in_fog confidence=unknown actor="
@@ -342,9 +342,9 @@ namespace Game.Ai.V2
                 staleness: o.TaskScore.Staleness,
                 militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(readyWin),
-                cardPrice: activationAp * AiConfigV2.taskScoreRaidActivationApWeight,
+                cardPrice: activationAp * AiConfigV2.taskScoreReactivationApWeight,
                 delivery: TaskScoreEvaluator.DeliveryFromEta(activationAp, etaTurns,
-                    AiConfigV2.taskScoreRaidActivationApWeight),
+                    AiConfigV2.taskScoreReactivationApWeight),
                 moverOpportunityCost: 0f);
             float las = score.Value;
             TaskScoreDiagnostics.Log("Raid", o.LastKnownHex, score,

@@ -19,8 +19,8 @@ namespace Game.EditorTests
             var score = new TaskScore(
                 economicHexBenefit: 13f, payback: 5f, ownTerritoryProximity: 3f,
                 cardPrice: 4f, delivery: 2f, moverOpportunityCost: 1f,
-                hexThreatRisk: 2f, existingValueLoss: 3f);
-            Assert.That(score.Value, Is.EqualTo(9f).Within(0.0001f));
+                hexThreatRisk: 2f);
+            Assert.That(score.Value, Is.EqualTo(12f).Within(0.0001f));
         }
 
         [Test]
@@ -40,16 +40,21 @@ namespace Game.EditorTests
         [Test]
         public void PhysicalCostConversions_UseOneSharedScale()
         {
-            const float ap = 2f, resources = 3f, extraAp = 1f, distance = 6f;
+            const float ap = 2f, resources = 3f, perTurnAp = 1f, etaTurns = 3f;
             var extraction = new TaskScore(
                 cardPrice: TaskScoreEvaluator.CardPrice(ap, resources),
-                delivery: TaskScoreEvaluator.Delivery(extraAp, distance));
+                delivery: TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
+                    AiConfigV2.taskScoreCardPriceApWeight));
             var foundation = new TaskScore(
                 cardPrice: TaskScoreEvaluator.CardPrice(ap, resources),
-                delivery: TaskScoreEvaluator.Delivery(extraAp, distance));
+                delivery: TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
+                    AiConfigV2.taskScoreCardPriceApWeight));
+            // One extra turn beyond the first prices identically to that same AP spent on a card —
+            // both are the SAME real AP, at the SAME shared rate, just paid on a different turn.
             Assert.That(TaskScoreEvaluator.CardPrice(1f, 0f),
-                Is.EqualTo(TaskScoreEvaluator.Delivery(1f, 0f)),
-                "a real AP must have the same intrinsic cost when spent on a card or delivery");
+                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(1f, 2f,
+                    AiConfigV2.taskScoreCardPriceApWeight)),
+                "a real AP must have the same intrinsic cost when spent on a card or on one extra turn of delivery");
             Assert.That(extraction.CardPrice, Is.EqualTo(foundation.CardPrice));
             Assert.That(extraction.Delivery, Is.EqualTo(foundation.Delivery));
             Assert.That(extraction.Value, Is.EqualTo(foundation.Value));
@@ -114,10 +119,11 @@ namespace Game.EditorTests
             Assert.That(objective.TaskScore.CardPrice,
                 Is.EqualTo(TaskScoreEvaluator.CardPrice(estimate.ApDesired, 0f)));
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(TaskScoreEvaluator.Delivery(0f, estimate.EstimatedDistance)));
+                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.ApDesired, estimate.EtaTurns,
+                    AiConfigV2.taskScoreCardPriceApWeight)));
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
-            // info=10, home proximity=3, activation=2, distance=3.
-            Assert.That(objective.BaseValue, Is.EqualTo(8f).Within(0.0001f));
+            // info=10, home proximity=3, activation=2, one extra turn of delivery=2.
+            Assert.That(objective.BaseValue, Is.EqualTo(9f).Within(0.0001f));
         }
 
         [Test]
@@ -387,8 +393,9 @@ namespace Game.EditorTests
                 staleness: objective.TaskScore.Staleness,
                 militaryTargetRelevance: objective.TaskScore.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(resolvedTarget.ReadyWinChance),
-                cardPrice: TaskScoreEvaluator.CardPrice(pinned.ActivationApCost, 0f),
-                delivery: TaskScoreEvaluator.Delivery(0f, distance));
+                cardPrice: pinned.ActivationApCost * AiConfigV2.taskScoreReactivationApWeight,
+                delivery: TaskScoreEvaluator.DeliveryFromEta(pinned.ActivationApCost,
+                    result.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
         }

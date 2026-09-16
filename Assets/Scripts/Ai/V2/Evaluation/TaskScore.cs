@@ -33,7 +33,6 @@ namespace Game.Ai.V2
         public readonly float MoverOpportunityCost;
         public readonly float HexThreatRisk;
         public readonly float DetectionRisk;
-        public readonly float ExistingValueLoss;
 
         public TaskScore(
             float economicHexBenefit = 0f,
@@ -55,8 +54,7 @@ namespace Game.Ai.V2
             float delivery = 0f,
             float moverOpportunityCost = 0f,
             float hexThreatRisk = 0f,
-            float detectionRisk = 0f,
-            float existingValueLoss = 0f)
+            float detectionRisk = 0f)
         {
             EconomicHexBenefit = economicHexBenefit;
             Payback = payback;
@@ -78,7 +76,6 @@ namespace Game.Ai.V2
             MoverOpportunityCost = moverOpportunityCost;
             HexThreatRisk = hexThreatRisk;
             DetectionRisk = detectionRisk;
-            ExistingValueLoss = existingValueLoss;
         }
 
         public float Value => TaskScoreEvaluator.Fold(this);
@@ -110,8 +107,7 @@ namespace Game.Ai.V2
             - score.Delivery
             - score.MoverOpportunityCost
             - score.HexThreatRisk
-            - score.DetectionRisk
-            - score.ExistingValueLoss;
+            - score.DetectionRisk;
 
         internal static float ResourcePriority(EconomyResourceStanding standing,
             float externalStarvationPressure = 0f)
@@ -177,10 +173,6 @@ namespace Game.Ai.V2
         internal static float CardPrice(float apCost, float resourceCost) =>
             Mathf.Max(0f, apCost) * AiConfigV2.taskScoreCardPriceApWeight
             + Mathf.Max(0f, resourceCost) * AiConfigV2.taskScoreCardPriceResourceWeight;
-
-        internal static float Delivery(float extraApCost, float travelDistance) =>
-            Mathf.Max(0f, extraApCost) * AiConfigV2.taskScoreDeliveryApWeight
-            + Mathf.Max(0f, travelDistance) * AiConfigV2.taskScoreTravelWeight;
 
         // Raid/Recon already derive a real ETA (hexes -> mover's MaxMovement -> turns) for their
         // own cost models. The game's own rule (AiTurnController.MoveArmyRoutine) is: MP moves
@@ -283,7 +275,7 @@ namespace Game.Ai.V2
                 + $"win={F(score.WinChance)} cardPrice={F(score.CardPrice)} "
                 + $"delivery={F(score.Delivery)} moverOpp={F(score.MoverOpportunityCost)} "
                 + $"hexRisk={F(score.HexThreatRisk)} detection={F(score.DetectionRisk)} "
-                + $"existingLoss={F(score.ExistingValueLoss)} final={F(score.Value)}"
+                + $"final={F(score.Value)}"
                 + (string.IsNullOrEmpty(rawFacts) ? string.Empty : $" raw=[{rawFacts}]"));
         }
     }

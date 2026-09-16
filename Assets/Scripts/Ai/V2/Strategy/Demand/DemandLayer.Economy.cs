@@ -85,7 +85,11 @@ namespace Game.Ai.V2
                     payback: siteOnlyScore.Payback,
                     ownTerritoryProximity: siteOnlyScore.OwnTerritoryProximity,
                     cardPrice: siteOnlyScore.CardPrice,
-                    delivery: TaskScoreEvaluator.Delivery(extraAp, travel),
+                    // extraAp is already the real re-activation AP for this multi-turn route
+                    // (EstimateEconomyAssignmentAp: paid outbound/return activations x real
+                    // ActivationApCost) — travel was a second, redundant raw-distance charge on
+                    // top of that same real fact.
+                    delivery: extraAp * AiConfigV2.taskScoreReactivationApWeight,
                     moverOpportunityCost: Mathf.Max(0f, opportunity),
                     hexThreatRisk: siteOnlyScore.HexThreatRisk);
                 float value = score.Value;
@@ -689,7 +693,7 @@ namespace Game.Ai.V2
             int routeCost, int movementAvailable, out float netValue)
         {
             netValue = buildValue - AiConfigV2.economyLoanContinuationLoss
-                - TaskScoreEvaluator.Delivery(0f, Mathf.Max(0, routeCost));
+                - Mathf.Max(0, routeCost) * AiConfigV2.taskScoreReactivationApWeight;
             return EconomyDonorStructurallyEligible(donor)
                 && routeCost <= movementAvailable
                 && netValue >= AiConfigV2.economyLoanHysteresisThreshold;
@@ -853,7 +857,7 @@ namespace Game.Ai.V2
                         ownTerritoryProximity: proximity,
                         terrainDefense: defense,
                         cardPrice: cardPrice,
-                        delivery: TaskScoreEvaluator.Delivery(extraAp, travel),
+                        delivery: extraAp * AiConfigV2.taskScoreReactivationApWeight,
                         moverOpportunityCost: Mathf.Max(0f, heroCost),
                         hexThreatRisk: risk);
                     float value = score.Value;
