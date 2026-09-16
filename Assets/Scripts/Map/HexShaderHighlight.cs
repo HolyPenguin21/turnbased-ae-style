@@ -13,11 +13,28 @@ namespace Game.Map
     public class HexShaderHighlight : MonoBehaviour
     {
         private const int PaintTextureSize = 256;
-        private const float MinPaintWidthRatio = 0.055f;
-        private const float PaintOpacity = 0.74f;
-        private const float PaintWear = 0.42f;
+        private const float MinPaintWidthRatio = 0.05f;
+        private const float PaintOpacity = 0.96f;
+        private const float PaintWear = 0.22f;
 
-        [SerializeField] private Color color = new Color(0.78f, 0.71f, 0.56f, 1f);
+        // General map selection is intentionally a fixed authored visual now, not a GameConfig
+        // tuning surface. GameConfig exposes this only as a read-only compatibility accessor for
+        // the existing HexSelectionController call site; the values themselves live here next to
+        // the renderer that owns them.
+        public static HexHighlightStyle FixedMapSelectionStyle { get; } = new HexHighlightStyle
+        {
+            radiusScale = 0.87f,
+            margin = 0f,
+            lineThickness = 0.05f,
+            noiseReach = 0f,
+            noiseScale = 0f,
+            noiseSpeed = 0f,
+            glowIntensity = 0f,
+            glowWidth = 0f,
+            sortingOrder = 1,
+        };
+
+        [SerializeField] private Color color = new Color(0.98f, 0.95f, 0.86f, 1f);
 
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
@@ -63,7 +80,9 @@ namespace Game.Map
 
         // HexHighlightStyle is shared with HexClusterHighlight. For this single-hex renderer,
         // radiusScale, lineThickness and sortingOrder are the meaningful visual inputs. The old
-        // animated noise/glow values are copied only to preserve the shared config contract.
+        // animated noise/glow values are copied only to preserve the shared config contract used
+        // by the citadel setup highlight; the ordinary map selection receives the fixed preset
+        // above and therefore has no editable GameConfig values.
         public void ApplyStyle(HexHighlightStyle style)
         {
             if (style == null)
@@ -105,12 +124,8 @@ namespace Game.Map
         private void RebuildPaintVisual(float outerRadius)
         {
             float radius = Mathf.Max(0.001f, outerRadius * _style.radiusScale);
-
-            // The old 0.03 line gained apparent weight from its glow/noise. With a plain texture
-            // it reads too thin, so retain a small radius-relative floor while still respecting
-            // styles that deliberately request a thicker line.
             float lineWidth = Mathf.Max(_style.lineThickness, outerRadius * MinPaintWidthRatio);
-            float half = radius + Mathf.Max(lineWidth * 1.75f, outerRadius * 0.025f);
+            float half = radius + Mathf.Max(lineWidth * 1.35f, outerRadius * 0.02f);
 
             DestroyRuntimeMesh();
             DestroyPaintTexture();
@@ -138,16 +153,20 @@ namespace Game.Map
 
         private Texture2D BuildPaintTexture(float radius, float lineWidth, float half)
         {
+            // No mip chain: the previous trilinear+mipmap path softened the line into a muddy
+            // translucent band at normal strategic-map zoom. The approved reference reads as a
+            // painted stroke, so keep the mask crisp and let ordinary bilinear filtering handle
+            // sub-pixel movement only.
             var texture = new Texture2D(
                 PaintTextureSize,
                 PaintTextureSize,
                 TextureFormat.RGBA32,
-                true)
+                false)
             {
                 name = "Hex Worn Paint Mask (Runtime)",
                 hideFlags = HideFlags.DontSave,
                 wrapMode = TextureWrapMode.Clamp,
-                filterMode = FilterMode.Trilinear,
+                filterMode = FilterMode.Bilinear,
                 anisoLevel = 0,
             };
 
@@ -169,12 +188,12 @@ namespace Game.Map
                     float nx = localX / safeRadius;
                     float nz = localZ / safeRadius;
 
-                    // Static broad noise only varies deposited paint width. Unlike the previous
-                    // shader it never grows moving tendrils outside the hex.
-                    float edgeNoise = FractalNoise(nx, nz, 3.1f, 11.7f, 4.3f);
-                    float widthScale = Mathf.Lerp(0.82f, 1.14f, edgeNoise);
+                    // Small static width variation keeps the stroke hand-applied without turning
+                    // it back into the old animated/noisy halo.
+                    float edgeNoise = FractalNoise(nx, nz, 2.6f, 11.7f, 4.3f);
+                    float widthScale = Mathf.Lerp(0.93f, 1.07f, edgeNoise);
                     float halfLine = lineWidth * 0.5f * widthScale;
-                    float feather = Mathf.Max(pixelWorld * 1.35f, lineWidth * 0.07f);
+                    float feather = Mathf.Max(pixelWorld * 0.8f, lineWidth * 0.025f);
                     float distance = Mathf.Abs(HexSignedDistance(p, radius));
                     float ring = 1f - SmoothStep(
                         Mathf.Max(0f, halfLine - feather),
@@ -187,15 +206,16 @@ namespace Game.Map
                         continue;
                     }
 
-                    // Faded stretches + fine mottling + sparse pinholes: intentionally irregular
-                    // but still continuous enough to read immediately as the selected hex.
-                    float wearNoise = FractalNoise(nx, nz, 2.25f, 27.4f, 19.1f);
-                    float patch = SmoothStep(0.30f, 0.68f, wearNoise);
-                    float wornCoverage = Mathf.Lerp(1f, 0.22f + 0.78f * patch, PaintWear);
+                    // Mostly opaque paint with a few worn stretches and pinholes. The fourth
+                    // approved visual was characterful because the paint was damaged, not because
+                    // the whole line was translucent, so wear only removes local coverage.
+                    float wearNoise = FractalNoise(nx, nz, 2.0f, 27.4f, 19.1f);
+                    float patch = SmoothStep(0.27f, 0.72f, wearNoise);
+                    float wornCoverage = Mathf.Lerp(1f, 0.58f + 0.42f * patch, PaintWear);
 
-                    float fine = Mathf.PerlinNoise(nx * 17.3f + 7.2f, nz * 17.3f + 31.6f);
-                    float grainCoverage = Mathf.Lerp(0.62f, 1f, fine);
-                    float chip = Hash01(x, y) < PaintWear * 0.085f ? 0.12f : 1f;
+                    float fine = Mathf.PerlinNoise(nx * 18.7f + 7.2f, nz * 18.7f + 31.6f);
+                    float grainCoverage = Mathf.Lerp(0.84f, 1f, fine);
+                    float chip = Hash01(x, y) < PaintWear * 0.045f ? 0.18f : 1f;
 
                     float alpha = Mathf.Clamp01(ring * wornCoverage * grainCoverage * chip);
                     pixels[y * PaintTextureSize + x] =
@@ -204,7 +224,7 @@ namespace Game.Map
             }
 
             texture.SetPixels32(pixels);
-            texture.Apply(true, true);
+            texture.Apply(false, true);
             return texture;
         }
 
