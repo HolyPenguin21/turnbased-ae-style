@@ -52,15 +52,21 @@ namespace Game.Ai.V2
                     ProjectedMaxMovement = refreshed?.EconomyProjectedMaxMovement
                         ?? e.ProjectedMaxMovement,
                 };
+                // An available refreshed demand contains the full delivered TaskScore. BuildValue
+                // is a legacy operational/site fact and must not replace it in global admission.
+                // A ReturnBuilder is lifecycle work, not a new world task: its priority belongs to
+                // its durable commitment rather than to the site it finished building.
+                float intrinsic = e.Kind == EconomyTaskKind.ReturnBuilder ? 0f
+                    : refreshed?.Value ?? e.BuildValue;
                 var mission = new MissionProposal
                 {
                     Kind = MissionKind.Economy, Target = target,
-                    BaseValue = e.BuildValue, LocalAdmissionScore = e.BuildValue,
+                    BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
                     Requirements = Requirements(target, intent, snapshot, -1f),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
                     FromDurableIntent = true, DurableFundingTier = intent.Funding,
                     Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
-                        + $"@({target.TargetHex.Q},{target.TargetHex.R})",
+                        + $"@({target.TargetHex.Q},{target.TargetHex.R}) intrinsic={intrinsic:0.##}",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
                 result.Add(mission);
@@ -88,6 +94,7 @@ namespace Game.Ai.V2
                     BuildCard = d.EconomyBuildCard,
                     BuildResourceCost = d.EconomyBuildResourceCost,
                     BuildApCost = d.EconomyBuildApCost,
+                    // Operational site merit is retained separately for existing builder decisions.
                     BuildValue = d.EconomySiteValue > 0f ? d.EconomySiteValue : d.Value,
                     MinimumFollowupAp = d.MinimumFollowupAp,
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
@@ -107,13 +114,10 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy,
                     Target = target,
-                    // Cross-lane ordering represents the strategic return of the chosen site.
-                    // Builder travel/opportunity cost already controls Demand admission and the
-                    // concrete AP/resource envelope below; folding it into BaseValue again lets a
-                    // routine one-step Recon refresh permanently outrank an admitted economy plan.
-                    BaseValue = target.BuildValue,
-                    // Wait urgency is lane-local: it can overtake repeated Extraction contention
-                    // without inflating cross-axis value above critical Defence/Reaction.
+                    // The globally compared value must be the entire canonical world-task Fold,
+                    // not the site-only value before CardPrice/Delivery/MoverOpportunityCost.
+                    BaseValue = d.Value,
+                    // Wait urgency belongs only to lane-local admission, not intrinsic TaskScore.
                     LocalAdmissionScore = d.Value + d.EconomyStrategicUrgency,
                     Requirements = Requirements(target, incumbent, snapshot,
                         d.EconomyTravelCost),
@@ -121,7 +125,7 @@ namespace Game.Ai.V2
                         ?? d.EconomyPreferredBuilderArmyId,
                     FromDurableIntent = incumbent != null,
                     DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
-                    Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) site={target.BuildValue:0.0}",
+                    Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) intrinsic={d.Value:0.##} site={target.BuildValue:0.##}",
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
                 // CauseDemandTraceIds is computed once, downstream, by
