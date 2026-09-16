@@ -1,9 +1,10 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
-using System.Collections.Generic;
+using System.Linq;
 using Game.Ai.V2;
 using Game.Combat;
+using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
 using NUnit.Framework;
@@ -140,6 +141,91 @@ namespace Game.EditorTests
             var empty = new TaskScore(ownTerritoryProximity: 5f, cardPrice: 20f);
             Assert.That(DemandLayer.HasMeaningfulBaseBenefit(empty), Is.False);
             Assert.That(DemandLayer.HasMeaningfulBaseBenefit(new TaskScore()), Is.False);
+        }
+
+        [Test]
+        public void EconomyContinuation_StoresFullScoreAndNeverSubstitutesSiteMerit()
+        {
+            var owner = new PlayerSetupData { Nickname = "EconomyScoreOwner" };
+            var hex = new HexCoord(5, 0);
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = hex, EconomyResourceType = ResourceType.Materials,
+                Value = 4f, EconomySiteValue = 17f,
+            };
+            MissionIntent intent = MissionContinuityLayer.BeginEconomyDelivery(
+                owner, demand, 9, 2);
+            Assert.That(intent.Economy.IntrinsicValue, Is.EqualTo(4f));
+            Assert.That(intent.Economy.BuildValue, Is.EqualTo(17f));
+            MissionProposal resumed = EconomyMissionPlanner.Propose(null, null,
+                new[] { intent }, Array.Empty<AxisDemand>()).Single();
+            Assert.That(resumed.BaseValue, Is.EqualTo(4f));
+            Assert.That(((EconomyMissionTarget)resumed.Target).BuildValue, Is.EqualTo(17f));
+        }
+
+        [Test]
+        public void EconomyIncumbent_RejectsOtherBuildersScoreAndRequirements()
+        {
+            var hex = new HexCoord(6, 0);
+            var pinned = new ArmySnapshot
+            {
+                ArmyId = 9, Hex = new HexCoord(0, 0), HasHero = true,
+                IsMobileEconomyBuilder = true, MemberCount = 1,
+                MaxMovement = 3, CurrentMovement = 1, ActivationApCost = 5,
+            };
+            var cheaper = new ArmySnapshot
+            {
+                ArmyId = 10, Hex = hex, HasHero = true,
+                IsMobileEconomyBuilder = true, MemberCount = 1,
+                MaxMovement = 3, CurrentMovement = 3, ActivationApCost = 1,
+            };
+            var snapshot = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot> { pinned, cheaper },
+                },
+            };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                Funding = CommitmentTier.Hard,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = hex, ResourceType = ResourceType.Materials,
+                    BuilderArmyId = 9, BuildApCost = 1f, MinimumFollowupAp = 1f,
+                    BuildValue = 18f, IntrinsicValue = 7f,
+                },
+                PreferredMoverArmyId = 9,
+            };
+            var wrongBuilder = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = hex, EconomyResourceType = ResourceType.Materials,
+                EconomyPreferredBuilderArmyId = 10, EconomySiteValue = 90f,
+                EconomyTravelCost = 0f, Value = 90f,
+            };
+            MissionProposal resumed = EconomyMissionPlanner.Propose(snapshot, null,
+                new[] { intent }, new[] { wrongBuilder }).Single();
+            Assert.That(resumed.PreferredMoverArmyId, Is.EqualTo(9));
+            Assert.That(((EconomyMissionTarget)resumed.Target).BuilderArmyId, Is.EqualTo(9));
+            Assert.That(resumed.BaseValue, Is.EqualTo(7f));
+            Assert.That(resumed.Requirements.EstimatedDistance,
+                Is.EqualTo(HexGridMath.Distance(pinned.Hex, hex)));
+            Assert.That(resumed.Requirements.ApDesired, Is.EqualTo(5f));
+
+            wrongBuilder.EconomyPreferredBuilderArmyId = 9;
+            wrongBuilder.Value = 6f;
+            wrongBuilder.EconomyTravelCost = 7f;
+            MissionProposal correctRefresh = EconomyMissionPlanner.Propose(snapshot, null,
+                new[] { intent }, new[] { wrongBuilder }).Single();
+            Assert.That(correctRefresh.BaseValue, Is.EqualTo(6f));
+            Assert.That(correctRefresh.Requirements.EstimatedDistance, Is.EqualTo(7));
+            Assert.That(correctRefresh.PreferredMoverArmyId, Is.EqualTo(9));
         }
 
         [Test]

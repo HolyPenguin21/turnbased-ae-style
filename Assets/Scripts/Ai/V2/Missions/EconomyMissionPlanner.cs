@@ -27,8 +27,12 @@ namespace Game.Ai.V2
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)
                     && d.EconomyResourceType == e.ResourceType
-                    && (d.Capability == CapabilityKind.EconomicInfrastructure
-                        || d.Capability == CapabilityKind.EconomicExpansionBase));
+                    && d.EconomyPreferredBuilderArmyId == intent.PreferredMoverArmyId
+                    && (e.BuildCard == null || d.EconomyBuildCard == e.BuildCard)
+                    && ((e.Kind == EconomyTaskKind.BuildExtraction
+                            && d.Capability == CapabilityKind.EconomicInfrastructure)
+                        || (e.Kind == EconomyTaskKind.FoundBase
+                            && d.Capability == CapabilityKind.EconomicExpansionBase)));
                 var target = new EconomyMissionTarget
                 {
                     Kind = e.Kind,
@@ -43,8 +47,7 @@ namespace Game.Ai.V2
                     BuildCard = refreshed?.EconomyBuildCard ?? e.BuildCard,
                     BuildResourceCost = refreshed?.EconomyBuildResourceCost ?? e.BuildResourceCost,
                     BuildApCost = refreshed?.EconomyBuildApCost ?? e.BuildApCost,
-                    BuildValue = refreshed != null && refreshed.EconomySiteValue > 0f
-                        ? refreshed.EconomySiteValue : e.BuildValue,
+                    BuildValue = refreshed != null ? refreshed.EconomySiteValue : e.BuildValue,
                     MinimumFollowupAp = refreshed?.MinimumFollowupAp ?? e.MinimumFollowupAp,
                     BuilderRoutes = refreshed?.EconomyBuilderRoutes,
                     ProjectedActivationApCost = refreshed?.EconomyProjectedActivationApCost
@@ -57,12 +60,13 @@ namespace Game.Ai.V2
                 // A ReturnBuilder is lifecycle work, not a new world task: its priority belongs to
                 // its durable commitment rather than to the site it finished building.
                 float intrinsic = e.Kind == EconomyTaskKind.ReturnBuilder ? 0f
-                    : refreshed?.Value ?? e.BuildValue;
+                    : refreshed?.Value ?? e.IntrinsicValue ?? 0f;
                 var mission = new MissionProposal
                 {
                     Kind = MissionKind.Economy, Target = target,
                     BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
-                    Requirements = Requirements(target, intent, snapshot, -1f),
+                    Requirements = Requirements(target, intent, snapshot,
+                        refreshed?.EconomyTravelCost ?? -1f),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
                     FromDurableIntent = true, DurableFundingTier = intent.Funding,
                     Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
@@ -95,7 +99,7 @@ namespace Game.Ai.V2
                     BuildResourceCost = d.EconomyBuildResourceCost,
                     BuildApCost = d.EconomyBuildApCost,
                     // Operational site merit is retained separately for existing builder decisions.
-                    BuildValue = d.EconomySiteValue > 0f ? d.EconomySiteValue : d.Value,
+                    BuildValue = d.EconomySiteValue,
                     MinimumFollowupAp = d.MinimumFollowupAp,
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
@@ -167,15 +171,21 @@ namespace Game.Ai.V2
                 .Where(a => a != null && (a.IsMobileEconomyBuilder
                     || (a.IsGarrison && a.HasHero && a.Hex.Equals(t.TargetHex)))).ToList();
             ArmySnapshot nearest = null;
-            bool completionThisTurn = true; // Conservative fallback when Analysis has no actor witness.
+            // With a durable owner but no matching snapshot actor, NEVER price a different hero.
+            // The allocator may still retry the commitment; provisioning owns actual validity.
+            bool completionThisTurn = !preferredId.HasValue;
             float activation = 0f;
             if (heroes != null && heroes.Count > 0)
             {
                 nearest = preferredId.HasValue
                     ? heroes.FirstOrDefault(a => a.ArmyId == preferredId.Value)
                     : null;
-                nearest ??= heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
-                    .ThenBy(a => a.ArmyId).First();
+                if (!preferredId.HasValue)
+                    nearest = heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
+                        .ThenBy(a => a.ArmyId).First();
+            }
+            if (nearest != null)
+            {
                 int distance = witnessedTravelCost >= 0f
                     ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)
                     : HexGridMath.Distance(nearest.Hex, t.TargetHex);

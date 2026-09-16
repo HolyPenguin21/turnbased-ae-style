@@ -203,6 +203,10 @@ namespace Game.Ai.V2
         public CardData BuildCard;
         public ResourceCost BuildResourceCost;
         public float BuildApCost;
+        // Canonical world TaskScore.Value captured on a real scored proposal/handoff.
+        // Site merit (BuildValue) is a distinct operational fact. A null value denotes an older
+        // intent without score provenance; it must NOT be substituted with site-only merit.
+        public float? IntrinsicValue;
         public float BuildValue;
         public float MinimumFollowupAp;
         public int ProjectedActivationApCost;

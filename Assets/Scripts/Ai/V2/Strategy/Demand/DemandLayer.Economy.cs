@@ -62,9 +62,18 @@ namespace Game.Ai.V2
                     cardPrice: TaskScoreEvaluator.CardPrice(cardAp, resourceCost),
                     hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
 
+                // Continuity owns the actor for an existing objective. A later, cheaper builder
+                // must not supply a different delivery cost for that same durable operation.
+                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i => i != null
+                    && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
+                    && i.Economy?.Kind == EconomyTaskKind.BuildExtraction
+                    && i.Economy.TargetHex.Equals(site.Hex)
+                    && i.Economy.ResourceType == site.ResourceType
+                    && i.PreferredMoverArmyId.HasValue);
                 EconomyBuilderChoice builder = SelectEconomyBuilder(
                     s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
-                    siteOnlyScore.Value, cardAp, includeReturn: true);
+                    siteOnlyScore.Value, cardAp, includeReturn: true,
+                    pinnedBuilderArmyId: pinnedExtraction?.PreferredMoverArmyId);
                 float travel = builder?.Route.TravelCost
                     ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
                 float opportunity = EconomyMissionOpportunityCost(builder, activeIntents);
@@ -266,10 +275,13 @@ namespace Game.Ai.V2
         internal static EconomyBuilderChoice SelectEconomyBuilder(WorldSnapshot snap,
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
-            float buildValue, float buildApCost, bool includeReturn)
+            float buildValue, float buildApCost, bool includeReturn,
+            int? pinnedBuilderArmyId = null)
         {
             return RankEconomyBuilders(snap, target, routes, activeIntents, commitments,
-                buildValue, buildApCost, includeReturn).FirstOrDefault();
+                buildValue, buildApCost, includeReturn)
+                .FirstOrDefault(x => !pinnedBuilderArmyId.HasValue
+                    || x.Army?.ArmyId == pinnedBuilderArmyId.Value);
         }
 
         internal static IReadOnlyList<EconomyBuilderChoice> RankEconomyBuilders(WorldSnapshot snap,
@@ -803,9 +815,17 @@ namespace Game.Ai.V2
                         continue;
                     }
 
+                    MissionIntent pinnedBase = committed ? activeIntents?.FirstOrDefault(i =>
+                        i != null && i.Status == IntentStatus.Active
+                        && i.Kind == MissionKind.Economy
+                        && i.Economy?.Kind == EconomyTaskKind.FoundBase
+                        && i.Economy.TargetHex.Equals(site.Hex)
+                        && (i.Economy.BuildCard == null || i.Economy.BuildCard == card)
+                        && i.PreferredMoverArmyId.HasValue) : null;
                     EconomyBuilderChoice builder = SelectEconomyBuilder(
                         s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
-                        siteOnlyScore.Value, card.EffectivePlayApCost, includeReturn: false);
+                        siteOnlyScore.Value, card.EffectivePlayApCost, includeReturn: false,
+                        pinnedBuilderArmyId: pinnedBase?.PreferredMoverArmyId);
                     bool structuralRoute = site.PreparationTravelCost < int.MaxValue
                         || HasStructuralEconomyBuilderRoute(s, site.Hex, site.BuilderRoutes);
                     if (!structuralRoute)

@@ -79,8 +79,8 @@ namespace Game.Ai.V2
                 BuildCard = demand.EconomyBuildCard,
                 BuildResourceCost = demand.EconomyBuildResourceCost,
                 BuildApCost = demand.EconomyBuildApCost,
-                BuildValue = demand.EconomySiteValue > 0f
-                    ? demand.EconomySiteValue : demand.Value,
+                IntrinsicValue = demand.Value,
+                BuildValue = demand.EconomySiteValue,
                 MinimumFollowupAp = demand.MinimumFollowupAp,
                 ProjectedActivationApCost = demand.EconomyProjectedActivationApCost,
                 ProjectedMaxMovement = demand.EconomyProjectedMaxMovement,
@@ -1553,6 +1553,14 @@ namespace Game.Ai.V2
             {
                 intent.Economy.TargetHex = o.EconomyTarget.TargetHex;
                 intent.Economy.BuilderArmyId = intent.PreferredMoverArmyId;
+                // The mission has already used the continuity-pinned builder's world score.
+                // Persist the last accepted intrinsic value so a later turn without a refreshed
+                // demand cannot silently revive the unrelated site-only BuildValue.
+                if (o.MadeProgress && o.Proposal?.Target is EconomyMissionTarget scored
+                    && scored.Kind == intent.Economy.Kind
+                    && scored.TargetHex.Equals(intent.Economy.TargetHex)
+                    && scored.BuilderArmyId == intent.PreferredMoverArmyId)
+                    intent.Economy.IntrinsicValue = o.Proposal.BaseValue;
                 if (o.EconomyBuildCompleted) intent.Funding = CommitmentTier.Hard;
             }
 
@@ -1755,6 +1763,7 @@ namespace Game.Ai.V2
                 BuilderArmyId = o.MoverArmyId,
                 BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
                 BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
+                IntrinsicValue = o.Proposal?.BaseValue,
                 MinimumFollowupAp = t.MinimumFollowupAp,
                 ProjectedActivationApCost = t.ProjectedActivationApCost,
                 ProjectedMaxMovement = t.ProjectedMaxMovement,
