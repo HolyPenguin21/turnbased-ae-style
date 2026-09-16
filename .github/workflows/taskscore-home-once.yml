@@ -1,0 +1,64 @@
+name: One-time Recon home consistency correction
+on:
+  push:
+    branches: [refactor/unified-task-score]
+permissions:
+  contents: write
+jobs:
+  correct-home:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/unified-task-score
+          fetch-depth: 2
+      - name: Guard exact reviewed parent
+        run: |
+          test "$(git rev-parse HEAD^)" = "f1cd57c93c4994424ceeb0a351a863e5707f0b71"
+      - name: Align physical source with canonical owned-home distance
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          cost=Path('Assets/Scripts/Ai/V2/Recon/ScoutCostModel.cs')
+          original='''            int DistFrom(HexCoord h) => HexGridMath.Distance(h, target.FocusHex);
+                      HexCoord notionalFrom = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Count > 0
+                          ? snap.Self.BaseHexes.OrderBy(DistFrom).First()
+                          : snap?.Self != null ? snap.Self.Citadel : target.FocusHex;
+                      est.EstimatedDistance = DistFrom(notionalFrom);'''
+          original='\n'.join(line.removeprefix('          ') for line in original.splitlines())
+          replacement='''            // One owned-home distance owner: consider both Citadel and every Base.
+                      est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                          snap, target.FocusHex, 0);'''
+          replacement='\n'.join(line.removeprefix('          ') for line in replacement.splitlines())
+          text=cost.read_text()
+          assert text.count(original)==1, text.count(original)
+          cost.write_text(text.replace(original,replacement))
+          tests=Path('Assets/Editor/AiUnifiedTaskScoreTests.cs')
+          original_test='''            Assert.That(exploreCost.ApDesired, Is.EqualTo(1f));
+          '''.rstrip()+'\n'
+          replacement_test='''            Assert.That(exploreCost.ApDesired, Is.EqualTo(1f));
+                      // A distant Base must not override a much closer existing Citadel.
+                      snapshot.Self.BaseHexes = new List<HexCoord> { new HexCoord(20, 0) };
+                      ScoutCostEstimate fromNearestHome = ScoutCostModel.Estimate(snapshot, explore);
+                      Assert.That(fromNearestHome.EstimatedDistance, Is.EqualTo(6f));
+          '''
+          replacement_test='\n'.join(line.removeprefix('          ') for line in replacement_test.splitlines())
+          contents=tests.read_text()
+          assert contents.count(original_test)==1, contents.count(original_test)
+          tests.write_text(contents.replace(original_test,replacement_test))
+          print('Both corrections applied using exact source witnesses')
+      - name: Validate scoped patch and commit
+        run: |
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          changed=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed=={'Assets/Scripts/Ai/V2/Recon/ScoutCostModel.cs','Assets/Editor/AiUnifiedTaskScoreTests.cs'},changed
+          PY
+          rm .github/workflows/taskscore-home-once.yml
+          git add Assets/Scripts/Ai/V2/Recon/ScoutCostModel.cs Assets/Editor/AiUnifiedTaskScoreTests.cs .github/workflows/taskscore-home-once.yml
+          git diff --cached --check
+          git config user.name 'TaskScore Calibration'
+          git config user.email 'taskscore-calibration@users.noreply.github.com'
+          git commit -m 'Use shared nearest Citadel or Base distance for Scout cost'
+          git push origin HEAD:refactor/unified-task-score
