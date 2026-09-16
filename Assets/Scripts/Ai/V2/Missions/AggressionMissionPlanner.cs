@@ -61,12 +61,13 @@ namespace Game.Ai.V2
             // Otherwise a busy Economy/Recon/Raid actor can make a fresh Raid look executable and cheap,
             // only to be rejected later by the batch assignment. Incumbents are allowed to keep their
             // own pinned mover below; every other durable actor remains excluded from host/donor selection.
-            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snap, null);
-            HashSet<int> durableClaimedActors = actorCommitments?.ClaimedArmyIdSet ?? new HashSet<int>();
-
+            // Only Active intents contribute a real claim — a retired/cancelled intent's mover is free.
+            ISet<int> committed = ActorCommitments.FromIntents(
+                activeIntents?.Where(i => i != null && i.Status == IntentStatus.Active),
+                snap, null).ClaimedArmyIdSet;
             var fresh = new List<RaidCandidate>();
             foreach (AggressionObjective o in objectives)
-                fresh.Add(ToCandidate(snap, o, breakdown, excludedArmyIds: durableClaimedActors));
+                fresh.Add(ToCandidate(snap, o, breakdown, unavailableArmyIds: committed));
 
             var incumbents = new List<RaidCandidate>();
             if (activeIntents != null)
@@ -140,7 +141,8 @@ namespace Game.Ai.V2
                     // whichever fresh army happens to be cheaper. Pin the existing primary BEFORE
                     // assembly and Fold, using the existing continuation gate only if started.
                     incumbents.Add(ToCandidate(snap, o, breakdown,
-                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted, durableClaimedActors)
+                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted,
+                            unavailableArmyIds: committed)
                         .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
@@ -171,7 +173,7 @@ namespace Game.Ai.V2
 
             foreach (RaidCandidate c in picked)
             {
-                MissionProposal p = BuildProposal(snap, c);
+                MissionProposal p = BuildProposal(snap, c, committed);
                 if (!c.IsIncumbent
                     && GroundCombatAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
                     && eligible.Count == 0)
@@ -293,21 +295,19 @@ namespace Game.Ai.V2
 
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o,
             DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false,
-            ISet<int> excludedArmyIds = null)
+            ISet<int> unavailableArmyIds = null)
         {
+            // An incumbent may retain ITS OWN claimed primary, never any other claimant; every
+            // other durable host/donor stays excluded from this Raid's assembly.
+            ISet<int> excluded = unavailableArmyIds;
+            if (pinnedPrimaryArmyId.HasValue && unavailableArmyIds != null)
+            {
+                var ownExcluded = new HashSet<int>(unavailableArmyIds);
+                ownExcluded.Remove(pinnedPrimaryArmyId.Value);
+                excluded = ownExcluded;
+            }
             RaidMissionTarget target = o.ToTarget();
             IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
-
-            // A durable incumbent owns its own mover, so remove only that actor from the exclusion
-            // set while keeping every other committed host/donor unavailable to this Raid.
-            ISet<int> effectiveExclusions = excludedArmyIds;
-            if (pinnedPrimaryArmyId.HasValue && excludedArmyIds != null
-                && excludedArmyIds.Contains(pinnedPrimaryArmyId.Value))
-            {
-                var copy = new HashSet<int>(excludedArmyIds);
-                copy.Remove(pinnedPrimaryArmyId.Value);
-                effectiveExclusions = copy;
-            }
 
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
                 ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
@@ -315,12 +315,12 @@ namespace Game.Ai.V2
                     Defenders = defenders,
                     PreferredPrimaryArmyId = pinnedPrimaryArmyId,
                     PinToPreferred = true,
-                    ExcludedArmyIds = effectiveExclusions,
+                    ExcludedArmyIds = excluded,
                     WinChanceGate = operationStarted
                         ? RaidAdmissionPolicy.ContinuationWinChanceFloor
                         : RaidAdmissionPolicy.FreshStartWinChanceGate,
                 })
-                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, effectiveExclusions);
+                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, excluded);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
@@ -360,8 +360,13 @@ namespace Game.Ai.V2
                 costedMover: costedMover);
         }
 
-        private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c)
+        private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c,
+            ISet<int> unavailableArmyIds)
         {
+            var excluded = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            if (c.IsIncumbent && c.PreferredMover.HasValue)
+                excluded.Remove(c.PreferredMover.Value);
             int? pricedMover = c.PreferredMover ?? c.CostedMover;
             MissionRequirements req = RaidCostModel.Build(snap, c.Target, pricedMover);
 
@@ -379,7 +384,7 @@ namespace Game.Ai.V2
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1.0f;
             if (c.Target.Phase == RaidMissionPhase.Assault)
-                GroundCombatAdmissionRegistry.Record(proposal, snap);
+                GroundCombatAdmissionRegistry.Record(proposal, snap, excluded);
             else if (c.Target.Phase == RaidMissionPhase.Reinforcement
                 && !c.Target.SupportArmyId.HasValue)
                 GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);

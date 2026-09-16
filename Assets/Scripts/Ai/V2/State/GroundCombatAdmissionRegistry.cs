@@ -23,7 +23,8 @@ namespace Game.Ai.V2
         private static readonly ConditionalWeakTable<MissionProposal, Entry> ByProposal =
             new ConditionalWeakTable<MissionProposal, Entry>();
 
-        public static void Record(MissionProposal proposal, WorldSnapshot snap)
+        public static void Record(MissionProposal proposal, WorldSnapshot snap,
+            ISet<int> unavailableArmyIds = null)
         {
             if (proposal == null || snap == null || !(proposal.Target is RaidMissionTarget target))
                 return;
@@ -33,7 +34,8 @@ namespace Game.Ai.V2
                 return;
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, target.Target);
-            var excluded = new HashSet<int>();
+            var excluded = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             var ids = new List<int>();
 
             // GroundCombatAssemblyPlanner.Plan always applies the STRICT fresh-raid win gate and returns the
