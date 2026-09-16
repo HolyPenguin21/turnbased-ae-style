@@ -57,8 +57,9 @@ namespace Game.UI
                 return;
             }
 
-            int apCost = Army.HasActivatedThisTurn ? 0 : Army.ActivationApCost;
-            label.text = $"{Army.Name} — {apCost}AP, {Army.CurrentMovement}/{Army.MaxMovement}";
+            label.text = Army.HasActivatedThisTurn || Army.ActivationApCost <= 0
+                ? $"{Army.Name} - {Army.CurrentMovement}/{Army.MaxMovement}"
+                : $"{Army.Name} - {Army.ActivationApCost}AP, {Army.CurrentMovement}/{Army.MaxMovement}";
         }
     }
 }

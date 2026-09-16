@@ -203,8 +203,8 @@ namespace Game.Setup
                 var highlightObject = new GameObject("SelectedHighlight");
                 highlightObject.transform.SetParent(transform, false);
                 _selectedHighlight = highlightObject.AddComponent<HexShaderHighlight>();
-                _selectedHighlight.ApplyStyle(gameConfig.citadelSelectionStyle);
-                _selectedHighlight.SetColor(TechnicalColors.CitadelSelection);
+                _selectedHighlight.ApplyStyle(HexShaderHighlight.FixedMapSelectionStyle);
+                _selectedHighlight.SetColor(TechnicalColors.HexSelection);
             }
 
             if (cameraController != null)

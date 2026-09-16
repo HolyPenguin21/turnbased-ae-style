@@ -11,7 +11,7 @@ namespace Game.Styles
 
         // General hex inspection highlight (HexSelectionController): neutral sun-bleached paint,
         // deliberately kept away from the old olive/yellow shader colour.
-        public static readonly Color HexSelection = new Color(0.96f, 0.95f, 0.90f);
+        public static readonly Color HexSelection = new Color(0.97f, 0.96f, 0.92f);
 
         // The currently-acting unit's cell in the Tactical Battle Module grid (UIRaggedGlowUI,
         // see BattleScreenUI/BattleGridCellUI) — a bright "technical" yellow per the user's own

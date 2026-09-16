@@ -237,11 +237,10 @@ namespace Game.Core
         public int cornerExclusionRadius = 1;
 
         [Header("Hex Highlight Styles")]
-        // Configurable highlights remain only for the citadel setup cluster/pick and tactical
-        // battle cell. Ordinary in-game hex selection is a fixed renderer-owned visual and no
-        // longer has serialized GameConfig settings.
+        // Configurable highlight remains only for the citadel setup cluster pick. Ordinary
+        // in-game hex selection and the citadel confirmation marker are both the fixed
+        // renderer-owned visual and no longer have serialized GameConfig settings.
         public HexHighlightStyle regionHighlightStyle = new HexHighlightStyle();
-        public HexHighlightStyle citadelSelectionStyle = new HexHighlightStyle { sortingOrder = 2 };
 
         // Read-only compatibility surface for HexSelectionController. Nothing is serialized or
         // tunable here: the actual values are authored once in HexShaderHighlight.

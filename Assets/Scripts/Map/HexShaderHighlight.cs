@@ -13,7 +13,7 @@ namespace Game.Map
     public class HexShaderHighlight : MonoBehaviour
     {
         private const int PaintTextureSize = 512;
-        private const float MinPaintWidthRatio = 0.06f;
+        private const float MinPaintWidthRatio = 0.072f;
         private const float PaintOpacity = 1f;
         private const float HexApothemRatio = 0.8660254f;
         private const float SparseFleckChance = 0.012f;
@@ -24,9 +24,9 @@ namespace Game.Map
         // the renderer that owns them.
         public static HexHighlightStyle FixedMapSelectionStyle { get; } = new HexHighlightStyle
         {
-            radiusScale = 0.87f,
+            radiusScale = 0.94f,
             margin = 0f,
-            lineThickness = 0.05f,
+            lineThickness = 0.06f,
             noiseReach = 0f,
             noiseScale = 0f,
             noiseSpeed = 0f,
@@ -37,7 +37,7 @@ namespace Game.Map
 
         // Warm neutral rather than yellow/olive: the paint should read as sun-bleached chalk on
         // the sand, while remaining slightly softer than pure UI white.
-        [SerializeField] private Color color = new Color(0.96f, 0.95f, 0.90f, 1f);
+        [SerializeField] private Color color = new Color(0.97f, 0.96f, 0.92f, 1f);
 
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
