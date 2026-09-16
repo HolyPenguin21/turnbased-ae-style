@@ -123,8 +123,9 @@ namespace Game.Ai.V2
                             intent.PreferredMoverArmyId);
                         var staleTask = new TaskScore(
                             staleness: TaskScoreEvaluator.StaleIntelPenalty(1f),
-                            cardPrice: TaskScoreEvaluator.CardPrice(staleCost.ApDesired, 0f),
-                            delivery: TaskScoreEvaluator.Delivery(0f, staleCost.EstimatedDistance));
+                            cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreRaidActivationApWeight,
+                            delivery: TaskScoreEvaluator.DeliveryFromEta(staleCost.ApDesired,
+                                staleCost.EtaTurns, AiConfigV2.taskScoreRaidActivationApWeight));
                         float staleValue = staleTask.Value;
                         TaskScoreDiagnostics.Log("Raid", intent.Raid.LastKnownHex, staleTask,
                             $"continuation=tracking_in_fog confidence=unknown actor="
@@ -336,20 +337,21 @@ namespace Game.Ai.V2
 
             MissionRequirements req = RaidCostModel.Build(snap, target, costedMover);
             float activationAp = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
-            float distance = UnityEngine.Mathf.Max(0f, req?.EstimatedDistance ?? 0f);
+            float etaTurns = UnityEngine.Mathf.Max(0f, req?.EtaTurns ?? 0f);
             var score = new TaskScore(
                 staleness: o.TaskScore.Staleness,
                 militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(readyWin),
-                cardPrice: TaskScoreEvaluator.CardPrice(activationAp, 0f),
-                delivery: TaskScoreEvaluator.Delivery(0f, distance),
+                cardPrice: activationAp * AiConfigV2.taskScoreRaidActivationApWeight,
+                delivery: TaskScoreEvaluator.DeliveryFromEta(activationAp, etaTurns,
+                    AiConfigV2.taskScoreRaidActivationApWeight),
                 moverOpportunityCost: 0f);
             float las = score.Value;
             TaskScoreDiagnostics.Log("Raid", o.LastKnownHex, score,
                 $"target={o.Target.DiagnosticLabel} confidence={o.Confidence:0.###} "
                 + $"readyWin={readyWin:0.###} coversAll={(live.CoversAllDefenders ? 1 : 0)} "
                 + $"selectedMover={(costedMover.HasValue ? costedMover.Value.ToString() : "none")} "
-                + $"activationAp={activationAp:0.###} distance={distance:0.###}");
+                + $"activationAp={activationAp:0.###} etaTurns={etaTurns:0.###}");
 
             string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
                 + $"task {F(score.Value)} readyWin {F(readyWin)} frozenReady {F(o.ReadyWinChance)} "

@@ -182,6 +182,18 @@ namespace Game.Ai.V2
             Mathf.Max(0f, extraApCost) * AiConfigV2.taskScoreDeliveryApWeight
             + Mathf.Max(0f, travelDistance) * AiConfigV2.taskScoreTravelWeight;
 
+        // Raid/Recon already derive a real ETA (hexes -> mover's MaxMovement -> turns) for their
+        // own cost models. The game's own rule (AiTurnController.MoveArmyRoutine) is: MP moves
+        // an army freely within a turn, but re-activating it on each NEW turn of a multi-turn
+        // march pays its ActivationApCost again (gated on !HasActivatedThisTurn, which resets
+        // every turn) — so the honest delivery cost is that SAME real per-turn activation fee,
+        // repeated once per turn beyond the first (already priced by cardPrice), not a second
+        // invented distance-weight constant. apWeight is passed in so this charges at whichever
+        // rate the caller already prices that same fee at via cardPrice (e.g. Raid's own reduced
+        // activation weight), never a different one for the same physical AP.
+        internal static float DeliveryFromEta(float perTurnApCost, float etaTurns, float apWeight) =>
+            Mathf.Max(0f, perTurnApCost) * Mathf.Max(0f, etaTurns - 1f) * apWeight;
+
         internal static int NearestOwnedHomeDistance(WorldSnapshot snap, HexCoord target,
             int fallbackDistance = 0)
         {
@@ -256,7 +268,11 @@ namespace Game.Ai.V2
         {
             string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
             string targetText = target.HasValue ? $"({target.Value.Q},{target.Value.R})" : "none";
-            AiDebugLog.Write($"[AI][V2][TaskScore] kind={kind} target={targetText} "
+            // Every candidate hex/target gets one of these per cycle — on a full map that's
+            // thousands of lines per turn, drowning out the decision/action trace this log exists
+            // for (see AiDebugLog's own header). Gate it behind VerboseEnabled so it's still one
+            // flip away when tuning a specific axis's scoring, without bloating every normal run.
+            AiDebugLog.WriteVerbose($"[AI][V2][TaskScore] kind={kind} target={targetText} "
                 + $"economic={F(score.EconomicHexBenefit)} payback={F(score.Payback)} "
                 + $"airfield={F(score.Airfield)} global={F(score.GlobalCardEffect)} "
                 + $"info={F(score.InfoGain)} stale={F(score.Staleness)} "

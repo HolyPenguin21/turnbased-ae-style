@@ -32,6 +32,11 @@ namespace Game.Ai.V2
         public const float taskScoreCardPriceResourceWeight = 1f;
         public const float taskScoreDeliveryApWeight = taskScoreCardPriceApWeight; // One real AP = one price for card or delivery.
         public const float taskScoreTravelWeight = 0.5f;
+        // Raid's "card" is really just its mover's once-per-turn activation fee, not a played
+        // card's own AP cost (Extraction/Base) — every other axis's mover pays that fee too, it
+        // just never shows up as ITS card price. Priced at half the shared AP rate so Raid isn't
+        // the only axis effectively double-charged for the same real activation.
+        public const float taskScoreRaidActivationApWeight = 1f;
         public const float taskScoreThreatRiskMax = 8f;
         public const float taskScoreDetectionRiskMax = 8f;
 

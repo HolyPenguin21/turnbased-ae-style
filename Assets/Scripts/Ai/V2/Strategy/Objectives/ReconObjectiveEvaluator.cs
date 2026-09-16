@@ -191,12 +191,13 @@ namespace Game.Ai.V2
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
-                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.ApDesired, cost.EtaTurns,
+                    AiConfigV2.taskScoreCardPriceApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconExplore", hex, score,
                 $"freshNeighbors={freshNeighbors} infoGain={infoGainRaw:0.###} "
                 + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
-                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
+                + $"notionalAp={cost.ApDesired:0.###} etaTurns={cost.EtaTurns:0.###}");
 
             return new ReconObjective
             {
@@ -269,12 +270,13 @@ namespace Game.Ai.V2
                 threatDirection: TaskScoreEvaluator.ThreatDirection(directionalRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
-                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.ApDesired, cost.EtaTurns,
+                    AiConfigV2.taskScoreCardPriceApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconRefresh", hex, score,
                 $"age={age} stale={staleRaw:0.###} strategic={strategicRaw:0.###} "
                 + $"direction={directionalRaw:0.###} homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
-                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
+                + $"notionalAp={cost.ApDesired:0.###} etaTurns={cost.EtaTurns:0.###}");
 
             var objective = new ReconObjective
             {
@@ -330,13 +332,14 @@ namespace Game.Ai.V2
                 contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
-                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.ApDesired, cost.EtaTurns,
+                    AiConfigV2.taskScoreCardPriceApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconSurveil", pos, score,
                 $"age={age} stale={stalenessRaw:0.###} confidence={c.Confidence:0.###} "
                 + $"severity={maxSeverity:0.###} contact={contactRelevanceRaw:0.###} "
                 + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
-                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
+                + $"notionalAp={cost.ApDesired:0.###} etaTurns={cost.EtaTurns:0.###}");
 
             return new ReconObjective
             {

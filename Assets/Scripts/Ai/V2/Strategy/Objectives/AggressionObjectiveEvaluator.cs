@@ -105,19 +105,24 @@ namespace Game.Ai.V2
             {
                 if (!o.TargetIsNeutral)
                 {
-                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT target={o.Target.DiagnosticLabel} reason=target_is_not_neutral");
+                    AiDebugLog.WriteDeduped(o.Target.DiagnosticLabel,
+                        $"[AI][V2][AggressionObjective] decision=REJECT target={o.Target.DiagnosticLabel} reason=target_is_not_neutral");
                     continue;
                 }
                 if (!o.HasTarget || !o.Target.HasValue)
                 {
-                    AiDebugLog.Write("[AI][V2][AggressionObjective] decision=REJECT target=None reason=opportunity_has_no_target");
+                    AiDebugLog.WriteDeduped("None",
+                        "[AI][V2][AggressionObjective] decision=REJECT target=None reason=opportunity_has_no_target");
                     continue;
                 }
 
                 AggressionObjective obj = Build(snap, report, o);
                 if (obj.BaseValue < AiConfigV2.raidObjectiveMinBaseValue)
                 {
-                    AiDebugLog.Write($"[AI][V2][AggressionObjective] decision=REJECT target={obj.Target.DiagnosticLabel} "
+                    // Re-evaluated every cycle for every below-threshold candidate — WriteDeduped
+                    // keeps the reject reason visible without reprinting an unchanged value each time.
+                    AiDebugLog.WriteDeduped(obj.Target.DiagnosticLabel,
+                        $"[AI][V2][AggressionObjective] decision=REJECT target={obj.Target.DiagnosticLabel} "
                         + $"reason=task_value_below_threshold value={F(obj.BaseValue)} min={F(AiConfigV2.raidObjectiveMinBaseValue)}");
                     continue;
                 }
