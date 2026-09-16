@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Globalization;
 using Game.Economy;
 using Game.HexGrid;
@@ -142,6 +143,33 @@ namespace Game.Ai.V2
             float deficitContribution = Mathf.Clamp01(resourcePriority) * marginalGainFactor
                 * AiConfigV2.taskScoreEconomicDeficitBonusMax;
             return physicalContribution + deficitContribution;
+        }
+
+        // The economic slot is computed once for an entire Base. Each resource's shortage is
+        // weighted by that resource's *own* marginal income, not by another resource's yield.
+        // Keep the shared physical cap and aggregate shortage cap, even for multi-Collect cards.
+        internal static float EconomicHexBenefit(
+            IReadOnlyList<(float Gain, float Priority)> perResource)
+        {
+            if (perResource == null)
+                return 0f;
+            float totalGain = 0f;
+            float weightedDeficit = 0f;
+            foreach (var resource in perResource)
+            {
+                float gain = Mathf.Max(0f, resource.Gain);
+                if (gain <= AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+                totalGain += gain;
+                weightedDeficit += Mathf.Clamp01(resource.Priority) * Mathf.Clamp01(
+                    gain / Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
+                        AiConfigV2.taskScoreEconomicDeficitFullGain));
+            }
+            if (totalGain <= AiConfigV2.allocatorSliceEpsilon)
+                return 0f;
+            // The scalar overload with zero shortage is the ONE owner of the physical component.
+            return EconomicHexBenefit(totalGain, 0f)
+                + Mathf.Clamp01(weightedDeficit) * AiConfigV2.taskScoreEconomicDeficitBonusMax;
         }
 
         internal static float Payback(float paybackTurns)

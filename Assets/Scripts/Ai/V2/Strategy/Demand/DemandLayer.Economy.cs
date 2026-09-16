@@ -746,9 +746,25 @@ namespace Game.Ai.V2
                     int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                     float resourceCost = StrategicCardEvaluator.ResourceCostSum(
                         card.EffectivePlayResourceCost);
-                    float basePriority = BaseResourcePriority(s, card, site);
-                    float economic = TaskScoreEvaluator.EconomicHexBenefit(
-                        economicGainFact, basePriority);
+                    // Base income is multi-resource. Reuse the card-semantic per-type gain owner
+                    // and bind each resource's shortage only to its OWN marginal production.
+                    var marginalByResource = new List<(float Gain, float Priority)>();
+                    foreach (ResourceType type in ResourceBundle.All)
+                    {
+                        float typeGain = StrategicCardEvaluator.BaseCardMarginalGain(
+                            site.HexYield, card.Definition, type);
+                        if (typeGain <= AiConfigV2.allocatorSliceEpsilon)
+                            continue;
+                        float priority = s.Economy.PerType
+                            .Where(x => x.Type == type)
+                            .Select(x => TaskScoreEvaluator.ResourcePriority(x,
+                                ResourceStarvationRegistry.Pressure(player, type)))
+                            .DefaultIfEmpty(0f).First();
+                        marginalByResource.Add((typeGain, priority));
+                    }
+                    float basePriority = marginalByResource.Count == 0 ? 0f
+                        : marginalByResource.Max(x => x.Priority);
+                    float economic = TaskScoreEvaluator.EconomicHexBenefit(marginalByResource);
                     float payback = economicGainFact > AiConfigV2.allocatorSliceEpsilon
                         ? TaskScoreEvaluator.Payback(paybackTurns) : 0f;
                     float airfield = TaskScoreEvaluator.Airfield(facts.Airfield);
@@ -777,7 +793,10 @@ namespace Game.Ai.V2
                         cardPrice: cardPrice,
                         hexThreatRisk: risk,
                         existingValueLoss: existingLoss);
-                    bool meaningful = siteOnlyScore.Value > AiConfigV2.allocatorSliceEpsilon || committed;
+                    // Staging is about positive physical/strategic purpose, NOT present-day net
+                    // profitability: delivery/card costs may be overcome by future wait urgency.
+                    // Generic proximity alone must never stage a completely empty Base.
+                    bool meaningful = committed || HasMeaningfulBaseBenefit(siteOnlyScore);
                     if (!meaningful)
                     {
                         strategicValueRejected++;
@@ -917,22 +936,16 @@ namespace Game.Ai.V2
                     + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
 
-        private static float BaseResourcePriority(WorldSnapshot snap, CardData card,
-            EconomyBaseOpportunity site)
-        {
-            if (snap?.Economy?.PerType == null || card?.Definition?.grantedAbilities == null)
-                return 0f;
-            float best = 0f;
-            foreach (ResourceType type in ResourceBundle.All)
-            {
-                if (!card.Definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type))
-                    || site.HexYield.Get(type) <= 0f)
-                    continue;
-                EconomyResourceStanding standing = snap.Economy.PerType.FirstOrDefault(x => x.Type == type);
-                best = Mathf.Max(best, TaskScoreEvaluator.ResourcePriority(standing));
-            }
-            return best;
-        }
+        // This criterion gates ONLY continuity staging; canonical net-value admission still
+        // applies afterwards. Avoid letting the generic home-proximity bonus create fake projects.
+        internal static bool HasMeaningfulBaseBenefit(TaskScore score) =>
+            score.EconomicHexBenefit > AiConfigV2.allocatorSliceEpsilon
+            || score.Payback > AiConfigV2.allocatorSliceEpsilon
+            || score.Airfield > AiConfigV2.allocatorSliceEpsilon
+            || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon
+            || score.FrontProgress > AiConfigV2.allocatorSliceEpsilon
+            || score.CorridorAlignment > AiConfigV2.allocatorSliceEpsilon
+            || score.TerrainDefense > AiConfigV2.allocatorSliceEpsilon;
 
         private static bool HasActiveEconomyIntentAtHexOfKind(IReadOnlyList<MissionIntent> intents,
             HexCoord? target, EconomyTaskKind kind)

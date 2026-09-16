@@ -1587,7 +1587,7 @@ namespace Game.Ai.V2
         internal static float BaseCardMarginalYield(ResourceBundle yield, CardDefinition definition) =>
             ResourceBundle.All.Sum(type => BaseCardMarginalGain(yield, definition, type));
 
-        private static float BaseCardMarginalGain(ResourceBundle yield, CardDefinition definition,
+        internal static float BaseCardMarginalGain(ResourceBundle yield, CardDefinition definition,
             ResourceType type)
         {
             if (definition?.grantedAbilities == null

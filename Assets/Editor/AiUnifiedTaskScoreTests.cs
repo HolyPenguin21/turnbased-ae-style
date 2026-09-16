@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
+using System.Collections.Generic;
 using Game.Ai.V2;
 using Game.Combat;
 using Game.HexGrid;
@@ -98,6 +99,47 @@ namespace Game.EditorTests
             Assert.That(MissionAdmissionPolicy.AdmissionRank(proposal),
                 Is.EqualTo(baseline).Within(0.0001f),
                 "physical AP/distance were already priced once in TaskScore");
+        }
+
+        [Test]
+        public void BaseDeficit_BelongsToTheResourceThatIsActuallyProduced()
+        {
+            var tinyEnergy = new List<(float Gain, float Priority)>
+            {
+                (0.1f, 1f), (1f, 0f),
+            };
+            var fullEnergy = new List<(float Gain, float Priority)>
+            {
+                (1f, 1f), (1f, 0f),
+            };
+            float tiny = TaskScoreEvaluator.EconomicHexBenefit(tinyEnergy);
+            float full = TaskScoreEvaluator.EconomicHexBenefit(fullEnergy);
+            float tinyPhysical = TaskScoreEvaluator.EconomicHexBenefit(1.1f, 0f);
+            float fullPhysical = TaskScoreEvaluator.EconomicHexBenefit(2f, 0f);
+            Assert.That(tiny - tinyPhysical, Is.LessThan(
+                AiConfigV2.taskScoreEconomicDeficitBonusMax));
+            Assert.That(full - fullPhysical, Is.EqualTo(
+                AiConfigV2.taskScoreEconomicDeficitBonusMax).Within(0.0001f));
+            Assert.That(full, Is.GreaterThan(tiny));
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(
+                new List<(float Gain, float Priority)> { (0f, 1f), (1f, 0f) }),
+                Is.EqualTo(TaskScoreEvaluator.EconomicHexBenefit(1f, 0f)));
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(
+                new List<(float Gain, float Priority)> { (1f, 1f), (1f, 1f) })
+                - TaskScoreEvaluator.EconomicHexBenefit(2f, 0f),
+                Is.LessThanOrEqualTo(AiConfigV2.taskScoreEconomicDeficitBonusMax + 0.0001f));
+        }
+
+        [Test]
+        public void BaseStaging_UsefulButNetNegativeCanWait_EmptyProximityCannot()
+        {
+            var useful = new TaskScore(economicHexBenefit: 2f,
+                ownTerritoryProximity: 5f, cardPrice: 20f);
+            Assert.That(useful.Value, Is.LessThan(0f));
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(useful), Is.True);
+            var empty = new TaskScore(ownTerritoryProximity: 5f, cardPrice: 20f);
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(empty), Is.False);
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(new TaskScore()), Is.False);
         }
 
         [Test]
