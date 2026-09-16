@@ -77,6 +77,10 @@ namespace Game.EditorTests
             Assert.That(exploreCost.EstimatedDistance, Is.EqualTo(6f));
             Assert.That(exploreCost.EtaTurns, Is.EqualTo(2));
             Assert.That(exploreCost.ApDesired, Is.EqualTo(1f));
+            // A distant Base must not override a much closer existing Citadel.
+            snapshot.Self.BaseHexes = new List<HexCoord> { new HexCoord(20, 0) };
+            ScoutCostEstimate fromNearestHome = ScoutCostModel.Estimate(snapshot, explore);
+            Assert.That(fromNearestHome.EstimatedDistance, Is.EqualTo(6f));
 
             var surveillance = new ScoutMissionTarget
             {

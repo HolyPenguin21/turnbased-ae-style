@@ -114,11 +114,9 @@ namespace Game.Ai.V2
                 ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
             if (fleetBudget <= 0) fleetBudget = 1;
 
-            int DistFrom(HexCoord h) => HexGridMath.Distance(h, target.FocusHex);
-            HexCoord notionalFrom = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Count > 0
-                ? snap.Self.BaseHexes.OrderBy(DistFrom).First()
-                : snap?.Self != null ? snap.Self.Citadel : target.FocusHex;
-            est.EstimatedDistance = DistFrom(notionalFrom);
+            // One shared distance owner considers the Citadel and every owned Base.
+            est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                snap, target.FocusHex, 0);
             est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
 
             if (target.Kind == ScoutTargetKind.Surveil)
