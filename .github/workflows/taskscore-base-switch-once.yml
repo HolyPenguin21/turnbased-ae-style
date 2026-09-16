@@ -1,0 +1,25 @@
+name: Apply Base switch fix once
+on:
+  push:
+    branches: [audit/ai-v2-taskscore-2026-09-16]
+    paths: ['.github/workflows/taskscore-base-switch-once.yml']
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/ai-v2-taskscore-2026-09-16
+      - name: Patch using verified single-owner anchors
+        shell: bash
+        run: |
+          python3 .taskscore_base_switch_once.py
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/taskscore-base-switch-once.yml .taskscore_base_switch_once.py
+          git add Assets/Scripts/Ai/V2/Strategy/Demand/AxisDemand.cs Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs Assets/Editor/AiTaskScoreBaseSwitchRegressionTests.cs Assets/Editor/AiTaskScoreBaseSwitchRegressionTests.cs.meta
+          git commit -m 'Fix Base challenger selection and atomic durable retarget with regressions [skip ci]'
+          git push origin HEAD:audit/ai-v2-taskscore-2026-09-16
