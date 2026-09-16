@@ -9,10 +9,9 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  RECON MISSION PLANNER
     // ===========================================================================================
-    //  Three explicit Recon sub-kinds share one strategic axis:
-    //    Explore — new ground information; ground route/terrain witness.
-    //    Refresh — stale previously-observed information; ground route/terrain witness.
-    //    Surveil — stale enemy contact; observation-vantage semantics in provisioning.
+    // Three explicit Recon sub-kinds share one strategic axis:
+    // Explore — new ground information; Refresh — stale map information;
+    // Surveil — stale enemy contact. Actor assignment belongs to ReconAssignmentPlanner.
     // ===========================================================================================
     internal static class ReconMissionPlanner
     {
@@ -60,11 +59,9 @@ namespace Game.Ai.V2
             // an objective whose intrinsic usefulness is already fully represented by TaskScore.
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
             if (auditPlayer != null)
-            {
                 ReconAcceptanceAudit.RecordMostlyExploredPressure(auditPlayer, snap.TurnNumber,
                     snap.MapKnowledge.ExplorableUnknownFrac,
                     breakdown.ReconExplorePressure, breakdown.ReconRefreshPressure);
-            }
 
             var fresh = new List<ScoutCandidate>();
             foreach (ReconObjective o in objectives)
@@ -94,17 +91,34 @@ namespace Game.Ai.V2
                 .ThenBy(x => CandidateKey(x)))
                 picked.Add(c);
 
-            IEnumerable<ScoutCandidate> ordinary = incumbents
+            // Continuity has already validated/refocused and concurrency-trimmed these live lanes.
+            // A None-funded incumbent used to compete with all fresh jobs for the top-N beam; a
+            // cheaper fresh job could push it out while ActorCommitments STILL claimed its mover.
+            // After a surplus trim the other scout is intentionally barred for the rest of this
+            // turn, so funding only fresh jobs then produced MoverContended for every job despite
+            // a valid incumbent still owning the sole permitted lane (Mordak T11/T15).
+            // Admit live incumbents into the SAME bounded beam before adding fresh alternatives.
+            // Do not grant Hard funding, change intrinsic TaskScore, release an actor, or increase
+            // desired concurrency. Allocator still compares scores; Assignment still owns matching.
+            var ordinaryIncumbents = incumbents
                 .Where(x => x.Tier == CommitmentTier.None)
-                .Concat(fresh.Where(f => !incumbentKeys.Contains(CandidateKey(f))))
+                .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(
+                    x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
+                .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
+                .ThenBy(x => CandidateKey(x))
+                .ToList();
+            picked.AddRange(ordinaryIncumbents);
+
+            IEnumerable<ScoutCandidate> ordinary = fresh
+                .Where(f => !incumbentKeys.Contains(CandidateKey(f)))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
                 .ThenByDescending(x => ReconScoutKinds.IsExplore(x.Target.Kind) ? x.FreshNeighbors : 0)
                 .ThenBy(x => CandidateKey(x));
-            int ordinaryCount = 0;
+            int ordinaryCount = ordinaryIncumbents.Count;
             foreach (ScoutCandidate c in ordinary)
             {
                 if (ordinaryCount >= AiConfigV2.scoutCandidateBeamWidth) break;
-                if (!c.IsIncumbent && c.LocalAdmissionScore <= 0f) continue;
+                if (c.LocalAdmissionScore <= 0f) continue;
                 picked.Add(c);
                 ordinaryCount++;
             }
@@ -164,8 +178,6 @@ namespace Game.Ai.V2
             bool infoCapped = explore && o.FreshNeighbors >= AiConfigV2.scoutInfoGainNorm;
 
             ScoutMissionTarget target = o.ToTarget();
-            // Intrinsic usefulness has one owner: TaskScore. DetectionRisk and subtype pressure are
-            // not multiplied again here. Incumbent hysteresis remains policy in AdmissionRank.
             float admission = ComputeLocalAdmissionScore(o.BaseValue);
 
             string explain;
