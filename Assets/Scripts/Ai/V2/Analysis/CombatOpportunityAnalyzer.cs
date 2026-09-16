@@ -155,7 +155,7 @@ namespace Game.Ai.V2
                     targetHex: t.Hex,
                     target: RaidTargetRef.ForNeutralArmy(t.ArmyId),
                     targetOwner: t.Owner,
-                    targetIsNeutral: t.Owner != null && t.Owner.IsNeutral,
+                    targetIsNeutral: RaidObjectiveEvaluator.IsNeutralRaidTarget(t.Owner),
                     defenderCount: defenders.Count,
                     readyWinChance: readyWin,
                     assemblableWinChance: asmWin,
@@ -242,7 +242,7 @@ namespace Game.Ai.V2
         // Keep the established threat-contact confidence for ordinary enemy armies unchanged.
         private static float ConfidenceForSighting(WorldSnapshot snap, AiMapMemory.KnownEnemySighting sighting)
         {
-            if (sighting.Owner != null && sighting.Owner.IsNeutral)
+            if (RaidObjectiveEvaluator.IsNeutralRaidTarget(sighting.Owner))
                 return sighting.SeenTurn == snap.TurnNumber
                     ? AiConfigV2.threatConfidenceExact : AiConfigV2.threatConfidenceLastKnown;
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
