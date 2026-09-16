@@ -57,6 +57,56 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void Selector_RejectsUnqualifiedRivalWhenIncumbentSiteMissingOrScoreUnknown()
+        {
+            var player = new PlayerSetupData();
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            try
+            {
+                MissionIntent incumbent = MissionContinuityLayer.BeginEconomyDelivery(
+                    player, BaseDemand(card, 9, 3, 20f, 40f), 9, 1);
+                AxisDemand rival = BaseDemand(card, 9, 6, 29f, 80f);
+                Assert.That(DemandLayer.SelectBaseDemandForCurrentCommitment(
+                    new[] { rival }, new[] { incumbent }), Is.Null,
+                    "a rejected rival must not escape as the only executable demand");
+                incumbent.Economy.IntrinsicValue = null;
+                rival.Value = 90f;
+                Assert.That(DemandLayer.SelectBaseDemandForCurrentCommitment(
+                    new[] { rival }, new[] { incumbent }), Is.Null,
+                    "unknown incumbent net value must not authorize any switch");
+                AxisDemand incumbentSite = BaseDemand(card, 9, 3, 20f, 40f);
+                Assert.That(DemandLayer.SelectBaseDemandForCurrentCommitment(
+                    new[] { incumbentSite, rival }, new[] { incumbent }),
+                    Is.SameAs(incumbentSite));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
+        public void Retarget_RejectsMidTurnMoveWithoutChangingDurableIntent()
+        {
+            var player = new PlayerSetupData();
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            try
+            {
+                MissionIntent incumbent = MissionContinuityLayer.BeginEconomyDelivery(
+                    player, BaseDemand(card, 9, 3, 20f, 40f), 9, 1);
+                MissionIntentKey oldKey = incumbent.IntentKey;
+                StableMissionKey oldAttempt = incumbent.LastAttemptKey;
+                incumbent.LastProgressTurn = 2;
+                incumbent.StepsMovedTotal = 1;
+                AxisDemand rival = BaseDemand(card, 9, 6, 34f, 38f);
+                rival.EconomySwitchIncumbentValue = 20f;
+                Assert.That(MissionContinuityLayer.TryRetargetCommittedBase(
+                    player, incumbent, rival, 2), Is.False);
+                Assert.That(incumbent.IntentKey, Is.EqualTo(oldKey));
+                Assert.That(incumbent.LastAttemptKey, Is.EqualTo(oldAttempt));
+                Assert.That(MissionIntentRegistry.GetOrCreate(player).Count, Is.EqualTo(1));
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        [Test]
         public void Retarget_PreservesOneActorAndCard_RekeysIntentAndAttempt()
         {
             var player = new PlayerSetupData();

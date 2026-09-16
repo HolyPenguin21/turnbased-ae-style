@@ -981,7 +981,7 @@ namespace Game.Ai.V2
             float? incumbentValue = refreshed != null ? refreshed.Value
                 : incumbent.Economy.IntrinsicValue;
             if (!incumbentValue.HasValue)
-                return first;  // no canonical comparator; keep the existing commitment
+                return refreshed;  // unknown canonical value: only the incumbent may execute
 
             AxisDemand challenger = null;
             foreach (AxisDemand candidate in ranked)
@@ -997,7 +997,9 @@ namespace Game.Ai.V2
                 if (challenger == null || candidate.Value > challenger.Value)
                     challenger = candidate;
             }
-            return challenger ?? first;
+            // An unrelated candidate must not execute while the old Base still owns its
+            // card/actor. If its site is no longer offered, Continuity owns retirement.
+            return challenger ?? refreshed;
         }
 
         // One hysteresis/admission predicate reused by Demand, Phase A and Continuity.
