@@ -72,13 +72,71 @@ namespace Game.EditorTests
             claimed.Claim(9);
             claimed.Claim(10); // Other Economy/Recon operation, including donor eligibility.
             session.SetRaidConstraints(claimed, new HashSet<int> { 11 });
+            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>
+            {
+                { StableMissionKey.For(incumbent), 9 },
+                { StableMissionKey.For(Assault(43)), 13 }, // Funded Raid not yet provisioned.
+            });
 
             HashSet<int> excluded = session.ExcludedForRaid(incumbent);
             Assert.That(excluded, Does.Not.Contain(9));
             Assert.That(excluded, Does.Contain(10));
             Assert.That(excluded, Does.Contain(11));
+            Assert.That(excluded, Does.Contain(13)); // Cannot borrow another Raid's host.
             session.ClaimedArmyIds.Add(12);
             Assert.That(session.ExcludedForRaid(incumbent), Does.Contain(12));
+        }
+
+        [Test]
+        public void UnassignedRaid_CannotIgnoreBatchDecisionEvenWithFreeForce()
+        {
+            var snap = new WorldSnapshot { Self = new SelfSnapshot
+            {
+                Armies = new List<ArmySnapshot> { new ArmySnapshot
+                {
+                    ArmyId = 9, IsStructuralRaidActor = true, MemberCount = 1,
+                    CurrentMovement = 3, Members = Array.Empty<WorthIt.DefenderProfile>(),
+                } },
+            } };
+            var session = new ProvisioningSession(snap);
+            MissionProposal mission = Assault();
+            session.SetRaidConstraints(new ActorCommitments(), new HashSet<int>());
+
+            GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
+                session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
+
+            Assert.That(plan, Is.Null);
+            Assert.That(failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
+        }
+
+        [Test]
+        public void AssignedFreeArmy_RemainsPinnedAndExecutesWithoutReassignment()
+        {
+            var snap = new WorldSnapshot { Self = new SelfSnapshot
+            {
+                Armies = new List<ArmySnapshot> { new ArmySnapshot
+                {
+                    ArmyId = 9, IsStructuralRaidActor = true, MemberCount = 1,
+                    CurrentMovement = 3,
+                    Members = new[] { new WorthIt.DefenderProfile(
+                        defense: 1f, hasCeramicArmor: false, attack: 20f,
+                        hitPoints: 20f, maxHitPoints: 20f) },
+                } },
+            } };
+            var session = new ProvisioningSession(snap);
+            MissionProposal mission = Assault();
+            session.SetRaidConstraints(new ActorCommitments(), new HashSet<int>());
+            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>
+            {
+                { StableMissionKey.For(mission), 9 },
+            });
+
+            GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
+                session, mission, Array.Empty<WorthIt.DefenderProfile>(), out _);
+
+            Assert.That(plan, Is.Not.Null);
+            Assert.That(plan.Feasible, Is.True);
+            Assert.That(plan.BaseArmyId, Is.EqualTo(9));
         }
 
         [Test]

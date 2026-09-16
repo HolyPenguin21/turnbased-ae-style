@@ -294,6 +294,13 @@ namespace Game.Ai.V2
                     if (proposal == null || !proposal.FromDurableIntent
                         || proposal.PreferredMoverArmyId != id)
                         excluded.Add(id);
+            // Batch-assigned Raid hosts/support are also unavailable as donors, even before
+            // their mission executes and RegisterSuccess adds them to ClaimedArmyIds.
+            StableMissionKey? ownKey = proposal == null
+                ? (StableMissionKey?)null : StableMissionKey.For(proposal);
+            foreach (KeyValuePair<StableMissionKey, int> assignment in _raidAssignment)
+                if (!ownKey.HasValue || !assignment.Key.Equals(ownKey.Value))
+                    excluded.Add(assignment.Value);
             return excluded;
         }
 
@@ -605,6 +612,9 @@ namespace Game.Ai.V2
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
+            // A re-pack refreshes the entire assignment; never let last pass's assignments
+            // exclude current candidates while solving the new batch.
+            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>());
             session.SetRaidConstraints(durableCommitments, pinnedByOtherLegs);
             var cands = new List<List<int>>(open.Count);
             foreach (FundedEntry fe in open)
@@ -2392,9 +2402,9 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // Preserve existing PlanForArmy's continuation win floor for the assigned actor.
-            // Fresh candidates already passed the strict gate in GroundCombatAdmissionRegistry;
-            // unlike PlanForArmy, this request can also assemble a legal same-hex roster.
+            // Keep the strict gate for fresh actors and the bounded continuation floor for
+            // the same Hard incumbent. Unlike PlanForArmy, this request can also assemble
+            // a legal same-hex roster, but may never re-select a different primary.
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
@@ -2402,7 +2412,13 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    WinChanceGate = RaidAdmissionPolicy.ContinuationWinChanceFloor,
+                    // New operations keep the strict fresh gate; only a pinned Hard
+                    // incumbent may use the existing bounded continuation floor.
+                    WinChanceGate = proposal.FromDurableIntent
+                        && proposal.DurableFundingTier == CommitmentTier.Hard
+                        && proposal.PreferredMoverArmyId == actorId
+                        ? RaidAdmissionPolicy.ContinuationWinChanceFloor
+                        : RaidAdmissionPolicy.FreshStartWinChanceGate,
                 });
             if (!plan.Feasible)
             {
