@@ -1,7 +1,10 @@
 #if UNITY_INCLUDE_TESTS
 using System;
+using System.Collections.Generic;
 using Game.Ai.V2;
+using Game.Combat;
 using Game.HexGrid;
+using Game.Players;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -96,5 +99,103 @@ namespace Game.EditorTests
                 Is.EqualTo(baseline).Within(0.0001f),
                 "physical AP/distance were already priced once in TaskScore");
         }
+
+        [Test]
+        public void RaidIncumbent_PricesPinnedPrimary_NotTheCheaperFreeArmy()
+        {
+            // Army #0 is a valid identity. A nearby already-activated army must not donate its
+            // zero activation cost and short route to the distant, more expensive durable actor.
+            var own = new PlayerSetupData { Nickname = "RaidScoreOwn" };
+            var neutral = new PlayerSetupData { IsNeutral = true, Nickname = "RaidScoreNeutral" };
+            var strong = new WorthIt.DefenderProfile(defense: 2f, hasCeramicArmor: false,
+                attack: 20f, hitPoints: 20f, maxHitPoints: 20f);
+            var weak = new WorthIt.DefenderProfile(defense: 1f, hasCeramicArmor: false,
+                attack: 1f, hitPoints: 5f, maxHitPoints: 5f);
+            var pinned = new ArmySnapshot
+            {
+                ArmyId = 0, Owner = own, Hex = new HexCoord(0, 0),
+                IsStructuralRaidActor = true, MemberCount = 2,
+                Members = new List<WorthIt.DefenderProfile> { strong, strong },
+                MaxMovement = 4, CurrentMovement = 4, ActivationApCost = 3,
+            };
+            var cheaper = new ArmySnapshot
+            {
+                ArmyId = 7, Owner = own, Hex = new HexCoord(8, 0),
+                IsStructuralRaidActor = true, MemberCount = 2,
+                Members = new List<WorthIt.DefenderProfile> { strong, strong },
+                MaxMovement = 4, CurrentMovement = 4, ActivationApCost = 1,
+                HasActivatedThisTurn = true,
+            };
+            HexCoord destination = new HexCoord(9, 0);
+            var target = RaidTargetRef.ForNeutralArmy(42);
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 1,
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot> { pinned, cheaper },
+                    BaseHexes = new List<HexCoord> { new HexCoord(0, 0) },
+                    FieldPower = 100f,
+                },
+                Known = new KnownSnapshot
+                {
+                    NeutralSightings = new List<Game.Ai.AiMapMemory.KnownEnemySighting>
+                    {
+                        new Game.Ai.AiMapMemory.KnownEnemySighting(destination, neutral,
+                            "Weak target", 1, weak.Defense, weak.Attack,
+                            new List<WorthIt.DefenderProfile> { weak }, armyId: 42),
+                    },
+                },
+            };
+            var opportunity = new CombatOpportunity(true, destination, target, neutral, true,
+                1, 0.9f, 0.9f, true, 0.1f, 1, 8f, 1f, true, 0.9f);
+            var report = new CombatOpportunityReport
+            {
+                All = new[] { opportunity },
+                NeutralOpportunities = new[] { opportunity },
+            };
+            var breakdown = new DesireBreakdown
+            {
+                OpportunityReport = report,
+                AggRaidOpportunity = 1f,
+            };
+            AggressionObjective objective = AggressionObjectiveEvaluator.ForTrackedTarget(
+                snap, report, target);
+            Assert.That(objective, Is.Not.Null);
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Raid,
+                Objective = new RaidIntent
+                {
+                    Target = target, TargetIsNeutral = true,
+                    Phase = RaidMissionPhase.Assault, PrimaryArmyId = 0,
+                    OperationStarted = true,
+                },
+                PreferredMoverArmyId = 0,
+                Funding = CommitmentTier.Hard,
+                Status = IntentStatus.Active,
+            };
+            intent.IntentKey = MissionIntentKey.For(intent);
+
+            var proposals = AggressionMissionLayer.Propose(snap, breakdown,
+                new[] { intent }, new[] { objective });
+            Assert.That(proposals, Has.Count.EqualTo(1));
+            MissionProposal result = proposals[0];
+            Assert.That(result.PreferredMoverArmyId, Is.EqualTo(0));
+            Assert.That(result.Requirements.MoverKnown, Is.True);
+            Assert.That(result.Requirements.ApDesired, Is.EqualTo(3f));
+            int distance = HexGridMath.Distance(pinned.Hex, destination);
+            Assert.That(result.Requirements.EstimatedDistance, Is.EqualTo(distance));
+            var resolvedTarget = (RaidMissionTarget)result.Target;
+            var expected = new TaskScore(
+                staleness: objective.TaskScore.Staleness,
+                militaryTargetRelevance: objective.TaskScore.MilitaryTargetRelevance,
+                winChance: TaskScoreEvaluator.WinChance(resolvedTarget.ReadyWinChance),
+                cardPrice: TaskScoreEvaluator.CardPrice(pinned.ActivationApCost, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, distance));
+            Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
+            Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
+        }
     }
 }
+#endif
