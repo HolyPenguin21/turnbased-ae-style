@@ -564,21 +564,18 @@ namespace Game.Ai
                     resources[hex] = new KnownResourceHex(hex, dominant.Value, observed);
                 }
 
-                // IsEngageable(a, player) — a hidden-from-`player` enemy (an army every member
-                // of which is in stealth and undetected) is not a current sighting at all
-                // (spec §8), and a mixed army is remembered by its VISIBLE members only.
-                // HexEventRegistry.IsEventGuardArmy — the ArmyData a ground army's Explore spawns
-                // for a Hex Event guard is deliberately NOT a physical sighting: it's transient
-                // (torn down the moment its fight ends), and the event's guard is already tracked
-                // as a card-stat entry below (KnownEventGuards). Recording it here would leak it
-                // into AllKnownNeutralSightings — where AirStrikeTask would pick it up as an
-                // air-strike target and keep flying sorties at it even after it despawned (memory
-                // only self-corrects on re-observation), even though aviation never interacts with
-                // a Hex Event at all (project owner's own rule).
-                ArmyData enemy = ArmyRegistry.AllAt(hex).FirstOrDefault(a => a.Owner != player
-                    && BattleInitiator.IsEngageable(a, player) && !HexEventRegistry.IsEventGuardArmy(hex, a));
-                if (enemy != null)
+                // A hex can contain several armies (ArmyRegistry's explicit contract). Observe
+                // every engageable physical army independently by ID, but never transient event
+                // guards. Only THIS visible hex is reconciled: fogged sightings stay untouched.
+                // StealthSystem.IsHiddenFrom filters individual roster members as before.
+                List<ArmyData> observedArmies = ArmyRegistry.AllAt(hex)
+                    .Where(a => a.Owner != player && BattleInitiator.IsEngageable(a, player)
+                        && !HexEventRegistry.IsEventGuardArmy(hex, a))
+                    .ToList();
+                var observedIds = new HashSet<int>();
+                foreach (ArmyData enemy in observedArmies)
                 {
+                    observedIds.Add(enemy.Id);
                     List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero && !StealthSystem.IsHiddenFrom(m, player)).ToList();
                     int visibleMemberCount = enemy.Members.Count(m => !StealthSystem.IsHiddenFrom(m, player));
                     // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
@@ -610,8 +607,7 @@ namespace Game.Ai
                         // damage on it is exactly as real an observed fact as its composition —
                         // freezing it at last-observed value (never auto-healed, only corrected by
                         // a later re-observation) matches the same "видимость с памятью" honesty
-                        // rule every other field here already follows, rather than singling HP out
-                        // for an "assume it healed" exception. There is no in-field HP regen in
+                        // rule every other field here already follows for resource hexes/army sightings/event guards. There is no in-field HP regen in
                         // this game (only UnitRepair, base-side) for that assumption to have been
                         // protecting against.
                         Defenders = nonHero.Select(m => new WorthIt.DefenderProfile(m.Defense, m.HasAbility(UnitAbilities.CeramicArmor),
@@ -628,33 +624,21 @@ namespace Game.Ai
                             .Select(m => AbilityParams.GetBestRecceSpotStrength(m)).DefaultIfEmpty(0).Max(),
                     };
                 }
-                else
+
+                // A fresh observation of THIS hex invalidates every old identity no longer
+                // visible here, not merely the first old ID and not an army already re-sighted
+                // somewhere else. This also corrects a replaced or defeated neutral while a
+                // different physical army still occupies the hex. Do not touch fogged hexes.
+                List<int> staleIdsAtHex = sightings
+                    .Where(kv => kv.Value.Hex.Equals(hex) && !observedIds.Contains(kv.Key))
+                    .Select(kv => kv.Key).ToList();
+                foreach (int staleId in staleIdsAtHex)
                 {
-                    // Freshly observed and empty now — corrects any stale sighting rather than
-                    // leaving it to linger (see the class's own "исправляет только новое
-                    // наблюдение" comment). Covers the army-actually-died case; an army that merely
-                    // MOVED away already got its own sightings[] slot overwritten in place above
-                    // once its new hex was processed (same loop, order-independent — see
-                    // EnemySightings' own comment), so there's nothing left here to find in that
-                    // case. Scans by Hex rather than a key lookup since the dictionary is keyed by
-                    // ArmyId now, not HexCoord.
-                    int? staleArmyId = null;
-                    foreach (KeyValuePair<int, EnemySighting> kv in sightings)
-                    {
-                        if (kv.Value.Hex.Equals(hex))
-                        {
-                            staleArmyId = kv.Key;
-                            break;
-                        }
-                    }
-                    if (staleArmyId.HasValue)
-                    {
-                        EnemySighting stale = sightings[staleArmyId.Value];
-                        if (IsNeutralSightingOwner(stale.Owner))
-                            AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{stale.Name}\" at "
-                                + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
-                        sightings.Remove(staleArmyId.Value);
-                    }
+                    EnemySighting stale = sightings[staleId];
+                    if (IsNeutralSightingOwner(stale.Owner))
+                        AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{stale.Name}\" at "
+                            + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
+                    sightings.Remove(staleId);
                 }
 
                 HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
