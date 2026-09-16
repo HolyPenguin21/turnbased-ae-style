@@ -261,9 +261,12 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                // First runnable shortage wins the demand; keep scanning so EVERY ready-executable
-                // discovered target is still surfaced for the direct-witness probe.
-                if (chosen == null)
+                // Preserve the first (highest-value) assembly gap only as a fallback. An assembly
+                // gap cannot be fulfilled by Phase A; it must not hide a lower-value objective
+                // whose missing Hero/FieldCombatPower Phase A can actually deliver this pass.
+                // Among actionable shortages, the original value ordering is unchanged.
+                if (chosen == null || (chosenReadiness.NeedsAssembly
+                    && (readiness.NeedsHero || readiness.NeedsPower)))
                 {
                     chosen = o;
                     chosenReadiness = readiness;
