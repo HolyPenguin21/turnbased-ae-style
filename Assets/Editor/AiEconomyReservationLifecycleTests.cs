@@ -38,7 +38,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData();
             const int turn = 9;
             StrategicResourceReservationLedger.BeginTurn(player, turn);
-            var cost = new ResourceCost { human = 1, materials = 3 };
+            var cost = new ResourceCost(human: 1, materials: 3);
             MissionIntent intent = ActiveFoundBaseIntent(
                 builderArmyId: 19, target: new HexCoord(3, 2), cost: cost, buildAp: 4f);
 
@@ -65,7 +65,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData();
             const int turn = 9;
             StrategicResourceReservationLedger.BeginTurn(player, turn);
-            var cost = new ResourceCost { energy = 2, materials = 2 };
+            var cost = new ResourceCost(energy: 2, materials: 2);
             MissionIntent intent = ActiveFoundBaseIntent(
                 builderArmyId: 19, target: new HexCoord(3, 2), cost: cost, buildAp: 4f);
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
@@ -99,7 +99,7 @@ namespace Game.EditorTests
             var player = new PlayerSetupData();
             const int turn = 10;
             StrategicResourceReservationLedger.BeginTurn(player, turn);
-            var cost = new ResourceCost { human = 1, energy = 1, materials = 2 };
+            var cost = new ResourceCost(human: 1, energy: 1, materials: 2);
             MissionIntent intent = ActiveFoundBaseIntent(
                 builderArmyId: 19, target: new HexCoord(3, 2), cost: cost, buildAp: 4f);
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
