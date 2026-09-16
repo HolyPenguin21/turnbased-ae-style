@@ -140,11 +140,18 @@ namespace Game.Ai.V2
             if (snap?.Self?.Armies == null)
                 return result;
             bool needStealth = target.Stealth == StealthRequirement.Required;
+            // Continuity owns the contraction decision; the same per-turn registry is used by
+            // capacity and actual actor enumeration. A preferred mover on ANOTHER incumbent must
+            // not override this actor-level restriction (Mordak T12: retired #20 was reassigned).
+            PlayerSetupData owner = snap.Self.Armies.FirstOrDefault(a => a?.Owner != null)?.Owner;
+            IReadOnlyCollection<int> trimmedThisTurn = owner != null
+                ? MissionIntentRegistry.GetOrCreate(owner).ReconActorsTrimmedThisTurn(snap.TurnNumber)
+                : System.Array.Empty<int>();
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
                 if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
                     continue;
-                if (a.CurrentMovement <= 0)
+                if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
                     continue;
                 if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
                     continue;
