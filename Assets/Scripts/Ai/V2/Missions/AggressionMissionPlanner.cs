@@ -255,11 +255,11 @@ namespace Game.Ai.V2
                     AssemblableWinChance = 1f,
                     CanCoverAllDefenders = true,
                 };
-                float value = default(TaskScore).Value;
+                float unpinnedValue = default(TaskScore).Value;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
                     + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
-                return new RaidCandidate(unpinned, value, value,
-                    $"Raid {ri.Target.DiagnosticLabel} Reinforcement: select an existing free support for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
+                return new RaidCandidate(unpinned, unpinnedValue, unpinnedValue,
+                    $"Raid {ri.Target.DiagnosticLabel} Reinforcement: select an existing free support for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(unpinnedValue)}; Hard funding protection is allocator-owned",
                     true, intent.Funding, null, null);
             }
 
