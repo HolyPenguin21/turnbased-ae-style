@@ -29,6 +29,10 @@ namespace Game.Cameras
         [SerializeField] private float minOrthoSize = 2.6f;
         [SerializeField] private float maxOrthoSize = 7f;
         [SerializeField] private float orthoSize = 4f;
+        // 1 = the point under the cursor stays exactly put (pure anchor-preservation).
+        // >1 overshoots that anchor toward the cursor so each zoom step visibly pulls the view
+        // that much further along, not just holds the hovered point still.
+        [SerializeField] private float zoomToCursorStrength = 1.22f;
 
         [Header("Camera Distance (fixed — clip planes/positioning only, not zoom)")]
         [SerializeField] private float distance = 7f;
@@ -220,9 +224,29 @@ namespace Game.Cameras
                 float scroll = mouse.scroll.ReadValue().y;
                 if (Mathf.Abs(scroll) > 0.01f)
                 {
+                    // Only zooming IN pulls the view toward the cursor. Zooming out just grows
+                    // orthoSize in place — no cursor-anchored shift — since "backing away"
+                    // reads as pulling straight back up, not sliding sideways underneath you.
+                    bool zoomingIn = scroll > 0f;
+                    Vector2 mousePos = mouse.position.ReadValue();
+                    Vector3 groundBeforeZoom = default;
+                    if (zoomingIn)
+                        TryGetGroundPoint(mousePos, out groundBeforeZoom);
+
                     orthoSize = Mathf.Clamp(orthoSize - scroll * zoomSpeed * 0.01f, minOrthoSize, maxOrthoSize);
                     if (_camera != null)
                         _camera.orthographicSize = orthoSize;
+
+                    // Re-sample the same screen point now that orthoSize has changed — the ray
+                    // through it lands on a different ground point purely because of the new
+                    // projection scale (transform.position hasn't moved yet). Shifting
+                    // _groundTarget by the difference keeps whatever was under the cursor still
+                    // under the cursor, instead of always zooming toward screen center.
+                    if (zoomingIn && TryGetGroundPoint(mousePos, out Vector3 groundAfterZoom))
+                    {
+                        _groundTarget += (groundBeforeZoom - groundAfterZoom) * zoomToCursorStrength;
+                        positionChanged = true;
+                    }
                 }
             }
 
