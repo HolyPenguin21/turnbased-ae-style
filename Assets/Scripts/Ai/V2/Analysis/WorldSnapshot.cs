@@ -553,7 +553,6 @@ namespace Game.Ai.V2
         public int CurrentBuildingCollection;
         public int MarginalIncomeGain;
         public float BaseNetworkSynergy;
-        public float NearbyResourceClusterValue;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 
@@ -564,19 +563,12 @@ namespace Game.Ai.V2
         public HexCoord Hex;
         // Structural site fact: hex yield minus whatever an existing building on this hex already
         // collects (IncomeProjection.MarginalBuildingCollection) — not the hex's raw total yield,
-        // and not yet filtered by which Collect abilities the founding card actually has (see
-        // StrategicCardEvaluator.BaseHexYieldValue, which applies that per-card gate). Converting
+        // and not yet filtered by the founding card's Collect abilities and existing army
+        // collection. StrategicCardEvaluator applies both to derive net OWNER income. Converting
         // an already-productive site no longer scores as if starting from zero.
         public ResourceBundle HexYield;
         public float ForwardProgressValue;
         public float CorridorAlignmentValue;
-        // Graded reward for how far this site sits from the nearest owned base — MeetsBaseSpacing
-        // (economyBaseMinSpacing) is a hard 0/1 gate on this same distance; this is a SEPARATE,
-        // continuous 0..1 score on top of a candidate that already cleared that gate. Peaks at
-        // economyBaseIdealSpacing (a well-connected forward hex, neither cramped against an
-        // existing base nor an isolated outpost), ramps up from the gate floor below the ideal and
-        // decays gradually above it. See AiConfigV2.economyBaseSpacingScoreAtMin/economyBaseIdealSpacing.
-        public float SpacingScore;
         // Terrain-only defense bonus of the hex itself (TerrainTypeEntry.defenseModifier,
         // normalized 0..1), independent of any garrison/army sitting on it — a structural site
         // fact, same status as HexYield. Deliberately a SMALL weight relative to resource terms
@@ -584,10 +576,6 @@ namespace Game.Ai.V2
         // must not outscore a genuinely resource-rich one, only add on top of it.
         public float DefenseBonusValue;
         public bool ConvertsOwnedExtractionSite;
-        // Total per-turn income (summed across all ResourceType) the currently-owned extraction
-        // facility at this hex is actually collecting. Zero unless ConvertsOwnedExtractionSite.
-        // This is what Base would destroy, not what the hex could yield.
-        public float LostExtractionIncome;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 

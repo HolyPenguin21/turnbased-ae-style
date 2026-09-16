@@ -781,7 +781,7 @@ namespace Game.Ai.V2
                 }
 
                 float askAp = ApDesired(m);
-                if (committedApSoFar + askAp > pool.Ap + eps)
+                if (lockedTotal + committedApSoFar + askAp > pool.Ap + eps)
                 {
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.CommitmentPoolExhausted });
                     alloc.CommitmentsStarveFreshDecisions = true;

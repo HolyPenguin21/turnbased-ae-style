@@ -157,31 +157,30 @@ namespace Game.Ai.V2
                 // now applied at both stages instead of just the first.
                 AxisDemand supersedingBaseSite = null;
                 if (protectedActiveBase.Economy.BuildCard != null
-                    && hand.Hand.Contains(protectedActiveBase.Economy.BuildCard))
+                    && hand.Hand.Contains(protectedActiveBase.Economy.BuildCard)
+                    && economyAxisAuthoritative)
                 {
                     supersedingBaseSite = demands
-                        .Where(d => d != null && d.RequestingAxis == DesireAxis.Economy
-                            && d.Capability == CapabilityKind.EconomicExpansionBase
-                            && d.TargetHex.HasValue
-                            && !d.TargetHex.Value.Equals(protectedActiveBase.Economy.TargetHex)
-                            && d.Value > protectedActiveBase.Economy.BuildValue
-                                + AiConfigV2.economyBaseSwitchHysteresisThreshold)
+                        .Where(d => DemandLayer.CanReplaceCommittedBase(protectedActiveBase, d))
                         .OrderByDescending(d => d.Value)
                         .FirstOrDefault();
                 }
-                if (supersedingBaseSite != null)
+                if (supersedingBaseSite != null
+                    && MissionContinuityLayer.TryRetargetCommittedBase(player,
+                        protectedActiveBase, supersedingBaseSite, ctx.TurnNumber))
                 {
-                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold — released active "
-                        + $"{protectedActiveBase.Economy.Kind} "
-                        + $"@({protectedActiveBase.Economy.TargetHex.Q},"
-                        + $"{protectedActiveBase.Economy.TargetHex.R}) "
-                        + $"value={protectedActiveBase.Economy.BuildValue:0.##}: newly-known "
-                        + $"@({supersedingBaseSite.TargetHex.Value.Q},{supersedingBaseSite.TargetHex.Value.R}) "
-                        + $"value={supersedingBaseSite.Value:0.##} clears the hysteresis margin");
-                    protectedActiveBase = null;   // released — Base slot is free this pass
+                    // Continuity has atomically rekeyed the same intent/actor and released
+                    // the old reservation owner; protect the NEW exact build before any cards.
+                    AiDebugLog.Write($"[AI][V2]   strat.A economy hold — switched Base "
+                        + $"to ({supersedingBaseSite.TargetHex.Value.Q},"
+                        + $"{supersedingBaseSite.TargetHex.Value.R}) net={supersedingBaseSite.Value:0.##}");
+                    ProtectActiveEconomyBuild(protectedActiveBase);
                 }
                 else
                 {
+                    if (supersedingBaseSite != null)
+                        demands = demands.Where(d => !object.ReferenceEquals(d, supersedingBaseSite))
+                            .ToList(); // failed transition cannot leak a rival executable demand
                     ProtectActiveEconomyBuild(protectedActiveBase);
                 }
             }
