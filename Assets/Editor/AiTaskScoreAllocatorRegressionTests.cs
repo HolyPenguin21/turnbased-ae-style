@@ -13,8 +13,8 @@ namespace Game.EditorTests
         [Test]
         public void Repack_HardCommitmentCannotSpendApAlreadyLockedByProvisionedMission()
         {
-            // Frozen turn-start AP is 3. An earlier successful scout provision claims 2;
-            // a new Hard raid asking for 3 must not pass the global AP ceiling on re-pack.
+            // Both intents exist BEFORE the first pass. Initially the 2-AP Scout fits and
+            // the 3-AP Raid defers; locking the Scout must not make the Raid affordable.
             var player = new PlayerSetupData { Nickname = "LockedApAudit" };
             var snap = new WorldSnapshot
             {
@@ -55,17 +55,18 @@ namespace Game.EditorTests
             };
             raid.Axes.Value[DesireAxis.Aggression] = 1f;
 
-            var commitments = new List<Commitment>();
+            var commitments = new List<Commitment>
+            {
+                new Commitment { Mission = scout, Tier = CommitmentTier.Hard },
+                new Commitment { Mission = raid, Tier = CommitmentTier.Hard },
+            };
             AllocationSession session = ResourceAllocator.BeginTurn(snap, Radar.Even(),
-                new List<MissionProposal> { scout }, commitments, player);
+                new List<MissionProposal>(), commitments, player);
             TentativeAllocation first = session.Pack();
             FundedEntry scoutFund = first.Funded.Single(f => f.Mission == scout);
+            Assert.That(first.Deferred.Any(d => d.Mission == raid
+                && d.Reason == DeferReason.CommitmentPoolExhausted), Is.True);
             session.RegisterProvisionSuccess(scoutFund, claimedAp: 2f);
-            commitments.Add(new Commitment
-            {
-                Mission = raid,
-                Tier = CommitmentTier.Hard,
-            });
 
             TentativeAllocation repacked = session.Pack();
             Assert.That(repacked.LockedClaim.Ap, Is.EqualTo(2f));
