@@ -291,7 +291,8 @@ namespace Game.Ai.V2
                     PreferredTraits = TraitPreference.Stealth,
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
-                    Value = best.BaseValue,
+                    WorldTaskScore = best.TaskScore,
+                    Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
                     Explain = $"GroundTraversal effective deficit {groundEffectiveDeficit} not yet persistent "
@@ -317,7 +318,8 @@ namespace Game.Ai.V2
                     PreferredTraits = TraitPreference.Stealth,
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
-                    Value = best.BaseValue,
+                    WorldTaskScore = best.TaskScore,
+                    Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     IsPersistenceDeferred = true,
                     Explain = $"Observation effective deficit {obsEffectiveDeficit} not yet persistent "
@@ -341,7 +343,8 @@ namespace Game.Ai.V2
                     RequiredTraits = TraitPreference.Stealth,
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
-                    Value = best.BaseValue,
+                    WorldTaskScore = best.TaskScore,
+                    Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     Explain = $"{stealthRunnable.Count} stealth job(s), {desiredStealthLanes} wanted, "
                         + $"{stealthFree} stealth scout(s) free, miss {stealthNew}; blocked {blocked}",
@@ -367,7 +370,8 @@ namespace Game.Ai.V2
                     PreferredTraits = TraitPreference.Stealth,
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
-                    Value = best.BaseValue,
+                    WorldTaskScore = best.TaskScore,
+                    Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     Explain = $"persistent GroundTraversal effective deficit {groundEffectiveDeficit} "
                         + $"(aviation cannot substitute a physical visit); want {matGround}; blocked {blocked}",
@@ -394,7 +398,8 @@ namespace Game.Ai.V2
                     PreferredTraits = TraitPreference.Stealth,
                     MinimumFollowupAp = reconFixedOverheadAp,
                     TargetHex = best.FocusHex,
-                    Value = best.BaseValue,
+                    WorldTaskScore = best.TaskScore,
+                    Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
                     Explain = $"persistent Observation effective deficit {obsEffectiveDeficit} "
                         + $"(net of airborne {capacity.AirborneReconLanes} + spare air {capacity.SpareAirObservationSorties}); "
@@ -403,15 +408,14 @@ namespace Game.Ai.V2
             }
         }
 
-        // Round 8 (P1) — thin wrapper over the canonical AggressionDemandEvaluator. The whole
-        // admission / selection / shortage contract now lives in ONE primitive shared with
-        // StrategicReactionPass, so the reaction probe can never disagree with the real pipeline.
-        // This wrapper only replays the evaluator's diagnostics and yields its demands into the
-        // pipeline stream (where trace ids are attached).
+        // Recon cooldown identity must be exactly the same typed ScoutTarget encoding used by the
+        // allocator for MissionProposal keys. Delegating through StableMissionKey.For keeps Refresh
+        // distinct from Explore and avoids a second hand-maintained encoder in Demand.
         private static StableMissionKey ReconKey(ReconObjective o) =>
-            new StableMissionKey(MissionKind.Scout,
-                o.Kind == ReconObjectiveKind.Surveil ? (int)ScoutTargetKind.Surveil : (int)ScoutTargetKind.Explore,
-                o.Kind == ReconObjectiveKind.Surveil ? o.ContactArmyId : 0,
-                o.FocusHex.Q, o.FocusHex.R);
+            StableMissionKey.For(new MissionProposal
+            {
+                Kind = MissionKind.Scout,
+                Target = o.ToTarget(),
+            });
     }
 }

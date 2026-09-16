@@ -107,6 +107,18 @@ namespace Game.Ai.V2
             bool airPlausible = (target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsRefresh(target.Kind))
                 && target.Stealth != StealthRequirement.Required && !(target.DetectionRisk > 0f);
 
+            // Shared notional geometry for Explore, Refresh AND Surveil. A Surveil vantage is
+            // selected later by Assignment; last-known contact distance is only the stage-4
+            // planning proxy, never a claim that an actual actor/path has been chosen.
+            int fleetBudget = snap?.Self?.Armies != null
+                ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
+            if (fleetBudget <= 0) fleetBudget = 1;
+
+            // One shared distance owner considers the Citadel and every owned Base.
+            est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                snap, target.FocusHex, 0);
+            est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
+
             if (target.Kind == ScoutTargetKind.Surveil)
             {
                 float req = notionalActivationAp
@@ -116,28 +128,13 @@ namespace Game.Ai.V2
                 est.EnergyMinimum = 0f;
                 est.EnergyDesired = est.EnergyMaximum =
                     airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
-                est.EstimatedDistance = 0f;
-                est.EtaTurns = 0;
                 return est;
             }
 
-            // Generic route geometry: distance from the nearest own base to the target — a policy
-            // heuristic, not a pathfind against any concrete mover's current position.
-            int fleetBudget = snap?.Self?.Armies != null
-                ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
-            if (fleetBudget <= 0) fleetBudget = 1;
-
-            int DistFrom(HexCoord h) => HexGridMath.Distance(h, target.FocusHex);
-            HexCoord notionalFrom = snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Count > 0
-                ? snap.Self.BaseHexes.OrderBy(DistFrom).First()
-                : target.FocusHex;
 
             est.EnergyMinimum = 0f;
             est.EnergyDesired = est.EnergyMaximum =
                 airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
-            est.EstimatedDistance = DistFrom(notionalFrom);
-            est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
-
             float airApFloor = airPlausible ? AiConfigV2.airReconNotionalActivationAp : 0f;
             switch (target.Stealth)
             {

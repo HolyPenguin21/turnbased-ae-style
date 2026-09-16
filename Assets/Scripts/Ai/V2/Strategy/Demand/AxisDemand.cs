@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -53,7 +54,11 @@ namespace Game.Ai.V2
     {
         public string TraceId;
         public DesireAxis RequestingAxis;
+        // Legacy transport value. Migrated world-map demand families assign this from
+        // WorldTaskScore.Value; non-world families (Development/Production) keep their existing
+        // value path until their own migration.
         public float Value;
+        public TaskScore WorldTaskScore;
         public HexCoord? TargetHex;
         public CapabilityKind Capability;
         public float DesiredAmount;
@@ -110,5 +115,27 @@ namespace Game.Ai.V2
             + (TargetHex.HasValue ? $" @{TargetHex.Value.Q},{TargetHex.Value.R}" : "")
             + (MinimumFollowupAp > 0f ? $" +{MinimumFollowupAp:0.#}fu" : "")
             + $" val {Value:0.0}";
+    }
+
+    // Lifecycle policy for translating AxisDemand.Value into an urgency fraction/bonus. This is
+    // deliberately outside TaskScoreEvaluator: urgency is not intrinsic world value. AxisDemand is
+    // the migration boundary that knows which value family a demand belongs to, so every downstream
+    // consumer must use this one adapter instead of guessing a numeric scale independently.
+    internal static class DemandUrgencyPolicy
+    {
+        internal static float Normalized(AxisDemand demand)
+        {
+            if (demand == null)
+                return 0f;
+            bool legacyDevelopment = demand.RequestingAxis == DesireAxis.Development;
+            float lo = legacyDevelopment
+                ? AiConfigV2.stratHoldUrgencyRampLo : AiConfigV2.taskScoreUrgencyRampLo;
+            float hi = legacyDevelopment
+                ? AiConfigV2.stratHoldUrgencyRampHi : AiConfigV2.taskScoreUrgencyRampHi;
+            return Mathf.Clamp01((demand.Value - lo) / Mathf.Max(0.01f, hi - lo));
+        }
+
+        internal static float Bonus(AxisDemand demand) =>
+            Normalized(demand) * AiConfigV2.stratHoldUrgencyMax;
     }
 }

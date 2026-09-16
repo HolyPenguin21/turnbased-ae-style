@@ -27,8 +27,12 @@ namespace Game.Ai.V2
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)
                     && d.EconomyResourceType == e.ResourceType
-                    && (d.Capability == CapabilityKind.EconomicInfrastructure
-                        || d.Capability == CapabilityKind.EconomicExpansionBase));
+                    && d.EconomyPreferredBuilderArmyId == intent.PreferredMoverArmyId
+                    && (e.BuildCard == null || d.EconomyBuildCard == e.BuildCard)
+                    && ((e.Kind == EconomyTaskKind.BuildExtraction
+                            && d.Capability == CapabilityKind.EconomicInfrastructure)
+                        || (e.Kind == EconomyTaskKind.FoundBase
+                            && d.Capability == CapabilityKind.EconomicExpansionBase)));
                 var target = new EconomyMissionTarget
                 {
                     Kind = e.Kind,
@@ -43,8 +47,7 @@ namespace Game.Ai.V2
                     BuildCard = refreshed?.EconomyBuildCard ?? e.BuildCard,
                     BuildResourceCost = refreshed?.EconomyBuildResourceCost ?? e.BuildResourceCost,
                     BuildApCost = refreshed?.EconomyBuildApCost ?? e.BuildApCost,
-                    BuildValue = refreshed != null && refreshed.EconomySiteValue > 0f
-                        ? refreshed.EconomySiteValue : e.BuildValue,
+                    BuildValue = refreshed != null ? refreshed.EconomySiteValue : e.BuildValue,
                     MinimumFollowupAp = refreshed?.MinimumFollowupAp ?? e.MinimumFollowupAp,
                     BuilderRoutes = refreshed?.EconomyBuilderRoutes,
                     ProjectedActivationApCost = refreshed?.EconomyProjectedActivationApCost
@@ -52,15 +55,22 @@ namespace Game.Ai.V2
                     ProjectedMaxMovement = refreshed?.EconomyProjectedMaxMovement
                         ?? e.ProjectedMaxMovement,
                 };
+                // An available refreshed demand contains the full delivered TaskScore. BuildValue
+                // is a legacy operational/site fact and must not replace it in global admission.
+                // A ReturnBuilder is lifecycle work, not a new world task: its priority belongs to
+                // its durable commitment rather than to the site it finished building.
+                float intrinsic = e.Kind == EconomyTaskKind.ReturnBuilder ? 0f
+                    : refreshed?.Value ?? e.IntrinsicValue ?? 0f;
                 var mission = new MissionProposal
                 {
                     Kind = MissionKind.Economy, Target = target,
-                    BaseValue = e.BuildValue, LocalAdmissionScore = e.BuildValue,
-                    Requirements = Requirements(target, intent, snapshot, -1f),
+                    BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
+                    Requirements = Requirements(target, intent, snapshot,
+                        refreshed?.EconomyTravelCost ?? -1f),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
                     FromDurableIntent = true, DurableFundingTier = intent.Funding,
                     Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
-                        + $"@({target.TargetHex.Q},{target.TargetHex.R})",
+                        + $"@({target.TargetHex.Q},{target.TargetHex.R}) intrinsic={intrinsic:0.##}",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
                 result.Add(mission);
@@ -88,7 +98,8 @@ namespace Game.Ai.V2
                     BuildCard = d.EconomyBuildCard,
                     BuildResourceCost = d.EconomyBuildResourceCost,
                     BuildApCost = d.EconomyBuildApCost,
-                    BuildValue = d.EconomySiteValue > 0f ? d.EconomySiteValue : d.Value,
+                    // Operational site merit is retained separately for existing builder decisions.
+                    BuildValue = d.EconomySiteValue,
                     MinimumFollowupAp = d.MinimumFollowupAp,
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
@@ -107,13 +118,10 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy,
                     Target = target,
-                    // Cross-lane ordering represents the strategic return of the chosen site.
-                    // Builder travel/opportunity cost already controls Demand admission and the
-                    // concrete AP/resource envelope below; folding it into BaseValue again lets a
-                    // routine one-step Recon refresh permanently outrank an admitted economy plan.
-                    BaseValue = target.BuildValue,
-                    // Wait urgency is lane-local: it can overtake repeated Extraction contention
-                    // without inflating cross-axis value above critical Defence/Reaction.
+                    // The globally compared value must be the entire canonical world-task Fold,
+                    // not the site-only value before CardPrice/Delivery/MoverOpportunityCost.
+                    BaseValue = d.Value,
+                    // Wait urgency belongs only to lane-local admission, not intrinsic TaskScore.
                     LocalAdmissionScore = d.Value + d.EconomyStrategicUrgency,
                     Requirements = Requirements(target, incumbent, snapshot,
                         d.EconomyTravelCost),
@@ -121,7 +129,7 @@ namespace Game.Ai.V2
                         ?? d.EconomyPreferredBuilderArmyId,
                     FromDurableIntent = incumbent != null,
                     DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
-                    Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) site={target.BuildValue:0.0}",
+                    Explain = $"economy {kind} @({target.TargetHex.Q},{target.TargetHex.R}) intrinsic={d.Value:0.##} site={target.BuildValue:0.##}",
                 };
                 m.Axes.Value[DesireAxis.Economy] = 1f;
                 // CauseDemandTraceIds is computed once, downstream, by
@@ -163,15 +171,21 @@ namespace Game.Ai.V2
                 .Where(a => a != null && (a.IsMobileEconomyBuilder
                     || (a.IsGarrison && a.HasHero && a.Hex.Equals(t.TargetHex)))).ToList();
             ArmySnapshot nearest = null;
-            bool completionThisTurn = true; // Conservative fallback when Analysis has no actor witness.
+            // With a durable owner but no matching snapshot actor, NEVER price a different hero.
+            // The allocator may still retry the commitment; provisioning owns actual validity.
+            bool completionThisTurn = !preferredId.HasValue;
             float activation = 0f;
             if (heroes != null && heroes.Count > 0)
             {
                 nearest = preferredId.HasValue
                     ? heroes.FirstOrDefault(a => a.ArmyId == preferredId.Value)
                     : null;
-                nearest ??= heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
-                    .ThenBy(a => a.ArmyId).First();
+                if (!preferredId.HasValue)
+                    nearest = heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
+                        .ThenBy(a => a.ArmyId).First();
+            }
+            if (nearest != null)
+            {
                 int distance = witnessedTravelCost >= 0f
                     ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)
                     : HexGridMath.Distance(nearest.Hex, t.TargetHex);
