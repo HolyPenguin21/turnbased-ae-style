@@ -341,16 +341,6 @@ MonoBehaviour:
     glowIntensity: 0.25
     glowWidth: 0.15
     sortingOrder: 2
-  hexSelectionStyle:
-    radiusScale: 0.87
-    margin: 0.6
-    lineThickness: 0.03
-    noiseReach: 0.1
-    noiseScale: 3
-    noiseSpeed: 1.2
-    glowIntensity: 0.25
-    glowWidth: 0.15
-    sortingOrder: 1
   battleActingUnitHighlightStyle:
     radiusScale: 1
     margin: 6
