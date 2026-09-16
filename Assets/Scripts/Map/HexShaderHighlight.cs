@@ -6,16 +6,17 @@ namespace Game.Map
 {
     // Single-hex highlight renderer. The class name is kept for scene/prefab compatibility, but
     // the selected-hex visual no longer uses Custom/HexSelectionGlow: a static, worn paint mask
-    // is baked into a small runtime texture on the CPU and drawn with URP's stock Unlit shader.
-    // This removes the animated neon/procedural-noise look while preserving the existing public
-    // API and serialized component reference. HexClusterHighlight remains a separate concern.
+    // is baked into a runtime texture on the CPU and drawn with URP's stock Unlit shader.
+    // This keeps the marker grounded in the map instead of reading as an animated UI overlay.
+    // HexClusterHighlight remains a separate concern.
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
     public class HexShaderHighlight : MonoBehaviour
     {
-        private const int PaintTextureSize = 256;
-        private const float MinPaintWidthRatio = 0.05f;
-        private const float PaintOpacity = 0.96f;
-        private const float PaintWear = 0.22f;
+        private const int PaintTextureSize = 512;
+        private const float MinPaintWidthRatio = 0.06f;
+        private const float PaintOpacity = 1f;
+        private const float HexApothemRatio = 0.8660254f;
+        private const float SparseFleckChance = 0.012f;
 
         // General map selection is intentionally a fixed authored visual now, not a GameConfig
         // tuning surface. GameConfig exposes this only as a read-only compatibility accessor for
@@ -34,7 +35,9 @@ namespace Game.Map
             sortingOrder = 1,
         };
 
-        [SerializeField] private Color color = new Color(0.98f, 0.95f, 0.86f, 1f);
+        // Warm neutral rather than yellow/olive: the paint should read as sun-bleached chalk on
+        // the sand, while remaining slightly softer than pure UI white.
+        [SerializeField] private Color color = new Color(0.96f, 0.95f, 0.90f, 1f);
 
         private static readonly int BaseMapId = Shader.PropertyToID("_BaseMap");
         private static readonly int BaseColorId = Shader.PropertyToID("_BaseColor");
@@ -125,7 +128,14 @@ namespace Game.Map
         {
             float radius = Mathf.Max(0.001f, outerRadius * _style.radiusScale);
             float lineWidth = Mathf.Max(_style.lineThickness, outerRadius * MinPaintWidthRatio);
-            float half = radius + Mathf.Max(lineWidth * 1.35f, outerRadius * 0.02f);
+
+            // Keep a real transparent gutter around the complete stroke. The old SDF treated its
+            // input as an apothem while callers supplied a corner radius, so the +X/-X vertices
+            // actually extended ~15% farther than `radius` and were cut by this quad. The SDF is
+            // corrected below, and two paint widths of padding make clipping impossible even at
+            // the roughest/thickest parts of the new stroke.
+            float padding = Mathf.Max(lineWidth * 2f, outerRadius * 0.035f);
+            float half = radius + padding;
 
             DestroyRuntimeMesh();
             DestroyPaintTexture();
@@ -153,10 +163,10 @@ namespace Game.Map
 
         private Texture2D BuildPaintTexture(float radius, float lineWidth, float half)
         {
-            // No mip chain: the previous trilinear+mipmap path softened the line into a muddy
-            // translucent band at normal strategic-map zoom. The approved reference reads as a
-            // painted stroke, so keep the mask crisp and let ordinary bilinear filtering handle
-            // sub-pixel movement only.
+            // The mask deliberately has no mip chain: at strategic-map zoom the reference is a
+            // dry painted stroke with a definite edge, not a blurred translucent band. 512px
+            // leaves enough resolution for real multi-pixel chips while bilinear filtering still
+            // provides stable sub-pixel movement.
             var texture = new Texture2D(
                 PaintTextureSize,
                 PaintTextureSize,
@@ -188,12 +198,19 @@ namespace Game.Map
                     float nx = localX / safeRadius;
                     float nz = localZ / safeRadius;
 
-                    // Small static width variation keeps the stroke hand-applied without turning
-                    // it back into the old animated/noisy halo.
-                    float edgeNoise = FractalNoise(nx, nz, 2.6f, 11.7f, 4.3f);
-                    float widthScale = Mathf.Lerp(0.93f, 1.07f, edgeNoise);
+                    // Two coherent bands perturb deposited width rather than the whole marker's
+                    // opacity. That creates a visibly painted, imperfect edge without bringing
+                    // back the old shader's soft animated halo.
+                    float broadEdge = FractalNoise(nx, nz, 6.4f, 11.7f, 4.3f);
+                    float fineEdge = FractalNoise(nx, nz, 17.5f, 39.2f, 8.6f);
+                    float widthScale =
+                        Mathf.Lerp(0.86f, 1.12f, broadEdge) *
+                        Mathf.Lerp(0.95f, 1.05f, fineEdge);
                     float halfLine = lineWidth * 0.5f * widthScale;
-                    float feather = Mathf.Max(pixelWorld * 0.8f, lineWidth * 0.025f);
+
+                    // About one source pixel of AA is enough to stop shimmer but keeps the edge
+                    // visibly sharper than the previous soft shader contour.
+                    float feather = Mathf.Max(pixelWorld * 0.72f, lineWidth * 0.015f);
                     float distance = Mathf.Abs(HexSignedDistance(p, radius));
                     float ring = 1f - SmoothStep(
                         Mathf.Max(0f, halfLine - feather),
@@ -206,20 +223,40 @@ namespace Game.Map
                         continue;
                     }
 
-                    // Mostly opaque paint with a few worn stretches and pinholes. The fourth
-                    // approved visual was characterful because the paint was damaged, not because
-                    // the whole line was translucent, so wear only removes local coverage.
-                    float wearNoise = FractalNoise(nx, nz, 2.0f, 27.4f, 19.1f);
-                    float patch = SmoothStep(0.27f, 0.72f, wearNoise);
-                    float wornCoverage = Mathf.Lerp(1f, 0.58f + 0.42f * patch, PaintWear);
+                    // Wear is local coverage loss, not uniform transparency. Large low-frequency
+                    // patches fade some deposited paint; a second tighter field punches genuine
+                    // chips through it, and a few 2x2 flecks add dry-grain breakup. Most surviving
+                    // paint remains opaque so the selection is still readable at a glance.
+                    float wearNoise = FractalNoise(nx, nz, 4.7f, 27.4f, 19.1f);
+                    float wearPatch = SmoothStep(0.31f, 0.53f, wearNoise);
+                    float wornCoverage = Mathf.Lerp(0.58f, 1f, wearPatch);
 
-                    float fine = Mathf.PerlinNoise(nx * 18.7f + 7.2f, nz * 18.7f + 31.6f);
-                    float grainCoverage = Mathf.Lerp(0.84f, 1f, fine);
-                    float chip = Hash01(x, y) < PaintWear * 0.045f ? 0.18f : 1f;
+                    float chipNoise = FractalNoise(nx, nz, 15.5f, 73.1f, 41.9f);
+                    float chipCoverage = Mathf.Lerp(
+                        0.06f,
+                        1f,
+                        SmoothStep(0.34f, 0.48f, chipNoise));
 
-                    float alpha = Mathf.Clamp01(ring * wornCoverage * grainCoverage * chip);
-                    pixels[y * PaintTextureSize + x] =
-                        new Color32(255, 255, 255, (byte)Mathf.RoundToInt(alpha * 255f));
+                    float dryGrain = Mathf.PerlinNoise(
+                        nx * 31.7f + 7.2f,
+                        nz * 31.7f + 31.6f);
+                    float grainCoverage = Mathf.Lerp(0.86f, 1f, dryGrain);
+
+                    float fleck = Hash01(x / 2, y / 2) < SparseFleckChance ? 0.12f : 1f;
+                    float alpha = Mathf.Clamp01(
+                        ring * wornCoverage * chipCoverage * grainCoverage * fleck);
+
+                    // Tiny pigment variation helps the mark read as dry material laid on the
+                    // ground rather than a mathematically flat UI colour.
+                    float pigmentNoise = Mathf.PerlinNoise(
+                        nx * 12.3f + 53.4f,
+                        nz * 12.3f + 12.8f);
+                    byte pigment = (byte)Mathf.RoundToInt(Mathf.Lerp(236f, 255f, pigmentNoise));
+                    pixels[y * PaintTextureSize + x] = new Color32(
+                        pigment,
+                        pigment,
+                        pigment,
+                        (byte)Mathf.RoundToInt(alpha * 255f));
                 }
             }
 
@@ -228,19 +265,22 @@ namespace Game.Map
             return texture;
         }
 
-        // Same regular-hex SDF convention the old shader used: vertex 0 lies on +X, matching
-        // HexGridMath's 60-degree corner convention, so the texture stays on the real hex edge.
-        private static float HexSignedDistance(Vector2 point, float radius)
+        // Inigo Quilez's regular-hex SDF takes the centre-to-flat distance (apothem), while the
+        // rest of this project consistently calls `outerRadius` the centre-to-corner distance
+        // (see HexGridMath and HexTileMeshGenerator). Converting here makes radiusScale mean what
+        // HexHighlightStyle documents and, crucially, keeps the +/-X vertices inside the quad.
+        private static float HexSignedDistance(Vector2 point, float outerRadius)
         {
             const float kx = -0.8660254f;
             const float ky = 0.5f;
             const float kz = 0.5773503f;
 
+            float apothem = outerRadius * HexApothemRatio;
             Vector2 p = new Vector2(Mathf.Abs(point.x), Mathf.Abs(point.y));
             float projected = kx * p.x + ky * p.y;
             float correction = Mathf.Min(projected, 0f);
             p -= 2f * correction * new Vector2(kx, ky);
-            p -= new Vector2(Mathf.Clamp(p.x, -kz * radius, kz * radius), radius);
+            p -= new Vector2(Mathf.Clamp(p.x, -kz * apothem, kz * apothem), apothem);
             return p.magnitude * Mathf.Sign(p.y);
         }
 
