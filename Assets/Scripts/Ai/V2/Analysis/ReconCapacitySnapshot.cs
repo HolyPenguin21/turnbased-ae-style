@@ -113,6 +113,11 @@ namespace Game.Ai.V2
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
             var ownById = (snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null).ToDictionary(a => a.ArmyId, a => a);
+            // Continuity's turn-wide contraction makes the released actor unavailable to Recon
+            // until the next turn. Do not advertise it as idle supply after removing its intent.
+            IReadOnlyCollection<int> trimmedThisTurn = player != null && snap != null
+                ? MissionIntentRegistry.GetOrCreate(player).ReconActorsTrimmedThisTurn(snap.TurnNumber)
+                : System.Array.Empty<int>();
 
             // --- Active durable GENERIC lanes, split by requirement. A claimed mover only; a
             //     RequiresStealth lane is NOT generic capacity and is skipped here.
@@ -141,7 +146,7 @@ namespace Game.Ai.V2
             {
                 if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
                     continue;
-                if (a.CurrentMovement <= 0)
+                if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
                     continue;
                 if (claimed.Contains(a.ArmyId)
                     || cap.GenericGroundLaneActors.Contains(a.ArmyId)
