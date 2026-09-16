@@ -87,7 +87,15 @@ namespace Game.Map
             if (ownerCatalog == null || ownerCatalog.armyPrefab == null)
                 return null;
 
-            MapObjectVisual marker = Instantiate(ownerCatalog.armyPrefab);
+            // A freshly launched air wing (AviationActions.LaunchAircraft) already carries
+            // IsAirArmy at creation time, so it starts with the right look straight away — no
+            // in-place swap needed. A "Create Army" empty shell that only becomes an air army
+            // later (its first aircraft joining) starts on armyPrefab and is switched in place
+            // by RefreshArmyAirLook once ArmyActions.TransferMember actually promotes it.
+            MapObjectVisual prefab = AviationRules.IsAirArmy(army) && ownerCatalog.airArmyPrefab != null
+                ? ownerCatalog.airArmyPrefab
+                : ownerCatalog.armyPrefab;
+            MapObjectVisual marker = Instantiate(prefab);
             ArmyController controller = marker.gameObject.AddComponent<ArmyController>();
             controller.SetData(army);
             army.Controller = controller;
@@ -103,6 +111,23 @@ namespace Game.Map
 
             RestackArmiesOn(army.Hex, null);
             return controller;
+        }
+
+        // Called once by ArmyActions.TransferMember right after it promotes a ground army shell
+        // to an air army (its first aircraft joining) — the marker was already created earlier
+        // on the ground armyPrefab (see CreateArmyMarker), so it needs an in-place art swap
+        // rather than a fresh Instantiate; that keeps the same ArmyController GameObject (its
+        // coroutines/selection state included). No-op if the faction never assigned an
+        // airArmyPrefab — the army just keeps its ground look.
+        public void RefreshArmyAirLook(ArmyData army)
+        {
+            if (army?.Controller?.Visual == null || army.Owner == null)
+                return;
+            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
+                : null;
+            if (ownerCatalog?.airArmyPrefab != null)
+                army.Controller.Visual.ApplyPrefabAppearance(ownerCatalog.airArmyPrefab);
         }
 
         // Called explicitly wherever a member is actually REMOVED from a named army (see

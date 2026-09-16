@@ -317,7 +317,10 @@ namespace Game.Map
 
             source.Members.Remove(unit);
             if (promoteToAirArmy)
+            {
                 target.IsAirArmy = true;
+                hexSelectionController?.RefreshArmyAirLook(target);
+            }
             target.AddMemberSorted(unit);
             if (requiresCharge)
             {

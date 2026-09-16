@@ -45,6 +45,14 @@ namespace Game.Cards
         public MapObjectVisual citadelPrefab;
         public MapObjectVisual basePrefab;
         public MapObjectVisual armyPrefab;
+        // Faction's own air-army look. Read as an art template only — never instantiated
+        // itself, see MapObjectVisual.ApplyPrefabAppearance — so a ground army promoted to
+        // aviation (ArmyActions.TransferMember's first-aircraft join) can swap its live
+        // marker's Base/FactionAccent art in place without losing its ArmyController/
+        // coroutines/selection state. Left unassigned, a promoted army just keeps its ground
+        // look. A freshly LAUNCHED air army (AviationActions.LaunchAircraft) picks this
+        // straight away instead, via HexSelectionController.Factory.CreateArmyMarker.
+        public MapObjectVisual airArmyPrefab;
         public Sprite citadelIcon;
         public Sprite facilityIcon;
 

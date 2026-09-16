@@ -48,23 +48,7 @@ namespace Game.Map
         {
             if (icon != null && layeredIconVisual != null && icon == layeredIconTrigger)
             {
-                Color accentColor = factionAccent != null ? factionAccent.color : Color.white;
-                int objectSortingOrder = objectImage != null ? objectImage.sortingOrder : 0;
-                int accentSortingOrder = factionAccent != null ? factionAccent.sortingOrder : 0;
-
-                CopyRenderer(layeredIconVisual.objectImage, objectImage);
-                CopyRenderer(layeredIconVisual.factionAccent, factionAccent);
-                CopyRenderers(layeredIconVisual.auxiliaryRenderers, auxiliaryRenderers);
-
-                // CreateArmyMarker applies owner colour/sorting before SetIcon. The replacement
-                // supplies art/transforms/materials only; preserve the live marker's runtime state.
-                if (objectImage != null)
-                    objectImage.sortingOrder = objectSortingOrder;
-                if (factionAccent != null)
-                {
-                    factionAccent.color = accentColor;
-                    factionAccent.sortingOrder = accentSortingOrder;
-                }
+                ApplyPrefabAppearance(layeredIconVisual);
                 return;
             }
 
@@ -72,6 +56,34 @@ namespace Game.Map
                 objectImage.sprite = icon;
             if (clearFactionAccentOnSetIcon && factionAccent != null)
                 factionAccent.sprite = null;
+        }
+
+        // Swaps this LIVE marker's Base/FactionAccent(/auxiliary) art for a different faction-
+        // authored template — e.g. a ground army promoted to an air army mid-game (see
+        // ArmyActions.TransferMember, FactionCardCatalog.airArmyPrefab) — while preserving the
+        // runtime state CreateArmyMarker already applied (owner colour tint, sorting order).
+        // `template` is read only, never instantiated: pass a prefab asset's own MapObjectVisual
+        // component directly, same as layeredIconVisual above.
+        public void ApplyPrefabAppearance(MapObjectVisual template)
+        {
+            if (template == null)
+                return;
+
+            Color accentColor = factionAccent != null ? factionAccent.color : Color.white;
+            int objectSortingOrder = objectImage != null ? objectImage.sortingOrder : 0;
+            int accentSortingOrder = factionAccent != null ? factionAccent.sortingOrder : 0;
+
+            CopyRenderer(template.objectImage, objectImage);
+            CopyRenderer(template.factionAccent, factionAccent);
+            CopyRenderers(template.auxiliaryRenderers, auxiliaryRenderers);
+
+            if (objectImage != null)
+                objectImage.sortingOrder = objectSortingOrder;
+            if (factionAccent != null)
+            {
+                factionAccent.color = accentColor;
+                factionAccent.sortingOrder = accentSortingOrder;
+            }
         }
 
         // Copies the complete rendered marker state into a separate last-seen snapshot. A
