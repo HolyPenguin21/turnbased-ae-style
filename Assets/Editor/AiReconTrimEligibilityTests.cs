@@ -75,6 +75,30 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ContinuingIncumbent_CanKeepItsOwnUntrimmedClaim()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon regression" };
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, turn: 11, focus);
+            MissionIntent incumbent = Incumbent(focus, preferredMover: 10);
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            state.Put(incumbent);
+            state.MarkReconActorTrimmed(11, 20);
+            MissionProposal mission = ReconMissionPlanner.Propose(snap,
+                new DesireBreakdown { ReconExplorePressure = 1f },
+                new[] { incumbent }, new List<ReconObjective>())[0];
+            var open = new List<FundedEntry> { new FundedEntry { Mission = mission, Priority = 1 } };
+
+            ReconAssignmentResult assignment = ReconAssignmentPlanner.AssignFunded(
+                snap, null, player, open, new HashSet<int>(),
+                durableClaimedArmyIds: new HashSet<int> { 10 });
+
+            Assert.That(assignment.Assigned, Has.Count.EqualTo(1),
+                "a genuine incumbent must still recover its own durable actor");
+            Assert.That(assignment.Assigned.Single().Value.ActorKey, Is.EqualTo(10));
+        }
+
+        [Test]
         public void TrimmedScout_IsUnavailableInEligibilityNow_ButReturnsOnNextTurn()
         {
             var player = new PlayerSetupData { Nickname = "Recon regression" };
@@ -89,6 +113,28 @@ namespace Game.EditorTests
             snap.TurnNumber = 12;
             Assert.That(ScoutMoverSelector.Eligible(snap, target, null).Select(a => a.ArmyId),
                 Is.EquivalentTo(new[] { 10, 20 }), "surplus trim must not become a permanent ban");
+        }
+
+        [Test]
+        public void TrimmedScout_DoesNotInflateDemandCapacity_AndReturnsOnNextTurn()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon regression" };
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, turn: 11, focus);
+            MissionIntentRegistry.GetOrCreate(player).MarkReconActorTrimmed(11, 20);
+            var job = new ReconObjective
+                { Kind = ReconObjectiveKind.Explore, FocusHex = focus, BaseValue = 10f };
+
+            ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(snap,
+                new List<ReconObjective>(), new[] { job }, new List<MissionIntent>(), null, player);
+            Assert.That(capacity.IdleGroundScouts, Is.EquivalentTo(new[] { 10 }));
+            Assert.That(capacity.ExistingGroundUsableCapacity, Is.EqualTo(1));
+
+            snap.TurnNumber = 12;
+            capacity = ReconCapacitySnapshot.Build(snap,
+                new List<ReconObjective>(), new[] { job }, new List<MissionIntent>(), null, player);
+            Assert.That(capacity.IdleGroundScouts, Is.EquivalentTo(new[] { 10, 20 }));
+            Assert.That(capacity.ExistingGroundUsableCapacity, Is.EqualTo(2));
         }
 
         private static MissionIntent Incumbent(HexCoord focus, int preferredMover)
