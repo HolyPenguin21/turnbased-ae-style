@@ -57,9 +57,16 @@ namespace Game.Ai.V2
             IReadOnlyList<AggressionObjective> objectives = frozenObjectives
                 ?? AggressionObjectiveEvaluator.Enumerate(snap, breakdown.OpportunityReport);
 
+            // Fresh Raid scoring must use the same actor-ownership view Provisioning enforces.
+            // Otherwise a busy Economy/Recon/Raid actor can make a fresh Raid look executable and cheap,
+            // only to be rejected later by the batch assignment. Incumbents are allowed to keep their
+            // own pinned mover below; every other durable actor remains excluded from host/donor selection.
+            ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snap, null);
+            HashSet<int> durableClaimedActors = actorCommitments?.ClaimedArmyIdSet ?? new HashSet<int>();
+
             var fresh = new List<RaidCandidate>();
             foreach (AggressionObjective o in objectives)
-                fresh.Add(ToCandidate(snap, o, breakdown));
+                fresh.Add(ToCandidate(snap, o, breakdown, excludedArmyIds: durableClaimedActors));
 
             var incumbents = new List<RaidCandidate>();
             if (activeIntents != null)
@@ -133,7 +140,7 @@ namespace Game.Ai.V2
                     // whichever fresh army happens to be cheaper. Pin the existing primary BEFORE
                     // assembly and Fold, using the existing continuation gate only if started.
                     incumbents.Add(ToCandidate(snap, o, breakdown,
-                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted)
+                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted, durableClaimedActors)
                         .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
@@ -285,21 +292,35 @@ namespace Game.Ai.V2
         }
 
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o,
-            DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false)
+            DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false,
+            ISet<int> excludedArmyIds = null)
         {
             RaidMissionTarget target = o.ToTarget();
             IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
+
+            // A durable incumbent owns its own mover, so remove only that actor from the exclusion
+            // set while keeping every other committed host/donor unavailable to this Raid.
+            ISet<int> effectiveExclusions = excludedArmyIds;
+            if (pinnedPrimaryArmyId.HasValue && excludedArmyIds != null
+                && excludedArmyIds.Contains(pinnedPrimaryArmyId.Value))
+            {
+                var copy = new HashSet<int>(excludedArmyIds);
+                copy.Remove(pinnedPrimaryArmyId.Value);
+                effectiveExclusions = copy;
+            }
+
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
                 ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
                 {
                     Defenders = defenders,
                     PreferredPrimaryArmyId = pinnedPrimaryArmyId,
                     PinToPreferred = true,
+                    ExcludedArmyIds = effectiveExclusions,
                     WinChanceGate = operationStarted
                         ? RaidAdmissionPolicy.ContinuationWinChanceFloor
                         : RaidAdmissionPolicy.FreshStartWinChanceGate,
                 })
-                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
+                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, effectiveExclusions);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
