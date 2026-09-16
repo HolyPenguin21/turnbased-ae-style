@@ -9,10 +9,9 @@ namespace Game.Styles
         // Citadel-hex selection marker (CitadelSetupController).
         public static readonly Color CitadelSelection = new Color(0.55f, 0.45f, 0.05f);
 
-        // General hex inspection highlight (HexSelectionController). This is deliberately a
-        // faded canvas/chalk tone rather than a semantic "valid = green" colour: the worn-paint
-        // selection texture now carries the state, while resource/player colours stay unambiguous.
-        public static readonly Color HexSelection = new Color(0.78f, 0.71f, 0.56f);
+        // General hex inspection highlight (HexSelectionController): pale aged paint matching
+        // the authored map-selection reference, not a semantic green/olive state colour.
+        public static readonly Color HexSelection = new Color(0.98f, 0.95f, 0.86f);
 
         // The currently-acting unit's cell in the Tactical Battle Module grid (UIRaggedGlowUI,
         // see BattleScreenUI/BattleGridCellUI) — a bright "technical" yellow per the user's own

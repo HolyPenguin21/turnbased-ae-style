@@ -237,24 +237,20 @@ namespace Game.Core
         public int cornerExclusionRadius = 1;
 
         [Header("Hex Highlight Styles")]
-        // Noise/glow tunables for HexShaderHighlight/HexClusterHighlight (see
-        // HexHighlightStyle) — one per usage context, so each can look different instead of
-        // every instance sharing the shader files' own Properties-block defaults. Colour isn't
-        // part of the style: the region highlight uses each player's own colour, the other two
-        // use fixed TechnicalColors, both set separately at the call site.
-        // The neighbourhood cluster shown while picking a citadel spot (CitadelSetupController.SpawnRegionHighlight).
+        // Configurable highlights remain only for the citadel setup cluster/pick and tactical
+        // battle cell. Ordinary in-game hex selection is a fixed renderer-owned visual and no
+        // longer has serialized GameConfig settings.
         public HexHighlightStyle regionHighlightStyle = new HexHighlightStyle();
-        // The confirmed single-hex citadel pick, drawn above the region cluster via sortingOrder.
         public HexHighlightStyle citadelSelectionStyle = new HexHighlightStyle { sortingOrder = 2 };
-        // In-game hex selection (HexSelectionController).
-        public HexHighlightStyle hexSelectionStyle = new HexHighlightStyle();
+
+        // Read-only compatibility surface for HexSelectionController. Nothing is serialized or
+        // tunable here: the actual values are authored once in HexShaderHighlight.
+        public HexHighlightStyle hexSelectionStyle => HexShaderHighlight.FixedMapSelectionStyle;
+
         // The currently-acting unit's cell in the Tactical Battle Module grid (UIRaggedGlowUI,
         // Custom/UIRaggedGlow.shader — see BattleGridCellUI/BattleScreenUI). Same style class as
-        // the three above even though this one drives a UI shader, not a world-space one — the
-        // knobs mean the same thing either way, just in UI-rect units instead of world (hex)
-        // units, so the defaults here are scaled up accordingly (a margin of 0.6 world units
-        // would be sub-pixel on an ~80x100 UI cell). Colour is TechnicalColors.BattleActingUnit,
-        // set at the call site same as the three above.
+        // the two configurable world-space highlights above even though this one drives a UI
+        // shader; the knobs mean the same thing, just in UI-rect units instead of world units.
         public HexHighlightStyle battleActingUnitHighlightStyle = new HexHighlightStyle
         {
             margin = 6f,
