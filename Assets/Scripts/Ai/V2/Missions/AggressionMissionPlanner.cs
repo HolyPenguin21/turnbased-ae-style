@@ -17,8 +17,8 @@ namespace Game.Ai.V2
             public readonly bool IsIncumbent;
             public readonly CommitmentTier Tier;
             public readonly int? PreferredMover;
-            // Mover used to produce physical CardPrice/Delivery facts. This does not replace
-            // Provisioning ownership; it only prevents scoring distance from a different actor.
+            // One actor identity supplies the combat projection, price and travel distance.
+            // Provisioning remains the authority on whether that actor can execute this turn.
             public readonly int? CostedMover;
 
             public RaidCandidate(RaidMissionTarget target, float baseValue, float localAdmissionScore,
@@ -37,9 +37,12 @@ namespace Game.Ai.V2
 
             public RaidCandidate AsIncumbent(CommitmentTier tier, int? preferredMover)
             {
+                // ToCandidate already pinned the assembly projection and price before folding.
+                // Never substitute a different mover AFTER scoring: that previously preserved the
+                // cheap army's score but funded the durable primary's more expensive route.
                 return new RaidCandidate(Target, BaseValue, LocalAdmissionScore,
                     Explain + $" [incumbent {tier}; funding protected separately]",
-                    true, tier, preferredMover, preferredMover ?? CostedMover);
+                    true, tier, preferredMover, CostedMover);
             }
         }
 
@@ -108,11 +111,17 @@ namespace Game.Ai.V2
                             AssemblableWinChance = AiConfigV2.raidMinViableWinChance,
                             EstimatedEta = 1,
                         };
+                        MissionRequirements staleCost = RaidCostModel.Build(snap, stale,
+                            intent.PreferredMoverArmyId);
                         var staleTask = new TaskScore(
-                            staleness: TaskScoreEvaluator.StaleIntelPenalty(1f));
+                            staleness: TaskScoreEvaluator.StaleIntelPenalty(1f),
+                            cardPrice: TaskScoreEvaluator.CardPrice(staleCost.ApDesired, 0f),
+                            delivery: TaskScoreEvaluator.Delivery(0f, staleCost.EstimatedDistance));
                         float staleValue = staleTask.Value;
                         TaskScoreDiagnostics.Log("Raid", intent.Raid.LastKnownHex, staleTask,
-                            "continuation=tracking_in_fog confidence=unknown");
+                            $"continuation=tracking_in_fog confidence=unknown actor="
+                            + (intent.PreferredMoverArmyId.HasValue
+                                ? intent.PreferredMoverArmyId.Value.ToString() : "none"));
                         incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId, intent.PreferredMoverArmyId));
@@ -120,7 +129,11 @@ namespace Game.Ai.V2
                             + $"({intent.Raid.LastKnownHex.Q},{intent.Raid.LastKnownHex.R}); intrinsic {F(staleValue)}, tier {intent.Funding}");
                         continue;
                     }
-                    incumbents.Add(ToCandidate(snap, o, breakdown)
+                    // An incumbent is an already-owned operation, not a second opportunity to pick
+                    // whichever fresh army happens to be cheaper. Pin the existing primary BEFORE
+                    // assembly and Fold, using the existing continuation gate only if started.
+                    incumbents.Add(ToCandidate(snap, o, breakdown,
+                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted)
                         .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
@@ -272,16 +285,28 @@ namespace Game.Ai.V2
         }
 
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o,
-            DesireBreakdown bd)
+            DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false)
         {
             RaidMissionTarget target = o.ToTarget();
             IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
-            GroundCombatAssemblyPlan live = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
+            GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
+                ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
+                {
+                    Defenders = defenders,
+                    PreferredPrimaryArmyId = pinnedPrimaryArmyId,
+                    PinToPreferred = true,
+                    WinChanceGate = operationStarted
+                        ? RaidAdmissionPolicy.ContinuationWinChanceFloor
+                        : RaidAdmissionPolicy.FreshStartWinChanceGate,
+                })
+                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
-            int? costedMover = live.Feasible
-                ? live.BaseArmyId : (int?)null;
+            // If the pinned actor cannot currently assemble, its cost remains pinned and its
+            // combat contribution is zero; neither metric silently borrows another army.
+            int? costedMover = pinnedPrimaryArmyId
+                ?? (live.Feasible ? live.BaseArmyId : (int?)null);
             if (live.Feasible)
             {
                 target.ReadyWinChance = readyWin;
@@ -302,7 +327,7 @@ namespace Game.Ai.V2
             TaskScoreDiagnostics.Log("Raid", o.LastKnownHex, score,
                 $"target={o.Target.DiagnosticLabel} confidence={o.Confidence:0.###} "
                 + $"readyWin={readyWin:0.###} coversAll={(live.CoversAllDefenders ? 1 : 0)} "
-                + $"selectedMover={(costedMover.HasValue ? costedMover.Value : 0)} "
+                + $"selectedMover={(costedMover.HasValue ? costedMover.Value.ToString() : "none")} "
                 + $"activationAp={activationAp:0.###} distance={distance:0.###}");
 
             string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
@@ -316,7 +341,7 @@ namespace Game.Ai.V2
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c)
         {
-            int? pricedMover = c.CostedMover ?? c.PreferredMover;
+            int? pricedMover = c.PreferredMover ?? c.CostedMover;
             MissionRequirements req = RaidCostModel.Build(snap, c.Target, pricedMover);
 
             var proposal = new MissionProposal
