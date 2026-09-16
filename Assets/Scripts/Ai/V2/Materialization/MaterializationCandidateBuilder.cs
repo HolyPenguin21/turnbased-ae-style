@@ -400,7 +400,11 @@ namespace Game.Ai.V2
             // reaction feasibility probe consumes the same enumerator output and never reads .Score.
             foreach (MaterializationPlan p in candidates)
             {
-                bool recce = AbilityParams.AbilitiesHaveAnyRecce(p.ProjectedAbilities);
+                // Only a plan creating a solo scout can earn the Scout role and its scarcity/gap
+                // terms. A Recce hero joining an existing body army retains its actual abilities,
+                // but must be scored for its executable Hero/combat roles, not a nonexistent lane.
+                bool recce = p.FinalCapability == CapabilityKind.ScoutCapability
+                    && AbilityParams.AbilitiesHaveAnyRecce(p.ProjectedAbilities);
                 CardDefinition bd = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                 bool hero = bd != null && bd.cardType == CardType.Hero;
                 int projectedLegalFillers = hero
