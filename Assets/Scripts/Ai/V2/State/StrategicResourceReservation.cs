@@ -85,6 +85,17 @@ namespace Game.Ai.V2
             Entry e = GetOrReset(player, turn);
             StrategicResourceReservation existing = e.Reservations.FirstOrDefault(
                 x => x.Owner == r.Owner && x.Reason == r.Reason && x.Resource == r.Resource);
+
+            // EconomyDeferredBuild means the build is a durable multi-turn obligation whose
+            // persistent H/E/M/T must survive Phase B, but whose completion is NOT executable in
+            // the current turn. AP is turn-local execution capacity and therefore has no legal
+            // deferred state. Completion AP is owned exclusively by EconomyBuildCompletion after
+            // Provisioning has proved that this concrete actor can finish now. Treat an attempted
+            // deferred AP write as a zero-upsert so an older row is removed rather than leaked.
+            if (r.Reason == StrategicReservationReason.EconomyDeferredBuild
+                && r.Resource == StrategicReservedResource.ActionPoints)
+                r.Amount = 0f;
+
             if (r.Amount <= 0f)
             {
                 if (existing != null)
@@ -163,14 +174,28 @@ namespace Game.Ai.V2
         }
 
         // Deferred Economy alternatives are mutually exclusive. Replacing their owner is one
-        // ledger mutation and deliberately leaves a provisioned completion hold untouched.
+        // ledger mutation and deliberately leaves a provisioned completion hold untouched when it
+        // belongs to ANOTHER operation. For the SAME owner, however, writing the deferred stage is
+        // an explicit lifecycle downgrade: the actor can no longer complete this turn, so its old
+        // EconomyBuildCompletion rows (including AP) must disappear immediately while the durable
+        // mission itself remains protected by the deferred H/E/M/T rows written next.
         public static void ReplaceReasonOwner(PlayerSetupData player, int turn,
             StrategicReservationReason reason, string owner, bool replaceOwnerRows = false)
         {
             if (player == null) return;
             Entry e = GetOrReset(player, turn);
+            int downgraded = 0;
+            if (reason == StrategicReservationReason.EconomyDeferredBuild
+                && replaceOwnerRows && !string.IsNullOrEmpty(owner))
+            {
+                downgraded = e.Reservations.RemoveAll(r => r.Owner == owner
+                    && r.Reason == StrategicReservationReason.EconomyBuildCompletion);
+            }
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason
                 && (string.IsNullOrEmpty(owner) || r.Owner != owner || replaceOwnerRows));
+            if (downgraded > 0)
+                AiDebugLog.Write($"[AI][V2] reservation - downgraded {downgraded} completion row(s) "
+                    + $"to deferred owner={owner}; active [{DebugLine(player, turn)}]");
             if (removed > 0)
                 AiDebugLog.Write($"[AI][V2] reservation - replaced {removed} ({reason}) "
                     + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
@@ -197,7 +222,12 @@ namespace Game.Ai.V2
                 .Where(r => r.Owner == owner && r.Reason == reason).ToList();
             float Expected(StrategicReservedResource resource) => resource switch
             {
-                StrategicReservedResource.ActionPoints => Mathf.Max(0f, ap),
+                // Deferred Economy may protect only persistent H/E/M/T. Even if an older caller
+                // still passes its eventual follow-up AP for comparison, that AP is not a legal
+                // reservation until the reason transitions to EconomyBuildCompletion.
+                StrategicReservedResource.ActionPoints =>
+                    reason == StrategicReservationReason.EconomyDeferredBuild
+                        ? 0f : Mathf.Max(0f, ap),
                 StrategicReservedResource.Human => Mathf.Max(0, cost?.Get(ResourceType.Human) ?? 0),
                 StrategicReservedResource.Energy => Mathf.Max(0, cost?.Get(ResourceType.Energy) ?? 0),
                 StrategicReservedResource.Materials => Mathf.Max(0, cost?.Get(ResourceType.Materials) ?? 0),
