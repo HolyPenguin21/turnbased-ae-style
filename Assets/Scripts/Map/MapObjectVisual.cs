@@ -23,6 +23,11 @@ namespace Game.Map
         // remain behind the replacement sprite. Off by default so existing rich building
         // prefabs keep their authored accent when their icon changes.
         [SerializeField] private bool clearFactionAccentOnSetIcon;
+        // Optional full layered replacement keyed by the same Sprite value existing callers
+        // already use with SetIcon. This lets a shared marker keep its established faction-icon
+        // selection contract while one icon upgrades to a complete Base + FactionAccent visual.
+        [SerializeField] private Sprite layeredIconTrigger;
+        [SerializeField] private MapObjectVisual layeredIconVisual;
         [SerializeField] private SpriteRenderer hitRendererOverride;
 
         // Fraction of the marker's own art half-width that actually counts as a click on it
@@ -41,6 +46,28 @@ namespace Game.Map
 
         public void SetIcon(Sprite icon)
         {
+            if (icon != null && layeredIconVisual != null && icon == layeredIconTrigger)
+            {
+                Color accentColor = factionAccent != null ? factionAccent.color : Color.white;
+                int objectSortingOrder = objectImage != null ? objectImage.sortingOrder : 0;
+                int accentSortingOrder = factionAccent != null ? factionAccent.sortingOrder : 0;
+
+                CopyRenderer(layeredIconVisual.objectImage, objectImage);
+                CopyRenderer(layeredIconVisual.factionAccent, factionAccent);
+                CopyRenderers(layeredIconVisual.auxiliaryRenderers, auxiliaryRenderers);
+
+                // CreateArmyMarker applies owner colour/sorting before SetIcon. The replacement
+                // supplies art/transforms/materials only; preserve the live marker's runtime state.
+                if (objectImage != null)
+                    objectImage.sortingOrder = objectSortingOrder;
+                if (factionAccent != null)
+                {
+                    factionAccent.color = accentColor;
+                    factionAccent.sortingOrder = accentSortingOrder;
+                }
+                return;
+            }
+
             if (objectImage != null)
                 objectImage.sprite = icon;
             if (clearFactionAccentOnSetIcon && factionAccent != null)
@@ -117,7 +144,7 @@ namespace Game.Map
 
         // Whether the last SetVisible call left this marker showing — used to tell an owner's
         // currently-representative army marker (see HexSelectionController.RestackArmiesOn)
-        // apart from one of their other armies sharing the hex, which stays instantiated
+        // apart from one of their other armies sharing the same hex, which stays instantiated
         // but hidden rather than destroyed.
         public bool IsVisible
         {

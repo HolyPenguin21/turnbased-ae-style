@@ -449,21 +449,18 @@ namespace Game.Ai.V2
                         intent.StallTurns = 0;
                     }
 
-                    // §5 actor ownership — a LOST PRIMARY ends the operation. Any support is
-                    // released with it (ActorCommitments stops claiming the moment the intent dies).
-                    // Return is phase-sensitive: once the objective is homeward movement, the same
-                    // live/non-empty ground-container gate used by ProvisionReturn is sufficient.
-                    // Combat phases, including SupportReturn (where primary still holds the target),
-                    // retain the strict structural Raid gate.
-                    bool primaryActorAlive = ri.PrimaryArmyId.HasValue
-                        && (ri.Phase == RaidMissionPhase.Return
-                            ? RaidSupportActorAlive(snap, ri.PrimaryArmyId.Value)
-                            : RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value));
-                    if (ri.OperationStarted && ri.PrimaryArmyId.HasValue && !primaryActorAlive)
+                    // A started Raid needs a surviving, non-empty primary container in every
+                    // phase. Structural combat eligibility is checked AFTER AdvanceRaidPhase:
+                    // a completed objective may need to send a battle-depleted survivor home.
+                    // null means unbound; ArmyId 0 is a valid bound army.
+                    bool primaryContainerAlive = ri.PrimaryArmyId.HasValue
+                        && RaidSupportActorAlive(snap, ri.PrimaryArmyId.Value);
+                    if (ri.OperationStarted && !primaryContainerAlive)
                     {
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — primary "
-                            + $"#{ri.PrimaryArmyId.Value} is no longer usable for phase {ri.Phase} "
+                            + $"#{(ri.PrimaryArmyId.HasValue ? ri.PrimaryArmyId.Value.ToString() : "none")} "
+                            + $"missing or dead in phase {ri.Phase} "
                             + $"(support #{(ri.SupportArmyId.HasValue ? ri.SupportArmyId.Value.ToString() : "none")} released)");
                         continue;
                     }
@@ -499,6 +496,21 @@ namespace Game.Ai.V2
                             activeRaidTargets, rekeys))
                     {
                         dead.Add(intent.IntentKey);
+                        continue;
+                    }
+
+                    // AdvanceRaidPhase may have changed Assault/Reinforcement to Return. Never
+                    // validate the finished target under the stale pre-transition phase.
+                    isReturnLeg = ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn;
+                    // SupportReturn still requires a combat-capable PRIMARY: only the primary's
+                    // own Return leg relaxes that gate. Unfinished combat raids remain strict.
+                    if (ri.OperationStarted && ri.Phase != RaidMissionPhase.Return
+                        && (!ri.PrimaryArmyId.HasValue
+                            || !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value)))
+                    {
+                        dead.Add(intent.IntentKey);
+                        AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — "
+                            + $"primary #{ri.PrimaryArmyId} no longer structural in phase {ri.Phase}");
                         continue;
                     }
 
@@ -831,8 +843,9 @@ namespace Game.Ai.V2
         }
 
         // The §5 transition table, run once per reconciliation pass against FRESH objectives:
-        //   target completed -> next neutral exists -> primary clears it   => Assault
-        //                                           -> primary too weak    => Reinforcement
+        //   target completed -> surviving depleted primary                  => Return
+        //                    -> next neutral exists -> primary clears it   => Assault
+        //                                           -> needs reinforcement => Reinforcement
         //                    -> no neutral targets left                    => Return
         // Returns false only when the operation cannot continue in any phase (caller retires it).
         private static bool AdvanceRaidPhase(PlayerSetupData player, WorldSnapshot snap,
@@ -882,13 +895,19 @@ namespace Game.Ai.V2
                 .ThenBy(o => o.Target.DiagnosticLabel)
                 .FirstOrDefault();
 
-            if (next == null)
+            // A completed objective must not chain a surviving but depleted primary onto the
+            // next neutral (not even into Reinforcement). Keep its durable identity and return
+            // it home through the existing Return transition instead.
+            bool depletedPrimary = ri.OperationStarted && ri.PrimaryArmyId.HasValue
+                && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value);
+            if (next == null || depletedPrimary)
             {
+                string reason = depletedPrimary ? "primary depleted" : "no neutral targets left";
                 HexCoord? home = SelectReturnBase(snap, player, ri.PrimaryArmyId);
                 if (home == null)
                 {
-                    AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} target completed, no further "
-                        + "neutral target and no return base — retiring");
+                    AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} target completed, "
+                        + $"{reason} and no return base — retiring");
                     return false;
                 }
                 ri.Phase = RaidMissionPhase.Return;
@@ -897,8 +916,8 @@ namespace Game.Ai.V2
                 ri.ReinforcementRequestedTurn = -1;
                 intent.StallTurns = 0;
                 intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
-                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} target completed, no neutral targets "
-                    + $"left -> Return to ({home.Value.Q},{home.Value.R}) with primary #{ri.PrimaryArmyId}");
+                AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} target completed, "
+                    + $"{reason} -> Return to ({home.Value.Q},{home.Value.R}) with primary #{ri.PrimaryArmyId}");
                 return true;
             }
 
