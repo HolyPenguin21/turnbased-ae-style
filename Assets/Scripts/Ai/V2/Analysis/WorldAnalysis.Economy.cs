@@ -349,20 +349,27 @@ namespace Game.Ai.V2
             {
                 if (army.IsGarrison)
                 {
-                    if (army.HasHero && army.Hex.Equals(target))
+                    if (!liveById.TryGetValue(army.ArmyId, out ArmyData liveGarrison))
+                        continue;
+                    UnitData sparableHero = AiArmyRoles.BestSparableEconomyHero(player, liveGarrison);
+                    if (sparableHero == null)
+                        continue;
+                    if (army.Hex.Equals(target))
                     {
+                        // A garrison is NEVER a mobile hero army. Even when it already occupies
+                        // the build hex, Provisioning must extract a genuinely sparable hero into
+                        // a field container before Economy can execute the build.
                         result.Add(new EconomyBuilderRouteSnapshot
                         {
                             ArmyId = army.ArmyId, TravelCost = 0, ReturnTravelCost = 0,
-                            CurrentMovement = army.CurrentMovement, MaxMovement = army.MaxMovement,
-                            ActivationApCost = army.ActivationApCost, ArmySize = army.MemberCount,
-                            HasActivatedThisTurn = army.HasActivatedThisTurn,
-                            EffectiveArmyPower = army.EffectiveArmyPower,
+                            CurrentMovement = sparableHero.MoveMax, MaxMovement = sparableHero.MoveMax,
+                            ActivationApCost = sparableHero.ActivationApCost, ArmySize = 1,
+                            HasActivatedThisTurn = false,
+                            EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
                             HasActiveEconomyCommitment = activeEconomyActors.Contains(army.ArmyId),
-                            IsOnTarget = true,
+                            IsOnTarget = true, RequiresGarrisonExtraction = true,
                             PathHexes = new[] { target },
-                            RouteThreats = KnownThreatsAffectingEconomyRoute(
-                                snap, new[] { target }),
+                            RouteThreats = KnownThreatsAffectingEconomyRoute(snap, new[] { target }),
                         });
                         continue;
                     }
@@ -378,47 +385,40 @@ namespace Game.Ai.V2
                     // ProvisioningManager — if no free shell exists this turn the candidate is
                     // simply not offered, and Economy falls back to its existing card-materialization
                     // path unchanged.
-                    if (liveById.TryGetValue(army.ArmyId, out ArmyData liveGarrison))
+                    HexPath garrisonRoute = SafeStepPathing.FindSafePath(
+                        ctx.Map, player, army.Hex, target, sparableHero.MoveMax);
+                    if (garrisonRoute != null)
                     {
-                        UnitData sparableHero = AiArmyRoles.BestSparableEconomyHero(player, liveGarrison);
-                        if (sparableHero != null)
+                        int garrisonReturnCost = int.MaxValue;
+                        foreach (HexCoord home in snap.Self.BaseHexes
+                                     ?? System.Array.Empty<HexCoord>())
                         {
-                            HexPath garrisonRoute = SafeStepPathing.FindSafePath(
-                                ctx.Map, player, army.Hex, target, sparableHero.MoveMax);
-                            if (garrisonRoute != null)
-                            {
-                                int garrisonReturnCost = int.MaxValue;
-                                foreach (HexCoord home in snap.Self.BaseHexes
-                                             ?? System.Array.Empty<HexCoord>())
-                                {
-                                    int candidateCost = SafeStepPathing.FindSafePathCost(
-                                        ctx.Map, player, target, home, sparableHero.MoveMax);
-                                    if (candidateCost < garrisonReturnCost)
-                                        garrisonReturnCost = candidateCost;
-                                }
-                                if (garrisonReturnCost == int.MaxValue)
-                                    garrisonReturnCost = HexGridMath.Distance(target, army.Hex);
-
-                                result.Add(new EconomyBuilderRouteSnapshot
-                                {
-                                    ArmyId = army.ArmyId,
-                                    TravelCost = garrisonRoute.TotalCost,
-                                    ReturnTravelCost = garrisonReturnCost,
-                                    CurrentMovement = sparableHero.MoveMax,
-                                    MaxMovement = sparableHero.MoveMax,
-                                    ActivationApCost = sparableHero.ActivationApCost,
-                                    HasActivatedThisTurn = false,
-                                    ArmySize = 1,
-                                    EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
-                                    HasActiveEconomyCommitment = false,
-                                    IsOnTarget = false,
-                                    RequiresGarrisonExtraction = true,
-                                    PathHexes = garrisonRoute.Hexes.ToList(),
-                                    RouteThreats = KnownThreatsAffectingEconomyRoute(
-                                        snap, garrisonRoute.Hexes),
-                                });
-                            }
+                            int candidateCost = SafeStepPathing.FindSafePathCost(
+                                ctx.Map, player, target, home, sparableHero.MoveMax);
+                            if (candidateCost < garrisonReturnCost)
+                                garrisonReturnCost = candidateCost;
                         }
+                        if (garrisonReturnCost == int.MaxValue)
+                            garrisonReturnCost = HexGridMath.Distance(target, army.Hex);
+
+                        result.Add(new EconomyBuilderRouteSnapshot
+                        {
+                            ArmyId = army.ArmyId,
+                            TravelCost = garrisonRoute.TotalCost,
+                            ReturnTravelCost = garrisonReturnCost,
+                            CurrentMovement = sparableHero.MoveMax,
+                            MaxMovement = sparableHero.MoveMax,
+                            ActivationApCost = sparableHero.ActivationApCost,
+                            HasActivatedThisTurn = false,
+                            ArmySize = 1,
+                            EffectiveArmyPower = AiPower.ToPowerUnit(sparableHero).BasePower,
+                            HasActiveEconomyCommitment = false,
+                            IsOnTarget = false,
+                            RequiresGarrisonExtraction = true,
+                            PathHexes = garrisonRoute.Hexes.ToList(),
+                            RouteThreats = KnownThreatsAffectingEconomyRoute(
+                                snap, garrisonRoute.Hexes),
+                        });
                     }
                     continue;
                 }
@@ -603,4 +603,3 @@ namespace Game.Ai.V2
 
     }
 }
-
