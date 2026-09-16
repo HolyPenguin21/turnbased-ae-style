@@ -2,16 +2,10 @@ using UnityEngine;
 
 namespace Game.Styles
 {
-    // Fixed pool of distinct player colours. Index-based (not enum) so it's trivial to check
-    // "is this index already taken" while assigning random unused colours to new players.
-    // Green and yellow are deliberately excluded — see TechnicalColors, they're reserved for
-    // UI/highlight use across the project and would be ambiguous if a player also had one. Red
-    // is excluded for the same reason as of the move-arrow attack colour (see GameConfig.
-    // moveArrowAttackColor). Purple/violet is excluded too as of the Neutral-faction colour
-    // below — kept out of the whole family so nothing a real player picks reads as "the same
-    // colour as Neutral." White/black/orange were dropped per the project owner's own call
-    // (orange sat too close to TechnicalColors.RetreatWarning; white/black read as blending
-    // into UI chrome rather than standing out against the map).
+    // Fixed pool of six map-readable player colours. Index-based (not enum) so it's trivial to
+    // check "is this index already taken" while assigning random unused colours to new players.
+    // The selectable palette deliberately omits the old dark/gunmetal and violet options.
+    // Violet remains only in the reserved Neutral slot below, so no real player can pick it.
     public static class PlayerColorPalette
     {
         // Colors[NeutralColorIndex] is the Neutral faction's colour (see
@@ -21,28 +15,22 @@ namespace Game.Styles
         // both the setup-screen colour dropdown (PlayerRowUI) and random assignment
         // (GameSetupModel) so no real player can ever end up wearing it. Kept as the LAST
         // index deliberately — GameSetupModel's exhausted-pool fallback relies on that.
-        public const int NeutralColorIndex = 11;
+        public const int NeutralColorIndex = 6;
 
         public static readonly Color[] Colors =
         {
-            new Color(0.55f, 0.60f, 0.65f), // 0  Steel
-            new Color(0.15f, 0.35f, 0.80f), // 1  Blue
-            new Color(0.05f, 0.50f, 0.40f), // 2  Teal
-            new Color(0.20f, 0.75f, 0.72f), // 3  Turquoise
-            new Color(0.10f, 0.55f, 0.60f), // 4  Cyan
-            new Color(0.75f, 0.20f, 0.50f), // 5  Pink
-            new Color(0.45f, 0.28f, 0.12f), // 6  Brown
-            new Color(0.35f, 0.65f, 0.92f), // 7  Sky
-            new Color(0.08f, 0.12f, 0.38f), // 8  Navy
-            new Color(0.25f, 0.70f, 0.58f), // 9  Seafoam
-            new Color(0.30f, 0.40f, 0.60f), // 10 Denim
-            new Color(0.30f, 0.15f, 0.45f), // 11 Neutral (reserved, see NeutralColorIndex)
+            new Color(0.2470588f, 0.4039216f, 0.7764706f), // 0 Cobalt       #3F67C6
+            new Color(0.1843137f, 0.5568627f, 0.5137255f), // 1 Teal         #2F8E83
+            new Color(0.3529412f, 0.5490196f, 0.3333333f), // 2 Sage Green   #5A8C55
+            new Color(0.7686275f, 0.5803922f, 0.1960784f), // 3 Ochre        #C49432
+            new Color(0.7725490f, 0.4235294f, 0.2274510f), // 4 Burnt Orange #C56C3A
+            new Color(0.7058824f, 0.3176471f, 0.3333333f), // 5 Brick Red    #B45155
+            new Color(0.30f, 0.15f, 0.45f),               // 6 Neutral (reserved)
         };
 
         public static readonly string[] Names =
         {
-            "Steel", "Blue", "Teal", "Turquoise", "Cyan", "Pink", "Brown", "Sky", "Navy",
-            "Seafoam", "Denim", "Neutral"
+            "Cobalt", "Teal", "Sage Green", "Ochre", "Burnt Orange", "Brick Red", "Neutral"
         };
     }
 }
