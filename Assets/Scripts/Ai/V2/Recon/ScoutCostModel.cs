@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using UnityEngine;
@@ -8,45 +9,37 @@ namespace Game.Ai.V2
     //  SCOUT COST MODEL  (Strategy V2 build-order step 4 — the shared Scout estimator)
     // ===========================================================================================
     //  "ONE ESTIMATOR, MANY STAGES" for the cheap mission type, the same rule
-    //  CombatOpportunityAnalyzer enforces for raids. Both the step-4 MissionRequirements and the
-    //  step-6 ProvisioningManager feasibility check call THIS, so the allocator can never fund a
-    //  Scout the provisioner then can't pay for.
+    //  CombatOpportunityAnalyzer enforces for raids. Mission planning uses this model to publish a
+    //  concrete, actor-priced ground alternative BEFORE generic funding; Assignment/Provisioning
+    //  still owns the final live-world binding and feasibility check.
     //
     //  WHAT A GROUND SCOUT ACTUALLY COSTS (game rules, not tunables):
     //    * AP     — only to ACTIVATE the mover (ArmyData.ActivationApCost). Travelling across
     //               hexes spends MOVEMENT, never AP; an already-activated army costs 0 AP to move.
     //               A stealth-Required mission adds exactly 1 AP (scoutOptionalStealthAp) — the
     //               EnterStealth before the first risky step — UNLESS the mover is already hidden.
-    //    * Energy — ArmyData.ActivationEnergyCost is non-zero ONLY for a real air army, so a
-    //               ground solo-Recce is 0. Kept in the contract for AirRecon later.
+    //    * Energy — ground solo-Recce is 0. Actor-agnostic air fallback keeps the existing widened
+    //               envelope until the aviation prepass / Assignment resolves a concrete air actor.
     //
-    //  MOVER ELIGIBILITY (mission.Stealth):
-    //    None/Preferred — any fielded solo Recce.
-    //    Required       — only a mover that is already hidden, OR can still slip into stealth
-    //                     before its first move (CanEnterStealth && !HasActivatedThisTurn). A
-    //                     visible, already-activated scout is NOT a valid executor (parity with
-    //                     V1's hard exclusion). If none qualifies, MoverKnown = false and the
-    //                     estimate is sized off a NOTIONAL capable scout — Provisioning (step 6)
-    //                     either finds a real one or fails cleanly into the bounded re-allocate.
-    //
-    //  Distance is plain hex distance (no pathfinding yet — same first-pass ETA basis as the rest
-    //  of V2); a live overload with a concrete ArmyData / real path lands with Provisioning.
+    //  IMPORTANT COST SPLIT:
+    //    RequiredAp / ApDesired is THIS TURN only. RecurringActivationAp is the real activation AP
+    //    paid on later turns of a multi-turn march and exists for TaskScore.Delivery only. It must
+    //    never be reserved or packed as future AP.
     // ===========================================================================================
     public struct ScoutCostEstimate
     {
         public bool MoverKnown;
         public bool MoverAlreadyHidden;
+        public int? PreferredMoverArmyId;
 
         public float ApMinimum, ApDesired, ApMaximum;
-        // RECON-AIR-01 — split into a Min/Desired/Max envelope like AP, instead of one flat
-        // ActivationEnergy figure: a ground executor genuinely needs 0, so Minimum/Desired must stay
-        // 0 (never force a physical Energy draw for a mission that may well execute on the ground);
-        // only Maximum/Desired-for-air-plausible-classes widens to cover a real air actor's cost —
-        // see EnergyDesired's assignment below, which is what actually feeds the physical funding
-        // pool (ResourceAllocator.PhysicalDesired), unlike EnergyMaximum which is currently unread.
         public float EnergyMinimum, EnergyDesired, EnergyMaximum;
         public int EtaTurns;
         public float EstimatedDistance;
+
+        // Full-operation comparison fact only. Never part of MissionRequirements/current-turn
+        // resource packing.
+        public float RecurringActivationAp;
     }
 
     public struct ScoutPairCost
@@ -83,41 +76,113 @@ namespace Game.Ai.V2
             };
         }
 
-        // §6/§8 — Mission-stage estimation is actor-agnostic: it must size the MissionRequirements
-        // envelope from POLICY constants and generic geometry only, never by enumerating or ranking
-        // concrete movers (that is ReconAssignmentPlanner's job, strictly after Funding). MoverKnown
-        // is therefore always false here — Assignment is what actually proves an executor exists —
-        // and every AP/energy/ETA figure below is a notional-mover, worst-reasonable-case estimate
-        // good enough to size a funding request. ReconAssignmentPlanner.EvaluateCandidate /
-        // BuildCandidates refine the real figure once a concrete actor is bound; if the bound
-        // actor's real cost exceeds what this estimate funded, ProvisioningManager's envelope check
-        // already reports EnvelopeTooSmall (ProvisionDisposition.RepriceThisTurn) and
-        // ResourceAllocator re-funds at the raised floor next pass — the existing repack loop, not a
-        // second actor-aware estimator here.
-        public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target)
+        private readonly struct PlannedGroundCost
+        {
+            public readonly ArmySnapshot Mover;
+            public readonly ScoutPairCost Cost;
+            public readonly float FullOperationAp;
+
+            public PlannedGroundCost(ArmySnapshot mover, ScoutPairCost cost)
+            {
+                Mover = mover;
+                Cost = cost;
+                FullOperationAp = cost.RequiredAp
+                    + Mathf.Max(0, mover?.ActivationApCost ?? 0) * Mathf.Max(0, cost.EtaTurns - 1);
+            }
+        }
+
+        // Pre-funding planning estimate. When a usable ground actor exists, publish the cheapest
+        // deterministic actor-specific alternative. This does NOT claim or bind the actor: the
+        // proposal merely carries PreferredMoverArmyId so MissionAdmissionPolicy/ResourceAllocator
+        // can reject impossible same-actor portfolios before financing. ReconAssignmentPlanner
+        // remains the final assignment authority and can invalidate/replace the plan if live route,
+        // vantage or contention facts changed.
+        public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target,
+            int? preferredMoverArmyId = null)
+        {
+            PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId);
+            if (planned.HasValue)
+            {
+                PlannedGroundCost p = planned.Value;
+                return new ScoutCostEstimate
+                {
+                    MoverKnown = true,
+                    MoverAlreadyHidden = p.Cost.AlreadyHidden,
+                    PreferredMoverArmyId = p.Mover.ArmyId,
+                    ApMinimum = p.Cost.RequiredAp,
+                    ApDesired = p.Cost.RequiredAp,
+                    ApMaximum = p.Cost.RequiredAp,
+                    EnergyMinimum = 0f,
+                    EnergyDesired = 0f,
+                    EnergyMaximum = 0f,
+                    EtaTurns = p.Cost.EtaTurns,
+                    EstimatedDistance = p.Cost.Distance,
+                    // Even when already activated THIS turn, later turns reactivate at the actor's
+                    // real activation AP. This is comparison-only future cost, never a reservation.
+                    RecurringActivationAp = Mathf.Max(0, p.Mover.ActivationApCost),
+                };
+            }
+
+            return NotionalFallback(snap, target);
+        }
+
+        private static PlannedGroundCost? PlanGroundCost(WorldSnapshot snap, ScoutMissionTarget target,
+            int? preferredMoverArmyId)
+        {
+            bool stealthRequired = target.Stealth == StealthRequirement.Required;
+            var candidates = new List<PlannedGroundCost>();
+            foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
+            {
+                HexCoord executionHex = target.FocusHex;
+                if (target.Kind == ScoutTargetKind.Surveil)
+                {
+                    SurveilVantageCandidate? vantage = SurveilVantageSelector.Rank(snap, mover, target)
+                        .Cast<SurveilVantageCandidate?>().FirstOrDefault();
+                    if (!vantage.HasValue)
+                        continue;
+                    executionHex = vantage.Value.ExecutionHex;
+                }
+
+                ScoutPairCost pair = PairCost(snap, mover, executionHex, stealthRequired);
+                candidates.Add(new PlannedGroundCost(mover, pair));
+            }
+
+            if (candidates.Count == 0)
+                return null;
+
+            if (preferredMoverArmyId.HasValue)
+            {
+                PlannedGroundCost? pinned = candidates
+                    .Where(x => x.Mover.ArmyId == preferredMoverArmyId.Value)
+                    .Cast<PlannedGroundCost?>().FirstOrDefault();
+                if (pinned.HasValue)
+                    return pinned;
+            }
+
+            return candidates
+                .OrderBy(x => x.FullOperationAp)
+                .ThenBy(x => x.Cost.EtaTurns)
+                .ThenBy(x => x.Cost.Distance)
+                .ThenBy(x => x.Mover.ArmyId)
+                .First();
+        }
+
+        private static ScoutCostEstimate NotionalFallback(WorldSnapshot snap, ScoutMissionTarget target)
         {
             var est = new ScoutCostEstimate { MoverKnown = false, MoverAlreadyHidden = false };
             float stealthAp = AiConfigV2.scoutOptionalStealthAp;
             float notionalActivationAp = AiConfigV2.scoutNotionalActivationAp;
 
-            // RECON-AIR-01 — Refresh/Surveil are the two classes AppendAirCandidates ever binds to
-            // an air actor (Explore is a physical ground visit only; a stealth-Required / positive-
-            // DetectionRisk mission can never be air, per the same hard invariant Assignment
-            // enforces). Widen the envelope for exactly that class, never for Explore or stealth.
             bool airPlausible = (target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsRefresh(target.Kind))
                 && target.Stealth != StealthRequirement.Required && !(target.DetectionRisk > 0f);
 
-            // Shared notional geometry for Explore, Refresh AND Surveil. A Surveil vantage is
-            // selected later by Assignment; last-known contact distance is only the stage-4
-            // planning proxy, never a claim that an actual actor/path has been chosen.
             int fleetBudget = snap?.Self?.Armies != null
                 ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;
             if (fleetBudget <= 0) fleetBudget = 1;
 
-            // One shared distance owner considers the Citadel and every owned Base.
-            est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
-                snap, target.FocusHex, 0);
+            est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, target.FocusHex, 0);
             est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
+            est.RecurringActivationAp = notionalActivationAp;
 
             if (target.Kind == ScoutTargetKind.Surveil)
             {
@@ -130,7 +195,6 @@ namespace Game.Ai.V2
                     airPlausible ? AiConfigV2.airReconNotionalLaunchEnergy : 0f;
                 return est;
             }
-
 
             est.EnergyMinimum = 0f;
             est.EnergyDesired = est.EnergyMaximum =
@@ -147,8 +211,6 @@ namespace Game.Ai.V2
                     est.ApMaximum = Mathf.Max(notionalActivationAp + stealthAp, airApFloor);
                     break;
                 case StealthRequirement.Required:
-                    // Generic estimate cannot know whether the eventual mover is already hidden;
-                    // size the worst-reasonable (not-yet-hidden) case, refined by Assignment.
                     est.ApMinimum = est.ApDesired = est.ApMaximum = notionalActivationAp + stealthAp;
                     break;
             }
