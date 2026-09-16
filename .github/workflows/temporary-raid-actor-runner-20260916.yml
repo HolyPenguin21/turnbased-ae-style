@@ -1,0 +1,30 @@
+name: Temporary Raid patch runner
+on:
+  push:
+    branches: [fix/raid-actor-commitment-20260916]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Apply and validate guarded patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/temporary-raid-actor-fix-20260916.yml').read_text()
+          script = source.split("          python3 - <<'PY'\n", 1)[1].split('\n          PY\n', 1)[0]
+          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines())
+          exec(compile(script, 'guarded_raid_patch.py', 'exec'))
+          PY
+          git diff --check
+          git add Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.cs Assets/Scripts/Ai/V2/State/GroundCombatAdmissionRegistry.cs Assets/Editor/AiRaidActorCommitmentTests.cs Assets/Editor/AiRaidActorCommitmentTests.cs.meta
+          git rm .github/workflows/temporary-raid-actor-fix-20260916.yml .github/workflows/temporary-raid-actor-runner-20260916.yml
+          git -c user.name='Raid Fix Bot' -c user.email='raid-fix-bot@users.noreply.github.com' commit -m 'fix(ai): preserve Raid actor commitments through scoring and provisioning'
+          git push origin HEAD:fix/raid-actor-commitment-20260916
