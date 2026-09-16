@@ -217,6 +217,10 @@ namespace Game.Ai.V2
         // this before accepting a launch).
         public float EnergyClaimed { get; private set; }
         public readonly HashSet<int> ClaimedArmyIds = new HashSet<int>();
+        // Durable ownership is distinct from same-pass claims. Provisioning must preserve both:
+        // the batch solvers filter with this set, and Raid live revalidation uses it for hosts and
+        // assembly donors so a retry cannot steal an Economy/Recon/Raid incumbent.
+        public readonly HashSet<int> DurableClaimedArmyIds = new HashSet<int>();
 
         private readonly Dictionary<StableMissionKey, ProvisionedMission> _successful =
             new Dictionary<StableMissionKey, ProvisionedMission>();
@@ -275,6 +279,13 @@ namespace Game.Ai.V2
             _raidAssignment.Clear();
             foreach (KeyValuePair<StableMissionKey, int> kv in a)
                 _raidAssignment[kv.Key] = kv.Value;
+        }
+
+        internal void SetDurableClaims(IEnumerable<int> ids)
+        {
+            DurableClaimedArmyIds.Clear();
+            if (ids == null) return;
+            foreach (int id in ids) DurableClaimedArmyIds.Add(id);
         }
 
         internal bool TryGetAssignedRaidActor(StableMissionKey k, out int armyId) =>
@@ -487,6 +498,7 @@ namespace Game.Ai.V2
             ProvisioningSession session, TentativeAllocation allocation,
             ActorCommitments durableCommitments = null)
         {
+            session.SetDurableClaims(durableCommitments?.ClaimedArmyIds);
             PrepareScoutAssignments(player, root, ctx, session, allocation, durableCommitments);
             PrepareGroundCombatAssignments(session, allocation, durableCommitments);
         }
@@ -2220,24 +2232,41 @@ namespace Game.Ai.V2
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;
             }
 
-            GroundCombatAssemblyPlan plan = null;
-            if (session.TryGetAssignedRaidActor(key, out int assignedActor)
-                && !session.ClaimedArmyIds.Contains(assignedActor))
-            {
-                GroundCombatAssemblyPlan assigned = GroundCombatAssemblyPlanner.PlanForArmy(snap, target, defenders, assignedActor);
-                if (assigned.Feasible) plan = assigned;
-            }
-            if (plan == null)
-                plan = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
+            // Assault actor ownership is decided once by PrepareGroundCombatAssignments.
+            // Never re-search with a weaker exclusion set here: that previously allowed a Raid to
+            // steal a durable Economy/Recon/Raid actor after the batch solver had correctly rejected it.
+            if (!session.TryGetAssignedRaidActor(key, out int assignedActor))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid target {raidTarget.DiagnosticLabel} has no free ground-combat actor assigned this cycle"));
+            if (session.ClaimedArmyIds.Contains(assignedActor))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"assigned raid actor #{assignedActor} was claimed by an earlier mission this cycle"));
 
+            var raidExclusions = new HashSet<int>(session.ClaimedArmyIds);
+            raidExclusions.UnionWith(session.DurableClaimedArmyIds);
+            // The batch solver already authorised this exact actor. For a continuing Raid it is
+            // expected to appear in DurableClaimedArmyIds as its own incumbent; other durable
+            // actors (including assembly donors) remain excluded.
+            raidExclusions.Remove(assignedActor);
+
+            float assignedGate = m.FromDurableIntent
+                && m.DurableFundingTier == CommitmentTier.Hard
+                && m.PreferredMoverArmyId.HasValue
+                && m.PreferredMoverArmyId.Value == assignedActor
+                    ? RaidAdmissionPolicy.ContinuationWinChanceFloor
+                    : RaidAdmissionPolicy.FreshStartWinChanceGate;
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                new GroundCombatAssemblyRequest
+                {
+                    Defenders = defenders,
+                    PreferredPrimaryArmyId = assignedActor,
+                    PinToPreferred = true,
+                    ExcludedArmyIds = raidExclusions,
+                    WinChanceGate = assignedGate,
+                });
             if (!plan.Feasible)
-            {
-                GroundCombatAssemblyPlan unrestricted = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
-                if (unrestricted.Feasible)
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"raid target {raidTarget.DiagnosticLabel} has an executable force but its host/donor is already claimed; {plan.Reason}"));
-                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(plan.Reason));
-            }
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"assigned raid actor #{assignedActor} is no longer executable without stealing a claimed host/donor: {plan.Reason}"));
 
             ArmyData host = ResolveArmy(player, plan.BaseArmyId);
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0
