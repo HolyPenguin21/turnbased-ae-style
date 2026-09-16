@@ -288,7 +288,21 @@ namespace Game.Ai.V2
         internal HashSet<int> ExcludedForRaid(MissionProposal proposal)
         {
             var excluded = new HashSet<int>(ClaimedArmyIds);
-            excluded.UnionWith(_raidPinnedByOtherLegs);
+            foreach (int pinnedId in _raidPinnedByOtherLegs)
+            {
+                // The pinned set is computed across ALL funded non-Assault Raid legs, including
+                // this very Reinforcement/Return leg. Its own actor must remain permitted;
+                // never erase a real same-pass claim or an assignment belonging to another Raid.
+                bool thisLegsActor = proposal?.Target is RaidMissionTarget raid
+                    && ((raid.Phase == RaidMissionPhase.Reinforcement
+                            && raid.SupportArmyId == pinnedId)
+                        || (raid.Phase == RaidMissionPhase.Return
+                            && raid.PrimaryArmyId == pinnedId)
+                        || (raid.Phase == RaidMissionPhase.SupportReturn
+                            && raid.SupportArmyId == pinnedId));
+                if (!thisLegsActor)
+                    excluded.Add(pinnedId);
+            }
             if (_raidDurableCommitments != null)
                 foreach (int id in _raidDurableCommitments.ClaimedArmyIds)
                     if (proposal == null || !proposal.FromDurableIntent

@@ -140,6 +140,33 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void PinnedReinforcement_KeepsItsOwnSupportButNotOtherLegs()
+        {
+            var session = new ProvisioningSession(new WorldSnapshot());
+            var mission = new MissionProposal
+            {
+                Kind = MissionKind.Raid,
+                FromDurableIntent = true,
+                PreferredMoverArmyId = 9,
+                Target = new RaidMissionTarget
+                {
+                    Phase = RaidMissionPhase.Reinforcement,
+                    Target = RaidTargetRef.ForNeutralArmy(42),
+                    PrimaryArmyId = 8,
+                    SupportArmyId = 9,
+                },
+            };
+            var claimed = new ActorCommitments();
+            claimed.Claim(9);
+            session.SetRaidConstraints(claimed, new HashSet<int> { 8, 9, 10 });
+
+            HashSet<int> excluded = session.ExcludedForRaid(mission);
+            Assert.That(excluded, Does.Not.Contain(9));
+            Assert.That(excluded, Does.Contain(8));
+            Assert.That(excluded, Does.Contain(10));
+        }
+
+        [Test]
         public void AdmissionExcludesCommittedActor_BeforeRaidFunding()
         {
             var snap = new WorldSnapshot { Self = new SelfSnapshot
