@@ -23,15 +23,16 @@ namespace Game.Map
     // of the same owner already collapsed to a single marker upstream, see
     // HexSelectionController.DistinctOwners):
     //  1. Exactly one occupant total (a lone building, or a lone army) -> centred.
-    //  2. A building plus exactly one army -> building bottom-left (buildingIconOffset), army
-    //     bottom-right (armyIconOffset). This is the ONLY case the building keeps an off-centre
-    //     corner — with 2+ armies it moves to centre instead (project owner's spec, кейс 4.1).
+    //  2. A building plus exactly one army -> building stays centred, army sits at its own
+    //     corner (armyIconOffset). A building (Citadel/Base/Facility) never gets pushed off
+    //     centre by units sharing its hex — only armies are ever offset (project owner's spec,
+    //     2026-09-16).
     //  3. Two or three armies of DIFFERENT owners (with or without a building): fixed slots —
     //     1st owner -> armySlotRight, 2nd -> armySlotLeft, 3rd -> armySlotTop. A building present
     //     sits at hex centre.
     //  4. Anything past that (4+ distinct owners on one hex) isn't designed yet — project owner:
     //     "4е разных игрока на хексе пока не рассматриваем" — so everyone stacks at centre
-    //     (building keeps its own corner if present) rather than guessing a layout.
+    //     (the building, if present, always stays centred too).
     public static class HexObjectLayout
     {
         public readonly struct Result
@@ -58,7 +59,7 @@ namespace Game.Map
             if (hasBuilding && armyCount == 1)
             {
                 armyOffsets[0] = config.armyIconOffset;
-                return new Result(config.buildingIconOffset, armyOffsets);
+                return new Result(Vector2.zero, armyOffsets);
             }
 
             // 2 or 3 armies of different owners — fixed right/left/top slots, building (if any)
@@ -75,7 +76,7 @@ namespace Game.Map
             // Fallback for not-yet-designed combinations (4+ distinct owners) — stack at centre.
             for (int i = 0; i < armyCount; i++)
                 armyOffsets[i] = Vector2.zero;
-            return new Result(hasBuilding ? config.buildingIconOffset : Vector2.zero, armyOffsets);
+            return new Result(Vector2.zero, armyOffsets);
         }
     }
 }

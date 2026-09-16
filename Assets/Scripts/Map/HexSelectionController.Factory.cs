@@ -78,10 +78,16 @@ namespace Game.Map
         // the moment its first member is added and RestackArmiesOn is re-run.
         public ArmyController CreateArmyMarker(ArmyData army)
         {
-            if (gameConfig == null || gameConfig.armyMarkerPrefab == null || map == null || army == null || army.Owner == null)
+            if (map == null || army == null || army.Owner == null)
                 return null;
 
-            MapObjectVisual marker = Instantiate(gameConfig.armyMarkerPrefab);
+            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
+                ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
+                : null;
+            if (ownerCatalog == null || ownerCatalog.armyPrefab == null)
+                return null;
+
+            MapObjectVisual marker = Instantiate(ownerCatalog.armyPrefab);
             ArmyController controller = marker.gameObject.AddComponent<ArmyController>();
             controller.SetData(army);
             army.Controller = controller;
@@ -93,11 +99,6 @@ namespace Game.Map
             marker.transform.position = map.HexToWorld(army.Hex);
             marker.SetColor(PlayerColorPalette.Colors[army.Owner.ColorIndex]);
             marker.SetSortingOrder(MapSortingOrder.ArmyCircle, MapSortingOrder.ArmyIcon);
-            FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
-                ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
-                : null;
-            if (AviationRules.IsAirArmy(army) && ownerCatalog != null && ownerCatalog.airArmyIcon != null)
-                marker.SetIcon(ownerCatalog.airArmyIcon);
             marker.SetVisible(false); // RestackArmiesOn below decides if it should actually show
 
             RestackArmiesOn(army.Hex, null);

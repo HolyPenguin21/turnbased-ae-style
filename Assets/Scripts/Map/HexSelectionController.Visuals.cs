@@ -117,11 +117,6 @@ namespace Game.Map
             remembered.Visual.transform.rotation = source.Controller.transform.rotation;
             remembered.Visual.transform.localScale = source.Controller.transform.localScale;
             remembered.Visual.CopyAppearanceFrom(source.Controller.Visual);
-            FactionCardCatalog ownerCatalog = source.Owner != null && cardHandUI != null && cardHandUI.StartingDeckCatalog != null
-                ? cardHandUI.StartingDeckCatalog.GetCatalog(source.Owner.Faction)
-                : null;
-            if (ownerCatalog != null && ownerCatalog.armyIcon != null)
-                remembered.Visual.SetIcon(ownerCatalog.armyIcon);
             remembered.Visual.SetVisible(false);
             AddRememberedArmyToHexIndex(viewer, remembered);
             // Position last, after the hex index is up to date — see ReapplyRememberedLayout's
@@ -524,22 +519,7 @@ namespace Game.Map
                     && !(army.Owner != VisionSystem.CurrentViewer
                          && StealthSystem.ArmyFullyHiddenFrom(army, VisionSystem.CurrentViewer));
                 if (controller.Visual != null)
-                {
                     controller.Visual.SetVisible(visible);
-                    if (visible)
-                    {
-                        FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
-                            ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
-                            : null;
-                        if (ownerCatalog != null)
-                        {
-                            Sprite icon = (AviationRules.IsAirArmy(army) || (army.IsGarrison && airfieldOwners.Contains(army.Owner))) && ownerCatalog.airArmyIcon != null
-                                ? ownerCatalog.airArmyIcon : ownerCatalog.armyIcon;
-                            if (icon != null)
-                                controller.Visual.SetIcon(icon);
-                        }
-                    }
-                }
                 if (controller == exclude || controller.IsMoving)
                     continue;
                 // -1 when this army's owner was filtered out of the layout for the current

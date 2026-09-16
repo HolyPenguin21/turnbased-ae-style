@@ -19,20 +19,15 @@ namespace Game.Core
     public class GameConfig : ScriptableObject
     {
         [Header("Map Objects")]
-        // A hex only ever shows one visible marker per owner, standing in for that owner's
-        // whole presence there — one army marker at a time (see HexSelectionController.
-        // RestackArmiesOn), never one per individual unit; a unit has no map presence of its
-        // own at all.
-        public MapObjectVisual armyMarkerPrefab;
         // The event's own picture (see EventDefinition.image), shown standalone on a hex once
         // its Hex Event has been left unresolved via Skip — never shown before that (an
         // undiscovered event is a surprise, no map presence at all), and never removed again
         // just because fog covers the hex afterward, same "remembered once seen" exception the
         // resource row already gets (see MapEventDisplay, VisionSystem.
         // HasEverSeenByCurrentViewer). Only removed once the event's reward is actually claimed.
-        // Unlike a Base/Citadel marker (FactionCardCatalog.basePrefab) or armyMarkerPrefab,
-        // never goes through HexObjectLayout — always sits at eventIconOffset regardless of
-        // what else shares the hex.
+        // Unlike a Base/Citadel/Army marker (FactionCardCatalog.basePrefab/armyPrefab), never
+        // goes through HexObjectLayout — always sits at eventIconOffset regardless of what else
+        // shares the hex.
         public EventMarkerVisual eventMarkerPrefab;
         public Vector2 eventIconOffset = Vector2.zero;
         // Where each sits within its hex, in hex-radius units (x = left/right, y = the world Z

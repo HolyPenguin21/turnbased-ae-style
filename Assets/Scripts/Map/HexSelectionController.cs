@@ -1076,7 +1076,6 @@ namespace Game.Map
                 return;
 
             SetSelectedArmy(army.Controller);
-            RefreshArmyIcon(army);
             // The chosen army becomes the visible marker for its owner on this hex too (see
             // RestackArmiesOn's representative-selection), so a move order started from here
             // actually animates the same army the player just picked, not an arbitrary one.
@@ -1100,20 +1099,6 @@ namespace Game.Map
                 _selectedArmy.SetSelected(true);
 
             HidePathPreview();
-        }
-
-        // Restack also refreshes this, but selection and the first movement frame can happen
-        // before its visual pass. Apply the composition-derived icon at both boundaries.
-        private void RefreshArmyIcon(ArmyData army)
-        {
-            if (army?.Controller?.Visual == null || army.Owner == null || cardHandUI == null || cardHandUI.StartingDeckCatalog == null)
-                return;
-            FactionCardCatalog catalog = cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction);
-            if (catalog == null)
-                return;
-            Sprite icon = AviationRules.IsAirArmy(army) && catalog.airArmyIcon != null ? catalog.airArmyIcon : catalog.armyIcon;
-            if (icon != null)
-                army.Controller.Visual.SetIcon(icon);
         }
 
         private bool IsOwnArmyOnCurrentTurn(ArmyController controller)

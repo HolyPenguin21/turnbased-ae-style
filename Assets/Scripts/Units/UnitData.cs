@@ -121,7 +121,7 @@ namespace Game.Units
 
         // The card art this unit was spawned from (see CardDefinition.art), carried over at
         // spawn time same as MoveMax/CommandRating — the map marker itself only ever shows the
-        // owner's own shared army/stack icon (see FactionCardCatalog.armyIcon), but
+        // owner's own faction army marker (see FactionCardCatalog.armyPrefab), but
         // ArmyViewerModalUI's card grid shows this real per-unit art instead.
         public Sprite Art;
         // Carried over from CardDefinition.detailArt at spawn time (falling back to Art itself

@@ -38,16 +38,15 @@ namespace Game.Cards
         // sprite on a shared shape. The one and only source for each: citadelPrefab for the
         // auto-placed starting citadel (see CitadelSetupController.SpawnCitadelMarker),
         // basePrefab for a Base founded later from a played CardType.Base card (see
-        // HexSelectionController.Factory.SpawnBuilding). GameConfig has no building-marker
-        // prefab of its own any more, so every faction catalog must assign both.
+        // HexSelectionController.Factory.SpawnBuilding), armyPrefab for a faction's own army
+        // marker (see HexSelectionController.Factory.CreateArmyMarker). GameConfig has no
+        // building- or army-marker prefab of its own any more, so every faction catalog must
+        // assign all three.
         public MapObjectVisual citadelPrefab;
         public MapObjectVisual basePrefab;
+        public MapObjectVisual armyPrefab;
         public Sprite citadelIcon;
         public Sprite facilityIcon;
-        public Sprite armyIcon;
-        // Optional dedicated icon for mobile aviation.  Existing factions keep the normal army
-        // icon until art is assigned, so adding this field is safe for current catalog assets.
-        public Sprite airArmyIcon;
 
         // Keeps every CardDefinition.id in sync with its actual list position, so the inspector
         // always shows the correct index even after cards are added/removed/reordered.
