@@ -57,9 +57,15 @@ namespace Game.Ai.V2
             IReadOnlyList<AggressionObjective> objectives = frozenObjectives
                 ?? AggressionObjectiveEvaluator.Enumerate(snap, breakdown.OpportunityReport);
 
+            // TaskScore must not price a fresh Raid using an actor another durable
+            // mission already owns. Ownership itself is a feasibility gate, not a fake
+            // opportunity-cost number subtracted from every competing mission.
+            ISet<int> committed = ActorCommitments.FromIntents(
+                activeIntents?.Where(i => i != null && i.Status == IntentStatus.Active),
+                snap, null).ClaimedArmyIdSet;
             var fresh = new List<RaidCandidate>();
             foreach (AggressionObjective o in objectives)
-                fresh.Add(ToCandidate(snap, o, breakdown));
+                fresh.Add(ToCandidate(snap, o, breakdown, unavailableArmyIds: committed));
 
             var incumbents = new List<RaidCandidate>();
             if (activeIntents != null)
@@ -133,7 +139,8 @@ namespace Game.Ai.V2
                     // whichever fresh army happens to be cheaper. Pin the existing primary BEFORE
                     // assembly and Fold, using the existing continuation gate only if started.
                     incumbents.Add(ToCandidate(snap, o, breakdown,
-                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted)
+                            intent.PreferredMoverArmyId, intent.Raid.OperationStarted,
+                            unavailableArmyIds: committed)
                         .AsIncumbent(intent.Funding, intent.PreferredMoverArmyId));
                 }
 
@@ -164,7 +171,7 @@ namespace Game.Ai.V2
 
             foreach (RaidCandidate c in picked)
             {
-                MissionProposal p = BuildProposal(snap, c);
+                MissionProposal p = BuildProposal(snap, c, committed);
                 if (!c.IsIncumbent
                     && GroundCombatAdmissionRegistry.TryGet(p, out HashSet<int> eligible)
                     && eligible.Count == 0)
@@ -285,8 +292,17 @@ namespace Game.Ai.V2
         }
 
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o,
-            DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false)
+            DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false,
+            ISet<int> unavailableArmyIds = null)
         {
+            // An incumbent may retain ITS OWN claimed primary, never any other claimant.
+            ISet<int> excluded = unavailableArmyIds;
+            if (pinnedPrimaryArmyId.HasValue && unavailableArmyIds != null)
+            {
+                var ownExcluded = new HashSet<int>(unavailableArmyIds);
+                ownExcluded.Remove(pinnedPrimaryArmyId.Value);
+                excluded = ownExcluded;
+            }
             RaidMissionTarget target = o.ToTarget();
             IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
@@ -298,8 +314,9 @@ namespace Game.Ai.V2
                     WinChanceGate = operationStarted
                         ? RaidAdmissionPolicy.ContinuationWinChanceFloor
                         : RaidAdmissionPolicy.FreshStartWinChanceGate,
+                    ExcludedArmyIds = excluded,
                 })
-                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
+                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, excluded);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
@@ -339,8 +356,13 @@ namespace Game.Ai.V2
                 costedMover: costedMover);
         }
 
-        private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c)
+        private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c,
+            ISet<int> unavailableArmyIds)
         {
+            var excluded = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            if (c.IsIncumbent && c.PreferredMover.HasValue)
+                excluded.Remove(c.PreferredMover.Value);
             int? pricedMover = c.PreferredMover ?? c.CostedMover;
             MissionRequirements req = RaidCostModel.Build(snap, c.Target, pricedMover);
 
@@ -358,7 +380,7 @@ namespace Game.Ai.V2
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1.0f;
             if (c.Target.Phase == RaidMissionPhase.Assault)
-                GroundCombatAdmissionRegistry.Record(proposal, snap);
+                GroundCombatAdmissionRegistry.Record(proposal, snap, excluded);
             else if (c.Target.Phase == RaidMissionPhase.Reinforcement
                 && !c.Target.SupportArmyId.HasValue)
                 GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);

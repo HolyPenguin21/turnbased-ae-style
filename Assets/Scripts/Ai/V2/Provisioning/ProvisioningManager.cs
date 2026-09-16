@@ -229,6 +229,10 @@ namespace Game.Ai.V2
             new Dictionary<StableMissionKey, ScoutAssignmentFailureReason>();
         private readonly Dictionary<StableMissionKey, int> _raidAssignment =
             new Dictionary<StableMissionKey, int>();
+        // The SAME ownership constraints used for Raid batch assignment must survive into
+        // RaidProvisioner (including its same-hex donors). They are refreshed on every repack.
+        private ActorCommitments _raidDurableCommitments;
+        private HashSet<int> _raidPinnedByOtherLegs = new HashSet<int>();
 
         public ProvisioningSession(WorldSnapshot snapshot) { Snapshot = snapshot; }
         public IReadOnlyDictionary<StableMissionKey, ProvisionedMission> Successful => _successful;
@@ -269,6 +273,29 @@ namespace Game.Ai.V2
 
         internal IReadOnlyDictionary<StableMissionKey, ScoutAssignmentFailureReason>
             AssignmentRejections => _assignmentRejections;
+
+        internal void SetRaidConstraints(ActorCommitments durableCommitments,
+            ISet<int> pinnedByOtherLegs)
+        {
+            _raidDurableCommitments = durableCommitments;
+            _raidPinnedByOtherLegs = pinnedByOtherLegs == null
+                ? new HashSet<int>() : new HashSet<int>(pinnedByOtherLegs);
+        }
+
+        // Single Raid ownership read, shared by batch assignment AND final binding.
+        // A durable Raid may use its own incumbent, but never another mission's army;
+        // exclusions also apply to donors, not merely the primary host.
+        internal HashSet<int> ExcludedForRaid(MissionProposal proposal)
+        {
+            var excluded = new HashSet<int>(ClaimedArmyIds);
+            excluded.UnionWith(_raidPinnedByOtherLegs);
+            if (_raidDurableCommitments != null)
+                foreach (int id in _raidDurableCommitments.ClaimedArmyIds)
+                    if (proposal == null || !proposal.FromDurableIntent
+                        || proposal.PreferredMoverArmyId != id)
+                        excluded.Add(id);
+            return excluded;
+        }
 
         internal void SetRaidAssignment(Dictionary<StableMissionKey, int> a)
         {
@@ -578,21 +605,15 @@ namespace Game.Ai.V2
                 }
             open.Sort((a, b) => a.Priority.CompareTo(b.Priority));
 
+            session.SetRaidConstraints(durableCommitments, pinnedByOtherLegs);
             var cands = new List<List<int>>(open.Count);
             foreach (FundedEntry fe in open)
             {
+                HashSet<int> excluded = session.ExcludedForRaid(fe.Mission);
                 var ids = new List<int>();
                 if (GroundCombatAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
                     ids.AddRange(eligible
-                        .Where(id => !session.ClaimedArmyIds.Contains(id)
-                            && !pinnedByOtherLegs.Contains(id)
-                            // A free support/assault actor may not be stolen from another durable
-                            // Recon/Economy/Raid operation. The only exception is this proposal's
-                            // own pinned incumbent primary, which must remain executable.
-                            && (durableCommitments == null
-                                || !durableCommitments.IsArmyClaimed(id)
-                                || (fe.Mission.FromDurableIntent
-                                    && fe.Mission.PreferredMoverArmyId == id)))
+                        .Where(id => !excluded.Contains(id))
                         .OrderBy(id => RaidActorActivation(session.Snapshot, id))
                         .ThenBy(id => RaidActorPower(session.Snapshot, id))
                         .ThenBy(id => id));
@@ -2220,24 +2241,13 @@ namespace Game.Ai.V2
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;
             }
 
-            GroundCombatAssemblyPlan plan = null;
-            if (session.TryGetAssignedRaidActor(key, out int assignedActor)
-                && !session.ClaimedArmyIds.Contains(assignedActor))
-            {
-                GroundCombatAssemblyPlan assigned = GroundCombatAssemblyPlanner.PlanForArmy(snap, target, defenders, assignedActor);
-                if (assigned.Feasible) plan = assigned;
-            }
+            // Do not re-run a FREE army search here: the batch assignment already
+            // rejected armies owned by Economy/Recon/other Raids. Re-plan ONLY the assigned
+            // host, allowing legal same-hex assembly with that same ownership exclusion set.
+            GroundCombatAssemblyPlan plan = PlanAssignedAssault(session, m, defenders,
+                out ProvisionFailure assignmentFailure);
             if (plan == null)
-                plan = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, session.ClaimedArmyIds);
-
-            if (!plan.Feasible)
-            {
-                GroundCombatAssemblyPlan unrestricted = GroundCombatAssemblyPlanner.Plan(snap, target, defenders, null);
-                if (unrestricted.Feasible)
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"raid target {raidTarget.DiagnosticLabel} has an executable force but its host/donor is already claimed; {plan.Reason}"));
-                return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(plan.Reason));
-            }
+                return ProvisioningResult.Fail(assignmentFailure);
 
             ArmyData host = ResolveArmy(player, plan.BaseArmyId);
             if (host == null || host.Members.Count == 0 || host.CurrentMovement <= 0
@@ -2356,6 +2366,53 @@ namespace Game.Ai.V2
                 ClaimedAp = activationAp,
                 StealthApReserved = false,
             }, applied.Count);
+        }
+
+        // A single binding path for assault, used by both the real Provision method and
+        // regression tests. The batch solver owns actor identity; the combat assembly kernel
+        // owns feasibility of THAT actor and donors, never a replacement actor search.
+        internal static GroundCombatAssemblyPlan PlanAssignedAssault(ProvisioningSession session,
+            MissionProposal proposal, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            out ProvisionFailure failure)
+        {
+            failure = default;
+            StableMissionKey key = StableMissionKey.For(proposal);
+            if (!session.TryGetAssignedRaidActor(key, out int actorId))
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"raid {key} has no actor in the shared ground-combat assignment");
+                return null;
+            }
+
+            HashSet<int> excluded = session.ExcludedForRaid(proposal);
+            if (excluded.Contains(actorId))
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"raid {key} assigned actor #{actorId} is claimed by another mission");
+                return null;
+            }
+
+            // Preserve existing PlanForArmy's continuation win floor for the assigned actor.
+            // Fresh candidates already passed the strict gate in GroundCombatAdmissionRegistry;
+            // unlike PlanForArmy, this request can also assemble a legal same-hex roster.
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
+                new GroundCombatAssemblyRequest
+                {
+                    Defenders = defenders,
+                    PreferredPrimaryArmyId = actorId,
+                    PinToPreferred = true,
+                    ExcludedArmyIds = excluded,
+                    WinChanceGate = RaidAdmissionPolicy.ContinuationWinChanceFloor,
+                });
+            if (!plan.Feasible)
+            {
+                // The actor was admitted by the strict proposal-side registry. Rejection now
+                // is transient (e.g. a donor became unavailable), not target infeasibility.
+                failure = ProvisionFailure.MoverContended(
+                    $"raid {key} assigned actor #{actorId} / eligible donors unavailable: {plan.Reason}");
+                return null;
+            }
+            return plan;
         }
 
         // =====================================================================================
@@ -2480,9 +2537,9 @@ namespace Game.Ai.V2
                 || support.IsAirfield || AviationRules.IsAirArmy(support))
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     $"raid reinforcement support #{supportArmyId} is not a separate mobile ground army"));
-            if (session.ClaimedArmyIds.Contains(support.Id))
+            if (session.ExcludedForRaid(funded.Mission).Contains(support.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"raid reinforcement support #{support.Id} was claimed by an earlier mission this cycle"));
+                    $"raid reinforcement support #{support.Id} is claimed by another mission or Raid leg"));
 
             HexCoord rendezvous = primary.Hex;
             bool atRendezvous = support.Hex.Equals(rendezvous);
