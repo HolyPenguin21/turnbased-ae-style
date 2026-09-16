@@ -1,0 +1,58 @@
+name: TaskScore Base hardening and CSharp syntax check once
+on:
+  push:
+    branches: [audit/ai-v2-taskscore-2026-09-16]
+    paths: ['.github/workflows/taskscore-hardening-once.yml']
+permissions:
+  contents: write
+jobs:
+  harden:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/ai-v2-taskscore-2026-09-16
+      - name: Guarded patch and CSharp parser validation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .taskscore_hardening_once.py
+          git diff --check
+          dotnet --list-sdks
+          WORK="$(mktemp -d)"
+          trap 'rm -rf "$WORK"' EXIT
+          SDK="$(dotnet --list-sdks | tail -1 | awk '{print $1}')"
+          SDKROOT="$(dotnet --list-sdks | tail -1 | sed -n 's/.*\[\(.*\)\]/\1/p')"
+          ROSLYN="$SDKROOT/$SDK/Roslyn/bincore"
+          cat > "$WORK/Parse.csproj" <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable></PropertyGroup>
+            <ItemGroup>
+              <Reference Include="Microsoft.CodeAnalysis"><HintPath>$ROSLYN/Microsoft.CodeAnalysis.dll</HintPath></Reference>
+              <Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$ROSLYN/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference>
+            </ItemGroup>
+          </Project>
+          EOF
+          cat > "$WORK/Program.cs" <<'EOF'
+          using Microsoft.CodeAnalysis;
+          using Microsoft.CodeAnalysis.CSharp;
+          using System;
+          using System.IO;
+          using System.Linq;
+          var options = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview)
+              .WithPreprocessorSymbols("UNITY_INCLUDE_TESTS", "UNITY_EDITOR");
+          var files = Directory.EnumerateFiles("Assets/Scripts", "*.cs", SearchOption.AllDirectories)
+              .Concat(Directory.EnumerateFiles("Assets/Editor", "*.cs", SearchOption.AllDirectories)).ToArray();
+          var errors = files.SelectMany(path => CSharpSyntaxTree.ParseText(File.ReadAllText(path), options, path)
+              .GetDiagnostics().Where(d => d.Severity == DiagnosticSeverity.Error)).ToList();
+          foreach (var error in errors.Take(30)) Console.WriteLine(error);
+          Console.WriteLine($"ROSLYN_PARSE: files={files.Length} errors={errors.Count}");
+          if (errors.Count > 0) Environment.Exit(1);
+          EOF
+          dotnet run --project "$WORK/Parse.csproj" --configuration Release --verbosity quiet
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/taskscore-hardening-once.yml .taskscore_hardening_once.py
+          git add Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Editor/AiTaskScoreBaseSwitchRegressionTests.cs Docs/ai-v2-taskscore-open-issues-2026-09-16.md
+          git commit -m 'Harden Base switch no-challenger fallback and document implemented audit fixes [skip ci]'
+          git push origin HEAD:audit/ai-v2-taskscore-2026-09-16
