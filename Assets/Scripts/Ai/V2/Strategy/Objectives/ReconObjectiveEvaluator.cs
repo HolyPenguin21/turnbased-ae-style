@@ -178,7 +178,7 @@ namespace Game.Ai.V2
                 freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
             infoGainRaw *= ExploreObservationFreshnessFactor(snap, hex);
 
-            int homeDist = HomeDistance(snap, hex, distFromBase);
+            int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, distFromBase);
             StealthRequirement req = enemyExposure ? StealthRequirement.Required : StealthRequirement.None;
             float riskRaw = enemyExposure
                 ? Mathf.Max(stealthDetectionRisk
@@ -245,7 +245,7 @@ namespace Game.Ai.V2
         {
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
-            int homeDist = HomeDistance(snap, hex, distBase);
+            int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, distBase);
             float staleRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
                 AiConfigV2.scoutSurveilStaleTurnsHi);
 
@@ -318,7 +318,7 @@ namespace Game.Ai.V2
 
             float contactRelevanceRaw = Mathf.Clamp01(stalenessRaw * maxSeverity);
             int fallbackDistance = bases != null && bases.Count > 0 ? MinDist(bases, pos) : 0;
-            int homeDist = HomeDistance(snap, pos, fallbackDistance);
+            int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, pos, fallbackDistance);
             float riskRaw = Mathf.Clamp01(Mathf.Max(
                 c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
                 ScoutRiskModel.DetectorRisk(snap, pos)));
@@ -382,11 +382,6 @@ namespace Game.Ai.V2
                 }
             return relevance;
         }
-
-        // Shared strategic home-distance contract. Keep this method as the stable test seam; the
-        // implementation itself is now owned by the common TaskScore evaluator.
-        internal static int HomeDistance(WorldSnapshot snap, HexCoord hex, int fallbackDistFromBase) =>
-            TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, fallbackDistFromBase);
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 

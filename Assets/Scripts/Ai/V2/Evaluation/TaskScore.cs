@@ -128,28 +128,25 @@ namespace Game.Ai.V2
                 Mathf.Clamp01(externalStarvationPressure), handShortfall, operationalShortfall);
         }
 
-        internal static float EconomicHexBenefit(float marginalGain, float resourcePriority)
+        private static float FoldEconomicBenefit(float totalGain, float weightedDeficit)
         {
-            float physical = Mathf.Max(0f, marginalGain);
+            float physical = Mathf.Max(0f, totalGain);
             if (physical <= AiConfigV2.allocatorSliceEpsilon)
                 return 0f;
-
-            float physicalContribution = Mathf.Min(
-                AiConfigV2.taskScoreEconomicPhysicalBenefitMax,
-                physical * AiConfigV2.taskScoreEconomicPhysicalBenefitWeight);
-            float marginalGainFactor = Mathf.Clamp01(
-                physical / Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
-                    AiConfigV2.taskScoreEconomicDeficitFullGain));
-            float deficitContribution = Mathf.Clamp01(resourcePriority) * marginalGainFactor
-                * AiConfigV2.taskScoreEconomicDeficitBonusMax;
-            return physicalContribution + deficitContribution;
+            return Mathf.Min(AiConfigV2.taskScoreEconomicPhysicalBenefitMax,
+                    physical * AiConfigV2.taskScoreEconomicPhysicalBenefitWeight)
+                + Mathf.Clamp01(weightedDeficit) * AiConfigV2.taskScoreEconomicDeficitBonusMax;
         }
 
-        // The economic slot is computed once for an entire Base. Each resource's shortage is
-        // weighted by that resource's *own* marginal income, not by another resource's yield.
-        // Keep the shared physical cap and aggregate shortage cap, even for multi-Collect cards.
-        internal static float EconomicHexBenefit(
-            IReadOnlyList<(float Gain, float Priority)> perResource)
+        internal static float EconomicHexBenefit(float marginalGain, float resourcePriority) =>
+            FoldEconomicBenefit(marginalGain,
+                Mathf.Clamp01(resourcePriority) * Mathf.Clamp01(
+                    Mathf.Max(0f, marginalGain) / Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
+                        AiConfigV2.taskScoreEconomicDeficitFullGain)));
+
+        // Multi-resource shortage belongs to EACH actually produced type. All resource gains
+        // aggregate before the one physical cap and the one shortage cap in FoldEconomicBenefit.
+        internal static float EconomicHexBenefit(IReadOnlyList<(float Gain, float Priority)> perResource)
         {
             if (perResource == null)
                 return 0f;
@@ -165,11 +162,7 @@ namespace Game.Ai.V2
                     gain / Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
                         AiConfigV2.taskScoreEconomicDeficitFullGain));
             }
-            if (totalGain <= AiConfigV2.allocatorSliceEpsilon)
-                return 0f;
-            // The scalar overload with zero shortage is the ONE owner of the physical component.
-            return EconomicHexBenefit(totalGain, 0f)
-                + Mathf.Clamp01(weightedDeficit) * AiConfigV2.taskScoreEconomicDeficitBonusMax;
+            return FoldEconomicBenefit(totalGain, weightedDeficit);
         }
 
         internal static float Payback(float paybackTurns)

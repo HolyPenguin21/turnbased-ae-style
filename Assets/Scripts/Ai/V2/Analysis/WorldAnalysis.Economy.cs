@@ -127,8 +127,6 @@ namespace Game.Ai.V2
                     CurrentBuildingCollection = currentCollection,
                     MarginalIncomeGain = marginal,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
-                    NearbyResourceClusterValue = EconomyResourceClusterValue(
-                        snap, site.Hex, standings),
                     BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, site.Hex),
                 });
             }
@@ -179,10 +177,6 @@ namespace Game.Ai.V2
                             && knownBuilding.Owner == player && !knownBuilding.IsBase;
                         if (hasBuilding && !convertsOwnedExtraction)
                             continue;
-                        float lostExtractionIncome = 0f;
-                        if (convertsOwnedExtraction)
-                            foreach (ResourceType lostType in ResourceBundle.All)
-                                lostExtractionIncome += knownBuilding.CollectedAmount(lostType);
                         if (KnownHostileAtHex(snap, hex))
                             continue;
                         int supportDistance = snap.Self.BaseHexes
@@ -199,7 +193,6 @@ namespace Game.Ai.V2
                         if (preparationTravel == int.MaxValue)
                             continue;
 
-                        // 2026-09-15 — structural terrain fact, same pattern as HexYield/SpacingScore:
                         // Analysis reads the one canonical source (TerrainTypeEntry.defenseModifier,
                         // the same field combat/threat code already reads — see WorthIt.cs,
                         // HexSelectionController.Visuals.cs), Evaluation is the only place that
@@ -233,10 +226,8 @@ namespace Game.Ai.V2
                             HexYield = BaseUncollectedYield(snap, hex, knownSites, hasBuilding, knownBuilding),
                             ForwardProgressValue = forwardProgress,
                             CorridorAlignmentValue = corridorAlignment,
-                            SpacingScore = BaseSpacingScore(supportDistance),
                             DefenseBonusValue = defenseBonus,
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
-                            LostExtractionIncome = lostExtractionIncome,
                             BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, hex),
                         });
                     }
@@ -335,25 +326,6 @@ namespace Game.Ai.V2
             HexCoord candidate) => ownBases != null && ownBases.Count > 0
             && ownBases.Min(h => HexGridMath.Distance(h, candidate))
                 >= AiConfigV2.economyBaseMinSpacing;
-
-        // 2026-09-15 — graded companion to MeetsBaseSpacing's hard gate (see
-        // EconomyBaseOpportunity.SpacingScore's own comment). `d` is the same
-        // "distance to nearest owned base" MeetsBaseSpacing already gates on — never recomputed
-        // differently, just scored instead of thresholded. Variant A (linear ramp to the ideal,
-        // linear decay past it), chosen over a plateau or Gaussian for how directly its two
-        // calibration points translate into the lerp/decay parameters below.
-        internal static float BaseSpacingScore(int d)
-        {
-            int min = AiConfigV2.economyBaseMinSpacing;
-            int ideal = AiConfigV2.economyBaseIdealSpacing;
-            if (d <= min)
-                return AiConfigV2.economyBaseSpacingScoreAtMin;
-            if (d <= ideal)
-                return Mathf.Lerp(AiConfigV2.economyBaseSpacingScoreAtMin, 1f,
-                    (d - min) / (float)Mathf.Max(1, ideal - min));
-            return Mathf.Clamp01(1f
-                - (d - ideal) * AiConfigV2.economyBaseSpacingDecayPerHex);
-        }
 
         internal static IReadOnlyList<EconomyBuilderRouteSnapshot> EconomyBuilderRoutes(
             WorldSnapshot snap, PlayerSetupData player, AiTurnContext ctx, HexCoord target,
@@ -551,35 +523,14 @@ namespace Game.Ai.V2
                 / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
         }
 
-        private static float EconomyResourceClusterValue(WorldSnapshot snap,
-            HexCoord target,
-            IReadOnlyDictionary<ResourceType, EconomyResourceStanding> standings)
-        {
-            if (snap?.Known?.ResourceHexes == null)
-                return 0f;
-            float value = 0f;
-            foreach (HexCoord site in snap.Known.ResourceHexes.Select(x => x.Hex).Distinct())
-            {
-                if (HexGridMath.Distance(target, site) > AiConfigV2.economyResourceClusterRadius)
-                    continue;
-                ResourceBundle yield = EconomyKnownHexYield(snap, site);
-                foreach (ResourceType type in ResourceBundle.All)
-                    if (yield.Get(type) > 0f
-                        && standings.TryGetValue(type, out EconomyResourceStanding standing))
-                        value += yield.Get(type) * Mathf.Max(0.1f, standing.DeficitScore);
-            }
-            return value;
-        }
-
         // Structural site fact only — how much of this hex's yield is left uncollected by
         // whatever building already sits here (raw yield minus its CollectedAmount, per type).
         // Deliberately NOT "how much a Base would add": that depends on which Base card's own
         // grantedAbilities actually get baked onto the new building (BuildingData.CollectedAmount
         // has no more special-cased IsBase branch — a Base earns 1 per its own baked Collect
         // ability, same as any building, plus 1 + UpgradeLevel per placed Facility), and this
-        // opportunity record is card-agnostic by design (see the "Base opportunities are
-        // structural site facts only" comment above). StrategicCardEvaluator.BaseHexYieldValue
-        // is where the specific card's abilities get applied to this remaining yield.
+        // opportunity record is card-agnostic by design. StrategicCardEvaluator uses
+        // BaseCardMarginalGain to apply the card and subtract any owned army collection.
         // Zero for a hex with no known resource site, same as before this was split out.
         private static ResourceBundle BaseUncollectedYield(WorldSnapshot snap, HexCoord hex,
             HashSet<HexCoord> knownSites, bool hasBuilding, AiMapMemory.KnownBuilding building)

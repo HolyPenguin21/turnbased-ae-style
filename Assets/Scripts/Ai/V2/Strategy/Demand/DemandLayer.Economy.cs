@@ -166,10 +166,17 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
 
+            // Select a Base challenger BEFORE the cap of one. That cap governs executable
+            // demands, not the number of sites permitted into the hysteresis comparison.
+            // Only a candidate that can reuse the incumbent's EXACT card and actor may
+            // replace a live commitment; changing actors requires separate provisioning.
+            AxisDemand selectedBase = SelectBaseDemandForCurrentCommitment(
+                baseRanked.ToList(), activeIntents);
             List<AxisDemand> selected = extractionRanked
                 .Take(Mathf.Max(0, AiConfigV2.economyMaxInfrastructureDemandsPerTurn))
-                .Concat(baseRanked.Take(
-                    Mathf.Max(0, AiConfigV2.economyMaxExpansionBaseDemandsPerTurn)))
+                .Concat(selectedBase != null
+                    && AiConfigV2.economyMaxExpansionBaseDemandsPerTurn > 0
+                        ? new[] { selectedBase } : System.Array.Empty<AxisDemand>())
                 .ToList();
 
             var selectedHexes = new HashSet<HexCoord>();
@@ -747,8 +754,8 @@ namespace Game.Ai.V2
                     StrategicCardEvaluator.BaseSiteValue facts =
                         StrategicCardEvaluator.ScoreBaseSite(s, site, card);
 
-                    // Only card-semantic facts are consumed from StrategicCardEvaluator. Its legacy
-                    // bespoke ReasonValue/StrategicValue are deliberately ignored by TaskScore.
+                    // Only real card-semantic facts come from Evaluation; TaskScore is the
+                    // sole numeric evaluator of this Base's economic and strategic value.
                     float economicGainFact = Mathf.Max(0f, facts.HexYield);
                     float paybackTurns = economicGainFact > AiConfigV2.allocatorSliceEpsilon
                         ? EconomyPaybackTurns(economicGainFact,
@@ -764,7 +771,7 @@ namespace Game.Ai.V2
                     foreach (ResourceType type in ResourceBundle.All)
                     {
                         float typeGain = StrategicCardEvaluator.BaseCardMarginalGain(
-                            site.HexYield, card.Definition, type);
+                            s, site, card.Definition, type);
                         if (typeGain <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
                         float priority = s.Economy.PerType
@@ -789,9 +796,8 @@ namespace Game.Ai.V2
                     float cardPrice = TaskScoreEvaluator.CardPrice(
                         card.EffectivePlayApCost, resourceCost);
                     float risk = TaskScoreEvaluator.HexThreatRisk(facts.Exposure);
-                    float existingLoss = site.ConvertsOwnedExtractionSite
-                        ? TaskScoreEvaluator.EconomicHexBenefit(site.LostExtractionIncome, 0f)
-                        : 0f;
+                    // InfrastructureActions.TryFoundBase carries the extraction facilities
+                    // into the new Base: their production is preserved, not lost.
 
                     var siteOnlyScore = new TaskScore(
                         economicHexBenefit: economic,
@@ -803,8 +809,7 @@ namespace Game.Ai.V2
                         ownTerritoryProximity: proximity,
                         terrainDefense: defense,
                         cardPrice: cardPrice,
-                        hexThreatRisk: risk,
-                        existingValueLoss: existingLoss);
+                        hexThreatRisk: risk);
                     // Staging is about positive physical/strategic purpose, NOT present-day net
                     // profitability: delivery/card costs may be overcome by future wait urgency.
                     // Generic proximity alone must never stage a completely empty Base.
@@ -850,8 +855,7 @@ namespace Game.Ai.V2
                         cardPrice: cardPrice,
                         delivery: TaskScoreEvaluator.Delivery(extraAp, travel),
                         moverOpportunityCost: Mathf.Max(0f, heroCost),
-                        hexThreatRisk: risk,
-                        existingValueLoss: existingLoss);
+                        hexThreatRisk: risk);
                     float value = score.Value;
 
                     TaskScoreDiagnostics.Log("Base", site.Hex, score,
@@ -859,9 +863,9 @@ namespace Game.Ai.V2
                         + $"paybackTurns={(float.IsInfinity(paybackTurns) ? -1f : paybackTurns):0.###} "
                         + $"airfieldRaw={facts.Airfield:0.###} globalRaw={facts.GlobalEffect:0.###} "
                         + $"frontRaw={site.ForwardProgressValue:0.###} corridorRaw={site.CorridorAlignmentValue:0.###} "
-                        + $"spacingDiagnostic={site.SpacingScore:0.###} defenseRaw={site.DefenseBonusValue:0.###} "
+                        + $"defenseRaw={site.DefenseBonusValue:0.###} "
                         + $"distance={travel:0.###} extraAp={extraAp:0.###} exposure={facts.Exposure:0.###} "
-                        + $"lostExtraction={site.LostExtractionIncome:0.###} moverOpportunity={heroCost:0.###}");
+                        + $"moverOpportunity={heroCost:0.###}");
 
                     meaningfulDemands.Add(new AxisDemand
                     {
@@ -889,9 +893,9 @@ namespace Game.Ai.V2
                         Explain = $"Base task={score.Value:0.##} economic={economic:0.##} "
                             + $"payback={payback:0.##} airfield={airfield:0.##} global={global:0.##} "
                             + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
-                            + $"defense={defense:0.##} spacing={site.SpacingScore:0.##}(diagnostic) "
+                            + $"defense={defense:0.##} "
                             + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
-                            + $"moverOpp={heroCost:0.##} risk={risk:0.##} existingLoss={existingLoss:0.##}",
+                            + $"moverOpp={heroCost:0.##} risk={risk:0.##}",
                     });
                 }
 
@@ -955,6 +959,67 @@ namespace Game.Ai.V2
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.Value:0.##} "
                     + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
         }
+
+        // One Base selection decision owner. The incumbent's current fully delivered score
+        // wins over its captured score when a same-card/same-actor candidate is still present.
+        // Never compare the challenger's full Value against Economy.BuildValue (site only).
+        internal static AxisDemand SelectBaseDemandForCurrentCommitment(
+            IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
+        {
+            AxisDemand first = ranked?.FirstOrDefault();
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
+                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
+                && i.Economy?.Kind == EconomyTaskKind.FoundBase
+                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+            if (first == null || incumbent == null)
+                return first;
+
+            AxisDemand refreshed = ranked.FirstOrDefault(d => d != null
+                && d.TargetHex.HasValue && d.TargetHex.Value.Equals(incumbent.Economy.TargetHex)
+                && d.EconomyBuildCard == incumbent.Economy.BuildCard
+                && d.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId);
+            float? incumbentValue = refreshed != null ? refreshed.Value
+                : incumbent.Economy.IntrinsicValue;
+            if (!incumbentValue.HasValue)
+                return refreshed;  // unknown canonical value: only the incumbent may execute
+
+            AxisDemand challenger = null;
+            foreach (AxisDemand candidate in ranked)
+            {
+                if (candidate == null || candidate.EconomyBuildCard != incumbent.Economy.BuildCard
+                    || candidate.EconomyPreferredBuilderArmyId != incumbent.PreferredMoverArmyId
+                    || !candidate.TargetHex.HasValue
+                    || candidate.TargetHex.Value.Equals(incumbent.Economy.TargetHex))
+                    continue;
+                candidate.EconomySwitchIncumbentValue = incumbentValue.Value;
+                if (!CanReplaceCommittedBase(incumbent, candidate))
+                    continue;
+                if (challenger == null || candidate.Value > challenger.Value)
+                    challenger = candidate;
+            }
+            // An unrelated candidate must not execute while the old Base still owns its
+            // card/actor. If its site is no longer offered, Continuity owns retirement.
+            return challenger ?? refreshed;
+        }
+
+        // One hysteresis/admission predicate reused by Demand, Phase A and Continuity.
+        // Explicit scan provenance prevents a stale site-only score from authorizing a switch.
+        internal static bool CanReplaceCommittedBase(MissionIntent incumbent, AxisDemand rival) =>
+            incumbent != null && incumbent.Status == IntentStatus.Active
+            && incumbent.Kind == MissionKind.Economy
+            && incumbent.Economy?.Kind == EconomyTaskKind.FoundBase
+            && incumbent.PreferredMoverArmyId.HasValue
+            && incumbent.Economy.BuildCard != null
+            && rival?.RequestingAxis == DesireAxis.Economy
+            && rival.Capability == CapabilityKind.EconomicExpansionBase
+            && rival.TargetHex.HasValue
+            && !rival.TargetHex.Value.Equals(incumbent.Economy.TargetHex)
+            && rival.EconomyBuildCard == incumbent.Economy.BuildCard
+            && rival.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId
+            && rival.EconomySwitchIncumbentValue.HasValue
+            && rival.Value >= AiConfigV2.economyBaseDemandMinValue
+            && rival.Value > rival.EconomySwitchIncumbentValue.Value
+                + AiConfigV2.economyBaseSwitchHysteresisThreshold;
 
         // This criterion gates ONLY continuity staging; canonical net-value admission still
         // applies afterwards. Avoid letting the generic home-proximity bonus create fake projects.
