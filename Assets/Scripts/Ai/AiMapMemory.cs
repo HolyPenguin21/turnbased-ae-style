@@ -391,6 +391,11 @@ namespace Game.Ai
             _map = null;
         }
 
+        // The memory layer classifies ownerless physical encounter armies with explicit neutrals;
+        // Raid legality remains owned by RaidObjectiveEvaluator in V2, never called upward here.
+        private static bool IsNeutralSightingOwner(PlayerSetupData owner) =>
+            owner == null || owner.IsNeutral;
+
         // Called once, right at the top of AiTurnController.RunTurn, before that turn's own
         // Decide loop ever reads memory — stamps _currentTurn for every EnemySighting recorded
         // from this point on (OnVisibilityChanged below) AND expires `actor`'s own enemy-army
@@ -421,7 +426,7 @@ namespace Game.Ai
                     // "узнаёт об уничтожении только после повторного наблюдения" rather than
                     // silently forgetting a still-real neutral garrison just because nobody's
                     // looked at it in enemySightingMemoryTurns turns.
-                    if (kv.Value.Owner != null && kv.Value.Owner.IsNeutral)
+                    if (IsNeutralSightingOwner(kv.Value.Owner))
                         continue;
                     if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
                         (stale ?? (stale = new List<int>())).Add(kv.Key);
@@ -442,7 +447,7 @@ namespace Game.Ai
 
         // Called by VisitHexTask.TryFlee the moment a retreat actually triggers — `center` is the
         // triggering sighting's own hex (not the fleeing scout's), so the zone sits on the actual
-        // threat regardless of which direction a scout approached it from. Repeated calls for a
+        // threat regardless of which direction a scout approached it. Repeated calls for a
         // center already inside an existing zone just extend that zone's own AvoidUntilTurn rather
         // than piling up duplicate overlapping entries.
         public static void MarkScoutDanger(PlayerSetupData actor, HexCoord center, int radius, int avoidUntilTurn)
@@ -582,7 +587,7 @@ namespace Game.Ai
                     if (sightings.TryGetValue(enemy.Id, out EnemySighting previous) && !previous.Hex.Equals(hex))
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — army \"{enemy.Name}\" id={enemy.Id} relocated "
                             + $"({previous.Hex.Q},{previous.Hex.R}) → ({hex.Q},{hex.R}).");
-                    else if (enemy.Owner != null && enemy.Owner.IsNeutral && !sightings.ContainsKey(enemy.Id))
+                    else if (IsNeutralSightingOwner(enemy.Owner) && !sightings.ContainsKey(enemy.Id))
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{enemy.Name}\" remembered at ({hex.Q},{hex.R}).");
                     sightings[enemy.Id] = new EnemySighting
                     {
@@ -645,7 +650,7 @@ namespace Game.Ai
                     if (staleArmyId.HasValue)
                     {
                         EnemySighting stale = sightings[staleArmyId.Value];
-                        if (stale.Owner != null && stale.Owner.IsNeutral)
+                        if (IsNeutralSightingOwner(stale.Owner))
                             AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{stale.Name}\" at "
                                 + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
                         sightings.Remove(staleArmyId.Value);
@@ -777,7 +782,7 @@ namespace Game.Ai
         public static bool HasKnownNeutralWithin(PlayerSetupData actor, HexCoord center, int radius)
         {
             return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
-                && sightings.Values.Any(s => s.Owner != null && s.Owner.IsNeutral
+                && sightings.Values.Any(s => IsNeutralSightingOwner(s.Owner)
                     && HexGridMath.Distance(center, s.Hex) <= radius);
         }
 
@@ -789,7 +794,7 @@ namespace Game.Ai
             if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 yield break;
             foreach (EnemySighting sighting in sightings.Values)
-                if (sighting.Owner != null && sighting.Owner.IsNeutral)
+                if (IsNeutralSightingOwner(sighting.Owner))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
                         sighting.SeenTurn, sighting.ArmyId);
@@ -805,7 +810,7 @@ namespace Game.Ai
             if (!EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings))
                 yield break;
             foreach (EnemySighting sighting in sightings.Values)
-                if (sighting.Owner != null && !sighting.Owner.IsNeutral)
+                if (!IsNeutralSightingOwner(sighting.Owner))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
                         sighting.SeenTurn, sighting.ArmyId);
