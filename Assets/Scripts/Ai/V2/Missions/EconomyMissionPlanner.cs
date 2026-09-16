@@ -167,9 +167,21 @@ namespace Game.Ai.V2
             {
                 RequiresArmy = true, RequiresHero = true, MoverKnown = preferredId.HasValue,
             };
+            // An off-site garrison is a real builder candidate only when Analysis witnessed a
+            // sparable hero and its safe route. The GARRISON's MP/activation belong to the whole
+            // stationary roster, not to the hero who will be extracted in Execution.
+            EconomyBuilderRouteSnapshot? extractionRoute = null;
+            if (preferredId.HasValue && t.BuilderRoutes != null)
+                foreach (EconomyBuilderRouteSnapshot route in t.BuilderRoutes)
+                    if (route.ArmyId == preferredId.Value && route.RequiresGarrisonExtraction)
+                    {
+                        extractionRoute = route;
+                        break;
+                    }
             List<ArmySnapshot> heroes = snapshot?.Self?.Armies?
                 .Where(a => a != null && (a.IsMobileEconomyBuilder
-                    || (a.IsGarrison && a.HasHero && a.Hex.Equals(t.TargetHex)))).ToList();
+                    || (a.IsGarrison && a.HasHero && (a.Hex.Equals(t.TargetHex)
+                        || (extractionRoute.HasValue && a.ArmyId == preferredId.Value))))).ToList();
             ArmySnapshot nearest = null;
             // With a durable owner but no matching snapshot actor, NEVER price a different hero.
             // The allocator may still retry the commitment; provisioning owns actual validity.
@@ -188,19 +200,25 @@ namespace Game.Ai.V2
             {
                 int distance = witnessedTravelCost >= 0f
                     ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)
-                    : HexGridMath.Distance(nearest.Hex, t.TargetHex);
+                    : extractionRoute.HasValue ? extractionRoute.Value.TravelCost
+                        : HexGridMath.Distance(nearest.Hex, t.TargetHex);
+                int movement = extractionRoute.HasValue
+                    ? extractionRoute.Value.CurrentMovement : nearest.CurrentMovement;
+                bool activated = extractionRoute.HasValue
+                    ? extractionRoute.Value.HasActivatedThisTurn : nearest.HasActivatedThisTurn;
                 bool travelNeeded = distance > 0;
-                completionThisTurn = distance <= nearest.CurrentMovement;
+                completionThisTurn = distance <= movement;
                 int projectedActivation = t.ProjectedActivationApCost > 0
-                    ? t.ProjectedActivationApCost : nearest.ActivationApCost;
+                    ? t.ProjectedActivationApCost
+                    : extractionRoute.HasValue ? extractionRoute.Value.ActivationApCost
+                        : nearest.ActivationApCost;
                 int projectedMove = t.ProjectedMaxMovement > 0
                     ? t.ProjectedMaxMovement : nearest.MaxMovement;
-                activation = travelNeeded && !nearest.HasActivatedThisTurn
-                    ? projectedActivation : 0f;
+                activation = travelNeeded && !activated ? projectedActivation : 0f;
                 r.EstimatedDistance = distance;
                 r.EtaTurns = completionThisTurn ? 0
                     : UnityEngine.Mathf.CeilToInt(
-                        UnityEngine.Mathf.Max(0, distance - nearest.CurrentMovement)
+                        UnityEngine.Mathf.Max(0, distance - movement)
                             / (float)UnityEngine.Mathf.Max(1, projectedMove));
             }
 
