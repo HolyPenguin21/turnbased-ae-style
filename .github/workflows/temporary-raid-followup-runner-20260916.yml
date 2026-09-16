@@ -1,0 +1,24 @@
+name: Temporary Raid reservation hardening
+on:
+  push:
+    branches: [fix/raid-actor-commitment-20260916]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Apply guarded hardening and check diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/temporary-raid-actor-followup-20260916.py
+          git diff --check
+          git add Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs Assets/Editor/AiRaidActorCommitmentTests.cs
+          git rm .github/temporary-raid-actor-followup-20260916.py .github/workflows/temporary-raid-followup-runner-20260916.yml
+          git -c user.name='Raid Fix Bot' -c user.email='raid-fix-bot@users.noreply.github.com' commit -m 'test(ai): protect reserved Raid hosts and retain strict fresh admission'
+          git push origin HEAD:fix/raid-actor-commitment-20260916
