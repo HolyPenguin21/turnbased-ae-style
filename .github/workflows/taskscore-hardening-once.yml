@@ -1,4 +1,4 @@
-name: TaskScore Base hardening and CSharp syntax check once
+name: TaskScore Base hardening and CSharp syntax check once (dotnet10)
 on:
   push:
     branches: [audit/ai-v2-taskscore-2026-09-16]
@@ -18,7 +18,6 @@ jobs:
           set -euo pipefail
           python3 .taskscore_hardening_once.py
           git diff --check
-          dotnet --list-sdks
           WORK="$(mktemp -d)"
           trap 'rm -rf "$WORK"' EXIT
           SDK="$(dotnet --list-sdks | tail -1 | awk '{print $1}')"
@@ -26,7 +25,7 @@ jobs:
           ROSLYN="$SDKROOT/$SDK/Roslyn/bincore"
           cat > "$WORK/Parse.csproj" <<EOF
           <Project Sdk="Microsoft.NET.Sdk">
-            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net8.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable></PropertyGroup>
+            <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>disable</Nullable></PropertyGroup>
             <ItemGroup>
               <Reference Include="Microsoft.CodeAnalysis"><HintPath>$ROSLYN/Microsoft.CodeAnalysis.dll</HintPath></Reference>
               <Reference Include="Microsoft.CodeAnalysis.CSharp"><HintPath>$ROSLYN/Microsoft.CodeAnalysis.CSharp.dll</HintPath></Reference>
