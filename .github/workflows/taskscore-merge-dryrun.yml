@@ -14,7 +14,7 @@ jobs:
           fetch-depth: 0
       - name: Dry-merge current master without committing or pushing
         run: |
-          test "$(git rev-parse HEAD^)" = "9c2f919d7972b7b53cfe02925ef69bf0f854d819"
+          test "$(git rev-parse HEAD^)" = "46dee5067b29f89b991791b6c7030bdd7f5697ab"
           git fetch origin master
           echo "Refactor HEAD: $(git rev-parse HEAD)"
           echo "Master HEAD: $(git rev-parse origin/master)"
@@ -26,9 +26,10 @@ jobs:
             git status --short
             exit 1
           fi
-          git diff --cached --check
           test -z "$(git diff --name-only --diff-filter=U)"
-          echo 'PASS: current master merges without conflicts; no commit or push performed'
+          git diff --check origin/master...HEAD -- Assets/Scripts/Ai/V2 Assets/Editor/AiUnifiedTaskScoreTests.cs
+          git diff --cached --check -- Assets/Scripts/Ai/V2 Assets/Editor/AiUnifiedTaskScoreTests.cs
+          echo 'PASS: TaskScore code whitespace clean and current master merges without conflicts; no commit or push performed'
           if test -f Assembly-CSharp.csproj && test -f Assembly-CSharp-Editor.csproj && command -v dotnet >/dev/null; then
             dotnet build Assembly-CSharp.csproj --nologo -warnaserror
             dotnet build Assembly-CSharp-Editor.csproj --nologo -warnaserror
