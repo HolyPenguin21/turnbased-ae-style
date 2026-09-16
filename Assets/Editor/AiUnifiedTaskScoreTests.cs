@@ -47,9 +47,73 @@ namespace Game.EditorTests
             var foundation = new TaskScore(
                 cardPrice: TaskScoreEvaluator.CardPrice(ap, resources),
                 delivery: TaskScoreEvaluator.Delivery(extraAp, distance));
+            Assert.That(TaskScoreEvaluator.CardPrice(1f, 0f),
+                Is.EqualTo(TaskScoreEvaluator.Delivery(1f, 0f)),
+                "a real AP must have the same intrinsic cost when spent on a card or delivery");
             Assert.That(extraction.CardPrice, Is.EqualTo(foundation.CardPrice));
             Assert.That(extraction.Delivery, Is.EqualTo(foundation.Delivery));
             Assert.That(extraction.Value, Is.EqualTo(foundation.Value));
+        }
+
+        [Test]
+        public void ScoutEstimate_UsesCitadelWithoutBases_AndPricesSurveillanceTravel()
+        {
+            var snapshot = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new List<HexCoord>(),
+                    Armies = new List<ArmySnapshot> { new ArmySnapshot { MaxMovement = 3 } },
+                },
+            };
+            var explore = new ScoutMissionTarget
+            {
+                Kind = ScoutTargetKind.Explore,
+                FocusHex = new HexCoord(6, 0),
+                Stealth = StealthRequirement.None,
+            };
+            ScoutCostEstimate exploreCost = ScoutCostModel.Estimate(snapshot, explore);
+            Assert.That(exploreCost.EstimatedDistance, Is.EqualTo(6f));
+            Assert.That(exploreCost.EtaTurns, Is.EqualTo(2));
+            Assert.That(exploreCost.ApDesired, Is.EqualTo(1f));
+
+            var surveillance = new ScoutMissionTarget
+            {
+                Kind = ScoutTargetKind.Surveil,
+                FocusHex = explore.FocusHex,
+                Stealth = StealthRequirement.Required,
+            };
+            ScoutCostEstimate surveillanceCost = ScoutCostModel.Estimate(snapshot, surveillance);
+            Assert.That(surveillanceCost.EstimatedDistance, Is.EqualTo(6f));
+            Assert.That(surveillanceCost.EtaTurns, Is.EqualTo(2));
+            Assert.That(surveillanceCost.ApDesired, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void ReconExplore_FoldsTheSameNotionalPhysicalPriceAsRaid()
+        {
+            var snapshot = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new List<HexCoord>(),
+                    Armies = new List<ArmySnapshot> { new ArmySnapshot { MaxMovement = 3 } },
+                },
+            };
+            HexCoord hex = new HexCoord(6, 0);
+            ReconObjective objective = ReconObjectiveEvaluator.BuildExplore(snapshot, hex,
+                freshNeighbors: 4, distFromBase: 6,
+                enemyExposure: false, stealthDetectionRisk: false);
+            ScoutCostEstimate estimate = ScoutCostModel.Estimate(snapshot, objective.ToTarget());
+            Assert.That(objective.TaskScore.CardPrice,
+                Is.EqualTo(TaskScoreEvaluator.CardPrice(estimate.ApDesired, 0f)));
+            Assert.That(objective.TaskScore.Delivery,
+                Is.EqualTo(TaskScoreEvaluator.Delivery(0f, estimate.EstimatedDistance)));
+            Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
+            // info=10, home proximity=3, activation=2, distance=3.
+            Assert.That(objective.BaseValue, Is.EqualTo(8f).Within(0.0001f));
         }
 
         [Test]

@@ -161,6 +161,16 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
+        private static ScoutCostEstimate MissionCost(WorldSnapshot snap, HexCoord hex,
+            ScoutTargetKind kind, StealthRequirement stealth, float detectionRisk) =>
+            ScoutCostModel.Estimate(snap, new ScoutMissionTarget
+            {
+                Kind = kind,
+                FocusHex = hex,
+                Stealth = stealth,
+                DetectionRisk = detectionRisk,
+            });
+
         internal static ReconObjective BuildExplore(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
             int distFromBase, bool enemyExposure, bool stealthDetectionRisk)
         {
@@ -175,14 +185,18 @@ namespace Game.Ai.V2
                         ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
                     ScoutRiskModel.DetectorRisk(snap, hex))
                 : 0f;
+            ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Explore, req, riskRaw);
 
             var score = new TaskScore(
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
+                cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconExplore", hex, score,
                 $"freshNeighbors={freshNeighbors} infoGain={infoGainRaw:0.###} "
-                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###}");
+                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
+                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
 
             return new ReconObjective
             {
@@ -247,15 +261,20 @@ namespace Game.Ai.V2
 
             bool exposed = EnemyExposedAt(snap, hex);
             float riskRaw = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
+            StealthRequirement req = exposed ? StealthRequirement.Required : StealthRequirement.None;
+            ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw);
             var score = new TaskScore(
                 staleness: TaskScoreEvaluator.PositiveStaleness(staleRaw),
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRaw),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(directionalRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
+                cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconRefresh", hex, score,
                 $"age={age} stale={staleRaw:0.###} strategic={strategicRaw:0.###} "
-                + $"direction={directionalRaw:0.###} homeDistance={homeDist} detectionRisk={riskRaw:0.###}");
+                + $"direction={directionalRaw:0.###} homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
+                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
 
             var objective = new ReconObjective
             {
@@ -264,7 +283,7 @@ namespace Game.Ai.V2
                 TaskScore = score,
                 BaseValue = score.Value,
                 DetectionRisk = riskRaw,
-                Stealth = exposed ? StealthRequirement.Required : StealthRequirement.None,
+                Stealth = req,
                 DistanceFromBase = distBase,
                 AgeTurns = age,
                 StrategicRelevance = strategicRaw,
@@ -303,16 +322,21 @@ namespace Game.Ai.V2
             float riskRaw = Mathf.Clamp01(Mathf.Max(
                 c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
                 ScoutRiskModel.DetectorRisk(snap, pos)));
+            ScoutCostEstimate cost = MissionCost(snap, pos, ScoutTargetKind.Surveil,
+                StealthRequirement.Required, riskRaw);
 
             var score = new TaskScore(
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
+                cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
             TaskScoreDiagnostics.Log("ReconSurveil", pos, score,
                 $"age={age} stale={stalenessRaw:0.###} confidence={c.Confidence:0.###} "
                 + $"severity={maxSeverity:0.###} contact={contactRelevanceRaw:0.###} "
-                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###}");
+                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
+                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
 
             return new ReconObjective
             {

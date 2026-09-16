@@ -30,7 +30,7 @@ namespace Game.Ai.V2
         // reuse Economy's historical 4/AP, 1.5/resource or 0.8/travel tuning.
         public const float taskScoreCardPriceApWeight = 2f;
         public const float taskScoreCardPriceResourceWeight = 1f;
-        public const float taskScoreDeliveryApWeight = 1f;
+        public const float taskScoreDeliveryApWeight = taskScoreCardPriceApWeight; // One real AP = one price for card or delivery.
         public const float taskScoreTravelWeight = 0.5f;
         public const float taskScoreThreatRiskMax = 8f;
         public const float taskScoreDetectionRiskMax = 8f;
