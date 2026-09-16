@@ -20,8 +20,15 @@ jobs:
           from pathlib import Path
           source = Path('.github/workflows/temporary-raid-actor-fix-20260916.yml').read_text()
           script = source.split("          python3 - <<'PY'\n", 1)[1].split('\n          PY\n', 1)[0]
-          script = '\n'.join(line[10:] if line.startswith('          ') else line for line in script.splitlines())
-          exec(compile(script, 'guarded_raid_patch.py', 'exec'))
+          inside_literal = False
+          lines = []
+          for line in script.splitlines():
+              lines.append(line if inside_literal else line[10:] if line.startswith('          ') else line)
+              if line.count("'''") % 2:
+                  inside_literal = not inside_literal
+          if inside_literal:
+              raise RuntimeError('unclosed triple-quoted source replacement')
+          exec(compile('\n'.join(lines), 'guarded_raid_patch.py', 'exec'))
           PY
           git diff --check
           git add Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.cs Assets/Scripts/Ai/V2/State/GroundCombatAdmissionRegistry.cs Assets/Editor/AiRaidActorCommitmentTests.cs Assets/Editor/AiRaidActorCommitmentTests.cs.meta
