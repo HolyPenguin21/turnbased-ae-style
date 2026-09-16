@@ -747,8 +747,8 @@ namespace Game.Ai.V2
                     StrategicCardEvaluator.BaseSiteValue facts =
                         StrategicCardEvaluator.ScoreBaseSite(s, site, card);
 
-                    // Only card-semantic facts are consumed from StrategicCardEvaluator. Its legacy
-                    // bespoke ReasonValue/StrategicValue are deliberately ignored by TaskScore.
+                    // Only real card-semantic facts come from Evaluation; TaskScore is the
+                    // sole numeric evaluator of this Base's economic and strategic value.
                     float economicGainFact = Mathf.Max(0f, facts.HexYield);
                     float paybackTurns = economicGainFact > AiConfigV2.allocatorSliceEpsilon
                         ? EconomyPaybackTurns(economicGainFact,
@@ -791,7 +791,6 @@ namespace Game.Ai.V2
                     float risk = TaskScoreEvaluator.HexThreatRisk(facts.Exposure);
                     // InfrastructureActions.TryFoundBase carries the extraction facilities
                     // into the new Base: their production is preserved, not lost.
-                    float existingLoss = 0f;
 
                     var siteOnlyScore = new TaskScore(
                         economicHexBenefit: economic,
@@ -803,8 +802,7 @@ namespace Game.Ai.V2
                         ownTerritoryProximity: proximity,
                         terrainDefense: defense,
                         cardPrice: cardPrice,
-                        hexThreatRisk: risk,
-                        existingValueLoss: existingLoss);
+                        hexThreatRisk: risk);
                     // Staging is about positive physical/strategic purpose, NOT present-day net
                     // profitability: delivery/card costs may be overcome by future wait urgency.
                     // Generic proximity alone must never stage a completely empty Base.
@@ -850,8 +848,7 @@ namespace Game.Ai.V2
                         cardPrice: cardPrice,
                         delivery: TaskScoreEvaluator.Delivery(extraAp, travel),
                         moverOpportunityCost: Mathf.Max(0f, heroCost),
-                        hexThreatRisk: risk,
-                        existingValueLoss: existingLoss);
+                        hexThreatRisk: risk);
                     float value = score.Value;
 
                     TaskScoreDiagnostics.Log("Base", site.Hex, score,
@@ -859,9 +856,9 @@ namespace Game.Ai.V2
                         + $"paybackTurns={(float.IsInfinity(paybackTurns) ? -1f : paybackTurns):0.###} "
                         + $"airfieldRaw={facts.Airfield:0.###} globalRaw={facts.GlobalEffect:0.###} "
                         + $"frontRaw={site.ForwardProgressValue:0.###} corridorRaw={site.CorridorAlignmentValue:0.###} "
-                        + $"spacingDiagnostic={site.SpacingScore:0.###} defenseRaw={site.DefenseBonusValue:0.###} "
+                        + $"defenseRaw={site.DefenseBonusValue:0.###} "
                         + $"distance={travel:0.###} extraAp={extraAp:0.###} exposure={facts.Exposure:0.###} "
-                        + $"lostExtraction={site.LostExtractionIncome:0.###} moverOpportunity={heroCost:0.###}");
+                        + $"moverOpportunity={heroCost:0.###}");
 
                     meaningfulDemands.Add(new AxisDemand
                     {
@@ -889,9 +886,9 @@ namespace Game.Ai.V2
                         Explain = $"Base task={score.Value:0.##} economic={economic:0.##} "
                             + $"payback={payback:0.##} airfield={airfield:0.##} global={global:0.##} "
                             + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
-                            + $"defense={defense:0.##} spacing={site.SpacingScore:0.##}(diagnostic) "
+                            + $"defense={defense:0.##} "
                             + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
-                            + $"moverOpp={heroCost:0.##} risk={risk:0.##} existingLoss={existingLoss:0.##}",
+                            + $"moverOpp={heroCost:0.##} risk={risk:0.##}",
                     });
                 }
 

@@ -27,37 +27,25 @@ namespace Game.Ai.V2
         public const float economyDesireMaxWeight = 0.65f;
         public const float economyDesireMeanWeight = 0.35f;
         public const float economyLatentMultiplier = 0.25f;
-        public const float economySiteDeficitValue = 60f;
-        public const float economySiteIncomeGainValue = 10f;
+
         // A protected extraction hex may beat a modest raw-yield advantage farther outside the
         // support radius; resource priority is still decided separately in DemandLayer.
-        public const float economySiteBaseSynergyValue = 14f;
-        public const float economySiteClusterValue = 6f;
+
         // 2026-09-15 — recalibrated down from 2.5 (project owner's own target: a near-zero score
         // should mean a genuinely far corner of the map, not "anywhere more than a few hexes from
         // home" — even a site right up against the enemy citadel should stay clearly worth
         // building, e.g. for its aviation-range value). Kept for legacy/non-TaskScore consumers;
         // migrated world-task delivery uses TaskScoreEvaluator.Delivery instead.
-        public const float economySiteTravelPenalty = 0.8f;
-        public const float economySiteThreatPenalty = 18f;
-        public const float economySiteHeroOpportunityPenalty = 0.35f;
+
         // Net-new-yield weight: site.HexYield is now IncomeProjection-derived marginal income
         // (raw hex yield minus whatever an existing building already collects there), not the
         // hex's raw total — a Base converting an already-productive site no longer double-counts
         // what it destroys AND what it "gains" (see StrategicCardEvaluator.ScoreBaseSite /
-        // WorldAnalysis.Economy.BaseNetNewYield). economyBaseCapacityValue folded into this same
         // term for the same reason (it modeled the identical "is this hex already productive"
         // question with a flat 0.5/1.0 guess instead of the real marginal number).
-        public const float economyBaseHexYieldValue = 10f;
-        public const float economyBaseAirfieldValue = 8f;
-        public const float economyBaseForwardProgressValue = 8f;
-        public const float economyBaseCorridorAlignmentValue = 8f;
-        public const float economyBaseGlobalEffectValue = 6f;
+
         // Symmetric to economyBaseHexYieldValue: a Base converting an already-productive owned
-        // extraction site destroys real, currently-collected income, not potential yield.
-        public const float economyBaseExtractionLossPenalty = 10f;
-        public const float economyBuildResourcePenalty = 1.5f;
-        public const float economyBuildApPenalty = 4f;
+
         // 2026-09-15 — Base's OWN multiplier for deliveryApCost (extra activation-AP the walk
         // itself costs beyond the card's own play cost), decoupled from economyBuildApPenalty
         // (down from reusing that 4). Calibrated together with economySiteTravelPenalty(0.8) so a
@@ -67,32 +55,20 @@ namespace Game.Ai.V2
         // Extraction's own deliveryApCost (near the top of DemandLayer.Economy.cs) still uses
         // economyBuildApPenalty unchanged — a routine, usually-nearby investment, not recalibrated
         // this round.
-        public const float economyBaseDeliveryApPenalty = 1.5f;
+
         public const float economyExtractionMaxPaybackTurns = 8f;
-        public const float economyExtractionPaybackValue = 8f;
+
         public const float economyBaseDemandMinValue = 12f;
-        public const int economyResourceClusterRadius = 2;
         public const int economyBaseFoundScanRadius = 3;
         public const int economyBaseMinSpacing = 3;
-        // 2026-09-15 — graded reward on top of the economyBaseMinSpacing hard gate (see
-        // EconomyBaseOpportunity.SpacingScore). A site exactly at the minimum legal distance is
-        // usable but cramped (80%); economyBaseIdealSpacing is the sweet spot (100%) — close enough
-        // to stay inside the support network, far enough not to overlap an existing base's
-        // catchment; score ramps linearly from the gate up to the ideal, then decays linearly past
-        // it at economyBaseSpacingDecayPerHex per extra hex, floored at 0.
-        public const int economyBaseIdealSpacing = 4;
-        public const float economyBaseSpacingScoreAtMin = 0.8f;
-        public const float economyBaseSpacingDecayPerHex = 0.15f;
-        public const float economyBaseSpacingValue = 8f;
         // 2026-09-15 — priority order per project owner: (1) most distinct resource types on the
         // hex, with genuine per-type deficit allowed to override that ordering (already how
         // hexYield's deficit-weighted sum behaves, no change needed there); (2) a single resource;
         // (3) a defense-only hex. A combo (resource + defense) should add on top of the resource
         // score but still lose to a purely better resource site. Weight kept below
-        // economyBaseHexYieldValue(10)/economyBaseSpacingValue(8)/forward/corridor(8 each) so a
         // defense bonus alone can add to a site's score but cannot out-rank an extra resource type.
         public const float economyBaseMaxDefenseModifier = 2f;   // normalizer — current terrain catalog's max defenseModifier
-        public const float economyBaseDefenseBonusValue = 4f;
+
         public const float economyBaseUrgencyPerDeferredTurn = 12f;
         // 2026-09-15 round 18 — split from one shared constant into two, because the two decisions
         // it gated are not the same size of commitment. Pre-commitment staging (no mover moving,
@@ -115,7 +91,6 @@ namespace Game.Ai.V2
         public const float economyAdmissionCompletionCostWeight = 1f;
         // Actor-loan admission now consumes TaskScore.Value. Keep the public Economy policy names
         // as aliases so all existing consumers share the same migrated scale rather than mixing the
-        // old 60-point extraction deficit band with the new 12-point canonical deficit band.
         public const float economyLoanHysteresisThreshold = taskScoreEconomyLoanHysteresisThreshold;
         public const float economyLoanContinuationLoss = taskScoreEconomyLoanContinuationLoss;
         // Bounded AP-equivalent penalty added to a home-vocation hero's TotalAssignmentApCost when

@@ -1147,14 +1147,12 @@ namespace Game.EditorTests
             {
                 new EconomyBaseOpportunity
                 {
-                    // CapacityValue/NearbyResourceClusterValue/NetworkExpansionValue folded away
                     // (2026-09-14 base-site scoring cleanup — see StrategicCardEvaluator.
                     // ScoreBaseSite); InfrastructurePressure removed outright (2026-09-15, per
                     // project owner — a founded Base is already valuable and already gated hard
                     // enough without also waiting on existing-base facility saturation).
-                    // SpacingScore stands in to keep this fixture's reasonValue comfortably above
                     // the admission threshold.
-                    Hex = new HexCoord(3, 0), SpacingScore = 1.25f,
+                    Hex = new HexCoord(3, 0),
                     ForwardProgressValue = 1f, CorridorAlignmentValue = 1f,
                 },
             };
@@ -1183,9 +1181,8 @@ namespace Game.EditorTests
                 new EconomyBaseOpportunity
                 {
                     // CapacityValue removed (2026-09-14 cleanup); InfrastructurePressure removed
-                    // outright (2026-09-15). SpacingScore stands in to keep this fixture's
                     // reasonValue negative, same test intent.
-                    Hex = incumbentHex, SpacingScore = -1.25f,
+                    Hex = incumbentHex,
                 },
             };
             var incumbent = new MissionIntent
@@ -1693,10 +1690,9 @@ namespace Game.EditorTests
                 new EconomyBaseOpportunity
                 {
                     // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
-                    // InfrastructurePressure removed outright (2026-09-15). SpacingScore/
                     // ForwardProgressValue keep this fixture's reasonValue in the same "positive
                     // but not yet admitted" range the test exercises.
-                    Hex = new HexCoord(4, 0), SpacingScore = 1.25f,
+                    Hex = new HexCoord(4, 0),
                     ForwardProgressValue = 1f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 4, 0, 1) },
                 },
@@ -1745,10 +1741,9 @@ namespace Game.EditorTests
                 new EconomyBaseOpportunity
                 {
                     // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
-                    // InfrastructurePressure removed outright (2026-09-15). SpacingScore(1.5)*8=12
                     // stands in for the old pressure(1.2)*10=12, same reasonValue this boundary
                     // test (below-threshold-then-admitted) depends on.
-                    Hex = new HexCoord(3, 0), SpacingScore = 1.5f,
+                    Hex = new HexCoord(3, 0),
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -1798,9 +1793,7 @@ namespace Game.EditorTests
                 {
                     // CapacityValue/NetworkExpansionValue removed (2026-09-14 cleanup);
                     // InfrastructurePressure removed outright (2026-09-15) — same
-                    // SpacingScore(1.5)*8=12 stand-in as the fixture above.
                     Hex = new HexCoord(3, 0),
-                    SpacingScore = 1.5f,
                     BuilderRoutes = new[] { BuilderRoute(builder, 0, 0, 1) },
                 },
             };
@@ -3227,7 +3220,6 @@ namespace Game.EditorTests
                 // Every real Base card in both faction catalogs grants all four Collect
                 // abilities (see CardCatalog_IronConcord/TheAshen.asset) — matched here so
                 // "strategic"'s HexYield below scores under StrategicCardEvaluator.
-                // BaseHexYieldValue's per-ability gate, same as it would in a real game.
                 grantedAbilities = new List<string>
                 {
                     UnitAbilities.CollectHuman, UnitAbilities.CollectEnergy,
@@ -3238,8 +3230,6 @@ namespace Game.EditorTests
             ArmySnapshot builder = EconomyBuilder(9, 2, 3f);
             builder.Hex = new HexCoord(3, 1);
             snapshot.Self.Armies = new[] { builder };
-
-            // CapacityValue/NearbyResourceClusterValue/LogisticsValue/NetworkExpansionValue removed
             // (2026-09-14 base-site scoring cleanup); InfrastructurePressure removed outright
             // (2026-09-15) — dropped rather than replaced here since neither site needs them to
             // preserve the test's actual point: "strategic" wins on real resource yield + corridor
@@ -3561,7 +3551,6 @@ namespace Game.EditorTests
             CurrentBuildingCollection = 0,
             MarginalIncomeGain = gain,
             BaseNetworkSynergy = 1f,
-            NearbyResourceClusterValue = 0f,
         };
 
         private static Game.Ai.AiMapMemory.KnownResourceHex KnownResource(

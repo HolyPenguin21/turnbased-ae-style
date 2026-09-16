@@ -1518,82 +1518,42 @@ namespace Game.Ai.V2
             return a + " ; " + b;
         }
 
-        // ===========================================================================================
-        //  BASE SITE SCORING — moved from Strategy/Demand/DemandLayer.Economy.cs (dependency-direction
-        //  fix, 2026-09-13): Evaluation is the reusable scoring layer Strategy calls into, never the
-        //  reverse. DemandLayer.AddBaseCandidates and NonCombatCardPlayer both route through this one
-        //  formula; DemandLayer stays the owner of Base candidate selection and Economy demand
-        //  emission, this class owns only the numeric Base card x site value.
-        // ===========================================================================================
+        // Base card facts only. DemandLayer builds the sole TaskScore; this method does NOT
+        // calculate a second, bespoke strategic value or an imaginary extraction loss.
         internal readonly struct BaseSiteValue
         {
-            internal readonly float ReasonValue;
-            // Pure physical marginal income available to this specific Base card. Deficit/priority
-            // is intentionally excluded so TaskScore can apply that strategic fact exactly once.
             internal readonly float HexYield;
             internal readonly float GlobalEffect;
             internal readonly float Airfield;
             internal readonly float Exposure;
-            internal readonly float IntrinsicBuildCost;
-            internal readonly float ExtractionLossPenalty;
-            internal readonly float StrategicValue;
 
-            internal BaseSiteValue(float reasonValue, float hexYield, float globalEffect,
-                float airfield, float exposure, float intrinsicBuildCost,
-                float extractionLossPenalty, float strategicValue)
+            internal BaseSiteValue(float hexYield, float globalEffect, float airfield,
+                float exposure)
             {
-                ReasonValue = reasonValue;
                 HexYield = hexYield;
                 GlobalEffect = globalEffect;
                 Airfield = airfield;
                 Exposure = exposure;
-                IntrinsicBuildCost = intrinsicBuildCost;
-                ExtractionLossPenalty = extractionLossPenalty;
-                StrategicValue = strategicValue;
             }
         }
 
         internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
-            CardData card)
-        {
-            float marginalHexYield = BaseCardMarginalYield(s, site, card.Definition);
-            // Keep the legacy BaseSiteValue strategic fields behaviorally stable for any remaining
-            // diagnostic/test consumers. TaskScore consumes only the pure marginalHexYield above.
-            float legacyWeightedHexYield = BaseHexYieldValue(s, site.HexYield, card.Definition);
-            float global = BaseGlobalEffectValue(s, card.Definition);
-            float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
-            float reasonValue = AiConfigV2.economyBaseHexYieldValue * legacyWeightedHexYield
-                + AiConfigV2.economyBaseAirfieldValue * airfield
-                + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
-                + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
-                + AiConfigV2.economyBaseSpacingValue * site.SpacingScore
-                + AiConfigV2.economyBaseDefenseBonusValue * site.DefenseBonusValue
-                + AiConfigV2.economyBaseGlobalEffectValue * global;
-            float intrinsicBuildCost = card.EffectivePlayApCost * AiConfigV2.economyBuildApPenalty
-                + ResourceCostSum(card.EffectivePlayResourceCost) * AiConfigV2.economyBuildResourcePenalty;
-            float extractionLossPenalty = site.ConvertsOwnedExtractionSite
-                ? AiConfigV2.economyBaseExtractionLossPenalty * site.LostExtractionIncome
-                : 0f;
-            float exposure = ThreatExposure(s, site.Hex);
-            float strategicValue = reasonValue - intrinsicBuildCost
-                - AiConfigV2.economySiteThreatPenalty * exposure - extractionLossPenalty;
-            return new BaseSiteValue(reasonValue, marginalHexYield, global, airfield, exposure,
-                intrinsicBuildCost, extractionLossPenalty, strategicValue);
-        }
+            CardData card) => new BaseSiteValue(
+                BaseCardMarginalYield(s, site, card.Definition),
+                BaseGlobalEffectValue(s, card.Definition),
+                BaseAirfieldValue(s, card.Definition, site.Hex),
+                ThreatExposure(s, site.Hex));
 
         // One owner of the gameplay fact "what resource income can this exact Base card collect on
-        // this hex?". TaskScore reads the pure total; the legacy evaluator below may still attach
-        // deficit weighting for old diagnostics without changing the physical fact itself.
-        internal static float BaseCardMarginalYield(ResourceBundle yield, CardDefinition definition) =>
-            ResourceBundle.All.Sum(type => BaseCardMarginalGain(yield, definition, type));
-
-        internal static float BaseCardMarginalGain(ResourceBundle yield, CardDefinition definition,
-            ResourceType type)
+        // this hex?". This private helper is only the new card's additional Collect capacity;
+        // actual OWNER gain below also accounts for existing army collection.
+        private static int BaseCardAdditionalCollectCapacity(ResourceBundle yield,
+            CardDefinition definition, ResourceType type)
         {
             if (definition?.grantedAbilities == null
                 || !definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type)))
-                return 0f;
-            return Mathf.Max(0f, Mathf.Min(1f, yield.Get(type)));
+                return 0;
+            return Mathf.RoundToInt(Mathf.Max(0f, Mathf.Min(1f, yield.Get(type))));
         }
 
         // Net OWNER gain, not the gross Base collection. A Base takes the first cut,
@@ -1605,7 +1565,7 @@ namespace Game.Ai.V2
         internal static float BaseCardMarginalGain(WorldSnapshot s, EconomyBaseOpportunity site,
             CardDefinition definition, ResourceType type)
         {
-            int addedCapacity = Mathf.RoundToInt(BaseCardMarginalGain(site.HexYield, definition, type));
+            int addedCapacity = BaseCardAdditionalCollectCapacity(site.HexYield, definition, type);
             if (addedCapacity <= 0)
                 return 0f;
             int remainingYield = Mathf.RoundToInt(site.HexYield.Get(type));
@@ -1620,28 +1580,6 @@ namespace Game.Ai.V2
             // work on the remainder to avoid charging carried-over facilities twice.
             return IncomeProjection.MarginalOwnerCollectionAtHex(
                 remainingYield, 0, addedCapacity, ownArmyCollectors, armiesCanCollect);
-        }
-
-        // `yield` is the hex's remaining UNCOLLECTED amount per type (structural site fact, see
-        // WorldAnalysis.Economy.BaseUncollectedYield) — not what this specific Base would actually
-        // draw. A founded Base earns 1 unit of a type only if its own card grants that type's
-        // Collect ability (BuildingData.CollectedAmount's real rule, no more uncapped IsBase
-        // branch), so this counts at most 1 per type the card actually grants, capped by whatever
-        // the hex still has left to give — never the full remaining yield regardless of card.
-        private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield,
-            CardDefinition definition)
-        {
-            if (s?.Economy?.PerType == null)
-                return 0f;
-            var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
-            float value = 0f;
-            foreach (ResourceType type in ResourceBundle.All)
-            {
-                float gain = BaseCardMarginalGain(yield, definition, type);
-                if (gain > 0f && standings.TryGetValue(type, out EconomyResourceStanding standing))
-                    value += gain * Mathf.Max(0.25f, standing.DeficitScore);
-            }
-            return value;
         }
 
         private static float BaseGlobalEffectValue(WorldSnapshot s, CardDefinition definition)
