@@ -103,6 +103,15 @@ namespace Game.Ai.V2
                 if (strategicClaim != null
                     && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, strategicClaim, snapshot, player, ctx))
                     continue;
+                // A Recce hero has two legal Phase-B shapes: solo Scout or Hero joining a real
+                // formation. The latter must not evade an unresolved Scout demand merely because
+                // its resulting army is no longer a solo scout. Reuse the existing claim owner;
+                // only a ScoutCapability placement can satisfy that claim.
+                if (p.FinalCapability == CapabilityKind.Hero
+                    && AbilityParams.AbilitiesHaveAnyRecce(p.ProjectedAbilities)
+                    && UnresolvedClaimFor(reservation, CapabilityKind.ScoutCapability,
+                        p.ProjectedAbilities) != null)
+                    continue;
                 if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot)
                     continue;
                 if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, p, player))
@@ -166,4 +175,3 @@ namespace Game.Ai.V2
         }
     }
 }
-
