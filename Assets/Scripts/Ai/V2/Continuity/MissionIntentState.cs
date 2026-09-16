@@ -60,8 +60,10 @@ namespace Game.Ai.V2
         internal void MarkReconActorTrimmed(int turn, int armyId)
         {
             EnsureReconTrimTurn(turn);
-            if (armyId != 0)
-                _reconTrimmedActorIds.Add(armyId);
+            // ArmyId 0 is a legitimate actor identity. Callers reach this method only after
+            // PreferredMoverArmyId.HasValue, so absence is represented by nullable ownership,
+            // never by a numeric sentinel.
+            _reconTrimmedActorIds.Add(armyId);
         }
 
         internal IReadOnlyCollection<int> ReconActorsTrimmedThisTurn(int turn)

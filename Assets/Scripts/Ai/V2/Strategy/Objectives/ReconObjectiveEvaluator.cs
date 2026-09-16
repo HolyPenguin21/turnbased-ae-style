@@ -10,8 +10,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  One frozen turn produces three explicit Recon opportunity classes:
     //    Explore  — never/ground-unvisited frontier information.
-    //    Refresh  — previously observed map information whose IntelAge is stale again.
-    //    Surveil  — stale last-known enemy contact that requires an observation vantage.
+    //    Refresh  — stale previously-observed information; ground route/terrain witness.
+    //    Surveil  — stale enemy contact; observation-vantage semantics in provisioning.
     // ===========================================================================================
     public enum ReconObjectiveKind { Explore, Refresh, Surveil }
 
@@ -22,8 +22,11 @@ namespace Game.Ai.V2
         public int ContactArmyId;              // Surveil only
         public EnemyContactSnapshot Contact;   // Surveil only
 
+        // Legacy transport kept during migration. Intrinsic value is now owned exclusively by
+        // TaskScore; every migrated consumer must observe BaseValue == TaskScore.Value.
         public float BaseValue;
-        public float DetectionRisk;
+        public TaskScore TaskScore;
+        public float DetectionRisk;             // raw fact, not the converted TaskScore contribution
         public StealthRequirement Stealth;
 
         public int FreshNeighbors;
@@ -87,13 +90,9 @@ namespace Game.Ai.V2
             if (contacts != null)
                 foreach (EnemyContactSnapshot c in contacts)
                     if (c.Source == ContactSource.Honest && c.Knowledge == ContactKnowledge.LastKnown
-                        && c.Position.HasValue && c.Army != null && c.Army.ArmyId > 0)
+                        && c.Position.HasValue && c.Army != null)
                         list.Add(BuildSurveil(snap, c));
 
-            // Objective-level acceptance is limited to facts this layer owns: the sanitized
-            // direction boundary and whether direction pressure enters the best Refresh candidate.
-            // Explore-vs-Refresh strategic pressure is audited in MissionLayer where the matching
-            // frozen DesireBreakdown is available.
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
             if (auditPlayer != null)
             {
@@ -151,10 +150,6 @@ namespace Game.Ai.V2
                     candidates.Add(o);
             }
 
-            // Bound enumeration before MissionLayer's ordinary cross-objective beam. Keep a wider
-            // pool than execution capacity so several scouts can spread, but do not hand hundreds
-            // of stale hexes to the allocator on a late-game map. Use the effective policy cap so
-            // ReconOnly's 3-scout acceptance mode is represented here too.
             int cap = Mathf.Max(AiConfigV2.scoutCandidateBeamWidth * 3,
                 ReconConcurrencyPolicy.HardCap * 3);
             return candidates
@@ -166,48 +161,50 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
-        // internal (not private) so the recon-ownership acceptance sim can assert the §4
-        // local-vs-distant Explore BaseValue ordering against the real formula.
+        private static ScoutCostEstimate MissionCost(WorldSnapshot snap, HexCoord hex,
+            ScoutTargetKind kind, StealthRequirement stealth, float detectionRisk) =>
+            ScoutCostModel.Estimate(snap, new ScoutMissionTarget
+            {
+                Kind = kind,
+                FocusHex = hex,
+                Stealth = stealth,
+                DetectionRisk = detectionRisk,
+            });
+
         internal static ReconObjective BuildExplore(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
             int distFromBase, bool enemyExposure, bool stealthDetectionRisk)
         {
-            float infoGain = Mathf.Clamp01(freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
+            float infoGainRaw = Mathf.Clamp01(
+                freshNeighbors / Mathf.Max(0.0001f, AiConfigV2.scoutInfoGainNorm));
+            infoGainRaw *= ExploreObservationFreshnessFactor(snap, hex);
 
-            // Spec AI-INTEL-01 — Observed != GroundVisited. If this frontier cell and its unvisited
-            // neighbours were already observed recently (ground vision, static vision or an air
-            // flyby), the exploration information is in hand; discount the info term so `GroundVisited
-            // == false` alone no longer re-selects the hex. Age-graded (value returns as intel goes
-            // stale) and floored (never a hard ban — a strategically hot cell can still win, and the
-            // same hex remains eligible as a Refresh objective). The physical frontier-expansion
-            // merit rides entirely on homeProximity below and is deliberately left untouched.
-            infoGain *= ExploreObservationFreshnessFactor(snap, hex);
-
-            // Spec §4 — "home" is the nearest of the starting Citadel and every owned base hex, not
-            // only BaseHexes. Explore leans harder on closeness-to-home than the generic proximity
-            // term and decays it across the local->regional band, so a nearby frontier out-scores an
-            // equally informative distant one while meaningful nearby unknown territory remains.
             int homeDist = HomeDistance(snap, hex, distFromBase);
-            float homeProximity = Curves.InvRamp(homeDist,
-                AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutExploreProximityRampHi);
-
-            float wSum = AiConfigV2.scoutInfoGainWeight + AiConfigV2.scoutExploreHomeProximityWeight;
-            float quality = Mathf.Clamp01(
-                (AiConfigV2.scoutInfoGainWeight * infoGain
-                 + AiConfigV2.scoutExploreHomeProximityWeight * homeProximity) / Mathf.Max(0.0001f, wSum));
-            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
-
             StealthRequirement req = enemyExposure ? StealthRequirement.Required : StealthRequirement.None;
-            float risk = enemyExposure
-                ? Mathf.Max(stealthDetectionRisk ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
+            float riskRaw = enemyExposure
+                ? Mathf.Max(stealthDetectionRisk
+                        ? 1f / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm) : 0f,
                     ScoutRiskModel.DetectorRisk(snap, hex))
                 : 0f;
+            ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Explore, req, riskRaw);
+
+            var score = new TaskScore(
+                infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
+                cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
+                detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
+            TaskScoreDiagnostics.Log("ReconExplore", hex, score,
+                $"freshNeighbors={freshNeighbors} infoGain={infoGainRaw:0.###} "
+                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
+                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
 
             return new ReconObjective
             {
                 Kind = ReconObjectiveKind.Explore,
                 FocusHex = hex,
-                BaseValue = baseValue,
-                DetectionRisk = risk,
+                TaskScore = score,
+                BaseValue = score.Value,
+                DetectionRisk = riskRaw,
                 Stealth = req,
                 FreshNeighbors = freshNeighbors,
                 DistanceFromBase = distFromBase,
@@ -215,10 +212,7 @@ namespace Game.Ai.V2
         }
 
         // Average [floor..1] information-retention factor over the Explore focus and the unvisited,
-        // on-map, non-blocked neighbours that make up its FreshNeighbors count. A never-observed hex
-        // contributes 1 (full exploration value); one observed this turn contributes the floor; the
-        // factor ramps back to 1 across scoutSurveilStaleTurnsLo..Hi. Mirrors the FreshNeighbors
-        // predicate in ScoutObjectiveEvaluator.ExploreStillOpen.
+        // on-map, non-blocked neighbours that make up its FreshNeighbors count.
         private static float ExploreObservationFreshnessFactor(WorldSnapshot snap, HexCoord focus)
         {
             float floor = Mathf.Clamp01(AiConfigV2.scoutExploreObservedInfoDiscountFloor);
@@ -242,7 +236,7 @@ namespace Game.Ai.V2
         private static float HexObservationRetention(WorldSnapshot snap, HexCoord hex, float floor)
         {
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
-                return 1f; // never observed — exploration still yields full new information
+                return 1f;
             return Mathf.Lerp(floor, 1f, Curves.Ramp(age,
                 AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi));
         }
@@ -251,53 +245,57 @@ namespace Game.Ai.V2
         {
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
-            float stale = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
+            int homeDist = HomeDistance(snap, hex, distBase);
+            float staleRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
                 AiConfigV2.scoutSurveilStaleTurnsHi);
-            float proximity = Proximity(distBase);
 
-            float strategic = StrategicRefreshRelevance(snap, hex);
+            float strategicRaw = StrategicRefreshRelevance(snap, hex);
             ReconDirectionSnapshot direction = ReconDirectionModel.Build(snap);
             ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
-            float directional = direction?.EnemyDirectionSectors != null
+            float directionalRaw = direction?.EnemyDirectionSectors != null
                 && direction.EnemyDirectionSectors.TryGetValue(sector, out float pressure)
                     ? Mathf.Clamp01(pressure)
                     : 0f;
             if (direction?.KnownEnemyCitadelDirection == sector)
-                directional = Mathf.Max(directional, 0.75f);
-
-            // Refresh is information maintenance: age is primary, then known strategic content and
-            // the sanitized six-sector enemy pressure; proximity keeps it from sending a ground
-            // scout across the entire map for an equally stale low-value cell.
-            const float staleW = 0.45f;
-            const float strategicW = 0.30f;
-            const float directionW = 0.15f;
-            const float proximityW = 0.10f;
-            float quality = Mathf.Clamp01(staleW * stale + strategicW * strategic
-                + directionW * directional + proximityW * proximity);
-            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin,
-                AiConfigV2.scoutBaseValueMax, quality);
+                directionalRaw = Mathf.Max(directionalRaw, 0.75f);
 
             bool exposed = EnemyExposedAt(snap, hex);
-            float risk = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
+            float riskRaw = exposed ? ScoutRiskModel.DetectorRisk(snap, hex) : 0f;
+            StealthRequirement req = exposed ? StealthRequirement.Required : StealthRequirement.None;
+            ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw);
+            var score = new TaskScore(
+                staleness: TaskScoreEvaluator.PositiveStaleness(staleRaw),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRaw),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(directionalRaw),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
+                cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
+                detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
+            TaskScoreDiagnostics.Log("ReconRefresh", hex, score,
+                $"age={age} stale={staleRaw:0.###} strategic={strategicRaw:0.###} "
+                + $"direction={directionalRaw:0.###} homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
+                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
+
             var objective = new ReconObjective
             {
                 Kind = ReconObjectiveKind.Refresh,
                 FocusHex = hex,
-                BaseValue = baseValue,
-                DetectionRisk = risk,
-                Stealth = exposed ? StealthRequirement.Required : StealthRequirement.None,
+                TaskScore = score,
+                BaseValue = score.Value,
+                DetectionRisk = riskRaw,
+                Stealth = req,
                 DistanceFromBase = distBase,
                 AgeTurns = age,
-                StrategicRelevance = strategic,
-                DirectionPressure = directional,
+                StrategicRelevance = strategicRaw,
+                DirectionPressure = directionalRaw,
             };
 
-            if (strategic > 0f)
+            if (strategicRaw > 0f)
             {
                 var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
                 if (auditPlayer != null)
                     ReconAcceptanceAudit.RecordStaleStrategicRefresh(auditPlayer, snap.TurnNumber,
-                        hex, age, strategic);
+                        hex, age, strategicRaw);
             }
             return objective;
         }
@@ -309,7 +307,8 @@ namespace Game.Ai.V2
 
             HexCoord pos = c.Position.Value;
             int age = c.AgeTurns(snap.TurnNumber);
-            float staleness = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi);
+            float stalenessRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
+                AiConfigV2.scoutSurveilStaleTurnsHi);
 
             float maxSeverity = 0f;
             if (threats != null)
@@ -317,17 +316,27 @@ namespace Game.Ai.V2
                     if (ReferenceEquals(t.Contact, c) && t.Severity > maxSeverity)
                         maxSeverity = t.Severity;
 
-            float threatRelevance = Mathf.Clamp01(staleness * maxSeverity);
-            float proximity = bases != null && bases.Count > 0 ? Proximity(MinDist(bases, pos)) : 0f;
+            float contactRelevanceRaw = Mathf.Clamp01(stalenessRaw * maxSeverity);
+            int fallbackDistance = bases != null && bases.Count > 0 ? MinDist(bases, pos) : 0;
+            int homeDist = HomeDistance(snap, pos, fallbackDistance);
+            float riskRaw = Mathf.Clamp01(Mathf.Max(
+                c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk,
+                ScoutRiskModel.DetectorRisk(snap, pos)));
+            ScoutCostEstimate cost = MissionCost(snap, pos, ScoutTargetKind.Surveil,
+                StealthRequirement.Required, riskRaw);
 
-            float wSum = AiConfigV2.scoutStrategicProximityWeight + AiConfigV2.scoutThreatWeight;
-            float quality = Mathf.Clamp01(
-                (AiConfigV2.scoutStrategicProximityWeight * proximity
-                 + AiConfigV2.scoutThreatWeight * threatRelevance) / Mathf.Max(0.0001f, wSum));
-            float baseValue = Mathf.Lerp(AiConfigV2.scoutBaseValueMin, AiConfigV2.scoutBaseValueMax, quality);
-
-            float risk = Mathf.Clamp01(Mathf.Max(
-                c.Confidence * AiConfigV2.scoutSurveilBaseDetectionRisk, ScoutRiskModel.DetectorRisk(snap, pos)));
+            var score = new TaskScore(
+                staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
+                contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
+                cardPrice: TaskScoreEvaluator.CardPrice(cost.ApDesired, 0f),
+                delivery: TaskScoreEvaluator.Delivery(0f, cost.EstimatedDistance),
+                detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
+            TaskScoreDiagnostics.Log("ReconSurveil", pos, score,
+                $"age={age} stale={stalenessRaw:0.###} confidence={c.Confidence:0.###} "
+                + $"severity={maxSeverity:0.###} contact={contactRelevanceRaw:0.###} "
+                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
+                + $"notionalAp={cost.ApDesired:0.###} travel={cost.EstimatedDistance:0.###}");
 
             return new ReconObjective
             {
@@ -335,12 +344,13 @@ namespace Game.Ai.V2
                 FocusHex = pos,
                 ContactArmyId = c.Army?.ArmyId ?? 0,
                 Contact = c,
-                BaseValue = baseValue,
-                DetectionRisk = risk,
+                TaskScore = score,
+                BaseValue = score.Value,
+                DetectionRisk = riskRaw,
                 Stealth = StealthRequirement.Required,
                 AgeTurns = age,
                 Severity = maxSeverity,
-                DistanceFromBase = bases != null && bases.Count > 0 ? MinDist(bases, pos) : 0,
+                DistanceFromBase = fallbackDistance,
             };
         }
 
@@ -373,23 +383,10 @@ namespace Game.Ai.V2
             return relevance;
         }
 
-        private static float Proximity(int distanceFromNearestBase) =>
-            Curves.InvRamp(distanceFromNearestBase, AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
-
-        // Spec §4 — nearest of {starting Citadel} ∪ {owned base hexes}. WorldAnalysis folds the
-        // Citadel into BaseHexes, but it is min'd in explicitly here so this stays correct even if
-        // that ever changes, and falls back to the frontier's precomputed base distance.
-        internal static int HomeDistance(WorldSnapshot snap, HexCoord hex, int fallbackDistFromBase)
-        {
-            int best = int.MaxValue;
-            IReadOnlyList<HexCoord> bases = snap?.Self?.BaseHexes;
-            if (bases != null)
-                foreach (HexCoord b in bases)
-                    best = Mathf.Min(best, HexGridMath.Distance(b, hex));
-            if (snap?.Self != null)
-                best = Mathf.Min(best, HexGridMath.Distance(snap.Self.Citadel, hex));
-            return best == int.MaxValue ? Mathf.Max(0, fallbackDistFromBase) : best;
-        }
+        // Shared strategic home-distance contract. Keep this method as the stable test seam; the
+        // implementation itself is now owned by the common TaskScore evaluator.
+        internal static int HomeDistance(WorldSnapshot snap, HexCoord hex, int fallbackDistFromBase) =>
+            TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, fallbackDistFromBase);
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 
@@ -414,4 +411,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

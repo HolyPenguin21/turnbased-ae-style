@@ -357,7 +357,6 @@ namespace Game.Ai.V2
             bd.ResourcePressureBenefit = 0f;     // spends a ledger entitlement, not stranded AP
             bd.HandPressureBenefit = 0f;
             bd.Deployability = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
-
             bd.Total = SumTotal(bd);
 
             // P1.6 review-r3 — card-level HoldValue: max reason-to-hold across ALL of the card's
@@ -1128,6 +1127,8 @@ namespace Game.Ai.V2
             }
         }
 
+        // AI-MGR §11 — classification is separate from utility. This helper is used only for the
+        // "support hero" hold heuristic, never added directly to score.
         private static bool PlanHeroIsSupport(MaterializationPlan plan)
         {
             CardDefinition def = PlanBaseDef(plan);
@@ -1335,7 +1336,6 @@ namespace Game.Ai.V2
             return AiConfigV2.surplusScarcityLow;
         }
 
-
         // Phase-A opportunity cost of spending this exact card body off its best use.
         internal static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
         {
@@ -1528,6 +1528,8 @@ namespace Game.Ai.V2
         internal readonly struct BaseSiteValue
         {
             internal readonly float ReasonValue;
+            // Pure physical marginal income available to this specific Base card. Deficit/priority
+            // is intentionally excluded so TaskScore can apply that strategic fact exactly once.
             internal readonly float HexYield;
             internal readonly float GlobalEffect;
             internal readonly float Airfield;
@@ -1554,10 +1556,13 @@ namespace Game.Ai.V2
         internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
             CardData card)
         {
-            float hexYield = BaseHexYieldValue(s, site.HexYield, card.Definition);
+            float marginalHexYield = BaseCardMarginalYield(site.HexYield, card.Definition);
+            // Keep the legacy BaseSiteValue strategic fields behaviorally stable for any remaining
+            // diagnostic/test consumers. TaskScore consumes only the pure marginalHexYield above.
+            float legacyWeightedHexYield = BaseHexYieldValue(s, site.HexYield, card.Definition);
             float global = BaseGlobalEffectValue(s, card.Definition);
             float airfield = BaseAirfieldValue(s, card.Definition, site.Hex);
-            float reasonValue = AiConfigV2.economyBaseHexYieldValue * hexYield
+            float reasonValue = AiConfigV2.economyBaseHexYieldValue * legacyWeightedHexYield
                 + AiConfigV2.economyBaseAirfieldValue * airfield
                 + AiConfigV2.economyBaseForwardProgressValue * site.ForwardProgressValue
                 + AiConfigV2.economyBaseCorridorAlignmentValue * site.CorridorAlignmentValue
@@ -1572,8 +1577,23 @@ namespace Game.Ai.V2
             float exposure = ThreatExposure(s, site.Hex);
             float strategicValue = reasonValue - intrinsicBuildCost
                 - AiConfigV2.economySiteThreatPenalty * exposure - extractionLossPenalty;
-            return new BaseSiteValue(reasonValue, hexYield, global, airfield, exposure,
+            return new BaseSiteValue(reasonValue, marginalHexYield, global, airfield, exposure,
                 intrinsicBuildCost, extractionLossPenalty, strategicValue);
+        }
+
+        // One owner of the gameplay fact "what resource income can this exact Base card collect on
+        // this hex?". TaskScore reads the pure total; the legacy evaluator below may still attach
+        // deficit weighting for old diagnostics without changing the physical fact itself.
+        internal static float BaseCardMarginalYield(ResourceBundle yield, CardDefinition definition) =>
+            ResourceBundle.All.Sum(type => BaseCardMarginalGain(yield, definition, type));
+
+        internal static float BaseCardMarginalGain(ResourceBundle yield, CardDefinition definition,
+            ResourceType type)
+        {
+            if (definition?.grantedAbilities == null
+                || !definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type)))
+                return 0f;
+            return Mathf.Max(0f, Mathf.Min(1f, yield.Get(type)));
         }
 
         // `yield` is the hex's remaining UNCOLLECTED amount per type (structural site fact, see
@@ -1585,15 +1605,13 @@ namespace Game.Ai.V2
         private static float BaseHexYieldValue(WorldSnapshot s, ResourceBundle yield,
             CardDefinition definition)
         {
-            if (s?.Economy?.PerType == null || definition?.grantedAbilities == null)
+            if (s?.Economy?.PerType == null)
                 return 0f;
             var standings = s.Economy.PerType.ToDictionary(x => x.Type, x => x);
             float value = 0f;
             foreach (ResourceType type in ResourceBundle.All)
             {
-                if (!definition.grantedAbilities.Contains(UnitAbilities.CollectAbilityFor(type)))
-                    continue;
-                float gain = Mathf.Min(1f, yield.Get(type));
+                float gain = BaseCardMarginalGain(yield, definition, type);
                 if (gain > 0f && standings.TryGetValue(type, out EconomyResourceStanding standing))
                     value += gain * Mathf.Max(0.25f, standing.DeficitScore);
             }

@@ -77,12 +77,13 @@ namespace Game.Ai.V2
                 eval.Reason = "no_self_snapshot";
                 return eval;
             }
-            if (objectives == null || objectives.Count == 0)
-            {
-                diag.Add("[AI][V2][Demand][Aggression] decision=NONE reason=no_frozen_aggression_objectives");
-                eval.Reason = "no_frozen_aggression_objectives";
-                return eval;
-            }
+
+            // An empty frozen objective list means only "no fresh target survived discovery this
+            // pass". Durable Raid intents are independent continuity state and must still be
+            // re-tested below: otherwise a weakened active Raid gets a reinforcement demand when
+            // any unrelated fresh target exists, but loses the exact same demand when the unrelated
+            // target disappears. That makes continuity depend on an unrelated map objective.
+            objectives ??= System.Array.Empty<AggressionObjective>();
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
 
@@ -189,10 +190,17 @@ namespace Game.Ai.V2
                     // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build is called from both
                     // the main Phase-A pass and the bounded reaction probe — a diagnostic evaluation
                     // must never be able to commit the real mission to state it may never fund.
+                    AggressionObjective reinforcementObjective = objectives
+                        .Where(o => o != null && o.Target.Equals(ri.Target))
+                        .OrderByDescending(o => o.BaseValue)
+                        .FirstOrDefault();
+                    TaskScore reinforcementScore = reinforcementObjective?.TaskScore ?? default;
+                    float reinforcementValue = reinforcementScore.Value;
                     diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE intent={i.IntentKey} "
                         + $"target={ri.Target.DiagnosticLabel} capability=FieldCombatPower "
                         + $"shape=IndependentFieldArmy desired={deficit:0.#} primary={primaryId} "
                         + $"required={required:0.#} have={(primary?.EffectiveArmyPower ?? 0f):0.#} "
+                        + $"task={reinforcementValue:0.##} "
                         + $"rendezvous=({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}) "
                         + "reason=weakened_primary_needs_separate_support_army");
                     reinforcementDemands.Add(new AxisDemand
@@ -206,11 +214,15 @@ namespace Game.Ai.V2
                         RequiredTraits = TraitPreference.None,
                         MinimumFollowupAp = 0f,
                         TargetHex = primary?.Hex,
-                        Value = AiConfigV2.raidBaseValueMax,
+                        // This is still the same world objective, so carry its canonical intrinsic
+                        // TaskScore. The active Raid's Hard commitment owns continuity separately;
+                        // no synthetic lifecycle value is injected into this transport.
+                        WorldTaskScore = reinforcementScore,
+                        Value = reinforcementScore.Value,
                         Explain = $"raid {ri.Target.DiagnosticLabel}: primary #{primaryId} no longer clears WorthIt "
                             + $"({(primary?.EffectiveArmyPower ?? 0f):0.#} of {required:0.#} needed); "
                             + $"deliver ~{deficit:0.#} field power as a SEPARATE support army to "
-                            + $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)})",
+                            + $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}); task={reinforcementValue:0.##}",
                     });
                 }
             AggressionObjective chosen = null;
@@ -315,7 +327,8 @@ namespace Game.Ai.V2
                     RequiredTraits = TraitPreference.None,
                     MinimumFollowupAp = 0f,
                     TargetHex = chosen.LastKnownHex,
-                    Value = chosen.BaseValue,
+                    WorldTaskScore = chosen.TaskScore,
+                    Value = chosen.TaskScore.Value,
                     Explain = $"raid {chosen.Target.DiagnosticLabel} needs a free deployed hero; free {inv.AvailableHeroes}, "
                         + $"committed {inv.CommittedHeroes}; blocked targets {blocked}; {chosenReadiness.ReadyReason}",
                 });
@@ -338,7 +351,8 @@ namespace Game.Ai.V2
                     RequiredTraits = TraitPreference.None,
                     MinimumFollowupAp = 0f,
                     TargetHex = chosen.LastKnownHex,
-                    Value = chosen.BaseValue,
+                    WorldTaskScore = chosen.TaskScore,
+                    Value = chosen.TaskScore.Value,
                     Explain = $"raid {chosen.Target.DiagnosticLabel} needs ~{chosenReadiness.RequestedPower:0.#} more free field capability "
                         + $"({chosenReadiness.PowerReason}; free {inv.RaidAvailableFieldPower:0.#}, committed "
                         + $"{inv.CommittedFieldCombatPower:0.#}, required {chosenReadiness.RequiredPower:0.#}; "

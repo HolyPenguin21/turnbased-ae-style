@@ -79,13 +79,13 @@ namespace Game.Ai.V2
 
         // Task 1 (2026-09-14, garrison-extraction materialization consistency) — a garrison
         // candidate's identity is a PAIR: the garrison it would be pulled FROM, and the concrete,
-        // already-resolved empty shell it would be materialized INTO (ReusableArmySelector.
-        // FindReusableAt, resolved once by ReconAssignmentPlanner before this candidate is ever
-        // built — see BuildGroundActors). SourceGarrisonArmyId==0 for every non-garrison candidate
-        // (Army.ArmyId is already the real mover in that case).
+        // already-resolved empty shell it would be materialized INTO (resolved once by
+        // ReconAssignmentPlanner before this candidate is ever built — see BuildCandidates).
+        // Both ids may legitimately be 0. Whether this is a garrison-extraction candidate is the
+        // existing ArmySnapshot.RequiresGarrisonExtraction fact, never a numeric sentinel.
         public readonly int SourceGarrisonArmyId;
         public readonly int MaterializationArmyId;
-        public bool RequiresGarrisonExtraction => SourceGarrisonArmyId > 0;
+        public bool RequiresGarrisonExtraction => Army?.RequiresGarrisonExtraction == true;
 
         public ScoutExecutionCandidate(ArmySnapshot army, HexCoord executionHex, int effActivationAp,
             int etaTurns, int distance, float detectionRisk, int standOff, bool alreadyHidden, float requiredAp,

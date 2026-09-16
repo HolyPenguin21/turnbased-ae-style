@@ -56,14 +56,8 @@ namespace Game.Ai.V2
 
             IReadOnlyList<ReconObjective> objectives = frozenObjectives ?? ReconObjectiveEvaluator.Enumerate(snap);
 
-            // Mid-turn pressure freshness is an Orchestration-owned sequencing concern (each caller
-            // refreshes breakdown via StrategyLayer.RefreshReconLanePressures before calling here) —
-            // Missions only turns already-current pressures into MissionProposals, it does not
-            // trigger Strategy/Desire recomputation itself.
-            // Acceptance is about the STRATEGIC lane pressures, not whichever single objective has
-            // the highest BaseValue. MissionLayer is the first place where the frozen objectives
-            // and the corresponding DesireBreakdown meet, so record the authoritative comparison
-            // here and keep ReconObjectiveEvaluator focused on objective facts.
+            // Recon sub-pressure remains diagnostic/axis policy information. It must not re-score
+            // an objective whose intrinsic usefulness is already fully represented by TaskScore.
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
             if (auditPlayer != null)
             {
@@ -115,13 +109,8 @@ namespace Game.Ai.V2
                 ordinaryCount++;
             }
 
-            // §8 — Mission does not decide concrete actor availability; whether an actor exists to
-            // execute this proposal is Assignment's question (ReconAssignmentPlanner /
-            // ProvisioningManager, which report NoMoverExists / MoverContended if none does). Mission
-            // pricing (ScoutCostModel.Estimate) is actor-agnostic by construction, so there is no
-            // actor-pair matching pass here any more (review finding 1) — ReconAssignmentPlanner
-            // binds the real actor at Assignment time, and ProvisioningManager's envelope check +
-            // ResourceAllocator's repack loop already reconcile any funded-vs-real-cost gap.
+            // Mission does not decide concrete actor availability. Actor, route, vantage and
+            // executable step stay in ReconAssignmentPlanner / ProvisioningManager.
             foreach (ScoutCandidate c in picked)
                 proposals.Add(BuildProposal(snap, c));
 
@@ -167,13 +156,6 @@ namespace Game.Ai.V2
                     ? bd.ReconRefreshPressure
                     : surveil ? bd.ReconSurveillance : 0f;
 
-            // Global Recon intensity is already owned by Radar. Here only the sub-driver orders
-            // concrete alternatives inside each lane. Explore retains a local floor while a real
-            // frontier objective exists; generic Refresh follows frozen IntelAge pressure while
-            // contact-specific Surveil keeps its own stale-contact surveillance pressure.
-            float localSubDesire = explore
-                ? Mathf.Lerp(0.25f, 1f, Mathf.Clamp01(rawSubDesire))
-                : Mathf.Clamp01(rawSubDesire);
             float proximity = Curves.InvRamp(o.DistanceFromBase,
                 AiConfigV2.scoutProximityRampLo, AiConfigV2.scoutProximityRampHi);
             float infoGain = explore
@@ -182,37 +164,33 @@ namespace Game.Ai.V2
             bool infoCapped = explore && o.FreshNeighbors >= AiConfigV2.scoutInfoGainNorm;
 
             ScoutMissionTarget target = o.ToTarget();
-            // §8 — Mission ranking reflects the strategic objective only. Actor-specific route
-            // executability (which mover, whether IT can currently path there) is Assignment's
-            // question, not Mission's — a generic per-actor route scan here would let mover
-            // availability quietly bias which objective gets proposed at all.
-            float admission = ComputeLocalAdmissionScore(o.BaseValue, localSubDesire, o.DetectionRisk);
+            // Intrinsic usefulness has one owner: TaskScore. DetectionRisk and subtype pressure are
+            // not multiplied again here. Incumbent hysteresis remains policy in AdmissionRank.
+            float admission = ComputeLocalAdmissionScore(o.BaseValue);
 
             string explain;
             if (explore)
             {
                 explain = $"Explore @{o.FocusHex.Q},{o.FocusHex.R} opens {o.FreshNeighbors} d{o.DistanceFromBase} "
                     + $"info {F(infoGain)} prox {F(proximity)} infoCap {(infoCapped ? 1 : 0)}"
-                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x exploreP {F(rawSubDesire)} "
-                    + $"localFloor {F(localSubDesire)} LAS {F(admission)}";
+                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} task {F(o.BaseValue)} "
+                    + $"exploreP {F(rawSubDesire)} LAS {F(admission)}";
             }
             else if (refresh)
             {
                 explain = $"Refresh @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} "
                     + $"strategic {F(o.StrategicRelevance)} direction {F(o.DirectionPressure)} prox {F(proximity)}"
-                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} base {F(o.BaseValue)} x refreshP {F(rawSubDesire)} "
-                    + $"LAS {F(admission)}";
+                    + $"{StealthTag(o.Stealth, o.DetectionRisk)} task {F(o.BaseValue)} "
+                    + $"refreshP {F(rawSubDesire)} LAS {F(admission)}";
             }
             else if (surveil)
             {
                 explain = $"Surveil @{o.FocusHex.Q},{o.FocusHex.R} age {o.AgeTurns} sev {F(o.Severity)} "
                     + $"prox {F(proximity)}{StealthTag(o.Stealth, o.DetectionRisk)} "
-                    + $"base {F(o.BaseValue)} x surv {F(rawSubDesire)}";
+                    + $"task {F(o.BaseValue)} survP {F(rawSubDesire)} LAS {F(admission)}";
             }
             else
             {
-                // ReconObjectiveKind is an internal closed enum, but keep the planner fail-closed if
-                // another value is ever added without materialization semantics here.
                 admission = 0f;
                 explain = $"UnknownReconObjective kind={(int)o.Kind} suppressed";
             }
@@ -221,9 +199,7 @@ namespace Game.Ai.V2
                 freshNeighbors: explore ? o.FreshNeighbors : 0);
         }
 
-        private static float ComputeLocalAdmissionScore(float baseValue, float subDesire, float detectionRisk) =>
-            baseValue * subDesire
-            * Mathf.Clamp01(1f - AiConfigV2.scoutDetectionRiskSelectionPenalty * detectionRisk);
+        private static float ComputeLocalAdmissionScore(float taskScoreValue) => taskScoreValue;
 
         private static string StealthTag(StealthRequirement req, float risk) =>
             req == StealthRequirement.None ? "" : $" stealth={req} risk {F(risk)}";

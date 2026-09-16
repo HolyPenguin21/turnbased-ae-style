@@ -56,7 +56,7 @@ namespace Game.Ai.V2
         // Recon:
         //   · same FocusHex
         // Raid:
-        //   · same target army
+        //   · same typed Raid target (neutral army id OR guarded-event hex)
         //   · no distinct ready combat-army assignment for the pair
         //
         // Recon deliberately carries NO actor-pair distinctness check here any more — Generic
@@ -72,7 +72,11 @@ namespace Game.Ai.V2
             if (a.Kind == MissionKind.Raid && b.Kind == MissionKind.Raid
                 && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb)
             {
-                if (ra.TargetArmyId == rb.TargetArmyId)
+                // RaidTargetRef is the canonical identity owner. ArmyId 0 is legitimate and an
+                // EventGuard has no army id until Explore spawns it, so collapsing identity back
+                // to TargetArmyId would make every guarded event look like target #0 and would also
+                // collide with a real neutral Army#0.
+                if (ra.Target.HasValue && rb.Target.HasValue && ra.Target.Equals(rb.Target))
                     return true;
                 return !GroundCombatAdmissionRegistry.PairHasDistinctAssignment(a, b);
             }
@@ -96,15 +100,18 @@ namespace Game.Ai.V2
         {
             if (m == null) return 0f;
             float score = m.LocalAdmissionScore;
-            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget target)
+            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget)
             {
-                float completionCost = Mathf.Max(1f, m.Requirements?.ApDesired ?? 0f)
-                    + Mathf.Max(0f, m.Requirements?.EstimatedDistance ?? 0f);
                 float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
                     ? AiConfigV2.economySameTurnCompletionBonus : 0f;
-                score = m.EffectiveValue + target.BuildValue + sameTurn
-                    + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue)
-                    - AiConfigV2.economyAdmissionCompletionCostWeight * completionCost;
+                // TaskScore already priced the card AP/resources and the actor's delivery AP/
+                // distance once. EffectiveValue transports that intrinsic value through the shared
+                // Radar policy. Subtracting ApDesired + EstimatedDistance again here was an
+                // Economy-only second physical-cost scorer and changed cross-lane ordering.
+                // Keep only genuine admission policy: same-turn scheduling and urgency above the
+                // intrinsic BaseValue; neither is written back into TaskScore.
+                score = m.EffectiveValue + sameTurn
+                    + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue);
             }
             return AdmissionRank(score, m.FromDurableIntent, m.DurableFundingTier);
         }
