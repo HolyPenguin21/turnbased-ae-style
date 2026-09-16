@@ -218,7 +218,11 @@ namespace Game.Ai.V2
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, ScoutCandidate c)
         {
-            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target);
+            // The estimate must price the SAME durable mover the proposal prefers. Otherwise a
+            // cheaper, unrelated scout advertises an AP envelope the incumbent cannot execute.
+            // Estimate may still fall back to another eligible actor if the incumbent cannot act;
+            // actual binding/route feasibility remain exclusively with ReconAssignmentPlanner.
+            ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover);
             var req = new MissionRequirements
             {
                 MoverKnown = est.MoverKnown,
