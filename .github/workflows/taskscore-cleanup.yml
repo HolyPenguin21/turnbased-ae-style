@@ -1,4 +1,4 @@
-name: Remove obsolete TaskScore formulas once
+name: Remove obsolete TaskScore formulas once (retry)
 on:
   push:
     branches: [audit/ai-v2-taskscore-2026-09-16]
