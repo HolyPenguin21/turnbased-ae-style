@@ -1,0 +1,26 @@
+name: Audit Base-switch ownership once
+on:
+  push:
+    branches: [audit/ai-v2-taskscore-2026-09-16]
+    paths: ['.github/workflows/taskscore-switch-scan.yml']
+permissions:
+  contents: write
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: audit/ai-v2-taskscore-2026-09-16
+      - name: Trace ownership and rekey sites
+        shell: bash
+        run: |
+          for name in 'class ActorCommitments' 'class InfrastructureFulfillment' 'ReserveDeferredEconomyResourcesForActiveIntent' 'ClaimedEconomyBuildCards' 'BeginEconomyDelivery(' 'Supersed' 'supersed' 'SwitchingCost' 'CancelIntent' 'RetireIntent' 'Release(' 'ClearDeferredEconomyResources' 'MissionIntentRegistry.GetOrCreate' 'Commitments.Release' 'economyMaxExpansionBaseDemandsPerTurn'; do
+            echo "==== $name ===="
+            git grep -n -F "$name" -- 'Assets/Scripts/Ai/**/*.cs' 'Assets/Editor/*.cs' | head -65 || true
+          done
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/taskscore-switch-scan.yml
+          git commit -m 'Remove one-shot Base switch ownership scan [skip ci]'
+          git push origin HEAD:audit/ai-v2-taskscore-2026-09-16
