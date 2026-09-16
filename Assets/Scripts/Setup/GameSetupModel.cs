@@ -19,9 +19,9 @@ namespace Game.Setup
         // Default colour for the first three players, in join order — just what a new player
         // starts with, not a reservation; anyone can still repick via their row's own colour
         // dropdown (PlayerRowUI). Players beyond this bag fall back to a random unused colour,
-        // same as before. Indices are into PlayerColorPalette.Colors (1=Blue, 4=Cyan, 0=Steel).
-        // Second player defaults to Cyan per the project owner's own call.
-        private static readonly int[] DefaultColorIndicesByOrder = { 1, 4, 0 };
+        // same as before. Indices are into PlayerColorPalette.Colors
+        // (0=Cobalt, 1=Teal, 2=Sage Green).
+        private static readonly int[] DefaultColorIndicesByOrder = { 0, 1, 2 };
 
         public List<PlayerSetupData> Players { get; } = new List<PlayerSetupData>();
         public int MinPlayers { get; }
