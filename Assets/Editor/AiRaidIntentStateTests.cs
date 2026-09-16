@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using NUnit.Framework;
 
@@ -149,18 +150,140 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void Assault_CompletedEvent_DegradedPrimary_ReturnsWithoutChaining()
+        {
+            var player = new PlayerSetupData { Nickname = "RaidCompletedDegradedPrimary" };
+            var baseHex = new HexCoord(0, 0);
+            var targetHex = new HexCoord(5, 1);
+            RaidTargetRef target = RaidTargetRef.ForEventGuard(targetHex);
+            HexEventRegistry.Set(targetHex, null, null, null, null, null);
+            try
+            {
+                HexEventRegistry.MarkConsumed(targetHex);
+                Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, target), Is.True);
+
+                WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
+                MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
+                    RaidMissionPhase.Assault, returnHex: null, target: target);
+                MissionIntentKey originalKey = intent.IntentKey;
+                var next = new AggressionObjective
+                {
+                    Target = RaidTargetRef.ForNeutralArmy(101),
+                    LastKnownHex = new HexCoord(7, 1),
+                    TargetIsNeutral = true,
+                    BaseValue = 10f,
+                };
+
+                List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap,
+                    aggressionObjectives: new List<AggressionObjective> { next });
+                ActorCommitments commitments = ActorCommitments.FromIntents(active, snap, null);
+
+                Assert.That(active, Does.Contain(intent));
+                Assert.That(intent.Raid.Phase, Is.EqualTo(RaidMissionPhase.Return));
+                Assert.That(intent.Raid.ReturnHex, Is.EqualTo(baseHex));
+                Assert.That(intent.Raid.PrimaryArmyId, Is.EqualTo(11));
+                Assert.That(intent.Raid.Target, Is.EqualTo(target), "depleted primary must not chain");
+                Assert.That(intent.IntentKey, Is.EqualTo(originalKey));
+                Assert.That(commitments.IsArmyClaimed(11), Is.True);
+                Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(originalKey, out _), Is.True);
+            }
+            finally { HexEventRegistry.Clear(); }
+        }
+
+        [Test]
         public void Assault_DegradedPrimary_IsStillRetired()
         {
             var player = new PlayerSetupData { Nickname = "RaidAssaultDegradedPrimary" };
             var baseHex = new HexCoord(0, 0);
+            var targetHex = new HexCoord(5, 2);
+            HexEventRegistry.Set(targetHex, null, null, null, null, null);
+            try
+            {
+                RaidTargetRef target = RaidTargetRef.ForEventGuard(targetHex);
+                Assert.That(RaidObjectiveEvaluator.IsObjectiveSatisfiedLive(player, target), Is.False);
+                WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
+                MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
+                    RaidMissionPhase.Assault, returnHex: null, target: target);
+
+                List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
+
+                Assert.That(active, Has.No.Member(intent));
+                Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _), Is.False);
+            }
+            finally { HexEventRegistry.Clear(); }
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void Return_MissingOrEmptyPrimary_IsRetired(bool missing)
+        {
+            var player = new PlayerSetupData { Nickname = "RaidReturnMissingPrimary" + missing };
+            var baseHex = new HexCoord(0, 0);
             WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
+            snap.Self.Armies = missing ? new List<ArmySnapshot>() : new List<ArmySnapshot>
+            {
+                new ArmySnapshot { ArmyId = 11, Owner = player, MemberCount = 0 },
+            };
             MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
-                RaidMissionPhase.Assault, returnHex: null);
+                RaidMissionPhase.Return, baseHex);
 
             List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
 
             Assert.That(active, Has.No.Member(intent));
             Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _), Is.False);
+        }
+
+        [Test]
+        public void StartedRaid_UnboundPrimary_IsRetired()
+        {
+            var player = new PlayerSetupData { Nickname = "RaidUnboundPrimary" };
+            var baseHex = new HexCoord(0, 0);
+            WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
+            MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11,
+                RaidMissionPhase.Return, baseHex);
+            intent.Raid.PrimaryArmyId = null;
+
+            List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
+
+            Assert.That(active, Has.No.Member(intent));
+            Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _), Is.False);
+        }
+
+        [TestCase(RaidMissionPhase.Reinforcement)]
+        [TestCase(RaidMissionPhase.SupportReturn)]
+        public void CombatPhases_DegradedPrimary_DoNotGetReturnEligibility(RaidMissionPhase phase)
+        {
+            var player = new PlayerSetupData { Nickname = "RaidCombatDegraded" + phase };
+            var baseHex = new HexCoord(0, 0);
+            var targetHex = new HexCoord(6, 2);
+            HexEventRegistry.Set(targetHex, null, null, null, null, null);
+            try
+            {
+                WorldSnapshot snap = SnapshotWithDegradedPrimary(player, primaryArmyId: 11, baseHex);
+                if (phase == RaidMissionPhase.SupportReturn)
+                    snap.Self.Armies = new List<ArmySnapshot>
+                    {
+                        snap.Self.Armies.Single(),
+                        new ArmySnapshot
+                        {
+                            ArmyId = 22, Owner = player, Hex = new HexCoord(3, 0),
+                            MemberCount = 1, IsPrison = false, IsAir = false,
+                        },
+                    };
+                MissionIntent intent = PutStartedRaid(player, primaryArmyId: 11, phase,
+                    returnHex: null, target: RaidTargetRef.ForEventGuard(targetHex));
+                if (phase == RaidMissionPhase.SupportReturn)
+                {
+                    intent.Raid.SupportArmyId = 22;
+                    intent.Raid.SupportReturnHex = baseHex;
+                }
+
+                List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
+
+                Assert.That(active, Has.No.Member(intent));
+                Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _), Is.False);
+            }
+            finally { HexEventRegistry.Clear(); }
         }
 
         private static WorldSnapshot SnapshotWithDegradedPrimary(PlayerSetupData player,
@@ -196,7 +319,7 @@ namespace Game.EditorTests
         }
 
         private static MissionIntent PutStartedRaid(PlayerSetupData player, int primaryArmyId,
-            RaidMissionPhase phase, HexCoord? returnHex)
+            RaidMissionPhase phase, HexCoord? returnHex, RaidTargetRef? target = null)
         {
             var intent = new MissionIntent
             {
@@ -205,7 +328,7 @@ namespace Game.EditorTests
                 Status = IntentStatus.Active,
                 Objective = new RaidIntent
                 {
-                    Target = RaidTargetRef.ForNeutralArmy(99),
+                    Target = target ?? RaidTargetRef.ForNeutralArmy(99),
                     TargetIsNeutral = true,
                     OperationStarted = true,
                     Phase = phase,
