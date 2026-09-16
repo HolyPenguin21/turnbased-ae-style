@@ -1,0 +1,37 @@
+name: TaskScore read-only integration check
+on:
+  push:
+    branches: [refactor/unified-task-score]
+permissions:
+  contents: read
+jobs:
+  merge-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/unified-task-score
+          fetch-depth: 0
+      - name: Dry-merge current master without committing or pushing
+        run: |
+          test "$(git rev-parse HEAD^)" = "9c2f919d7972b7b53cfe02925ef69bf0f854d819"
+          git fetch origin master
+          echo "Refactor HEAD: $(git rev-parse HEAD)"
+          echo "Master HEAD: $(git rev-parse origin/master)"
+          git config user.name 'Integration Check'
+          git config user.email 'integration-check@users.noreply.github.com'
+          if ! git merge --no-commit --no-ff origin/master; then
+            echo 'Merge conflicts:'
+            git diff --name-only --diff-filter=U
+            git status --short
+            exit 1
+          fi
+          git diff --cached --check
+          test -z "$(git diff --name-only --diff-filter=U)"
+          echo 'PASS: current master merges without conflicts; no commit or push performed'
+          if test -f Assembly-CSharp.csproj && test -f Assembly-CSharp-Editor.csproj && command -v dotnet >/dev/null; then
+            dotnet build Assembly-CSharp.csproj --nologo -warnaserror
+            dotnet build Assembly-CSharp-Editor.csproj --nologo -warnaserror
+          else
+            echo 'Unity C# project files unavailable: compilation and Unity tests NOT run'
+          fi
