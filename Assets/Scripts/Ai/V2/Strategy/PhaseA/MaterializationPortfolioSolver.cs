@@ -34,10 +34,14 @@ namespace Game.Ai.V2
     // StrategicManager.
     internal static class MaterializationPortfolioSolver
     {
-        // AI-MGR-01 review-r3 — cross-demand arbitration ranks purely on the opportunity-adjusted
-        // DecisionScore (Play - Hold + urgency), computed once in the builder. demand.Value is NOT
-        // re-multiplied here — its weight already entered DecisionScore through UrgencyBonus.
-        internal static float ArbitrationScore(PhaseACandidate c) => c.DecisionScore;
+        // Only the Phase A arbitration is radar-weighted. The builder owns the intrinsic
+        // Play - Hold + urgency score and its worthwhile threshold; demand.Value remains raw.
+        // This ONE owner uses the same coefficient as cross-lane mission arbitration.
+        internal static float ArbitrationScore(PhaseACandidate c, Radar radar = null) =>
+            WeightedDecisionScore(c.State, c.Cand, radar);
+
+        private static float WeightedDecisionScore(DemandState state, DemandCandidate candidate, Radar radar) =>
+            candidate.DecisionScore * RadarValueScale.For(radar ?? Radar.Even(), state.Demand.RequestingAxis);
 
         // ===================================================================================
         //  SHARED JOINT-FEASIBILITY BOOKKEEPING  (AI-MGR — one machine, three consumers)
@@ -180,7 +184,7 @@ namespace Game.Ai.V2
             BestInjectiveAssignment(
                 Dictionary<DemandState, List<DemandCandidate>> options,
                 PlayerRoot root, PlayerSetupData player, AiTurnContext ctx, AiHandData hand,
-                int genAttemptsRemaining)
+                int genAttemptsRemaining, Radar radar = null)
         {
             var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();
             var best = new Dictionary<DemandState, DemandCandidate>();
@@ -218,7 +222,7 @@ namespace Game.Ai.V2
                     JointFeasibility.Token token = jf.Push(c.Plan, c.FollowupAp);
 
                     acc[d] = c;
-                    Rec(i + 1, sum + c.DecisionScore);
+                    Rec(i + 1, sum + WeightedDecisionScore(d, c, radar));
                     acc.Remove(d);
 
                     jf.Pop(token);

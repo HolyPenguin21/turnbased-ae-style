@@ -26,6 +26,22 @@ namespace Game.EditorTests
             return r;
         }
 
+        // Phase A uses the SAME proportional preference, without mutating demand.Value
+        // or the intrinsic Play - Hold + urgency decision score.
+        [Test]
+        public void PhaseAArbitration_WeightsOnlyTheCompetitivePriority()
+        {
+            Radar radar = RadarOf((DesireAxis.Economy, 0f), (DesireAxis.Development, 1f));
+            var economy = new DemandState { Demand = new AxisDemand { RequestingAxis = DesireAxis.Economy, Value = 30f } };
+            var development = new DemandState { Demand = new AxisDemand { RequestingAxis = DesireAxis.Development, Value = 10f } };
+            var cand = new DemandCandidate(null, 0f, 10f, 0f, 10f);
+            Assert.That(MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(economy, cand), radar), Is.EqualTo(0f).Within(Tol));
+            Assert.That(MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(development, cand), radar), Is.EqualTo(40f).Within(Tol));
+            Assert.That(MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(economy, cand), Radar.Even()), Is.EqualTo(10f).Within(Tol));
+            Assert.That(economy.Demand.Value, Is.EqualTo(30f));
+            Assert.That(cand.DecisionScore, Is.EqualTo(10f));
+        }
+
         // ---- Task A — pure formula, all six math scenarios from the spec's §4 table ----------
 
         [Test]

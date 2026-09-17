@@ -575,7 +575,7 @@ namespace Game.Ai.V2
             //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
             int handAtStart = hand?.Hand?.Count ?? 0;
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives);
+                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, radar: radar);
 
             // S4. Operational self-state refresh — ONLY if StrategicManager changed gameplay state
             //     (a partial CreateArmy + failed deploy still counts). Rebuilds Self + Economy;
@@ -801,7 +801,7 @@ namespace Game.Ai.V2
                         snapshot, player, root, hand, ctx, apLedger, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
                         phaseB.Reservation ?? phaseA.Reservation,
-                        economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy));
+                        economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar);
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
                     {

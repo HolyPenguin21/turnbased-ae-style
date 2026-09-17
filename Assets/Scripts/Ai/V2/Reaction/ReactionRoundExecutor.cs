@@ -105,7 +105,7 @@ namespace Game.Ai.V2
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
                 UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation);
+                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             if (phaseA.StateChanged)

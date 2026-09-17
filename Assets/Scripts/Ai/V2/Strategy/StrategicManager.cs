@@ -26,9 +26,9 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
-            bool economyAxisAuthoritative = true)
+            bool economyAxisAuthoritative = true, Radar radar = null)
             => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, ledger, demands, commitments,
-                activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative);
+                activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar);
 
         public static IEnumerator UseSurplus(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
