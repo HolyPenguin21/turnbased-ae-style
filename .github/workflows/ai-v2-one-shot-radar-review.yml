@@ -1,0 +1,57 @@
+name: Apply Radar residual review fixes
+on:
+  push:
+    branches:
+      - fix/radar-phase-a-residual-admission
+    paths:
+      - .github/workflows/ai-v2-one-shot-radar-review.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
+            Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+            Assets/Editor/AiRadarProportionalRegressionTests.cs
+            .github/workflows/ai-v2-one-shot-radar-review.yml
+      - name: Patch only canonical code owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace_once(src, old, new, label):
+              assert src.count(old)==1, f'{label}: expected one anchor, got {src.count(old)}'
+              return src.replace(old,new,1)
+          phase=Path('Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs')
+          s=phase.read_text()
+          s=replace_once(s,'            return !IsCommittedEconomyBuild(activeIntents, demand);','            return demand.RequestingAxis != DesireAxis.Economy\n                || !IsCommittedEconomyBuild(activeIntents, demand);','cross-axis commitment identity')
+          phase.write_text(s)
+          pipe=Path('Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs')
+          s=pipe.read_text()
+          old='                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null\n                            && !fe.IsCommitment && fe.Mission != null\n                            && fe.Mission.EffectiveValue <= 0f);\n                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");'
+          new='                        // Ignore the task that JUST executed: only unfinished positive\n                        // allocations should prevent residual admission.\n                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe?.Mission != null\n                            && (StableMissionKey.For(fe.Mission).Equals(selectedKey)\n                                || (!fe.IsCommitment && fe.Mission.EffectiveValue <= 0f)));\n                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");'
+          s=replace_once(s,old,new,'last positive step residual')
+          s=replace_once(s,'player, ctx, root, devOpportunities, coldAxes));','player, ctx, root, devOpportunities, scopedDemandAxes))\n                        .Where(d => d != null && coldAxes.Contains(d.RequestingAxis)).ToList();','full cross-axis demand context')
+          pipe.write_text(s)
+          test=Path('Assets/Editor/AiRadarProportionalRegressionTests.cs')
+          s=test.read_text()
+          anchor='            MissionIntentKey raidKey = MissionIntentKey.ForRaid('
+          addition='            var unrelated = new AxisDemand\n            {\n                RequestingAxis = DesireAxis.Aggression,\n                Capability = CapabilityKind.FieldCombatPower,\n                TargetHex = new HexCoord(2, 1),\n            };\n            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, unrelated,\n                new[] { activeBuild }), Is.True, "a Raid gap sharing a hex with Economy cannot borrow its commitment");\n\n'
+          s=replace_once(s,anchor,addition+anchor,'cross-axis regression')
+          test.write_text(s)
+          print('PASS exact anchors: same-hex non-Economy, completed-task residual and full demand context')
+          PY
+          git diff --check
+          git diff --stat
+          git add -- Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): keep cross-axis identity and completed steps correct in cold residual'
+          git push origin HEAD:fix/radar-phase-a-residual-admission
