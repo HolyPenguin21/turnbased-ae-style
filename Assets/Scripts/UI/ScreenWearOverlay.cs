@@ -6,8 +6,8 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // Runtime-only presentation layer for the Game scene. It sits above the normal HUD but never
-    // receives raycasts. The shader keeps the centre clean and concentrates sparse scratches near
-    // the outer frame, so the effect adds physical wear without softening map/card readability.
+    // receives raycasts. The shader keeps the centre clean and concentrates subtle, short wear
+    // marks near the outer frame, so the effect adds character without softening readability.
     public sealed class ScreenWearOverlay : MonoBehaviour
     {
         private const int OverlaySortingOrder = 32760;
@@ -17,12 +17,12 @@ namespace Game.UI
         private static readonly int EdgeWidthId = Shader.PropertyToID("_EdgeWidth");
         private static readonly int SpeckStrengthId = Shader.PropertyToID("_SpeckStrength");
 
-        // The previous 0.065/sub-pixel combination was effectively invisible at the normal game
-        // resolution. These values remain restrained, but guarantee that the longest edge marks
-        // survive rasterisation and can actually be perceived during play.
-        [SerializeField, Range(0f, 0.25f)] private float intensity = 0.13f;
-        [SerializeField, Range(0.05f, 0.35f)] private float edgeWidth = 0.20f;
-        [SerializeField, Range(0f, 1f)] private float speckStrength = 0.28f;
+        // Kept deliberately below the previous 0.13 treatment: scratches are now short clustered
+        // scuffs rather than long full-height strokes, so they remain legible without becoming
+        // foreground decoration.
+        [SerializeField, Range(0f, 0.25f)] private float intensity = 0.085f;
+        [SerializeField, Range(0.05f, 0.35f)] private float edgeWidth = 0.22f;
+        [SerializeField, Range(0f, 1f)] private float speckStrength = 0.18f;
         [SerializeField] private Color scratchColor = new Color(0.84f, 0.78f, 0.67f, 1f);
 
         private static ScreenWearOverlay _instance;
