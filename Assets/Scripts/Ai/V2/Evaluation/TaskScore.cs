@@ -26,7 +26,10 @@ namespace Game.Ai.V2
         public readonly float CorridorAlignment;
         public readonly float OwnTerritoryProximity;
         public readonly float TerrainDefense;
+        // Legacy storage name retained for existing score transport and tests. Raid now fills this
+        // ONE slot from the fixed reward, not from defender power. Never add both contributions.
         public readonly float MilitaryTargetRelevance;
+        public float RaidReward => MilitaryTargetRelevance;
         public readonly float WinChance;
         public readonly float CardPrice;
         public readonly float Delivery;
@@ -271,7 +274,7 @@ namespace Game.Ai.V2
                 + $"strategic={F(score.StrategicRelevance)} threatDir={F(score.ThreatDirection)} "
                 + $"contact={F(score.ContactRelevance)} front={F(score.FrontProgress)} "
                 + $"corridor={F(score.CorridorAlignment)} proximity={F(score.OwnTerritoryProximity)} "
-                + $"defense={F(score.TerrainDefense)} targetRel={F(score.MilitaryTargetRelevance)} "
+                + $"defense={F(score.TerrainDefense)} raidReward={F(score.RaidReward)} "
                 + $"win={F(score.WinChance)} cardPrice={F(score.CardPrice)} "
                 + $"delivery={F(score.Delivery)} moverOpp={F(score.MoverOpportunityCost)} "
                 + $"hexRisk={F(score.HexThreatRisk)} detection={F(score.DetectionRisk)} "
