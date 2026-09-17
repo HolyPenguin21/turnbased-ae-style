@@ -1,0 +1,23 @@
+name: AI V2 score bonus usage audit once
+on:
+  push:
+    branches:
+      - fix/raid-proximity-and-fog-stale
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read complete bonus and Raid usage references
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '=== bonus constants and consumers ==='
+          grep -RnE 'economySameTurnCompletionBonus|economyAdmissionCompletionCostWeight|MissionAdmissionPolicy\.AdmissionRank' Assets/Scripts/Ai/V2 Assets/Editor || true
+          echo '=== Raiders stale intel references ==='
+          grep -RnE 'StaleIntelPenalty|OwnTerritoryProximity' Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.cs Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs || true
+          echo '=== bonus setting and admitted ETA semantics ==='
+          grep -n -A12 -B6 'economySameTurnCompletionBonus' Assets/Scripts/Ai/V2/Missions/MissionAdmissionPolicy.cs
