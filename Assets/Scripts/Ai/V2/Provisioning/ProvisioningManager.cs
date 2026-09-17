@@ -1550,8 +1550,22 @@ namespace Game.Ai.V2
                 return EconomyCompletionPlan.No(ProvisionFailure.NoExecutableStep("no safe economy route"));
             if (donor != null)
             {
-                if (!DemandLayer.EconomyLoanAllowed(donor, target.BuildValue, distance,
-                        hero.CurrentMovement, out float loanNet))
+                // Provisioning validates LIVE path/MP against the SAME Demand-owned loan
+                // predicate. Reprice the already selected builder's projected roster from
+                // current physical facts; never resurrect the old raw-hex distance scorer.
+                EconomyBuilderRouteSnapshot liveRoute = builderChoice.Route;
+                liveRoute.TravelCost = distance;
+                liveRoute.CurrentMovement = hero.CurrentMovement;
+                liveRoute.HasActivatedThisTurn = hero.HasActivatedThisTurn;
+                var liveChoice = new DemandLayer.EconomyBuilderChoice
+                {
+                    Route = liveRoute,
+                    TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(
+                        liveRoute, target.BuildApCost,
+                        target.Kind == EconomyTaskKind.BuildExtraction),
+                };
+                if (!DemandLayer.EconomyLoanAllowed(donor, target.BuildValue,
+                        liveChoice, target.BuildApCost, out float loanNet))
                     return EconomyCompletionPlan.No(ProvisionFailure.MoverContended(
                         $"loan rejected donor={donor.IntentKey} distance={distance} move={hero.CurrentMovement} net={loanNet:0.##}"));
             }
