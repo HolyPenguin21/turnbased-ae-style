@@ -1686,6 +1686,30 @@ namespace Game.Ai.V2
                         + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
                     return;
                 }
+
+                // R3 (2026-09-17) — the same "no upper bound" gap existed for BuildExtraction: it is
+                // exempt from StallTurns/ShouldReap for the identical reason (capabilityUnavailable,
+                // above), but nothing ever counted its consecutive NoMoverExists/MoverContended
+                // turns, so a durable extraction intent whose pinned mover can no longer advance
+                // (e.g. its safe route stays blocked every turn) could be suspended forever: never
+                // reaped, never released, its actor and card claim held for the rest of the game.
+                // Extraction has no single staged slot like Base (several sites can be active at
+                // once), so the counter is keyed per (resource, site) in MissionIntentState — same
+                // owner, same StartPersistentCooldown exit already used by every other retirement
+                // path (reap/structural-failure/Base) — no new registry or manager.
+                if (!o.MadeProgress && intent.Kind == MissionKind.Economy
+                    && intent.Economy?.Kind == EconomyTaskKind.BuildExtraction
+                    && state.RecordExtractionDeliveryFailure(
+                        turn, intent.Economy.ResourceType, intent.Economy.TargetHex))
+                {
+                    state.Remove(intent.IntentKey);
+                    StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
+                        "ExtractionDeliverySuppressed");
+                    AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
+                        + $"{intent.IntentKey} Extraction delivery repeatedly failed "
+                        + $"({o.ProvisionFailureKindValue}); suppressed for cooldown, retired");
+                    return;
+                }
             }
 
             if (!capabilityUnavailable && ShouldReap(intent))
