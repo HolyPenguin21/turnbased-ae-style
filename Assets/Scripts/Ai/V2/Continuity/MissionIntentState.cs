@@ -119,6 +119,41 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // R3 (2026-09-17) — same bounded-suppression pattern as Base above, generalized to a key
+        // per (resource type, site) because BuildExtraction has no single staged slot: several
+        // extraction intents can be durable and suspended at once, unlike Base's one project. Wired
+        // from MissionContinuityLayer.AdvanceIntent's capabilityUnavailable branch — the sole call
+        // site — so a durable Extraction intent stuck on repeated NoMoverExists/MoverContended
+        // cannot be suspended forever with its actor/card reservation never released.
+        private readonly Dictionary<(ResourceType?, HexCoord), (int Turn, int Count)>
+            _extractionDeliveryFailures = new Dictionary<(ResourceType?, HexCoord), (int, int)>();
+        private readonly Dictionary<(ResourceType?, HexCoord), int> _extractionSuppressedUntilTurn =
+            new Dictionary<(ResourceType?, HexCoord), int>();
+
+        internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) =>
+            _extractionSuppressedUntilTurn.TryGetValue((resourceType, target), out int until) && turn < until;
+
+        internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target)
+        {
+            var key = (resourceType, target);
+            if (IsExtractionDeliverySuppressed(turn, resourceType, target))
+                return true;
+            bool hasRecord = _extractionDeliveryFailures.TryGetValue(key, out (int Turn, int Count) rec);
+            bool consecutiveTurn = hasRecord && (rec.Turn == turn || rec.Turn == turn - 1);
+            int count = consecutiveTurn ? rec.Count : 0;
+            if (!hasRecord || rec.Turn != turn)
+                count++;
+            _extractionDeliveryFailures[key] = (turn, count);
+
+            if (count < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
+                return false;
+
+            _extractionSuppressedUntilTurn[key] = turn
+                + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
+            _extractionDeliveryFailures.Remove(key);
+            return true;
+        }
+
         // Pre-intent continuity for a legal Base opportunity. A Base mission cannot own a durable
         // actor before winning allocation, but repeated portfolio deferral must still survive into
         // the next turn. Kept in the existing continuity state rather than a second manager.
