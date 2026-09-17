@@ -1309,11 +1309,9 @@ namespace Game.Ai.V2
                         + $"age {intent.TurnsActive}/{AiConfigV2.commitmentMaxTurns})");
                 }
             }
-            state.ReconcileBaseExpansionWait(turn, outcomes);
         }
 
-        // Same fallback MissionIntentState's own Base-expansion outcome matching uses: a
-        // materialized outcome carries its EconomyTarget directly, but a fresh mission that failed
+        // A materialized outcome carries its EconomyTarget directly, but a fresh mission that failed
         // provisioning before ever producing a ProvisionedMission only has it on the proposal.
         private static bool TryGetEconomyTarget(MissionTurnOutcome o, out EconomyMissionTarget target)
         {

@@ -163,7 +163,7 @@ namespace Game.Ai.V2
                         activeIntents, x.TargetHex, EconomyTaskKind.BuildExtraction))
                 .OrderByDescending(x => IsActiveBaseCommitment(
                     activeIntents, x.TargetHex, x.EconomyBuildCard))
-                .ThenByDescending(x => x.Value + x.EconomyStrategicUrgency)
+                .ThenByDescending(x => x.Value)
                 .ThenByDescending(x => x.EconomySiteValue)
                 .ThenByDescending(x => x.EconomyExpectedIncomeGain)
                 .ThenBy(x => x.EconomyTravelCost)
@@ -188,7 +188,7 @@ namespace Game.Ai.V2
             var selectedCards = new HashSet<CardData>();
             selected = selected
                 .OrderByDescending(d => HasActiveEconomyBuildIntent(activeIntents, d))
-                .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
+                .ThenByDescending(d => d.Value)
                 .Where(d =>
                 {
                     if ((d.TargetHex.HasValue && selectedHexes.Contains(d.TargetHex.Value))
@@ -253,7 +253,6 @@ namespace Game.Ai.V2
             EconomyHeroOpportunityCost = source.EconomyHeroOpportunityCost,
             EconomyAssignmentApCost = source.EconomyAssignmentApCost,
             EconomyPaybackTurns = source.EconomyPaybackTurns,
-            EconomyStrategicUrgency = source.EconomyStrategicUrgency,
             EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
             EconomyProjectedActivationApCost = source.EconomyProjectedActivationApCost,
             EconomyProjectedMaxMovement = source.EconomyProjectedMaxMovement,
@@ -755,9 +754,6 @@ namespace Game.Ai.V2
                 .ToList();
             if (baseCards.Count == 0 || s.Economy?.BaseOpportunities == null)
             {
-                MissionIntentRegistry.GetOrCreate(player)
-                    .MarkBaseExpansionCandidate(s.TurnNumber, null, null,
-                        structurallyEligible: false);
                 return "considered=0 kept=0 reason=no_base_card_or_opportunity";
             }
 
@@ -840,9 +836,8 @@ namespace Game.Ai.V2
                         terrainDefense: defense,
                         cardPrice: cardPrice,
                         hexThreatRisk: risk);
-                    // Staging is about positive physical/strategic purpose, NOT present-day net
-                    // profitability: delivery/card costs may be overcome by future wait urgency.
-                    // Generic proximity alone must never stage a completely empty Base.
+                    // Require genuine physical/strategic purpose before admitting a new Base.
+                    // Generic proximity alone must not create an empty Base objective.
                     bool meaningful = committed || HasMeaningfulBaseBenefit(siteOnlyScore);
                     if (!meaningful)
                     {
@@ -929,38 +924,16 @@ namespace Game.Ai.V2
                     });
                 }
 
-            AxisDemand stagedBase = meaningfulDemands
-                .OrderByDescending(d => IsActiveBaseCommitment(
-                    activeIntents, d.TargetHex, d.EconomyBuildCard) ? 1 : 0)
-                .ThenByDescending(d => d.Value
-                    + (intentState.IsStagedBaseExpansion(d.EconomyBuildCard, d.TargetHex)
-                        ? AiConfigV2.economyBaseStagingHysteresisThreshold : 0f))
-                .ThenByDescending(d => d.EconomySiteValue)
-                .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
-                .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
-                .FirstOrDefault();
-            bool urgencyEligible = stagedBase?.TargetHex != null;
-            float urgency = intentState.MarkBaseExpansionCandidate(s.TurnNumber,
-                stagedBase?.EconomyBuildCard, stagedBase?.TargetHex, urgencyEligible);
-
             foreach (AxisDemand demand in meaningfulDemands)
             {
-                bool staged = stagedBase != null
-                    && demand.EconomyBuildCard == stagedBase.EconomyBuildCard
-                    && demand.TargetHex.Equals(stagedBase.TargetHex);
-                float candidateUrgency = staged ? urgency : 0f;
-                demand.EconomyStrategicUrgency = candidateUrgency;
-                if (candidateUrgency > 0f)
-                    demand.Explain += $" urgency={candidateUrgency:0.##}";
-
                 bool committed = IsActiveBaseCommitment(
                     activeIntents, demand.TargetHex, demand.EconomyBuildCard);
-                bool admitted = committed || demand.Value + candidateUrgency
-                    >= AiConfigV2.economyBaseDemandMinValue;
+                // Do not turn negative net benefit into a new mission through elapsed time.
+                bool admitted = committed || demand.Value > AiConfigV2.allocatorSliceEpsilon;
                 AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseAdmission] "
                     + $"card={demand.EconomyBuildCard?.Definition?.displayName} "
                     + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
-                    + $"value={demand.Value:0.##} urgency={candidateUrgency:0.##} "
+                    + $"value={demand.Value:0.##} "
                     + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
                 if (!admitted)
                 {
@@ -968,26 +941,21 @@ namespace Game.Ai.V2
                         noBuilder++;
                     else if (demand.EconomySiteValue <= AiConfigV2.allocatorSliceEpsilon)
                         strategicValueRejected++;
-                    else if (demand.Value <= AiConfigV2.allocatorSliceEpsilon)
-                        deliveryValueRejected++;
                     else
-                        thresholdRejected++;
+                        deliveryValueRejected++;
                     continue;
                 }
 
                 output.Add(demand);
                 kept++;
-                if (best == null || demand.Value + demand.EconomyStrategicUrgency
-                    > best.Value + best.EconomyStrategicUrgency)
+                if (best == null || demand.Value > best.Value)
                     best = demand;
             }
 
             return best == null
-                ? $"considered={considered} kept={kept} best=none "
-                    + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}"
+                ? $"considered={considered} kept={kept} best=none"
                 : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
-                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.Value:0.##} "
-                    + $"wait={intentState.BaseExpansionWaitTurns} urgency={urgency:0.##}";
+                    + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.Value:0.##}";
         }
 
         // One Base selection decision owner. The incumbent's current fully delivered score
@@ -1047,7 +1015,7 @@ namespace Game.Ai.V2
             && rival.EconomyBuildCard == incumbent.Economy.BuildCard
             && rival.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId
             && rival.EconomySwitchIncumbentValue.HasValue
-            && rival.Value >= AiConfigV2.economyBaseDemandMinValue
+            && rival.Value > AiConfigV2.allocatorSliceEpsilon
             && rival.Value > rival.EconomySwitchIncumbentValue.Value
                 + AiConfigV2.economyBaseSwitchHysteresisThreshold;
 

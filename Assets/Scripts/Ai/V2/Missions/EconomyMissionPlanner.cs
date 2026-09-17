@@ -121,8 +121,8 @@ namespace Game.Ai.V2
                     // The globally compared value must be the entire canonical world-task Fold,
                     // not the site-only value before CardPrice/Delivery/MoverOpportunityCost.
                     BaseValue = d.Value,
-                    // Wait urgency belongs only to lane-local admission, not intrinsic TaskScore.
-                    LocalAdmissionScore = d.Value + d.EconomyStrategicUrgency,
+                    // Newly admitted Economy missions use their canonical net TaskScore.
+                    LocalAdmissionScore = d.Value,
                     Requirements = Requirements(target, incumbent, snapshot,
                         d.EconomyTravelCost),
                     PreferredMoverArmyId = incumbent?.PreferredMoverArmyId

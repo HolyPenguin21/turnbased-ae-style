@@ -13,8 +13,7 @@ namespace Game.EditorTests
         [Test]
         public void EconomyLane_ChangingRadarDoesNotReverseTheSameTwoTasks()
         {
-            // Intrinsic 12 > intrinsic 10 + urgency 1. The old admission implementation
-            // ranked them 4.2 and 4.5 when Economy radar was cold, reversing the lane.
+            // Intrinsic 12 > intrinsic 10. Radar must not reverse this within-lane ordering.
             Assert.That(FundedEconomyKind(Radar.Even()), Is.EqualTo(EconomyTaskKind.BuildExtraction));
 
             var cold = new Radar();
@@ -50,9 +49,9 @@ namespace Game.EditorTests
                 Self = new SelfSnapshot { ActionPoints = 1 },
             };
             MissionProposal extraction = Economy(EconomyTaskKind.BuildExtraction,
-                new HexCoord(1, 0), intrinsic: 12f, urgency: 0f, radar: radar);
+                new HexCoord(1, 0), intrinsic: 12f, radar: radar);
             MissionProposal expansion = Economy(EconomyTaskKind.FoundBase,
-                new HexCoord(4, 0), intrinsic: 10f, urgency: 1f, radar: radar);
+                new HexCoord(4, 0), intrinsic: 10f, radar: radar);
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar,
                 new List<MissionProposal> { extraction, expansion }, new List<Commitment>(), player);
             TentativeAllocation allocation = session.Pack();
@@ -70,7 +69,7 @@ namespace Game.EditorTests
                 Self = new SelfSnapshot { ActionPoints = 1 },
             };
             MissionProposal economy = Economy(EconomyTaskKind.BuildExtraction,
-                new HexCoord(1, 0), intrinsic: 12f, urgency: 0f, radar: radar);
+                new HexCoord(1, 0), intrinsic: 12f, radar: radar);
             var scout = new MissionProposal
             {
                 Kind = MissionKind.Scout,
@@ -94,14 +93,14 @@ namespace Game.EditorTests
         }
 
         private static MissionProposal Economy(EconomyTaskKind kind, HexCoord hex,
-            float intrinsic, float urgency, Radar radar)
+            float intrinsic, Radar radar)
         {
             var proposal = new MissionProposal
             {
                 Kind = MissionKind.Economy,
                 Target = new EconomyMissionTarget { Kind = kind, TargetHex = hex },
                 BaseValue = intrinsic,
-                LocalAdmissionScore = intrinsic + urgency,
+                LocalAdmissionScore = intrinsic,
                 Requirements = OneAp(),
             };
             proposal.Axes.Value[DesireAxis.Economy] = 1f;
