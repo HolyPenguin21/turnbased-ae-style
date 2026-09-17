@@ -40,6 +40,16 @@ namespace Game.Ai.V2
         // Full-operation comparison fact only. Never part of MissionRequirements/current-turn
         // resource packing.
         public float RecurringActivationAp;
+
+        // Task 5 (Problem A) — ApDesired mixes two different physical facts: the mover's own
+        // once-per-turn re-activation fee (the SAME real AP Economy/Raid price at
+        // taskScoreReactivationApWeight) and, only when stealth must be entered THIS turn, a
+        // genuine one-time ability spend (never a re-activation, correctly priced like any other
+        // played card at taskScoreCardPriceApWeight). ActivationApNow isolates the former so a
+        // caller building TaskScore.CardPrice can price each real fact at its own correct rate
+        // instead of folding both through the single, higher card-price rate. The remainder
+        // (ApDesired - ActivationApNow) is the stealth-entry-now portion.
+        public float ActivationApNow;
     }
 
     public struct ScoutPairCost
@@ -112,6 +122,7 @@ namespace Game.Ai.V2
                     ApMinimum = p.Cost.RequiredAp,
                     ApDesired = p.Cost.RequiredAp,
                     ApMaximum = p.Cost.RequiredAp,
+                    ActivationApNow = p.Cost.EffActivationAp,
                     EnergyMinimum = 0f,
                     EnergyDesired = 0f,
                     EnergyMaximum = 0f,
@@ -183,6 +194,7 @@ namespace Game.Ai.V2
             est.EstimatedDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, target.FocusHex, 0);
             est.EtaTurns = Mathf.Max(1, CeilDiv((int)est.EstimatedDistance, fleetBudget));
             est.RecurringActivationAp = notionalActivationAp;
+            est.ActivationApNow = notionalActivationAp;
 
             if (target.Kind == ScoutTargetKind.Surveil)
             {

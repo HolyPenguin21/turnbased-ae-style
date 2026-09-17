@@ -61,6 +61,42 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void SameReactivationAp_PricesIdenticallyAcrossEconomyRaidAndRecon()
+        {
+            // Task 8 replacement for the formal-symmetry test above: prove the SAME real fact
+            // (one future re-activation of the SAME AP cost) is priced identically by whichever
+            // family folds it through the shared taskScoreReactivationApWeight rate, instead of
+            // merely comparing two calls with the same hand-picked weight argument.
+            const float perTurnAp = 4f, etaTurns = 2f;
+            float economyDelivery = TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
+                AiConfigV2.taskScoreReactivationApWeight);
+            float raidDelivery = TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
+                AiConfigV2.taskScoreReactivationApWeight);
+            Assert.That(economyDelivery, Is.EqualTo(raidDelivery));
+            Assert.That(economyDelivery, Is.EqualTo(perTurnAp * AiConfigV2.taskScoreReactivationApWeight));
+        }
+
+        [Test]
+        public void EconomicDeficitBonus_MatchesLoweredCanonicalCap()
+        {
+            // Task 1 acceptance matrix: Extraction +1 resource, no deficit -> 5 (unchanged).
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(1f, 0f), Is.EqualTo(5f).Within(0.0001f));
+            // Extraction +1 resource, maximum deficit -> 8 (5 physical + 3 deficit, was 17).
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(1f, 1f), Is.EqualTo(8f).Within(0.0001f));
+            Assert.That(AiConfigV2.taskScoreEconomicDeficitBonusMax, Is.EqualTo(3f).Within(0.0001f));
+            // Zero gain, maximum deficit -> 0 (deficit never creates value without marginal income).
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(0f, 1f), Is.EqualTo(0f));
+            // Several deficit resources at once still never exceed the single shared 3-point cap.
+            var multiResource = new List<(float Gain, float Priority)>
+            {
+                (1f, 1f), (2f, 1f), (0.5f, 1f),
+            };
+            float multi = TaskScoreEvaluator.EconomicHexBenefit(multiResource);
+            float multiPhysical = TaskScoreEvaluator.EconomicHexBenefit(3.5f, 0f);
+            Assert.That(multi - multiPhysical, Is.LessThanOrEqualTo(3f + 0.0001f));
+        }
+
+        [Test]
         public void ScoutEstimate_UsesCitadelWithoutBases_AndPricesSurveillanceTravel()
         {
             var snapshot = new WorldSnapshot
@@ -116,14 +152,20 @@ namespace Game.EditorTests
                 freshNeighbors: 4, distFromBase: 6,
                 enemyExposure: false, stealthDetectionRisk: false);
             ScoutCostEstimate estimate = ScoutCostModel.Estimate(snapshot, objective.ToTarget());
+            // Task 5 (Problem A) fix: the notional mover's whole ApDesired here is a re-activation
+            // fee (no stealth entry on this route), so it must price at the SAME shared
+            // taskScoreReactivationApWeight Raid/Economy use for a re-activation — never at the
+            // higher taskScoreCardPriceApWeight, which is reserved for a genuine one-time ability
+            // spend (e.g. entering stealth).
             Assert.That(objective.TaskScore.CardPrice,
-                Is.EqualTo(TaskScoreEvaluator.CardPrice(estimate.ApDesired, 0f)));
+                Is.EqualTo(estimate.ActivationApNow * AiConfigV2.taskScoreReactivationApWeight));
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.ApDesired, estimate.EtaTurns,
-                    AiConfigV2.taskScoreCardPriceApWeight)));
+                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
+                    estimate.EtaTurns, AiConfigV2.taskScoreReactivationApWeight)));
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
-            // info=10, home proximity=3, activation=2, one extra turn of delivery=2.
-            Assert.That(objective.BaseValue, Is.EqualTo(9f).Within(0.0001f));
+            // info=10, home proximity=3, activation=1 (weight 1, not 2), one extra turn of
+            // delivery=1 (weight 1, not 2).
+            Assert.That(objective.BaseValue, Is.EqualTo(11f).Within(0.0001f));
         }
 
         [Test]

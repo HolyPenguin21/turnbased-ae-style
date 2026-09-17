@@ -4,7 +4,7 @@ namespace Game.Ai.V2
     {
         // Unified world-task scale. These are semantic-slot constants; no task-family multipliers
         // belong here. First-pass calibration is intentionally shared by Economy/Recon/Aggression.
-        public const float taskScoreEconomicDeficitBonusMax = 12f;
+        public const float taskScoreEconomicDeficitBonusMax = 3f;
         public const float taskScoreEconomicDeficitFullGain = 1f;
         public const float taskScoreEconomicPhysicalBenefitMax = 10f;
         public const float taskScoreEconomicPhysicalBenefitWeight = 5f;

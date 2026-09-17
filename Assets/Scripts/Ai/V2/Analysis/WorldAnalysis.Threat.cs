@@ -84,8 +84,12 @@ namespace Game.Ai.V2
             foreach (EnemyContactSnapshot c in contacts)
             {
                 if (c.Source != ContactSource.Honest || !c.Position.HasValue) continue;
-                int id = c.Army?.ArmyId ?? 0;
-                if (id <= 0) continue;
+                // ArmyId == 0 is a valid identity (e.g. the game's very first spawned army), not
+                // "no army" — only a genuinely absent Army reference means there is nothing to key
+                // this contact by. Treating id<=0 as invalid silently dropped honest contacts for
+                // army #0 from the dictionary, so Surveil could never recover a lost contact on it.
+                if (c.Army == null) continue;
+                int id = c.Army.ArmyId;
                 if (!byArmy.TryGetValue(id, out EnemyContactSnapshot cur) || c.LastObservedTurn > cur.LastObservedTurn)
                     byArmy[id] = c;
             }
