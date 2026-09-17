@@ -122,14 +122,18 @@ namespace Game.Ai.V2
                         RaidCostEstimate staleEstimate = RaidCostModel.Estimate(snap, stale,
                             intent.PreferredMoverArmyId);
                         MissionRequirements staleCost = staleEstimate.Requirements;
+                        // Stationary neutral/event target: loss of a fresh opportunity read
+                        // does not make its last-known position less valuable.
+                        int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                            snap, intent.Raid.LastKnownHex);
                         var staleTask = new TaskScore(
-                            staleness: TaskScoreEvaluator.StaleIntelPenalty(1f),
+                            ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                             cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreReactivationApWeight,
                             delivery: TaskScoreEvaluator.DeliveryFromEta(staleEstimate.RecurringActivationAp,
                                 staleCost.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
                         float staleValue = staleTask.Value;
                         TaskScoreDiagnostics.Log("Raid", intent.Raid.LastKnownHex, staleTask,
-                            $"continuation=tracking_in_fog confidence=unknown actor="
+                            $"continuation=tracking_in_fog confidence=unknown stale=0 homeDistance={homeDistance} actor="
                             + (intent.PreferredMoverArmyId.HasValue
                                 ? intent.PreferredMoverArmyId.Value.ToString() : "none")
                             + $" recurringAp={staleEstimate.RecurringActivationAp:0.###}");
@@ -344,6 +348,7 @@ namespace Game.Ai.V2
             float etaTurns = UnityEngine.Mathf.Max(0f, req?.EtaTurns ?? 0f);
             var score = new TaskScore(
                 staleness: o.TaskScore.Staleness,
+                ownTerritoryProximity: o.TaskScore.OwnTerritoryProximity,
                 militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(readyWin),
                 cardPrice: currentActivationAp * AiConfigV2.taskScoreReactivationApWeight,
