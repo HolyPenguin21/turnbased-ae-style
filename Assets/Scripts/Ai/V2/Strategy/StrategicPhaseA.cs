@@ -92,7 +92,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
-            bool economyAxisAuthoritative = true)
+            bool economyAxisAuthoritative = true, Radar radar = null)
         {
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
@@ -106,6 +106,7 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ledger == null || ctx == null)
                 return result;
             demands ??= System.Array.Empty<AxisDemand>();
+            radar ??= Radar.Even();
 
             // A target-specific Economy build may deliberately emit no repeated demand once
             // Continuity owns its builder. That active intent outranks every fresh build for its
@@ -295,7 +296,8 @@ namespace Game.Ai.V2
             foreach (DemandState istate in states
                 .Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability))
                 .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
-                .ThenByDescending(s => s.Demand.Value + s.Demand.EconomyStrategicUrgency))
+                .ThenByDescending(s => (s.Demand.Value + s.Demand.EconomyStrategicUrgency)
+                    * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
             {
                 istate.Blocked = true;
                 result.InfrastructureAttempts++;
@@ -469,7 +471,7 @@ namespace Game.Ai.V2
                     options.Count > 0
                         ? MaterializationPortfolioSolver.BestInjectiveAssignment(options, root, player, ctx, hand,
                             Mathf.Max(0, AiConfigV2.maxGenerationActionsPerTurn
-                                        - result.Reservation.GenerationAttemptsUsed))
+                                        - result.Reservation.GenerationAttemptsUsed), radar)
                         : new Dictionary<DemandState, DemandCandidate>();
 
                 var feasible = assigned.Select(kv => new PhaseACandidate(kv.Key, kv.Value)).ToList();
@@ -518,7 +520,7 @@ namespace Game.Ai.V2
                 // layer deciding that a Hero chain "protects" resources from a higher-DecisionScore
                 // Field chain. Only deterministic tie-breakers follow the score.
                 PhaseACandidate selected = feasible
-                    .OrderByDescending(MaterializationPortfolioSolver.ArbitrationScore)
+                    .OrderByDescending(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar))
                     .ThenByDescending(c => c.State.Demand.Value)
                     .ThenBy(c => (int)c.State.Demand.RequestingAxis)
                     .ThenBy(c => c.State.Ordinal)
