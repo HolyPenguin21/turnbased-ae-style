@@ -293,62 +293,81 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber);
             }
 
-            foreach (DemandState istate in states
-                .Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability))
-                .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
-                .ThenByDescending(s => (s.Demand.Value + s.Demand.EconomyStrategicUrgency)
-                    * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
+            // Zero-weight uncommitted infrastructure is residual work; active committed builds
+            // keep their original early admission and resource/card protection.
+            var zeroRadarInfrastructure = states
+                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
+                    && !IsCommittedEconomyBuild(activeIntents, state.Demand)
+                    && RadarValueScale.For(radar, state.Demand.RequestingAxis) <= 0f)
+                .ToList();
+            foreach (DemandState deferred in zeroRadarInfrastructure)
+                deferred.Blocked = true;
+            if (zeroRadarInfrastructure.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");
+
+            // The SAME infrastructure executor handles early and residual batches.
+            void FulfillInfrastructure(IEnumerable<DemandState> pending)
             {
-                istate.Blocked = true;
-                result.InfrastructureAttempts++;
-                // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
-                // checks the shared AP pool and live affordability, and
-                // only then runs the authoritative build. A shortfall => nothing spent, not built.
-                // §2.4 — independent controlled-state snapshot around the op (building count,
-                // filled facility slots, army movement, resources), NOT derived from the op's own
-                // result. A failed build that changed any of these is a rollback leak.
-                V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
-                InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
-                    snap, player, root, hand, ctx, istate.Demand, ledger);
-                V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
-                if (infra.StateChanged)
-                    result.StateChanged = true;
-                AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
-                    infra.StateChanged, infraBefore, infraAfter);
-                if (infra.Built)
+                foreach (DemandState istate in pending
+                    .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
+                    .ThenByDescending(s => (s.Demand.Value + s.Demand.EconomyStrategicUrgency)
+                        * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
                 {
-                    // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
-                    // ledger records an already-permitted action, never grants overdraft.
-                    // §2.3 — measure the REAL ledger balance drop around Debit so the check
-                    // compares three independently sourced facts (physical / reported / ledger).
-                    float infraLedgerBefore = ledger.Balance(istate.Demand.RequestingAxis);
-                    if (infra.ApSpent > 0f)
+                    istate.Blocked = true;
+                    result.InfrastructureAttempts++;
+                    // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
+                    // checks the shared AP pool and live affordability, and
+                    // only then runs the authoritative build. A shortfall => nothing spent, not built.
+                    // §2.4 — independent controlled-state snapshot around the op (building count,
+                    // filled facility slots, army movement, resources), NOT derived from the op's own
+                    // result. A failed build that changed any of these is a rollback leak.
+                    V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
+                    InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
+                        snap, player, root, hand, ctx, istate.Demand, ledger);
+                    V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
+                    if (infra.StateChanged)
+                        result.StateChanged = true;
+                    AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
+                        infra.StateChanged, infraBefore, infraAfter);
+                    if (infra.Built)
                     {
-                        ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
-                        result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
+                        // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
+                        // ledger records an already-permitted action, never grants overdraft.
+                        // §2.3 — measure the REAL ledger balance drop around Debit so the check
+                        // compares three independently sourced facts (physical / reported / ledger).
+                        float infraLedgerBefore = ledger.Balance(istate.Demand.RequestingAxis);
+                        if (infra.ApSpent > 0f)
+                        {
+                            ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
+                            result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
+                        }
+                        float infraLedgerAfter = ledger.Balance(istate.Demand.RequestingAxis);
+                        AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
+                            infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent,
+                            infraLedgerBefore - infraLedgerAfter);
+                        istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
+                        result.CardsPlayed++;
+                        result.InfrastructureBuilt++;
+                        result.CapabilityDeliveries++;
+                        AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: built {infra.Detail} "
+                            + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
+                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                        if (istate.Demand.RequestingAxis == DesireAxis.Economy
+                            && infra.BuilderArmyId.HasValue)
+                            MissionContinuityLayer.BeginEconomyBuilderRecovery(
+                                player, snap, istate.Demand, infra.BuilderArmyId.Value,
+                                ctx.TurnNumber);
                     }
-                    float infraLedgerAfter = ledger.Balance(istate.Demand.RequestingAxis);
-                    AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
-                        infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent,
-                        infraLedgerBefore - infraLedgerAfter);
-                    istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
-                    result.CardsPlayed++;
-                    result.InfrastructureBuilt++;
-                    result.CapabilityDeliveries++;
-                    AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: built {infra.Detail} "
-                        + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
-                    snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                    if (istate.Demand.RequestingAxis == DesireAxis.Economy
-                        && infra.BuilderArmyId.HasValue)
-                        MissionContinuityLayer.BeginEconomyBuilderRecovery(
-                            player, snap, istate.Demand, infra.BuilderArmyId.Value,
-                            ctx.TurnNumber);
-                }
-                else
-                {
-                    AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
+                    else
+                    {
+                        AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
+                    }
                 }
             }
+
+            FulfillInfrastructure(states.Where(state =>
+                InfrastructureFulfillment.Handles(state.Demand.Capability)
+                && !zeroRadarInfrastructure.Contains(state)));
 
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
             // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
@@ -683,6 +702,9 @@ namespace Game.Ai.V2
                     + (borrowed > AiConfigV2.allocatorSliceEpsilon ? $", discreteBorrow {F(borrowed)}ap" : "")
                     + $", {plan.StableKey})");
             }
+
+            // Recheck real AP and protected resources before residual infrastructure.
+            FulfillInfrastructure(zeroRadarInfrastructure);
 
             result.Reservation.UnresolvedDemands.Clear();
             foreach (DemandState state in states.Where(s => s.Remaining > 0f))

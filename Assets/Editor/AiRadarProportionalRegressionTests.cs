@@ -117,6 +117,18 @@ namespace Game.EditorTests
             Assert.That(RadarValueScale.For(radar, m), Is.EqualTo(2f).Within(Tol));
         }
 
+        [Test]
+        public void MissingAxis_DoesNotSilentlyBecomeZeroWeightRecon()
+        {
+            Radar radar = RadarOf((DesireAxis.Recon, 0f), (DesireAxis.Economy, 1f));
+            var mission = new MissionProposal { BaseValue = 12f };
+            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(1f).Within(Tol));
+            mission.Axes.Value[DesireAxis.Recon] = -1f;
+            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(1f).Within(Tol));
+            mission.Axes.Value[DesireAxis.Recon] = 1f;
+            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(0f).Within(Tol));
+        }
+
         // ---- Task B — the EffectiveValue==0 -> BaseValue fallback bug, through the REAL allocator
 
         [Test]
