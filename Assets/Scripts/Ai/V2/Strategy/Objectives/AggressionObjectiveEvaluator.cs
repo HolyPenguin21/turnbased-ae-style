@@ -166,16 +166,15 @@ namespace Game.Ai.V2
         private static AggressionObjective Build(WorldSnapshot snap, CombatOpportunityReport report,
             CombatOpportunity o)
         {
-            float targetRelevanceRaw = Mathf.Clamp01(
-                o.TargetValue / Mathf.Max(0.0001f, AiConfigV2.opportunityValueNorm));
-            // Confidence is the analyzer-owned reliability fact available at objective time. Treat
-            // missing confidence as stale/uncertain information exactly once; no later multiplier.
+            // Defender power is a combat-difficulty fact, not an expected resource/card reward.
+            // Both neutral-army and guarded-event Raid objectives receive exactly one fixed
+            // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
             float staleRaw = 1f - Mathf.Clamp01(o.Confidence);
             var score = new TaskScore(
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(staleRaw),
-                militaryTargetRelevance: TaskScoreEvaluator.MilitaryTargetRelevance(targetRelevanceRaw));
+                militaryTargetRelevance: AiConfigV2.RaidReward);
             TaskScoreDiagnostics.Log("RaidObjective", o.TargetHex, score,
-                $"targetValue={o.TargetValue:0.###} targetRelevance={targetRelevanceRaw:0.###} "
+                $"raidReward={score.RaidReward:0.###} "
                 + $"confidence={o.Confidence:0.###} stale={staleRaw:0.###}");
 
             bool readyViable = o.CanCoverAllDefenders

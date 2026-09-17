@@ -25,6 +25,9 @@ namespace Game.Ai.V2
         public const float taskScoreTerrainDefenseMax = 4f;
         public const float taskScoreMilitaryTargetMax = 12f;
         public const float taskScoreWinChanceMax = 12f;
+        // The expected resource/card reward of completing a Raid. Constant per eligible Raid,
+        // never derived from defender power and never applied to Recon/Economy or Raid return legs.
+        public const float RaidReward = 8f;
 
         // Physical costs use the same conversion for every world task. They intentionally do not
         // reuse Economy's historical 4/AP, 1.5/resource or 0.8/travel tuning.
