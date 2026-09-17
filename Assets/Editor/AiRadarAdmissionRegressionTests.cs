@@ -20,7 +20,11 @@ namespace Game.EditorTests
             var cold = new Radar();
             cold.Weight[DesireAxis.Recon] = 1f;
             cold.Weight[DesireAxis.Economy] = 0f;
-            Assert.That(RadarValueScale.For(cold, DesireAxis.Economy), Is.EqualTo(0.35f).Within(0.0001f));
+            // Radar model #2 (proportional) — a cold axis scales to EXACTLY zero, not a 0.35 floor.
+            // Both proposals collapse to EffectiveValue 0 here; the allocator's tie-break then falls
+            // back to the (still radar-blind) within-lane AdmissionRank, so the lane order itself
+            // is unchanged — this is the property under test, not the zero-scale value.
+            Assert.That(RadarValueScale.For(cold, DesireAxis.Economy), Is.EqualTo(0f).Within(0.0001f));
             Assert.That(FundedEconomyKind(cold), Is.EqualTo(EconomyTaskKind.BuildExtraction),
                 "Radar must not change order inside the Economy lane");
         }

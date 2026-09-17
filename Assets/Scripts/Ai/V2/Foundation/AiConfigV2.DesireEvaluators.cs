@@ -14,10 +14,9 @@ namespace Game.Ai.V2
         // ---- smoothing / placeholders / out-of-simplex scalars ---------------------------
         public const float desireSmoothing = 0.40f;          // weight on the previous smoothed value
 
-        // Radar model #1a — the radar's ONLY effect on decisions is scaling objective/mission VALUE:
-        //   EffectiveValue = BaseValue * (floor + (1-floor) * min(1, weight * axisCount))
-        // A cold axis (weight -> 0) scales down to this floor; an axis at or above the even split
-        // (weight >= 1/axisCount) scales at 1.0. First-pass value — tune against real AiDebug.log.
-        public const float radarScaleFloor = 0.35f;
+        // Radar model #2 (proportional) — see RadarValueScale in DesireEvaluators.cs.
+        // EffectiveValue = BaseValue * axisCount * weight. No floor, no ceiling: this is a pure
+        // normalisation constant (axisCount), not a tunable knob, so there is nothing to configure
+        // here any more.
     }
 }

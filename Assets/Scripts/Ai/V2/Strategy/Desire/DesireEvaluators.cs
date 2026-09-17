@@ -664,4 +664,45 @@ namespace Game.Ai.V2
                 + $"| threat {F(d.MilitaryThreat)} runway {F(d.EconomicRunway)}");
         }
     }
+
+    // --- Radar model #2 (proportional). The radar's ONLY effect on decisions: it scales
+    //     objective / mission VALUE. It does NOT slice AP (one shared pool) and is NOT part of
+    //     within-lane ordering.
+    //       scale(axis) = axisCount * weight
+    //     This is a pure normalisation, not a tunable bonus: at the even split
+    //     (weight == 1/axisCount for every axis) scale == 1 for every axis, so a uniform radar
+    //     reproduces BaseValue exactly. Above or below the even split the scale keeps moving
+    //     linearly — there is no ceiling and no floor. weight == 0 -> scale == 0 (a cold axis
+    //     competes for AP with zero priority; it is NOT forbidden — ResourceAllocator still lets
+    //     it spend leftover budget nobody else wants, see ResourceAllocator's remainder pass).
+    //     axisCount is DesireAxes.All.Length (currently 4), read live so a future axis count still
+    //     normalises correctly without a second constant to keep in sync.
+    public static class RadarValueScale
+    {
+        public static float For(Radar radar, DesireAxis axis)
+        {
+            float w = radar?.Weight != null && radar.Weight.TryGetValue(axis, out float ww)
+                ? UnityEngine.Mathf.Max(0f, ww) : 0f;
+            return DesireAxes.All.Length * w;
+        }
+
+        // Contribution-weighted scale for a multi-axis mission — a normalised weighted sum of each
+        // contributing axis's own proportional scale, weighted by how much the mission serves that
+        // axis (AxisContribution). Every real proposal today names exactly one axis at 1.0, so this
+        // collapses to For(radar, thatAxis).
+        public static float For(Radar radar, MissionProposal m)
+        {
+            var contrib = m?.Axes?.Value;
+            if (contrib == null || contrib.Count == 0)
+                return For(radar, DesireAxis.Recon);
+            float acc = 0f, wsum = 0f;
+            foreach (DesireAxis a in DesireAxes.All)
+                if (contrib.TryGetValue(a, out float c) && c > 0f)
+                {
+                    acc += c * For(radar, a);
+                    wsum += c;
+                }
+            return wsum > 0f ? acc / wsum : For(radar, DesireAxis.Recon);
+        }
+    }
 }

@@ -279,42 +279,9 @@ namespace Game.Ai.V2
         }
     }
 
-    // --- Radar model #1a. The radar's ONLY effect on decisions: it scales objective / mission
-    //     VALUE. It does NOT slice AP (one shared pool) and is NOT part of within-lane ordering.
-    //       scale(axis) = floor + (1 - floor) * min(1, weight * axisCount)
-    //     weight == 1/axisCount (an even split) -> 1.0 ; weight -> 0 (a cold axis) -> floor ;
-    //     weight >= 1/axisCount -> 1.0 (a hot axis is NOT super-boosted — cold-side attenuation is
-    //     enough, and a hot axis already carries more/better objectives). floor is
-    //     AiConfigV2.radarScaleFloor.
-    public static class RadarValueScale
-    {
-        public static float For(Radar radar, DesireAxis axis)
-        {
-            float floor = UnityEngine.Mathf.Clamp01(AiConfigV2.radarScaleFloor);
-            float w = radar?.Weight != null && radar.Weight.TryGetValue(axis, out float ww)
-                ? UnityEngine.Mathf.Max(0f, ww) : 0f;
-            float norm = UnityEngine.Mathf.Clamp01(w * DesireAxes.All.Length);
-            return floor + (1f - floor) * norm;
-        }
-
-        // Contribution-weighted scale for a mission. Every real proposal today names exactly one
-        // axis at 1.0, so this collapses to For(radar, thatAxis); a future multi-axis mission gets
-        // the contribution-weighted blend.
-        public static float For(Radar radar, MissionProposal m)
-        {
-            var contrib = m?.Axes?.Value;
-            if (contrib == null || contrib.Count == 0)
-                return For(radar, DesireAxis.Recon);
-            float acc = 0f, wsum = 0f;
-            foreach (DesireAxis a in DesireAxes.All)
-                if (contrib.TryGetValue(a, out float c) && c > 0f)
-                {
-                    acc += c * For(radar, a);
-                    wsum += c;
-                }
-            return wsum > 0f ? acc / wsum : For(radar, DesireAxis.Recon);
-        }
-    }
+    // --- The strategic coefficient that scales mission VALUE by Radar (RadarValueScale) now
+    //     lives in Strategy/Desire (DesireEvaluators.cs) — it computes a Radar-derived number, the
+    //     same responsibility as the rest of that file, not an Orchestration one.
 
     // --- How much each axis a single mission serves. MANY-TO-MANY (risk 1): never collapse to one
     //     category. Values are 0..1 "relevance", not required to sum to anything.
