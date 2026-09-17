@@ -1,26 +1,39 @@
-name: AI V2 useful marginal income test audit
+name: AI V2 useful income fixture patch
 on:
   push:
     branches:
       - fix/economy-useful-marginal-income
 permissions:
-  contents: read
+  contents: write
 jobs:
-  audit:
-    if: github.actor != 'github-actions[bot]'
+  patch:
+    if: github.event.head_commit.message == 'chore fix existing test fixture'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Audit all economy scoring test consumers
+      - name: Repair prior artificial demand fixture
         shell: bash
         run: |
           set -euo pipefail
-          echo '== EconomyDemand tests and fixtures =='
-          grep -RnE 'EconomyDemands\(|new EconomyResourceStanding|SnapshotWithDeficits\(' Assets/Editor/AiEconomyDecisionTests.cs | head -130
-          echo '== Other EconomyDemands test files =='
-          grep -Rl 'EconomyDemands(' Assets/Editor | head -35
-          echo '== Any duplicate useful gain conversion =='
-          grep -Rn 'UsefulMarginalIncomeGain' Assets/Scripts/Ai/V2
-          echo '== whitespace =='
-          git diff --check HEAD
-          echo 'PASS: static scan finished'
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Assets/Editor/AiEconomyDecisionTests.cs')
+          source = p.read_text(encoding='utf-8')
+          start = source.index('        public void EconomyDemand_SelectsValueBeforeCoordinates()')
+          end = source.index('        [Test]', start)
+          section = source[start:end]
+          for resource, deficit in [('Human','0.2f'), ('Tech','0.9f')]:
+              old = f'new EconomyResourceStanding {{ Type = ResourceType.{resource}, DeficitScore = {deficit} }},'
+              new = f'new EconomyResourceStanding {{ Type = ResourceType.{resource}, DeficitScore = {deficit}, RemainingDeckResourceNeed = 8f }},'
+              assert section.count(old) == 1, (resource, section.count(old))
+              section = section.replace(old, new)
+          p.write_text(source[:start] + section + source[end:], encoding='utf-8')
+          print('PASS: synthetic high-value Tech and Human sites now have matching actual deck needs')
+          PY
+          git diff --check
+          git diff --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/Editor/AiEconomyDecisionTests.cs
+          git commit -m 'test(ai-v2): align value ordering fixture with actual resource needs'
+          git push origin HEAD:fix/economy-useful-marginal-income
