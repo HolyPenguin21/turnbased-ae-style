@@ -1,4 +1,4 @@
-name: Repair temporary Radar patch runner
+name: Apply code only Radar patch
 on:
   push:
     branches:
@@ -8,7 +8,7 @@ on:
 permissions:
   contents: write
 jobs:
-  repair:
+  patch-code:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,35 +16,38 @@ jobs:
           persist-credentials: true
           sparse-checkout-cone-mode: false
           sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
+            Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs
+            Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+            Assets/Editor/AiRadarProportionalRegressionTests.cs
             .github/workflows/ai-v2-one-shot-radar-residual.yml
             .github/workflows/ai-v2-one-shot-radar-residual-repair.yml
-      - name: Restore multiline script indentation
+      - name: Execute anchored edits and commit only game code
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import subprocess
           p=Path('.github/workflows/ai-v2-one-shot-radar-residual.yml')
           lines=p.read_text().splitlines()
           in_triple=False
-          repaired=0
-          for n,line in enumerate(lines):
+          fixed=[]
+          for line in lines:
               if in_triple:
-                  lines[n]='          '+line
-                  repaired+=1
-              if line.count("'''")%2:
+                  line='          '+line
+              if line.count("'''") % 2:
                   in_triple=not in_triple
-          assert not in_triple, 'unclosed multiline source'
-          assert repaired>50, f'expected multiple repaired continuation lines, got {repaired}'
-          content='\n'.join(line.rstrip() for line in lines)+'\n'
-          assert all(len(line)-len(line.lstrip(' '))>=10 for line in content.splitlines()[28:] if line), 'invalid body indentation'
-          p.write_text(content)
-          print('repaired multiline continuation lines:',repaired)
+              fixed.append(line.rstrip())
+          assert not in_triple, 'unclosed triple quotes in source patch'
+          run_index=fixed.index('        run: |')
+          body='\n'.join(line[10:] if line.startswith('          ') else line
+                         for line in fixed[run_index+1:])+'\n'
+          old='git rm -- .github/workflows/ai-v2-one-shot-radar-residual.yml'
+          assert body.count(old)==1, 'workflow cleanup anchor changed'
+          body=body.replace(old, 'git status --short', 1)
+          result=subprocess.run(['bash','-e','-o','pipefail','-c',body], check=False)
+          if result.returncode:
+              raise SystemExit(f'game code patch failed, exit {result.returncode}')
+          print('PASS: code-only patch pushed; workflow files unchanged')
           PY
-          git diff --check
-          git rm -- .github/workflows/ai-v2-one-shot-radar-residual-repair.yml
-          git add -- .github/workflows/ai-v2-one-shot-radar-residual.yml
-          git config user.name 'AI V2 patch delivery'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'chore(ai-v2): fix temporary patch runner multiline indentation'
-          git push origin HEAD:fix/radar-phase-a-residual-admission
