@@ -1,26 +1,26 @@
-name: AI V2 useful marginal income one-shot
+name: AI V2 useful marginal income test audit
 on:
   push:
     branches:
       - fix/economy-useful-marginal-income
 permissions:
-  contents: write
+  contents: read
 jobs:
-  patch:
+  audit:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Apply guarded source and regression edits
+      - name: Audit all economy scoring test consumers
         shell: bash
         run: |
           set -euo pipefail
-          python3 .github/scripts/one-shot-useful-income.py
-          git diff --check
-          git diff --stat
-          grep -Rn 'UsefulMarginalIncomeGain' Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Editor/AiUnifiedTaskScoreTests.cs
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Editor/AiEconomyDecisionTests.cs Assets/Editor/AiUnifiedTaskScoreTests.cs
-          git commit -m 'fix(ai-v2): value only useful marginal extraction and base income'
-          git push origin HEAD:fix/economy-useful-marginal-income
+          echo '== EconomyDemand tests and fixtures =='
+          grep -RnE 'EconomyDemands\(|new EconomyResourceStanding|SnapshotWithDeficits\(' Assets/Editor/AiEconomyDecisionTests.cs | head -130
+          echo '== Other EconomyDemands test files =='
+          grep -Rl 'EconomyDemands(' Assets/Editor | head -35
+          echo '== Any duplicate useful gain conversion =='
+          grep -Rn 'UsefulMarginalIncomeGain' Assets/Scripts/Ai/V2
+          echo '== whitespace =='
+          git diff --check HEAD
+          echo 'PASS: static scan finished'
