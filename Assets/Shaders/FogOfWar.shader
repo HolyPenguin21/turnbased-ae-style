@@ -1,28 +1,25 @@
 // Content-visibility overlay for the strategic map (see Game.Map.FogOfWarController /
-// Game.Map.VisionSystem). The overlay deliberately keeps terrain readable: fog-of-war marks a
-// visibility STATE, it does not paint an opaque atmospheric layer over the board. Armies,
-// buildings and resource markers are gated separately in C#; this shader only changes how the
-// underlying terrain is visually de-emphasised.
+// Game.Map.VisionSystem). The terrain remains readable under fog, but fogged territory must still
+// read immediately as a separate visual state: darker, drier and less visually active than the
+// visible area. Armies, buildings and resource markers are gated separately in C#.
 //
-// The boundary still follows the true hex geometry. worldToAxialRounded finds the owning hex,
-// hexSDF provides the geometric distance to its border, and neighbouring mask values determine
-// which side is visible/fogged. Low-frequency world-space noise only breaks the otherwise sterile
-// edge and adds a very small static patina across fogged ground. There is intentionally no blur,
-// screen-space haze, or strong moving texture: terrain silhouettes and texture features must stay
-// sharp enough to identify the hex type at a glance.
+// The boundary follows the true hex geometry, then receives a static world-space erosion offset.
+// This produces a broken dry edge without blur or a moving atmospheric haze. Large-scale patina
+// breaks up flat areas inside the fog while preserving terrain silhouettes and texture detail.
 Shader "Custom/FogOfWar"
 {
     Properties
     {
         _Color ("Fog Tint", Color) = (0.32, 0.24, 0.14, 0.88)
-        _EdgeSoftness ("Edge Irregularity", Range(0, 1)) = 0.18
-        _EdgeSharpness ("Edge Sharpness", Range(0, 1)) = 0.9
+        _EdgeSoftness ("Edge Irregularity", Range(0, 1)) = 0.35
+        _EdgeSharpness ("Edge Sharpness", Range(0, 1)) = 0.92
         _NoiseScale ("Patina Noise Scale", Range(0.01, 1)) = 0.10
         _NoiseSpeed ("Edge Drift Speed", Range(0, 1)) = 0.0
         _NoiseTex ("Detail Texture (optional)", 2D) = "white" {}
         _NoiseTexScale ("Detail Texture Scale", Range(0.001, 1)) = 0.05
-        _NoiseTexStrength ("Detail Texture Strength", Range(0, 1)) = 0
+        _NoiseTexStrength ("Detail Texture Strength", Range(0, 1)) = 0.45
     }
+
     SubShader
     {
         Tags { "RenderType" = "Transparent" "Queue" = "Transparent" "RenderPipeline" = "UniversalPipeline" }
@@ -139,10 +136,10 @@ Shader "Custom/FogOfWar"
                 float total = 0.0;
                 float amplitude = 0.55;
                 [unroll]
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < 4; i++)
                 {
                     total += valueNoise(p) * amplitude;
-                    p *= 2.05;
+                    p *= 2.03;
                     amplitude *= 0.5;
                 }
                 return total;
@@ -172,48 +169,47 @@ Shader "Custom/FogOfWar"
 
                 float neighborFog = sampleHexFog(qr + kNeighborDirs[edgeIdx]);
 
+                // Blend alternate neighbours very close to corners so the erosion stays stable
+                // when three different visibility states meet at one vertex.
                 const float cornerBlend = 0.08;
                 float cornerProximity = smoothstep(_OuterRadius * 0.82, _OuterRadius * 0.98, length(p));
                 if (withinEdge < cornerBlend)
                 {
                     float altFog = sampleHexFog(qr + kNeighborDirs[(edgeIdx + 5) % 6]);
-                    float leftCornerWeight = (1.0 - withinEdge / cornerBlend) * cornerProximity;
-                    neighborFog = lerp(neighborFog, altFog, leftCornerWeight);
+                    float weight = (1.0 - withinEdge / cornerBlend) * cornerProximity;
+                    neighborFog = lerp(neighborFog, altFog, weight);
                 }
                 else if (withinEdge > 1.0 - cornerBlend)
                 {
                     float altFog = sampleHexFog(qr + kNeighborDirs[(edgeIdx + 1) % 6]);
-                    float rightCornerWeight = ((withinEdge - (1.0 - cornerBlend)) / cornerBlend) * cornerProximity;
-                    neighborFog = lerp(neighborFog, altFog, rightCornerWeight);
+                    float weight = ((withinEdge - (1.0 - cornerBlend)) / cornerBlend) * cornerProximity;
+                    neighborFog = lerp(neighborFog, altFog, weight);
                 }
 
-                // Keep the transition narrow enough that the terrain texture remains crisp. The
-                // existing project style may still carry older, softer values, so remap the
-                // effective sharpness into a deliberately tighter range instead of letting a
-                // legacy value turn the seam back into a broad haze.
-                float effectiveSharpness = lerp(0.82, 0.97, saturate(_EdgeSharpness));
-                float dist = hexSDF(p, _OuterRadius);
-                float band = lerp(_OuterRadius * 0.18, _OuterRadius * 0.025, effectiveSharpness);
-                float blend = smoothstep(-band, band, dist);
-                float fog = lerp(ownFog, neighborFog, blend);
+                // Broken dry edge: distort the signed hex boundary itself rather than adding a
+                // translucent haze after the fact. The noise is world-anchored, therefore the
+                // edge never swims when the camera moves. A tiny optional drift remains for
+                // backwards compatibility with the existing style value, but is almost static.
+                float2 drift = float2(0.7, 0.23) * _Time.y * (_NoiseSpeed * 0.025);
+                float erosionNoise = fbm(worldXZ * max(_NoiseScale * 2.4, 0.08) + drift);
+                float erosion = (erosionNoise - 0.5)
+                    * _OuterRadius
+                    * lerp(0.025, 0.16, saturate(_EdgeSoftness));
 
-                // Organic edge breakup, but intentionally restrained. Even an older style asset
-                // with edgeSoftness=1 now produces only a small boundary perturbation and cannot
-                // wash detail out across the whole cell.
-                float2 drift = float2(1.0, 0.4) * _Time.y * (_NoiseSpeed * 0.12);
-                float edgeNoise = fbm(worldXZ * _NoiseScale + drift);
-                float edgeFactor = 1.0 - abs(blend * 2.0 - 1.0);
-                fog = saturate(fog + (edgeNoise - 0.5) * (_EdgeSoftness * 0.18) * edgeFactor);
+                float dist = hexSDF(p, _OuterRadius) + erosion;
+                float effectiveSharpness = lerp(0.86, 0.985, saturate(_EdgeSharpness));
+                float band = lerp(_OuterRadius * 0.11, _OuterRadius * 0.016, effectiveSharpness);
+                float edgeBlend = smoothstep(-band, band, dist);
+                float fog = lerp(ownFog, neighborFog, edgeBlend);
 
-                // Static, world-anchored low-frequency patina breaks up large uniform fogged
-                // regions without behaving like weather or a lens effect. Its amplitude is
-                // intentionally tiny: terrain type and local texture remain the dominant signal.
-                float patina = fbm(worldXZ * max(_NoiseScale * 0.55, 0.025));
-                float patinaDensity = lerp(0.94, 1.06, saturate(patina));
+                // Large, static patina patches make fogged territory read as a coherent mass
+                // rather than a flat transparent colour. The range is intentionally noticeable,
+                // but does not erase the underlying terrain type.
+                float patina = fbm(worldXZ * max(_NoiseScale * 0.62, 0.035) + float2(13.7, -8.1));
+                float patinaDensity = lerp(0.78, 1.18, saturate(patina));
 
-                // Optional authored texture is also static in world space. The old implementation
-                // slid two samples over the map and strongly modulated both opacity and colour;
-                // here it only contributes a few percent of dry/grimy variation.
+                // Optional authored detail remains static in world space and contributes only
+                // secondary texture. It never blurs the map or moves independently of terrain.
                 float detailA = SAMPLE_TEXTURE2D(
                     _NoiseTex,
                     sampler_NoiseTex,
@@ -221,25 +217,23 @@ Shader "Custom/FogOfWar"
                 float detailB = SAMPLE_TEXTURE2D(
                     _NoiseTex,
                     sampler_NoiseTex,
-                    worldXZ * (_NoiseTexScale * 1.73) + float2(17.31, -9.73)).r;
+                    worldXZ * (_NoiseTexScale * 1.71) + float2(17.31, -9.73)).r;
                 float detail = saturate(detailA * 0.62 + detailB * 0.38);
-                float detailDensity = lerp(0.96, 1.04, detail);
+                float detailDensity = lerp(0.88, 1.12, detail);
 
                 fog *= patinaDensity;
-                fog *= lerp(1.0, detailDensity, _NoiseTexStrength);
+                fog *= lerp(1.0, detailDensity, saturate(_NoiseTexStrength));
                 fog = saturate(fog);
 
-                // Keep the tint close to a single dry earth/charcoal wash. Tiny value variation
-                // gives the fog some material character without creating bright streaks that
-                // compete with resource markers or the terrain art.
-                float tintVariation = (patina - 0.5) * 0.08;
-                float3 finalTint = saturate(_Color.rgb * (1.0 + tintVariation));
+                // The original serialized tint is rather close to the sand colour. Darken it in
+                // shader space so existing GameConfig assets immediately produce the intended
+                // charcoal/earth shadow without requiring a migration of serialized data.
+                float tintVariation = (patina - 0.5) * 0.16;
+                float3 finalTint = saturate(_Color.rgb * 0.46 * (1.0 + tintVariation));
 
-                // Most important readability rule: cap the effective overlay opacity. Existing
-                // serialized styles currently use alpha close to 0.9; scaling it here keeps
-                // roughly two thirds of the underlying terrain contribution visible while still
-                // making the visibility state immediately obvious.
-                float readableAlpha = min(_Color.a * 0.40, 0.38);
+                // Strong enough to read at game scale, but still transparent enough to classify
+                // dunes, ruins, mountains and ordinary desert through the fog.
+                float readableAlpha = min(_Color.a * 0.62, 0.56);
                 return half4(finalTint, fog * readableAlpha);
             }
             ENDHLSL
