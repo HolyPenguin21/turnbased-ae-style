@@ -1,35 +1,24 @@
 // Content-visibility overlay for the strategic map (see Game.Map.FogOfWarController /
-// Game.Map.VisionSystem) — a single flat quad covering the whole hex grid, darkening every hex
-// the current viewer (VisionSystem.CurrentViewer) doesn't presently have vision of. Terrain
-// itself is never hidden by this, only content (armies/buildings/resource yield, gated
-// separately in C# — see HexSelectionController/MapResourceDisplay) — this shader only draws
-// the dimming tint, it has no say in what's actually shown/hidden underneath it.
+// Game.Map.VisionSystem). The overlay deliberately keeps terrain readable: fog-of-war marks a
+// visibility STATE, it does not paint an opaque atmospheric layer over the board. Armies,
+// buildings and resource markers are gated separately in C#; this shader only changes how the
+// underlying terrain is visually de-emphasised.
 //
-// Per the project owner's own call, the boundary reads as a slightly soft drifting haze, not a
-// hard binary cutout — but the SEAM itself must trace the true hex edge, not a rounded blob.
-// Earlier this sampled the mask with continuous (unrounded) axial coordinates through a
-// bilinear-filtered texture, on the assumption that adjacent mask texels being adjacent hexes
-// (axial IS a valid skewed lattice) would make that blend read as hex-shaped. It doesn't: a
-// bilinear filter's own iso-contours are curved/elliptical near each texel-square's diagonal,
-// not hexagonal, which was hidden by the wide _EdgeSoftness haze at first but became an obvious
-// wrong-shaped curve once the boundary was sharpened. Fixed the same way HexClusterGlow.shader
-// already draws exact hex-shaped edges: worldToAxialRounded (cube-coordinate rounding) finds
-// the TRUE owning hex for this pixel (its Voronoi cell, correct even at corners), and hexSDF
-// (Inigo Quilez's regular-hexagon distance field) gives the real geometric distance to that
-// hex's boundary — see frag()'s own comment for how the blend against the correct neighbour
-// hex is picked. fbm noise built from hash/valueNoise still roughens the edge on top
-// (_EdgeSoftness, 0 by default in the project's own tuning), and an
-// optional hand-picked detail texture (_NoiseTex, left "white" — a no-op — until the project
-// owner assigns and tunes one) can add further texture over everything.
+// The boundary still follows the true hex geometry. worldToAxialRounded finds the owning hex,
+// hexSDF provides the geometric distance to its border, and neighbouring mask values determine
+// which side is visible/fogged. Low-frequency world-space noise only breaks the otherwise sterile
+// edge and adds a very small static patina across fogged ground. There is intentionally no blur,
+// screen-space haze, or strong moving texture: terrain silhouettes and texture features must stay
+// sharp enough to identify the hex type at a glance.
 Shader "Custom/FogOfWar"
 {
     Properties
     {
-        _Color ("Fog Tint", Color) = (0.03, 0.04, 0.07, 0.75)
-        _EdgeSoftness ("Edge Softness", Range(0, 1)) = 0.35
-        _EdgeSharpness ("Edge Sharpness", Range(0, 1)) = 0.8
-        _NoiseScale ("Haze Noise Scale", Range(0.01, 1)) = 0.12
-        _NoiseSpeed ("Haze Drift Speed", Range(0, 1)) = 0.04
+        _Color ("Fog Tint", Color) = (0.32, 0.24, 0.14, 0.88)
+        _EdgeSoftness ("Edge Irregularity", Range(0, 1)) = 0.18
+        _EdgeSharpness ("Edge Sharpness", Range(0, 1)) = 0.9
+        _NoiseScale ("Patina Noise Scale", Range(0.01, 1)) = 0.10
+        _NoiseSpeed ("Edge Drift Speed", Range(0, 1)) = 0.0
         _NoiseTex ("Detail Texture (optional)", 2D) = "white" {}
         _NoiseTexScale ("Detail Texture Scale", Range(0.001, 1)) = 0.05
         _NoiseTexStrength ("Detail Texture Strength", Range(0, 1)) = 0
@@ -69,16 +58,9 @@ Shader "Custom/FogOfWar"
             float _NoiseTexScale;
             float _NoiseTexStrength;
 
-            // Set from FogOfWarController via a MaterialPropertyBlock — a plain Texture2D
-            // property still needs declaring here (unlike an array, this one CAN sit in the
-            // Properties block, but it's omitted there since nothing needs to expose it as an
-            // Inspector swatch).
             TEXTURE2D(_VisibilityMask);
             SAMPLER(sampler_VisibilityMask);
-            // TRUE hex grid spacing (never scaled) — same role as HexClusterGlow's _OuterRadius.
             float _OuterRadius;
-            // Axial coordinate of the mask texture's (0,0) texel, and its (width, height) in
-            // texels — together these convert a continuous (q, r) into a mask UV.
             float2 _MaskMinQR;
             float2 _MaskSize;
 
@@ -86,15 +68,10 @@ Shader "Custom/FogOfWar"
             {
                 Varyings OUT;
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
-                // This object always sits at world identity (see FogOfWarController), same
-                // convention as HexClusterHighlight — object space position already is world.
                 OUT.worldXZ = IN.positionOS.xz;
                 return OUT;
             }
 
-            // Mirrors HexGridMath.WorldToAxial (cube-coordinate rounding) exactly, same as
-            // HexClusterGlow.shader's own copy — gives the TRUE owning hex (Voronoi cell) for
-            // any world position, correct even right at a corner shared by three hexes.
             float2 worldToAxialRounded(float2 worldXZ, float outerRadius)
             {
                 float q = worldXZ.x / (1.5 * outerRadius);
@@ -117,7 +94,6 @@ Shader "Custom/FogOfWar"
                 return float2(rq, rr);
             }
 
-            // Mirrors HexGridMath.AxialToWorld exactly.
             float2 axialToWorld(float2 qr, float outerRadius)
             {
                 float x = outerRadius * 1.5 * qr.x;
@@ -125,9 +101,6 @@ Shader "Custom/FogOfWar"
                 return float2(x, z);
             }
 
-            // Inigo Quilez's regular-hexagon SDF, same copy HexClusterGlow.shader uses — vertex
-            // along +X, matching this project's hex corner convention (HexGridMath corners at
-            // angle 60*i). Negative inside the hex, 0 exactly on its boundary, positive outside.
             float hexSDF(float2 p, float r)
             {
                 const float3 k = float3(-0.8660254, 0.5, 0.5773503);
@@ -137,9 +110,6 @@ Shader "Custom/FogOfWar"
                 return length(p) * sign(p.y);
             }
 
-            // Matches HexGridMath.NeighborDirectionsByEdge exactly, same copy HexClusterGlow.
-            // shader uses — direction[i] is the neighbour across the edge between corners i and
-            // (i+1)%6.
             static const float2 kNeighborDirs[6] = {
                 float2(1, 0), float2(0, 1), float2(-1, 1),
                 float2(-1, 0), float2(0, -1), float2(1, -1)
@@ -164,7 +134,6 @@ Shader "Custom/FogOfWar"
                 return lerp(lerp(a, b, u.x), lerp(c, d, u.x), u.y);
             }
 
-            // 3-octave fractal sum softens the otherwise geometric fog boundary.
             float fbm(float2 p)
             {
                 float total = 0.0;
@@ -179,11 +148,6 @@ Shader "Custom/FogOfWar"
                 return total;
             }
 
-            // Point-samples ONE hex's own mask value — 0 visible / 1 fogged — by looking up its
-            // exact texel centre. Sampling precisely at a texel centre returns that texel alone
-            // even through a Bilinear-filtered texture (the interpolation weight collapses to
-            // 1 for the sampled texel, 0 for its neighbours right at that point), so this needs
-            // no separate Point-filtered copy of the mask.
             float sampleHexFog(float2 qr)
             {
                 float2 uv = (qr - _MaskMinQR + 0.5) / _MaskSize;
@@ -199,9 +163,6 @@ Shader "Custom/FogOfWar"
 
                 float ownFog = sampleHexFog(qr);
 
-                // Which of the 6 edges this pixel sits nearest to, within its own hex — same
-                // angle-bucket convention as HexClusterGlow.shader's own edge lookup, so
-                // kNeighborDirs[edgeIdx] is guaranteed the hex sharing THAT edge.
                 float angle = atan2(p.y, p.x);
                 if (angle < 0.0)
                     angle += 2.0 * PI;
@@ -211,17 +172,7 @@ Shader "Custom/FogOfWar"
 
                 float neighborFog = sampleHexFog(qr + kNeighborDirs[edgeIdx]);
 
-                // Right near a corner, the OTHER edge meeting there can matter just as much —
-                // same fix HexClusterGlow.shader's own outer-boundary tracing needs and for the
-                // same reason (see its cornerBlend comment): the 60°-wide angle bucket boundary
-                // doesn't line up with which neighbour is actually closest once you're that
-                // close to a vertex three hexes share.
                 const float cornerBlend = 0.08;
-                // The angular corner bucket spans all the way from the hex centre to its
-                // vertex. Blending the alternate neighbour from angle alone therefore paints
-                // a long triangular wedge through the cell. Gate that blend by radial
-                // proximity so the alternate neighbour participates only near the actual
-                // shared vertex, while pixels farther inward keep their nearest edge's value.
                 float cornerProximity = smoothstep(_OuterRadius * 0.82, _OuterRadius * 0.98, length(p));
                 if (withinEdge < cornerBlend)
                 {
@@ -236,60 +187,60 @@ Shader "Custom/FogOfWar"
                     neighborFog = lerp(neighborFog, altFog, rightCornerWeight);
                 }
 
-                // True geometric distance to this hex's own boundary (negative inside) — unlike
-                // the old bilinear-texture blend, this traces the REAL hex edge, so blending
-                // ownFog -> neighborFog against it can't bulge into a rounded, wrong-shaped seam.
-                // _EdgeSharpness=0 blends across most of the hex (wide, soft); 1 narrows the band
-                // down to a few percent of the hex radius, hugging the true edge tightly.
+                // Keep the transition narrow enough that the terrain texture remains crisp. The
+                // existing project style may still carry older, softer values, so remap the
+                // effective sharpness into a deliberately tighter range instead of letting a
+                // legacy value turn the seam back into a broad haze.
+                float effectiveSharpness = lerp(0.82, 0.97, saturate(_EdgeSharpness));
                 float dist = hexSDF(p, _OuterRadius);
-                float band = lerp(_OuterRadius * 0.75, _OuterRadius * 0.03, _EdgeSharpness);
+                float band = lerp(_OuterRadius * 0.18, _OuterRadius * 0.025, effectiveSharpness);
                 float blend = smoothstep(-band, band, dist);
                 float fog = lerp(ownFog, neighborFog, blend);
 
-                float2 dir = float2(1.0, 0.4);
-                float2 drift = dir * _Time.y * _NoiseSpeed;
-                float haze = fbm(worldXZ * _NoiseScale + drift);
-
-                // Only perturbs near the actual boundary (blend close to 0.5) — deep fog stays
-                // fully opaque and clear ground stays fully clean, only the seam between them
-                // gets the organic, drifting roughness that reads as haze rather than a hard
-                // line or a uniformly noisy wash over everything.
+                // Organic edge breakup, but intentionally restrained. Even an older style asset
+                // with edgeSoftness=1 now produces only a small boundary perturbation and cannot
+                // wash detail out across the whole cell.
+                float2 drift = float2(1.0, 0.4) * _Time.y * (_NoiseSpeed * 0.12);
+                float edgeNoise = fbm(worldXZ * _NoiseScale + drift);
                 float edgeFactor = 1.0 - abs(blend * 2.0 - 1.0);
-                fog = saturate(fog + (haze - 0.5) * _EdgeSoftness * edgeFactor);
+                fog = saturate(fog + (edgeNoise - 0.5) * (_EdgeSoftness * 0.18) * edgeFactor);
 
-                // Two differently-scaled, differently-directed samples keep the repeated dust
-                // texture from reading as one flat image sliding over the board. The density
-                // modulation stays centred close to 1, so terrain remains readable instead of
-                // opening transparent holes in the fog. Since it only multiplies `fog`, fully
-                // visible cells (fog == 0) remain completely clean.
+                // Static, world-anchored low-frequency patina breaks up large uniform fogged
+                // regions without behaving like weather or a lens effect. Its amplitude is
+                // intentionally tiny: terrain type and local texture remain the dominant signal.
+                float patina = fbm(worldXZ * max(_NoiseScale * 0.55, 0.025));
+                float patinaDensity = lerp(0.94, 1.06, saturate(patina));
+
+                // Optional authored texture is also static in world space. The old implementation
+                // slid two samples over the map and strongly modulated both opacity and colour;
+                // here it only contributes a few percent of dry/grimy variation.
                 float detailA = SAMPLE_TEXTURE2D(
                     _NoiseTex,
                     sampler_NoiseTex,
-                    worldXZ * _NoiseTexScale + drift * 0.55).r;
-                float2 crossDrift = float2(-drift.y, drift.x);
+                    worldXZ * _NoiseTexScale).r;
                 float detailB = SAMPLE_TEXTURE2D(
                     _NoiseTex,
                     sampler_NoiseTex,
-                    worldXZ * (_NoiseTexScale * 1.73) + crossDrift * 0.8).r;
-                float dustDensity = saturate(detailA * 0.62 + detailB * 0.38);
-                // The source map deliberately has a narrow, soft grayscale range. Expand it
-                // around its midpoint after the two samples are combined; otherwise their
-                // weighted average compresses the already-small contrast to an imperceptible
-                // 1-2% alpha change even with strength set to 1.
-                float contrastDust = saturate((dustDensity - 0.5) * 4.0 + 0.5);
+                    worldXZ * (_NoiseTexScale * 1.73) + float2(17.31, -9.73)).r;
+                float detail = saturate(detailA * 0.62 + detailB * 0.38);
+                float detailDensity = lerp(0.96, 1.04, detail);
 
-                float stormAlpha = lerp(0.5, 1.15, contrastDust);
-                fog *= lerp(1.0, stormAlpha, _NoiseTexStrength);
+                fog *= patinaDensity;
+                fog *= lerp(1.0, detailDensity, _NoiseTexStrength);
+                fog = saturate(fog);
 
-                // Density changes the warm fog tint as well as its opacity, so wind streaks
-                // remain visible over terrain with similar brightness. This colour modulation
-                // is still multiplied by `fog` in the returned alpha: visible cells stay clean.
-                float3 darkDust = _Color.rgb * 0.72;
-                float3 lightDust = saturate(_Color.rgb * 1.35 + float3(0.05, 0.035, 0.015));
-                float3 stormTint = lerp(darkDust, lightDust, contrastDust);
-                float3 finalTint = lerp(_Color.rgb, stormTint, _NoiseTexStrength);
+                // Keep the tint close to a single dry earth/charcoal wash. Tiny value variation
+                // gives the fog some material character without creating bright streaks that
+                // compete with resource markers or the terrain art.
+                float tintVariation = (patina - 0.5) * 0.08;
+                float3 finalTint = saturate(_Color.rgb * (1.0 + tintVariation));
 
-                return half4(finalTint, fog * _Color.a);
+                // Most important readability rule: cap the effective overlay opacity. Existing
+                // serialized styles currently use alpha close to 0.9; scaling it here keeps
+                // roughly two thirds of the underlying terrain contribution visible while still
+                // making the visibility state immediately obvious.
+                float readableAlpha = min(_Color.a * 0.40, 0.38);
+                return half4(finalTint, fog * readableAlpha);
             }
             ENDHLSL
         }
