@@ -13,7 +13,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Fix exact-match guard and run source patch
+      - name: Run corrected guarded source patch without workflow changes
         shell: bash
         run: |
           set -euo pipefail
@@ -26,7 +26,6 @@ jobs:
           new = "              s = rep(s, '            _baseExpansionDeliveryFailureCount = 0;\\n            ResetBaseExpansionWait();\\n', '            _baseExpansionDeliveryFailureCount = 0;\\n')"
           assert s.count(old) == 1, 'unexpected patch workflow version'
           s = s.replace(old, new)
-          p.write_text(s, encoding='utf-8')
           start = "          python3 - <<'PY'\n"
           end = "\n          PY\n"
           assert s.count(start) == 1 and s.count(end) == 1
@@ -37,6 +36,6 @@ jobs:
           git diff --stat
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/ai-v2-base-urgency-audit-once.yml Assets/Scripts/Ai/V2 Assets/Editor
+          git add Assets/Scripts/Ai/V2 Assets/Editor
           git commit -m 'fix(ai-v2): remove base wait urgency and obsolete staging policy'
           git push origin HEAD:fix/remove-base-wait-urgency
