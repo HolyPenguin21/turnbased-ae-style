@@ -92,7 +92,8 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
-            bool economyAxisAuthoritative = true, Radar radar = null)
+            bool economyAxisAuthoritative = true, Radar radar = null,
+            bool deferFreshZeroRadar = false)
         {
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
@@ -107,6 +108,9 @@ namespace Game.Ai.V2
                 return result;
             demands ??= System.Array.Empty<AxisDemand>();
             radar ??= Radar.Even();
+            // Early admissions defer NEW zero-priority work, but never delay a durable
+            // Economy build or a consumer-linked Raid reinforcement. Late residual admission
+            // uses this same owner with deferFreshZeroRadar=false.
 
             // A target-specific Economy build may deliberately emit no repeated demand once
             // Continuity owns its builder. That active intent outranks every fresh build for its
@@ -236,12 +240,26 @@ namespace Game.Ai.V2
             // would defeat the point of persistence), so it is held out of `states` here and only
             // reconsidered once every other demand this pass is satisfied, blocked, or infeasible —
             // see TryPromotePersistenceDeferred below.
-            var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred).ToList();
-            var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred).ToList();
+            var coldStates = deferFreshZeroRadar
+                ? allStates.Where(s => ShouldDeferFreshZeroRadarDemand(
+                    radar, s.Demand, activeIntents)).ToList()
+                : new List<DemandState>();
+            var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred
+                && !coldStates.Contains(s)).ToList();
+            var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred
+                && !coldStates.Contains(s)).ToList();
+            if (coldStates.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   strat.A radar — defer {coldStates.Count} fresh zero-priority demand(s) until operational/tempo admission finishes");
             if (states.Count == 0 && deferredStates.Count == 0)
             {
                 if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
                     InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
+                if (coldStates.Count > 0)
+                {
+                    result.Reservation.UnresolvedDemands.Clear();
+                    foreach (DemandState cold in coldStates)
+                        result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
+                }
                 return result;
             }
 
@@ -256,7 +274,7 @@ namespace Game.Ai.V2
                 : states.Select(s => s.Demand)
                     .Where(d => InfrastructureFulfillment.ShouldReserveDeferredEconomyResources(snap, d))
                     .Concat(allStates
-                        .Where(s => s.Demand != null
+                        .Where(s => s.Demand != null && !coldStates.Contains(s)
                             && s.Demand.RequestingAxis == DesireAxis.Economy
                             && s.Demand.Capability == CapabilityKind.Hero
                             && s.Demand.TargetHex.HasValue
@@ -693,6 +711,8 @@ namespace Game.Ai.V2
             // treated as if the need never existed.
             foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f))
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
+            foreach (DemandState cold in coldStates.Where(s => s.Remaining > 0f))
+                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
 
             if (result.CardsPlayed > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), ledger now " + ledger.DebugLine());
@@ -700,6 +720,21 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2] strat.A — residual demands "
                     + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
             return result;
+        }
+
+        // Strategy owns the admission policy, not Orchestration or the executor.
+        // Zero is a residual PRIORITY for new work, never a cancellation of an active intent.
+        internal static bool ShouldDeferFreshZeroRadarDemand(Radar radar, AxisDemand demand,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (demand == null || RadarValueScale.For(radar ?? Radar.Even(),
+                    demand.RequestingAxis) > 0f)
+                return false;
+            if (demand.ConsumerIntentKey.HasValue && activeIntents != null
+                && activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
+                    && i.IntentKey.Equals(demand.ConsumerIntentKey.Value)))
+                return false;
+            return !IsCommittedEconomyBuild(activeIntents, demand);
         }
 
         private static bool IsCommittedEconomyBuild(
@@ -738,6 +773,7 @@ namespace Game.Ai.V2
                 TraceId = d.TraceId,
                 RequestingAxis = d.RequestingAxis,
                 Value = d.Value,
+                WorldTaskScore = d.WorldTaskScore,
                 TargetHex = d.TargetHex,
                 Capability = d.Capability,
                 DesiredAmount = Mathf.Max(0f, state.Remaining),
@@ -758,11 +794,15 @@ namespace Game.Ai.V2
                 EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
                 EconomyAssignmentApCost = d.EconomyAssignmentApCost,
                 EconomyPaybackTurns = d.EconomyPaybackTurns,
+                EconomyStrategicUrgency = d.EconomyStrategicUrgency,
+                EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
                 EconomyProjectedActivationApCost = d.EconomyProjectedActivationApCost,
                 EconomyProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
+                DeliveryShape = d.DeliveryShape,
+                ConsumerIntentKey = d.ConsumerIntentKey,
                 Explain = d.Explain,
                 IsPersistenceDeferred = d.IsPersistenceDeferred,
             };

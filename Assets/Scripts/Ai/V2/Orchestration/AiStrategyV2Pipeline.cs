@@ -575,7 +575,8 @@ namespace Game.Ai.V2
             //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
             int handAtStart = hand?.Hand?.Count ?? 0;
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, radar: radar);
+                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
+                radar: radar, deferFreshZeroRadar: true);
 
             // S4. Operational self-state refresh — ONLY if StrategicManager changed gameplay state
             //     (a partial CreateArmy + failed deploy still counts). Rebuilds Self + Economy;
@@ -627,6 +628,7 @@ namespace Game.Ai.V2
                 int noProgressCycles = 0;
                 var lastStrategicAdmissionFingerprint = new Dictionary<DesireAxis, string>();
                 bool ownershipFreshAfterPhaseA = phaseA.StateChanged;
+                bool zeroRadarResidualWindow = false;
 
                 string StrategicAdmissionFingerprint(DesireAxis axis)
                 {
@@ -801,7 +803,8 @@ namespace Game.Ai.V2
                         snapshot, player, root, hand, ctx, apLedger, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
                         phaseB.Reservation ?? phaseA.Reservation,
-                        economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar);
+                        economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
+                        deferFreshZeroRadar: true);
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
                     {
@@ -830,6 +833,7 @@ namespace Game.Ai.V2
 
                 IEnumerator RunTypedAdmissions()
                 {
+                    zeroRadarResidualWindow = false;
                     AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");
 
                     // Scout jobs rejected with ProvisionDisposition.RetryNextTurn ("out of the
@@ -957,6 +961,7 @@ namespace Game.Ai.V2
 
                     if (allocation.Funded.Count == 0)
                     {
+                        zeroRadarResidualWindow = true;
                         AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");
                         break;
                     }
@@ -1115,6 +1120,11 @@ namespace Game.Ai.V2
                             MissionContinuityLayer.ReconcileStep(
                                 player, snapshot.TurnNumber, outcome);
                         noProgressCycles++;
+                        // A rejected positive or durable mission must not be mistaken for
+                        // an exhausted portfolio; zero-only rejections leave a residual window.
+                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
+                            && !fe.IsCommitment && fe.Mission != null
+                            && fe.Mission.EffectiveValue <= 0f);
                         AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "
                             + $"noProgress={noProgressCycles}");
                         // No task command ran and no observation can differ. Repeating the same
@@ -1183,6 +1193,9 @@ namespace Game.Ai.V2
                         + $"noProgress={noProgressCycles}");
                     if (operationalReasons == StrategicInvalidationReason.None && !strategicChanged)
                     {
+                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
+                            && !fe.IsCommitment && fe.Mission != null
+                            && fe.Mission.EffectiveValue <= 0f);
                         AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
                         break;
                     }
@@ -1252,12 +1265,98 @@ namespace Game.Ai.V2
                         yield return RunTypedAdmissions();
                     }
 
+                    // An unobserved Phase-B mutation may expose positive work even
+                    // when it emitted no operational trigger. Be conservative: do not
+                    // start a zero-Radar residual admission on that ambiguous frame.
+                    if (phaseBRound.StateChanged && !operationalDirty)
+                        zeroRadarResidualWindow = false;
                     if (!phaseBRound.StateChanged && !strategicChanged)
                         break;
                     if (!operationalDirty && !strategicDirty)
                         break;
                 }
                 phaseBHandled = true;
+
+                // A zero Radar is not a prohibition. Only AFTER the existing operational
+                // and tempo passes exhaust their actionable budgets may new cold-axis
+                // preparation use what is physically left. No new budget/scorer/executor:
+                // call the same Phase A owner with freshly regenerated cold demands.
+                var coldAxes = new HashSet<DesireAxis>(scopedDemandAxes.Where(a =>
+                    RadarValueScale.For(radar, a) <= 0f));
+                if (zeroRadarResidualWindow && coldAxes.Count > 0
+                    && settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
+                    && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                {
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                        ? AggressionObjectiveEvaluator.Enumerate(
+                            snapshot, assessment.Breakdown.OpportunityReport)
+                        : new List<AggressionObjective>();
+                    activeIntents = MissionContinuityLayer.ResolveActive(
+                        player, snapshot, reconObjectives, aggressionObjectives);
+                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                    actorCommitments = ActorCommitments.FromIntents(
+                        activeIntents, snapshot, reconObjectives);
+                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                        ? DevelopmentOpportunityEvaluator.Enumerate(
+                            snapshot, player, root, hand, aggressionObjectives)
+                        : new List<DevelopmentOpportunity>();
+                    List<AxisDemand> coldDemands = AiStrategyV2Scope.ApplyDemandScope(
+                        DemandLayer.Generate(snapshot, assessment.Breakdown,
+                            reconObjectives, aggressionObjectives, activeIntents,
+                            actorCommitments, player, ctx, root, devOpportunities, coldAxes));
+                    if (coldDemands.Count > 0)
+                    {
+                        // Phase A owns one carried Reservation object. Its per-call residual
+                        // rewrite must not erase still-unfulfilled positive-axis telemetry.
+                        List<AxisDemand> warmResidual = (phaseB.Reservation ?? phaseA.Reservation)
+                            .UnresolvedDemands.Where(d => d != null
+                                && RadarValueScale.For(radar, d.RequestingAxis) > 0f).ToList();
+                        WorldAnalysis.StepObservationStamp beforeCold =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
+                            snapshot, player, root, hand, ctx, apLedger, coldDemands,
+                            actorCommitments, activeIntents, reconObjectives,
+                            phaseB.Reservation ?? phaseA.Reservation,
+                            economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
+                            radar: radar);
+                        phaseA.Accumulate(coldPass);
+                        phaseA.Reservation.UnresolvedDemands.AddRange(warmResidual);
+                        AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual — demands={coldDemands.Count} "
+                            + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
+                        if (coldPass.StateChanged)
+                        {
+                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                                snapshot, player, root, hand, ctx);
+                            WorldAnalysis.StepObservationStamp afterCold =
+                                WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                            WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                                beforeCold, afterCold, null);
+                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                            aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                                ? AggressionObjectiveEvaluator.Enumerate(
+                                    snapshot, assessment.Breakdown.OpportunityReport)
+                                : new List<AggressionObjective>();
+                            activeIntents = MissionContinuityLayer.ResolveActive(
+                                player, snapshot, reconObjectives, aggressionObjectives);
+                            activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                            actorCommitments = ActorCommitments.FromIntents(
+                                activeIntents, snapshot, reconObjectives);
+                            devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                                ? DevelopmentOpportunityEvaluator.Enumerate(
+                                    snapshot, player, root, hand, aggressionObjectives)
+                                : new List<DevelopmentOpportunity>();
+                            demands = AiStrategyV2Scope.ApplyDemandScope(DemandLayer.Generate(
+                                snapshot, assessment.Breakdown, reconObjectives,
+                                aggressionObjectives, activeIntents, actorCommitments,
+                                player, ctx, root, devOpportunities, scopedDemandAxes));
+                            ownershipFreshAfterPhaseA = true;
+                            yield return RunTypedAdmissions();
+                        }
+                    }
+                }
 
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
