@@ -1702,6 +1702,9 @@ namespace Game.Ai.V2
                     && state.RecordExtractionDeliveryFailure(
                         turn, intent.Economy.ResourceType, intent.Economy.TargetHex))
                 {
+                    // Terminal Economy retirement: return a borrowed Recon/Raid owner
+                    // atomically before removing the borrowing Extraction intent.
+                    RepayEconomyLoan(state, intent, o);
                     state.Remove(intent.IntentKey);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                         "ExtractionDeliverySuppressed");
