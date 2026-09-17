@@ -108,13 +108,12 @@ namespace Game.Ai.V2
             {
                 float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
                     ? AiConfigV2.economySameTurnCompletionBonus : 0f;
-                // TaskScore already priced the card AP/resources and the actor's delivery AP/
-                // distance once. EffectiveValue transports that intrinsic value through the shared
-                // Radar policy. Subtracting ApDesired + EstimatedDistance again here was an
-                // Economy-only second physical-cost scorer and changed cross-lane ordering.
-                // Keep only genuine admission policy: same-turn scheduling and urgency above the
-                // intrinsic BaseValue; neither is written back into TaskScore.
-                score = m.EffectiveValue + sameTurn
+                // TaskScore already priced card AP/resources and actor delivery once. Economy's
+                // local urgency and same-turn scheduling remain admission-only, not TaskScore.
+                // Radar scales EffectiveValue for CROSS-lane competition only: using it here
+                // changes Economy's within-lane order when the radar weight changes, even if
+                // BaseValue, urgency, feasibility and the available AP stay identical.
+                score = m.BaseValue + sameTurn
                     + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue);
             }
             return AdmissionRank(score, m.FromDurableIntent, m.DurableFundingTier);
