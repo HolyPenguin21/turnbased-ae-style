@@ -479,15 +479,12 @@ namespace Game.Ai.V2
 
             HashSet<int> ExclusionsFor(FundedEntry fe)
             {
-                // A ProvisioningSession only owns claims made during this one admission. Durable
-                // actor occupancy belongs to ActorCommitments and must survive the next mid-turn
-                // session. Let a mission keep its own incumbent, but never borrow another intent's
-                // physical scout merely because a fresh session started.
-                var excluded = alreadyClaimedArmyIds != null
-                    ? new HashSet<int>(alreadyClaimedArmyIds)
+                // Durable ownership can be relaxed only for this mission's incumbent.
+                // Same-pass claims are unconditional: an actor already provisioned for another
+                // mission cannot become available again via PreferredMoverArmyId.
+                var excluded = durableClaimedArmyIds != null
+                    ? new HashSet<int>(durableClaimedArmyIds)
                     : new HashSet<int>();
-                if (durableClaimedArmyIds != null)
-                    excluded.UnionWith(durableClaimedArmyIds);
                 if (fe.Mission.PreferredMoverArmyId.HasValue)
                 {
                     excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
@@ -500,6 +497,8 @@ namespace Game.Ai.V2
                     excluded.UnionWith(MissionIntentRegistry.GetOrCreate(player)
                         .ReconActorsTrimmedThisTurn(snap?.TurnNumber ?? ctx?.TurnNumber ?? -1));
                 }
+                if (alreadyClaimedArmyIds != null)
+                    excluded.UnionWith(alreadyClaimedArmyIds);
                 return excluded;
             }
 
@@ -668,8 +667,8 @@ namespace Game.Ai.V2
         // per-pool sizing cap) so no combination the solver could pick ever exceeds what a shared
         // physical resource can actually support across the WHOLE batch at once:
         //   · one actor/subset -> at most one mission (usedArmyIds — pre-existing, ActorKey already
-        //     disambiguates AirLaunch by airfield, so this doubles as "one airfield subset -> at
-        //     most one mission" too).
+        //     disambiguates AirLaunch by airfield, so this doubles as "one airfield subset -> at most
+        //     one mission" too).
         //   · airActorCap — total DISTINCT air actors (AirExisting + AirLaunch) chosen across the
         //     whole batch never exceeds ReconAirCapacityPolicy.MaxAirReconActorsPerTurn (minus wings
         //     already continuing a prior sortie). Defence in depth on top of the pool already being
@@ -931,8 +930,8 @@ namespace Game.Ai.V2
 
         // =======================================================================================
         //  C. MeasureCapacity — Demand's ONE read-only aggregate query. Moved verbatim from
-        //     DemandLayer.ComputeReconWitness/SolveReconFlow (spec §5/§9 checklist) — Demand must
-        //     not know HOW the matching is produced, only the resulting witnessed counts.
+        //  DemandLayer.ComputeReconWitness/SolveReconFlow (spec §5/§9 checklist) — Demand must
+        //  not know HOW the matching is produced, only the resulting witnessed counts.
         //
         //     A small max-flow network, not a bipartite matching — see the historical note kept
         //     below (unchanged reasoning, only the owner moved):
@@ -1437,4 +1436,3 @@ namespace Game.Ai.V2
         }
     }
 }
-
