@@ -704,8 +704,10 @@ namespace Game.Ai.V2
         public static float For(Radar radar, MissionProposal m)
         {
             var contrib = m?.Axes?.Value;
+            // Missing axis contributions are neutral, not an implicit Recon vote.
+            // An EXPLICIT Recon contribution still scales to zero if Recon Radar is zero.
             if (contrib == null || contrib.Count == 0)
-                return For(radar, DesireAxis.Recon);
+                return 1f;
             float acc = 0f, wsum = 0f;
             foreach (DesireAxis a in DesireAxes.All)
                 if (contrib.TryGetValue(a, out float c) && c > 0f)
@@ -713,7 +715,7 @@ namespace Game.Ai.V2
                     acc += c * For(radar, a);
                     wsum += c;
                 }
-            return wsum > 0f ? acc / wsum : For(radar, DesireAxis.Recon);
+            return wsum > 0f ? acc / wsum : 1f; // no valid declared contribution => neutral
         }
     }
 }
