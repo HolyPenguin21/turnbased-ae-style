@@ -314,21 +314,23 @@ namespace Game.Map
             ReapplyRememberedLayout(viewer, hex);
         }
 
-        private void RefreshRememberedBuildingVisual(HexCoord hex)
+        private void RefreshRememberedBuildingVisual(HexCoord hex, bool liveBuildingVisible)
         {
             foreach (KeyValuePair<PlayerSetupData, Dictionary<HexCoord, MapObjectVisual>> entry in _rememberedBuildingVisuals)
             {
                 if (!entry.Value.TryGetValue(hex, out MapObjectVisual snapshot) || snapshot == null)
                     continue;
-                // !CurrentViewerCanRenderLiveHex, not !VisionSystem.IsVisible(entry.Key, hex) —
-                // see that helper's own comment: this must read the exact same DebugRevealAll-
-                // aware fact the live building's own SetVisible check just used a moment ago
-                // (liveBuildingVisible in ReconcileHexVisualState), or a fogged-but-remembered hex
-                // with DebugRevealAll on shows both the live building (DebugRevealAll made it
-                // visible) AND this remembered ghost (raw IsVisible still says fogged) at once.
+                // !liveBuildingVisible, not !CurrentViewerCanRenderLiveHex(hex) — must read the
+                // EXACT same final decision the live building's own SetVisible call just used
+                // (ReconcileHexVisualState), not re-derive a similar-looking one. liveBuildingVisible
+                // also bypasses fog for the viewer's own building (building.Owner == CurrentViewer),
+                // which CurrentViewerCanRenderLiveHex alone doesn't know about — recomputing that
+                // narrower check here let a just-out-of-vision OWN building stay "live" while this
+                // same hex's remembered ghost also judged itself visible, showing both markers at
+                // once (the doubled-facility symptom this invariant exists to prevent).
                 bool visible = entry.Key == VisionSystem.CurrentViewer
                     && HumanVisualMemory.IsBuildingKnown(entry.Key, hex)
-                    && !CurrentViewerCanRenderLiveHex(hex);
+                    && !liveBuildingVisible;
                 snapshot.SetVisible(visible);
             }
         }
@@ -559,9 +561,11 @@ namespace Game.Map
             // hidden. RefreshRememberedBuildingVisual (still in this same pass, right after the
             // live building's own visibility was just decided above) is what actually sets the
             // remembered clone's visibility per this same rule (entry.Key == CurrentViewer &&
-            // IsBuildingKnown && !CurrentViewerCanRenderLiveHex) — reading it back here right
-            // after is what lets the DEV invariant check below catch the two ever disagreeing.
-            RefreshRememberedBuildingVisual(hex);
+            // IsBuildingKnown && !liveBuildingVisible) — passing liveBuildingVisible straight
+            // through (rather than letting it re-derive a similar-looking check) is what makes
+            // the two impossible to disagree, including for the viewer's own building's fog
+            // bypass (see that method's own comment for the concrete case this used to miss).
+            RefreshRememberedBuildingVisual(hex, liveBuildingVisible);
             // Same "one reconciliation pass" treatment for remembered ARMY ghosts — used to be a
             // separate whole-map RefreshRememberedArmyVisuals() call a caller had to remember to
             // run after the fact (RefreshAllVisibility, below); folded in here so live and
