@@ -247,6 +247,33 @@ namespace Game.EditorTests
             Assert.That(obj.BaseValue, Is.GreaterThanOrEqualTo(AiConfigV2.raidObjectiveMinBaseValue));
         }
 
+        [Test]
+        public void RaidValue_StationaryNeutralAndEventNeverLoseIntelValue()
+        {
+            WorldSnapshot neutral = SnapshotWithNeutralSighting(armyId: 77,
+                hex: new HexCoord(3, 0),
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            neutral.TurnNumber = 8; // the sighting was recorded on turn zero
+            CombatOpportunityReport neutralReport = CombatOpportunityAnalyzer.Analyze(neutral);
+            Assert.That(neutralReport.NeutralOpportunities.Single().Confidence,
+                Is.EqualTo(AiConfigV2.threatConfidenceLastKnown));
+            AggressionObjective neutralRaid = AggressionObjectiveEvaluator.Enumerate(
+                neutral, neutralReport).Single();
+            Assert.That(neutralRaid.TaskScore.Staleness, Is.Zero);
+            Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));
+
+            WorldSnapshot eventSnap = SnapshotWithEventGuard(
+                new HexCoord(4, 0), Weak(), withOwnArmy: true);
+            eventSnap.TurnNumber = 8;
+            CombatOpportunityReport eventReport = CombatOpportunityAnalyzer.Analyze(eventSnap);
+            AggressionObjective eventRaid = AggressionObjectiveEvaluator.Enumerate(
+                eventSnap, eventReport).Single();
+            Assert.That(eventRaid.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
+            Assert.That(eventRaid.TaskScore.Staleness, Is.Zero);
+            Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));
+            Assert.That(TaskScoreEvaluator.StaleIntelPenalty(0.5f), Is.LessThan(0f));
+        }
+
         // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------
 
         [Test]

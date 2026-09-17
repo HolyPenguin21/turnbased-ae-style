@@ -169,13 +169,13 @@ namespace Game.Ai.V2
             // Defender power is a combat-difficulty fact, not an expected resource/card reward.
             // Both neutral-army and guarded-event Raid objectives receive exactly one fixed
             // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
-            float staleRaw = 1f - Mathf.Clamp01(o.Confidence);
+            // Raid targets are stationary neutrals or event guards; older sightings do not move them.
+            // Keep shared StaleIntelPenalty for future attacks on mobile player armies.
             var score = new TaskScore(
-                staleness: TaskScoreEvaluator.StaleIntelPenalty(staleRaw),
                 militaryTargetRelevance: AiConfigV2.RaidReward);
             TaskScoreDiagnostics.Log("RaidObjective", o.TargetHex, score,
                 $"raidReward={score.RaidReward:0.###} "
-                + $"confidence={o.Confidence:0.###} stale={staleRaw:0.###}");
+                + $"confidence={o.Confidence:0.###} stale=0 stationary_raid");
 
             bool readyViable = o.CanCoverAllDefenders
                 && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
