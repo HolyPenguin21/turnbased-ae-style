@@ -123,8 +123,9 @@ namespace Game.Ai.V2
                 ordinaryCount++;
             }
 
-            // Mission does not decide concrete actor availability. Actor, route, vantage and
-            // executable step stay in ReconAssignmentPlanner / ProvisioningManager.
+            // Planning publishes the actor against which the pre-funding envelope was priced.
+            // This is still only a preference/compatibility witness: ReconAssignmentPlanner owns
+            // the final one-actor/one-job binding and may rematch when live route/vantage facts move.
             foreach (ScoutCandidate c in picked)
                 proposals.Add(BuildProposal(snap, c));
 
@@ -220,8 +221,9 @@ namespace Game.Ai.V2
         {
             // The estimate must price the SAME durable mover the proposal prefers. Otherwise a
             // cheaper, unrelated scout advertises an AP envelope the incumbent cannot execute.
-            // Estimate may still fall back to another eligible actor if the incumbent cannot act;
-            // actual binding/route feasibility remain exclusively with ReconAssignmentPlanner.
+            // For a fresh mission Estimate selects a concrete cheapest viable ground actor before
+            // funding. Carry that actor as a non-binding preference so admission can reason about
+            // the exact envelope it is financing; Assignment remains authoritative.
             ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover);
             var req = new MissionRequirements
             {
@@ -246,7 +248,7 @@ namespace Game.Ai.V2
                 FromDurableIntent = c.IsIncumbent,
                 DurableFundingTier = c.Tier,
                 Explain = c.Explain,
-                PreferredMoverArmyId = c.PreferredMover,
+                PreferredMoverArmyId = c.PreferredMover ?? est.PreferredMoverArmyId,
             };
             proposal.Axes.Value[DesireAxis.Recon] = 1.0f;
             return proposal;
