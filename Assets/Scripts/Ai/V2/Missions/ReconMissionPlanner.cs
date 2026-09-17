@@ -141,14 +141,18 @@ namespace Game.Ai.V2
             if (si == null)
                 return null;
 
+            // Task 5 (Problem B) — price BaseValue against the SAME preferred mover BuildProposal()
+            // will price Requirements against below, so a durable incumbent's TaskScore never
+            // silently reflects a cheaper, unrelated actor's envelope.
             ReconObjective o;
             if (ReconScoutKinds.IsExplore(si.Kind))
-                o = ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex);
+                o = ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex, intent.PreferredMoverArmyId);
             else if (ReconScoutKinds.IsRefresh(si.Kind))
-                o = ReconObjectiveEvaluator.RefreshAt(snap, si.FocusHex);
+                o = ReconObjectiveEvaluator.RefreshAt(snap, si.FocusHex, intent.PreferredMoverArmyId);
             else if (ReconScoutKinds.IsSurveil(si.Kind))
                 o = ReconObjectiveEvaluator.SurveilOf(snap,
-                    ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId));
+                    ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
+                    intent.PreferredMoverArmyId);
             else
             {
                 AiDebugLog.Write($"[AI][V2][Recon] intent materialize reject — unknown Scout kind {(int)si.Kind}");

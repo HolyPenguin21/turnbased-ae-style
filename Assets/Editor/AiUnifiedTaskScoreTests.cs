@@ -152,14 +152,20 @@ namespace Game.EditorTests
                 freshNeighbors: 4, distFromBase: 6,
                 enemyExposure: false, stealthDetectionRisk: false);
             ScoutCostEstimate estimate = ScoutCostModel.Estimate(snapshot, objective.ToTarget());
+            // Task 5 (Problem A) fix: the notional mover's whole ApDesired here is a re-activation
+            // fee (no stealth entry on this route), so it must price at the SAME shared
+            // taskScoreReactivationApWeight Raid/Economy use for a re-activation — never at the
+            // higher taskScoreCardPriceApWeight, which is reserved for a genuine one-time ability
+            // spend (e.g. entering stealth).
             Assert.That(objective.TaskScore.CardPrice,
-                Is.EqualTo(TaskScoreEvaluator.CardPrice(estimate.ApDesired, 0f)));
+                Is.EqualTo(estimate.ActivationApNow * AiConfigV2.taskScoreReactivationApWeight));
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.ApDesired, estimate.EtaTurns,
-                    AiConfigV2.taskScoreCardPriceApWeight)));
+                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
+                    estimate.EtaTurns, AiConfigV2.taskScoreReactivationApWeight)));
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
-            // info=10, home proximity=3, activation=2, one extra turn of delivery=2.
-            Assert.That(objective.BaseValue, Is.EqualTo(9f).Within(0.0001f));
+            // info=10, home proximity=3, activation=1 (weight 1, not 2), one extra turn of
+            // delivery=1 (weight 1, not 2).
+            Assert.That(objective.BaseValue, Is.EqualTo(11f).Within(0.0001f));
         }
 
         [Test]

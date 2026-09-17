@@ -54,8 +54,13 @@ namespace Game.EditorTests
                 new List<MissionIntent>(), new[] { objective }).Single();
 
             Assert.That(fresh.FromDurableIntent, Is.False);
-            Assert.That(fresh.PreferredMoverArmyId, Is.Null,
-                "a planning estimate must not reserve an army before canonical assignment");
+            // Task 8 correction: BuildProposal() legitimately carries the cheapest-actor pre-funding
+            // WITNESS (est.PreferredMoverArmyId) for a brand-new candidate — it is not a hard
+            // reservation (ReconAssignmentPlanner still owns the final one-actor/one-job bind and
+            // may pick a different actor). The witness must be the SAME cheap actor Requirements
+            // were priced against (army #20, ActivationApCost 1), never left dangling as null.
+            Assert.That(fresh.PreferredMoverArmyId, Is.EqualTo(20),
+                "a fresh candidate's pre-funding witness must name the actor its own Requirements were priced against");
             Assert.That(fresh.Requirements.MoverKnown, Is.True);
             Assert.That(fresh.Requirements.ApDesired, Is.EqualTo(1f));
         }
@@ -73,6 +78,12 @@ namespace Game.EditorTests
                 new[] { Incumbent(focus, 10) }, new List<ReconObjective>()).Single();
 
             Assert.That(continuing.PreferredMoverArmyId, Is.EqualTo(10));
+            // Army #10 (the incumbent) has 0 CurrentMovement this turn, so ScoutMoverSelector.
+            // Eligible() excludes it entirely (a structural "spent this turn" fact, not a price
+            // comparison) — the fallback to army #20's cost is therefore correct on BOTH BaseValue
+            // and Requirements after the Task 5 fix (they now share the exact same estimate call),
+            // not a masked repeat of the old "stale/cheaper-actor substitution" defect, which only
+            // ever manifested when the incumbent WAS eligible but merely not the cheapest.
             Assert.That(continuing.Requirements.ApDesired, Is.EqualTo(1f),
                 "pricing may consider another eligible mover but must not bind it here");
         }
@@ -98,10 +109,41 @@ namespace Game.EditorTests
                 freshNeighbors: 6, distFromBase: 5, enemyExposure: false,
                 stealthDetectionRisk: false);
             Assert.That(objective.TaskScore.CardPrice, Is.EqualTo(0f));
+            // Task 5 (Problem A) fix: a future re-activation is the same real per-turn AP
+            // Economy/Raid price at taskScoreReactivationApWeight, never at the higher
+            // taskScoreCardPriceApWeight reserved for a genuine one-time ability spend.
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(8f * AiConfigV2.taskScoreCardPriceApWeight).Within(0.001f),
+                Is.EqualTo(8f * AiConfigV2.taskScoreReactivationApWeight).Within(0.001f),
                 "two later turns require two REAL 4-AP activations, even if this turn is free");
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
+        }
+
+        [Test]
+        public void ContinuingScout_BaseValuePricesTheSamePreferredActorAsRequirements()
+        {
+            // Task 5 (Problem B) regression: army #10 (preferred, ActivationApCost 4) is more
+            // expensive than free army #20 (ActivationApCost 1). Before the fix, TryMaterializeIntent
+            // priced BaseValue via ExploreAt() with NO preferred actor (so it silently used #20's
+            // cheap 1-AP cost) while BuildProposal() priced Requirements against the pinned #10's
+            // real 4-AP cost — two different actors backing the same TaskScore. Both must now agree.
+            var player = new PlayerSetupData { Nickname = "Recon cost regression" };
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, focus);
+
+            MissionProposal continuing = ReconMissionPlanner.Propose(snap,
+                new DesireBreakdown { ReconExplorePressure = 1f },
+                new[] { Incumbent(focus, 10) }, new List<ReconObjective>()).Single();
+
+            Assert.That(continuing.PreferredMoverArmyId, Is.EqualTo(10));
+            Assert.That(continuing.Requirements.ApDesired, Is.EqualTo(4f));
+            // BaseValue must reflect the SAME 4-AP actor Requirements were priced against, not the
+            // cheaper unrelated army #20's 1-AP envelope.
+            ReconObjective directEstimate = ReconObjectiveEvaluator.ExploreAt(snap, focus,
+                preferredMoverArmyId: 10);
+            Assert.That(continuing.BaseValue, Is.EqualTo(directEstimate.BaseValue).Within(0.0001f));
+            Assert.That(directEstimate.TaskScore.CardPrice,
+                Is.EqualTo(4f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f),
+                "BaseValue's own CardPrice must be army #10's real activation fee, not army #20's");
         }
 
         private static MissionIntent Incumbent(HexCoord focus, int armyId)
