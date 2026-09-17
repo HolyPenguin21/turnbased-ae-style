@@ -715,8 +715,16 @@ namespace Game.Ai.V2
                 // for mission A, garrison #10 + shell #21 for mission B — distinct ActorKeys, same
                 // source unit). The source garrison is a second exclusive resource the solver must
                 // reserve alongside the shell.
+                // A garrison id of 0 is a real, valid identity (the game's very first garrison),
+                // not "no source garrison" — gating the source reservation on sourceId > 0 let two
+                // candidates that both extract from garrison #0 into two DIFFERENT free shells
+                // dodge the exclusivity check entirely. RequiresGarrisonExtraction is the existing
+                // fact that says "this candidate has a second exclusive resource to reserve";
+                // whether that resource's id happens to be 0 is irrelevant.
                 int sourceId = cand.SourceGarrisonArmyId;
-                if (usedArmyIds.Contains(aid) || (sourceId > 0 && usedArmyIds.Contains(sourceId)))
+                bool hasGarrisonSource = cand.RequiresGarrisonExtraction;
+                if (usedArmyIds.Contains(aid)
+                    || (hasGarrisonSource && usedArmyIds.Contains(sourceId)))
                     continue;
 
                 bool isAir = cand.ExecutorKind != ScoutExecutorKind.Ground;
@@ -759,7 +767,7 @@ namespace Game.Ai.V2
                     continue;
 
                 usedArmyIds.Add(aid);
-                if (sourceId > 0)
+                if (hasGarrisonSource)
                     usedArmyIds.Add(sourceId);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
@@ -767,7 +775,7 @@ namespace Game.Ai.V2
                     nextAirLaunchEnergy,
                     usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
                 usedArmyIds.Remove(aid);
-                if (sourceId > 0)
+                if (hasGarrisonSource)
                     usedArmyIds.Remove(sourceId);
             }
             chosen[i] = -1;
