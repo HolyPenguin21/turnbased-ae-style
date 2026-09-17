@@ -1095,7 +1095,7 @@ namespace Game.Ai.V2
                             + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
                             + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
 
-                        if (poolWide || !cycleSession.HasNewFailures || cycleSession.Converged
+                        if (!cycleSession.HasNewFailures || cycleSession.Converged
                             || ++repriceReallocPass >= AiConfigV2.maxReallocIterations)
                         {
                             provisioningSettled = true;
@@ -1365,10 +1365,7 @@ namespace Game.Ai.V2
                     }
     
                     if (anyFailure && allFailuresArePoolWide)
-                    {
-                        AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
-                        break;
-                    }
+                        AiDebugLog.Write("[AI][V2] provision — failed capability pools exhausted; re-pack to admit other runnable lanes");
                     if (!session.HasNewFailures || session.Converged)
                         break;
                     if (++reallocPass >= AiConfigV2.maxReallocIterations)
