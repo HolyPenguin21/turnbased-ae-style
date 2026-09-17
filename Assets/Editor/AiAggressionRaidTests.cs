@@ -260,7 +260,9 @@ namespace Game.EditorTests
             AggressionObjective neutralRaid = AggressionObjectiveEvaluator.Enumerate(
                 neutral, neutralReport).Single();
             Assert.That(neutralRaid.TaskScore.Staleness, Is.Zero);
-            Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));
+            Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
+                + TaskScoreEvaluator.OwnTerritoryProximity(
+                    TaskScoreEvaluator.NearestOwnedHomeDistance(neutral, neutralRaid.LastKnownHex))));
 
             WorldSnapshot eventSnap = SnapshotWithEventGuard(
                 new HexCoord(4, 0), Weak(), withOwnArmy: true);
@@ -270,8 +272,37 @@ namespace Game.EditorTests
                 eventSnap, eventReport).Single();
             Assert.That(eventRaid.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
             Assert.That(eventRaid.TaskScore.Staleness, Is.Zero);
-            Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));
+            Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
+                + TaskScoreEvaluator.OwnTerritoryProximity(
+                    TaskScoreEvaluator.NearestOwnedHomeDistance(eventSnap, eventRaid.LastKnownHex))));
             Assert.That(TaskScoreEvaluator.StaleIntelPenalty(0.5f), Is.LessThan(0f));
+        }
+
+        [Test]
+        public void RaidValue_UsesSignedNearestHomeProximity_ForNeutralAndEvent()
+        {
+            HexCoord nearHex = new HexCoord(3, 0);
+            WorldSnapshot near = SnapshotWithNeutralSighting(armyId: 81, hex: nearHex,
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            AggressionObjective nearRaid = AggressionObjectiveEvaluator.Enumerate(near,
+                CombatOpportunityAnalyzer.Analyze(near)).Single();
+            Assert.That(nearRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(1.5f).Within(0.0001f));
+            Assert.That(nearRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward + 1.5f).Within(0.0001f));
+
+            WorldSnapshot far = SnapshotWithNeutralSighting(armyId: 82,
+                hex: new HexCoord(12, 0),
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            AggressionObjective farRaid = AggressionObjectiveEvaluator.Enumerate(far,
+                CombatOpportunityAnalyzer.Analyze(far)).Single();
+            Assert.That(farRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
+            Assert.That(farRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward - 3f).Within(0.0001f));
+
+            WorldSnapshot eventSnap = SnapshotWithEventGuard(nearHex, Weak(), withOwnArmy: true);
+            AggressionObjective eventRaid = AggressionObjectiveEvaluator.Enumerate(eventSnap,
+                CombatOpportunityAnalyzer.Analyze(eventSnap)).Single();
+            Assert.That(eventRaid.TaskScore.OwnTerritoryProximity,
+                Is.EqualTo(nearRaid.TaskScore.OwnTerritoryProximity));
+            Assert.That(eventRaid.BaseValue, Is.EqualTo(nearRaid.BaseValue));
         }
 
         // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------

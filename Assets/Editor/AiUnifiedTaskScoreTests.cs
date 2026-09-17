@@ -568,6 +568,7 @@ namespace Game.EditorTests
             var resolvedTarget = (RaidMissionTarget)result.Target;
             var expected = new TaskScore(
                 staleness: objective.TaskScore.Staleness,
+                ownTerritoryProximity: objective.TaskScore.OwnTerritoryProximity,
                 militaryTargetRelevance: objective.TaskScore.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(resolvedTarget.ReadyWinChance),
                 cardPrice: pinned.ActivationApCost * AiConfigV2.taskScoreReactivationApWeight,
@@ -575,6 +576,24 @@ namespace Game.EditorTests
                     result.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
+            Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-1.5f).Within(0.0001f));
+            // No fresh opportunity report: a started stationary Raid retains its
+            // real actor AP/ETA and positional fact, but loses no value for fog.
+            intent.Raid.LastKnownHex = destination;
+            breakdown.OpportunityReport = new CombatOpportunityReport
+            {
+                All = Array.Empty<CombatOpportunity>(),
+                NeutralOpportunities = Array.Empty<CombatOpportunity>(),
+            };
+            MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
+                new[] { intent }, Array.Empty<AggressionObjective>()).Single();
+            float expectedFog = objective.TaskScore.OwnTerritoryProximity
+                - pinned.ActivationApCost * AiConfigV2.taskScoreReactivationApWeight
+                - TaskScoreEvaluator.DeliveryFromEta(pinned.ActivationApCost,
+                    fog.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight);
+            Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.StaleIntelPenalty(1f), Is.LessThan(0f),
+                "shared staleness conversion remains available for future mobile player targets");
         }
 
         [Test]
