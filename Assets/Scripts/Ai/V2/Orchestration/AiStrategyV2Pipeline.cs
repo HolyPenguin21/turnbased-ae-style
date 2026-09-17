@@ -1267,11 +1267,14 @@ namespace Game.Ai.V2
                         yield return RunTypedAdmissions();
                     }
 
-                    // An unobserved Phase-B mutation may expose positive work even
-                    // when it emitted no operational trigger. Be conservative: do not
-                    // start a zero-Radar residual admission on that ambiguous frame.
+                    // Phase B can change the hand or world without publishing a typed
+                    // operational trigger. Reuse the canonical bounded admission loop
+                    // on the settled state before admitting any zero-Radar residual.
                     if (phaseBRound.StateChanged && !operationalDirty)
-                        zeroRadarResidualWindow = false;
+                    {
+                        noProgressCycles = 0;
+                        yield return RunTypedAdmissions();
+                    }
                     if (!phaseBRound.StateChanged && !strategicChanged)
                         break;
                     if (!operationalDirty && !strategicDirty)
