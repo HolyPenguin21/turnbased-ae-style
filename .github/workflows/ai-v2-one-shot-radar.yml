@@ -1,0 +1,42 @@
+name: Apply bounded AI V2 patch
+on:
+  push:
+    branches:
+      - fix/radar-integrated-followups
+    paths:
+      - .github/workflows/ai-v2-one-shot-radar.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+            .radar_integrated.patch
+            .github/workflows/ai-v2-one-shot-radar.yml
+      - name: Apply and verify focused patch, remove temporary tooling
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check .radar_integrated.patch
+          git apply .radar_integrated.patch
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs').read_text()
+          assert 'if (poolWide || !cycleSession.HasNewFailures' not in p
+          assert 'every funded mission\'s capability pool is exhausted this turn; stop key-by-key reallocation' not in p
+          assert 'if (!cycleSession.HasNewFailures || cycleSession.Converged' in p
+          assert 'failed capability pools exhausted; re-pack to admit other runnable lanes' in p
+          print('Static assertions: PASS')
+          PY
+          git rm -- .radar_integrated.patch .github/workflows/ai-v2-one-shot-radar.yml
+          git add -- Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): repack AP after pool-wide provisioning failure in main loop'
+          git push origin HEAD:fix/radar-integrated-followups
