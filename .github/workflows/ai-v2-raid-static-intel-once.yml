@@ -11,91 +11,70 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          persist-credentials: true
-      - name: Remove only Raid staleness penalty and add regression checks
+      - name: Apply guarded source and regression test edits
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          def replace_one(path, old, new):
-              p = Path(path)
-              data = p.read_text(encoding='utf-8')
-              assert data.count(old) == 1, (path, data.count(old), old[:110])
-              p.write_text(data.replace(old, new), encoding='utf-8')
-          source = 'Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs'
-          replace_one(source, '''            float staleRaw = 1f - Mathf.Clamp01(o.Confidence);
-            var score = new TaskScore(
-                staleness: TaskScoreEvaluator.StaleIntelPenalty(staleRaw),
-                militaryTargetRelevance: AiConfigV2.RaidReward);
-            TaskScoreDiagnostics.Log("RaidObjective", o.TargetHex, score,
-                $"raidReward={score.RaidReward:0.###} "
-                + $"confidence={o.Confidence:0.###} stale={staleRaw:0.###}");''', '''            // Raid targets are stationary neutral armies and event guards. An older honest
-            // sighting does not make their location less reliable, so no stale-intel penalty
-            // belongs in this objective. Keep the generic StaleIntelPenalty evaluator intact
-            // for future attacks on mobile player armies (a different objective family).
-            var score = new TaskScore(militaryTargetRelevance: AiConfigV2.RaidReward);
-            TaskScoreDiagnostics.Log("RaidObjective", o.TargetHex, score,
-                $"raidReward={score.RaidReward:0.###} "
-                + $"confidence={o.Confidence:0.###} stale=0 (stationary raid target)");''')
-          test = 'Assets/Editor/AiAggressionRaidTests.cs'
-          replace_one(test, '''        // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------
-''', '''        [Test]
-        public void RaidValue_StaticNeutralDoesNotLoseValueWhenSightingBecomesLastKnown()
-        {
-            WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 77, hex: new HexCoord(3, 0),
-                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true,
-                seenTurn: 1);
-            snap.TurnNumber = 1;
-            CombatOpportunityReport fresh = CombatOpportunityAnalyzer.Analyze(snap);
-            AggressionObjective freshObjective = AggressionObjectiveEvaluator.Enumerate(snap, fresh).Single();
-
-            snap.TurnNumber = 7;
-            CombatOpportunityReport remembered = CombatOpportunityAnalyzer.Analyze(snap);
-            AggressionObjective rememberedObjective = AggressionObjectiveEvaluator.Enumerate(snap, remembered).Single();
-
-            Assert.That(fresh.NeutralOpportunities.Single().Confidence,
-                Is.GreaterThan(remembered.NeutralOpportunities.Single().Confidence),
-                "the test must exercise real Exact versus LastKnown confidence");
-            Assert.That(freshObjective.TaskScore.Staleness, Is.Zero);
-            Assert.That(rememberedObjective.TaskScore.Staleness, Is.Zero);
-            Assert.That(freshObjective.BaseValue, Is.EqualTo(AiConfigV2.RaidReward).Within(0.0001f));
-            Assert.That(rememberedObjective.BaseValue,
-                Is.EqualTo(freshObjective.BaseValue).Within(0.0001f));
-        }
-
-        [Test]
-        public void RaidValue_EventGuardHasNoIntelDecay_GenericPenaltyRemainsAvailable()
-        {
-            WorldSnapshot snap = SnapshotWithEventGuard(new HexCoord(4, 0), Weak(), withOwnArmy: true);
-            snap.TurnNumber = 9;
-            CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);
-            AggressionObjective objective = AggressionObjectiveEvaluator.Enumerate(snap, report).Single();
-
-            Assert.That(objective.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
-            Assert.That(objective.TaskScore.Staleness, Is.Zero);
-            Assert.That(objective.BaseValue, Is.EqualTo(AiConfigV2.RaidReward).Within(0.0001f));
-            Assert.That(TaskScoreEvaluator.StaleIntelPenalty(0.5f), Is.LessThan(0f),
-                "shared intel decay must remain available for future mobile player targets");
-        }
-
-        // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------
-''')
-          replace_one(test, '''            List<WorthIt.DefenderProfile> defenders, bool withOwnArmy = false, bool closeToBase = true)
-''', '''            List<WorthIt.DefenderProfile> defenders, bool withOwnArmy = false,
-            bool closeToBase = true, int seenTurn = 0)
-''')
-          replace_one(test, '''                    defenders.Sum(d => d.Defense), defenders.Sum(d => d.Attack), defenders, armyId: armyId),
-''', '''                    defenders.Sum(d => d.Defense), defenders.Sum(d => d.Attack), defenders,
-                    seenTurn: seenTurn, armyId: armyId),
-''')
-          print('PASS guarded patch: exactly one Raid scoring owner and two existing test-file regression cases')
+          p = Path('Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs')
+          s = p.read_text(encoding='utf-8')
+          old = '            float staleRaw = 1f - Mathf.Clamp01(o.Confidence);\n'
+          new = '            // Raid targets are stationary neutrals or event guards; older sightings do not move them.\n            // Keep shared StaleIntelPenalty for future attacks on mobile player armies.\n'
+          assert s.count(old) == 1
+          s = s.replace(old, new)
+          old = '                staleness: TaskScoreEvaluator.StaleIntelPenalty(staleRaw),\n'
+          assert s.count(old) == 1
+          s = s.replace(old, '')
+          old = 'stale={staleRaw:0.###}'
+          assert s.count(old) == 1
+          s = s.replace(old, 'stale=0 stationary_raid')
+          p.write_text(s, encoding='utf-8')
+          p = Path('Assets/Editor/AiAggressionRaidTests.cs')
+          s = p.read_text(encoding='utf-8')
+          marker = '        // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------\n'
+          assert s.count(marker) == 1
+          test = '''        [Test]
+                  public void RaidValue_StationaryNeutralAndEventNeverLoseIntelValue()
+                  {
+                      WorldSnapshot neutral = SnapshotWithNeutralSighting(armyId: 77,
+                          hex: new HexCoord(3, 0),
+                          defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+                      neutral.TurnNumber = 8; // the sighting was recorded on turn zero
+                      CombatOpportunityReport neutralReport = CombatOpportunityAnalyzer.Analyze(neutral);
+                      Assert.That(neutralReport.NeutralOpportunities.Single().Confidence,
+                          Is.EqualTo(AiConfigV2.threatConfidenceLastKnown));
+                      AggressionObjective neutralRaid = AggressionObjectiveEvaluator.Enumerate(
+                          neutral, neutralReport).Single();
+                      Assert.That(neutralRaid.TaskScore.Staleness, Is.Zero);
+                      Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));
+          
+                      WorldSnapshot eventSnap = SnapshotWithEventGuard(
+                          new HexCoord(4, 0), Weak(), withOwnArmy: true);
+                      eventSnap.TurnNumber = 8;
+                      CombatOpportunityReport eventReport = CombatOpportunityAnalyzer.Analyze(eventSnap);
+                      AggressionObjective eventRaid = AggressionObjectiveEvaluator.Enumerate(
+                          eventSnap, eventReport).Single();
+                      Assert.That(eventRaid.Target.Kind, Is.EqualTo(RaidTargetKind.EventGuard));
+                      Assert.That(eventRaid.TaskScore.Staleness, Is.Zero);
+                      Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));
+                      Assert.That(TaskScoreEvaluator.StaleIntelPenalty(0.5f), Is.LessThan(0f));
+                  }
+          
+          '''
+          # Dedent only the fixed YAML/script indentation in the triple-quoted test body.
+          import textwrap
+          test = textwrap.dedent(test)
+          assert test.startswith('[Test]')
+          test = textwrap.indent(test, '        ')
+          s = s.replace(marker, test + marker)
+          p.write_text(s, encoding='utf-8')
+          print('PASS: Raid-only score update, existing shared penalty preserved, regression inserted')
           PY
           git diff --check
           git diff --stat
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs Assets/Editor/AiAggressionRaidTests.cs
-          git commit -m 'fix(ai-v2): keep stationary Raid targets immune to intel staleness'
+          git commit -m 'fix(ai-v2): remove staleness penalty for stationary Raid targets'
           git push origin HEAD:fix/raid-neutral-no-stale-penalty
