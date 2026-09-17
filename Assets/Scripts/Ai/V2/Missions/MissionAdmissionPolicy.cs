@@ -36,14 +36,11 @@ namespace Game.Ai.V2
             switch (lane)
             {
                 case ExecutionLane.Recon:
-                    // Generic funding cannot know whether Assignment will bind a Scout mission to
-                    // a ground actor or to aviation. The hard concurrency limit applies only to
-                    // GROUND scouts and is therefore enforced by ReconAssignmentPlanner, where the
-                    // executor kind is known. Air keeps its independent aviation actor cap.
+                    // Ground-vs-air concurrency is finalized by ReconAssignmentPlanner where the
+                    // executor kind is known. Actor-priced ground proposals are nevertheless allowed
+                    // to participate in generic pairwise compatibility below before funding.
                     return int.MaxValue;
                 case ExecutionLane.Aggression:
-                    // No arbitrary Raid K. Real ready actors, AP/physical resources, target
-                    // conflicts and commitments bound Aggression throughput.
                     return int.MaxValue;
                 case ExecutionLane.Economy:
                     return int.MaxValue;
@@ -52,19 +49,28 @@ namespace Game.Ai.V2
             }
         }
 
-        // Pairwise execution conflicts:
-        // Recon:
-        //   · same FocusHex
-        // Raid:
-        //   · same typed Raid target (neutral army id OR guarded-event hex)
-        //   · no distinct ready combat-army assignment for the pair
-        //
-        // Recon deliberately carries NO actor-pair distinctness check here any more — Generic
-        // Funding must never know WHO (spec review finding 2). Scout/actor contention is resolved
-        // entirely in Provisioning/Assignment (ReconAssignmentPlanner.AssignFunded, one actor <= one
-        // job) with ResourceAllocator's existing repack loop reconciling any funded mission that
-        // Assignment could not actually staff. Raid keeps its own pairwise actor-distinctness
-        // rejection (GroundCombatAdmissionRegistry) — that lane is untouched by this pass.
+        // A proposal-side actor is a PLANNING WITNESS: the actor whose real current-turn envelope
+        // was used before funding. It is not a binding operation here; Assignment/Provisioning can
+        // still rematch if live facts change. Durable intents naturally publish their continuity
+        // mover through the same field. Economy also carries the builder in its typed target, so a
+        // legacy/test proposal that omitted PreferredMover still exposes its concrete builder.
+        private static int? PlannedActor(MissionProposal mission)
+        {
+            if (mission == null)
+                return null;
+            if (mission.PreferredMoverArmyId.HasValue)
+                return mission.PreferredMoverArmyId;
+            if (mission.Kind == MissionKind.Economy
+                && mission.Target is EconomyMissionTarget economy
+                && economy.BuilderArmyId.HasValue)
+                return economy.BuilderArmyId;
+            return null;
+        }
+
+        // Pairwise execution conflicts. This is the ONE generic portfolio-compatibility owner:
+        // objective identity stays kind-specific, while a concrete actor-priced plan is exclusive
+        // across Recon/Economy/Raid lanes before money is committed. The rule does not assign an
+        // actor; it only refuses two proposals that both advertise the same already-priced actor.
         public static bool Conflicts(MissionProposal a, MissionProposal b)
         {
             if (a == null || b == null) return false;
@@ -72,28 +78,26 @@ namespace Game.Ai.V2
             if (a.Kind == MissionKind.Raid && b.Kind == MissionKind.Raid
                 && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb)
             {
-                // RaidTargetRef is the canonical identity owner. ArmyId 0 is legitimate and an
-                // EventGuard has no army id until Explore spawns it, so collapsing identity back
-                // to TargetArmyId would make every guarded event look like target #0 and would also
-                // collide with a real neutral Army#0.
                 if (ra.Target.HasValue && rb.Target.HasValue && ra.Target.Equals(rb.Target))
                     return true;
-                return !GroundCombatAdmissionRegistry.PairHasDistinctAssignment(a, b);
+                // Raid owns its richer alternative-set feasibility in the existing registry. Do not
+                // replace it with a second matching layer here.
+                if (!GroundCombatAdmissionRegistry.PairHasDistinctAssignment(a, b))
+                    return true;
             }
 
             if (a.Kind == MissionKind.Economy && b.Kind == MissionKind.Economy
-                && a.Target is EconomyMissionTarget ea && b.Target is EconomyMissionTarget eb)
-                return ea.TargetHex.Equals(eb.TargetHex);
-
-            if (!(a.Target is ScoutMissionTarget ta) || !(b.Target is ScoutMissionTarget tb))
-                return false;
-
-            if (ta.FocusHex.Equals(tb.FocusHex))
+                && a.Target is EconomyMissionTarget ea && b.Target is EconomyMissionTarget eb
+                && ea.TargetHex.Equals(eb.TargetHex))
                 return true;
 
-            // Actor-specific spacing belongs to Assignment, alongside the one-actor/one-job and
-            // ground-vs-air constraints. At this layer only the objective identity is knowable.
-            return false;
+            if (a.Target is ScoutMissionTarget ta && b.Target is ScoutMissionTarget tb
+                && ta.FocusHex.Equals(tb.FocusHex))
+                return true;
+
+            int? aa = PlannedActor(a);
+            int? ba = PlannedActor(b);
+            return aa.HasValue && ba.HasValue && aa.Value == ba.Value;
         }
 
         public static float AdmissionRank(MissionProposal m)
