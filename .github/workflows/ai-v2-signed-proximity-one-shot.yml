@@ -1,0 +1,57 @@
+name: AI V2 signed proximity one shot
+on:
+  push:
+    branches:
+      - calibration/signed-proximity-remove-stale-deficit-12
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Patch canonical proximity and remove obsolete deficit explanations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace_once(path, before, after):
+              p = Path(path)
+              s = p.read_text()
+              n = s.count(before)
+              assert n == 1, f'{path}: expected exactly one pattern, found {n}: {before[:70]}'
+              p.write_text(s.replace(before, after, 1))
+          score = 'Assets/Scripts/Ai/V2/Evaluation/TaskScore.cs'
+          replace_once(score,
+              '            float quality = 1f - Mathf.Clamp01(\n                nearestHomeDistance / Mathf.Max(1f, AiConfigV2.taskScoreProximityFullFalloffDistance));\n            return quality * AiConfigV2.taskScoreProximityMax;',
+              '            // Proximity is a signed positional advantage, not another delivery/AP charge.\n            // Recenter the established 6-point spread: close +3, midpoint 0, distant -3.\n            // Preserve the original slope so travel already priced by Delivery is not doubled.\n            float quality = 0.5f - Mathf.Clamp01(\n                nearestHomeDistance / Mathf.Max(1f, AiConfigV2.taskScoreProximityFullFalloffDistance));\n            return quality * AiConfigV2.taskScoreProximityMax;')
+          cfg = 'Assets/Scripts/Ai/V2/Foundation/AiConfigV2.TaskScore.cs'
+          replace_once(cfg,
+              '        public const float taskScoreProximityMax = 6f;\n        public const float taskScoreProximityFullFalloffDistance = 12f;',
+              '        // Full signed span, not a positive-only maximum: +3 to -3 across 12 hexes.\n        public const float taskScoreProximityMax = 6f;\n        public const float taskScoreProximityFullFalloffDistance = 12f;')
+          replace_once(cfg,
+              '        // multipliers. The legacy urgency band was 25..60; the already-established common migration\n        // bridge maps the old 60-point Economy deficit term to canonical 12 (x0.2), hence 5..12.\n        // Development remains on its pre-migration 25..60 band until that non-world family migrates.',
+              '        // multipliers. The 5..12 band is a provisional policy calibration, NOT a conversion\n        // from a retired Economy deficit weight. Revalidate against measured Play-vs-Hold choices.\n        // Development remains on its pre-migration 25..60 band until that non-world family migrates.')
+          replace_once(cfg,
+              '        // The old extraction score\'s dominant deficit term topped out at 60, while the canonical\n        // TaskScore deficit bonus tops out at 12: preserving the former relative policy therefore\n        // maps continuation loss 20 -> 4 and hysteresis 8 -> 1.6. These are policy offsets, not\n        // intrinsic TaskScore slots, and legacy constants remain available to non-migrated paths.',
+              '        // Continuation loss and hysteresis are provisional policy offsets to calibrate\n        // from actual interruptions; they are not derived from the current deficit bonus (+3).\n        // They are not intrinsic TaskScore slots. Legacy constants remain for unmigrated paths.')
+          tests = 'Assets/Editor/AiUnifiedTaskScoreTests.cs'
+          replace_once(tests,
+              '            // info=10, home proximity=3, activation=1 (weight 1, not 2), one extra turn of\n            // delivery=1 (weight 1, not 2).\n            Assert.That(objective.BaseValue, Is.EqualTo(11f).Within(0.0001f));',
+              '            // info=10, neutral home proximity at 6 hexes=0, activation=1,\n            // one extra turn of delivery=1.\n            Assert.That(objective.BaseValue, Is.EqualTo(8f).Within(0.0001f));')
+          replace_once(tests,
+              '        [Test]\n        public void Deficit_NeverGeneratesValueWithoutMarginalIncome()',
+              '        [Test]\n        public void OwnTerritoryProximity_IsSignedWithoutChangingItsExistingSlope()\n        {\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(0f), Is.EqualTo(3f).Within(0.0001f));\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(3f), Is.EqualTo(1.5f).Within(0.0001f));\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(6f), Is.Zero.Within(0.0001f));\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(9f), Is.EqualTo(-1.5f).Within(0.0001f));\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(12f), Is.EqualTo(-3f).Within(0.0001f));\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(20f), Is.EqualTo(-3f).Within(0.0001f));\n            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(-1f), Is.Zero);\n            Assert.That(new TaskScore(ownTerritoryProximity:\n                TaskScoreEvaluator.OwnTerritoryProximity(12f)).Value,\n                Is.EqualTo(-3f).Within(0.0001f),\n                "Fold must retain the negative positional contribution without another penalty slot");\n        }\n\n        [Test]\n        public void Deficit_NeverGeneratesValueWithoutMarginalIncome()')
+          print('PASS: five guarded changes across 3 existing files')
+          PY
+          git diff --check
+          git diff --stat
+          git grep -n -i -E 'deficit (bonus|term).*(12|60)|old.*deficit.*12' Assets/Scripts/Ai/V2/Foundation/AiConfigV2.TaskScore.cs && exit 1 || test "$?" -eq 1
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/Scripts/Ai/V2/Evaluation/TaskScore.cs Assets/Scripts/Ai/V2/Foundation/AiConfigV2.TaskScore.cs Assets/Editor/AiUnifiedTaskScoreTests.cs
+          git commit -m 'calibrate(ai-v2): sign home proximity and remove obsolete deficit scaling notes'
+          git push
