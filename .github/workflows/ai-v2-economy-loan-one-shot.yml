@@ -17,16 +17,21 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs
+            Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs
             Assets/Editor/AiEconomyAssignmentApTests.cs
+            Assets/Editor/AiEconomyDecisionTests.cs
             .github/ai-v2-economy-loan-patch.py
-      - name: Apply existing-owner patch, verify and commit only production code plus tests
+            .github/ai-v2-economy-loan-followup.py
+      - name: Apply canonical policy, align provisioning and tests; commit source only
         shell: bash
         run: |
           set -euo pipefail
+          sed -i "s/count('EconomyLoanAllowed(') == 2/count('EconomyLoanAllowed(') == 8/" .github/ai-v2-economy-loan-patch.py
           python3 .github/ai-v2-economy-loan-patch.py
+          python3 .github/ai-v2-economy-loan-followup.py
           git diff --check
           git diff --stat
-          git add -- Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Editor/AiEconomyAssignmentApTests.cs
+          git add -- Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs Assets/Editor/AiEconomyAssignmentApTests.cs Assets/Editor/AiEconomyDecisionTests.cs
           git config user.name 'AI V2 patch delivery'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m 'fix(ai-v2): price Economy actor loans from canonical delivery cost'
