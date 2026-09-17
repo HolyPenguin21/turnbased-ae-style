@@ -170,7 +170,13 @@ namespace Game.Ai.V2
 
             bool underSiege = snapshot.Threat != null && snapshot.Threat.UnderSiege;
 
-            UpdateLossPulses(snapshot, state, out float enemyDropFrac, out float ownDropFrac);
+            // Reaction refreshes objective facts but never advances Radar twice in one turn.
+            bool firstEvaluationThisTurn = state.LastTurn != snapshot.TurnNumber;
+            float enemyDropFrac, ownDropFrac;
+            if (firstEvaluationThisTurn)
+                UpdateLossPulses(snapshot, state, out enemyDropFrac, out ownDropFrac);
+            else
+                enemyDropFrac = ownDropFrac = 0f;
             float momentum = Mathf.Clamp01(0.5f + 0.5f * state.EnemyLossPulse - 0.5f * state.OwnLossPulse);
 
             float exploration = ReconExploration(snapshot);
@@ -243,23 +249,26 @@ namespace Game.Ai.V2
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
 
-            float recon = Smooth(state, DesireAxis.Recon, rawRecon);
-            float aggression = Smooth(state, DesireAxis.Aggression, rawAggression);
+            float recon = Smooth(state, DesireAxis.Recon, rawRecon, firstEvaluationThisTurn);
+            float aggression = Smooth(state, DesireAxis.Aggression, rawAggression, firstEvaluationThisTurn);
 
             float rawEconomy = EconomyDesire(snapshot, breakdown);
             float rawDev = DevelopmentDesire(snapshot, breakdown);
 
             desires.Raw[DesireAxis.Recon] = recon;
             desires.Raw[DesireAxis.Aggression] = aggression;
-            desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy);
-            desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev);
+            desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy, firstEvaluationThisTurn);
+            desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev, firstEvaluationThisTurn);
 
             desires.MilitaryThreat = MilitaryThreat(snapshot, underSiege);
             desires.EconomicRunway = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ecoSecurity));
 
-            state.PrevOwnPower = snapshot.Self.TotalPower;
-            state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
-            state.LastTurn = snapshot.TurnNumber;
+            if (firstEvaluationThisTurn)
+            {
+                state.PrevOwnPower = snapshot.Self.TotalPower;
+                state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
+                state.LastTurn = snapshot.TurnNumber;
+            }
 
             Radar radar = Radar.Normalize(desires);
             LogDesires(desires, breakdown, radar, rawRecon, rawAggression, rawEconomy, rawDev,
@@ -613,8 +622,10 @@ namespace Game.Ai.V2
             return list;
         }
 
-        private static float Smooth(AiRadarState state, DesireAxis axis, float raw)
+        private static float Smooth(AiRadarState state, DesireAxis axis, float raw, bool advance)
         {
+            if (!advance && state.Smoothed.TryGetValue(axis, out float frozen))
+                return frozen;
             if (state.LastTurn < 0 || !state.Smoothed.TryGetValue(axis, out float prev))
             {
                 state.Smoothed[axis] = raw;
