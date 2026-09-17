@@ -121,6 +121,100 @@ namespace Game.EditorTests
             float freeCost = DemandLayer.EstimateEconomyAssignmentAp(freeAdjacent, 2f, false);
             Assert.That(pinnedCost, Is.GreaterThan(freeCost));
         }
+        private static MissionIntent LoanableScout() => new MissionIntent
+        {
+            Kind = MissionKind.Scout,
+            Status = IntentStatus.Active,
+            Funding = CommitmentTier.Soft,
+            Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+        };
+
+        [Test]
+        public void EconomyLoan_AlreadyActivatedMoverPaysNoPerHexFee()
+        {
+            // 3 hexes, 3 MP and activation already paid: only 2 card AP, no extra AP.
+            // The same site score 7 minus interruption loss 4 = 3 (above threshold 1.6).
+            var route = Route(3, 3, 3, true, activationApCost: 4);
+            var choice = new DemandLayer.EconomyBuilderChoice
+            {
+                Route = route,
+                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false),
+            };
+            Assert.That(choice.TotalAssignmentApCost, Is.EqualTo(2f));
+            bool allowed = DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f, choice, 2f,
+                out float netValue);
+            Assert.That(netValue, Is.EqualTo(3f));
+            Assert.That(allowed, Is.True, "already paid MP must never incur a second hex fee");
+        }
+
+        [Test]
+        public void EconomyLoan_UsesRealOutboundAndReturnActivations()
+        {
+            // Fresh 4-AP activation, 3-hex trip and optional 4-AP return.
+            // Same site: roundtrip 12-8-4=0 rejected; one-way 12-4-4=4 allowed.
+            var route = Route(3, 3, 3, false, activationApCost: 4, returnTravelCost: 3);
+            var choice = new DemandLayer.EconomyBuilderChoice { Route = route };
+            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, true);
+            Assert.That(choice.TotalAssignmentApCost, Is.EqualTo(10f));
+            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 12f, choice, 2f,
+                out float roundTrip), Is.False);
+            Assert.That(roundTrip, Is.EqualTo(0f));
+            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
+            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 12f, choice, 2f,
+                out float oneWay), Is.True);
+            Assert.That(oneWay, Is.EqualTo(4f));
+        }
+
+        [Test]
+        public void EconomyLoan_PreservesReachabilityAndDonorProtection()
+        {
+            var route = Route(4, 3, 3, true, activationApCost: 4);
+            var choice = new DemandLayer.EconomyBuilderChoice
+            {
+                Route = route,
+                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false),
+            };
+            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 30f, choice, 2f,
+                out _), Is.False, "high value must not override the same-turn reachability gate");
+            route = Route(3, 3, 3, true, activationApCost: 4);
+            choice.Route = route;
+            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
+            var surveil = LoanableScout();
+            surveil.Objective = new ScoutIntent { Kind = ScoutTargetKind.Surveil };
+            Assert.That(DemandLayer.EconomyLoanAllowed(surveil, 30f, choice, 2f,
+                out _), Is.False);
+            var hard = LoanableScout();
+            hard.Funding = CommitmentTier.Hard;
+            Assert.That(DemandLayer.EconomyLoanAllowed(hard, 30f, choice, 2f,
+                out _), Is.False);
+            var raid = new MissionIntent
+            {
+                Kind = MissionKind.Raid, Funding = CommitmentTier.Soft,
+                Objective = new RaidIntent { OperationStarted = true },
+            };
+            Assert.That(DemandLayer.EconomyLoanAllowed(raid, 30f, choice, 2f,
+                out _), Is.False);
+        }
+
+        [Test]
+        public void EconomyLoan_RepricesWhenLiveMoverHasLostItsPaidMovement()
+        {
+            var route = Route(3, 3, 3, true, activationApCost: 4);
+            var choice = new DemandLayer.EconomyBuilderChoice { Route = route };
+            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
+            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f,
+                choice, 2f, out float initial), Is.True);
+            Assert.That(initial, Is.EqualTo(3f));
+            // Live provisioning re-observes 0 MP; this route can no longer be loaned
+            // this turn, regardless of the previously approved plan.
+            route.CurrentMovement = 0;
+            choice.Route = route;
+            choice.TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false);
+            Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f,
+                choice, 2f, out float updated), Is.False);
+            Assert.That(updated, Is.EqualTo(-1f));
+        }
+
     }
 }
 #endif

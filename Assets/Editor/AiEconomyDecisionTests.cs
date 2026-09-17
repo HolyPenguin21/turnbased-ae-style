@@ -2695,12 +2695,30 @@ namespace Game.EditorTests
                 Is.GreaterThan(MissionAdmissionPolicy.AdmissionRank(delayed)));
         }
 
+        // Match the shared, real assignment-AP model used by the production owner.
+        private static DemandLayer.EconomyBuilderChoice LoanChoiceForPolicyTest(int distance, int mp)
+        {
+            var route = new EconomyBuilderRouteSnapshot
+            {
+                TravelCost = distance,
+                CurrentMovement = mp,
+                MaxMovement = 3,
+                HasActivatedThisTurn = true,
+                ActivationApCost = 1,
+            };
+            return new DemandLayer.EconomyBuilderChoice
+            {
+                Route = route,
+                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 0f, false),
+            };
+        }
+
         [Test]
         public void EconomyLoan_SoftReconCanBeBorrowedForHighSameTurnValue()
         {
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
-
-            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 80f, 2, 3, out float net), Is.True);
+            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 80f,
+                LoanChoiceForPolicyTest(2, 3), 0f, out float net), Is.True);
             Assert.That(net, Is.GreaterThanOrEqualTo(AiConfigV2.economyLoanHysteresisThreshold));
         }
 
@@ -2708,9 +2726,11 @@ namespace Game.EditorTests
         public void EconomyLoan_HardOrCriticalSurveilCannotBeBorrowed()
         {
             Assert.That(DemandLayer.EconomyLoanAllowed(
-                ScoutDonor(CommitmentTier.Hard, ScoutTargetKind.Explore), 100f, 1, 3, out _), Is.False);
+                ScoutDonor(CommitmentTier.Hard, ScoutTargetKind.Explore), 100f,
+                LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
             Assert.That(DemandLayer.EconomyLoanAllowed(
-                ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Surveil), 100f, 1, 3, out _), Is.False);
+                ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Surveil), 100f,
+                LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
         }
 
         [Test]
@@ -2721,16 +2741,16 @@ namespace Game.EditorTests
                 Kind = MissionKind.Raid, Funding = CommitmentTier.Soft,
                 Objective = new RaidIntent { OperationStarted = true },
             };
-
-            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f, 1, 3, out _), Is.False);
+            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f,
+                LoanChoiceForPolicyTest(1, 3), 0f, out _), Is.False);
         }
 
         [Test]
         public void EconomyLoan_MustCompleteMovementThisTurn()
         {
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
-
-            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f, 4, 3, out _), Is.False);
+            Assert.That(DemandLayer.EconomyLoanAllowed(donor, 100f,
+                LoanChoiceForPolicyTest(4, 3), 0f, out _), Is.False);
         }
 
         [Test]

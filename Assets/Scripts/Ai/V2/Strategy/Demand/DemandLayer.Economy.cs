@@ -300,18 +300,28 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             float buildValue, float buildApCost, bool includeReturn)
         {
+            // Assess the EXACT candidate first: loan admission and final TaskScore must
+            // price the same projected roster, outbound trip and return activations.
+            // The old raw-hex penalty introduced a second incompatible delivery scorer.
             return EconomyBuilderCandidates(snap, target, routes, activeIntents, commitments)
-                .Where(x => x.route.IsOnTarget || ActiveAssignment(activeIntents, x.army.ArmyId) == null
-                    || ActiveAssignment(activeIntents, x.army.ArmyId).Kind == MissionKind.Economy
-                    || EconomyLoanAllowed(ActiveAssignment(activeIntents, x.army.ArmyId), buildValue,
-                        x.route.TravelCost, x.army.CurrentMovement, out _))
                 .Select(x => AssessEconomyArmy(snap, target, x.route, x.army,
                     buildApCost, includeReturn))
                 .Where(x => x.Suitability != EconomyArmySuitability.Ineligible)
+                .Where(x => x.Route.IsOnTarget
+                    || ActiveAssignment(activeIntents, x.Army.ArmyId) == null
+                    || ActiveAssignment(activeIntents, x.Army.ArmyId).Kind == MissionKind.Economy
+                    || EconomyLoanAllowed(ActiveAssignment(activeIntents, x.Army.ArmyId), buildValue,
+                        x, buildApCost, out _))
                 .OrderByDescending(x => x.Route.HasActiveEconomyCommitment
                     || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
                 .ThenBy(x => x.Suitability == EconomyArmySuitability.Ready ? 0
                     : x.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
+                // Among equally suitable builders use canonical delivery plus the ONE
+                // donor interruption loss. Otherwise a cheaper AP loan can still lose
+                // intrinsic value to a slightly dearer uncommitted actor.
+                .ThenBy(x => Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost)
+                    * AiConfigV2.taskScoreReactivationApWeight
+                    + EconomyMissionOpportunityCost(x, activeIntents))
                 .ThenBy(x => x.TotalAssignmentApCost
                     + (!x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true
                         ? AiConfigV2.economyHomeHeroAssignmentApPenalty : 0f))
@@ -699,12 +709,19 @@ namespace Game.Ai.V2
         }
 
         internal static bool EconomyLoanAllowed(MissionIntent donor, float buildValue,
-            int routeCost, int movementAvailable, out float netValue)
+            EconomyBuilderChoice builder, float buildApCost, out float netValue)
         {
-            netValue = buildValue - AiConfigV2.economyLoanContinuationLoss
-                - Mathf.Max(0, routeCost) * AiConfigV2.taskScoreReactivationApWeight;
-            return EconomyDonorStructurallyEligible(donor)
-                && routeCost <= movementAvailable
+            // buildValue is already card-priced site TaskScore.Value. The builder's
+            // assessed operation AP includes the card and real outbound/return activations;
+            // subtract only extra AP via the SAME conversion as final TaskScore.Delivery.
+            float extraAp = Mathf.Max(0f,
+                (builder?.TotalAssignmentApCost ?? buildApCost) - buildApCost);
+            netValue = buildValue - extraAp * AiConfigV2.taskScoreReactivationApWeight
+                - AiConfigV2.economyLoanContinuationLoss;
+            // Same-turn reachability remains a legality gate rather than a per-hex fee.
+            // Donor protections for Surveil, started Raid and Hard commitments are unchanged.
+            return builder != null && EconomyDonorStructurallyEligible(donor)
+                && builder.Route.TravelCost <= builder.Route.CurrentMovement
                 && netValue >= AiConfigV2.economyLoanHysteresisThreshold;
         }
 
