@@ -20,6 +20,7 @@ namespace Game.Ai.V2
         public const float taskScoreContactRelevanceMax = 10f;
         public const float taskScoreFrontProgressMax = 8f;
         public const float taskScoreCorridorAlignmentMax = 8f;
+        // Full signed span, not a positive-only maximum: +3 to -3 across 12 hexes.
         public const float taskScoreProximityMax = 6f;
         public const float taskScoreProximityFullFalloffDistance = 12f;
         public const float taskScoreTerrainDefenseMax = 4f;
@@ -45,18 +46,17 @@ namespace Game.Ai.V2
         // Phase-A/Phase-B Play-vs-Hold urgency is lifecycle policy, not an intrinsic TaskScore slot,
         // but migrated world-map demands feed it with TaskScore.Value. Keep one shared conversion
         // band for every migrated world family instead of resurrecting Recon/Raid/Economy-specific
-        // multipliers. The legacy urgency band was 25..60; the already-established common migration
-        // bridge maps the old 60-point Economy deficit term to canonical 12 (x0.2), hence 5..12.
+        // multipliers. The 5..12 band is a provisional policy calibration, NOT a conversion
+        // from a retired Economy deficit weight. Revalidate against measured Play-vs-Hold choices.
         // Development remains on its pre-migration 25..60 band until that non-world family migrates.
         public const float taskScoreUrgencyRampLo = 5f;
         public const float taskScoreUrgencyRampHi = 12f;
 
         // Economy actor-loan policy consumes a migrated world-task value, so its policy offsets
         // must live on the same scale instead of reusing the retired Economy site score directly.
-        // The old extraction score's dominant deficit term topped out at 60, while the canonical
-        // TaskScore deficit bonus tops out at 12: preserving the former relative policy therefore
-        // maps continuation loss 20 -> 4 and hysteresis 8 -> 1.6. These are policy offsets, not
-        // intrinsic TaskScore slots, and legacy constants remain available to non-migrated paths.
+        // Continuation loss and hysteresis are provisional policy offsets to calibrate
+        // from actual interruptions; they are not derived from the current deficit bonus (+3).
+        // They are not intrinsic TaskScore slots. Legacy constants remain for unmigrated paths.
         public const float taskScoreEconomyLoanContinuationLoss = 4f;
         public const float taskScoreEconomyLoanHysteresisThreshold = 1.6f;
     }

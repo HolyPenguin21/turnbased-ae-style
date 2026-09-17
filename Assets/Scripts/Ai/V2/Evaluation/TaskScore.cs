@@ -206,7 +206,10 @@ namespace Game.Ai.V2
             if (nearestHomeDistance < 0f || float.IsNaN(nearestHomeDistance)
                 || float.IsInfinity(nearestHomeDistance))
                 return 0f;
-            float quality = 1f - Mathf.Clamp01(
+            // Proximity is a signed positional advantage, not another delivery/AP charge.
+            // Recenter the established 6-point spread: close +3, midpoint 0, distant -3.
+            // Preserve the original slope so travel already priced by Delivery is not doubled.
+            float quality = 0.5f - Mathf.Clamp01(
                 nearestHomeDistance / Mathf.Max(1f, AiConfigV2.taskScoreProximityFullFalloffDistance));
             return quality * AiConfigV2.taskScoreProximityMax;
         }

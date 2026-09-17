@@ -25,6 +25,22 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void OwnTerritoryProximity_IsSignedWithoutChangingItsExistingSlope()
+        {
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(0f), Is.EqualTo(3f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(3f), Is.EqualTo(1.5f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(6f), Is.Zero.Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(9f), Is.EqualTo(-1.5f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(12f), Is.EqualTo(-3f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(20f), Is.EqualTo(-3f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(-1f), Is.Zero);
+            Assert.That(new TaskScore(ownTerritoryProximity:
+                TaskScoreEvaluator.OwnTerritoryProximity(12f)).Value,
+                Is.EqualTo(-3f).Within(0.0001f),
+                "Fold must retain the negative positional contribution without another penalty slot");
+        }
+
+        [Test]
         public void Deficit_NeverGeneratesValueWithoutMarginalIncome()
         {
             Assert.That(TaskScoreEvaluator.EconomicHexBenefit(0f, 1f), Is.Zero);
@@ -283,9 +299,9 @@ namespace Game.EditorTests
                 Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
                     estimate.EtaTurns, AiConfigV2.taskScoreReactivationApWeight)));
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
-            // info=10, home proximity=3, activation=1 (weight 1, not 2), one extra turn of
-            // delivery=1 (weight 1, not 2).
-            Assert.That(objective.BaseValue, Is.EqualTo(11f).Within(0.0001f));
+            // info=10, neutral home proximity at 6 hexes=0, activation=1,
+            // one extra turn of delivery=1.
+            Assert.That(objective.BaseValue, Is.EqualTo(8f).Within(0.0001f));
         }
 
         [Test]
