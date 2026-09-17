@@ -199,11 +199,11 @@ namespace Game.Ai.V2
                     }
                 }
 
+                // Exhaustion belongs to a capability pool, not to the global AP pool. Registered
+                // failures already reject/reprice their missions. Allow the existing bounded Pack()
+                // to fund executable proposals from OTHER pools before ending this reaction.
                 if (anyFailure && allFailuresArePoolWide)
-                {
-                    AiDebugLog.Write("[AI][V2] reaction — every funded mission's capability pool is exhausted this cycle; stop key-by-key reallocation");
-                    break;
-                }
+                    AiDebugLog.Write("[AI][V2] reaction — failed capability pools exhausted; re-pack to admit other runnable lanes");
                 if (!session.HasNewFailures || session.Converged)
                     break;
                 if (++reallocPass >= AiConfigV2.maxReallocIterations)
