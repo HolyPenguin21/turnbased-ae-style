@@ -42,12 +42,15 @@ namespace Game.EditorTests
         [Test]
         public void PartiallySpentMovement_StillChargesTheSameWayAsFullyDepleted()
         {
-            // 1/3 MP left, needs 3 more hexes: still 0 MP contributes nothing to this leg once
-            // the remainder after CurrentMovement rounds up to another full future turn; the
-            // already-spent activation buys no progress on THIS route this turn.
+            // 1/3 MP left (currentTurnAlreadyProgressesRoute == true, so the discount branch IS
+            // taken) vs. 0/3 MP (discount branch skipped entirely): both still land on exactly one
+            // future activation once ceiling rounding is applied (0/3: ceil(3/3)=1 turn, no
+            // discount; 1/3: 1+ceil((3-1)/3)=2 turns, discount removes the already-paid one -> 1),
+            // so the two paths must agree on the final price even though they take different
+            // branches to get there.
             var depleted = Route(travelCost: 3, currentMovement: 0, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4);
-            var partially = Route(travelCost: 3, currentMovement: 0, maxMovement: 3,
+            var partially = Route(travelCost: 3, currentMovement: 1, maxMovement: 3,
                 hasActivatedThisTurn: true, activationApCost: 4);
             float depletedCost = DemandLayer.EstimateEconomyAssignmentAp(depleted, 2f, false);
             float partiallyCost = DemandLayer.EstimateEconomyAssignmentAp(partially, 2f, false);
