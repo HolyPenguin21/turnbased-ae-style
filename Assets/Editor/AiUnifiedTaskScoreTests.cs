@@ -55,6 +55,48 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void UsefulMarginalIncome_UsesRealRemainingNeedAndOneExistingRunway()
+        {
+            EconomyResourceStanding abundant = EconomyStanding.CalculateResource(
+                ResourceType.Materials, ownIncome: 5f, opponentMedianIncome: 20f,
+                handNeed: 1f, remainingDeckNeed: 1f, reservedOperationalNeed: 0f,
+                spendableStockpile: 100f, starvationPressure: 0f);
+            Assert.That(TaskScoreEvaluator.ResourcePriority(abundant), Is.GreaterThan(0f),
+                "Opponent's higher income can raise old deficit without creating spending need");
+            float surplusUseful = abundant.UsefulMarginalIncomeGain(1f);
+            Assert.That(surplusUseful, Is.Zero);
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(surplusUseful,
+                TaskScoreEvaluator.ResourcePriority(abundant)), Is.Zero);
+
+            EconomyResourceStanding futureCard = EconomyStanding.CalculateResource(
+                ResourceType.Energy, ownIncome: 1f, opponentMedianIncome: 1f,
+                handNeed: 0f, remainingDeckNeed: 9f, reservedOperationalNeed: 0f,
+                spendableStockpile: 0f, starvationPressure: 0f);
+            Assert.That(futureCard.UsefulMarginalIncomeGain(1f), Is.EqualTo(1f));
+
+            EconomyResourceStanding partial = EconomyStanding.CalculateResource(
+                ResourceType.Tech, ownIncome: 2f, opponentMedianIncome: 2f,
+                handNeed: 7f, remainingDeckNeed: 0f, reservedOperationalNeed: 0f,
+                spendableStockpile: 0f, starvationPressure: 0f);
+            Assert.That(partial.UsefulMarginalIncomeGain(1f),
+                Is.EqualTo(1f / AiConfigV2.economyRunwayHorizonTurns).Within(0.0001f));
+
+            EconomyResourceStanding alreadyReserved = EconomyStanding.CalculateResource(
+                ResourceType.Human, ownIncome: 0f, opponentMedianIncome: 0f,
+                handNeed: 3f, remainingDeckNeed: 0f, reservedOperationalNeed: 2f,
+                spendableStockpile: 4f, starvationPressure: 0f);
+            Assert.That(alreadyReserved.UsefulMarginalIncomeGain(1f), Is.Zero,
+                "Reservation was already excluded from spendable stock; no double count");
+
+            float energy = futureCard.UsefulMarginalIncomeGain(1f);
+            float materials = abundant.UsefulMarginalIncomeGain(1f);
+            Assert.That(TaskScoreEvaluator.EconomicHexBenefit(
+                new List<(float Gain, float Priority)> { (materials, 1f), (energy, 1f) }),
+                Is.EqualTo(TaskScoreEvaluator.EconomicHexBenefit(energy, 1f)).Within(0.0001f),
+                "One surplus resource must not inherit another resource's deficit in a Base");
+        }
+
+        [Test]
         public void PhysicalCostConversions_UseOneSharedScale()
         {
             const float ap = 2f, resources = 3f, perTurnAp = 1f, etaTurns = 3f;
