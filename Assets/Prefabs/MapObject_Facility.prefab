@@ -47,7 +47,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.MapObjectVisual
   innerCircle: {fileID: 0}
   objectImage: {fileID: 100022}
-  factionAccent: {fileID: 0}
+  factionAccent: {fileID: 9057904098540088780}
   auxiliaryRenderers: []
   tintInnerCircle: 1
   clearFactionAccentOnSetIcon: 0
