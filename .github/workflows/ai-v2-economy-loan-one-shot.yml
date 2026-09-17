@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sed -i "s/count('EconomyLoanAllowed(') == 2/count('EconomyLoanAllowed(') == 8/" .github/ai-v2-economy-loan-patch.py
+          sed -i "s/result.stdout.count('EconomyLoanAllowed(') == 2/result.stdout.count('EconomyLoanAllowed(') == 8/" .github/ai-v2-economy-loan-patch.py
           python3 .github/ai-v2-economy-loan-patch.py
           python3 .github/ai-v2-economy-loan-followup.py
           git diff --check
