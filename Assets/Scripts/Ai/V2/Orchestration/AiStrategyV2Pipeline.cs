@@ -560,7 +560,7 @@ namespace Game.Ai.V2
             var scopedDemandAxes = new HashSet<DesireAxis>(AiStrategyV2Scope.AxesInScope);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                devOpportunities, radar, scopedDemandAxes);
+                devOpportunities, scopedDemandAxes);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
@@ -601,7 +601,7 @@ namespace Game.Ai.V2
                     : new List<DevelopmentOpportunity>();
                 demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
-                    player, ctx, root, devOpportunities, radar, scopedDemandAxes);
+                    player, ctx, root, devOpportunities, scopedDemandAxes);
                 demands = AiStrategyV2Scope.ApplyDemandScope(demands);
             }
 
@@ -782,7 +782,7 @@ namespace Game.Ai.V2
                         : new List<DevelopmentOpportunity>();
                     List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
-                        actorCommitments, player, ctx, root, devOpportunities, radar,
+                        actorCommitments, player, ctx, root, devOpportunities,
                         dirtyAxes);
                     regenerated = AiStrategyV2Scope.ApplyDemandScope(regenerated);
                     List<AxisDemand> dirtyDemands = regenerated;

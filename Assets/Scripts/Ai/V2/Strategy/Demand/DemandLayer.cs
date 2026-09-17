@@ -21,7 +21,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
             PlayerRoot root = null, IReadOnlyList<DevelopmentOpportunity> devOpportunities = null,
-            Radar radar = null, ISet<DesireAxis> dirtyAxes = null)
+            ISet<DesireAxis> dirtyAxes = null)
         {
             var demands = new List<AxisDemand>();
             bool GenerateAxis(DesireAxis axis) => dirtyAxes == null || dirtyAxes.Contains(axis);
