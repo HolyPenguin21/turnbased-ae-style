@@ -36,8 +36,8 @@ jobs:
                   in_triple=not in_triple
           assert not in_triple, 'unclosed multiline source'
           assert repaired>50, f'expected multiple repaired continuation lines, got {repaired}'
-          content='\n'.join(lines)+'\n'
-          assert all(len(line)-len(line.lstrip(' '))>=10 for line in content.splitlines()[28:]), 'invalid body indentation'
+          content='\n'.join(line.rstrip() for line in lines)+'\n'
+          assert all(len(line)-len(line.lstrip(' '))>=10 for line in content.splitlines()[28:] if line), 'invalid body indentation'
           p.write_text(content)
           print('repaired multiline continuation lines:',repaired)
           PY
