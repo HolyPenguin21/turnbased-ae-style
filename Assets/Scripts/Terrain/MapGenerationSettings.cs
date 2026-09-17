@@ -34,5 +34,30 @@ namespace Game.Terrain
         public string mountainsTerrainName = "Mountains";
         public int mountainRangeCount = 2;
         public int mountainRangeLength = 4;
+
+        // Decorative, non-interactive hexes generated past the playable field's rectangular
+        // edge — same terrain pool, darkened and thinning out raggedly with distance, so the
+        // camera sees a continuation of the landscape instead of the empty background when
+        // zoomed out. Never written into HexMap's data, so they can't be selected/pathed to.
+        [Header("Border (decorative, non-interactive)")]
+        // How far past the field edge these hexes extend, as a fraction of the field's own
+        // world-space size (the larger of its width/height).
+        [Range(0f, 1f)] public float borderDepthFraction = 0.5f;
+        public Color borderTint = new Color(0.35f, 0.35f, 0.35f);
+        // How much per-hex noise perturbs the dropout threshold — 0 gives a clean rectangle
+        // ring, higher values give a raggedly-holed edge.
+        [Range(0f, 1f)] public float borderRaggedness = 0.85f;
+        public float borderNoiseScale = 0.22f;
+
+        // How far past the field's rectangular edge the decorative border reaches, in world
+        // units — shared by HexMapGenerator (to place the border hexes themselves) and
+        // FogOfWarController (to size the fog overlay quad to match), so the two never drift
+        // apart into a visible seam.
+        public float ComputeBorderDepthWorld()
+        {
+            float fieldSizeX = outerRadius * 1.5f * width + outerRadius * 0.5f;
+            float fieldSizeZ = outerRadius * Mathf.Sqrt(3f) * (height + 0.5f);
+            return borderDepthFraction * Mathf.Max(fieldSizeX, fieldSizeZ);
+        }
     }
 }

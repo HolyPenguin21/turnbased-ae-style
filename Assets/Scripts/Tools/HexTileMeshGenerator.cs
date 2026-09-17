@@ -24,10 +24,11 @@ namespace Game.Map
         // original colour) side; the true edge is always the most transparent point.
         public static void AppendFlatHexFace(List<Vector3> vertices, List<Vector3> normals,
             List<Vector2> uvs, List<Color> colors, List<int> triangles, Vector3 center,
-            float outerRadius, float blend, float alpha)
+            float outerRadius, float blend, float alpha, Color? tint = null)
         {
             blend = Mathf.Clamp01(blend);
             alpha = Mathf.Clamp01(alpha);
+            Color rgbTint = tint ?? Color.white;
 
             float bandStartRadius = outerRadius * (1f - blend);
             float edgeVertexAlpha = 1f - alpha; // vertex-colour alpha: 1 = opaque, 0 = transparent
@@ -36,10 +37,10 @@ namespace Game.Map
             vertices.Add(center);
             normals.Add(Vector3.up);
             uvs.Add(new Vector2(0.5f, 0.5f));
-            colors.Add(new Color(1f, 1f, 1f, 1f));
+            colors.Add(new Color(rgbTint.r, rgbTint.g, rgbTint.b, 1f));
 
-            var bandStartRing = BuildRing(vertices, normals, uvs, colors, center, bandStartRadius, outerRadius, 1f);
-            var outerRing = BuildRing(vertices, normals, uvs, colors, center, outerRadius, outerRadius, edgeVertexAlpha);
+            var bandStartRing = BuildRing(vertices, normals, uvs, colors, center, bandStartRadius, outerRadius, 1f, rgbTint);
+            var outerRing = BuildRing(vertices, normals, uvs, colors, center, outerRadius, outerRadius, edgeVertexAlpha, rgbTint);
 
             // Solid core: fan from the centre to where the fade band begins.
             for (int i = 0; i < 6; i++)
@@ -50,7 +51,7 @@ namespace Game.Map
         }
 
         private static int[] BuildRing(List<Vector3> vertices, List<Vector3> normals, List<Vector2> uvs,
-            List<Color> colors, Vector3 center, float radius, float uvRadius, float alpha)
+            List<Color> colors, Vector3 center, float radius, float uvRadius, float alpha, Color tint)
         {
             var ring = new int[6];
             for (int i = 0; i < 6; i++)
@@ -65,7 +66,7 @@ namespace Game.Map
                 vertices.Add(center + new Vector3(x, 0f, z));
                 normals.Add(Vector3.up);
                 uvs.Add(new Vector2(0.5f + x / (2f * uvRadius), 0.5f + z / (2f * uvRadius)));
-                colors.Add(new Color(1f, 1f, 1f, alpha));
+                colors.Add(new Color(tint.r, tint.g, tint.b, alpha));
             }
             return ring;
         }

@@ -48,10 +48,13 @@ Shader "Custom/HexBlend"
 
             // Vertex colour alpha fades from 1 at the hex centre to 0 at its outer ring
             // (baked in by HexTileMeshGenerator), so each hex dissolves into whatever
-            // renders behind it — the shared ground plane — near its own edge.
+            // renders behind it — the shared ground plane — near its own edge. Vertex colour
+            // RGB is a plain multiply tint, white (no-op) for normal playfield hexes and a
+            // darkening grey for decorative border hexes (see HexMapGenerator).
             half4 frag(Varyings IN) : SV_Target
             {
                 half4 texColor = SAMPLE_TEXTURE2D(_MainTex, sampler_MainTex, IN.uv);
+                texColor.rgb *= IN.color.rgb;
                 texColor.a *= IN.color.a;
                 return texColor;
             }

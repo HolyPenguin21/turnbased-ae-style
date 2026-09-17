@@ -112,18 +112,25 @@ namespace Game.Map
                 _propertyBlock = new MaterialPropertyBlock();
             }
 
-            _overlayRenderer.GetComponent<MeshFilter>().mesh = BuildQuadMesh(map);
+            _overlayRenderer.GetComponent<MeshFilter>().mesh = BuildQuadMesh(map, gameConfig.mapGeneration.ComputeBorderDepthWorld());
 
             FogOfWarStyle style = gameConfig.fogOfWarStyle;
             _overlayRenderer.sortingOrder = style != null ? style.sortingOrder : 4;
         }
 
-        // World-space bounding rectangle over every hex centre, padded by a full hex radius on
-        // each side so the overlay's own edge never clips a border hex's own geometry — same
-        // vertices-in-local-space convention as HexShaderHighlight/HexClusterHighlight (this
-        // object sits at the map's own origin, see BuildOverlayQuad, so local space already IS
-        // world space here).
-        private static Mesh BuildQuadMesh(HexMap map)
+        // World-space bounding rectangle over every hex centre, padded out to the decorative
+        // border's own depth (see HexMapGenerator/MapGenerationSettings.ComputeBorderDepthWorld)
+        // so the overlay's dark edge reaches at least as far as the border hexes it sits above —
+        // otherwise the quad stopped at the old (border-less) map edge while the border extended
+        // well past it, leaving a visible seam where the fog just stopped darkening mid-border.
+        // The shader itself has no mesh UVs (it derives axial coords from world position via
+        // _MaskMinQR/_MaskSize), so this extra geometry doesn't need — and doesn't get — any
+        // matching growth of the visibility mask: positions past the real mask just Clamp to its
+        // outermost (always-fogged) texel, which is exactly the "always dark" look the border
+        // wants. Same vertices-in-local-space convention as HexShaderHighlight/
+        // HexClusterHighlight (this object sits at the map's own origin, see BuildOverlayQuad, so
+        // local space already IS world space here).
+        private static Mesh BuildQuadMesh(HexMap map, float borderDepthWorld)
         {
             float minX = float.MaxValue, maxX = float.MinValue, minZ = float.MaxValue, maxZ = float.MinValue;
             foreach (HexCoord coord in map.AllCoords)
@@ -135,7 +142,7 @@ namespace Game.Map
                 maxZ = Mathf.Max(maxZ, world.z);
             }
 
-            float pad = map.OuterRadius * 1.5f;
+            float pad = map.OuterRadius * 1.5f + Mathf.Max(0f, borderDepthWorld);
             minX -= pad; maxX += pad; minZ -= pad; maxZ += pad;
 
             var mesh = new Mesh { name = "FogOverlayQuad" };

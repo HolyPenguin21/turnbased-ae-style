@@ -99,6 +99,26 @@ namespace Game.Map
                 else bounds.Encapsulate(center);
             }
 
+            // Decorative border: same mesh/submesh pipeline as the playfield above, just
+            // darkened and never written into hexData, so HexMap has no record of these coords
+            // (non-interactive) and the camera's own clamp — driven by HexMap.Width/Height, not
+            // by this bounds value — is unaffected. groundBounds (not bounds) drives the ground
+            // plane, so it extends far enough that the border never runs out onto bare background.
+            Bounds groundBounds = bounds;
+            List<HexCoord> borderCoords = BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment, out _, out _);
+            var borderChosenTexture = new Dictionary<HexCoord, Texture2D>(borderCoords.Count);
+            foreach (HexCoord coord in borderCoords)
+            {
+                Vector3 center = HexGridMath.AxialToWorld(coord.Q, coord.R, Settings.outerRadius);
+                int typeIndex = borderAssignment[coord];
+                HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, borderAssignment, borderChosenTexture);
+                int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
+                borderChosenTexture[coord] = variantSlots[variantSlot].Texture;
+                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha, Settings.borderTint);
+
+                groundBounds.Encapsulate(center);
+            }
+
             var mesh = new Mesh { name = "HexMap" };
             if (vertices.Count > 65535)
                 mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
@@ -122,7 +142,7 @@ namespace Game.Map
             mapRenderer.sharedMaterials = _materialInstances.ToArray();
             mapRenderer.sortingOrder = MapSortingOrder.Map;
 
-            GenerateGround(bounds);
+            GenerateGround(groundBounds);
 
             GetComponent<HexMap>().SetData(Settings.width, Settings.height, Settings.outerRadius, hexData);
 
@@ -165,27 +185,7 @@ namespace Game.Map
 
         private Dictionary<HexCoord, int> AssignTerrainTypes(List<HexCoord> allCoords)
         {
-            List<TerrainTypeEntry> terrainTypes = Settings.terrainTypes;
-
-            int mountainIndex = IndexOfTerrainNamed(Settings.mountainsTerrainName);
-
-            // One shared weighted pool covering every type except the dedicated mountain-range
-            // type — a type that should be rare just gets a low baselineWeight, there's no
-            // separate placement path to opt into any more.
-            var poolIndices = new List<int>();
-            for (int i = 0; i < terrainTypes.Count; i++)
-                if (i != mountainIndex)
-                    poolIndices.Add(i);
-            if (poolIndices.Count == 0)
-                poolIndices.Add(0); // safety net so an all-mountain list can't crash generation
-
-            var poolWeights = new float[poolIndices.Count];
-            float poolWeightTotal = 0f;
-            for (int i = 0; i < poolIndices.Count; i++)
-            {
-                poolWeights[i] = Mathf.Max(0.0001f, terrainTypes[poolIndices[i]].baselineWeight);
-                poolWeightTotal += poolWeights[i];
-            }
+            (List<int> poolIndices, float[] poolWeights, float poolWeightTotal) = BuildBaselinePool(out int mountainIndex);
 
             var assignment = new Dictionary<HexCoord, int>(allCoords.Count);
             foreach (HexCoord coord in allCoords)
@@ -201,6 +201,91 @@ namespace Game.Map
             }
 
             return assignment;
+        }
+
+        // Same weighted pool AssignTerrainTypes uses for the playfield (every type except the
+        // dedicated mountain-range type — a type that should be rare just gets a low
+        // baselineWeight, there's no separate placement path to opt into any more), pulled out
+        // so the decorative border can roll from the exact same distribution without its own
+        // mountain-range chains.
+        private (List<int> indices, float[] weights, float total) BuildBaselinePool(out int mountainIndex)
+        {
+            List<TerrainTypeEntry> terrainTypes = Settings.terrainTypes;
+            mountainIndex = IndexOfTerrainNamed(Settings.mountainsTerrainName);
+
+            var poolIndices = new List<int>();
+            for (int i = 0; i < terrainTypes.Count; i++)
+                if (i != mountainIndex)
+                    poolIndices.Add(i);
+            if (poolIndices.Count == 0)
+                poolIndices.Add(0); // safety net so an all-mountain list can't crash generation
+
+            var poolWeights = new float[poolIndices.Count];
+            float poolWeightTotal = 0f;
+            for (int i = 0; i < poolIndices.Count; i++)
+            {
+                poolWeights[i] = Mathf.Max(0.0001f, terrainTypes[poolIndices[i]].baselineWeight);
+                poolWeightTotal += poolWeights[i];
+            }
+
+            return (poolIndices, poolWeights, poolWeightTotal);
+        }
+
+        // Decorative, non-interactive hexes past the field's rectangular edge: same terrain
+        // pool as the playfield (no mountain ranges — those are a gameplay feature), thinning
+        // out raggedly with distance via per-hex Perlin noise so the cutoff isn't a clean ring.
+        // Never added to allCoords/hexData, so HexMap has no record of them and they can't be
+        // selected, pathed to, or seen by anything gameplay-side.
+        private List<HexCoord> BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment, out int marginCols, out int marginRows)
+        {
+            borderAssignment = new Dictionary<HexCoord, int>();
+
+            float borderDepthWorld = Settings.ComputeBorderDepthWorld();
+
+            marginCols = Mathf.CeilToInt(borderDepthWorld / (Settings.outerRadius * 1.5f));
+            marginRows = Mathf.CeilToInt(borderDepthWorld / (Settings.outerRadius * Mathf.Sqrt(3f)));
+            if (marginCols <= 0 || marginRows <= 0)
+                return new List<HexCoord>();
+
+            (List<int> poolIndices, float[] poolWeights, float poolWeightTotal) = BuildBaselinePool(out _);
+
+            // Randomised per-generation so the ragged cutoff pattern differs between maps
+            // instead of always fraying at the same spots relative to the grid.
+            var noiseOffset = new Vector2(Random.Range(0f, 1000f), Random.Range(0f, 1000f));
+
+            var coords = new List<HexCoord>();
+            for (int row = -marginRows; row < Settings.height + marginRows; row++)
+            {
+                for (int col = -marginCols; col < Settings.width + marginCols; col++)
+                {
+                    bool insideField = col >= 0 && col < Settings.width && row >= 0 && row < Settings.height;
+                    if (insideField)
+                        continue;
+
+                    if (!IncludeBorderHex(col, row, marginCols, marginRows, noiseOffset))
+                        continue;
+
+                    HexCoord coord = HexCoord.FromOffset(col, row);
+                    coords.Add(coord);
+                    borderAssignment[coord] = PickWeightedIndex(poolIndices, poolWeights, poolWeightTotal);
+                }
+            }
+
+            return coords;
+        }
+
+        // 0 at the field's own edge, 1 at the far edge of the border depth. Perturbed by
+        // per-hex Perlin noise before the raggedness cutoff, so hexes drop out increasingly
+        // often (rather than at a fixed radius) the further out they sit.
+        private bool IncludeBorderHex(int col, int row, int marginCols, int marginRows, Vector2 noiseOffset)
+        {
+            float depthCol = Mathf.Max(0, Mathf.Max(-col, col - (Settings.width - 1)));
+            float depthRow = Mathf.Max(0, Mathf.Max(-row, row - (Settings.height - 1)));
+            float depthNorm = Mathf.Max(depthCol / marginCols, depthRow / marginRows);
+
+            float noise = Mathf.PerlinNoise((col + noiseOffset.x) * Settings.borderNoiseScale, (row + noiseOffset.y) * Settings.borderNoiseScale);
+            float raggedDepth = depthNorm + (noise - 0.5f) * Settings.borderRaggedness;
+            return raggedDepth <= 1f;
         }
 
         private static int PickWeightedIndex(List<int> indices, float[] weights, float totalWeight)
