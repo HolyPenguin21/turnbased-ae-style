@@ -479,15 +479,12 @@ namespace Game.Ai.V2
 
             HashSet<int> ExclusionsFor(FundedEntry fe)
             {
-                // A ProvisioningSession only owns claims made during this one admission. Durable
-                // actor occupancy belongs to ActorCommitments and must survive the next mid-turn
-                // session. Let a mission keep its own incumbent, but never borrow another intent's
-                // physical scout merely because a fresh session started.
-                var excluded = alreadyClaimedArmyIds != null
-                    ? new HashSet<int>(alreadyClaimedArmyIds)
+                // Durable occupancy survives between provisioning sessions, but the current mission
+                // may keep its own incumbent. Current-session claims are added afterwards and are
+                // authoritative: continuity must never reopen an actor already claimed this pass.
+                var excluded = durableClaimedArmyIds != null
+                    ? new HashSet<int>(durableClaimedArmyIds)
                     : new HashSet<int>();
-                if (durableClaimedArmyIds != null)
-                    excluded.UnionWith(durableClaimedArmyIds);
                 if (fe.Mission.PreferredMoverArmyId.HasValue)
                 {
                     excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
@@ -500,6 +497,8 @@ namespace Game.Ai.V2
                     excluded.UnionWith(MissionIntentRegistry.GetOrCreate(player)
                         .ReconActorsTrimmedThisTurn(snap?.TurnNumber ?? ctx?.TurnNumber ?? -1));
                 }
+                if (alreadyClaimedArmyIds != null)
+                    excluded.UnionWith(alreadyClaimedArmyIds);
                 return excluded;
             }
 
@@ -1437,4 +1436,3 @@ namespace Game.Ai.V2
         }
     }
 }
-
