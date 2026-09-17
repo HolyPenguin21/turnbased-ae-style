@@ -317,7 +317,6 @@ namespace Game.EditorTests
                 Value = score.Value,
                 WorldTaskScore = score,
                 EconomySiteValue = 11f,
-                EconomyStrategicUrgency = 3f,
                 EconomyTravelCost = 6f,
             };
             var proposals = EconomyMissionPlanner.Propose(null, null,
@@ -325,7 +324,7 @@ namespace Game.EditorTests
             Assert.That(proposals, Has.Count.EqualTo(1));
             MissionProposal proposal = proposals[0];
             Assert.That(proposal.BaseValue, Is.EqualTo(score.Value));
-            Assert.That(proposal.LocalAdmissionScore, Is.EqualTo(score.Value + 3f));
+            Assert.That(proposal.LocalAdmissionScore, Is.EqualTo(score.Value));
             Assert.That(((EconomyMissionTarget)proposal.Target).BuildValue,
                 Is.EqualTo(11f), "site merit is separate from delivered world-task merit");
         }

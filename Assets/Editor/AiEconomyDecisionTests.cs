@@ -1675,7 +1675,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void BaseExpansionUrgency_GrowsAfterDeferralButStaysLaneLocal()
+        public void BaseExpansion_WaitDoesNotInflateTaskValueOrMissionAdmission()
         {
             var player = new Game.Players.PlayerSetupData();
             var baseDef = new CardDefinition
@@ -1701,23 +1701,15 @@ namespace Game.EditorTests
             {
                 AxisDemand first = DemandLayer.EconomyDemands(snapshot,
                     new DesireBreakdown(), player, null, null).Single();
-                MissionIntentRegistry.GetOrCreate(player)
-                    .ReconcileBaseExpansionWait(1, System.Array.Empty<MissionTurnOutcome>());
                 snapshot.TurnNumber = 2;
                 AxisDemand second = DemandLayer.EconomyDemands(snapshot,
                     new DesireBreakdown(), player, null, null).Single();
                 MissionProposal mission = EconomyMissionPlanner.Propose(snapshot,
                     new DesireBreakdown(), null, new[] { second }).Single();
 
-                Assert.That(first.EconomyStrategicUrgency, Is.Zero);
-                Assert.That(second.EconomyStrategicUrgency,
-                    Is.EqualTo(AiConfigV2.economyBaseUrgencyPerDeferredTurn));
+                Assert.That(second.Value, Is.EqualTo(first.Value).Within(0.0001f));
                 Assert.That(mission.BaseValue, Is.EqualTo(second.Value));
-                Assert.That(mission.LocalAdmissionScore, Is.GreaterThan(mission.BaseValue));
-                MissionIntentRegistry.GetOrCreate(player)
-                    .MarkBaseExpansionCandidate(2, null, null, structurallyEligible: false);
-                Assert.That(MissionIntentRegistry.GetOrCreate(player).BaseExpansionWaitTurns,
-                    Is.Zero);
+                Assert.That(mission.LocalAdmissionScore, Is.EqualTo(mission.BaseValue));
             }
             finally
             {
@@ -1726,7 +1718,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void BaseExpansionUrgency_CanAdmitPositiveSiteInitiallyBelowDemandThreshold()
+        public void BaseExpansion_PositiveNetSiteAdmittedWithoutWaiting()
         {
             var player = new Game.Players.PlayerSetupData();
             var baseDef = new CardDefinition
@@ -1749,20 +1741,15 @@ namespace Game.EditorTests
             };
             try
             {
-                Assert.That(DemandLayer.EconomyDemands(snapshot,
-                    new DesireBreakdown(), player, null, null), Is.Empty,
-                    "A merely positive site may remain below the normal admission threshold initially.");
-                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-                state.ReconcileBaseExpansionWait(1, System.Array.Empty<MissionTurnOutcome>());
-
-                snapshot.TurnNumber = 2;
-                AxisDemand admitted = DemandLayer.EconomyDemands(snapshot,
+                AxisDemand first = DemandLayer.EconomyDemands(snapshot,
                     new DesireBreakdown(), player, null, null).Single();
-
-                Assert.That(admitted.Value, Is.GreaterThan(0f));
-                Assert.That(admitted.Value, Is.LessThan(AiConfigV2.economyBaseDemandMinValue));
-                Assert.That(admitted.EconomyStrategicUrgency,
-                    Is.EqualTo(AiConfigV2.economyBaseUrgencyPerDeferredTurn));
+                Assert.That(first.Value, Is.GreaterThan(AiConfigV2.allocatorSliceEpsilon));
+                Assert.That(first.Value, Is.LessThan(12f),
+                    "Positive sites previously below the fixed threshold must now be considered.");
+                snapshot.TurnNumber = 2;
+                AxisDemand second = DemandLayer.EconomyDemands(snapshot,
+                    new DesireBreakdown(), player, null, null).Single();
+                Assert.That(second.Value, Is.EqualTo(first.Value).Within(0.0001f));
             }
             finally
             {
@@ -1771,7 +1758,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void BaseExpansionUrgency_CanAdmitMeaningfulNegativeDeliveryValue()
+        public void BaseExpansion_NegativeNetSiteNeverAdmittedByElapsedTurns()
         {
             var player = new Game.Players.PlayerSetupData();
             var baseDef = new CardDefinition
@@ -1800,22 +1787,13 @@ namespace Game.EditorTests
 
             try
             {
-                AxisDemand admitted = null;
-                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-                for (int turn = 1; turn <= 8 && admitted == null; turn++)
+                for (int turn = 1; turn <= 8; turn++)
                 {
                     snapshot.TurnNumber = turn;
-                    admitted = DemandLayer.EconomyDemands(snapshot,
-                        new DesireBreakdown(), player, null, null).SingleOrDefault();
-                    if (admitted == null)
-                        state.ReconcileBaseExpansionWait(
-                            turn, System.Array.Empty<MissionTurnOutcome>());
+                    Assert.That(DemandLayer.EconomyDemands(snapshot,
+                        new DesireBreakdown(), player, null, null), Is.Empty,
+                        $"Negative-net Base must not become eligible on turn {turn}.");
                 }
-
-                Assert.That(admitted, Is.Not.Null);
-                Assert.That(admitted.Value, Is.LessThan(0f));
-                Assert.That(admitted.Value + admitted.EconomyStrategicUrgency,
-                    Is.GreaterThanOrEqualTo(AiConfigV2.economyBaseDemandMinValue));
             }
             finally
             {
@@ -1859,81 +1837,6 @@ namespace Game.EditorTests
         {
             Assert.That(BattleAttackPopupUI.NeedsResearchProductionAutoAcceptDelay(
                 autoroll, spent, declined), Is.EqualTo(expected));
-        }
-
-        [Test]
-        public void BaseExpansionUrgency_ResetsWhenBaseBuildCompletes()
-        {
-            var player = new Game.Players.PlayerSetupData();
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            var baseDef = new CardDefinition
-                { cardType = CardType.Base, authoredKey = "base", displayName = "Base" };
-            CardData baseCard = new CardData(baseDef);
-            var baseHex = new HexCoord(4, 0);
-            try
-            {
-                state.MarkBaseExpansionCandidate(1, baseCard, baseHex, structurallyEligible: true);
-                state.ReconcileBaseExpansionWait(1,
-                    System.Array.Empty<MissionTurnOutcome>());
-                Assert.That(state.BaseExpansionWaitTurns, Is.EqualTo(1));
-
-                state.MarkBaseExpansionCandidate(2, baseCard, baseHex, structurallyEligible: true);
-                state.ReconcileBaseExpansionWait(2, new[]
-                {
-                    new MissionTurnOutcome
-                    {
-                        MissionKind = MissionKind.Economy,
-                        HasEconomyPayload = true,
-                        EconomyTarget = new EconomyMissionTarget
-                            { Kind = EconomyTaskKind.FoundBase, TargetHex = baseHex, BuildCard = baseCard },
-                        EconomyBuildCompleted = true,
-                    },
-                });
-
-                Assert.That(state.BaseExpansionWaitTurns, Is.Zero);
-            }
-            finally
-            {
-                MissionIntentRegistry.Clear();
-            }
-        }
-
-        [Test]
-        public void BaseExpansionUrgency_ResetsOnPreProvisionStructuralInvalidation()
-        {
-            var player = new Game.Players.PlayerSetupData();
-            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            var baseDef = new CardDefinition
-                { cardType = CardType.Base, authoredKey = "base", displayName = "Base" };
-            CardData baseCard = new CardData(baseDef);
-            var baseHex = new HexCoord(4, 0);
-            try
-            {
-                state.MarkBaseExpansionCandidate(1, baseCard, baseHex, structurallyEligible: true);
-                state.ReconcileBaseExpansionWait(1,
-                    System.Array.Empty<MissionTurnOutcome>());
-                state.MarkBaseExpansionCandidate(2, baseCard, baseHex, structurallyEligible: true);
-                state.ReconcileBaseExpansionWait(2, new[]
-                {
-                    new MissionTurnOutcome
-                    {
-                        MissionKind = MissionKind.Economy,
-                        Proposal = new MissionProposal
-                        {
-                            Kind = MissionKind.Economy,
-                            Target = new EconomyMissionTarget
-                                { Kind = EconomyTaskKind.FoundBase, TargetHex = baseHex, BuildCard = baseCard },
-                        },
-                        StructuralFailure = true,
-                    },
-                });
-
-                Assert.That(state.BaseExpansionWaitTurns, Is.Zero);
-            }
-            finally
-            {
-                MissionIntentRegistry.Clear();
-            }
         }
 
         [Test]
@@ -3479,7 +3382,6 @@ namespace Game.EditorTests
 
             Assert.That(state.RecordBaseExpansionDeliveryFailure(4, card, target), Is.False);
             Assert.That(state.RecordBaseExpansionDeliveryFailure(5, card, target), Is.True);
-            Assert.That(state.BaseExpansionWaitTurns, Is.Zero);
             Assert.That(state.IsBaseExpansionDeliverySuppressed(6, card, target), Is.True);
             Assert.That(state.IsBaseExpansionDeliverySuppressed(7, card, target), Is.True);
             Assert.That(state.IsBaseExpansionDeliverySuppressed(8, card, target), Is.False,

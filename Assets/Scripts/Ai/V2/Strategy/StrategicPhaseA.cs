@@ -283,7 +283,7 @@ namespace Game.Ai.V2
                     .ToList();
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
-                .ThenByDescending(d => d.Value + d.EconomyStrategicUrgency)
+                .ThenByDescending(d => d.Value)
                 .ThenByDescending(d => ResolveEconomyTaskKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
@@ -314,8 +314,7 @@ namespace Game.Ai.V2
             foreach (DemandState istate in states
                 .Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability))
                 .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
-                .ThenByDescending(s => (s.Demand.Value + s.Demand.EconomyStrategicUrgency)
-                    * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
+                .ThenByDescending(s => s.Demand.Value * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
             {
                 istate.Blocked = true;
                 result.InfrastructureAttempts++;
@@ -795,7 +794,6 @@ namespace Game.Ai.V2
                 EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
                 EconomyAssignmentApCost = d.EconomyAssignmentApCost,
                 EconomyPaybackTurns = d.EconomyPaybackTurns,
-                EconomyStrategicUrgency = d.EconomyStrategicUrgency,
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
                 EconomyProjectedActivationApCost = d.EconomyProjectedActivationApCost,

@@ -21,14 +21,11 @@ namespace Game.Ai.V2
 
         // Structural/legal Base and Extraction rules, not legacy score contributions.
         public const float economyExtractionMaxPaybackTurns = 8f;
-        public const float economyBaseDemandMinValue = 12f;
         public const int economyBaseFoundScanRadius = 3;
         public const int economyBaseMinSpacing = 3;
         public const float economyBaseMaxDefenseModifier = 2f;
 
-        // Pre-commitment staging and post-commitment switching are separate hysteresis decisions.
-        public const float economyBaseUrgencyPerDeferredTurn = 12f;
-        public const float economyBaseStagingHysteresisThreshold = 3f;
+        // Initial Base admission uses positive net TaskScore; commitment switching keeps hysteresis.
         public const float economyBaseSwitchHysteresisThreshold = 10f;
         public const float economySameTurnCompletionBonus = 8f;
         public const float economyAdmissionCompletionCostWeight = 1f;
