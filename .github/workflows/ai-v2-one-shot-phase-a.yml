@@ -1,0 +1,111 @@
+name: Apply AI V2 Phase A radar arbitration
+on:
+  push:
+    branches:
+      - fix/radar-phase-a-arbitration
+    paths:
+      - .github/workflows/ai-v2-one-shot-phase-a.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs
+            Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
+            Assets/Scripts/Ai/V2/Strategy/PhaseA/MaterializationPortfolioSolver.cs
+            Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+            Assets/Scripts/Ai/V2/Reaction/ReactionRoundExecutor.cs
+            Assets/Editor/AiRadarProportionalRegressionTests.cs
+            .github/workflows/ai-v2-one-shot-phase-a.yml
+      - name: Apply owner-scoped Phase A changes and regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          root=Path('Assets/Scripts/Ai/V2')
+          nl=chr(10)
+          def edit(path, changes):
+              p=Path(path)
+              s=p.read_text()
+              for old,new in changes:
+                  assert s.count(old)==1, (str(p),old[:95],s.count(old))
+                  s=s.replace(old,new,1)
+              p.write_text(s)
+              print('PASS exact owner edits:', p, len(changes))
+          manager=root/'Strategy/StrategicManager.cs'
+          edit(manager, [
+              ('bool economyAxisAuthoritative = true)', 'bool economyAxisAuthoritative = true, Radar radar = null)'),
+              ('activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative);',
+               'activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar);'),
+          ])
+          phase=root/'Strategy/StrategicPhaseA.cs'
+          edit(phase, [
+              ('bool economyAxisAuthoritative = true)', 'bool economyAxisAuthoritative = true, Radar radar = null)'),
+              ('demands ??= System.Array.Empty<AxisDemand>();', 'demands ??= System.Array.Empty<AxisDemand>();'+nl+'            radar ??= Radar.Even();'),
+              ('ThenByDescending(s => s.Demand.Value + s.Demand.EconomyStrategicUrgency))'+nl+'            {',
+               'ThenByDescending(s => (s.Demand.Value + s.Demand.EconomyStrategicUrgency)'+nl+'                    * RadarValueScale.For(radar, s.Demand.RequestingAxis)))'+nl+'            {'),
+              ('- result.Reservation.GenerationAttemptsUsed))'+nl+'                        : new Dictionary<DemandState, DemandCandidate>();',
+               '- result.Reservation.GenerationAttemptsUsed), radar)'+nl+'                        : new Dictionary<DemandState, DemandCandidate>();'),
+              ('.OrderByDescending(MaterializationPortfolioSolver.ArbitrationScore)',
+               '.OrderByDescending(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar))'),
+          ])
+          solver=root/'Strategy/PhaseA/MaterializationPortfolioSolver.cs'
+          edit(solver, [
+              ('// AI-MGR-01 review-r3 — cross-demand arbitration ranks purely on the opportunity-adjusted'+nl+'        // DecisionScore (Play - Hold + urgency), computed once in the builder. demand.Value is NOT'+nl+'        // re-multiplied here — its weight already entered DecisionScore through UrgencyBonus.'+nl+'        internal static float ArbitrationScore(PhaseACandidate c) => c.DecisionScore;',
+               '// Only the Phase A arbitration is radar-weighted. The builder owns the intrinsic'+nl+'        // Play - Hold + urgency score and its worthwhile threshold; demand.Value remains raw.'+nl+'        // This ONE owner uses the same coefficient as cross-lane mission arbitration.'+nl+'        internal static float ArbitrationScore(PhaseACandidate c, Radar radar = null) =>'+nl+'            WeightedDecisionScore(c.State, c.Cand, radar);'+nl+nl+'        private static float WeightedDecisionScore(DemandState state, DemandCandidate candidate, Radar radar) =>'+nl+'            candidate.DecisionScore * RadarValueScale.For(radar ?? Radar.Even(), state.Demand.RequestingAxis);'),
+              ('int genAttemptsRemaining)'+nl+'        {'+nl+'            var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();',
+               'int genAttemptsRemaining, Radar radar = null)'+nl+'        {'+nl+'            var demands = options.Keys.OrderBy(d => d.Ordinal).ToList();'),
+              ('Rec(i + 1, sum + c.DecisionScore);', 'Rec(i + 1, sum + WeightedDecisionScore(d, c, radar));'),
+          ])
+          pipeline=root/'Orchestration/AiStrategyV2Pipeline.cs'
+          edit(pipeline, [
+              ('ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives);',
+               'ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, radar: radar);'),
+              ('economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy));',
+               'economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar);'),
+          ])
+          reaction=root/'Reaction/ReactionRoundExecutor.cs'
+          edit(reaction, [
+              ('ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation);',
+               'ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);'),
+          ])
+          tests=Path('Assets/Editor/AiRadarProportionalRegressionTests.cs')
+          anchor='        // ---- Task A — pure formula, all six math scenarios from the spec\'s §4 table ----------'
+          inserted=nl.join([
+              '        // Phase A uses the SAME proportional preference, without mutating demand.Value',
+              '        // or the intrinsic Play - Hold + urgency decision score.',
+              '        [Test]',
+              '        public void PhaseAArbitration_WeightsOnlyTheCompetitivePriority()',
+              '        {',
+              '            Radar radar = RadarOf((DesireAxis.Economy, 0f), (DesireAxis.Development, 1f));',
+              '            var economy = new DemandState { Demand = new AxisDemand { RequestingAxis = DesireAxis.Economy, Value = 30f } };',
+              '            var development = new DemandState { Demand = new AxisDemand { RequestingAxis = DesireAxis.Development, Value = 10f } };',
+              '            var cand = new DemandCandidate(null, 0f, 10f, 0f, 10f);',
+              '            Assert.That(MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(economy, cand), radar), Is.EqualTo(0f).Within(Tol));',
+              '            Assert.That(MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(development, cand), radar), Is.EqualTo(40f).Within(Tol));',
+              '            Assert.That(MaterializationPortfolioSolver.ArbitrationScore(new PhaseACandidate(economy, cand), Radar.Even()), Is.EqualTo(10f).Within(Tol));',
+              '            Assert.That(economy.Demand.Value, Is.EqualTo(30f));',
+              '            Assert.That(cand.DecisionScore, Is.EqualTo(10f));',
+              '        }',
+              '',
+          ])
+          edit(tests, [(anchor, inserted+nl+anchor)])
+          assert 'WeightedDecisionScore(d, c, radar)' in solver.read_text()
+          assert 'RadarValueScale.For(radar, s.Demand.RequestingAxis)' in phase.read_text()
+          assert pipeline.read_text().count('radar: radar);') >= 2
+          print('Phase A radar arbitration and regression assertions PASS')
+          PY
+          git diff --check
+          git rm -- .github/workflows/ai-v2-one-shot-phase-a.yml
+          git add -- Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Scripts/Ai/V2/Strategy/PhaseA/MaterializationPortfolioSolver.cs Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs Assets/Scripts/Ai/V2/Reaction/ReactionRoundExecutor.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): apply proportional radar to Phase A card arbitration'
+          git push origin HEAD:fix/radar-phase-a-arbitration
