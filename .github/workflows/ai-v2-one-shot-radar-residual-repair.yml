@@ -1,0 +1,50 @@
+name: Repair temporary Radar patch runner
+on:
+  push:
+    branches:
+      - fix/radar-phase-a-residual-admission
+    paths:
+      - .github/workflows/ai-v2-one-shot-radar-residual-repair.yml
+permissions:
+  contents: write
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            .github/workflows/ai-v2-one-shot-radar-residual.yml
+            .github/workflows/ai-v2-one-shot-radar-residual-repair.yml
+      - name: Restore multiline script indentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/workflows/ai-v2-one-shot-radar-residual.yml')
+          lines=p.read_text().splitlines()
+          in_triple=False
+          repaired=0
+          for n,line in enumerate(lines):
+              if in_triple:
+                  lines[n]='          '+line
+                  repaired+=1
+              if line.count("'''")%2:
+                  in_triple=not in_triple
+          assert not in_triple, 'unclosed multiline source'
+          assert repaired>50, f'expected multiple repaired continuation lines, got {repaired}'
+          content='\n'.join(lines)+'\n'
+          assert all(len(line)-len(line.lstrip(' '))>=10 for line in content.splitlines()[28:]), 'invalid body indentation'
+          p.write_text(content)
+          print('repaired multiline continuation lines:',repaired)
+          PY
+          git diff --check
+          git rm -- .github/workflows/ai-v2-one-shot-radar-residual-repair.yml
+          git add -- .github/workflows/ai-v2-one-shot-radar-residual.yml
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'chore(ai-v2): fix temporary patch runner multiline indentation'
+          git push origin HEAD:fix/radar-phase-a-residual-admission
