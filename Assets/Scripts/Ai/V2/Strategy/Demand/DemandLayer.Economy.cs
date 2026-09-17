@@ -560,8 +560,17 @@ namespace Game.Ai.V2
                     ? 1 + Mathf.CeilToInt(Mathf.Max(0,
                         route.TravelCost - route.CurrentMovement) / (float)move)
                     : Mathf.CeilToInt(route.TravelCost / (float)move);
+            // The "already paid" discount only applies when this turn's activation actually bought
+            // MP toward the first leg of the route (route.CurrentMovement > 0, matching the branch
+            // above that folded this turn into outboundTurns). When CurrentMovement == 0 the
+            // builder's current activation is fully spent with nothing left for this route, so the
+            // FIRST outbound turn still needs a brand-new activation next turn — subtracting one
+            // here would double-count the same already-consumed activation as covering a future
+            // turn it never touched.
+            bool currentTurnAlreadyProgressesRoute = route.CurrentMovement > 0;
             int paidOutboundActivations = Mathf.Max(0,
-                outboundTurns - (route.HasActivatedThisTurn && outboundTurns > 0 ? 1 : 0));
+                outboundTurns - (route.HasActivatedThisTurn && currentTurnAlreadyProgressesRoute
+                    && outboundTurns > 0 ? 1 : 0));
             if (route.IsOnTarget) paidOutboundActivations = 0;
             int returnTurns = includeReturn && route.ReturnTravelCost > 0
                 ? Mathf.CeilToInt(route.ReturnTravelCost / (float)move) : 0;
