@@ -83,12 +83,12 @@ Shader "Custom/ScreenWear"
 
             float brokenLine(float2 uv, float2 a, float2 b, float width, float seed)
             {
-                float line = lineSegment(uv, a, b, width);
+                float lineMask = lineSegment(uv, a, b, width);
                 float2 dir = normalize(b - a + 1e-5);
                 float along = dot(uv - a, dir);
                 float breakup = hash21(float2(floor(along * 78.0), seed));
                 float keep = smoothstep(0.16, 0.38, breakup);
-                return line * keep;
+                return lineMask * keep;
             }
 
             half4 frag(Varyings IN) : SV_Target
