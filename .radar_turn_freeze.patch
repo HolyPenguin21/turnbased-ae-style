@@ -1,0 +1,43 @@
+diff --git a/Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs b/Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
+--- a/Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
++++ b/Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
+@@ -162,7 +162,14 @@
+             bool underSiege = snapshot.Threat != null && snapshot.Threat.UnderSiege;
+ 
+-            UpdateLossPulses(snapshot, state, out float enemyDropFrac, out float ownDropFrac);
++            // Reaction may evaluate the same turn again after an operational discovery. It may
++            // refresh objective facts, but must not decay loss pulses or smooth Radar twice.
++            bool firstEvaluationThisTurn = state.LastTurn != snapshot.TurnNumber;
++            float enemyDropFrac, ownDropFrac;
++            if (firstEvaluationThisTurn)
++                UpdateLossPulses(snapshot, state, out enemyDropFrac, out ownDropFrac);
++            else
++                enemyDropFrac = ownDropFrac = 0f;
+             float momentum = Mathf.Clamp01(0.5f + 0.5f * state.EnemyLossPulse - 0.5f * state.OwnLossPulse);
+@@ -246,11 +253,11 @@
+-            float recon = Smooth(state, DesireAxis.Recon, rawRecon);
+-            float aggression = Smooth(state, DesireAxis.Aggression, rawAggression);
++            float recon = Smooth(state, DesireAxis.Recon, rawRecon, firstEvaluationThisTurn);
++            float aggression = Smooth(state, DesireAxis.Aggression, rawAggression, firstEvaluationThisTurn);
+@@ -253,8 +260,8 @@
+-            desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy);
+-            desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev);
++            desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy, firstEvaluationThisTurn);
++            desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev, firstEvaluationThisTurn);
+@@ -259,9 +266,12 @@
+-            state.PrevOwnPower = snapshot.Self.TotalPower;
+-            state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
+-            state.LastTurn = snapshot.TurnNumber;
++            if (firstEvaluationThisTurn)
++            {
++                state.PrevOwnPower = snapshot.Self.TotalPower;
++                state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
++                state.LastTurn = snapshot.TurnNumber;
++            }
+@@ -618,8 +628,11 @@
+-        private static float Smooth(AiRadarState state, DesireAxis axis, float raw)
++        private static float Smooth(AiRadarState state, DesireAxis axis, float raw, bool advance)
+         {
++            if (!advance && state.Smoothed.TryGetValue(axis, out float frozen))
++                return frozen;
+             if (state.LastTurn < 0 || !state.Smoothed.TryGetValue(axis, out float prev))
