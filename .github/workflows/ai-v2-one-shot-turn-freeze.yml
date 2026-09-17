@@ -1,0 +1,73 @@
+name: Apply AI V2 turn-frozen radar fix
+on:
+  push:
+    branches:
+      - fix/radar-one-assessment-per-turn
+    paths:
+      - .github/workflows/ai-v2-one-shot-turn-freeze.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
+            .radar_turn_freeze.patch
+            .github/workflows/ai-v2-one-shot-turn-freeze.yml
+      - name: Apply exact-owner source replacements and verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs')
+          s = p.read_text()
+          def replace_once(old, new):
+              global s
+              n = s.count(old)
+              assert n == 1, (old[:90], n)
+              s = s.replace(old, new, 1)
+          replace_once('            UpdateLossPulses(snapshot, state, out float enemyDropFrac, out float ownDropFrac);', '''            // A reaction may reassess fresh objectives in the SAME turn, but neither
+            // loss pulses nor smoothed Radar weights may advance twice in that turn.
+            bool firstEvaluationThisTurn = state.LastTurn != snapshot.TurnNumber;
+            float enemyDropFrac, ownDropFrac;
+            if (firstEvaluationThisTurn)
+                UpdateLossPulses(snapshot, state, out enemyDropFrac, out ownDropFrac);
+            else
+                enemyDropFrac = ownDropFrac = 0f;''')
+          replace_once('float recon = Smooth(state, DesireAxis.Recon, rawRecon);', 'float recon = Smooth(state, DesireAxis.Recon, rawRecon, firstEvaluationThisTurn);')
+          replace_once('float aggression = Smooth(state, DesireAxis.Aggression, rawAggression);', 'float aggression = Smooth(state, DesireAxis.Aggression, rawAggression, firstEvaluationThisTurn);')
+          replace_once('Smooth(state, DesireAxis.Economy, rawEconomy);', 'Smooth(state, DesireAxis.Economy, rawEconomy, firstEvaluationThisTurn);')
+          replace_once('Smooth(state, DesireAxis.Development, rawDev);', 'Smooth(state, DesireAxis.Development, rawDev, firstEvaluationThisTurn);')
+          replace_once('''            state.PrevOwnPower = snapshot.Self.TotalPower;
+            state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
+            state.LastTurn = snapshot.TurnNumber;''', '''            if (firstEvaluationThisTurn)
+            {
+                state.PrevOwnPower = snapshot.Self.TotalPower;
+                state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
+                state.LastTurn = snapshot.TurnNumber;
+            }''')
+          replace_once('''        private static float Smooth(AiRadarState state, DesireAxis axis, float raw)
+        {
+            if (state.LastTurn < 0''', '''        private static float Smooth(AiRadarState state, DesireAxis axis, float raw, bool advance)
+        {
+            if (!advance && state.Smoothed.TryGetValue(axis, out float frozen))
+                return frozen;
+            if (state.LastTurn < 0''')
+          assert s.count('firstEvaluationThisTurn);') == 4
+          assert s.count('UpdateLossPulses(snapshot, state, out enemyDropFrac, out ownDropFrac);') == 1
+          p.write_text(s)
+          print('All exact replacements and static assertions PASS')
+          PY
+          git diff --check
+          git rm -- .radar_turn_freeze.patch .github/workflows/ai-v2-one-shot-turn-freeze.yml
+          git add -- Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): freeze radar smoothing and loss pulses within one turn'
+          git push origin HEAD:fix/radar-one-assessment-per-turn
