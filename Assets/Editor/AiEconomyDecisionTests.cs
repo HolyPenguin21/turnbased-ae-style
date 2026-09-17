@@ -85,6 +85,36 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EconomyDemand_RejectsSurplusEvenWhenOpponentProducesMore()
+        {
+            WorldSnapshot snap = SnapshotWithDeficits(0.6f, 0.2f, actionable: true);
+            var abundant = EconomyStanding.CalculateResource(ResourceType.Materials,
+                ownIncome: 5f, opponentMedianIncome: 20f, handNeed: 1f,
+                remainingDeckNeed: 1f, reservedOperationalNeed: 0f,
+                spendableStockpile: 100f, starvationPressure: 0f);
+            var needed = EconomyStanding.CalculateResource(ResourceType.Energy,
+                ownIncome: 0f, opponentMedianIncome: 0f, handNeed: 8f,
+                remainingDeckNeed: 0f, reservedOperationalNeed: 0f,
+                spendableStockpile: 0f, starvationPressure: 0f);
+            snap.Economy.PerType = new[]
+            {
+                new EconomyResourceStanding { Type = ResourceType.Human },
+                needed, abundant, new EconomyResourceStanding { Type = ResourceType.Tech },
+            };
+            snap.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 1),
+                ExtractionOpportunity(new HexCoord(3, 0), ResourceType.Energy, 1),
+            };
+            Assert.That(TaskScoreEvaluator.ResourcePriority(abundant), Is.GreaterThan(0f));
+            AxisDemand onlyUseful = DemandLayer.EconomyDemands(snap,
+                new DesireBreakdown(), null, null, null).Single();
+            Assert.That(onlyUseful.EconomyResourceType, Is.EqualTo(ResourceType.Energy));
+            Assert.That(onlyUseful.EconomyExpectedIncomeGain, Is.EqualTo(1f),
+                "Execution truth remains the raw physical marginal income");
+        }
+
+        [Test]
         public void EconomySiteScore_ThreatCanMakeSaferPeerWin()
         {
             float safe = DemandLayer.ScoreEconomySite(
@@ -3133,8 +3163,8 @@ namespace Game.EditorTests
             snapshot.Economy.PerType = new[]
             {
                 new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = 0.2f },
-                new EconomyResourceStanding { Type = ResourceType.Energy, DeficitScore = 0.8f },
-                new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.8f },
+                new EconomyResourceStanding { Type = ResourceType.Energy, DeficitScore = 0.8f, RemainingDeckResourceNeed = 8f },
+                new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.8f, RemainingDeckResourceNeed = 8f },
                 new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = 0.2f },
             };
             var baseDef = new CardDefinition
@@ -3596,10 +3626,10 @@ namespace Game.EditorTests
         {
             var perType = new List<EconomyResourceStanding>
             {
-                new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = max, IncomeGap = max },
-                new EconomyResourceStanding { Type = ResourceType.Energy, DeficitScore = other },
-                new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = other },
-                new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = other },
+                new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = max, IncomeGap = max, RemainingDeckResourceNeed = 8f },
+                new EconomyResourceStanding { Type = ResourceType.Energy, DeficitScore = other, RemainingDeckResourceNeed = 8f },
+                new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = other, RemainingDeckResourceNeed = 8f },
+                new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = other, RemainingDeckResourceNeed = 8f },
             };
             return new WorldSnapshot
             {

@@ -26,6 +26,7 @@ namespace Game.Ai.V2
             var candidates = new List<AxisDemand>();
             int rejectedNoBuilder = 0;
             int rejectedPayback = 0;
+            int rejectedSurplus = 0;
             int rejectedStrategicValue = 0;
             int rejectedDeliveryValue = 0;
 
@@ -43,10 +44,20 @@ namespace Game.Ai.V2
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
+                // Keep raw income for execution; value and payback use only
+                // economically useful marginal income from the frozen snapshot.
+                float usefulGain = rs.UsefulMarginalIncomeGain(gain);
+                if (usefulGain <= AiConfigV2.allocatorSliceEpsilon)
+                {
+                    // Existing delivery is still proposed directly by EconomyMissionPlanner
+                    // from its durable intent, without refreshing it with surplus economics.
+                    rejectedSurplus++;
+                    continue;
+                }
 
                 float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
                 float cardAp = def?.apCost ?? 0f;
-                float payback = EconomyPaybackTurns(gain, resourceCost, cardAp);
+                float payback = EconomyPaybackTurns(usefulGain, resourceCost, cardAp);
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
                 {
                     rejectedPayback++;
@@ -56,7 +67,7 @@ namespace Game.Ai.V2
                 float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                 var siteOnlyScore = new TaskScore(
-                    economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(gain, resourcePriority),
+                    economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, resourcePriority),
                     payback: TaskScoreEvaluator.Payback(payback),
                     ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                     cardPrice: TaskScoreEvaluator.CardPrice(cardAp, resourceCost),
@@ -95,7 +106,7 @@ namespace Game.Ai.V2
                 float value = score.Value;
                 TaskScoreDiagnostics.Log("Extraction", site.Hex, score,
                     $"resource={site.ResourceType} priority={resourcePriority:0.###} "
-                    + $"marginalGain={gain:0.###} paybackTurns={payback:0.###} cardAp={cardAp:0.###} "
+                    + $"marginalGain={gain:0.###} usefulGain={usefulGain:0.###} paybackTurns={payback:0.###} cardAp={cardAp:0.###} "
                     + $"resourceCost={resourceCost:0.###} distance={travel:0.###} extraAp={extraAp:0.###} "
                     + $"exposure={exposure:0.###} moverOpportunity={opportunity:0.###}");
 
@@ -135,7 +146,7 @@ namespace Game.Ai.V2
                     WorldTaskScore = score,
                     Value = score.Value,
                     Explain = $"{site.ResourceType} task={score.Value:0.##} priority={resourcePriority:0.##} "
-                        + $"marginalGain={gain:0.##} payback={payback:0.##} "
+                        + $"marginalGain={gain:0.##} usefulGain={usefulGain:0.##} payback={payback:0.##} "
                         + $"travel={travel:0.##} exposure={exposure:0.##} moverOpp={opportunity:0.##}",
                 });
             }
@@ -224,11 +235,11 @@ namespace Game.Ai.V2
             }
 
             AiDebugLog.Write($"[AI][V2][Economy][BaseCandidates] {baseSummary}");
-            int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback
+            int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback + rejectedSurplus
                 + rejectedStrategicValue + baseStrategicValue
                 + rejectedDeliveryValue + baseDeliveryValue + baseThreshold;
             AiDebugLog.Write($"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
-                + $"payback={rejectedPayback} strategic_value={rejectedStrategicValue + baseStrategicValue} "
+                + $"payback={rejectedPayback} surplus={rejectedSurplus} strategic_value={rejectedStrategicValue + baseStrategicValue} "
                 + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} threshold={baseThreshold}");
             if (selected.Count == 0)
                 AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
@@ -783,34 +794,36 @@ namespace Game.Ai.V2
                     // Only real card-semantic facts come from Evaluation; TaskScore is the
                     // sole numeric evaluator of this Base's economic and strategic value.
                     float economicGainFact = Mathf.Max(0f, facts.HexYield);
-                    float paybackTurns = economicGainFact > AiConfigV2.allocatorSliceEpsilon
-                        ? EconomyPaybackTurns(economicGainFact,
-                            StrategicCardEvaluator.ResourceCostSum(card.EffectivePlayResourceCost),
-                            card.EffectivePlayApCost)
-                        : float.PositiveInfinity;
                     int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                     float resourceCost = StrategicCardEvaluator.ResourceCostSum(
                         card.EffectivePlayResourceCost);
                     // Base income is multi-resource. Reuse the card-semantic per-type gain owner
                     // and bind each resource's shortage only to its OWN marginal production.
                     var marginalByResource = new List<(float Gain, float Priority)>();
+                    float usefulGainTotal = 0f;
                     foreach (ResourceType type in ResourceBundle.All)
                     {
                         float typeGain = StrategicCardEvaluator.BaseCardMarginalGain(
                             s, site, card.Definition, type);
                         if (typeGain <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
-                        float priority = s.Economy.PerType
-                            .Where(x => x.Type == type)
-                            .Select(x => TaskScoreEvaluator.ResourcePriority(x,
-                                ResourceStarvationRegistry.Pressure(player, type)))
-                            .DefaultIfEmpty(0f).First();
-                        marginalByResource.Add((typeGain, priority));
+                        EconomyResourceStanding standing = s.Economy.PerType
+                            .FirstOrDefault(x => x.Type == type);
+                        float usefulTypeGain = standing.UsefulMarginalIncomeGain(typeGain);
+                        if (usefulTypeGain <= AiConfigV2.allocatorSliceEpsilon)
+                            continue;
+                        float priority = TaskScoreEvaluator.ResourcePriority(standing,
+                            ResourceStarvationRegistry.Pressure(player, type));
+                        marginalByResource.Add((usefulTypeGain, priority));
+                        usefulGainTotal += usefulTypeGain;
                     }
+                    float paybackTurns = usefulGainTotal > AiConfigV2.allocatorSliceEpsilon
+                        ? EconomyPaybackTurns(usefulGainTotal, resourceCost, card.EffectivePlayApCost)
+                        : float.PositiveInfinity;
                     float basePriority = marginalByResource.Count == 0 ? 0f
                         : marginalByResource.Max(x => x.Priority);
                     float economic = TaskScoreEvaluator.EconomicHexBenefit(marginalByResource);
-                    float payback = economicGainFact > AiConfigV2.allocatorSliceEpsilon
+                    float payback = usefulGainTotal > AiConfigV2.allocatorSliceEpsilon
                         ? TaskScoreEvaluator.Payback(paybackTurns) : 0f;
                     float airfield = TaskScoreEvaluator.Airfield(facts.Airfield);
                     float global = Mathf.Clamp(facts.GlobalEffect, 0f,
@@ -884,7 +897,7 @@ namespace Game.Ai.V2
                     float value = score.Value;
 
                     TaskScoreDiagnostics.Log("Base", site.Hex, score,
-                        $"economicGain={economicGainFact:0.###} resourcePriority={basePriority:0.###} "
+                        $"economicGain={economicGainFact:0.###} usefulEconomicGain={usefulGainTotal:0.###} resourcePriority={basePriority:0.###} "
                         + $"paybackTurns={(float.IsInfinity(paybackTurns) ? -1f : paybackTurns):0.###} "
                         + $"airfieldRaw={facts.Airfield:0.###} globalRaw={facts.GlobalEffect:0.###} "
                         + $"frontRaw={site.ForwardProgressValue:0.###} corridorRaw={site.CorridorAlignmentValue:0.###} "

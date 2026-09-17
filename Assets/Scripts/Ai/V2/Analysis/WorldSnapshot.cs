@@ -723,6 +723,23 @@ namespace Game.Ai.V2
         public float StarvationPressure;
         public float DeficitScore;
         public float Ratio;               // OwnIncome / max(1, FieldMedianIncome)
+
+        // This snapshot fact limits a site's physical income to the income actually
+        // useful for the known hand/remaining deck within the existing runway horizon.
+        // SpendableStockpile already excludes reservations, so reserved demand must
+        // NOT be added again: that would count the same protected resources twice.
+        public float UsefulMarginalIncomeGain(float marginalGain)
+        {
+            float physicalGain = Mathf.Max(0f, marginalGain);
+            if (physicalGain <= AiConfigV2.allocatorSliceEpsilon)
+                return 0f;
+            float horizon = Mathf.Max(1f, AiConfigV2.economyRunwayHorizonTurns);
+            float plannedNeed = Mathf.Max(0f, HandResourceNeed)
+                + Mathf.Max(0f, RemainingDeckResourceNeed);
+            float covered = Mathf.Max(0f, SpendableStockpile)
+                + Mathf.Max(0f, OwnIncome) * horizon;
+            return Mathf.Min(physicalGain, Mathf.Max(0f, plannedNeed - covered) / horizon);
+        }
     }
 
     // =======================================================================================
