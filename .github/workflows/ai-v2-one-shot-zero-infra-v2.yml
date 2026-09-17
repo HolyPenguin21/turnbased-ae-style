@@ -1,0 +1,115 @@
+name: AI V2 zero Radar fix delivery
+on:
+  push:
+    branches:
+      - fix/radar-phase-a-zero-infra-residual
+    paths:
+      - .github/workflows/ai-v2-one-shot-zero-infra-v2.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
+            Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
+            Assets/Editor/AiRadarProportionalRegressionTests.cs
+            .github/workflows/ai-v2-one-shot-zero-infra.yml
+            .github/workflows/ai-v2-one-shot-zero-infra-v2.yml
+      - name: Apply owner-scoped patch and verify exact anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          nl=chr(10)
+          phase=Path('Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs')
+          s=phase.read_text()
+          start='            foreach (DemandState istate in states'+nl+'                .Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability))'
+          end='            // CardUpgrade is intentionally not pre-executed here.'
+          assert s.count(start)==1 and s.count(end)==1
+          i=s.index(start); j=s.index(end,i)
+          original=s[i:j]
+          assert original.count('InfrastructureFulfillment.TryFulfill(')==1
+          assert original.count('istate.Blocked = true;')==1
+          original=original.replace('foreach (DemandState istate in states'+nl+'                .Where(s => InfrastructureFulfillment.Handles(s.Demand.Capability))','foreach (DemandState istate in pending',1)
+          indented=nl.join('    '+line if line else '' for line in original.rstrip().splitlines())
+          before=nl.join([
+              '            // Zero-weight uncommitted infrastructure is residual work; active committed builds',
+              '            // keep their original early admission and resource/card protection.',
+              '            var zeroRadarInfrastructure = states',
+              '                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)',
+              '                    && !IsCommittedEconomyBuild(activeIntents, state.Demand)',
+              '                    && RadarValueScale.For(radar, state.Demand.RequestingAxis) <= 0f)',
+              '                .ToList();',
+              '            foreach (DemandState deferred in zeroRadarInfrastructure)',
+              '                deferred.Blocked = true;',
+              '            if (zeroRadarInfrastructure.Count > 0)',
+              '                AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");',
+              '',
+              '            // The SAME infrastructure executor handles early and residual batches.',
+              '            void FulfillInfrastructure(IEnumerable<DemandState> pending)',
+              '            {'
+          ])
+          after=nl.join([
+              '            }',
+              '',
+              '            FulfillInfrastructure(states.Where(state =>',
+              '                InfrastructureFulfillment.Handles(state.Demand.Capability)',
+              '                && !zeroRadarInfrastructure.Contains(state)));',
+              ''
+          ])
+          s=s[:i]+before+nl+indented+nl+after+nl+s[j:]
+          marker='            result.Reservation.UnresolvedDemands.Clear();'
+          assert s.count(marker)==1
+          s=s.replace(marker, '            // Recheck real AP and protected resources before residual infrastructure.'+nl+'            FulfillInfrastructure(zeroRadarInfrastructure);'+nl+nl+marker, 1)
+          assert s.count('InfrastructureFulfillment.TryFulfill(')==1
+          assert s.index('FulfillInfrastructure(zeroRadarInfrastructure);') > s.index('PhaseACandidate selected = feasible')
+          phase.write_text(s)
+          print('PASS owner-scoped Phase A infra ordering, single executor')
+          desire=Path('Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs')
+          d=desire.read_text()
+          old='            if (contrib == null || contrib.Count == 0)'+nl+'                return For(radar, DesireAxis.Recon);'
+          new=nl.join(['            // Missing contributions do not silently impersonate Recon.', '            // Explicit contributing axes with zero Radar still have zero priority.', '            if (contrib == null || contrib.Count == 0)', '                return 1f;'])
+          assert d.count(old)==1
+          d=d.replace(old,new,1)
+          old='return wsum > 0f ? acc / wsum : For(radar, DesireAxis.Recon);'
+          assert d.count(old)==1
+          d=d.replace(old, 'return wsum > 0f ? acc / wsum : 1f; // no valid contribution => neutral',1)
+          desire.write_text(d)
+          print('PASS missing axis neutrality')
+          test=Path('Assets/Editor/AiRadarProportionalRegressionTests.cs')
+          t=test.read_text()
+          anchor='        // ---- Task B — the EffectiveValue==0 -> BaseValue fallback bug, through the REAL allocator'
+          assert t.count(anchor)==1
+          added=nl.join([
+              '        [Test]',
+              '        public void MissingAxis_DoesNotSilentlyBecomeZeroWeightRecon()',
+              '        {',
+              '            Radar radar = RadarOf((DesireAxis.Recon, 0f), (DesireAxis.Economy, 1f));',
+              '            var mission = new MissionProposal { BaseValue = 12f };',
+              '            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(1f).Within(Tol));',
+              '            mission.Axes.Value[DesireAxis.Recon] = -1f;',
+              '            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(1f).Within(Tol));',
+              '            mission.Axes.Value[DesireAxis.Recon] = 1f;',
+              '            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(0f).Within(Tol));',
+              '        }',
+              '',
+              ''
+          ])
+          test.write_text(t.replace(anchor,added+anchor,1))
+          print('PASS axis regression added')
+          PY
+          git diff --check
+          git diff --stat
+          git rm -- .github/workflows/ai-v2-one-shot-zero-infra.yml .github/workflows/ai-v2-one-shot-zero-infra-v2.yml
+          git add -- Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): leave zero radar infrastructure for Phase A residual AP'
+          git push origin HEAD:fix/radar-phase-a-zero-infra-residual
