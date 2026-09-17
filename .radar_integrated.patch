@@ -1,0 +1,16 @@
+diff --git a/Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs b/Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+--- a/Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
++++ b/Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+@@ -1096,2 +1096,2 @@
+-                        if (poolWide || !cycleSession.HasNewFailures || cycleSession.Converged
++                        if (!cycleSession.HasNewFailures || cycleSession.Converged
+                             || ++repriceReallocPass >= AiConfigV2.maxReallocIterations)
+@@ -1367,7 +1367,4 @@
+                     if (anyFailure && allFailuresArePoolWide)
+-                    {
+-                        AiDebugLog.Write("[AI][V2] provision — every funded mission's capability pool is exhausted this turn; stop key-by-key reallocation");
+-                        break;
+-                    }
++                        AiDebugLog.Write("[AI][V2] provision — failed capability pools exhausted; re-pack to admit other runnable lanes");
+                     if (!session.HasNewFailures || session.Converged)
+                         break;
