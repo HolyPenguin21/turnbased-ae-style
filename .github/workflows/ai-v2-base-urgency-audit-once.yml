@@ -18,6 +18,6 @@ jobs:
           echo '===== HEAD ====='
           git rev-parse HEAD
           echo '===== DIRECT REFERENCES ====='
-          rg -n --glob '*.cs' 'EconomyStrategicUrgency|BaseExpansionWaitTurns|MarkBaseExpansionCandidate|ReconcileBaseExpansionWait|RecordBaseExpansionDeliveryFailure|economyBaseUrgencyPerDeferredTurn|economyBaseDemandMinValue|economyBaseStagingHysteresisThreshold|IsStagedBaseExpansion' Assets/Scripts Assets/Editor | head -220 || true
+          grep -R -n -E --include='*.cs' 'EconomyStrategicUrgency|BaseExpansionWaitTurns|MarkBaseExpansionCandidate|ReconcileBaseExpansionWait|RecordBaseExpansionDeliveryFailure|economyBaseUrgencyPerDeferredTurn|economyBaseDemandMinValue|economyBaseStagingHysteresisThreshold|IsStagedBaseExpansion' Assets/Scripts Assets/Editor | head -220 || true
           echo '===== OTHER BASE URGENCY / VALUE REFERENCES ====='
-          rg -n --glob '*.cs' 'baseUrgency|baseExpansionWait|StrategicUrgency|LocalAdmissionScore|CanReplaceCommittedBase' Assets/Scripts/Ai/V2 Assets/Editor | head -150 || true
+          grep -R -n -E --include='*.cs' 'baseUrgency|baseExpansionWait|StrategicUrgency|LocalAdmissionScore|CanReplaceCommittedBase' Assets/Scripts/Ai/V2 Assets/Editor | head -150 || true
