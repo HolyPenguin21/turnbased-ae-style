@@ -17,11 +17,14 @@ namespace Game.Ai.V2
     public static partial class DemandLayer
     {
         private static IEnumerable<AxisDemand> DevelopmentDemands(WorldSnapshot s, DesireBreakdown b,
-            IReadOnlyList<DevelopmentOpportunity> devOpportunities, Radar radar,
+            IReadOnlyList<DevelopmentOpportunity> devOpportunities,
             IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
             PlayerSetupData player, AiTurnContext ctx, PlayerRoot root)
         {
-            float devScale = radar != null ? RadarValueScale.For(radar, DesireAxis.Development) : 1f;
+            // Radar §E — AxisDemand.Value is the demand's OWN intrinsic merit, never pre-scaled by
+            // radar. Radar is applied exactly once, at the point competing spends are compared
+            // (MissionProposal.EffectiveValue / the allocator); Demand/urgency thresholds must not
+            // shift just because the radar weight moved.
             if (s?.Self == null)
             {
                 AiDebugLog.Write("[AI][V2][Demand][Development] decision=NONE reason=no_self_snapshot");
@@ -50,7 +53,7 @@ namespace Game.Ai.V2
                     TargetHex = preparation.FacilityHex,
                     DevelopmentOperatorMode = preparation.Mode,
                     DevOpportunity = preparation,
-                    Value = preparation.BaseValue * devScale,
+                    Value = preparation.BaseValue,
                     Explain = preparation.Explain,
                 };
             }
@@ -82,7 +85,7 @@ namespace Game.Ai.V2
                         RequiredTraits = TraitPreference.None,
                         MinimumFollowupAp = 0f,
                         TargetHex = op.FacilityHex,
-                        Value = op.BaseValue * devScale,   // radar model #1a — Development weight scales merit
+                        Value = op.BaseValue,   // radar-blind — see Radar §E note above
                         DevOpportunity = op,
                         Explain = op.Explain,
                     };

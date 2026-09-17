@@ -556,35 +556,27 @@ namespace Game.Ai.V2
                     && !commitmentKeys.Contains(StableMissionKey.For(m)))
                 .ToList();
 
-            var laneQueues = new Dictionary<ExecutionLane, Queue<MissionProposal>>();
-            foreach (IGrouping<ExecutionLane, MissionProposal> g in freshPool.GroupBy(m => MissionAdmissionPolicy.LaneFor(m)))
-            {
-                IEnumerable<MissionProposal> ordered = g.Key == ExecutionLane.None
-                    ? g.OrderByDescending(RankValue).ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
-                    : g.OrderByDescending(m => MissionAdmissionPolicy.AdmissionRank(m))
-                        .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance);
-                laneQueues[g.Key] = new Queue<MissionProposal>(ordered);
-            }
+            // Radar model #2 / Task C — ONE global admission order across every lane, not a
+            // per-lane queue merged by peeking only the head of each lane. The old per-lane-queue
+            // merge could hide a globally more valuable proposal behind a locally-preferred one in
+            // the SAME lane: e.g. Economy locally prefers a same-turn-completion candidate over a
+            // plain one via AdmissionRank, but if the plain one has the higher cross-lane
+            // EffectiveValue, the old merge would still evaluate the local favourite first every
+            // round, potentially spending the whole budget before the globally stronger candidate
+            // is ever looked at. EffectiveValue (RankValue) is therefore the ONE primary key here;
+            // AdmissionRank (which folds in Economy's same-turn bonus / durable-retarget margin)
+            // is only a tie-break when two proposals are equally valuable cross-lane, or an
+            // explicit admission gate elsewhere (cooldown/conflict/capacity checks below) — never a
+            // way to jump the global queue.
+            List<MissionProposal> freshOrder = freshPool
+                .OrderByDescending(RankValue)
+                .ThenByDescending(m => MissionAdmissionPolicy.AdmissionRank(m))
+                .ThenBy(m => StableMissionKey.For(m), MissionKeyComparer.Instance)
+                .ToList();
 
-            while (laneQueues.Values.Any(q => q.Count > 0))
+            foreach (MissionProposal m in freshOrder)
             {
-                ExecutionLane lane = ExecutionLane.None;
-                MissionProposal m = null;
-                foreach (KeyValuePair<ExecutionLane, Queue<MissionProposal>> kv in laneQueues)
-                {
-                    if (kv.Value.Count == 0) continue;
-                    MissionProposal head = kv.Value.Peek();
-                    if (m == null
-                        || RankValue(head) > RankValue(m) + eps
-                        || (Mathf.Abs(RankValue(head) - RankValue(m)) <= eps
-                            && StableMissionKey.For(head).CompareTo(StableMissionKey.For(m)) < 0))
-                    {
-                        m = head;
-                        lane = kv.Key;
-                    }
-                }
-                laneQueues[lane].Dequeue();
-
+                ExecutionLane lane = MissionAdmissionPolicy.LaneFor(m);
                 StableMissionKey key = StableMissionKey.For(m);
                 if (_rejectedThisTurn.Contains(key))
                 {
@@ -786,8 +778,15 @@ namespace Game.Ai.V2
             Mathf.Max(ApMinimum(m), m.Requirements?.ApDesired ?? m.Requirements?.ApMinimum ?? 0f);
         private float ApMaximum(MissionProposal m) =>
             Mathf.Max(ApDesired(m), m.Requirements?.ApMaximum ?? m.Requirements?.ApDesired ?? 0f);
-        private static float RankValue(MissionProposal m) =>
-            m == null ? 0f : (m.EffectiveValue > 0f ? m.EffectiveValue : m.BaseValue);
+        // Radar model #2 — EffectiveValue is always populated (once, right after BuildMissionSet)
+        // before any proposal reaches the allocator, INCLUDING a legitimate zero (a cold axis at
+        // radar weight 0). There is no "not computed yet" case left to distinguish from "computed
+        // as zero", so this must never fall back to the radar-blind BaseValue: that fallback used
+        // to silently re-inflate a zero-priority proposal back to full intrinsic merit, defeating
+        // the zero-weight contract. A zero-ranked proposal still competes for leftover AP nobody
+        // else wants (see the remainder/spillover passes below) — it is simply never preferred
+        // over a positively-ranked alternative.
+        private static float RankValue(MissionProposal m) => m?.EffectiveValue ?? 0f;
 
         private ResourceVector PhysicalMinimum(MissionProposal m)
         {

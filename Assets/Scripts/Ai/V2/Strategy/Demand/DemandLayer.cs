@@ -21,7 +21,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
             PlayerRoot root = null, IReadOnlyList<DevelopmentOpportunity> devOpportunities = null,
-            Radar radar = null, ISet<DesireAxis> dirtyAxes = null)
+            ISet<DesireAxis> dirtyAxes = null)
         {
             var demands = new List<AxisDemand>();
             bool GenerateAxis(DesireAxis axis) => dirtyAxes == null || dirtyAxes.Contains(axis);
@@ -44,7 +44,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
             }
             if (GenerateAxis(DesireAxis.Development))
-                demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities, radar,
+                demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities,
                     demands, activeIntents, player, ctx, root));
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /

@@ -99,7 +99,7 @@ namespace Game.Ai.V2
             // re-evaluation for free, with no stale registry to reset.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                devOpportunities: null, radar: radar);
+                devOpportunities: null);
             result.Demands += demands.Count;
 
             AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
