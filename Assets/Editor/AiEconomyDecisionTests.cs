@@ -1897,10 +1897,10 @@ namespace Game.EditorTests
             WorldSnapshot snapshot = SnapshotWithDeficits(0.9f, 0.2f, actionable: true);
             snapshot.Economy.PerType = new List<EconomyResourceStanding>
             {
-                new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = 0.2f },
+                new EconomyResourceStanding { Type = ResourceType.Human, DeficitScore = 0.2f, RemainingDeckResourceNeed = 8f },
                 new EconomyResourceStanding { Type = ResourceType.Energy, DeficitScore = 0.1f },
                 new EconomyResourceStanding { Type = ResourceType.Materials, DeficitScore = 0.1f },
-                new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = 0.9f },
+                new EconomyResourceStanding { Type = ResourceType.Tech, DeficitScore = 0.9f, RemainingDeckResourceNeed = 8f },
             };
             snapshot.Known.ResourceHexes = new List<Game.Ai.AiMapMemory.KnownResourceHex>
             {
