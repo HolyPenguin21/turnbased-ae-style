@@ -1,0 +1,23 @@
+name: AI V2 base urgency audit once
+on:
+  push:
+    branches:
+      - fix/remove-base-wait-urgency
+permissions:
+  contents: read
+jobs:
+  audit:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit all urgency owners and downstream consumers
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '===== HEAD ====='
+          git rev-parse HEAD
+          echo '===== DIRECT REFERENCES ====='
+          rg -n --glob '*.cs' 'EconomyStrategicUrgency|BaseExpansionWaitTurns|MarkBaseExpansionCandidate|ReconcileBaseExpansionWait|RecordBaseExpansionDeliveryFailure|economyBaseUrgencyPerDeferredTurn|economyBaseDemandMinValue|economyBaseStagingHysteresisThreshold|IsStagedBaseExpansion' Assets/Scripts Assets/Editor | head -220 || true
+          echo '===== OTHER BASE URGENCY / VALUE REFERENCES ====='
+          rg -n --glob '*.cs' 'baseUrgency|baseExpansionWait|StrategicUrgency|LocalAdmissionScore|CanReplaceCommittedBase' Assets/Scripts/Ai/V2 Assets/Editor | head -150 || true
