@@ -17,6 +17,16 @@ namespace Game.Cards
         [Min(0)] public int materials;
         [Min(0)] public int tech;
 
+        public ResourceCost() { }
+
+        public ResourceCost(int human = 0, int energy = 0, int materials = 0, int tech = 0)
+        {
+            this.human = human;
+            this.energy = energy;
+            this.materials = materials;
+            this.tech = tech;
+        }
+
         public int Get(ResourceType type)
         {
             switch (type)
