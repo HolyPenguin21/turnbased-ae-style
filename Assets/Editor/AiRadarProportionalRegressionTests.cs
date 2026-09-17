@@ -151,6 +151,15 @@ namespace Game.EditorTests
             Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, extraction,
                 new[] { activeBuild }), Is.False, "an existing build commitment retains its protection");
 
+            var unrelated = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                TargetHex = new HexCoord(2, 1),
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, unrelated,
+                new[] { activeBuild }), Is.True, "a Raid gap sharing a hex with Economy cannot borrow its commitment");
+
             MissionIntentKey raidKey = MissionIntentKey.ForRaid(
                 RaidTargetRef.ForEventGuard(new HexCoord(7, 0)));
             var reinforcement = new AxisDemand

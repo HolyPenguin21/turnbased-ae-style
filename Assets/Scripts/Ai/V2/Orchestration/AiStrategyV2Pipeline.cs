@@ -1193,9 +1193,11 @@ namespace Game.Ai.V2
                         + $"noProgress={noProgressCycles}");
                     if (operationalReasons == StrategicInvalidationReason.None && !strategicChanged)
                     {
-                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
-                            && !fe.IsCommitment && fe.Mission != null
-                            && fe.Mission.EffectiveValue <= 0f);
+                        // Ignore the task that JUST executed: only unfinished positive
+                        // allocations should prevent residual admission.
+                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe?.Mission != null
+                            && (StableMissionKey.For(fe.Mission).Equals(selectedKey)
+                                || (!fe.IsCommitment && fe.Mission.EffectiveValue <= 0f)));
                         AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
                         break;
                     }
@@ -1306,7 +1308,8 @@ namespace Game.Ai.V2
                     List<AxisDemand> coldDemands = AiStrategyV2Scope.ApplyDemandScope(
                         DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
-                            actorCommitments, player, ctx, root, devOpportunities, coldAxes));
+                            actorCommitments, player, ctx, root, devOpportunities, scopedDemandAxes))
+                        .Where(d => d != null && coldAxes.Contains(d.RequestingAxis)).ToList();
                     if (coldDemands.Count > 0)
                     {
                         // Phase A owns one carried Reservation object. Its per-call residual

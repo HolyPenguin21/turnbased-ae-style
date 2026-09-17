@@ -734,7 +734,8 @@ namespace Game.Ai.V2
                 && activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
                     && i.IntentKey.Equals(demand.ConsumerIntentKey.Value)))
                 return false;
-            return !IsCommittedEconomyBuild(activeIntents, demand);
+            return demand.RequestingAxis != DesireAxis.Economy
+                || !IsCommittedEconomyBuild(activeIntents, demand);
         }
 
         private static bool IsCommittedEconomyBuild(
