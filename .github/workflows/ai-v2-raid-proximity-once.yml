@@ -1,0 +1,144 @@
+name: AI V2 Raid proximity and fog scoring once
+on:
+  push:
+    branches:
+      - fix/raid-proximity-and-fog-stale
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply guarded changes and regression coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          def change(path, old, new, count=1):
+              p = Path(path)
+              s = p.read_text(encoding='utf-8')
+              assert s.count(old) == count, f'{path}: expected {count} anchor(s), found {s.count(old)}: {old[:90]!r}'
+              p.write_text(s.replace(old, new), encoding='utf-8')
+          obj = 'Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs'
+          change(obj,
+              '            var score = new TaskScore(\n                militaryTargetRelevance: AiConfigV2.RaidReward);',
+              '            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, o.TargetHex);\n'
+              '            var score = new TaskScore(\n'
+              '                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),\n'
+              '                militaryTargetRelevance: AiConfigV2.RaidReward);')
+          change(obj,
+              '                + $"confidence={o.Confidence:0.###} stale=0 stationary_raid");',
+              '                + $"confidence={o.Confidence:0.###} stale=0 stationary_raid homeDistance={homeDistance}");')
+
+          raid = 'Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.cs'
+          change(raid,
+              '                        var staleTask = new TaskScore(\n'
+              '                            staleness: TaskScoreEvaluator.StaleIntelPenalty(1f),\n'
+              '                            cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreReactivationApWeight,',
+              '                        // Stationary neutral/event target: loss of a fresh opportunity read\n'
+              '                        // does not make its last-known position less valuable.\n'
+              '                        int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(\n'
+              '                            snap, intent.Raid.LastKnownHex);\n'
+              '                        var staleTask = new TaskScore(\n'
+              '                            ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),\n'
+              '                            cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreReactivationApWeight,')
+          change(raid,
+              '                staleness: o.TaskScore.Staleness,\n'
+              '                militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,',
+              '                staleness: o.TaskScore.Staleness,\n'
+              '                ownTerritoryProximity: o.TaskScore.OwnTerritoryProximity,\n'
+              '                militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,')
+          change(raid,
+              '                            $"continuation=tracking_in_fog confidence=unknown actor="',
+              '                            $"continuation=tracking_in_fog confidence=unknown stale=0 homeDistance={homeDistance} actor="')
+
+          test = 'Assets/Editor/AiAggressionRaidTests.cs'
+          change(test,
+              '            Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));',
+              '            Assert.That(neutralRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward\n'
+              '                + TaskScoreEvaluator.OwnTerritoryProximity(\n'
+              '                    TaskScoreEvaluator.NearestOwnedHomeDistance(neutral, neutralRaid.LastKnownHex))));')
+          change(test,
+              '            Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward));',
+              '            Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward\n'
+              '                + TaskScoreEvaluator.OwnTerritoryProximity(\n'
+              '                    TaskScoreEvaluator.NearestOwnedHomeDistance(eventSnap, eventRaid.LastKnownHex))));')
+          marker = '        // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------\n'
+          extra = '''        [Test]
+                  public void RaidValue_UsesSignedNearestHomeProximity_ForNeutralAndEvent()
+                  {
+                      HexCoord nearHex = new HexCoord(3, 0);
+                      WorldSnapshot near = SnapshotWithNeutralSighting(armyId: 81, hex: nearHex,
+                          defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+                      AggressionObjective nearRaid = AggressionObjectiveEvaluator.Enumerate(near,
+                          CombatOpportunityAnalyzer.Analyze(near)).Single();
+                      Assert.That(nearRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(1.5f).Within(0.0001f));
+                      Assert.That(nearRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward + 1.5f).Within(0.0001f));
+
+                      WorldSnapshot far = SnapshotWithNeutralSighting(armyId: 82,
+                          hex: new HexCoord(12, 0),
+                          defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+                      AggressionObjective farRaid = AggressionObjectiveEvaluator.Enumerate(far,
+                          CombatOpportunityAnalyzer.Analyze(far)).Single();
+                      Assert.That(farRaid.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
+                      Assert.That(farRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward - 3f).Within(0.0001f));
+
+                      WorldSnapshot eventSnap = SnapshotWithEventGuard(nearHex, Weak(), withOwnArmy: true);
+                      AggressionObjective eventRaid = AggressionObjectiveEvaluator.Enumerate(eventSnap,
+                          CombatOpportunityAnalyzer.Analyze(eventSnap)).Single();
+                      Assert.That(eventRaid.TaskScore.OwnTerritoryProximity,
+                          Is.EqualTo(nearRaid.TaskScore.OwnTerritoryProximity));
+                      Assert.That(eventRaid.BaseValue, Is.EqualTo(nearRaid.BaseValue));
+                  }
+
+          '''
+          import textwrap
+          extra = textwrap.indent(textwrap.dedent(extra), '        ')
+          change(test, marker, extra + marker)
+
+          unified = 'Assets/Editor/AiUnifiedTaskScoreTests.cs'
+          change(unified,
+              '                staleness: objective.TaskScore.Staleness,\n'
+              '                militaryTargetRelevance: objective.TaskScore.MilitaryTargetRelevance,',
+              '                staleness: objective.TaskScore.Staleness,\n'
+              '                ownTerritoryProximity: objective.TaskScore.OwnTerritoryProximity,\n'
+              '                militaryTargetRelevance: objective.TaskScore.MilitaryTargetRelevance,')
+          change(unified,
+              '            Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));\n'
+              '        }\n\n        [Test]\n        public void SurveilContact_',
+              '            Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));\n'
+              '            Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-1.5f).Within(0.0001f));\n'
+              '            // No fresh opportunity report: a started stationary Raid retains its\n'
+              '            // real actor AP/ETA and positional fact, but loses no value for fog.\n'
+              '            intent.Raid.LastKnownHex = destination;\n'
+              '            breakdown.OpportunityReport = new CombatOpportunityReport\n'
+              '            {\n'
+              '                All = Array.Empty<CombatOpportunity>(),\n'
+              '                NeutralOpportunities = Array.Empty<CombatOpportunity>(),\n'
+              '            };\n'
+              '            MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,\n'
+              '                new[] { intent }, Array.Empty<AggressionObjective>()).Single();\n'
+              '            float expectedFog = objective.TaskScore.OwnTerritoryProximity\n'
+              '                - pinned.ActivationApCost * AiConfigV2.taskScoreReactivationApWeight\n'
+              '                - TaskScoreEvaluator.DeliveryFromEta(pinned.ActivationApCost,\n'
+              '                    fog.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight);\n'
+              '            Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f));\n'
+              '            Assert.That(TaskScoreEvaluator.StaleIntelPenalty(1f), Is.LessThan(0f),\n'
+              '                "shared staleness conversion remains available for future mobile player targets");\n'
+              '        }\n\n        [Test]\n        public void SurveilContact_')
+          print('PASS: four guarded source/test edits applied; no activation cost logic touched')
+          PY
+          git diff --check
+          git diff --stat
+          echo '== Same-turn bonus reference sites =='
+          rg -n 'economySameTurnCompletionBonus|economyAdmissionCompletionCostWeight|MissionAdmissionPolicy.AdmissionRank' Assets/Scripts/Ai/V2 || true
+          echo '== Raid stale penalty references =='
+          rg -n 'StaleIntelPenalty|OwnTerritoryProximity' Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.cs Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs || true
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/Scripts/Ai/V2/Strategy/Objectives/AggressionObjectiveEvaluator.cs Assets/Scripts/Ai/V2/Missions/AggressionMissionPlanner.cs Assets/Editor/AiAggressionRaidTests.cs Assets/Editor/AiUnifiedTaskScoreTests.cs
+          git commit -m 'fix(ai-v2): score Raid proximity and avoid fog staleness for stationary targets'
+          git push origin HEAD:fix/raid-proximity-and-fog-stale
