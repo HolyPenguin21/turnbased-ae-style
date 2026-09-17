@@ -5,13 +5,9 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Runtime-only presentation layer for the Game scene. It intentionally sits above the normal
-    // HUD but never receives raycasts: the effect is meant to read as a very light worn-screen /
-    // protective-glass layer, not as another interactive UI panel.
-    //
-    // The shader itself keeps the centre almost clean and concentrates sparse scratches near the
-    // outer frame. No blur, colour grading or scene sampling is involved, so the map and card UI
-    // remain pixel-sharp underneath it.
+    // Runtime-only presentation layer for the Game scene. It sits above the normal HUD but never
+    // receives raycasts. The shader keeps the centre clean and concentrates sparse scratches near
+    // the outer frame, so the effect adds physical wear without softening map/card readability.
     public sealed class ScreenWearOverlay : MonoBehaviour
     {
         private const int OverlaySortingOrder = 32760;
@@ -21,12 +17,13 @@ namespace Game.UI
         private static readonly int EdgeWidthId = Shader.PropertyToID("_EdgeWidth");
         private static readonly int SpeckStrengthId = Shader.PropertyToID("_SpeckStrength");
 
-        // Intentionally restrained compared with the visual concept. Individual scratches can
-        // still catch the eye at the border, but they should disappear from attention during play.
-        [SerializeField, Range(0f, 0.2f)] private float intensity = 0.065f;
-        [SerializeField, Range(0.05f, 0.35f)] private float edgeWidth = 0.17f;
-        [SerializeField, Range(0f, 1f)] private float speckStrength = 0.22f;
-        [SerializeField] private Color scratchColor = new Color(0.82f, 0.76f, 0.65f, 1f);
+        // The previous 0.065/sub-pixel combination was effectively invisible at the normal game
+        // resolution. These values remain restrained, but guarantee that the longest edge marks
+        // survive rasterisation and can actually be perceived during play.
+        [SerializeField, Range(0f, 0.25f)] private float intensity = 0.13f;
+        [SerializeField, Range(0.05f, 0.35f)] private float edgeWidth = 0.20f;
+        [SerializeField, Range(0f, 1f)] private float speckStrength = 0.28f;
+        [SerializeField] private Color scratchColor = new Color(0.84f, 0.78f, 0.67f, 1f);
 
         private static ScreenWearOverlay _instance;
 
@@ -91,8 +88,7 @@ namespace Game.UI
                 return;
             }
 
-            // Resources.Load keeps the otherwise runtime-only shader referenced in player builds.
-            // Shader.Find remains as an Editor-friendly fallback if the Resources asset is moved.
+            // Keeping the shader in Resources guarantees that it is included in a player build.
             Shader shader = Resources.Load<Shader>("ScreenWear");
             if (shader == null)
                 shader = Shader.Find("Custom/ScreenWear");
