@@ -1,0 +1,69 @@
+name: AI V2 neutral unspecified axis patch
+on:
+  push:
+    branches:
+      - fix/radar-unspecified-axis-neutral
+    paths:
+      - .github/workflows/ai-v2-one-shot-axis-neutral.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs
+            Assets/Editor/AiRadarProportionalRegressionTests.cs
+            .github/workflows/ai-v2-one-shot-axis-neutral.yml
+      - name: Apply scoped change and inspect diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          nl=chr(10)
+          desire=Path('Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs')
+          s=desire.read_text()
+          before='            if (contrib == null || contrib.Count == 0)'+nl+'                return For(radar, DesireAxis.Recon);'
+          after=nl.join(['            // Missing axis contributions are neutral, not an implicit Recon vote.', '            // An EXPLICIT Recon contribution still scales to zero if Recon Radar is zero.', '            if (contrib == null || contrib.Count == 0)', '                return 1f;'])
+          assert s.count(before)==1, 'missing-axis anchor changed'
+          s=s.replace(before,after,1)
+          before='return wsum > 0f ? acc / wsum : For(radar, DesireAxis.Recon);'
+          after='return wsum > 0f ? acc / wsum : 1f; // no valid declared contribution => neutral'
+          assert s.count(before)==1, 'invalid-axis anchor changed'
+          s=s.replace(before,after,1)
+          desire.write_text(s)
+          print('PASS both missing/invalid Radar fallback sites neutral')
+          test=Path('Assets/Editor/AiRadarProportionalRegressionTests.cs')
+          s=test.read_text()
+          anchor='        // ---- Task B — the EffectiveValue==0 -> BaseValue fallback bug, through the REAL allocator'
+          assert s.count(anchor)==1, 'regression insertion anchor changed'
+          added=nl.join([
+              '        [Test]',
+              '        public void MissingAxis_IsNeutralButExplicitZeroWeightIsNot()',
+              '        {',
+              '            Radar radar = RadarOf((DesireAxis.Recon, 0f), (DesireAxis.Economy, 1f));',
+              '            var mission = new MissionProposal { BaseValue = 12f };',
+              '            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(1f).Within(Tol));',
+              '            mission.Axes.Value[DesireAxis.Recon] = -1f;',
+              '            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(1f).Within(Tol));',
+              '            mission.Axes.Value[DesireAxis.Recon] = 1f;',
+              '            Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(0f).Within(Tol));',
+              '        }', '', ''
+          ])
+          test.write_text(s.replace(anchor,added+anchor,1))
+          print('PASS coverage missing/invalid and explicit zero Radar contributions')
+          PY
+          git diff --check
+          git diff --stat
+          git diff -- Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git rm -- .github/workflows/ai-v2-one-shot-axis-neutral.yml
+          git add -- Assets/Scripts/Ai/V2/Strategy/Desire/DesireEvaluators.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): treat unspecified Radar contribution as neutral'
+          git push origin HEAD:fix/radar-unspecified-axis-neutral
