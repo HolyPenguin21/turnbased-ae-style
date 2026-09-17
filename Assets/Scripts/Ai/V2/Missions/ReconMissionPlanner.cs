@@ -229,6 +229,18 @@ namespace Game.Ai.V2
             // funding. Carry that actor as a non-binding preference so admission can reason about
             // the exact envelope it is financing; Assignment remains authoritative.
             ScoutCostEstimate est = ScoutCostModel.Estimate(snap, c.Target, c.PreferredMover);
+
+            // Task 5 (R1) — c.PreferredMover is the durable incumbent's NOMINAL preference; when
+            // that actor is structurally ineligible this turn (e.g. 0 CurrentMovement),
+            // ScoutCostModel.PlanGroundCost silently reprices against the cheapest OTHER eligible
+            // actor and returns that actor's id as est.PreferredMoverArmyId. Requirements above is
+            // always priced off est (whichever actor was actually used) — the witness the proposal
+            // publishes must name that SAME actor, never the nominal incumbent the price was not
+            // actually computed against. This is a proposal-internal consistency fix only: it does
+            // NOT touch durable ownership (MissionIntent.PreferredMoverArmyId), which Continuity
+            // still sets exclusively from the real post-execution MissionTurnOutcome.MoverArmyId in
+            // MissionContinuityLayer.NewIntent — a structurally-ineligible incumbent is not silently
+            // "demoted" anywhere durable by this change.
             var req = new MissionRequirements
             {
                 MoverKnown = est.MoverKnown,
@@ -252,7 +264,7 @@ namespace Game.Ai.V2
                 FromDurableIntent = c.IsIncumbent,
                 DurableFundingTier = c.Tier,
                 Explain = c.Explain,
-                PreferredMoverArmyId = c.PreferredMover ?? est.PreferredMoverArmyId,
+                PreferredMoverArmyId = est.MoverKnown ? est.PreferredMoverArmyId : c.PreferredMover,
             };
             proposal.Axes.Value[DesireAxis.Recon] = 1.0f;
             return proposal;
