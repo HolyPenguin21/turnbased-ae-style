@@ -1,0 +1,291 @@
+name: AI V2 Radar residual Phase A patch
+on:
+  push:
+    branches:
+      - fix/radar-phase-a-residual-admission
+    paths:
+      - .github/workflows/ai-v2-one-shot-radar-residual.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
+            Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs
+            Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs
+            Assets/Editor/AiRadarProportionalRegressionTests.cs
+            .github/workflows/ai-v2-one-shot-radar-residual.yml
+      - name: Apply owner-scoped patch and verify exact anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          def once(source, old, new, title):
+              count=source.count(old)
+              assert count==1, f'{title}: expected exactly one anchor, found {count}'
+              return source.replace(old,new,1)
+          phase=Path('Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs')
+          s=phase.read_text()
+          s=once(s,'bool economyAxisAuthoritative = true, Radar radar = null)\n',
+              'bool economyAxisAuthoritative = true, Radar radar = null,\n            bool deferFreshZeroRadar = false)\n','phase signature')
+          s=once(s,'            radar ??= Radar.Even();\n',
+              '            radar ??= Radar.Even();\n            // Early admissions defer NEW zero-priority work, but never delay a durable\n            // Economy build or a consumer-linked Raid reinforcement. Late residual admission\n            // uses this same owner with deferFreshZeroRadar=false.\n','phase radar setup')
+          old='''            var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred).ToList();
+            var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred).ToList();'''
+          new='''            var coldStates = deferFreshZeroRadar
+                ? allStates.Where(s => ShouldDeferFreshZeroRadarDemand(
+                    radar, s.Demand, activeIntents)).ToList()
+                : new List<DemandState>();
+            var states = allStates.Where(s => !s.Demand.IsPersistenceDeferred
+                && !coldStates.Contains(s)).ToList();
+            var deferredStates = allStates.Where(s => s.Demand.IsPersistenceDeferred
+                && !coldStates.Contains(s)).ToList();
+            if (coldStates.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   strat.A radar — defer {coldStates.Count} fresh zero-priority demand(s) until operational/tempo admission finishes");'''
+          s=once(s,old,new,'cold demand classification')
+          old='''                if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
+                    InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
+                return result;'''
+          new='''                if (economyAxisAuthoritative && !anyProtectedActiveEconomyBuild)
+                    InfrastructureFulfillment.ClearDeferredEconomyResources(player, ctx.TurnNumber);
+                if (coldStates.Count > 0)
+                {
+                    result.Reservation.UnresolvedDemands.Clear();
+                    foreach (DemandState cold in coldStates)
+                        result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
+                }
+                return result;'''
+          s=once(s,old,new,'cold only early return')
+          old='''                        .Where(s => s.Demand != null
+                            && s.Demand.RequestingAxis == DesireAxis.Economy'''
+          new='''                        .Where(s => s.Demand != null && !coldStates.Contains(s)
+                            && s.Demand.RequestingAxis == DesireAxis.Economy'''
+          s=once(s,old,new,'no early cold hero resource hold')
+          old='''            foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f))
+                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));'''
+          new='''            foreach (DemandState state in deferredStates.Where(s => s.Remaining > 0f))
+                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(state));
+            foreach (DemandState cold in coldStates.Where(s => s.Remaining > 0f))
+                result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));'''
+          s=once(s,old,new,'carry cold residual')
+          method='''        // Strategy owns the admission policy, not Orchestration or the executor.
+        // Zero is a residual PRIORITY for new work, never a cancellation of an active intent.
+        internal static bool ShouldDeferFreshZeroRadarDemand(Radar radar, AxisDemand demand,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (demand == null || RadarValueScale.For(radar ?? Radar.Even(),
+                    demand.RequestingAxis) > 0f)
+                return false;
+            if (demand.ConsumerIntentKey.HasValue && activeIntents != null
+                && activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
+                    && i.IntentKey.Equals(demand.ConsumerIntentKey.Value)))
+                return false;
+            return !IsCommittedEconomyBuild(activeIntents, demand);
+        }
+
+'''
+          s=once(s,'        private static bool IsCommittedEconomyBuild(',method+'        private static bool IsCommittedEconomyBuild(','defer policy at current owner')
+          s=once(s,'                Value = d.Value,\n                TargetHex = d.TargetHex,',
+              '                Value = d.Value,\n                WorldTaskScore = d.WorldTaskScore,\n                TargetHex = d.TargetHex,','retain intrinsic residual')
+          s=once(s,'                EconomyPaybackTurns = d.EconomyPaybackTurns,\n                EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,',
+              '                EconomyPaybackTurns = d.EconomyPaybackTurns,\n                EconomyStrategicUrgency = d.EconomyStrategicUrgency,\n                EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,\n                EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,','retain economy residual')
+          s=once(s,'                RequiredCapabilityPower = d.RequiredCapabilityPower,\n                Explain = d.Explain,',
+              '                RequiredCapabilityPower = d.RequiredCapabilityPower,\n                DeliveryShape = d.DeliveryShape,\n                ConsumerIntentKey = d.ConsumerIntentKey,\n                Explain = d.Explain,','retain consumer residual')
+          phase.write_text(s)
+          manager=Path('Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs')
+          s=manager.read_text()
+          s=once(s,'bool economyAxisAuthoritative = true, Radar radar = null)\n',
+              'bool economyAxisAuthoritative = true, Radar radar = null,\n            bool deferFreshZeroRadar = false)\n','manager forwarder signature')
+          s=once(s,'activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar);',
+              'activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar,\n                deferFreshZeroRadar);','manager forwarder call')
+          manager.write_text(s)
+          pipeline=Path('Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs')
+          s=pipeline.read_text()
+          s=once(s,'ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, radar: radar);',
+              'ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,\n                radar: radar, deferFreshZeroRadar: true);','initial phase A deferral')
+          s=once(s,'economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar);',
+              'economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,\n                        deferFreshZeroRadar: true);','dirty phase A deferral')
+          s=once(s,'                bool ownershipFreshAfterPhaseA = phaseA.StateChanged;',
+              '                bool ownershipFreshAfterPhaseA = phaseA.StateChanged;\n                bool zeroRadarResidualWindow = false;','residual window state')
+          s=once(s,'                    AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");',
+              '                    zeroRadarResidualWindow = false;\n                    AiDebugLog.Write("[AI][V2][Loop] begin — typed operational admission");','reset residual window')
+          s=once(s,'''                    if (allocation.Funded.Count == 0)
+                    {
+                        AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");''',
+              '''                    if (allocation.Funded.Count == 0)
+                    {
+                        zeroRadarResidualWindow = true;
+                        AiDebugLog.Write("[AI][V2][Loop] stop — no funded typed mission");''','no funded residual window')
+          s=once(s,'''                        noProgressCycles++;
+                        AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "''',
+              '''                        noProgressCycles++;
+                        // A rejected positive or durable mission must not be mistaken for
+                        // an exhausted portfolio; zero-only rejections leave a residual window.
+                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
+                            && !fe.IsCommitment && fe.Mission != null
+                            && fe.Mission.EffectiveValue <= 0f);
+                        AiDebugLog.Write($"[AI][V2][Loop] admission stopped — no provisioned task; "''','no provisioned residual window')
+          s=once(s,'''                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
+                        break;''',
+              '''                        zeroRadarResidualWindow = allocation.Funded.All(fe => fe != null
+                            && !fe.IsCommitment && fe.Mission != null
+                            && fe.Mission.EffectiveValue <= 0f);
+                        AiDebugLog.Write("[AI][V2][Loop] stop — settled task produced no typed invalidation");
+                        break;''','no trigger residual window')
+          s=once(s,'''                    if (!phaseBRound.StateChanged && !strategicChanged)
+                        break;''',
+              '''                    // An unobserved Phase-B mutation may expose positive work even
+                    // when it emitted no operational trigger. Be conservative: do not
+                    // start a zero-Radar residual admission on that ambiguous frame.
+                    if (phaseBRound.StateChanged && !operationalDirty)
+                        zeroRadarResidualWindow = false;
+                    if (!phaseBRound.StateChanged && !strategicChanged)
+                        break;''','avoid stale Phase B admission')
+          terminal='''                phaseBHandled = true;
+
+                // A zero Radar is not a prohibition. Only AFTER the existing operational
+                // and tempo passes exhaust their actionable budgets may new cold-axis
+                // preparation use what is physically left. No new budget/scorer/executor:
+                // call the same Phase A owner with freshly regenerated cold demands.
+                var coldAxes = new HashSet<DesireAxis>(scopedDemandAxes.Where(a =>
+                    RadarValueScale.For(radar, a) <= 0f));
+                if (zeroRadarResidualWindow && coldAxes.Count > 0
+                    && settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
+                    && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
+                {
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                        ? AggressionObjectiveEvaluator.Enumerate(
+                            snapshot, assessment.Breakdown.OpportunityReport)
+                        : new List<AggressionObjective>();
+                    activeIntents = MissionContinuityLayer.ResolveActive(
+                        player, snapshot, reconObjectives, aggressionObjectives);
+                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                    actorCommitments = ActorCommitments.FromIntents(
+                        activeIntents, snapshot, reconObjectives);
+                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                        ? DevelopmentOpportunityEvaluator.Enumerate(
+                            snapshot, player, root, hand, aggressionObjectives)
+                        : new List<DevelopmentOpportunity>();
+                    List<AxisDemand> coldDemands = AiStrategyV2Scope.ApplyDemandScope(
+                        DemandLayer.Generate(snapshot, assessment.Breakdown,
+                            reconObjectives, aggressionObjectives, activeIntents,
+                            actorCommitments, player, ctx, root, devOpportunities, coldAxes));
+                    if (coldDemands.Count > 0)
+                    {
+                        // Phase A owns one carried Reservation object. Its per-call residual
+                        // rewrite must not erase still-unfulfilled positive-axis telemetry.
+                        List<AxisDemand> warmResidual = (phaseB.Reservation ?? phaseA.Reservation)
+                            .UnresolvedDemands.Where(d => d != null
+                                && RadarValueScale.For(radar, d.RequestingAxis) > 0f).ToList();
+                        WorldAnalysis.StepObservationStamp beforeCold =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
+                            snapshot, player, root, hand, ctx, apLedger, coldDemands,
+                            actorCommitments, activeIntents, reconObjectives,
+                            phaseB.Reservation ?? phaseA.Reservation,
+                            economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),
+                            radar: radar);
+                        phaseA.Accumulate(coldPass);
+                        phaseA.Reservation.UnresolvedDemands.AddRange(warmResidual);
+                        AiDebugLog.Write($"[AI][V2][Loop] cold Radar residual — demands={coldDemands.Count} "
+                            + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
+                        if (coldPass.StateChanged)
+                        {
+                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                                snapshot, player, root, hand, ctx);
+                            WorldAnalysis.StepObservationStamp afterCold =
+                                WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                            WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                                beforeCold, afterCold, null);
+                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                            aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                                ? AggressionObjectiveEvaluator.Enumerate(
+                                    snapshot, assessment.Breakdown.OpportunityReport)
+                                : new List<AggressionObjective>();
+                            activeIntents = MissionContinuityLayer.ResolveActive(
+                                player, snapshot, reconObjectives, aggressionObjectives);
+                            activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
+                            actorCommitments = ActorCommitments.FromIntents(
+                                activeIntents, snapshot, reconObjectives);
+                            devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
+                                ? DevelopmentOpportunityEvaluator.Enumerate(
+                                    snapshot, player, root, hand, aggressionObjectives)
+                                : new List<DevelopmentOpportunity>();
+                            demands = AiStrategyV2Scope.ApplyDemandScope(DemandLayer.Generate(
+                                snapshot, assessment.Breakdown, reconObjectives,
+                                aggressionObjectives, activeIntents, actorCommitments,
+                                player, ctx, root, devOpportunities, scopedDemandAxes));
+                            ownershipFreshAfterPhaseA = true;
+                            yield return RunTypedAdmissions();
+                        }
+                    }
+                }
+'''
+          s=once(s,'                phaseBHandled = true;\n',terminal,'late cold admission after tempo')
+          pipeline.write_text(s)
+          test=Path('Assets/Editor/AiRadarProportionalRegressionTests.cs')
+          s=test.read_text()
+          anchor='        // ---- Task B — the EffectiveValue==0 -> BaseValue fallback bug, through the REAL allocator'
+          addition='''        [Test]
+        public void PhaseA_ColdNewDemandDefersButActiveEconomyAndRaidSupportDoNot()
+        {
+            Radar cold = RadarOf((DesireAxis.Recon, 1f),
+                (DesireAxis.Economy, 0f), (DesireAxis.Aggression, 0f));
+            var extraction = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(2, 1),
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, extraction, null), Is.True);
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(Radar.Even(), extraction, null), Is.False);
+            var activeBuild = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = new HexCoord(2, 1) },
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, extraction,
+                new[] { activeBuild }), Is.False, "an existing build commitment retains its protection");
+
+            MissionIntentKey raidKey = MissionIntentKey.ForRaid(
+                RaidTargetRef.ForEventGuard(new HexCoord(7, 0)));
+            var reinforcement = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                ConsumerIntentKey = raidKey,
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, reinforcement, null), Is.True);
+            var activeRaid = new MissionIntent
+            {
+                Kind = MissionKind.Raid, Status = IntentStatus.Active, IntentKey = raidKey,
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, reinforcement,
+                new[] { activeRaid }), Is.False, "reinforcement belongs to an active Raid, not a new cold-axis task");
+        }
+
+'''
+          s=once(s,anchor,addition+anchor,'cold demand regression test')
+          test.write_text(s)
+          print('PASS: all unique anchors matched; policy, two callers, late residual and regression added')
+          PY
+          git diff --check
+          git diff --stat
+          git diff -- Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git rm -- .github/workflows/ai-v2-one-shot-radar-residual.yml
+          git add -- Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Scripts/Ai/V2/Strategy/StrategicManager.cs Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs Assets/Editor/AiRadarProportionalRegressionTests.cs
+          git config user.name 'AI V2 patch delivery'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): defer new zero-Radar Phase A spending until residual budget'
+          git push origin HEAD:fix/radar-phase-a-residual-admission
