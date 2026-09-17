@@ -129,6 +129,54 @@ namespace Game.EditorTests
             Assert.That(RadarValueScale.For(radar, mission), Is.EqualTo(0f).Within(Tol));
         }
 
+        [Test]
+        public void PhaseA_ColdNewDemandDefersButActiveEconomyAndRaidSupportDoNot()
+        {
+            Radar cold = RadarOf((DesireAxis.Recon, 1f),
+                (DesireAxis.Economy, 0f), (DesireAxis.Aggression, 0f));
+            var extraction = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy,
+                Capability = CapabilityKind.EconomicInfrastructure,
+                TargetHex = new HexCoord(2, 1),
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, extraction, null), Is.True);
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(Radar.Even(), extraction, null), Is.False);
+            var activeBuild = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = new HexCoord(2, 1) },
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, extraction,
+                new[] { activeBuild }), Is.False, "an existing build commitment retains its protection");
+
+            var unrelated = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                TargetHex = new HexCoord(2, 1),
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, unrelated,
+                new[] { activeBuild }), Is.True, "a Raid gap sharing a hex with Economy cannot borrow its commitment");
+
+            MissionIntentKey raidKey = MissionIntentKey.ForRaid(
+                RaidTargetRef.ForEventGuard(new HexCoord(7, 0)));
+            var reinforcement = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                ConsumerIntentKey = raidKey,
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, reinforcement, null), Is.True);
+            var activeRaid = new MissionIntent
+            {
+                Kind = MissionKind.Raid, Status = IntentStatus.Active, IntentKey = raidKey,
+            };
+            Assert.That(StrategicPhaseA.ShouldDeferFreshZeroRadarDemand(cold, reinforcement,
+                new[] { activeRaid }), Is.False, "reinforcement belongs to an active Raid, not a new cold-axis task");
+        }
+
         // ---- Task B — the EffectiveValue==0 -> BaseValue fallback bug, through the REAL allocator
 
         [Test]
