@@ -119,18 +119,20 @@ namespace Game.Ai.V2
                             AssemblableWinChance = AiConfigV2.raidMinViableWinChance,
                             EstimatedEta = 1,
                         };
-                        MissionRequirements staleCost = RaidCostModel.Build(snap, stale,
+                        RaidCostEstimate staleEstimate = RaidCostModel.Estimate(snap, stale,
                             intent.PreferredMoverArmyId);
+                        MissionRequirements staleCost = staleEstimate.Requirements;
                         var staleTask = new TaskScore(
                             staleness: TaskScoreEvaluator.StaleIntelPenalty(1f),
                             cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreReactivationApWeight,
-                            delivery: TaskScoreEvaluator.DeliveryFromEta(staleCost.ApDesired,
+                            delivery: TaskScoreEvaluator.DeliveryFromEta(staleEstimate.RecurringActivationAp,
                                 staleCost.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
                         float staleValue = staleTask.Value;
                         TaskScoreDiagnostics.Log("Raid", intent.Raid.LastKnownHex, staleTask,
                             $"continuation=tracking_in_fog confidence=unknown actor="
                             + (intent.PreferredMoverArmyId.HasValue
-                                ? intent.PreferredMoverArmyId.Value.ToString() : "none"));
+                                ? intent.PreferredMoverArmyId.Value.ToString() : "none")
+                            + $" recurringAp={staleEstimate.RecurringActivationAp:0.###}");
                         incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId, intent.PreferredMoverArmyId));
@@ -335,23 +337,25 @@ namespace Game.Ai.V2
                 target.CanCoverAllDefenders = live.CoversAllDefenders;
             }
 
-            MissionRequirements req = RaidCostModel.Build(snap, target, costedMover);
-            float activationAp = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
+            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, target, costedMover);
+            MissionRequirements req = estimate.Requirements;
+            float currentActivationAp = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
+            float recurringActivationAp = UnityEngine.Mathf.Max(0f, estimate.RecurringActivationAp);
             float etaTurns = UnityEngine.Mathf.Max(0f, req?.EtaTurns ?? 0f);
             var score = new TaskScore(
                 staleness: o.TaskScore.Staleness,
                 militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(readyWin),
-                cardPrice: activationAp * AiConfigV2.taskScoreReactivationApWeight,
-                delivery: TaskScoreEvaluator.DeliveryFromEta(activationAp, etaTurns,
+                cardPrice: currentActivationAp * AiConfigV2.taskScoreReactivationApWeight,
+                delivery: TaskScoreEvaluator.DeliveryFromEta(recurringActivationAp, etaTurns,
                     AiConfigV2.taskScoreReactivationApWeight),
                 moverOpportunityCost: 0f);
             float las = score.Value;
             TaskScoreDiagnostics.Log("Raid", o.LastKnownHex, score,
                 $"target={o.Target.DiagnosticLabel} confidence={o.Confidence:0.###} "
                 + $"readyWin={readyWin:0.###} coversAll={(live.CoversAllDefenders ? 1 : 0)} "
-                + $"selectedMover={(costedMover.HasValue ? costedMover.Value.ToString() : "none")} "
-                + $"activationAp={activationAp:0.###} etaTurns={etaTurns:0.###}");
+                + $"selectedMover={(estimate.PlannedMoverArmyId.HasValue ? estimate.PlannedMoverArmyId.Value.ToString() : "none")} "
+                + $"currentActivationAp={currentActivationAp:0.###} recurringActivationAp={recurringActivationAp:0.###} etaTurns={etaTurns:0.###}");
 
             string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
                 + $"task {F(score.Value)} readyWin {F(readyWin)} frozenReady {F(o.ReadyWinChance)} "
@@ -359,7 +363,7 @@ namespace Game.Ai.V2
                 + $"aggRaidPolicy {F(bd.AggRaidOpportunity)} gate {(o.GatePassed ? 1 : 0)}"
                 + $"{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}{(o.NeedsHero ? " NEEDS-HERO" : "")}";
             return new RaidCandidate(target, score.Value, las, explain,
-                costedMover: costedMover);
+                costedMover: estimate.PlannedMoverArmyId ?? costedMover);
         }
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c,
@@ -370,7 +374,9 @@ namespace Game.Ai.V2
             if (c.IsIncumbent && c.PreferredMover.HasValue)
                 excluded.Remove(c.PreferredMover.Value);
             int? pricedMover = c.PreferredMover ?? c.CostedMover;
-            MissionRequirements req = RaidCostModel.Build(snap, c.Target, pricedMover);
+            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, c.Target, pricedMover);
+            MissionRequirements req = estimate.Requirements;
+            int? plannedMover = c.PreferredMover ?? estimate.PlannedMoverArmyId ?? c.CostedMover;
 
             var proposal = new MissionProposal
             {
@@ -382,7 +388,9 @@ namespace Game.Ai.V2
                 FromDurableIntent = c.IsIncumbent,
                 DurableFundingTier = c.Tier,
                 Explain = c.Explain,
-                PreferredMoverArmyId = c.PreferredMover,
+                // Proposal-side witness: this is the same actor whose real route/AP envelope was
+                // priced before ResourceAllocator.Pack. Provisioning still owns final live binding.
+                PreferredMoverArmyId = plannedMover,
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1.0f;
             if (c.Target.Phase == RaidMissionPhase.Assault)
