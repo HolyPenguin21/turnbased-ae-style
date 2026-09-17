@@ -28,24 +28,22 @@ namespace Game.Map
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private GameTurnController turnController;
 
-        private static readonly int ColorId = Shader.PropertyToID("_Color");
+        // Assets/Materials/FogOfWar.mat — an authored asset instead of a `new Material(shader)`
+        // built at runtime. Tint/edge/noise values live ONLY on this asset (its own Inspector),
+        // so they can be tuned live in Play Mode with immediate visual feedback (asset edits
+        // survive stopping Play Mode, unlike scene/GameObject state) instead of round-tripping
+        // through shader-default edits + a fresh Play session for every attempt.
+        [SerializeField] private Material overlayMaterial;
+
         private static readonly int VisibilityMaskId = Shader.PropertyToID("_VisibilityMask");
         private static readonly int OuterRadiusId = Shader.PropertyToID("_OuterRadius");
         private static readonly int MaskMinQRId = Shader.PropertyToID("_MaskMinQR");
         private static readonly int MaskSizeId = Shader.PropertyToID("_MaskSize");
-        private static readonly int EdgeSoftnessId = Shader.PropertyToID("_EdgeSoftness");
-        private static readonly int EdgeSharpnessId = Shader.PropertyToID("_EdgeSharpness");
-        private static readonly int NoiseScaleId = Shader.PropertyToID("_NoiseScale");
-        private static readonly int NoiseSpeedId = Shader.PropertyToID("_NoiseSpeed");
-        private static readonly int NoiseTexId = Shader.PropertyToID("_NoiseTex");
-        private static readonly int NoiseTexScaleId = Shader.PropertyToID("_NoiseTexScale");
-        private static readonly int NoiseTexStrengthId = Shader.PropertyToID("_NoiseTexStrength");
 
         private HexMap _map;
         private HexMap Map => _map != null ? _map : (_map = GetComponent<HexMap>());
 
         private MeshRenderer _overlayRenderer;
-        private Material _overlayMaterial;
         private MaterialPropertyBlock _propertyBlock;
         private Texture2D _mask;
         private int _minQ, _minR, _maskWidth, _maskHeight;
@@ -104,11 +102,13 @@ namespace Game.Map
                 _overlayRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
                 _overlayRenderer.receiveShadows = false;
 
-                Shader shader = Shader.Find("Custom/FogOfWar");
-                if (shader == null)
-                    Debug.LogWarning("FogOfWarController: shader 'Custom/FogOfWar' not found.");
-                _overlayMaterial = new Material(shader);
-                _overlayRenderer.sharedMaterial = _overlayMaterial;
+                if (overlayMaterial == null)
+                    Debug.LogWarning("FogOfWarController: 'Overlay Material' is not assigned (expected Assets/Materials/FogOfWar.mat).");
+
+                // The SHARED asset, not a runtime clone — so tweaking it in the Inspector while
+                // in Play Mode affects this renderer immediately, and the tuned values persist
+                // on the asset after stopping Play Mode.
+                _overlayRenderer.sharedMaterial = overlayMaterial;
                 _propertyBlock = new MaterialPropertyBlock();
             }
 
@@ -268,24 +268,14 @@ namespace Game.Map
             if (_overlayRenderer == null)
                 return;
 
-            FogOfWarStyle style = gameConfig.fogOfWarStyle;
+            // Only the runtime visibility data/geometry goes through the property block. Tint,
+            // edge erosion/sharpness and patina are intentionally left untouched here — those
+            // live entirely on the overlayMaterial asset itself (see its own field comment).
             _overlayRenderer.GetPropertyBlock(_propertyBlock);
-            _propertyBlock.SetColor(ColorId, style != null ? style.color : new Color(0.03f, 0.04f, 0.07f, 0.75f));
             _propertyBlock.SetTexture(VisibilityMaskId, _mask);
             _propertyBlock.SetFloat(OuterRadiusId, map.OuterRadius);
             _propertyBlock.SetVector(MaskMinQRId, new Vector4(_minQ, _minR, 0f, 0f));
             _propertyBlock.SetVector(MaskSizeId, new Vector4(_maskWidth, _maskHeight, 0f, 0f));
-            if (style != null)
-            {
-                _propertyBlock.SetFloat(EdgeSoftnessId, style.edgeSoftness);
-                _propertyBlock.SetFloat(EdgeSharpnessId, style.edgeSharpness);
-                _propertyBlock.SetFloat(NoiseScaleId, style.edgeNoiseScale);
-                _propertyBlock.SetFloat(NoiseSpeedId, style.edgeNoiseSpeed);
-                if (style.detailTexture != null)
-                    _propertyBlock.SetTexture(NoiseTexId, style.detailTexture);
-                _propertyBlock.SetFloat(NoiseTexScaleId, style.detailTextureScale);
-                _propertyBlock.SetFloat(NoiseTexStrengthId, style.detailTextureStrength);
-            }
             _overlayRenderer.SetPropertyBlock(_propertyBlock);
         }
     }

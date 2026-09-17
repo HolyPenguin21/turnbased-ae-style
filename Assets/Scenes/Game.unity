@@ -5183,6 +5183,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.FogOfWarController
   gameConfig: {fileID: 11400000, guid: 7eb9ac8d630ddb848b7ffe51f03f4b75, type: 2}
   turnController: {fileID: 26816773}
+  overlayMaterial: {fileID: 2100000, guid: f3bf9f380fd94fc3aa312732f2d0b29b, type: 2}
 --- !u!114 &508374406
 MonoBehaviour:
   m_ObjectHideFlags: 0

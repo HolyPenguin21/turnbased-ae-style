@@ -14,37 +14,17 @@ namespace Game.Styles
     public class FogOfWarStyle
     {
         [Header("Fog Overlay")]
-        // Earth/charcoal source tint. Custom/FogOfWar darkens this further in shader space so
-        // fogged territory reads clearly as a separate mass while underlying terrain remains
-        // recognisable through the transparent overlay.
-        public Color color = new Color(0.32f, 0.24f, 0.14f, 0.88f);
-
         // Same draw-order role as HexHighlightStyle.sortingOrder — everything sits flat at Y=0,
         // so this keeps the fog quad above the terrain tiles (sortingOrder 0).
         public int sortingOrder = 16;
 
-        // Amount of static dry-edge erosion. It distorts only the visibility boundary; it never
-        // blurs the terrain itself. Moderate values create the broken, dusty contour used by the
-        // current art direction.
-        [Range(0f, 1f)] public float edgeSoftness = 0.42f;
-
-        // Controls how tightly the transition hugs the eroded boundary. Values near 1 keep the
-        // contour crisp and preserve terrain readability immediately on either side of the seam.
-        [Range(0f, 1f)] public float edgeSharpness = 0.92f;
-
-        // World-space scale shared by the boundary erosion and the larger internal patina. It is
-        // intentionally low-frequency so fog reads as broad material variation, not TV noise.
-        public float edgeNoiseScale = 0.1f;
-
-        // Leave at zero for the intended static-map treatment. Existing serialized configs with a
-        // tiny non-zero value are heavily damped by the shader and remain visually almost static.
-        public float edgeNoiseSpeed = 0f;
-
-        // Optional authored dry/grime texture, sampled statically in world space as secondary
-        // density variation. Procedural patina carries the main look, so this stays restrained.
-        public Texture2D detailTexture;
-        public float detailTextureScale = 0.11f;
-        [Range(0f, 1f)] public float detailTextureStrength = 0.45f;
+        // Tint, edge erosion/sharpness and patina texture are NOT exposed here on purpose: they
+        // live entirely as Custom/FogOfWar's own shader Properties defaults. A previous version
+        // of this style object duplicated those knobs, and its serialized GameConfig values had
+        // drifted out of sync with the shader's own tuned defaults (e.g. edgeSharpness serialized
+        // at 0.4 vs. the shader's intended 0.92), silently overriding the intended look every
+        // frame. See FogOfWarController.RefreshVisibility, which now only feeds the runtime
+        // visibility mask/geometry — never style/appearance — into the material.
 
         [Header("Coordinate Label")]
         // Font asset for the per-hex coordinate label (see Game.Map.HexCoordLabel) — built at
