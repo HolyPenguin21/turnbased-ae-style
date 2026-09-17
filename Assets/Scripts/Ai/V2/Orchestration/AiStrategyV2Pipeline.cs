@@ -1361,6 +1361,12 @@ namespace Game.Ai.V2
                     }
                 }
 
+                // Cold Phase A and the following typed admissions may have created or
+                // re-bound actors AFTER management captured postCommitments. Housekeeping
+                // must see the latest canonical ownership, never the pre-cold snapshot.
+                postCommitments = ActorCommitments.FromIntents(
+                    MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
+
                 // Final reconciliation remains the only owner of end-of-turn aging/reaping. Intents
                 // already reconciled locally carry LastReconciledTurn==turn and are not aged twice.
                 MissionContinuityLayer.ReconcileAfterTurn(player,
