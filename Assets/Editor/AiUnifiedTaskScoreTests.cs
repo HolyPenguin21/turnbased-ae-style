@@ -8,6 +8,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Game.EditorTests
 {
@@ -60,20 +61,139 @@ namespace Game.EditorTests
             Assert.That(extraction.Value, Is.EqualTo(foundation.Value));
         }
 
+        // Task 8 correction — the previous "SameReactivationAp_PricesIdenticallyAcrossEconomy
+        // RaidAndRecon" test called TaskScoreEvaluator.DeliveryFromEta TWICE with the SAME
+        // hand-picked literal arguments and asserted the result equalled itself: a tautology that
+        // exercised no Economy/Raid/Recon production code at all and would pass even if any of the
+        // three real cost models were completely broken. It also embedded a false premise: Economy's
+        // real "extra AP" accounting (EstimateEconomyAssignmentAp: every outbound turn's activation,
+        // because the mover's OWN first-turn activation is never separately priced via cardPrice the
+        // way Recon/Raid's ActivationApNow/currentActivationAp split it out) is NOT the same turn
+        // count as Recon/Raid's "eta-1" delivery convention — so asserting identical NUMBERS across
+        // all three would have been asserting something false about the real domain, not just format.
+        // What IS actually shared, and what these three tests verify by calling the real per-family
+        // cost model with real, concrete physical inputs, is the single rate
+        // (AiConfigV2.taskScoreReactivationApWeight) each family folds its own real per-turn
+        // reactivation AP fact through.
         [Test]
-        public void SameReactivationAp_PricesIdenticallyAcrossEconomyRaidAndRecon()
+        public void ReconDelivery_FoldsRealPerTurnActivationApAtSharedRate()
         {
-            // Task 8 replacement for the formal-symmetry test above: prove the SAME real fact
-            // (one future re-activation of the SAME AP cost) is priced identically by whichever
-            // family folds it through the shared taskScoreReactivationApWeight rate, instead of
-            // merely comparing two calls with the same hand-picked weight argument.
-            const float perTurnAp = 4f, etaTurns = 2f;
-            float economyDelivery = TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
-                AiConfigV2.taskScoreReactivationApWeight);
-            float raidDelivery = TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
-                AiConfigV2.taskScoreReactivationApWeight);
-            Assert.That(economyDelivery, Is.EqualTo(raidDelivery));
-            Assert.That(economyDelivery, Is.EqualTo(perTurnAp * AiConfigV2.taskScoreReactivationApWeight));
+            // Real ScoutCostModel/ReconObjectiveEvaluator production path: a solo Recce at distance
+            // 6 with MaxMovement 4, ActivationApCost 4 needs ETA 2 (1 + ceil((6-4)/4)) and therefore
+            // exactly ONE future re-activation beyond this turn.
+            var player = new PlayerSetupData { Nickname = "Unified TaskScore regression" };
+            HexCoord focus = new HexCoord(6, 0);
+            var mover = new ArmySnapshot
+            {
+                ArmyId = 1, Owner = player, Hex = new HexCoord(0, 0),
+                IsSoloRecce = true, MemberCount = 1, CurrentMovement = 4, MaxMovement = 4,
+                ActivationApCost = 4,
+            };
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new List<HexCoord> { new HexCoord(0, 0) },
+                    Armies = new List<ArmySnapshot> { mover },
+                },
+                MapKnowledge = new MapKnowledgeSnapshot
+                {
+                    AllHexes = new List<HexCoord> { new HexCoord(0, 0), focus },
+                    VisitedHexSet = new HashSet<HexCoord>(),
+                    ScoutHardBlockedHexes = new HashSet<HexCoord>(),
+                },
+            };
+
+            ScoutCostEstimate cost = ScoutCostModel.Estimate(snap,
+                new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = focus });
+            Assert.That(cost.RecurringActivationAp, Is.EqualTo(4f));
+            Assert.That(cost.EtaTurns, Is.EqualTo(2));
+
+            ReconObjective objective = ReconObjectiveEvaluator.BuildExplore(snap, focus,
+                freshNeighbors: 0, distFromBase: 6, enemyExposure: false, stealthDetectionRisk: false);
+            Assert.That(objective.TaskScore.Delivery,
+                Is.EqualTo(4f * 1f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f),
+                "Recon's real production Delivery must fold the real RecurringActivationAp/EtaTurns "
+                + "facts through the shared reactivation rate, not a hand-picked literal");
+        }
+
+        [Test]
+        public void RaidDelivery_FoldsRealPerTurnActivationApAtSharedRate()
+        {
+            // Real RaidCostModel production path with the SAME physical facts as the Recon test
+            // above (distance 6, MaxMovement 4, ActivationApCost 4) — RaidCostModel's own ETA
+            // formula (mover.CurrentMovement >= dist ? 1 : 1 + CeilDiv(...)) is structurally
+            // identical to ScoutCostModel.PairCost's, so it independently derives the SAME eta (2)
+            // and the SAME one future re-activation from real army data, not a shared constant.
+            var player = new PlayerSetupData { Nickname = "Unified TaskScore regression" };
+            HexCoord destination = new HexCoord(6, 0);
+            var mover = new ArmySnapshot
+            {
+                ArmyId = 2, Owner = player, Hex = new HexCoord(0, 0),
+                MemberCount = 1, CurrentMovement = 4, MaxMovement = 4, ActivationApCost = 4,
+            };
+            var snap = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new List<HexCoord> { new HexCoord(0, 0) },
+                    Armies = new List<ArmySnapshot> { mover },
+                },
+            };
+            var target = new RaidMissionTarget
+            {
+                Phase = RaidMissionPhase.Assault,
+                LastKnownHex = destination,
+                DestinationHex = destination,
+            };
+
+            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, target, selectedMoverArmyId: 2);
+            Assert.That(estimate.RecurringActivationAp, Is.EqualTo(4f));
+            Assert.That(estimate.Requirements.EtaTurns, Is.EqualTo(2));
+
+            // This is exactly the fold AggressionMissionPlanner.ToCandidate performs on the real
+            // RaidCostEstimate it receives — reproduced here to check the ESTIMATE's real numbers,
+            // not to reintroduce the old tautology (the numbers above come from RaidCostModel, not
+            // from a literal).
+            float raidDelivery = TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
+                estimate.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight);
+            Assert.That(raidDelivery, Is.EqualTo(4f * 1f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f));
+        }
+
+        [Test]
+        public void EconomyDelivery_FoldsRealPerTurnActivationApAtSharedRate()
+        {
+            // Real DemandLayer.EstimateEconomyAssignmentAp production path, same mover physical
+            // facts (distance 6, MaxMovement 4, ActivationApCost 4, one-way / no return leg so it is
+            // comparable to Recon/Raid's one-way convention). Economy's own real turn-counting rule
+            // is different from Recon/Raid (see comment above the Recon test): a builder that has
+            // NOT activated yet this turn pays for BOTH the current turn's and the next turn's
+            // activation inside assignmentAp (paidOutboundActivations == outboundTurns when
+            // HasActivatedThisTurn is false), so the real number here is legitimately 2 activations
+            // (8 AP), not 1 (4 AP) — proving the two systems must NOT be asserted numerically equal.
+            var route = new EconomyBuilderRouteSnapshot
+            {
+                ArmyId = 3, TravelCost = 6, ReturnTravelCost = 0,
+                CurrentMovement = 4, MaxMovement = 4, ActivationApCost = 4,
+                HasActivatedThisTurn = false, IsOnTarget = false,
+            };
+            const float buildApCost = 0f;
+
+            float assignmentAp = DemandLayer.EstimateEconomyAssignmentAp(route, buildApCost, includeReturn: false);
+            float extraAp = Mathf.Max(0f, assignmentAp - buildApCost);
+            Assert.That(extraAp, Is.EqualTo(8f),
+                "two un-activated outbound turns at real ActivationApCost 4 each — Economy's own real rule");
+
+            // Same production one-line fold DemandLayer.Economy applies to this real extraAp.
+            float economyDelivery = extraAp * AiConfigV2.taskScoreReactivationApWeight;
+            Assert.That(economyDelivery, Is.EqualTo(8f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f));
+
+            // What genuinely IS shared across all three families (verified by the sibling tests
+            // above using each family's own real numbers): the same rate, applied to whatever real
+            // per-turn AP fact that family's own cost model actually derived.
+            Assert.That(AiConfigV2.taskScoreReactivationApWeight, Is.GreaterThan(0f));
         }
 
         [Test]
@@ -440,6 +560,53 @@ namespace Game.EditorTests
                     result.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
+        }
+
+        [Test]
+        public void SurveilContact_ArmyIdZeroSurvivesReconContactByArmyIdLookup()
+        {
+            // Task 8 addition — covers the stage3 Task 3 fix in
+            // WorldAnalysis.Threat.cs::BuildThreat() (ReconContactByArmyId keying: "ArmyId == 0 is
+            // a valid identity ... not 'no army'"), which shipped with no EditMode coverage.
+            // BuildThreat() itself is private and needs a full WorldSnapshot/AiTurnContext plus the
+            // static AiReconMemory/AiMapMemory singletons — an unreasonably heavy fixture for one
+            // dictionary-keying fact. The fix's actual observable contract is one level up, at the
+            // public ScoutObjectiveEvaluator.SurveilContact() / ReconObjectiveEvaluator.SurveilOf()
+            // consumers Surveil missions actually call, reading the SAME ReconContactByArmyId
+            // dictionary shape BuildThreat produces — so this constructs that dictionary directly
+            // (honest fixture of the real consumer contract, not a re-implementation of BuildThreat)
+            // and proves a contact keyed at ArmyId 0 is not lost.
+            var zeroIdArmy = new ArmySnapshot { ArmyId = 0, MemberCount = 1 };
+            HexCoord pos = new HexCoord(3, 1);
+            var contact = new EnemyContactSnapshot
+            {
+                Army = zeroIdArmy,
+                Knowledge = ContactKnowledge.LastKnown,
+                Source = ContactSource.Honest,
+                Position = pos,
+                Confidence = 0.5f,
+                LastObservedTurn = 5,
+            };
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 8,
+                Self = new SelfSnapshot { BaseHexes = new List<HexCoord>() },
+                Threat = new ThreatModel
+                {
+                    ReconContactByArmyId = new Dictionary<int, EnemyContactSnapshot> { [0] = contact },
+                },
+            };
+
+            EnemyContactSnapshot resolved = ScoutObjectiveEvaluator.SurveilContact(snap, trackedArmyId: 0);
+            Assert.That(resolved, Is.Not.Null,
+                "a contact keyed at ArmyId 0 must not be treated as 'no army' / silently dropped");
+            Assert.That(resolved.Army?.ArmyId, Is.EqualTo(0));
+
+            ReconObjective objective = ReconObjectiveEvaluator.SurveilOf(snap, resolved);
+            Assert.That(objective, Is.Not.Null);
+            Assert.That(objective.ContactArmyId, Is.EqualTo(0),
+                "Surveil's own objective identity must keep the real ArmyId 0, not collapse it "
+                + "to the same sentinel a genuinely-absent army would use");
         }
     }
 }

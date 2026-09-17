@@ -66,8 +66,15 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void SpentIncumbent_UsesEligibleFallbackEstimateWithoutHardReservation()
+        public void SpentIncumbent_WitnessFollowsTheActorThePriceWasActuallyComputedAgainst()
         {
+            // Task 5 (R1) regression: army #10 (the durable incumbent) has 0 CurrentMovement this
+            // turn, so ScoutMoverSelector.Eligible() excludes it entirely (a structural "spent this
+            // turn" fact) and ScoutCostModel.PlanGroundCost silently reprices against the cheapest
+            // OTHER eligible actor, army #20 (ActivationApCost 1). Before the fix, BuildProposal()
+            // kept PreferredMoverArmyId pinned to #10 (the witness) while BaseValue/Requirements
+            // were both priced against #20 — an internally inconsistent proposal (price for one
+            // actor, witness naming a different one). All three facts must now name the SAME actor.
             var player = new PlayerSetupData { Nickname = "Recon cost regression" };
             HexCoord focus = new HexCoord(4, 3);
             WorldSnapshot snap = Snapshot(player, focus);
@@ -77,15 +84,66 @@ namespace Game.EditorTests
                 new DesireBreakdown { ReconExplorePressure = 1f },
                 new[] { Incumbent(focus, 10) }, new List<ReconObjective>()).Single();
 
-            Assert.That(continuing.PreferredMoverArmyId, Is.EqualTo(10));
-            // Army #10 (the incumbent) has 0 CurrentMovement this turn, so ScoutMoverSelector.
-            // Eligible() excludes it entirely (a structural "spent this turn" fact, not a price
-            // comparison) — the fallback to army #20's cost is therefore correct on BOTH BaseValue
-            // and Requirements after the Task 5 fix (they now share the exact same estimate call),
-            // not a masked repeat of the old "stale/cheaper-actor substitution" defect, which only
-            // ever manifested when the incumbent WAS eligible but merely not the cheapest.
+            // Witness must follow the actor actually priced (#20), not the structurally-ineligible
+            // nominal incumbent (#10). This is a proposal-internal consistency fix only — durable
+            // ownership (MissionIntent.PreferredMoverArmyId) is set from the real post-execution
+            // MissionTurnOutcome.MoverArmyId in MissionContinuityLayer, never from this witness.
+            Assert.That(continuing.PreferredMoverArmyId, Is.EqualTo(20),
+                "witness must name the same actor Requirements/BaseValue were actually priced against");
             Assert.That(continuing.Requirements.ApDesired, Is.EqualTo(1f),
                 "pricing may consider another eligible mover but must not bind it here");
+
+            ReconObjective directEstimate = ReconObjectiveEvaluator.ExploreAt(snap, focus,
+                preferredMoverArmyId: 10);
+            Assert.That(continuing.BaseValue, Is.EqualTo(directEstimate.BaseValue).Within(0.0001f),
+                "BaseValue must reflect the same fallback actor (#20) Requirements/witness now agree on");
+        }
+
+        [Test]
+        public void SpentIncumbent_ProposalIsInternallyConsistentAndAdmissionDoesNotHideTheConflict()
+        {
+            // Task 5 (R1) — the comprehensive check the project owner asked for: BaseValue,
+            // Requirements (ApDesired/EtaTurns) and PreferredMoverArmyId must all describe the SAME
+            // real candidate, and the pre-funding LocalAdmissionScore (the beam/admission gate that
+            // runs BEFORE ReconAssignmentPlanner ever resolves a live actor) must not smuggle a
+            // hidden mismatch between the declared witness and the actually-cheap candidate through
+            // to Allocation. Army #10 is pinned but 0-MP (structurally ineligible); army #20 is the
+            // only real eligible ground actor and is what everything must key on.
+            var player = new PlayerSetupData { Nickname = "Recon cost regression" };
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, focus);
+            ((List<ArmySnapshot>)snap.Self.Armies)[0].CurrentMovement = 0;
+
+            MissionProposal continuing = ReconMissionPlanner.Propose(snap,
+                new DesireBreakdown { ReconExplorePressure = 1f },
+                new[] { Incumbent(focus, 10) }, new List<ReconObjective>()).Single();
+
+            const int actuallyPricedActor = 20;
+            ReconObjective directEstimate = ReconObjectiveEvaluator.ExploreAt(snap, focus,
+                preferredMoverArmyId: 10);
+            ScoutCostEstimate directCost = ScoutCostModel.Estimate(snap,
+                new ScoutMissionTarget { Kind = ScoutTargetKind.Explore, FocusHex = focus },
+                preferredMoverArmyId: 10);
+
+            // 1) All three facts key on the same actor.
+            Assert.That(continuing.PreferredMoverArmyId, Is.EqualTo(actuallyPricedActor));
+            Assert.That(directCost.PreferredMoverArmyId, Is.EqualTo(actuallyPricedActor));
+
+            // 2) BaseValue.
+            Assert.That(continuing.BaseValue, Is.EqualTo(directEstimate.BaseValue).Within(0.0001f));
+
+            // 3) Requirements (ApDesired / EtaTurns) match the actor named by the witness.
+            Assert.That(continuing.Requirements.ApDesired, Is.EqualTo(directCost.ApDesired).Within(0.0001f));
+            Assert.That(continuing.Requirements.EtaTurns, Is.EqualTo(directCost.EtaTurns));
+            Assert.That(continuing.Requirements.ApDesired, Is.EqualTo(1f));
+
+            // 4) Admission: LocalAdmissionScore is BaseValue-derived (ComputeLocalAdmissionScore),
+            // so it must already reflect the SAME fallback-priced actor, not the nominal incumbent's
+            // (unreachable) envelope. If admission and requirements disagreed here, MissionLayer's
+            // beam could admit a proposal at a price ReconAssignmentPlanner can never actually honour
+            // for the witnessed actor, producing an avoidable MoverContended later at Assignment.
+            Assert.That(continuing.LocalAdmissionScore, Is.EqualTo(continuing.BaseValue).Within(0.0001f),
+                "admission must score the same value the witness/requirements were actually priced at");
         }
 
         [Test]
