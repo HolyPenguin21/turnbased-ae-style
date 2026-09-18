@@ -71,6 +71,32 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EconomyBaseAdmission_RejectsPlacementOnlyStrategicValue()
+        {
+            var placementOnly = new TaskScore(
+                airfield: 8f,
+                frontProgress: 2f,
+                corridorAlignment: 8f,
+                ownTerritoryProximity: 1.5f,
+                terrainDefense: 3f);
+
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(placementOnly), Is.False,
+                "airfield/front/corridor/defense may rank a site but cannot originate an Economy Base project");
+        }
+
+        [Test]
+        public void EconomyBaseAdmission_AllowsEconomyNativeValue()
+        {
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                new TaskScore(economicHexBenefit: 0.1f)), Is.True);
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                new TaskScore(payback: 0.1f)), Is.True);
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                new TaskScore(globalCardEffect: 0.1f)), Is.True,
+                "GlobalCardEffect here is evaluated explicitly for IntendedRole.Economy");
+        }
+
+        [Test]
         public void ExtractionFacilitiesAreEligibleForLosslessBaseMerge()
         {
             var site = new BuildingData { HasTieredUnlock = false };
