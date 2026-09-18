@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -315,12 +316,21 @@ namespace Game.Ai.V2
             int handChecked = 0, mapChecked = 0, gainZero = 0;
             string lastReject = null;
             DevelopmentOpportunity best = null;
-            void Consider(DevelopmentOpportunity cand)
+            float bestSelectionValue = float.NegativeInfinity;
+            void Consider(DevelopmentOpportunity cand, ArmyData army = null)
             {
                 if (cand == null || (supportsNeed != null && !supportsNeed(cand))) return;
                 if (cand.ExpectedGain <= 0f) { gainZero++; return; }
-                if (best == null || cand.ExpectedGain > best.ExpectedGain)
+                // Matchup is solely a RECIPIENT-RANKING signal. Do not put the coefficient into
+                // ExpectedGain or EV: the shared card evaluator prices the equipment's real delta.
+                // TrueWorld supplies only composition profiles, never enemy positions or IDs.
+                float matchup = EquipmentMatchupFit(cand, army, snap);
+                float selection = cand.ExpectedGain * (1f + matchup);
+                if (best == null || selection > bestSelectionValue)
+                {
                     best = cand;
+                    bestSelectionValue = selection;
+                }
             }
 
             // Hand cards — projected delta via AiPower.EffectiveLine (composes any equipment
@@ -358,7 +368,7 @@ namespace Game.Ai.V2
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
                         off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate * importance;
                     Consider(Make(off, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
-                        null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain));
+                        null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain), army);
                 }
             }
 
@@ -367,6 +377,65 @@ namespace Game.Ai.V2
                     + $"positive-gain 0 (zero-gain {gainZero})"
                     + (lastReject != null ? $"; last CanAttach reject: \"{lastReject}\"" : "; all attachable but gain <= 0");
             return best;
+        }
+
+        // A bounded [0..1] fraction of enemy COMPOSITIONS that this recipient becomes better
+        // equipped to face. No enemy hex, army identity, owner or target is read or returned.
+        // The strategic layer may use omniscient composition for equipment valuation, never for
+        // a mover's destination or hidden-target discovery. Neutral encounters are handled by
+        // the normal known Raid witness, not by inventing an unseen objective here.
+        internal static float EquipmentMatchupFit(DevelopmentOpportunity cand, ArmyData army,
+            WorldSnapshot snap)
+        {
+            IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
+            EquipmentGrant grant = cand?.Card?.equipment;
+            if (enemies == null || grant == null || enemies.Count == 0)
+                return 0f;
+
+            WorthIt.DefenderProfile handBefore = default;
+            WorthIt.DefenderProfile handAfter = default;
+            bool handUnit = cand.RecipientKind == DevRecipientKind.HandCard
+                && cand.RecipientCard?.Definition?.cardType == CardType.Unit;
+            if (handUnit)
+            {
+                CardDefinition host = cand.RecipientCard.Definition;
+                EquipmentGrant existing = cand.RecipientCard.Equipment?.equipment;
+                AiPower.ProjectedStrategicLine before = AiPower.EffectiveLine(host, existing);
+                AiPower.ProjectedStrategicLine after = AiPower.EffectiveLine(host, existing, grant);
+                WorthIt.DefenderProfile Profile(AiPower.ProjectedStrategicLine line) =>
+                    new WorthIt.DefenderProfile(line.Defense,
+                        line.EffectiveAbilities.Contains(UnitAbilities.CeramicArmor),
+                        host.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
+                        line.EffectiveAbilities);
+                handBefore = Profile(before);
+                handAfter = Profile(after);
+            }
+
+            int comparable = 0;
+            int improved = 0;
+            foreach (ArmySnapshot enemy in enemies)
+            {
+                // Air formations are not ground-battle opponents in WorthIt's roster model.
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = enemy?.Members;
+                if (enemy == null || enemy.IsAir || defenders == null || defenders.Count == 0)
+                    continue;
+                comparable++;
+                if (cand.RecipientUnit != null && army?.Members != null)
+                {
+                    if (DemandLayer.ImprovesRaidCombatOutcome(
+                        cand.RecipientUnit, army.Members, grant, defenders))
+                        improved++;
+                }
+                else if (handUnit)
+                {
+                    // Hand cards have no assigned army yet: only count a concrete new counter
+                    // (coverage improvement), not an invented future deployment/target.
+                    if (!WorthIt.CanDamageAll(new[] { handBefore }, defenders)
+                        && WorthIt.CanDamageAll(new[] { handAfter }, defenders))
+                        improved++;
+                }
+            }
+            return comparable > 0 ? (float)improved / comparable : 0f;
         }
 
         private static DevelopmentOpportunity Make(DevelopmentOffering off, DevRecipientKind kind,
