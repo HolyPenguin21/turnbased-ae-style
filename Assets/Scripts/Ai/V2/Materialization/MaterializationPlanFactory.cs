@@ -64,7 +64,11 @@ namespace Game.Ai.V2
         {
             DevelopmentOpportunity op = demand?.DevOpportunity;
             GenerationStep g = op?.Generation;
-            if (g == null || g.CardDef == null)
+            // Only a generated Equipment card can upgrade an existing recipient.
+            // Unit/Hero generation is a different materialization outcome, never an upgrade.
+            if (g?.CardDef == null || g.CardDef.cardType != CardType.Equipment
+                || !g.ProducesEquipment || !object.ReferenceEquals(g.CardDef, op.Card)
+                || (op.RecipientCard == null && op.RecipientUnit == null))
                 return null;
 
             ResourceCost rc = g.CardDef.resourceCost;

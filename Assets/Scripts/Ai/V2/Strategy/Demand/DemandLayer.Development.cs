@@ -6,6 +6,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -33,7 +34,7 @@ namespace Game.Ai.V2
 
             AiHandData hand = AiHandRegistry.Peek(player);
             bool SupportsNeed(DevelopmentOpportunity op) =>
-                HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player);
+                HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player, s);
             int operatorPrerequisites = 0;
             // Only prepare a mode/site with a concrete supported output, recipient and operator.
             // One best prerequisite per pass; the next settled pass sees the completed stage.
@@ -69,7 +70,7 @@ namespace Game.Ai.V2
                 {
                     if (op == null || op.BaseValue <= 0f) continue;
                     if (!HasSupportedDevelopmentAxisDemand(
-                        op, formedDemands, activeIntents, player))
+                        op, formedDemands, activeIntents, player, s))
                     {
                         AiDebugLog.Write($"[AI][V2][Demand][Development] decision=REJECT "
                             + $"card={op.Card?.displayName ?? "?"} recipient={op.RecipientLabel ?? "?"} "
@@ -100,12 +101,14 @@ namespace Game.Ai.V2
         }
 
 
-        // Production amplifies an already-owned need; it never originates one. In the current
-        // scope only a real Recon capability delta or the exact builder of an Economy obligation
-        // is a valid witness. Attack/Defence matching remains with WorthIt when those axes return.
+        // Production amplifies an already-owned need; never invent a mission. Recon and
+        // Economy keep their existing evidence; a bound active Raid can ALSO witness equipment
+        // when its own primary combat roster improves against the known target by WorthIt.
+        // Independent reinforcement FieldCombatPower demands are NOT fulfilled by upgrading
+        // their existing primary: only a separate deployable army can close those.
         internal static bool HasSupportedDevelopmentAxisDemand(DevelopmentOpportunity op,
             IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
-            PlayerSetupData player)
+            PlayerSetupData player, WorldSnapshot snap = null)
         {
             if (op == null)
                 return false;
@@ -140,7 +143,94 @@ namespace Game.Ai.V2
             bool reconWitness = activeIntents?.Any(i => i != null
                 && i.Status == IntentStatus.Active && i.Kind == MissionKind.Scout
                 && i.PreferredMoverArmyId == army.Id) == true;
-            return reconWitness && ImprovesReconCapability(op);
+            if (reconWitness && ImprovesReconCapability(op))
+                return true;
+
+            // Only an ACTUAL owned Raid primary may justify strengthening its existing unit.
+            // Research/Production mode has no bearing here: the offered output must be Equipment.
+            // A potential future raid (or an independent reinforcement demand) cannot create
+            // a generic "upgrade the strongest body" entitlement without a named recipient.
+            if (snap == null || op.RecipientUnit.IsHero || op.Card?.cardType != CardType.Equipment
+                || op.Card.equipment == null || activeIntents == null)
+                return false;
+            foreach (MissionIntent intent in activeIntents)
+            {
+                RaidIntent raid = intent?.Raid;
+                if (intent == null || intent.Status != IntentStatus.Active
+                    || intent.Kind != MissionKind.Raid || raid == null
+                    || !raid.Target.HasValue || raid.PrimaryArmyId != army.Id
+                    || (raid.Phase != RaidMissionPhase.Assault
+                        && raid.Phase != RaidMissionPhase.Reinforcement))
+                    continue;
+                var defenders = AiV2Util.KnownDefenders(snap, raid.Target);
+                if (defenders.Count == 0)
+                    continue;
+                // The same defender-side base bonus enters both immutable projections.
+                // Terrain is not present in the snapshot, so this is a marginal signal,
+                // never a substitute for Raid's final live WorthIt admission.
+                float hexBonus = WorthIt.HexDefenseBonus(raid.LastKnownHex, null);
+                if (ImprovesRaidCombatOutcome(op.RecipientUnit, army.Members,
+                    op.Card.equipment, defenders, hexBonus))
+                    return true;
+            }
+            return false;
+        }
+
+        // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability
+        // projection. Compare the SAME primary's roster before/after replacing only its recipient,
+        // without mutating gameplay UnitData or pretending the grant created a new combat body.
+        internal static bool ImprovesRaidCombatOutcome(UnitData recipient,
+            IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
+        {
+            if (recipient == null || recipient.IsHero || grant == null || members == null
+                || defenders == null || defenders.Count == 0 || !members.Contains(recipient))
+                return false;
+
+            var before = new List<WorthIt.DefenderProfile>();
+            var after = new List<WorthIt.DefenderProfile>();
+            var stats = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = recipient.Attack,
+                [EquipmentStat.Defense] = recipient.Defense,
+                [EquipmentStat.HitPoints] = recipient.HitPointsMax,
+                [EquipmentStat.Initiative] = recipient.Initiative,
+            };
+            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, stats, recipient.Abilities);
+            int attack = predicted.Stats.TryGetValue(EquipmentStat.Attack, out int atk)
+                ? atk : recipient.Attack;
+            int defense = predicted.Stats.TryGetValue(EquipmentStat.Defense, out int def)
+                ? def : recipient.Defense;
+            int maxHp = predicted.Stats.TryGetValue(EquipmentStat.HitPoints, out int hp)
+                ? hp : recipient.HitPointsMax;
+            int currentHp = Mathf.Clamp(recipient.HitPointsCurrent
+                + Mathf.Max(0, maxHp - recipient.HitPointsMax), 1, maxHp);
+            int initiative = predicted.Stats.TryGetValue(EquipmentStat.Initiative, out int init)
+                ? init : recipient.Initiative;
+            var projected = new WorthIt.DefenderProfile(defense,
+                predicted.Abilities.Contains(UnitAbilities.CeramicArmor), recipient.TypeTags.ToList(),
+                attack, currentHp, initiative, predicted.Abilities, maxHp);
+
+            foreach (UnitData unit in members)
+            {
+                if (unit == null || unit.IsHero)
+                    continue;
+                before.Add(WorthIt.FromLiveUnit(unit));
+                after.Add(object.ReferenceEquals(unit, recipient) ? projected : WorthIt.FromLiveUnit(unit));
+            }
+            bool coversBefore = WorthIt.CanDamageAll(before, defenders, hexBonus);
+            bool coversAfter = WorthIt.CanDamageAll(after, defenders, hexBonus);
+            if (!coversAfter)
+                return false;
+            if (!coversBefore)
+                return true;
+
+            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus);
+            WorthIt.BattleEstimate improved = WorthIt.Estimate(after, defenders, hexBonus);
+            return improved.WinChance > previous.WinChance
+                || (improved.WinChance == previous.WinChance
+                    && (improved.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
+                        || improved.CriticalAfterBattleChance < previous.CriticalAfterBattleChance));
         }
 
         private static bool ImprovesReconCapability(DevelopmentOpportunity op)

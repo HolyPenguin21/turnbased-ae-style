@@ -289,9 +289,11 @@ namespace Game.Ai.V2
             // lifetime strategic value only at the EV boundary.
             float persistentExpectedGain = op.SuccessChance * op.ExpectedGain
                 * AiConfigV2.devEquipmentPersistenceMultiplier;
-            op.ProductionSupport = op.Mode == ResearchProductionMode.Production
-                ? snap?.Development?.ProductionSupport ?? AiConfigV2.productionSupportMin
-                : 1f;
+            // This evaluator produces Equipment in either Research or Production mode.
+            // Economy support follows the produced capability, never the facility's label;
+            // StrategicCardEvaluator applies this same output-type rule to Unit/Hero mints.
+            op.ProductionSupport = snap?.Development?.ProductionSupport
+                ?? AiConfigV2.productionSupportMin;
             op.Ev = persistentExpectedGain * op.ProductionSupport
                 - aTotal - op.ResourceCostValue
                 - op.ExpectedApCost * AiConfigV2.devApValue;
