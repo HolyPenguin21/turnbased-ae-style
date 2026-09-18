@@ -1,4 +1,5 @@
 #if UNITY_INCLUDE_TESTS
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Combat;
@@ -197,6 +198,67 @@ namespace Game.EditorTests
             Assert.That(garrisonValue, Is.EqualTo(handValue).Within(0.0001f));
             Assert.That(fieldValue, Is.EqualTo(handValue).Within(0.0001f),
                 "Hand/garrison/field status must not recreate the removed fixed recipient multipliers");
+        }
+
+        [Test]
+        public void KnownNeutralCompositionAffectsFitButUnknownNeutralAndHiddenHexDoNot()
+        {
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit, attack = 1, defenseRating = 2, hitPoints = 8,
+            });
+            var weapon = new EquipmentGrant();
+            weapon.statChanges.Add(new EquipmentStatChange
+            {
+                stat = EquipmentStat.Attack, amount = 20,
+            });
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition { cardType = CardType.Equipment, equipment = weapon },
+                RecipientKind = DevRecipientKind.HandCard, RecipientCard = host,
+            };
+            var defenders = new[]
+            {
+                new WorthIt.DefenderProfile(defense: 14, hasCeramicArmor: false,
+                    attack: 5, hitPoints: 8),
+            };
+            var neutral = new ArmySnapshot
+            {
+                ArmyId = 77,
+                Hex = new HexCoord(8, -3),
+                Members = defenders,
+            };
+            var snap = new WorldSnapshot
+            {
+                Known = new KnownSnapshot
+                {
+                    NeutralSightings = new[]
+                    {
+                        new AiMapMemory.KnownEnemySighting(
+                            new HexCoord(1, 1), null, "known neutral", 1, 14f, 5f,
+                            defenders, armyId: 77),
+                    },
+                },
+                TrueWorld = new TrueWorldSnapshot
+                {
+                    EnemyArmies = System.Array.Empty<ArmySnapshot>(),
+                    NeutralArmies = new[] { neutral },
+                },
+            };
+
+            float known = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            Assert.That(known, Is.EqualTo(1f),
+                "A legitimately sighted neutral may contribute its current composition to Production valuation");
+
+            neutral.Hex = new HexCoord(-20, 19);
+            float movedBehindFog = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            Assert.That(movedBehindFog, Is.EqualTo(known).Within(0.0001f),
+                "The neutral's hidden live Hex must not enter Production valuation once identity is known");
+
+            snap.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
+            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap), Is.Zero,
+                "An unknown neutral must not become a Production threat merely because TrueWorld can see it");
         }
 
         [Test]
