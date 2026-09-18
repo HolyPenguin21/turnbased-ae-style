@@ -71,6 +71,52 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EconomyBaseAdmission_RejectsPlacementOnlyStrategicValue()
+        {
+            var placementOnly = new TaskScore(
+                airfield: 8f,
+                frontProgress: 2f,
+                corridorAlignment: 8f,
+                ownTerritoryProximity: 1.5f,
+                terrainDefense: 3f);
+
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(placementOnly), Is.False,
+                "airfield/front/corridor/defense may rank a site but cannot originate an Economy Base project");
+        }
+
+        [Test]
+        public void EconomyBaseAdmission_AllowsEconomyNativeValue()
+        {
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                new TaskScore(economicHexBenefit: 0.1f)), Is.True);
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                new TaskScore(payback: 0.1f)), Is.True);
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                new TaskScore(globalCardEffect: 0.1f)), Is.True,
+                "GlobalCardEffect here is evaluated explicitly for IntendedRole.Economy");
+        }
+
+        [Test]
+        public void EconomyBaseAdmission_StrategicPlacementCannotRescueNegativeEconomics()
+        {
+            var strategicallyExcellentButEconomicallyNegative = new TaskScore(
+                economicHexBenefit: 1f,
+                airfield: 8f,
+                frontProgress: 8f,
+                corridorAlignment: 8f,
+                terrainDefense: 8f,
+                cardPrice: 2f);
+
+            Assert.That(strategicallyExcellentButEconomicallyNegative.Value, Is.GreaterThan(0f),
+                "sanity: the full placement score is intentionally attractive");
+            Assert.That(DemandLayer.EconomyBaseAdmissionValue(
+                strategicallyExcellentButEconomicallyNegative), Is.LessThan(0f));
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                strategicallyExcellentButEconomicallyNegative), Is.False,
+                "placement quality may rank admitted sites, but it cannot pay for the Economy project itself");
+        }
+
+        [Test]
         public void ExtractionFacilitiesAreEligibleForLosslessBaseMerge()
         {
             var site = new BuildingData { HasTieredUnlock = false };

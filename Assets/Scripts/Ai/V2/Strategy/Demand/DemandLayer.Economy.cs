@@ -849,8 +849,10 @@ namespace Game.Ai.V2
                         terrainDefense: defense,
                         cardPrice: cardPrice,
                         hexThreatRisk: risk);
-                    // Require genuine physical/strategic purpose before admitting a new Base.
-                    // Generic proximity alone must not create an empty Base objective.
+                    // Economy owns the REASON to found this Base. Positional terms
+                    // (airfield/front/corridor/defense/proximity) still rank WHERE an already
+                    // economy-justified Base should go, but they must not manufacture an Economy
+                    // project by themselves. A committed delivery is preserved by Continuity.
                     bool meaningful = committed || HasMeaningfulBaseBenefit(siteOnlyScore);
                     if (!meaningful)
                     {
@@ -942,11 +944,12 @@ namespace Game.Ai.V2
                 bool committed = IsActiveBaseCommitment(
                     activeIntents, demand.TargetHex, demand.EconomyBuildCard);
                 // Do not turn negative net benefit into a new mission through elapsed time.
-                bool admitted = committed || demand.Value > AiConfigV2.allocatorSliceEpsilon;
+                float economyAdmissionValue = EconomyBaseAdmissionValue(demand.WorldTaskScore);
+                bool admitted = committed || HasMeaningfulBaseBenefit(demand.WorldTaskScore);
                 AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseAdmission] "
                     + $"card={demand.EconomyBuildCard?.Definition?.displayName} "
                     + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
-                    + $"value={demand.Value:0.##} "
+                    + $"value={demand.Value:0.##} economyAdmission={economyAdmissionValue:0.##} "
                     + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
                 if (!admitted)
                 {
@@ -1032,16 +1035,36 @@ namespace Game.Ai.V2
             && rival.Value > rival.EconomySwitchIncumbentValue.Value
                 + AiConfigV2.economyBaseSwitchHysteresisThreshold;
 
-        // This criterion gates ONLY continuity staging; canonical net-value admission still
-        // applies afterwards. Avoid letting the generic home-proximity bonus create fake projects.
-        internal static bool HasMeaningfulBaseBenefit(TaskScore score) =>
-            score.EconomicHexBenefit > AiConfigV2.allocatorSliceEpsilon
-            || score.Payback > AiConfigV2.allocatorSliceEpsilon
-            || score.Airfield > AiConfigV2.allocatorSliceEpsilon
-            || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon
-            || score.FrontProgress > AiConfigV2.allocatorSliceEpsilon
-            || score.CorridorAlignment > AiConfigV2.allocatorSliceEpsilon
-            || score.TerrainDefense > AiConfigV2.allocatorSliceEpsilon;
+        // Economy admission predicate for a NEW Base project. The axis may originate a Base
+        // only from economy-native value: useful local income/payback, or a PlayerGlobal effect
+        // explicitly evaluated for IntendedRole.Economy by StrategicCardEvaluator. Airfield,
+        // front/corridor and terrain-defense terms remain in the FULL TaskScore so they can choose
+        // WHERE an already-justified Base should go; they are deliberately absent from this
+        // admission value and therefore cannot rescue a net-negative economy project.
+        //
+        // Costs that belong to executing the economy project stay in the admission value. This
+        // preserves the causal chain "Economy need -> Base project; strategic placement -> site"
+        // instead of allowing a forward/corridor bonus to pay for an otherwise unjustified Base.
+        // Committed deliveries bypass this predicate at the call sites so Continuity is not
+        // abandoned merely because marginal economics changed after the project started.
+        internal static float EconomyBaseAdmissionValue(TaskScore score) =>
+              score.EconomicHexBenefit
+            + score.Payback
+            + score.GlobalCardEffect
+            - score.CardPrice
+            - score.Delivery
+            - score.MoverOpportunityCost
+            - score.HexThreatRisk;
+
+        internal static bool HasMeaningfulBaseBenefit(TaskScore score)
+        {
+            bool hasEconomyPurpose =
+                score.EconomicHexBenefit > AiConfigV2.allocatorSliceEpsilon
+                || score.Payback > AiConfigV2.allocatorSliceEpsilon
+                || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon;
+            return hasEconomyPurpose
+                && EconomyBaseAdmissionValue(score) > AiConfigV2.allocatorSliceEpsilon;
+        }
 
         private static bool HasActiveEconomyIntentAtHexOfKind(IReadOnlyList<MissionIntent> intents,
             HexCoord? target, EconomyTaskKind kind)
