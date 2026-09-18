@@ -1,0 +1,121 @@
+--- a/Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs
++++ b/Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs
+@@ -107,6 +107,17 @@
+         public readonly HashSet<string> ClaimedGeneratorUses = new HashSet<string>();
+         public readonly HashSet<string> TriedGeneratorCards = new HashSet<string>();
+         public readonly HashSet<CardData> ClaimedEconomyBuildCards = new HashSet<CardData>();
++        // A produced operator must reach its already-selected factory before other Phase A/B
++        // card chains may deploy it as a generic Hero. Turn-scoped like the other claims.
++        private readonly HashSet<CardData> claimedDevelopmentOperatorCards = new HashSet<CardData>();
++
++        public void ClaimDevelopmentOperatorCard(CardData card)
++        {
++            if (card != null) claimedDevelopmentOperatorCards.Add(card);
++        }
++
++        public bool ClaimsDevelopmentOperatorCard(CardData card) =>
++            card != null && claimedDevelopmentOperatorCards.Contains(card);
+         public readonly List<AxisDemand> UnresolvedDemands = new List<AxisDemand>();
+         public int GenerationAttemptsUsed;
+ 
+@@ -195,7 +206,8 @@
+             if (g == null || reservation == null || !reservation.CanGenerateMore
+                 || reservation.TriedGeneratorCards.Contains(g.CardKey)
+                 || (excludeGenKeys != null && excludeGenKeys.Contains(g.CardKey))
+-                || (op.RecipientCard != null && excludeCards != null && excludeCards.Contains(op.RecipientCard)))
++                || (op.RecipientCard != null && excludeCards != null && excludeCards.Contains(op.RecipientCard))
++                || reservation.ClaimsDevelopmentOperatorCard(op.RecipientCard))
+                 return new List<MaterializationPlan>();
+ 
+             MaterializationPlan p = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);
+--- a/Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs
++++ b/Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs
+@@ -26,7 +26,9 @@
+             System.Collections.Generic.ISet<string> excludeGenKeys = null)
+         {
+             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
+-            bool Excluded(CardData c) => c != null && excludeCards != null && excludeCards.Contains(c);
++            bool Excluded(CardData c) => c != null
++                && ((excludeCards != null && excludeCards.Contains(c))
++                    || (reservation?.ClaimsDevelopmentOperatorCard(c) ?? false));
+             bool ExcludedGen(GenerationStep g) => g != null && excludeGenKeys != null
+                 && !string.IsNullOrEmpty(g.CardKey) && excludeGenKeys.Contains(g.CardKey);
+ 
+@@ -173,7 +175,8 @@
+             {
+                 CardData card = handList[i];
+                 CardDefinition def = card?.Definition;
+-                if (def == null || def.isAviation) continue;
++                if (def == null || def.isAviation
++                    || (reservation?.ClaimsDevelopmentOperatorCard(card) ?? false)) continue;
+                 bool recce = AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities);
+                 bool hero = def.cardType == CardType.Hero;
+                 if (!recce && def.cardType != CardType.Unit && !hero) continue;
+@@ -233,6 +236,7 @@
+                             CardData host = handList[i];
+                             CardDefinition hd = host?.Definition;
+                             if (hd == null || hd.isAviation || host.Equipment != null
++                                || (reservation?.ClaimsDevelopmentOperatorCard(host) ?? false)
+                                 || (hd.cardType != CardType.Unit && hd.cardType != CardType.Hero)
+                                 || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
+                                 continue;
+--- a/Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs
++++ b/Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs
+@@ -47,6 +47,7 @@
+         public bool GenerationAttempted;
+         public bool Generated;
+         public GenerationStep Generation;
++        public CardData GeneratedOperatorCard;
+         public int? BuilderArmyId;
+         public int StateVersionAfter = -1;
+         public string Detail;
+@@ -164,6 +165,7 @@
+                 {
+                     Built = false, GenerationAttempted = generated.Attempted,
+                     Generated = generated.Success, Generation = g,
++                    GeneratedOperatorCard = generated.Success ? generated.Minted : null,
+                     ApSpent = beforeAp - root.ActionPoints, ResourcesSpent = paid,
+                     StateChanged = generated.StateChanged, StateVersionAfter = version,
+                     Detail = generated.Success
+--- a/Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
++++ b/Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs
+@@ -353,7 +353,14 @@
+                     if (infra.GenerationAttempted)
+                     {
+                         result.GeneratedCardAttempts++;
+-                        if (infra.Generated) result.GeneratedCardsSucceeded++;
++                        if (infra.Generated)
++                        {
++                            result.GeneratedCardsSucceeded++;
++                            // Preserve the exact minted card until the existing operator
++                            // fulfillment can place it. No new card reserve or role system.
++                            result.Reservation.ClaimDevelopmentOperatorCard(
++                                infra.GeneratedOperatorCard);
++                        }
+                         result.Reservation.RecordGenerationAttempt(infra.Generation, null);
+                         StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
+                     }
+--- a/Assets/Editor/AiIndependentDevelopmentTests.cs
++++ b/Assets/Editor/AiIndependentDevelopmentTests.cs
+@@ -16,6 +16,21 @@
+     public sealed class AiIndependentDevelopmentTests
+     {
+         [Test]
++        public void GeneratedOperatorClaimProtectsOnlyItsExactPhysicalCard()
++        {
++            var reservation = new MaterializationReservation();
++            var def = new CardDefinition { cardType = CardType.Hero };
++            var operatorCard = new CardData(def) { ResearchProductionCreated = true };
++            var unrelatedCard = new CardData(def) { ResearchProductionCreated = true };
++            Assert.That(reservation.ClaimsDevelopmentOperatorCard(operatorCard), Is.False);
++            reservation.ClaimDevelopmentOperatorCard(operatorCard);
++            Assert.That(reservation.ClaimsDevelopmentOperatorCard(operatorCard), Is.True);
++            Assert.That(reservation.ClaimsDevelopmentOperatorCard(unrelatedCard), Is.False,
++                "Same-definition Hero copies must remain available for ordinary missions");
++            Assert.That(reservation.ClaimsDevelopmentOperatorCard(null), Is.False);
++        }
++
++        [Test]
+         public void GeneratedOperatorRequiresAuthenticQualifiedHeroAndPositiveChallengeChance()
+         {
+             var hero = new CardDefinition
