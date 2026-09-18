@@ -271,6 +271,30 @@ namespace Game.Ai.V2
 
     internal static class StrategicCardEvaluator
     {
+        // Generated Equipment strengthens an EXISTING host: price its marginal signed gain,
+        // never the host's total combat power. Development.Ev remains the separate owner of
+        // prerequisite investment ranking, expressed in persistent AiPower units. Phase A and
+        // other card chains share this evaluator's ONE AP/resource/chain cost function.
+        // Research and Production labels never decide output type: use the actual card definition.
+        internal static float ScoreGeneratedEquipmentUpgrade(DevelopmentOpportunity op,
+            MaterializationPlan plan, WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx)
+        {
+            if (op == null || op.Card == null || op.Card.cardType != CardType.Equipment
+                || plan == null || plan.Kind != MaterializationChainKind.GenerateAttachUpgrade
+                || !object.ReferenceEquals(plan.GeneratedEquipmentDef, op.Card)
+                || !object.ReferenceEquals(plan.Generation?.CardDef, op.Card))
+                return float.NegativeInfinity;
+
+            float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
+            float marginalBenefit = op.SuccessChance * op.ExpectedGain * op.ProductionSupport / powerUnit;
+            float displacedAlternative = op.AlternativeValue / powerUnit;
+            System.Func<ResourceType, float> spendable = root == null ? null
+                : (System.Func<ResourceType, float>)(type =>
+                    StrategicSpendability.SpendableAmount(player, root, ctx, type));
+            return marginalBenefit - displacedAlternative - ResourceCost(plan, snap, spendable, player);
+        }
+
         // -----------------------------------------------------------------------------------------
         //  PHASE A — a chain closing an explicit AxisDemand. The demand pins the primary role.
         // -----------------------------------------------------------------------------------------

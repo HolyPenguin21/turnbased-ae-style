@@ -300,33 +300,6 @@ namespace Game.Ai.V2
             op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
         }
 
-        // Cross-lane calibration: Development.Ev is expressed in persistent AiPower units
-        // for Development objective ranking; the shared Phase-A portfolio compares *card-use*
-        // utility (RoleFit-like units). Project the ALREADY-scored marginal benefit and displaced
-        // alternative onto the canonical AiPower-per-body unit, then charge the very same
-        // resource/AP/chain costs that StrategicCardEvaluator charges other card chains.
-        // Do NOT apply devEquipmentPersistenceMultiplier here: both an ordinary deployed card
-        // and attached equipment persist, and only Development's objective EV needs the longer
-        // lifetime horizon to decide whether preparing its prerequisites is worthwhile.
-        internal static float MaterializationValue(DevelopmentOpportunity op, MaterializationPlan plan,
-            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
-        {
-            if (op == null || plan == null || plan.Kind != MaterializationChainKind.GenerateAttachUpgrade)
-                return float.NegativeInfinity;
-            float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
-            float benefit = op.SuccessChance * op.ExpectedGain * op.ProductionSupport / powerUnit;
-            float displacedAlternative = op.AlternativeValue / powerUnit;
-            System.Func<ResourceType, float> spendable = root == null ? null
-                : (System.Func<ResourceType, float>)(type =>
-                    StrategicSpendability.SpendableAmount(player, root, ctx, type));
-            float resourcePrice = StrategicCardEvaluator.StrategicResourceCostValue(
-                plan.ResCost, snap, spendable, player);
-            float apPrice = plan.ApCost * AiConfigV2.stratCardApCostWeight;
-            float chainPrice = AiConfigV2.stratChainGenerationStepPenalty
-                + AiConfigV2.stratChainAttachStepPenalty;
-            return benefit - displacedAlternative - resourcePrice - apPrice - chainPrice;
-        }
-
         // Best legal recipient for an Equipment offering. Hand Unit/Hero cards + own on-map units,
         // gated by EquipmentSystem.CanAttach (host kind + type tags + free slot + affordability).
         private static DevelopmentOpportunity BestEquipmentOpportunity(DevelopmentOffering off,

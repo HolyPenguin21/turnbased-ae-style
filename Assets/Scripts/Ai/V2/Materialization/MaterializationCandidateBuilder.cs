@@ -238,7 +238,7 @@ namespace Game.Ai.V2
                 MaterializationPlan upgrade = candidates[0].plan;
                 // Development EV ranks/stages the opportunity in AiPower units; the
                 // shared portfolio MUST compare its card-use utility against other cards.
-                upgrade.Score = DevelopmentOpportunityEvaluator.MaterializationValue(
+                upgrade.Score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
                     demand.DevOpportunity, upgrade, snap, player, root, ctx);
                 float urgency = DemandUrgencyPolicy.Bonus(demand);
                 float decision = upgrade.Score + urgency * GenerationChanceForDecision(upgrade);
