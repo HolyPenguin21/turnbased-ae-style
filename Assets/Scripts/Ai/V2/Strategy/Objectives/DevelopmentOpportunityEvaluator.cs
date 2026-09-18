@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
@@ -13,34 +14,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  DEVELOPMENT OPPORTUNITY EVALUATOR
     // ===========================================================================================
-    //  Turns the shared snapshot.Development readiness into concrete, EV-scored upgrade
-    //  opportunities. One opportunity = "run THIS catalog card at THIS facility to strengthen THIS
-    //  recipient". SCOPE: EQUIPMENT offerings only — this axis is "strengthen existing cards".
-    //  Non-Equipment R/P mints (a whole new Unit/Hero card) stay with the existing
-    //  GenerationSource / MaterializationCandidateBuilder path.
-    //
-    //  HOW A CARD IS PICKED
-    //      For every Equipment offering: find its BEST legal recipient (the one with the largest
-    //      signed strategic gain G, including lost roles/abilities), then score
-    //      EV = p*G*persistence - A_total - dynamicResourceCost - apCost,
-    //      keep it if EV > margin.
-    //      Phase A then executes the surviving opportunities in descending BaseValue, re-scoring
-    //      after each Challenge. "Which card gets created" == "highest EV that still passes the
-    //      live gates".
-    //
-    //      p       = ResearchProductionSystem.EstimateSuccessChance  (deterministic)
-    //      G       = signed stat + ability/role delta under the canonical card evaluator,
-    //                * recipient importance (raid-bound field unit > field > garrison > hand card)
-    //      A_total = MARGINAL value actually displaced by staking these resources this turn:
-    //                strongest affordable hand Unit before the stake minus strongest still
-    //                affordable after it, discounted by surplus depth (deep surplus -> ~0).
-    //                AP is deliberately excluded from this delta because it is priced separately.
-    //
-    //  NOT a scoring gate: the enemy-on-hex rule (facility contested) — that is a Phase-A
-    //  execution precondition only.
-    //
-    //  Like DemandLayer this is NOT a pure WorldSnapshot function: CanAttach / recipient
-    //  enumeration need live CardData / UnitData. Deliberate, same exception DemandLayer takes.
+    //  Turns the shared snapshot.Development readiness into concrete upgrade opportunities.
+    //  READY opportunities represent Equipment recipients; Unit/Hero generation stays with
+    //  MaterializationChainEnumerator. Preparation may project those deployable catalog outputs
+    //  through the canonical scorer to justify an independent investment, never to mint them.
+    //  Preparation owns the
+    //  prerequisite investment EV; a READY facility's operational card decision belongs to the
+    //  canonical StrategicCardEvaluator and Phase-A portfolio, not another investment EV gate.
+    //  The live recipient and Challenge admission remain gameplay-executor responsibilities.
     // ===========================================================================================
     public enum DevRecipientKind { HandCard, GarrisonUnit, FieldUnit }
 
@@ -48,21 +29,29 @@ namespace Game.Ai.V2
     {
         public ResearchProductionMode Mode;
         public HexCoord FacilityHex;
-        public CardDefinition Card;          // the Equipment card a won Challenge mints
-        public bool ProducesEquipment;       // always true (kept for symmetry with the offering)
+        public CardDefinition Card;
+        public bool ProducesEquipment;
         public ResourceBundle StakeCost;
         public float SuccessChance;
-        public GenerationStep Generation;    // exact operator/source selected by GenerationSource
+        public GenerationStep Generation;
         public CardData PreparationFacilityCard;
         public CardData PreparationOperatorCard;
+        // Only an existing, eligible staffed source can mint an operator. The resulting card
+        // goes into the hand first; deployment remains the usual DevelopmentOperator action.
+        public GenerationStep PreparationOperatorGeneration;
+        // Existing qualified hero selected for delivery, never misrepresented as an on-site
+        // actor. Continuity pins this exact object until arrival or structural cancellation.
+        public UnitData PreparationExistingHero;
+        public int? PreparationSourceArmyId;
+        public int PreparationTravelCost;
 
         public DevRecipientKind RecipientKind;
-        public CardData RecipientCard;       // HandCard
-        public UnitData RecipientUnit;       // Garrison / Field
+        public CardData RecipientCard;
+        public UnitData RecipientUnit;
         public string RecipientLabel;
 
-        public float ExpectedGain;           // G — frozen once (recipient is structural)
-        public float AlternativeValue;       // A_total — re-scored each Phase-A round
+        public float ExpectedGain;
+        public float AlternativeValue;
         public float Ev;
         public float ExpectedApCost;
         public float ResourceCostValue;
@@ -83,10 +72,6 @@ namespace Game.Ai.V2
                 return result;
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-            var raidHexes = new HashSet<HexCoord>();
-            if (aggObjectives != null)
-                foreach (AggressionObjective o in aggObjectives)
-                    if (o != null) raidHexes.Add(o.LastKnownHex);
 
             int skippedNonEquip = 0;
             foreach (DevelopmentOffering off in rd.Offerings)
@@ -102,7 +87,7 @@ namespace Game.Ai.V2
                 }
 
                 DevelopmentOpportunity best = BestEquipmentOpportunity(
-                    off, snap, inv, player, root, hand, raidHexes, out string recipDiag, supportsNeed);
+                    off, snap, inv, player, root, hand, out string recipDiag, supportsNeed);
                 if (best == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} p={off.SuccessChance:0.00} "
@@ -119,18 +104,24 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // A built, staffed factory is a SUNK investment. Keep Score's EV and cost
+                // breakdown for preparation diagnostics, but never use it as an admission veto
+                // for an already-ready card. Readiness describes only the intrinsic, positive
+                // marginal capability the card could add; StrategicCardEvaluator later prices
+                // the complete live chain (Challenge/attach/resource/alternative) exactly once.
                 Score(best, snap, root, hand);
-                string verdict = best.Ev > AiConfigV2.devEvMargin ? "ACCEPT" : "REJECT ev<=margin";
+                best.BaseValue = ReadyOpportunityValue(best);
                 AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} A={best.AlternativeValue:0.0} "
                     + $"resCost={best.ResourceCostValue:0.##} apCost={best.ExpectedApCost:0.##} "
-                    + $"prodSupport={best.ProductionSupport:0.00} EV={best.Ev:0.00} "
-                    + $"(margin {AiConfigV2.devEvMargin:0.00}) => {verdict}");
-                if (best.Ev <= AiConfigV2.devEvMargin)
+                    + $"prodSupport={best.ProductionSupport:0.00} investmentEV={best.Ev:0.00} "
+                    + $"intrinsicNeed={best.BaseValue:0.00} "
+                    + (best.BaseValue > 0f ? "=> ADMIT for card competition" : "=> REJECT no expected gain"));
+                if (best.BaseValue <= 0f)
                     continue;
                 best.Explain = $"{best.Mode} '{off.Card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} "
-                    + $"A={best.AlternativeValue:0.0} EV={best.Ev:0.0}";
+                    + $"A={best.AlternativeValue:0.0} investmentEV={best.Ev:0.0}";
                 result.Add(best);
             }
 
@@ -142,17 +133,27 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // This is a demand signal, NOT a second card-value score. It deliberately does not
+        // include AP, resources, alternate hand cards, persistence or radar. The single shared
+        // card scorer prices all of those at MaterializationCandidateBuilder.TopForDemand.
+        internal static float ReadyOpportunityValue(DevelopmentOpportunity op) =>
+            op == null ? 0f : Mathf.Clamp(AiConfigV2.devEvToBaseValue
+                * Mathf.Clamp01(op.SuccessChance) * Mathf.Max(0f, op.ExpectedGain)
+                / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate), 0f, 100f);
+
         // Preparation witnesses use the same catalog, legal recipient enumeration and scorer
         // as a ready Challenge. They carry no GenerationStep and never authorize execution.
         internal static List<DevelopmentOpportunity> EnumeratePreparation(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            System.Func<DevelopmentOpportunity, bool> supportsNeed)
+            System.Func<DevelopmentOpportunity, bool> supportsNeed,
+            IReadOnlyList<MissionIntent> activeIntents = null)
         {
             var result = new List<DevelopmentOpportunity>();
             if (snap?.Self?.BaseHexes == null || player == null || root == null
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null || supportsNeed == null)
                 return result;
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             foreach (ResearchProductionMode mode in new[]
                 { ResearchProductionMode.Research, ResearchProductionMode.Production })
             foreach (HexCoord hex in snap.Self.BaseHexes)
@@ -162,9 +163,11 @@ namespace Game.Ai.V2
                     || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null)
                     continue;
                 bool facilityReady = building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
-                // Reuse the mode's existing facility. Preparation must not manufacture another
-                // lab at every base while the first one can already serve the same output.
-                if (snap.Development?.Facilities?.Any(f => f.Mode == mode && f.HasHero && !f.Contested) == true
+                // A staffed facility at base A must not silently veto staffing a separate
+                // already-built facility at base B. The duplicate-construction guard below
+                // remains global for the same mode; only the ready-site check is site-local.
+                if (snap.Development?.Facilities?.Any(f => f.Mode == mode && f.Hex.Equals(hex)
+                        && f.HasHero && !f.Contested) == true
                     || (!facilityReady && snap.Development?.Facilities?.Any(f => f.Mode == mode) == true))
                     continue;
                 UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
@@ -189,42 +192,192 @@ namespace Game.Ai.V2
                     .OrderBy(c => c.EffectivePlayApCost * AiConfigV2.devApValue
                         + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                     .FirstOrDefault();
-                if (actor == null && operatorCard == null)
+                UnitData remote = null;
+                int? remoteArmyId = null;
+                int remoteTravel = int.MaxValue;
+                float remoteCost = float.PositiveInfinity;
+                if (actor == null && ctx.Map != null)
+                {
+                    foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+                    {
+                        if (army == null || army.IsPrison || army.Hex.Equals(hex)
+                            || occupied.IsArmyClaimed(army.Id)
+                            || DemandLayer.EconomyBuilderUnderImmediateThreat(snap, army.Hex))
+                            continue;
+                        UnitData candidate = army.IsGarrison
+                            ? AiArmyRoles.BestSparableDevelopmentHero(player, army,
+                                ResearchProductionSystem.RoleAbility(mode))
+                            : AiArmyRoles.IsHeroLed(army) ? army.Members.FirstOrDefault(u =>
+                                u != null && u.IsHero && !u.IsPrisoner
+                                && u.HasAbility(ResearchProductionSystem.RoleAbility(mode))) : null;
+                        if (candidate == null || candidate.Owner != player)
+                            continue;
+                        // Never strip a different active facility of its exact operator.
+                        BuildingData sourceBuilding = BuildingRegistry.FindAt(army.Hex);
+                        if (sourceBuilding != null && sourceBuilding.Owner == player
+                            && new[] { ResearchProductionMode.Research, ResearchProductionMode.Production }
+                                .Any(m => sourceBuilding.HasFacilityWithAbility(
+                                    ResearchProductionSystem.FacilityAbility(m))
+                                    && ResearchProductionSystem.ActorStillQualifies(
+                                        player, candidate, army.Hex, m)))
+                            continue;
+                        int route = army.IsGarrison
+                            ? SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                                army.Hex, hex, candidate.MoveMax)
+                            : SafeStepPathing.FindSafePathCost(ctx.Map, army, hex);
+                        if (route == int.MaxValue)
+                            continue;
+                        // Count reassignment/route AP with the existing Development AP price;
+                        // the live AP envelope is recalculated in Provisioning, not here.
+                        float cost = (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f)
+                            + (army.HasActivatedThisTurn ? 0f : candidate.ActivationApCost)
+                            + (float)route / Mathf.Max(1, candidate.MoveMax);
+                        cost *= AiConfigV2.devApValue;
+                        if (cost >= remoteCost)
+                            continue;
+                        remote = candidate;
+                        remoteArmyId = army.Id;
+                        remoteTravel = route;
+                        remoteCost = cost;
+                    }
+                    if (operatorCard != null && remote != null)
+                    {
+                        float handCost = operatorCard.EffectivePlayApCost * AiConfigV2.devApValue
+                            + StrategicCardEvaluator.StrategicResourceCostValue(
+                                operatorCard.EffectivePlayResourceCost, snap);
+                        if (handCost <= remoteCost)
+                            remote = null;
+                        else
+                            operatorCard = null;
+                    }
+                }
+                GenerationStep generatedOperator = null;
+                // Do not start a factory on the fantasy of a future Hero. A real, staffed,
+                // currently eligible OTHER facility must already offer the exact qualified
+                // Hero card. Source eligibility, authored identity and resources belong to
+                // GenerationSource; this evaluator only picks the cheapest legal witness.
+                if (actor == null && operatorCard == null && remote == null
+                    && garrison != null && PlacementRules.CanDepositIntoGarrison(garrison))
+                {
+                    generatedOperator = GenerationSource.Enumerate(player, root, ctx, hand,
+                            claimedUseKeys: null, triedCardKeys: null)
+                        .Where(g => IsGeneratedOperatorCandidate(g, mode)
+                            && PlacementRules.HasRequiredBuilding(player, hex, g.CardDef)
+                            && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
+                            && ArmyRegistry.AllAt(g.FacilityHex).Any(source => source != null
+                                && source.Owner == player && !source.IsPrison
+                                && source.Members.Contains(g.Hero)
+                                && !occupied.IsArmyClaimed(source.Id)))
+                        .OrderBy(g => ResearchProductionSystem.AttemptApCost(g.CardDef)
+                            * AiConfigV2.devApValue
+                            + StrategicCardEvaluator.StrategicResourceCostValue(
+                                g.GenerationResourceCost, snap))
+                        .ThenBy(g => g.CardKey, System.StringComparer.Ordinal)
+                        .FirstOrDefault();
+                }
+                if (actor == null && operatorCard == null && remote == null
+                    && generatedOperator == null)
                     continue;
-                UnitData projectedActor = actor;
+                UnitData projectedActor = actor ?? remote;
                 if (projectedActor == null)
                 {
-                    // UnitData is plain data. This unregistered preview is used only for the
-                    // canonical probability calculation, never as a generation/execution actor.
-                    int fate = operatorCard.Definition.fate;
-                    if (operatorCard.Equipment?.equipment != null)
+                    CardDefinition operatorDefinition = operatorCard?.Definition
+                        ?? generatedOperator.CardDef;
+                    CardDefinition operatorEquipment = operatorCard?.Equipment;
+                    int fate = operatorDefinition.fate;
+                    if (operatorEquipment?.equipment != null)
                     {
                         PredictedEquipmentState projected = EquipmentSystem.Predict(
-                            operatorCard.Equipment.equipment,
+                            operatorEquipment.equipment,
                             new Dictionary<EquipmentStat, int> { [EquipmentStat.Fate] = fate },
-                            operatorCard.Definition.grantedAbilities);
+                            operatorDefinition.grantedAbilities);
                         if (projected.Stats.TryGetValue(EquipmentStat.Fate, out int equippedFate))
                             fate = equippedFate;
                     }
                     projectedActor = new UnitData { Fate = Mathf.Max(0, fate), IsHero = true,
-                        Owner = player, OriginatingCard = operatorCard.Definition,
-                        Equipment = operatorCard.Equipment };
+                        Owner = player, OriginatingCard = operatorDefinition,
+                        Equipment = operatorEquipment };
                     projectedActor.Abilities.UnionWith(MaterializationChainMatching.EffectiveAbilities(
-                        operatorCard.Definition, operatorCard.Equipment));
+                        operatorDefinition, operatorEquipment));
                 }
                 float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
                     .Sum(c => c.EffectivePlayApCost * AiConfigV2.devApValue
-                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap));
+                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
+                    + (remote != null ? remoteCost : 0f);
+                if (generatedOperator != null)
+                {
+                    // Challenge is paid even on loss; deploy AP only on a won roll. Its
+                    // resource stake belongs to the source Challenge and is charged ONCE.
+                    var mintedPreview = new CardData(generatedOperator.CardDef)
+                        { ResearchProductionCreated = true };
+                    preparationCost += (ResearchProductionSystem.AttemptApCost(
+                            generatedOperator.CardDef)
+                        + generatedOperator.SuccessChance * CardCostRules.PlayAp(mintedPreview))
+                        * AiConfigV2.devApValue
+                        + StrategicCardEvaluator.StrategicResourceCostValue(
+                            generatedOperator.GenerationResourceCost, snap);
+                }
                 foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
                     ctx.ResearchProductionCatalog, mode, player.Faction))
                 {
-                    if (card?.cardType != CardType.Equipment || card.equipment == null)
+                    if (card == null || (!card.isAviation
+                        && card.cardType != CardType.Equipment
+                        && card.cardType != CardType.Unit && card.cardType != CardType.Hero))
                         continue;
                     if (ResourceBundle.All.Any(t =>
                         (facility?.EffectivePlayResourceCost?.Get(t) ?? 0)
                         + (operatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                        + (generatedOperator?.GenerationResourceCost?.Get(t) ?? 0)
                         + (card.resourceCost?.Get(t) ?? 0)
                         > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
+                        continue;
+
+                    // Non-equipment outputs already have ONE canonical materialization/scoring
+                    // path. Use a projected GenerateDeploy plan to witness future investment
+                    // utility; do NOT claim it is an executable source or create a CardUpgrade
+                    // demand (those are specifically for Equipment/recipient attachments).
+                    if (card.isAviation || card.cardType == CardType.Unit
+                        || card.cardType == CardType.Hero)
+                    {
+                        // GenerationSource will not mint cards lacking an authored retry key.
+                        if (string.IsNullOrWhiteSpace(card.authoredKey))
+                            continue;
+                        // Aviation is owned by the generated non-combat lane and needs real
+                        // airfield capacity; never pretend it is a ground GenerateDeploy.
+                        float futureValue = card.isAviation
+                            ? NonCombatCardPlayer.ProjectedAviationInvestmentValue(card, mode, hex,
+                                projectedActor, snap, player, root, hand, ctx)
+                            : ProjectedDeployableInvestmentValue(card, mode, hex,
+                                projectedActor, snap, player, root, hand, ctx, inv, occupied);
+                        if (futureValue <= 0f)
+                            continue;
+                        float operatorChance = generatedOperator != null
+                            ? Mathf.Clamp01(generatedOperator.SuccessChance) : 1f;
+                        var deployable = new DevelopmentOpportunity
+                        {
+                            Mode = mode, FacilityHex = hex, Card = card,
+                            SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
+                            ProducesEquipment = false, ExpectedGain = futureValue * operatorChance,
+                            Ev = futureValue * operatorChance - preparationCost,
+                            PreparationFacilityCard = facility, PreparationOperatorCard = operatorCard,
+                            PreparationOperatorGeneration = generatedOperator,
+                            PreparationExistingHero = remote, PreparationSourceArmyId = remoteArmyId,
+                            PreparationTravelCost = remoteTravel,
+                            RecipientLabel = (card.isAviation ? "aviation:" : "deployable:")
+                                + card.displayName,
+                        };
+                        if (deployable.Ev <= AiConfigV2.devEvMargin || !supportsNeed(deployable))
+                            continue;
+                        deployable.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue
+                            * deployable.Ev, 0f, 100f);
+                        deployable.Explain = $"prepare {mode} @({hex.Q},{hex.R}) for "
+                            + $"{(card.isAviation ? "aviation" : "deployable")} {card.displayName}; "
+                            + $"canonical future value={futureValue:0.##} "
+                            + $"EV after prerequisites={deployable.Ev:0.##}";
+                        result.Add(deployable);
+                        continue;
+                    }
+                    if (card.equipment == null)
                         continue;
                     var off = new DevelopmentOffering
                     {
@@ -232,11 +385,19 @@ namespace Game.Ai.V2
                         SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
                     };
                     DevelopmentOpportunity op = BestEquipmentOpportunity(off, snap, inv, player,
-                        root, hand, new HashSet<HexCoord>(), out _, supportsNeed);
+                        root, hand, out _, supportsNeed);
                     if (op == null) continue;
                     Score(op, snap, root, hand);
                     op.PreparationFacilityCard = facility;
                     op.PreparationOperatorCard = operatorCard;
+                    op.PreparationOperatorGeneration = generatedOperator;
+                    op.PreparationExistingHero = remote;
+                    op.PreparationSourceArmyId = remoteArmyId;
+                    op.PreparationTravelCost = remoteTravel;
+                    // The output payoff is conditional on winning the prerequisite operator
+                    // Challenge; its AP/resources were already included in preparationCost.
+                    if (generatedOperator != null)
+                        op.Ev *= Mathf.Clamp01(generatedOperator.SuccessChance);
                     op.Ev -= preparationCost;
                     op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
                     if (op.Ev <= AiConfigV2.devEvMargin) continue;
@@ -248,10 +409,68 @@ namespace Game.Ai.V2
             return result.OrderByDescending(o => o.BaseValue).ToList();
         }
 
-        // Re-score an already-built opportunity against the CURRENT snapshot (surplus + best
-        // alternative shift as earlier Challenges spend resources). ExpectedGain / SuccessChance
-        // stay frozen — the recipient is structural; Phase-A's TryFulfill catches a recipient that
-        // vanished.
+        // The operator-generation witness is a *real* existing source; its exact identity
+        // must remain stable through the stage transition. No hypothetical source or retry key.
+        internal static bool IsGeneratedOperatorCandidate(GenerationStep g,
+            ResearchProductionMode targetMode) => g?.CardDef?.cardType == CardType.Hero
+            && !g.CardDef.isAviation && g.SuccessChance > 0f
+            && !string.IsNullOrWhiteSpace(g.CardDef.authoredKey)
+            && MaterializationChainMatching.EffectiveAbilities(g.CardDef, null)
+                .Contains(ResearchProductionSystem.RoleAbility(targetMode));
+
+        // Objectives only projects a prospective deployment. The future source becomes real
+        // exclusively after Building/Actor delivery; GenerationSource and MaterializationFeasibility
+        // retain all actual Challenge, placement and reservation gates. One canonical card scorer,
+        // one cost model, and no synthetic Production-only Unit/Hero strength formula.
+        internal static float ProjectedDeployableInvestmentValue(CardDefinition card,
+            ResearchProductionMode mode, HexCoord facilityHex, UnitData operatorHero,
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, CapabilityInventory inv, ActorCommitments commitments)
+        {
+            if (card == null || operatorHero == null || snap?.Self == null || player == null
+                || root == null || hand == null || ctx == null || card.isAviation
+                || string.IsNullOrWhiteSpace(card.authoredKey)
+                || (card.cardType != CardType.Unit && card.cardType != CardType.Hero))
+                return float.NegativeInfinity;
+            IReadOnlyList<string> abilities = MaterializationChainMatching.EffectiveAbilities(card, null);
+            bool soloOnly = card.cardType == CardType.Unit
+                && AbilityParams.AbilitiesHaveAnyRecce(abilities);
+            List<PlacementOption> options = PlacementSelector.BuildOptions(
+                snap, player, card, commitments, soloOnly, phaseBSurplus: true);
+            if (options.Count == 0)
+                return float.NegativeInfinity;
+            var projectedGeneration = new GenerationStep
+            {
+                Mode = mode, FacilityHex = facilityHex, Hero = operatorHero, CardDef = card,
+                ProducesEquipment = false,
+                SuccessChance = ResearchProductionSystem.EstimateSuccessChance(operatorHero, card),
+                UseKey = "investment-preview", CardKey = "investment-preview:" + card.authoredKey,
+            };
+            float best = float.NegativeInfinity;
+            foreach (PlacementOption option in options)
+            {
+                // Exactly the same solo-Recce vs Hero vs combat classification as Phase B.
+                CapabilityKind capability = MaterializationChainEnumerator.SurplusCapability(
+                    card, abilities, option);
+                bool recce = capability == CapabilityKind.ScoutCapability
+                    && AbilityParams.AbilitiesHaveAnyRecce(abilities);
+                MaterializationPlan plan = MaterializationPlanFactory.MakeGeneratedPlan(
+                    MaterializationChainKind.GenerateDeploy, null, projectedGeneration,
+                    baseInHand: null, baseIdx: -1, generatedIsEquipment: false,
+                    opt: option, projected: abilities);
+                plan.FinalCapability = capability;
+                // This includes actual mint/deploy AP and H/E/M/T costs, Challenge chance,
+                // card effects, alternative role and hold. The investment cost is added ONCE
+                // by EnumeratePreparation after this score; it is not included in this plan.
+                StrategicCardUseCandidate score = StrategicCardEvaluator.ScoreSurplus(
+                    plan, inv, recce, card.cardType == CardType.Hero, hand, abilities, snap,
+                    spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
+                    player: player);
+                best = Mathf.Max(best, score.NetScore);
+            }
+            return best;
+        }
+
         public static void Rescore(DevelopmentOpportunity op, WorldSnapshot snap, PlayerRoot root, AiHandData hand)
         {
             if (op == null)
@@ -267,44 +486,33 @@ namespace Game.Ai.V2
 
         private static void Score(DevelopmentOpportunity op, WorldSnapshot snap, PlayerRoot root, AiHandData hand)
         {
-            float surplusRetain = 1f - Curves.Ramp(snap?.Development?.SurplusFraction ?? 0f,
-                AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
-            // Resource opportunity cost is marginal: only charge power that this exact stake
-            // makes unavailable. Charging the strongest currently affordable Unit unconditionally
-            // rejected upgrades even when both actions could still be paid for.
+            float surplusRetain = op.Generation != null ? 1f
+                : 1f - Curves.Ramp(snap?.Development?.SurplusFraction ?? 0f,
+                    AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
             float bestBeforeStake = BestAffordableHandUnitPower(hand, root, null);
             float bestAfterStake = BestAffordableHandUnitPower(hand, root, op.Card?.resourceCost);
             float displacedAlternative = Mathf.Max(0f, bestBeforeStake - bestAfterStake);
             float aTotal = AiConfigV2.devAlternativeWeight * surplusRetain * displacedAlternative;
-            // Challenge AP is certain; attach AP is paid only after a successful roll.
             float challengeAp = ResearchProductionSystem.AttemptApCost(op.Card);
             float expectedAttachAp = op.SuccessChance * Mathf.Max(0, op.Card.activationApCost);
             op.ExpectedApCost = challengeAp + expectedAttachAp;
 
             op.AlternativeValue = aTotal;
-            op.ResourceCostValue =
-                StrategicCardEvaluator.StrategicResourceCostValue(op.Card?.resourceCost, snap);
-            // Equipment is a persistent improvement, while its AP/resource payment is one-shot.
-            // Keep the raw projected delta in ExpectedGain for diagnostics and convert it to
-            // lifetime strategic value only at the EV boundary.
+            op.ResourceCostValue = StrategicCardEvaluator.StrategicResourceCostValue(op.Card?.resourceCost, snap);
             float persistentExpectedGain = op.SuccessChance * op.ExpectedGain
                 * AiConfigV2.devEquipmentPersistenceMultiplier;
-            // This evaluator produces Equipment in either Research or Production mode.
-            // Economy support follows the produced capability, never the facility's label;
-            // StrategicCardEvaluator applies this same output-type rule to Unit/Hero mints.
-            op.ProductionSupport = snap?.Development?.ProductionSupport
-                ?? AiConfigV2.productionSupportMin;
+            op.ProductionSupport = op.Generation == null
+                ? (snap?.Development?.ProductionSupport ?? AiConfigV2.productionSupportMin)
+                : 1f;
             op.Ev = persistentExpectedGain * op.ProductionSupport
                 - aTotal - op.ResourceCostValue
                 - op.ExpectedApCost * AiConfigV2.devApValue;
             op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
         }
 
-        // Best legal recipient for an Equipment offering. Hand Unit/Hero cards + own on-map units,
-        // gated by EquipmentSystem.CanAttach (host kind + type tags + free slot + affordability).
         private static DevelopmentOpportunity BestEquipmentOpportunity(DevelopmentOffering off,
             WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, HashSet<HexCoord> raidHexes, out string diag,
+            AiHandData hand, out string diag,
             System.Func<DevelopmentOpportunity, bool> supportsNeed = null)
         {
             diag = "no equipment grant on the card";
@@ -316,16 +524,19 @@ namespace Game.Ai.V2
             int handChecked = 0, mapChecked = 0, gainZero = 0;
             string lastReject = null;
             DevelopmentOpportunity best = null;
-            void Consider(DevelopmentOpportunity cand)
+            float bestSelectionValue = float.NegativeInfinity;
+            void Consider(DevelopmentOpportunity cand, ArmyData army = null)
             {
                 if (cand == null || (supportsNeed != null && !supportsNeed(cand))) return;
                 if (cand.ExpectedGain <= 0f) { gainZero++; return; }
-                if (best == null || cand.ExpectedGain > best.ExpectedGain)
+                float selection = RecipientSelectionValue(cand, army, snap);
+                if (best == null || selection > bestSelectionValue)
+                {
                     best = cand;
+                    bestSelectionValue = selection;
+                }
             }
 
-            // Hand cards — projected delta via AiPower.EffectiveLine (composes any equipment
-            // already stashed on the card + the new grant).
             if (hand?.Hand != null)
                 foreach (CardData c in hand.Hand)
                 {
@@ -334,15 +545,12 @@ namespace Game.Ai.V2
                     handChecked++;
                     if (!EquipmentSystem.CanAttach(generatedPreview, c, root, out string why))
                     { lastReject = why; continue; }
-                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
+                    float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
                         off.Card, c, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, DevRecipientKind.HandCard, c, null,
-                        $"hand:{c.Definition.displayName}", delta * AiConfigV2.devImportanceHandCard));
+                        $"hand:{c.Definition.displayName}", gain));
                 }
 
-            // On-map own units — projected delta from the unit's OriginatingCard (+ its current
-            // equipment) + the new grant. Fallback to a flat fraction only when OriginatingCard is
-            // unknown (minted / event units).
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army == null || army.IsPrison) continue;
@@ -352,14 +560,10 @@ namespace Game.Ai.V2
                     mapChecked++;
                     if (!EquipmentSystem.CanAttach(generatedPreview, u, root, out string whyU))
                     { lastReject = whyU; continue; }
-                    float importance = army.IsGarrison
-                        ? AiConfigV2.devImportanceGarrison
-                        : raidHexes.Contains(army.Hex) ? AiConfigV2.devImportanceRaidMatch
-                        : AiConfigV2.devImportanceField;
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate * importance;
+                        off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
-                        null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain));
+                        null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain), army);
                 }
             }
 
@@ -368,6 +572,116 @@ namespace Game.Ai.V2
                     + $"positive-gain 0 (zero-gain {gainZero})"
                     + (lastReject != null ? $"; last CanAttach reject: \"{lastReject}\"" : "; all attachable but gain <= 0");
             return best;
+        }
+
+        internal static float RecipientSelectionValue(DevelopmentOpportunity cand, ArmyData army,
+            WorldSnapshot snap)
+        {
+            if (cand == null || cand.ExpectedGain <= 0f)
+                return float.NegativeInfinity;
+            return cand.ExpectedGain * (1f + EquipmentMatchupFit(cand, army, snap));
+        }
+
+        internal static float EquipmentMatchupFit(DevelopmentOpportunity cand, ArmyData army,
+            WorldSnapshot snap)
+        {
+            EquipmentGrant grant = cand?.Card?.equipment;
+            if (grant == null)
+                return 0f;
+
+            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            if (threats.Count == 0)
+                return 0f;
+
+            WorthIt.DefenderProfile handBefore = default;
+            WorthIt.DefenderProfile handAfter = default;
+            bool handUnit = cand.RecipientKind == DevRecipientKind.HandCard
+                && cand.RecipientCard?.Definition?.cardType == CardType.Unit;
+            if (handUnit)
+            {
+                CardDefinition host = cand.RecipientCard.Definition;
+                EquipmentGrant existing = cand.RecipientCard.Equipment?.equipment;
+                AiPower.ProjectedStrategicLine before = AiPower.EffectiveLine(host, existing);
+                AiPower.ProjectedStrategicLine after = AiPower.EffectiveLine(host, existing, grant);
+                WorthIt.DefenderProfile Profile(AiPower.ProjectedStrategicLine line) =>
+                    new WorthIt.DefenderProfile(line.Defense,
+                        line.EffectiveAbilities.Contains(UnitAbilities.CeramicArmor),
+                        host.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
+                        line.EffectiveAbilities);
+                handBefore = Profile(before);
+                handAfter = Profile(after);
+            }
+
+            int comparable = 0;
+            int improved = 0;
+            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            {
+                if (defenders == null || defenders.Count == 0)
+                    continue;
+                comparable++;
+                if (cand.RecipientUnit != null && army?.Members != null)
+                {
+                    if (DemandLayer.ImprovesRaidCombatOutcome(
+                        cand.RecipientUnit, army.Members, grant, defenders))
+                        improved++;
+                }
+                else if (handUnit)
+                {
+                    var beforeRoster = new[] { handBefore };
+                    var afterRoster = new[] { handAfter };
+                    bool coversBefore = WorthIt.CanDamageAll(beforeRoster, defenders);
+                    bool coversAfter = WorthIt.CanDamageAll(afterRoster, defenders);
+                    if (!coversAfter)
+                        continue;
+                    if (!coversBefore)
+                    {
+                        improved++;
+                        continue;
+                    }
+
+                    // If this card already has enough penetration, defensive HP/Defense/Initiative
+                    // changes can still be the real reason the attachment matters. Reuse the SAME
+                    // full-roster WorthIt read as deployed recipients; never fall back to a private
+                    // Attack+Defense heuristic.
+                    WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f);
+                    WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f);
+                    if (next.WinChance > previous.WinChance
+                        || (next.WinChance == previous.WinChance
+                            && (next.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
+                                || next.CriticalAfterBattleChance < previous.CriticalAfterBattleChance)))
+                        improved++;
+                }
+            }
+            return comparable > 0 ? (float)improved / comparable : 0f;
+        }
+
+        private static List<IReadOnlyList<WorthIt.DefenderProfile>> EquipmentValuationThreats(WorldSnapshot snap)
+        {
+            var result = new List<IReadOnlyList<WorthIt.DefenderProfile>>();
+            // Only composition crosses the TrueWorld boundary. Ground and aviation rosters are
+            // both legitimate Production valuation inputs; neither hidden coordinates nor army
+            // identity is passed to recipient selection or Mission planning.
+            if (snap?.TrueWorld?.EnemyArmies != null)
+                result.AddRange(snap.TrueWorld.EnemyArmies
+                    .Where(a => a != null && a.Members != null && a.Members.Count > 0)
+                    .Select(a => a.Members));
+
+            // A neutral's last honestly observed defender profiles are the only permitted
+            // composition witness. After it disappears into fog, its hidden live roster may
+            // change; matching a known ArmyId back into TrueWorld would silently cheat.
+            if (snap?.Known?.NeutralSightings != null)
+                result.AddRange(snap.Known.NeutralSightings
+                    .Where(s => s.Defenders != null && s.Defenders.Count > 0)
+                    .Select(s => s.Defenders));
+
+            // An event guard is not a live ArmyData until triggered. Its legitimately observed
+            // defender profiles already belong to Known, so use those directly for WorthIt;
+            // never invent a synthetic army or read hidden live event state/positions.
+            if (snap?.Known?.EventGuards != null)
+                result.AddRange(snap.Known.EventGuards
+                    .Where(g => g.Defenders != null && g.Defenders.Count > 0)
+                    .Select(g => g.Defenders));
+            return result;
         }
 
         private static DevelopmentOpportunity Make(DevelopmentOffering off, DevRecipientKind kind,
@@ -387,9 +701,6 @@ namespace Game.Ai.V2
             ExpectedGain = Mathf.Max(0f, gain),
         };
 
-        // Strongest hand Unit payable after a hypothetical resource commitment. AP is checked
-        // against the live pool in both passes: Development's own AP is already charged explicitly
-        // in Score, so subtracting it here would count AP scarcity twice.
         private static float BestAffordableHandUnitPower(AiHandData hand, PlayerRoot root,
             ResourceCost committedResources)
         {
@@ -422,4 +733,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

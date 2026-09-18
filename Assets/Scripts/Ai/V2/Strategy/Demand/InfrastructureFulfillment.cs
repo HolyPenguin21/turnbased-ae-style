@@ -42,6 +42,12 @@ namespace Game.Ai.V2
         // DEV path plays a CardType.Facility card out of hand; the ECO extraction path is a
         // hero-built site with NO hand card — Outcome.Played must reflect that, not "Built".
         public bool CardPlayed;
+        // An operator may be manufactured by a DIFFERENT already staffed facility.
+        // This is a single Challenge step, not a completed operator deployment.
+        public bool GenerationAttempted;
+        public bool Generated;
+        public GenerationStep Generation;
+        public CardData GeneratedOperatorCard;
         public int? BuilderArmyId;
         public int StateVersionAfter = -1;
         public string Detail;
@@ -50,8 +56,9 @@ namespace Game.Ai.V2
 
         public V2ActionOutcome Outcome => new V2ActionOutcome(
             succeeded: Built, stateChanged: StateChanged, apSpent: ApSpent, resourcesSpent: ResourcesSpent,
-            played: CardPlayed, generated: false, attached: false, moved: false, created: Built,
-            needsReplan: false, stateVersionAfter: StateVersionAfter, failReason: Built ? null : Detail);
+            played: CardPlayed, generated: Generated, attached: false, moved: false, created: Built,
+            needsReplan: GenerationAttempted, stateVersionAfter: StateVersionAfter,
+            failReason: Built || Generated ? null : Detail);
     }
 
     internal static class InfrastructureFulfillment
@@ -61,6 +68,38 @@ namespace Game.Ai.V2
             || k == CapabilityKind.EconomicExpansionBase
             || k == CapabilityKind.DevelopmentInfrastructure
             || k == CapabilityKind.DevelopmentOperator;
+
+        // This existing staffing owner validates persisted claims before Phase A/B and after
+        // infrastructure mutations. Never duplicate generation, movement or card execution.
+        // Current AP/resources are deliberately NOT eligibility criteria for a future turn.
+        internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player,
+            AiHandData hand, int turn, MaterializationReservation reservation)
+        {
+            if (player == null || reservation == null) return;
+            IReadOnlyList<CardData> cards = MissionIntentRegistry.GetOrCreate(player)
+                .ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
+                {
+                    if (card?.Definition?.cardType != CardType.Hero
+                        || hand?.Hand?.Contains(card) != true
+                        || !MaterializationChainMatching.EffectiveAbilities(
+                            card.Definition, card.Equipment)
+                            .Contains(ResearchProductionSystem.RoleAbility(mode)))
+                        return false;
+                    BuildingData building = BuildingRegistry.FindAt(site);
+                    if (building == null || building.Owner != player
+                        || !building.HasFacilityWithAbility(
+                            ResearchProductionSystem.FacilityAbility(mode))
+                        || ResearchProductionSystem.FindActor(player, site, mode) != null
+                        || Game.Combat.BattleInitiator.FindEnemyAt(site, player) != null
+                        || !PlacementRules.HasRequiredBuilding(player, site, card.Definition))
+                        return false;
+                    return ArmyRegistry.AllAt(site).Any(g => g != null && g.Owner == player
+                        && g.IsGarrison && !g.IsPrison
+                        && PlacementRules.CanDepositIntoGarrison(g)
+                        && CardPlayExecutor.CanFitAfterDeploy(g, card.Definition));
+                });
+            reservation.ReconcileDevelopmentOperatorCards(cards);
+        }
 
         // One planned build: the authoritative action to run plus the cost to admit it against.
         private sealed class InfraCandidate
@@ -72,11 +111,13 @@ namespace Game.Ai.V2
             public HexCoord TargetHex;
             public int? BuilderArmyId;
             public string Explain;
+            public GenerationStep Generation;
             public System.Func<BuildingPlayResult> Execute;
         }
 
         public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand, AxisBudgetLedger ledger)
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
+            AxisBudgetLedger ledger, MaterializationReservation reservation = null)
         {
             if (demand == null || ctx == null || root == null || player == null)
                 return InfraFulfillResult.No("missing args");
@@ -89,7 +130,8 @@ namespace Game.Ai.V2
                     : demand.Capability == CapabilityKind.DevelopmentInfrastructure
                         ? BuildDevelopmentCandidate(snap, player, root, hand, ctx, demand)
                         : demand.Capability == CapabilityKind.DevelopmentOperator
-                            ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx, demand)
+                            ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx,
+                                demand, reservation)
                             : null;
             if (cand == null)
                 return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
@@ -122,6 +164,47 @@ namespace Game.Ai.V2
                 || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
                 || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
                 return InfraFulfillResult.No($"{demand.Capability}: live AP/resources cannot cover {cand.Explain}");
+
+            // A promised operator from the catalog is not yet a card in hand. Mint it via
+            // the existing gameplay Challenge as ONE atomic stage. Phase A owns retry/AP
+            // accounting and reruns the ordinary hand-operator path on the refreshed snapshot.
+            if (cand.Generation != null)
+            {
+                GenerationStep g = cand.Generation;
+                // Reconfirm source identity and affordability immediately before mutation.
+                if (reservation == null || !reservation.CanGenerateMore
+                    || !GenerationSource.Enumerate(player, root, ctx, hand,
+                        reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)
+                        .Any(x => x.CardKey == g.CardKey && x.Hero == g.Hero
+                            && x.CardDef == g.CardDef))
+                    return InfraFulfillResult.No("operator generator unavailable or already attempted");
+                int beforeAp = root.ActionPoints;
+                int beforeH = root.GetResource(ResourceType.Human);
+                int beforeE = root.GetResource(ResourceType.Energy);
+                int beforeM = root.GetResource(ResourceType.Materials);
+                int beforeT = root.GetResource(ResourceType.Tech);
+                MaterializationExecutor.GenerationOutcome generated =
+                    MaterializationExecutor.TryGenerate(g, player, root, hand, ctx);
+                var paid = new ResourceCost
+                {
+                    human = beforeH - root.GetResource(ResourceType.Human),
+                    energy = beforeE - root.GetResource(ResourceType.Energy),
+                    materials = beforeM - root.GetResource(ResourceType.Materials),
+                    tech = beforeT - root.GetResource(ResourceType.Tech),
+                };
+                int version = generated.StateChanged ? V2StateVersion.Bump() : V2StateVersion.Current;
+                return new InfraFulfillResult
+                {
+                    Built = false, GenerationAttempted = generated.Attempted,
+                    Generated = generated.Success, Generation = g,
+                    GeneratedOperatorCard = generated.Success ? generated.Minted : null,
+                    ApSpent = beforeAp - root.ActionPoints, ResourcesSpent = paid,
+                    StateChanged = generated.StateChanged, StateVersionAfter = version,
+                    Detail = generated.Success
+                        ? $"operator {g.CardDef.displayName} generated into hand; deploy next pass"
+                        : generated.FailReason,
+                };
+            }
 
             // --- authoritative transaction ---
             BuildingPlayResult r = cand.Execute();
@@ -471,7 +554,8 @@ namespace Game.Ai.V2
         // is deliberately not an AI criterion; CardPlayExecutor remains the authoritative owner of
         // which deployable categories the current game rules support.
         private static InfraCandidate BuildDevelopmentOperatorCandidate(WorldSnapshot snap,
-            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand)
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            AxisDemand demand, MaterializationReservation reservation)
         {
             if (hand?.Hand == null || snap?.Development?.Facilities == null)
                 return null;
@@ -553,7 +637,46 @@ namespace Game.Ai.V2
                     });
                 }
             }
-            return BestDevelopmentCandidate(legal);
+            InfraCandidate handOperator = BestDevelopmentCandidate(legal);
+            if (handOperator != null)
+                return handOperator;
+
+            // Only a REAL, already-staffed generator can manufacture the missing operator.
+            // Re-enumerate through GenerationSource to respect exact hero/card retry identity,
+            // the one turn-wide generation cap and protected resource reservations. Never
+            // create an imaginary producer, recursively mint, or steal a committed hero.
+            GenerationStep proposed = demand.DevOpportunity?.PreparationOperatorGeneration;
+            if (proposed == null || reservation == null || !reservation.CanGenerateMore
+                || proposed.CardDef?.cardType != CardType.Hero || proposed.CardDef.isAviation
+                || !demand.TargetHex.HasValue || !demand.DevelopmentOperatorMode.HasValue
+                || !MaterializationChainMatching.EffectiveAbilities(proposed.CardDef, null)
+                    .Contains(ResearchProductionSystem.RoleAbility(demand.DevelopmentOperatorMode.Value)))
+                return null;
+            BuildingData destination = BuildingRegistry.FindAt(demand.TargetHex.Value);
+            ArmyData destinationGarrison = ArmyRegistry.AllAt(demand.TargetHex.Value)
+                .FirstOrDefault(a => a != null && a.Owner == player && a.IsGarrison && !a.IsPrison);
+            if (destination == null || destination.Owner != player
+                || !destination.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(
+                    demand.DevelopmentOperatorMode.Value))
+                || destinationGarrison == null || !PlacementRules.CanDepositIntoGarrison(destinationGarrison)
+                || !PlacementRules.HasRequiredBuilding(player, demand.TargetHex.Value, proposed.CardDef))
+                return null;
+            GenerationStep live = GenerationSource.Enumerate(player, root, ctx, hand,
+                reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)
+                .FirstOrDefault(g => g.CardKey == proposed.CardKey && g.Hero == proposed.Hero
+                    && g.CardDef == proposed.CardDef);
+            if (live == null || live.SuccessChance <= 0f)
+                return null;
+            return new InfraCandidate
+            {
+                Generation = live,
+                ApCost = ResearchProductionSystem.AttemptApCost(live.CardDef),
+                ResCost = live.GenerationResourceCost,
+                DecisionScore = demand.Value, TargetHex = demand.TargetHex.Value,
+                Explain = $"generate operator {live.CardDef.displayName} at "
+                    + $"({live.FacilityHex.Q},{live.FacilityHex.R}) for "
+                    + $"({demand.TargetHex.Value.Q},{demand.TargetHex.Value.R})",
+            };
         }
 
         private static InfraCandidate BestDevelopmentCandidate(IEnumerable<InfraCandidate> candidates) =>

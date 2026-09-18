@@ -195,7 +195,7 @@ namespace Game.Ai.V2
         // (and every follow-up Consume call site) picks it up automatically.
         private static readonly DesireAxis[] OperationalMissionAxes =
         {
-            DesireAxis.Recon, DesireAxis.Aggression,
+            DesireAxis.Recon, DesireAxis.Aggression, DesireAxis.Development,
         };
 
         // AGG-RAID P1#2 — the ONE canonical operational invalidation mask, built from every

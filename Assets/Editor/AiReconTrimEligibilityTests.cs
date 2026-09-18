@@ -129,12 +129,37 @@ namespace Game.EditorTests
                 new List<ReconObjective>(), new[] { job }, new List<MissionIntent>(), null, player);
             Assert.That(capacity.IdleGroundScouts, Is.EquivalentTo(new[] { 10 }));
             Assert.That(capacity.ExistingGroundUsableCapacity, Is.EqualTo(1));
+            Assert.That(capacity.StructuralGroundTraversalSupply, Is.EqualTo(2),
+                "a scout trimmed only for this turn still exists as next-turn structural capacity");
 
             snap.TurnNumber = 12;
             capacity = ReconCapacitySnapshot.Build(snap,
                 new List<ReconObjective>(), new[] { job }, new List<MissionIntent>(), null, player);
             Assert.That(capacity.IdleGroundScouts, Is.EquivalentTo(new[] { 10, 20 }));
             Assert.That(capacity.ExistingGroundUsableCapacity, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void SpentIdleScout_RemainsStructuralCapacityWithoutPretendingItCanExecuteNow()
+        {
+            var player = new PlayerSetupData { Nickname = "Recon regression" };
+            HexCoord focus = new HexCoord(4, 3);
+            WorldSnapshot snap = Snapshot(player, turn: 11, focus);
+            var armies = (List<ArmySnapshot>)snap.Self.Armies;
+            armies.RemoveAt(1);
+            armies[0].CurrentMovement = 0;
+
+            var job = new ReconObjective
+                { Kind = ReconObjectiveKind.Explore, FocusHex = focus, BaseValue = 10f };
+
+            ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(snap,
+                new List<ReconObjective>(), new[] { job }, new List<MissionIntent>(), null, player);
+
+            Assert.That(capacity.GroundTraversalSupply, Is.Zero,
+                "current-turn supply must stay honest when the scout has no movement left");
+            Assert.That(capacity.GroundTraversalDeficit, Is.EqualTo(1));
+            Assert.That(capacity.StructuralGroundTraversalSupply, Is.EqualTo(1),
+                "zero-capacity bootstrap must see the existing scout and wait for persistence");
         }
 
         private static MissionIntent Incumbent(HexCoord focus, int preferredMover)

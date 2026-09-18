@@ -190,6 +190,7 @@ namespace Game.Ai.V2
             if (m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget st) { focus = st.FocusHex; return true; }
             if (m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt) { focus = rt.LastKnownHex; return true; }
             if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et) { focus = et.TargetHex; return true; }
+            if (m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt) { focus = dt.FacilityHex; return true; }
             return false;
         }
 
@@ -204,6 +205,8 @@ namespace Game.Ai.V2
                 case MissionKind.Economy:
                     return d.Capability == CapabilityKind.EconomicInfrastructure
                         || d.Capability == CapabilityKind.EconomicExpansionBase;
+                case MissionKind.Development:
+                    return d.Capability == CapabilityKind.DevelopmentOperator;
                 default: return false;
             }
         }

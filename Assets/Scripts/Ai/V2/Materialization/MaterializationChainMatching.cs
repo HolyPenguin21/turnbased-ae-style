@@ -21,10 +21,17 @@ namespace Game.Ai.V2
             bool recce = AbilityParams.AbilitiesHaveAnyRecce(d.grantedAbilities);
             switch (kind)
             {
-                case CapabilityKind.ScoutCapability: return recce;
-                case CapabilityKind.Hero: return d.cardType == CardType.Hero && !recce;
+                // A Unit/Hero may gain Recce through Equipment, or lose it when an attachment
+                // clears the Recce family. This host-kind prefilter is only a candidate gate:
+                // final effective abilities still decide whether a Scout/Combat chain qualifies.
+                case CapabilityKind.ScoutCapability:
                 case CapabilityKind.FieldCombatPower:
-                    return !recce && (d.cardType == CardType.Unit || d.cardType == CardType.Hero);
+                    return d.cardType == CardType.Unit || d.cardType == CardType.Hero;
+                // Preserve the original Phase-A separation of a native Recce hero from the
+                // generic Hero demand. Phase B may still assign that same hero to a body army:
+                // its SurplusCapability classification and final Hero gate allow that placement.
+                case CapabilityKind.Hero:
+                    return d.cardType == CardType.Hero && !recce;
                 default: return false;
             }
         }
@@ -35,8 +42,11 @@ namespace Game.Ai.V2
             switch (kind)
             {
                 case CapabilityKind.ScoutCapability: return recce;
+                // A Recce Hero joining an existing formation is a legal Phase-B Hero candidate.
+                // Native Recce Heroes remain excluded from Phase-A generic Hero demands above.
                 case CapabilityKind.Hero: return type == CardType.Hero;
-                case CapabilityKind.FieldCombatPower: return type == CardType.Unit || type == CardType.Hero;
+                case CapabilityKind.FieldCombatPower:
+                    return !recce && (type == CardType.Unit || type == CardType.Hero);
                 default: return false;
             }
         }

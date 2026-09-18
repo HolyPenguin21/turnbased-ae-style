@@ -82,6 +82,14 @@ namespace Game.Ai.V2
             if (!root.CanSpendActionPoints(completeAp))
                 return DevUpgradeResult.Skip("no_ap_for_challenge_and_attach");
 
+            // This branch does not call MaterializationExecutor.Execute: it calls TryGenerate
+            // directly after recipient admission. Protect its FULL canonical plan just as the
+            // regular GenerateDeploy path does, before the irreversible Challenge payment.
+            // PlanFactory owns ApCost/ResCost; no parallel resource calculator or new ledger.
+            if (plan == null || plan.Kind != MaterializationChainKind.GenerateAttachUpgrade
+                || !StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player))
+                return DevUpgradeResult.Skip("upgrade_chain_no_longer_spendable");
+
             int apBefore = root.ActionPoints;
             bool wasHiddenHero = generation.Mode == ResearchProductionMode.Research
                 && generation.Hero != null && generation.Hero.IsHidden;

@@ -108,6 +108,10 @@ namespace Game.Ai.V2
                 return result;
             demands ??= System.Array.Empty<AxisDemand>();
             radar ??= Radar.Even();
+            // A new turn constructs a fresh MaterializationReservation. Restore the exact
+            // pending Hero even when the current dirty-demand subset omits Development.
+            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, hand,
+                ctx.TurnNumber, result.Reservation);
             // Early admissions defer NEW zero-priority work, but never delay a durable
             // Economy build or a consumer-linked Raid reinforcement. Late residual admission
             // uses this same owner with deferFreshZeroRadar=false.
@@ -340,13 +344,36 @@ namespace Game.Ai.V2
                     // result. A failed build that changed any of these is a rollback leak.
                     V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
                     InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
-                        snap, player, root, hand, ctx, istate.Demand, ledger);
+                        snap, player, root, hand, ctx, istate.Demand, ledger,
+                        result.Reservation);
                     V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
                     if (infra.StateChanged)
                         result.StateChanged = true;
-                    AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
-                        infra.StateChanged, infraBefore, infraAfter);
-                    if (infra.Built)
+                    // A failed BUILD must roll back. A paid Challenge (win or loss) is an
+                    // intentional partial action and must NOT be diagnosed as a build leak.
+                    if (!infra.GenerationAttempted)
+                        AiV2Trace.CheckInfrastructureRollback(istate.Demand.TraceId, infra.Built,
+                            infra.StateChanged, infraBefore, infraAfter);
+                    if (infra.GenerationAttempted)
+                    {
+                        result.GeneratedCardAttempts++;
+                        if (infra.Generated)
+                        {
+                            result.GeneratedCardsSucceeded++;
+                            // A successful Challenge can exhaust AP before placement. Keep
+                            // the exact physical Hero and its destination in durable State.
+                            if (infra.GeneratedOperatorCard != null
+                                && istate.Demand.TargetHex.HasValue
+                                && istate.Demand.DevelopmentOperatorMode.HasValue)
+                                MissionIntentRegistry.GetOrCreate(player)
+                                    .RememberGeneratedDevelopmentOperator(
+                                        infra.GeneratedOperatorCard, istate.Demand.TargetHex.Value,
+                                        istate.Demand.DevelopmentOperatorMode.Value, ctx.TurnNumber);
+                        }
+                        result.Reservation.RecordGenerationAttempt(infra.Generation, null);
+                        StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
+                    }
+                    if (infra.Built || infra.GenerationAttempted)
                     {
                         // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
                         // ledger records an already-permitted action, never grants overdraft.
@@ -362,14 +389,25 @@ namespace Game.Ai.V2
                         AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
                             infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent,
                             infraLedgerBefore - infraLedgerAfter);
-                        istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
-                        result.CardsPlayed++;
-                        result.InfrastructureBuilt++;
-                        result.CapabilityDeliveries++;
-                        AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: built {infra.Detail} "
+                        if (infra.Built)
+                        {
+                            istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
+                            result.CardsPlayed++;
+                            result.InfrastructureBuilt++;
+                            result.CapabilityDeliveries++;
+                        }
+                        AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: "
+                            + $"{(infra.Built ? "built" : "operator Challenge")} {infra.Detail} "
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
-                        snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
-                        if (istate.Demand.RequestingAxis == DesireAxis.Economy
+                        if (infra.StateChanged)
+                        {
+                            snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                            // A minted card is protected immediately. A consumed card or a
+                            // newly invalid factory loses protection in this same pass.
+                            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player,
+                                hand, ctx.TurnNumber, result.Reservation);
+                        }
+                        if (infra.Built && istate.Demand.RequestingAxis == DesireAxis.Economy
                             && infra.BuilderArmyId.HasValue)
                             MissionContinuityLayer.BeginEconomyBuilderRecovery(
                                 player, snap, istate.Demand, infra.BuilderArmyId.Value,

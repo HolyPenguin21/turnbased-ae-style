@@ -67,7 +67,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ProductionAmplifiesOnlyGenerationAndRespectsDemandFloorAndActualSupport()
+        public void ConcreteProductionCannotReceiveAnAdditionalGlobalSupportMultiplier()
         {
             var breakdown = new StrategicUseScoreBreakdown { RoleFit = 4f };
             var plan = new MaterializationPlan
@@ -92,13 +92,11 @@ namespace Game.EditorTests
             Assert.That(method, Is.Not.Null);
             float Adjust(float floor) => (float)method.Invoke(null,
                 new object[] { breakdown, plan, snapshot, floor });
-            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor),
-                Is.EqualTo(4f * (Mathf.Max(AiConfigV2.productionSupportMin,
-                    AiConfigV2.productionSupportEmergencyFloor) - 1f)).Within(0.0001f));
+            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor), Is.Zero,
+                "Only the actual production-chain cost may affect an offered card");
             snapshot.Development.ProductionSupport = AiConfigV2.productionSupportMax;
-            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor),
-                Is.EqualTo(4f * (Mathf.Max(AiConfigV2.productionSupportMax,
-                    AiConfigV2.productionSupportEmergencyFloor) - 1f)).Within(0.0001f));
+            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor), Is.Zero,
+                "A global economic multiplier must not bypass chain-specific pricing");
             plan.Generation = null;
             Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor), Is.Zero,
                 "Direct hand card must not inherit a production-only multiplier");

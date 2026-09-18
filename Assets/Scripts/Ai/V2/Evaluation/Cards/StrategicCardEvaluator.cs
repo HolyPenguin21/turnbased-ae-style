@@ -691,29 +691,11 @@ namespace Game.Ai.V2
         private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
             GenerationStep generation, WorldSnapshot snap, float demandFloor)
         {
-            // Economy support amplifies whatever concrete capability a generation step actually
-            // produces (a deployable Unit/Hero body, or an Equipment attachment) — the
-            // originating facility's Research/Production mode is not the signal. A Unit minted
-            // through a Research offering (e.g. Ash Drifter) needs the same economic backing as
-            // one minted through Production; gating on Mode let it bypass Economy-support scoring
-            // entirely.
-            if (b == null || generation?.CardDef == null)
-                return 0f;
-            CardType producedType = generation.CardDef.cardType;
-            if (producedType != CardType.Unit && producedType != CardType.Hero
-                && producedType != CardType.Equipment)
-                return 0f;
-            float support = snap?.Development?.ProductionSupport ?? 1f;
-            support = Mathf.Max(support, demandFloor);
-            float amplifiable = Mathf.Max(0f, b.RoleFit)
-                + Mathf.Max(0f, b.ImmediateTempo)
-                + Mathf.Max(0f, b.NextTurnPotential)
-                + Mathf.Max(0f, b.CapabilityGapValue)
-                + Mathf.Max(0f, b.ForceGrowthValue)
-                + Mathf.Max(0f, b.ThreatResponseValue)
-                + Mathf.Max(0f, b.SynergyValue)
-                + Mathf.Max(0f, b.ScarcityValue);
-            return amplifiable * (support - 1f);
+            // ResourceCost(plan) / ScoreNonCombat(actualResourceCost) already price
+            // the exact chain with StrategicResourceCostValue; StrategicSpendability
+            // gates spendable resources. A global weakest-resource multiplier
+            // double-charges irrelevant resource shortages on minted cards.
+            return 0f;
         }
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.

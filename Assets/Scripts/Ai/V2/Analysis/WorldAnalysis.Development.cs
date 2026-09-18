@@ -45,11 +45,16 @@ namespace Game.Ai.V2
             {
                 if (a == null || a.IsPrison) continue;
                 foreach (UnitData m in a.Members)
-                    if (m != null && !m.IsHero) targets++;
+                    // Both Units and Heroes can receive Equipment, but the gameplay attachment
+                    // contract has ONE slot. Counting a filled host invents an upgrade target and
+                    // keeps Development pressure high after every real recipient is equipped.
+                    if (m != null && !m.IsPrisoner && m.Equipment == null) targets++;
             }
             if (hand?.Hand != null)
                 foreach (CardData c in hand.Hand)
-                    if (c?.Definition != null && c.Definition.cardType == CardType.Unit) targets++;
+                    if (c?.Definition != null && c.Equipment == null
+                        && (c.Definition.cardType == CardType.Unit
+                            || c.Definition.cardType == CardType.Hero)) targets++;
             rd.UpgradeTargetCount = targets;
 
             ResearchProductionCatalog catalog = ctx?.ResearchProductionCatalog;
@@ -103,16 +108,24 @@ namespace Game.Ai.V2
                 foreach (CardData c in hand.Hand)
                 {
                     CardDefinition d = c?.Definition;
-                    if (d == null || d.grantedAbilities == null)
+                    if (d == null)
+                        continue;
+                    // Preparation and card deployment already use the canonical effective
+                    // ability projection. The readiness snapshot must not miss a qualified Hero
+                    // whose Researcher/Assembler ability comes from attached Equipment.
+                    IReadOnlyList<string> abilities = d.cardType == CardType.Hero
+                        ? MaterializationChainMatching.EffectiveAbilities(d, c.Equipment)
+                        : d.grantedAbilities;
+                    if (abilities == null)
                         continue;
                     if (d.cardType == CardType.Facility
-                        && (d.grantedAbilities.Contains(UnitAbilities.Research)
-                            || d.grantedAbilities.Contains(UnitAbilities.Production)))
+                        && (abilities.Contains(UnitAbilities.Research)
+                            || abilities.Contains(UnitAbilities.Production)))
                         facilityCardInHand = true;
                     if (d.cardType == CardType.Hero)
                     {
-                        if (d.grantedAbilities.Contains(UnitAbilities.Researcher)) researcherCardInHand = true;
-                        if (d.grantedAbilities.Contains(UnitAbilities.Assembler)) assemblerCardInHand = true;
+                        if (abilities.Contains(UnitAbilities.Researcher)) researcherCardInHand = true;
+                        if (abilities.Contains(UnitAbilities.Assembler)) assemblerCardInHand = true;
                     }
                 }
 
@@ -122,14 +135,34 @@ namespace Game.Ai.V2
             rd.AssemblerCardInHand = assemblerCardInHand;
             rd.DevPathViable = rd.AnyFacilityWithHero || facilities.Count > 0 || facilityCardInHand;
             rd.BestSuccessChance = offerings.Count > 0 ? offerings.Max(o => o.SuccessChance) : 0f;
-            rd.SurplusFraction = SurplusFraction(player, root, ctx);
+
+            // Operational generation is priced from the concrete chain by StrategicCardEvaluator /
+            // StrategicSpendability. Do not reintroduce a global weakest-resource multiplier here.
+            // Keeping this explicit makes every runtime snapshot neutral even while the legacy
+            // diagnostic field remains on DevelopmentReadiness for old tests/snapshots.
+            rd.ProductionSupport = 1f;
+
+            float investmentSurplus = SurplusFraction(player, root, ctx);
+            bool hasExecutableOffering = offerings.Any(o => facilities.Any(f =>
+                f.Mode == o.Mode && f.Hex.Equals(o.FacilityHex) && f.HasHero && !f.Contested));
+            rd.SurplusFraction = DevelopmentRadarSurplus(investmentSurplus, hasExecutableOffering);
             return rd;
         }
 
-        // [0..1] proxy for "am I spending surplus, not resources I need". Per resource type:
-        // spendable(t) (the tighter of the legacy + strategic reservation floors) over two turns of
-        // income; the WORST type governs. First pass — the analyzer's A_total (opportunity cost vs
-        // playing a card) is the real gate; this is the radar's coarse appetite signal. Tune later.
+        // READY generation options have already passed ResearchProductionSystem affordability and
+        // StrategicSpendability for every resource they actually consume in GenerationSource.
+        // Applying the four-resource investment minimum again would make an unrelated empty
+        // resource (for example Tech on an Energy+Materials Equipment) suppress legal production.
+        // Without an executable ready offering, keep the coarse all-resource signal for the
+        // infrastructure/latent-investment lane exactly as before.
+        internal static float DevelopmentRadarSurplus(float investmentSurplus, bool hasExecutableOffering)
+            => hasExecutableOffering ? 1f : Mathf.Clamp01(investmentSurplus);
+
+        // Coarse, four-resource readiness for the RADAR / infrastructure-investment context,
+        // not a gate for an individual Equipment chain. Its resource pool must come from the
+        // SAME StrategicSpendability owner as materialization feasibility; do not recalculate
+        // reservation floors in Analysis. Operational production must be priced separately using
+        // the exact chain's nonzero ResourceCost types.
         private static float SurplusFraction(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
             if (player == null || root == null)
@@ -137,12 +170,8 @@ namespace Game.Ai.V2
             float worst = 1f;
             foreach (ResourceType t in ResourceBundle.All)
             {
-                float legacy = AiResourceReservation.Available(root, player, t);
-                float strategic = ctx != null
-                    ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber,
-                        StrategicResourceReservationLedger.Map(t), root.GetResource(t))
-                    : float.MaxValue;
-                float spendable = Mathf.Max(0f, Mathf.Min(legacy, strategic));
+                float spendable = Mathf.Max(0f,
+                    StrategicSpendability.SpendableAmount(player, root, ctx, t));
                 float income = Mathf.Max(1f, IncomeProjection.IncomeFor(player, t, ctx?.Map));
                 worst = Mathf.Min(worst, Mathf.Clamp01(spendable / (income * 2f)));
             }

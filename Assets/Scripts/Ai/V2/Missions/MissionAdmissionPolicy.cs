@@ -15,6 +15,7 @@ namespace Game.Ai.V2
         Recon,
         Aggression,
         Economy,
+        Development,
     }
 
     internal static class MissionAdmissionPolicy
@@ -27,6 +28,7 @@ namespace Game.Ai.V2
                 case MissionKind.Scout: return ExecutionLane.Recon;
                 case MissionKind.Raid: return ExecutionLane.Aggression;
                 case MissionKind.Economy: return ExecutionLane.Economy;
+                case MissionKind.Development: return ExecutionLane.Development;
                 default: return ExecutionLane.None;
             }
         }
@@ -43,6 +45,7 @@ namespace Game.Ai.V2
                 case ExecutionLane.Aggression:
                     return int.MaxValue;
                 case ExecutionLane.Economy:
+                case ExecutionLane.Development:
                     return int.MaxValue;
                 default:
                     return int.MaxValue;
@@ -64,6 +67,9 @@ namespace Game.Ai.V2
                 && mission.Target is EconomyMissionTarget economy
                 && economy.BuilderArmyId.HasValue)
                 return economy.BuilderArmyId;
+            if (mission.Kind == MissionKind.Development
+                && mission.Target is DevelopmentMissionTarget development)
+                return development.SourceArmyId;
             return null;
         }
 
@@ -89,6 +95,12 @@ namespace Game.Ai.V2
             if (a.Kind == MissionKind.Economy && b.Kind == MissionKind.Economy
                 && a.Target is EconomyMissionTarget ea && b.Target is EconomyMissionTarget eb
                 && ea.TargetHex.Equals(eb.TargetHex))
+                return true;
+
+            if (a.Kind == MissionKind.Development && b.Kind == MissionKind.Development
+                && a.Target is DevelopmentMissionTarget da && b.Target is DevelopmentMissionTarget db
+                && ((da.Mode == db.Mode && da.FacilityHex.Equals(db.FacilityHex))
+                    || ReferenceEquals(da.Hero, db.Hero)))
                 return true;
 
             if (a.Target is ScoutMissionTarget ta && b.Target is ScoutMissionTarget tb

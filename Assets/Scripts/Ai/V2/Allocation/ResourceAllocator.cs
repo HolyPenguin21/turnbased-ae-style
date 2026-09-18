@@ -142,6 +142,9 @@ namespace Game.Ai.V2
                         ? et.BuilderArmyId ?? 0
                         : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
                     et.TargetHex.Q, et.TargetHex.R);
+            if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
+                return new StableMissionKey(MissionKind.Development, (int)dt.Mode,
+                    0, dt.FacilityHex.Q, dt.FacilityHex.R);
             return new StableMissionKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
@@ -161,6 +164,8 @@ namespace Game.Ai.V2
                         : $"Raid({(RaidMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.Economy
                         ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
+                        : Kind == MissionKind.Development
+                            ? $"Development({(Game.Cards.ResearchProductionMode)SubKind} {Q},{R})"
                         : $"{Kind}";
 
         public int CompareTo(StableMissionKey o)

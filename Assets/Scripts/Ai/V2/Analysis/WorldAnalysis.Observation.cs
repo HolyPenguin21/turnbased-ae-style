@@ -115,6 +115,13 @@ namespace Game.Ai.V2
                         : null,
                     hexes: new[] { execution.FinalHex });
 
+            if (execution != null && execution.DevelopmentDeliveryReady)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
+                    actorIds: execution.ActualActorArmyId.HasValue
+                        ? new[] { execution.ActualActorArmyId.Value } : null,
+                    hexes: new[] { execution.FinalHex });
+
             if (before.Hand != after.Hand
                 || before.HandVersion != after.HandVersion)
                 StrategicInterruptRegistry.Mark(player, turn,
