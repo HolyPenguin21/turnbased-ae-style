@@ -1,0 +1,63 @@
+name: One-shot AI V2 P1 source patch
+on:
+  push:
+    branches:
+      - ai-v2/production-development-calibration
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.event.head_commit.message == 'chore(ai-v2): one-shot scoped P1 patch runner'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - name: Apply exact anchored scorer and regression edits
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          scorer = Path('Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs')
+          text = scorer.read_text(encoding='utf-8')
+          start = '        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,\n            GenerationStep generation, WorldSnapshot snap, float demandFloor)\n'
+          end = '        // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.\n'
+          assert text.count(start) == 1 and text.count(end) == 1, 'P1 scorer anchor drift'
+          a = text.index(start); z = text.index(end, a)
+          old = text[a:z]
+          assert 'snap?.Development?.ProductionSupport' in old and 'return amplifiable * (support - 1f)' in old, 'P1 scorer implementation drift'
+          new = '''        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
+              GenerationStep generation, WorldSnapshot snap, float demandFloor)
+          {
+              // The actual MaterializationPlan (or ScoreNonCombat's actualResourceCost)
+              // already pays Challenge AP and precisely the resource types it consumes via
+              // ResourceCost/StrategicResourceCostValue. StrategicSpendability owns the
+              // reserved-resource eligibility gate. A second multiplier based on the weakest
+              // unrelated resource would penalize a valid chain twice; no separate support
+              // adjustment is warranted for a minted Unit, Hero or Equipment.
+              return 0f;
+          }
+
+'''
+          text = text[:a] + new + text[z:]
+          scorer.write_text(text, encoding='utf-8')
+          tests = Path('Assets/Editor/AiProductionScoreAlignmentTests.cs')
+          text = tests.read_text(encoding='utf-8')
+          before = 'public void GenerationSupportDependsOnUnitOrEquipmentOutputNotFactoryVsLab()'
+          after = 'public void GeneratedCardsDoNotReceiveASecondGlobalResourceSupportPenalty()'
+          assert text.count(before) == 1, 'P1 test name drift'
+          text = text.replace(before, after)
+          before = 'Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.LessThan(0f));'
+          after = 'Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.Zero,\n                "The concrete chain is already charged by ResourceCost; global support must not double-charge it");'
+          assert text.count(before) == 1, 'P1 test assertion drift'
+          text = text.replace(before, after)
+          tests.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff --stat
+          git diff -- Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs Assets/Editor/AiProductionScoreAlignmentTests.cs
+          git config user.name 'ai-v2-scoped-patch'
+          git config user.email 'ai-v2-scoped-patch@users.noreply.github.com'
+          git add Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs Assets/Editor/AiProductionScoreAlignmentTests.cs
+          git commit -m 'fix(ai-v2): remove global production penalty from concrete chain score [skip ci]'
+          git push origin HEAD:ai-v2/production-development-calibration
