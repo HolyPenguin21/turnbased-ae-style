@@ -34,10 +34,23 @@ namespace Game.Ai.V2
             return Mathf.Min(strategic, legacy);
         }
 
+        // AP reservations are turn-local and live in the existing owner-aware ledger. Materialization
+        // is NOT the owner of an Economy completion/reaction reservation, so it must not exclude it.
+        // No separate AP wallet: without a player/turn context the physical pool is the fallback.
+        internal static float SpendableActionPoints(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx)
+        {
+            if (root == null)
+                return 0f;
+            return player == null || ctx == null ? root.ActionPoints
+                : StrategicResourceReservationLedger.SpendableAp(
+                    player, ctx.TurnNumber, root.ActionPoints);
+        }
+
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
         // round 6/7 (P1) — `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
         // key, not the shared Reason) so a re-probe of the reaction that placed a hold does not fail
-        // against itself and two owners sharing a Reason can't shadow each other.
+        // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
         {
@@ -54,14 +67,15 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Physical guard for a whole materialization chain: AP must not go negative and every
-        // persistent resource in the chain's ResCost must fit the owner-aware spendable pool.
+        // Physical guard for a whole materialization chain: AP and every persistent resource in
+        // the chain's canonical cost must fit the owner-aware SPENDABLE pool. Raw ActionPoints
+        // alone would let a card consume AP held for an accepted Economy build completion.
         internal static bool ReservesOkAfterChain(PlayerRoot root, AiTurnContext ctx,
             MaterializationPlan plan, PlayerSetupData player = null)
         {
             if (root == null || plan == null)
                 return false;
-            if (root.ActionPoints - plan.ApCost < 0f)
+            if (SpendableActionPoints(player, root, ctx) + AiConfigV2.allocatorSliceEpsilon < plan.ApCost)
                 return false;
 
             ResourceCost cost = plan.ResCost;
