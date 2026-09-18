@@ -259,8 +259,12 @@ namespace Game.Ai.V2
 
         private static void Score(DevelopmentOpportunity op, WorldSnapshot snap, PlayerRoot root, AiHandData hand)
         {
-            float surplusRetain = 1f - Curves.Ramp(snap?.Development?.SurplusFraction ?? 0f,
-                AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
+            // A ready facility's operational competition has no four-resource blanket readiness
+            // modifier: only the specific equipment stake can displace a hand Unit. Preparation
+            // retains the coarse surplus signal because it is an infrastructure investment.
+            float surplusRetain = op.Generation != null ? 1f
+                : 1f - Curves.Ramp(snap?.Development?.SurplusFraction ?? 0f,
+                    AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
             // Resource opportunity cost is marginal: only charge power that this exact stake
             // makes unavailable. Charging the strongest currently affordable Unit unconditionally
             // rejected upgrades even when both actions could still be paid for.
@@ -281,11 +285,14 @@ namespace Game.Ai.V2
             // lifetime strategic value only at the EV boundary.
             float persistentExpectedGain = op.SuccessChance * op.ExpectedGain
                 * AiConfigV2.devEquipmentPersistenceMultiplier;
-            // This evaluator produces Equipment in either Research or Production mode.
-            // Economy support follows the produced capability, never the facility's label;
-            // StrategicCardEvaluator applies this same output-type rule to Unit/Hero mints.
-            op.ProductionSupport = snap?.Development?.ProductionSupport
-                ?? AiConfigV2.productionSupportMin;
+            // The four-resource ProductionSupport is an ANALYSIS fact for deciding whether to
+            // invest in building/staffing a facility. A ready, operational Equipment card must
+            // compete by its own costed chain in StrategicCardEvaluator, which already prices
+            // only consumed resource types and reservations. Reapplying this global amplifier
+            // would penalize an Energy/Materials item for unrelated missing Tech.
+            op.ProductionSupport = op.Generation == null
+                ? (snap?.Development?.ProductionSupport ?? AiConfigV2.productionSupportMin)
+                : 1f;
             op.Ev = persistentExpectedGain * op.ProductionSupport
                 - aTotal - op.ResourceCostValue
                 - op.ExpectedApCost * AiConfigV2.devApValue;
