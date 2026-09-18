@@ -37,7 +37,7 @@ Material:
     - _NoiseSpeed: 0.04
     - _NoiseTexScale: 0.05
     - _NoiseTexStrength: 0.6
-    - _ScorchWidth: 0.28
+    - _ScorchWidth: 0.34
     - _ScorchStrength: 1
     m_Colors:
     - _Color: {r: 0.1, g: 0.09, b: 0.075, a: 0.85}

@@ -25,6 +25,12 @@ namespace Game.Styles
         // at 0.4 vs. the shader's intended 0.92), silently overriding the intended look every
         // frame. See FogOfWarController.RefreshVisibility, which now only feeds the runtime
         // visibility mask/geometry — never style/appearance — into the material.
+        //
+        // An earlier revision of this shader also had a pair of GameConfig-fed seam-gating
+        // thresholds here (guarding the eroded seam from bleeding onto guaranteed-open ground).
+        // Custom/FogOfWar.shader's own frag() now gets that guarantee structurally, from which
+        // hex owns a shared edge (a hard binary select, not an approximate gate), so those
+        // thresholds no longer correspond to anything the shader reads.
 
         [Header("Coordinate Label")]
         // Font asset for the per-hex coordinate label (see Game.Map.HexCoordLabel) — built at

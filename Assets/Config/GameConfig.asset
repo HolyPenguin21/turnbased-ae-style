@@ -331,16 +331,6 @@ MonoBehaviour:
     glowIntensity: 0.25
     glowWidth: 0.25
     sortingOrder: 1
-  citadelSelectionStyle:
-    radiusScale: 0.87
-    margin: 0.6
-    lineThickness: 0.05
-    noiseReach: 0.1
-    noiseScale: 3
-    noiseSpeed: 1.2
-    glowIntensity: 0.25
-    glowWidth: 0.15
-    sortingOrder: 2
   battleActingUnitHighlightStyle:
     radiusScale: 1
     margin: 6
@@ -439,6 +429,10 @@ MonoBehaviour:
     mountainsTerrainName: Mountains
     mountainRangeCount: 3
     mountainRangeLength: 2
+    borderDepthFraction: 0.5
+    borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
+    borderRaggedness: 0.85
+    borderNoiseScale: 0.22
   minPlayers: 2
   maxPlayers: 6
   playerRowPrefab: {fileID: 8350511687287818275, guid: a4721ff96011f6e468c7f56de46f5fec, type: 3}

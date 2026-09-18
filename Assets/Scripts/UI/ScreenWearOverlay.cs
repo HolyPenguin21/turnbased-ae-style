@@ -31,6 +31,9 @@ namespace Game.UI
 
         private Material _material;
         private Texture2D _texture;
+        private RectTransform _rect;
+        private RawImage _image;
+        private bool _anchoredToHandPanel;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Bootstrap()
@@ -57,19 +60,11 @@ namespace Game.UI
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
             rect.offsetMax = Vector2.zero;
+            rect.offsetMin = Vector2.zero;
 
-            // Anchored from the top of CardHandPanel up to the top of the screen — the hand
-            // itself sits below the overlay, not under it. CardHandPanel is bottom-anchored with
-            // a fixed pixel height (see its own RectTransform), so pushing this rect's bottom
-            // edge up by that same height lines the two up exactly, in the same canvas space.
-            GameObject handPanelObject = FindInScene(scene, HandPanelName);
-            float handPanelHeight = handPanelObject != null
-                ? ((RectTransform)handPanelObject.transform).rect.height
-                : 0f;
-            if (handPanelObject == null)
-                Debug.LogWarning($"ScreenWearOverlay: '{HandPanelName}' was not found in scene '{scene.name}'; overlay will cover the full screen.");
-            rect.offsetMin = new Vector2(0f, handPanelHeight);
-
+            // CardHandPanel is populated later in the scene's setup, so the overlay stays
+            // hidden (see Awake/Update) until it actually appears — anchoring against it (or
+            // the full-screen fallback) before then would be based on stale/absent geometry.
             overlayObject.AddComponent<ScreenWearOverlay>();
         }
 
@@ -105,12 +100,36 @@ namespace Game.UI
             };
             ApplyMaterialSettings();
 
-            RawImage image = gameObject.AddComponent<RawImage>();
-            image.texture = _texture != null ? _texture : Texture2D.whiteTexture;
-            image.material = _material;
-            image.color = Color.white;
-            image.raycastTarget = false;
-            image.maskable = false;
+            _rect = (RectTransform)transform;
+            _image = gameObject.AddComponent<RawImage>();
+            _image.texture = _texture != null ? _texture : Texture2D.whiteTexture;
+            _image.material = _material;
+            _image.color = Color.white;
+            _image.raycastTarget = false;
+            _image.maskable = false;
+
+            // Hidden until CardHandPanel actually appears — see Update.
+            _image.enabled = false;
+        }
+
+        private void Update()
+        {
+            if (_anchoredToHandPanel)
+                return;
+
+            GameObject handPanelObject = FindInScene(gameObject.scene, HandPanelName);
+            if (handPanelObject == null || !handPanelObject.activeInHierarchy)
+                return;
+
+            // Anchored from the top of CardHandPanel up to the top of the screen — the hand
+            // itself sits below the overlay, not under it. CardHandPanel is bottom-anchored with
+            // a fixed pixel height (see its own RectTransform), so pushing this rect's bottom
+            // edge up by that same height lines the two up exactly, in the same canvas space.
+            float handPanelHeight = ((RectTransform)handPanelObject.transform).rect.height;
+            _rect.offsetMin = new Vector2(0f, handPanelHeight);
+
+            _anchoredToHandPanel = true;
+            _image.enabled = true;
         }
 
         private void OnValidate()
