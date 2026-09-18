@@ -44,7 +44,8 @@ namespace Game.Ai.V2
         // its own stable citadel-first order), and AviationRules.FreeAirfieldCapacity (the exact
         // STORED-container figure ArmyActions.DeployUnitFromCard itself gates on).
         public static bool TryFindAviationPlacement(WorldSnapshot snapshot, PlayerSetupData player,
-            PlayerRoot root, CardData card, out HexCoord target, out string reason)
+            PlayerRoot root, CardData card, out HexCoord target, out string reason,
+            bool requireCurrentAp = true)
         {
             target = default;
             reason = null;
@@ -52,7 +53,9 @@ namespace Game.Ai.V2
             { reason = "missing args"; return false; }
 
             int deployApCost = CardCostRules.PlayAp(card);
-            if (!root.CanSpendActionPoints(deployApCost))
+            // Only immediate execution needs AP *this turn*. A future investment witness
+            // still checks a real owned airfield and all physical capacity in this owner.
+            if (requireCurrentAp && !root.CanSpendActionPoints(deployApCost))
             { reason = "unaffordable(ap)"; return false; }
             if (!AiResourceReservation.CanAffordCardPlay(root, player, card))
             { reason = "unaffordable(resources)"; return false; }

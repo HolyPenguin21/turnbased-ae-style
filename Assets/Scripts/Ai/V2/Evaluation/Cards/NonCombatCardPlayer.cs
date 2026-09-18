@@ -96,9 +96,10 @@ namespace Game.Ai.V2
                 logDynamicEffect: false);
 
         // Preparation-only preview for aviation: use the SAME generated non-combat play
-        // builder as Phase B, including real airfield capacity, Challenge + deploy AP,
-        // exact resources and the canonical aviation scorer. No fake ground placement and
-        // no second aviation valuation. Nothing is minted or deployed by this method.
+        // builder as Phase B: real airfield capacity, exact resources, Challenge + deploy AP
+        // and canonical aviation scoring. Only current-turn AP admission is omitted for a
+        // FUTURE investment; actual Phase B deployment keeps the full live AP check.
+        // No fake ground placement or second aviation valuation. Nothing is minted here.
         internal static float ProjectedAviationInvestmentValue(CardDefinition card,
             ResearchProductionMode mode, HexCoord facilityHex, UnitData operatorHero,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
@@ -117,7 +118,8 @@ namespace Game.Ai.V2
             };
             var standIn = new CardData(card) { ResearchProductionCreated = true };
             NonCombatPlay preview = BuildPlayFor(standIn, generation, snap, player, root,
-                hand, ctx, OwnedBaseHexes(snap, player), new List<string>());
+                hand, ctx, OwnedBaseHexes(snap, player), new List<string>(),
+                investmentPreview: true);
             return preview != null && preview.Kind == PlayKind.Aviation
                 ? preview.Score : float.NegativeInfinity;
         }
@@ -229,7 +231,7 @@ namespace Game.Ai.V2
         private static NonCombatPlay BuildPlayFor(CardData card, GenerationStep generation,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked,
-            float? witnessedUsefulApDemand = null)
+            float? witnessedUsefulApDemand = null, bool investmentPreview = false)
         {
             CardDefinition def = card?.Definition;
             if (def == null)
@@ -249,7 +251,8 @@ namespace Game.Ai.V2
             {
                 // §1 final closure — V2-owned feasibility query, no V1 AiManagementPlanner.
                 if (!PlacementRules.TryFindAviationPlacement(snap, player, root, card,
-                        out HexCoord hx, out string why))
+                        out HexCoord hx, out string why,
+                        requireCurrentAp: !investmentPreview))
                 {
                     blocked.Add($"{def.displayName}:aviation({why ?? "noAirfieldSlot"})");
                     return null;
