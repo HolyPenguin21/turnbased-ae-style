@@ -102,6 +102,32 @@ namespace Game.EditorTests
             Assert.That(plan.UpgradeTargetCard, Is.SameAs(host));
             Assert.That(plan.Generation, Is.SameAs(generation));
         }
+
+        [Test]
+        public void ReadyUpgradeDemandIgnoresSunkInvestmentEvButRequiresActualExpectedGain()
+        {
+            var op = new DevelopmentOpportunity
+            {
+                ExpectedGain = 12f, SuccessChance = 0.8f,
+                Ev = -100f, AlternativeValue = 1000f,
+                ResourceCostValue = 1000f,
+            };
+            float intrinsic = DevelopmentOpportunityEvaluator.ReadyOpportunityValue(op);
+            Assert.That(intrinsic, Is.GreaterThan(0f),
+                "A functioning factory's candidate must reach canonical card competition even if investment EV is negative");
+
+            op.Ev = 100f;
+            Assert.That(DevelopmentOpportunityEvaluator.ReadyOpportunityValue(op),
+                Is.EqualTo(intrinsic).Within(0.0001f),
+                "Prerequisite investment EV must not leak into operational demand value");
+            op.SuccessChance = 0f;
+            Assert.That(DevelopmentOpportunityEvaluator.ReadyOpportunityValue(op), Is.Zero,
+                "A Challenge with no chance of producing equipment must raise no upgrade demand");
+            op.SuccessChance = 1f;
+            op.ExpectedGain = 0f;
+            Assert.That(DevelopmentOpportunityEvaluator.ReadyOpportunityValue(op), Is.Zero,
+                "No net improvement means no operational demand");
+        }
     }
 }
 #endif
