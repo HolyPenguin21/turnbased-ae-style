@@ -66,3 +66,4 @@ jobs:
           git diff --cached --stat
           git commit -m 'fix(ai-v2): independently value deployable production and capacity unlock [skip ci]'
           git push origin HEAD:ai-v2/production-development-calibration
+# Execution initiated only after all transport segments were saved and verified locally.
