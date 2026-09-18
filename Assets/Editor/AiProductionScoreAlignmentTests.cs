@@ -199,7 +199,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void GenerationSupportDependsOnUnitOrEquipmentOutputNotFactoryVsLab()
+        public void GeneratedCardsDoNotReceiveASecondGlobalResourceSupportPenalty()
         {
             var snap = new WorldSnapshot
             {
@@ -227,7 +227,7 @@ namespace Game.EditorTests
             Assert.That(Evaluate(CardType.Equipment, ResearchProductionMode.Research),
                 Is.EqualTo(Evaluate(CardType.Unit, ResearchProductionMode.Production)).Within(0.0001f));
             Assert.That(Evaluate(CardType.Facility, ResearchProductionMode.Production), Is.Zero);
-            Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.LessThan(0f));
+            Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.Zero);
         }
 
         [Test]
