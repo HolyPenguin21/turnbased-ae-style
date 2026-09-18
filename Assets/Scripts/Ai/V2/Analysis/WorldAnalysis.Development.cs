@@ -45,11 +45,14 @@ namespace Game.Ai.V2
             {
                 if (a == null || a.IsPrison) continue;
                 foreach (UnitData m in a.Members)
-                    if (m != null && !m.IsHero) targets++;
+                    // Equipment recipient enumeration includes Heroes, but never prisoners.
+                    // This coarse readiness count must reflect the same eligible card classes.
+                    if (m != null && !m.IsPrisoner) targets++;
             }
             if (hand?.Hand != null)
                 foreach (CardData c in hand.Hand)
-                    if (c?.Definition != null && c.Definition.cardType == CardType.Unit) targets++;
+                    if (c?.Definition != null && (c.Definition.cardType == CardType.Unit
+                        || c.Definition.cardType == CardType.Hero)) targets++;
             rd.UpgradeTargetCount = targets;
 
             ResearchProductionCatalog catalog = ctx?.ResearchProductionCatalog;
