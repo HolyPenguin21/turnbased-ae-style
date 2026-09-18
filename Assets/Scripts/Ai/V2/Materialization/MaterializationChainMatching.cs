@@ -18,19 +18,18 @@ namespace Game.Ai.V2
         internal static bool MatchesCapabilityDef(CardDefinition d, CapabilityKind kind)
         {
             if (d == null || d.isAviation) return false;
-            bool recce = AbilityParams.AbilitiesHaveAnyRecce(d.grantedAbilities);
             switch (kind)
             {
-                // A non-Recce Unit/Hero may gain Recce from an attached hand or generated
-                // Equipment card. This is only the host prefilter: EnumerateForDemand checks
-                // the complete chain's effective abilities and required traits before emitting
-                // a plan, and Scout placement still enforces soloOnly. Requiring native Recce
-                // here would discard those legal AttachDeploy/GenerateAttachDeploy chains early.
+                // A Unit/Hero may gain Recce through Equipment, or LOSE Recce when an attachment
+                // removes its ability family. This is a host-kind prefilter only: the complete
+                // chain's final effective abilities determine whether it can satisfy the demand.
+                // In particular, an unequipped scout cannot become combat/hero reinforcement
+                // simply because these prefilters admit its card category.
                 case CapabilityKind.ScoutCapability:
-                    return d.cardType == CardType.Unit || d.cardType == CardType.Hero;
-                case CapabilityKind.Hero: return d.cardType == CardType.Hero && !recce;
                 case CapabilityKind.FieldCombatPower:
-                    return !recce && (d.cardType == CardType.Unit || d.cardType == CardType.Hero);
+                    return d.cardType == CardType.Unit || d.cardType == CardType.Hero;
+                case CapabilityKind.Hero:
+                    return d.cardType == CardType.Hero;
                 default: return false;
             }
         }
@@ -41,8 +40,9 @@ namespace Game.Ai.V2
             switch (kind)
             {
                 case CapabilityKind.ScoutCapability: return recce;
-                case CapabilityKind.Hero: return type == CardType.Hero;
-                case CapabilityKind.FieldCombatPower: return type == CardType.Unit || type == CardType.Hero;
+                case CapabilityKind.Hero: return type == CardType.Hero && !recce;
+                case CapabilityKind.FieldCombatPower:
+                    return !recce && (type == CardType.Unit || type == CardType.Hero);
                 default: return false;
             }
         }
