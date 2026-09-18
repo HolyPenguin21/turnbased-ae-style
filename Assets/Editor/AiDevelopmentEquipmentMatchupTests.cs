@@ -313,6 +313,56 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void AirEnemyCompositionParticipatesInEquipmentMatchupValuation()
+        {
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit, attack = 1, defenseRating = 2, hitPoints = 8,
+            });
+            var weapon = new EquipmentGrant();
+            weapon.statChanges.Add(new EquipmentStatChange
+            {
+                stat = EquipmentStat.Attack, amount = 20,
+            });
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition { cardType = CardType.Equipment, equipment = weapon },
+                RecipientKind = DevRecipientKind.HandCard, RecipientCard = host,
+            };
+            var airArmy = new ArmySnapshot
+            {
+                IsAir = true,
+                ArmyId = 501,
+                Hex = new HexCoord(12, -7),
+                Members = new[]
+                {
+                    new WorthIt.DefenderProfile(defense: 14, hasCeramicArmor: false,
+                        attack: 5, hitPoints: 8),
+                },
+            };
+            var snap = new WorldSnapshot
+            {
+                TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { airArmy } },
+            };
+
+            float withAir = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap);
+            Assert.That(withAir, Is.EqualTo(1f),
+                "Enemy aviation composition must reach the same canonical WorthIt valuation as ground composition");
+
+            airArmy.ArmyId = 999;
+            airArmy.Hex = new HexCoord(-30, 22);
+            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap), Is.EqualTo(withAir).Within(0.0001f),
+                "Aviation composition may affect valuation, but its hidden identity/position must not");
+
+            snap.TrueWorld.EnemyArmies = System.Array.Empty<ArmySnapshot>();
+            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap), Is.Zero,
+                "Without the aviation composition witness the matchup bonus must disappear");
+        }
+
+        [Test]
         public void HiddenEnemyCoordinatesAndIdentityCannotAffectCompositionOnlyFit()
         {
             var host = new CardData(new CardDefinition
