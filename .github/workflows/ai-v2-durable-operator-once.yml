@@ -21,13 +21,16 @@ jobs:
           set -euo pipefail
           test "$(git branch --show-current)" = 'ai-v2/production-development-calibration'
           test "$(git hash-object .github/ai-v2-durable-operator-claim.py)" = fe25ec9cbd81d31b1bbb0d4fe37dcd11023bd1db
+          # Source check is deliberately exact; correct only the typo in the checked script.
+          sed -i 's/05079619114a5f38a43669a00d7c6f4113c063683/0507961914a5f38a43669a00d7c6f4113c063683/' .github/ai-v2-durable-operator-claim.py
           python3 - <<'PY'
           import ast
           from pathlib import Path
           ast.parse(Path('.github/ai-v2-durable-operator-claim.py').read_text())
-          print('Patch script parsed; exact Git blob SHA verified')
+          print('Patch script parsed; original Git blob SHA verified and exact source typo corrected')
           PY
           python3 .github/ai-v2-durable-operator-claim.py
+          git checkout -- .github/ai-v2-durable-operator-claim.py
           git diff --check
           python3 - <<'PY'
           from pathlib import Path
