@@ -366,21 +366,54 @@ namespace Game.Setup
                 return;
 
             List<HexCoord>[] sectors = BucketByAngleAroundCenter(eligible, players.Count);
+            var picked = new List<HexCoord>();
+
+            // Scales with map size (Small radius 5 → Huge radius 8) so players never spawn
+            // adjacent on a small field, even though angular sectors alone don't guarantee that —
+            // two hexes straddling a (randomly rotated) sector boundary can be near neighbors.
+            int minDistance = Mathf.Max(1, map.FieldRadius);
 
             for (int i = 0; i < players.Count; i++)
             {
                 // A sector can come up empty if the edge band is sparse there (e.g. corner/City
                 // ruins exclusions ate every candidate in it) — fall back to any still-unused
-                // eligible hex rather than leaving that player unplaced.
+                // eligible hex, but never skip the minimum-separation check while doing so.
                 List<HexCoord> pool = sectors[i].Count > 0 ? sectors[i] : eligible;
-                HexCoord pick = pool[Random.Range(0, pool.Count)];
+                HexCoord pick = PickFarEnough(pool, picked, minDistance)
+                    ?? PickFarEnough(eligible, picked, minDistance)
+                    ?? PickFarthestFrom(pool.Count > 0 ? pool : eligible, picked);
+
                 eligible.Remove(pick);
                 foreach (List<HexCoord> sector in sectors)
                     sector.Remove(pick);
+                picked.Add(pick);
 
                 _startHexes[players[i]] = pick;
                 SpawnRegionHighlight(players[i], pick);
             }
+        }
+
+        // Random hex from `pool` that keeps at least `minDistance` from every already-picked
+        // starting hex — null if none in the pool qualifies, so the caller can widen the search
+        // instead of silently placing players too close together.
+        private static HexCoord? PickFarEnough(List<HexCoord> pool, List<HexCoord> picked, int minDistance)
+        {
+            if (pool.Count == 0)
+                return null;
+            List<HexCoord> candidates = picked.Count == 0
+                ? pool
+                : pool.Where(c => picked.All(p => HexGridMath.Distance(c, p) >= minDistance)).ToList();
+            return candidates.Count == 0 ? (HexCoord?)null : candidates[Random.Range(0, candidates.Count)];
+        }
+
+        // Last resort when nothing in `pool` (or the whole eligible set) meets minDistance — e.g.
+        // an unusually cramped edge band — pick whichever candidate maximises its distance to the
+        // nearest already-picked player, rather than a blind random pick with no separation at all.
+        private static HexCoord PickFarthestFrom(List<HexCoord> pool, List<HexCoord> picked)
+        {
+            if (picked.Count == 0)
+                return pool[Random.Range(0, pool.Count)];
+            return pool.OrderByDescending(c => picked.Min(p => HexGridMath.Distance(c, p))).First();
         }
 
         // Buckets `coords` into `sectorCount` angular slices around the field's (0,0) centre —
