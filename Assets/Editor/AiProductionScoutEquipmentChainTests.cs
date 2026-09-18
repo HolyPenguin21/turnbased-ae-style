@@ -39,7 +39,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void RemovingRecceAllowsCombatOrHeroChainsButNotAnUnequippedScout()
+        public void RemovingRecceAllowsCombatButPreservesRecceHeroSurplusPlacement()
         {
             var scout = new CardDefinition { cardType = CardType.Unit };
             scout.grantedAbilities.Add("r1s4");
@@ -49,28 +49,28 @@ namespace Game.EditorTests
                 "A native scout must survive the host prefilter for a potential ability-removing Equipment");
             Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(
                 baseAbilities, scout.cardType, CapabilityKind.FieldCombatPower), Is.False,
-                "The same scout without Equipment must not masquerade as ordinary combat reinforcement");
+                "Without Equipment the scout cannot satisfy ordinary combat reinforcement");
 
             var removal = new EquipmentGrant();
             removal.clearAbilityFamilies.Add(AbilityFamily.Recce);
             var converted = EquipmentSystem.EffectiveAbilities(baseAbilities, removal);
             Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(
                 converted, scout.cardType, CapabilityKind.FieldCombatPower), Is.True,
-                "The real projected post-attach ability set may satisfy the combat demand");
+                "The projected post-attachment abilities must control the combat capability");
             Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(
                 converted, scout.cardType, CapabilityKind.ScoutCapability), Is.False,
-                "Removing Recce must also remove Scout capability");
+                "Removing Recce also removes Scout capability");
 
             scout.cardType = CardType.Hero;
             Assert.That(MaterializationChainMatching.MatchesCapabilityDef(
-                scout, CapabilityKind.Hero), Is.True,
-                "A Recce hero must survive the prefilter if Equipment could strip its scout ability");
+                scout, CapabilityKind.Hero), Is.False,
+                "Preserve the established Phase-A exclusion of native Recce heroes from generic Hero demand");
             Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(
-                baseAbilities, CardType.Hero, CapabilityKind.Hero), Is.False,
-                "A native Recce hero does not become a generic Hero demand through prefilter alone");
+                baseAbilities, CardType.Hero, CapabilityKind.Hero), Is.True,
+                "Phase-B Recce hero joining an existing formation remains a valid Hero candidate");
             Assert.That(MaterializationChainMatching.AbilitiesSatisfyCapability(
                 converted, CardType.Hero, CapabilityKind.Hero), Is.True,
-                "The same hero may satisfy the generic Hero demand after removing Recce");
+                "Hero eligibility remains stable after equipment removes Recce");
         }
     }
 }
