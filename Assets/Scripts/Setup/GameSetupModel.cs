@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Game.Players;
 using Game.Styles;
+using Game.Terrain;
 using UnityEngine;
 
 namespace Game.Setup
@@ -10,6 +11,12 @@ namespace Game.Setup
     // human) are easy to reason about independently of how the panel presents them.
     public class GameSetupModel
     {
+        // Map-shape choices — passed to GameSession by GameSetupController.OnStartGameClicked,
+        // then read by HexMapGenerator once the Game scene loads. Medium/Arid match
+        // MapGenerationSettings' own design-time defaults, so a setup panel that never touches
+        // these dropdowns still produces the same map as before this feature existed.
+        public MapSize MapSize { get; set; } = MapSize.Medium;
+        public Biome Biome { get; set; } = Biome.Arid;
         private static readonly string[] NamePool =
         {
             "Vex", "Kryll", "Draven", "Mordak", "Sable", "Rurik", "Thane", "Vashti",

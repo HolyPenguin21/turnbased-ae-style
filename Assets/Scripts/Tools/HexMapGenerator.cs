@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Core;
 using Game.HexGrid;
 using Game.Terrain;
@@ -7,8 +8,8 @@ using UnityEngine;
 namespace Game.Map
 {
     // Builds the entire hex map as a single combined mesh on this GameObject's HexMap
-    // component — one submesh per terrain type (not per tile), so a 12x9 map costs at most 8
-    // draw calls total instead of 108 separate GameObjects.
+    // component — one submesh per terrain type (not per tile), so even a Huge (radius-8, 217
+    // hex) field costs at most 8 draw calls total instead of one GameObject per hex.
     //
     // Every hex starts as a weighted-random pick from one shared pool covering every terrain
     // type (see TerrainTypeEntry.baselineWeight) — any type can carry resources or a high move
@@ -33,6 +34,13 @@ namespace Game.Map
 
         private MapGenerationSettings Settings => gameConfig.mapGeneration;
 
+        // Radius/biome actually used by this Generate() call — GameSession's pre-game choice at
+        // runtime (Application.isPlaying), Settings' own design-time default otherwise (editor
+        // "Generate Map"/ExecuteAlways OnEnable, where no setup panel ever ran). Cached for the
+        // duration of one Generate() call rather than re-resolved by every helper it touches.
+        private int _activeRadius;
+        private BiomeTerrainSet _activeBiome;
+
         private readonly List<Material> _materialInstances = new List<Material>();
         private Material _groundMaterialInstance;
         private static Shader _hexBlendShader;
@@ -51,7 +59,10 @@ namespace Game.Map
                 return;
             }
 
-            if (Settings.terrainTypes.Count == 0)
+            _activeRadius = Application.isPlaying ? GameSession.ResolveMapRadius(Settings.radius) : Settings.radius;
+            _activeBiome = Settings.ResolveBiome(Application.isPlaying ? GameSession.ResolveBiome() : Biome.Arid);
+
+            if (_activeBiome.terrainTypes.Count == 0)
             {
                 Debug.LogWarning("HexMapGenerator: no terrain types assigned, nothing to generate.");
                 return;
@@ -93,7 +104,7 @@ namespace Game.Map
                 int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
                 chosenTexture[coord] = variantSlots[variantSlot].Texture;
                 HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha);
-                hexData[coord] = Settings.terrainTypes[typeIndex];
+                hexData[coord] = _activeBiome.terrainTypes[typeIndex];
 
                 if (!boundsInitialized) { bounds = new Bounds(center, Vector3.zero); boundsInitialized = true; }
                 else bounds.Encapsulate(center);
@@ -101,11 +112,11 @@ namespace Game.Map
 
             // Decorative border: same mesh/submesh pipeline as the playfield above, just
             // darkened and never written into hexData, so HexMap has no record of these coords
-            // (non-interactive) and the camera's own clamp — driven by HexMap.Width/Height, not
-            // by this bounds value — is unaffected. groundBounds (not bounds) drives the ground
+            // (non-interactive) and the camera's own centring — always the origin now, see
+            // RtsCameraController — is unaffected. groundBounds (not bounds) drives the ground
             // plane, so it extends far enough that the border never runs out onto bare background.
             Bounds groundBounds = bounds;
-            List<HexCoord> borderCoords = BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment, out _, out _);
+            List<HexCoord> borderCoords = BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment);
             var borderChosenTexture = new Dictionary<HexCoord, Texture2D>(borderCoords.Count);
             foreach (HexCoord coord in borderCoords)
             {
@@ -114,7 +125,7 @@ namespace Game.Map
                 HashSet<Texture2D> neighborTextures = CollectNeighborTextures(coord, typeIndex, borderAssignment, borderChosenTexture);
                 int variantSlot = PickVariantSlot(slotIndicesByType, typeIndex, variantSlots, neighborTextures);
                 borderChosenTexture[coord] = variantSlots[variantSlot].Texture;
-                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha, Settings.borderTint);
+                HexTileMeshGenerator.AppendFlatHexFace(vertices, normals, uvs, colors, trianglesByVariant[variantSlot], center, Settings.outerRadius, Settings.blend, Settings.alpha, _activeBiome.borderTint);
 
                 groundBounds.Encapsulate(center);
             }
@@ -144,7 +155,7 @@ namespace Game.Map
 
             GenerateGround(groundBounds);
 
-            GetComponent<HexMap>().SetData(Settings.width, Settings.height, Settings.outerRadius, hexData);
+            GetComponent<HexMap>().SetData(_activeRadius, Settings.outerRadius, hexData);
 
             // Shows every hex's own resource yield right away, before any citadel exists —
             // MapResourceDisplay (not this generator, which self-destructs) owns updating it
@@ -174,13 +185,11 @@ namespace Game.Map
 
         // --- Terrain placement -----------------------------------------------------------
 
+        // A hexagon of hexes around the field's (0,0) centre, not a rectangle — HexGridMath
+        // already has exactly this shape (used elsewhere for vision/supply ranges).
         private List<HexCoord> BuildCoordList()
         {
-            var result = new List<HexCoord>(Settings.width * Settings.height);
-            for (int row = 0; row < Settings.height; row++)
-                for (int col = 0; col < Settings.width; col++)
-                    result.Add(HexCoord.FromOffset(col, row));
-            return result;
+            return HexGridMath.HexesInRange(new HexCoord(0, 0), _activeRadius).ToList();
         }
 
         private Dictionary<HexCoord, int> AssignTerrainTypes(List<HexCoord> allCoords)
@@ -210,8 +219,8 @@ namespace Game.Map
         // mountain-range chains.
         private (List<int> indices, float[] weights, float total) BuildBaselinePool(out int mountainIndex)
         {
-            List<TerrainTypeEntry> terrainTypes = Settings.terrainTypes;
-            mountainIndex = IndexOfTerrainNamed(Settings.mountainsTerrainName);
+            List<TerrainTypeEntry> terrainTypes = _activeBiome.terrainTypes;
+            mountainIndex = IndexOfTerrainNamed(_activeBiome.mountainsTerrainName);
 
             var poolIndices = new List<int>();
             for (int i = 0; i < terrainTypes.Count; i++)
@@ -231,20 +240,19 @@ namespace Game.Map
             return (poolIndices, poolWeights, poolWeightTotal);
         }
 
-        // Decorative, non-interactive hexes past the field's rectangular edge: same terrain
-        // pool as the playfield (no mountain ranges — those are a gameplay feature), thinning
-        // out raggedly with distance via per-hex Perlin noise so the cutoff isn't a clean ring.
+        // Decorative, non-interactive hexes past the field's own outer ring: same terrain pool
+        // as the playfield (no mountain ranges — those are a gameplay feature), thinning out
+        // raggedly with distance via per-hex Perlin noise so the cutoff isn't a clean ring.
         // Never added to allCoords/hexData, so HexMap has no record of them and they can't be
         // selected, pathed to, or seen by anything gameplay-side.
-        private List<HexCoord> BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment, out int marginCols, out int marginRows)
+        private List<HexCoord> BuildBorderCoords(out Dictionary<HexCoord, int> borderAssignment)
         {
             borderAssignment = new Dictionary<HexCoord, int>();
 
-            float borderDepthWorld = Settings.ComputeBorderDepthWorld();
+            float borderDepthWorld = Settings.ComputeBorderDepthWorld(_activeRadius);
 
-            marginCols = Mathf.CeilToInt(borderDepthWorld / (Settings.outerRadius * 1.5f));
-            marginRows = Mathf.CeilToInt(borderDepthWorld / (Settings.outerRadius * Mathf.Sqrt(3f)));
-            if (marginCols <= 0 || marginRows <= 0)
+            int marginRings = Mathf.CeilToInt(borderDepthWorld / (Settings.outerRadius * Mathf.Sqrt(3f)));
+            if (marginRings <= 0)
                 return new List<HexCoord>();
 
             (List<int> poolIndices, float[] poolWeights, float poolWeightTotal) = BuildBaselinePool(out _);
@@ -253,37 +261,32 @@ namespace Game.Map
             // instead of always fraying at the same spots relative to the grid.
             var noiseOffset = new Vector2(Random.Range(0f, 1000f), Random.Range(0f, 1000f));
 
+            var origin = new HexCoord(0, 0);
             var coords = new List<HexCoord>();
-            for (int row = -marginRows; row < Settings.height + marginRows; row++)
+            foreach (HexCoord coord in HexGridMath.HexesInRange(origin, _activeRadius + marginRings))
             {
-                for (int col = -marginCols; col < Settings.width + marginCols; col++)
-                {
-                    bool insideField = col >= 0 && col < Settings.width && row >= 0 && row < Settings.height;
-                    if (insideField)
-                        continue;
+                int distance = HexGridMath.Distance(origin, coord);
+                if (distance <= _activeRadius)
+                    continue; // inside the playfield itself
 
-                    if (!IncludeBorderHex(col, row, marginCols, marginRows, noiseOffset))
-                        continue;
+                if (!IncludeBorderHex(distance, marginRings, coord, noiseOffset))
+                    continue;
 
-                    HexCoord coord = HexCoord.FromOffset(col, row);
-                    coords.Add(coord);
-                    borderAssignment[coord] = PickWeightedIndex(poolIndices, poolWeights, poolWeightTotal);
-                }
+                coords.Add(coord);
+                borderAssignment[coord] = PickWeightedIndex(poolIndices, poolWeights, poolWeightTotal);
             }
 
             return coords;
         }
 
-        // 0 at the field's own edge, 1 at the far edge of the border depth. Perturbed by
+        // 0 at the field's own outer ring, 1 at the far edge of the border depth. Perturbed by
         // per-hex Perlin noise before the raggedness cutoff, so hexes drop out increasingly
         // often (rather than at a fixed radius) the further out they sit.
-        private bool IncludeBorderHex(int col, int row, int marginCols, int marginRows, Vector2 noiseOffset)
+        private bool IncludeBorderHex(int distance, int marginRings, HexCoord coord, Vector2 noiseOffset)
         {
-            float depthCol = Mathf.Max(0, Mathf.Max(-col, col - (Settings.width - 1)));
-            float depthRow = Mathf.Max(0, Mathf.Max(-row, row - (Settings.height - 1)));
-            float depthNorm = Mathf.Max(depthCol / marginCols, depthRow / marginRows);
+            float depthNorm = (distance - _activeRadius) / (float)marginRings;
 
-            float noise = Mathf.PerlinNoise((col + noiseOffset.x) * Settings.borderNoiseScale, (row + noiseOffset.y) * Settings.borderNoiseScale);
+            float noise = Mathf.PerlinNoise((coord.Q + noiseOffset.x) * Settings.borderNoiseScale, (coord.R + noiseOffset.y) * Settings.borderNoiseScale);
             float raggedDepth = depthNorm + (noise - 0.5f) * Settings.borderRaggedness;
             return raggedDepth <= 1f;
         }
@@ -305,7 +308,7 @@ namespace Game.Map
         // occasional gentle turn, so ranges read as elongated chains rather than blobs.
         private void PlaceMountainRanges(Dictionary<HexCoord, int> assignment, HashSet<HexCoord> claimed, HashSet<HexCoord> coordSet, int mountainIndex)
         {
-            for (int i = 0; i < Settings.mountainRangeCount; i++)
+            for (int i = 0; i < _activeBiome.mountainRangeCount; i++)
             {
                 HexCoord? start = PickRandomUnclaimed(coordSet, claimed);
                 if (!start.HasValue)
@@ -313,7 +316,7 @@ namespace Game.Map
 
                 HexCoord current = start.Value;
                 int dirIndex = Random.Range(0, HexGridMath.NeighborDirectionsByEdge.Length);
-                int length = Mathf.Max(1, Settings.mountainRangeLength + Random.Range(-1, 2));
+                int length = Mathf.Max(1, _activeBiome.mountainRangeLength + Random.Range(-1, 2));
 
                 for (int step = 0; step < length; step++)
                 {
@@ -334,7 +337,7 @@ namespace Game.Map
 
         private int IndexOfTerrainNamed(string name)
         {
-            List<TerrainTypeEntry> terrainTypes = Settings.terrainTypes;
+            List<TerrainTypeEntry> terrainTypes = _activeBiome.terrainTypes;
             for (int i = 0; i < terrainTypes.Count; i++)
                 if (string.Equals(terrainTypes[i].terrainName, name, System.StringComparison.OrdinalIgnoreCase))
                     return i;
@@ -369,7 +372,7 @@ namespace Game.Map
 
         private List<TextureVariantSlot> BuildVariantSlots(out List<int>[] slotIndicesByType)
         {
-            List<TerrainTypeEntry> terrainTypes = Settings.terrainTypes;
+            List<TerrainTypeEntry> terrainTypes = _activeBiome.terrainTypes;
             var slots = new List<TextureVariantSlot>();
             slotIndicesByType = new List<int>[terrainTypes.Count];
 
@@ -391,9 +394,10 @@ namespace Game.Map
         }
 
         // Every same-type hex already placed next to this one, before this hex's own variant is
-        // rolled (BuildCoordList's row-major order means "above"/"left" neighbours are already
-        // in chosenTexture; "below"/"right" ones aren't yet — this only ever softens repeats, it
-        // doesn't guarantee none, per the project owner's own "nice to have, not critical" call).
+        // rolled (HexesInRange's own enumeration order means only SOME neighbours are already in
+        // chosenTexture by the time a given hex is reached, never all 6 — this only ever softens
+        // repeats, it doesn't guarantee none, per the project owner's own "nice to have, not
+        // critical" call).
         private static HashSet<Texture2D> CollectNeighborTextures(HexCoord coord, int typeIndex, Dictionary<HexCoord, int> assignment, Dictionary<HexCoord, Texture2D> chosenTexture)
         {
             HashSet<Texture2D> result = null;
@@ -441,7 +445,7 @@ namespace Game.Map
 
         private void EnsureMaterialInstances(List<TextureVariantSlot> variantSlots)
         {
-            List<TerrainTypeEntry> terrainTypes = Settings.terrainTypes;
+            List<TerrainTypeEntry> terrainTypes = _activeBiome.terrainTypes;
 
             if (_hexBlendShader == null)
                 _hexBlendShader = Shader.Find("Custom/HexBlend");
@@ -509,7 +513,7 @@ namespace Game.Map
 
             if (_groundMaterialInstance == null)
                 _groundMaterialInstance = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-            _groundMaterialInstance.color = Settings.groundColor;
+            _groundMaterialInstance.color = _activeBiome.groundColor;
             groundObject.GetComponent<MeshRenderer>().sharedMaterial = _groundMaterialInstance;
 
             // No longer needed for hex picking (see HexSelectionController.RaycastHex/

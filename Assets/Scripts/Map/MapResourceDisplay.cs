@@ -90,9 +90,8 @@ namespace Game.Map
             if (gameConfig == null || map == null)
                 return;
 
-            for (int row = 0; row < map.Height; row++)
-                for (int col = 0; col < map.Width; col++)
-                    RefreshHex(HexCoord.FromOffset(col, row));
+            foreach (HexCoord hex in map.AllCoords)
+                RefreshHex(hex);
         }
 
         // Called whenever a hex's effective yield may have changed (right now: a citadel bonus

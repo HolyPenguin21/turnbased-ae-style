@@ -218,7 +218,7 @@ namespace Game.EditorTests
             var data = new Dictionary<HexCoord, Game.Terrain.TerrainTypeEntry>();
             foreach (HexCoord h in hexes)
                 data[h] = new Game.Terrain.TerrainTypeEntry { moveCost = 1 };
-            map.SetData(10, 10, 1f, data);
+            map.SetData(10, 1f, data);
         }
 
         private static MissionProposal DurableEconomyMission(HexCoord targetHex, int preferredArmyId) =>

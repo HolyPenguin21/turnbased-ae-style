@@ -12,14 +12,14 @@ namespace Game.Map
     [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
     public class HexMap : MonoBehaviour
     {
-        [SerializeField] private int width;
-        [SerializeField] private int height;
+        // Ring radius of the field around its (0,0) centre (see HexMapGenerator/MapSize) — a
+        // hexagon of hexes now, not a width/height rectangle.
+        [SerializeField] private int fieldRadius;
         [SerializeField] private float outerRadius;
 
         private readonly Dictionary<HexCoord, TerrainTypeEntry> _hexData = new Dictionary<HexCoord, TerrainTypeEntry>();
 
-        public int Width => width;
-        public int Height => height;
+        public int FieldRadius => fieldRadius;
         public float OuterRadius => outerRadius;
 
         // Every hex actually on the map — used by post-generation passes (resources, neutral
@@ -34,10 +34,9 @@ namespace Game.Map
         public Vector3 HexToWorld(HexCoord coord) => transform.TransformPoint(HexGridMath.AxialToWorld(coord.Q, coord.R, outerRadius));
 
         // Called once by HexMapGenerator right after building the mesh.
-        public void SetData(int mapWidth, int mapHeight, float radius, Dictionary<HexCoord, TerrainTypeEntry> hexData)
+        public void SetData(int ringRadius, float radius, Dictionary<HexCoord, TerrainTypeEntry> hexData)
         {
-            width = mapWidth;
-            height = mapHeight;
+            fieldRadius = ringRadius;
             outerRadius = radius;
             _hexData.Clear();
             foreach (KeyValuePair<HexCoord, TerrainTypeEntry> entry in hexData)

@@ -1,7 +1,9 @@
 using System.Collections.Generic;
 using Game.Core;
 using Game.Players;
+using Game.Terrain;
 using Game.UI;
+using TMPro;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -16,6 +18,15 @@ namespace Game.Setup
         [SerializeField] private Button addPlayerButton;
         [SerializeField] private GameObject mainMenuCanvas;
         [SerializeField] private GameConfig gameConfig;
+
+        [Header("Map")]
+        // Both optional — left unassigned, the model just keeps its own Medium/Arid defaults
+        // (see GameSetupModel), so an existing setup scene with neither dropdown wired in yet
+        // keeps generating exactly the map it always has. Options are populated from the
+        // MapSize/Biome enums themselves (see PopulateMapDropdowns), never hand-typed, so they
+        // can't drift out of sync with a future added biome/size.
+        [SerializeField] private TMP_Dropdown mapSizeDropdown;
+        [SerializeField] private TMP_Dropdown biomeDropdown;
 
         private GameSetupModel _model;
         private readonly List<PlayerRowUI> _rows = new List<PlayerRowUI>();
@@ -48,6 +59,7 @@ namespace Game.Setup
             for (int i = 0; i < gameConfig.minPlayers; i++)
                 AddPlayerRow();
 
+            PopulateMapDropdowns();
             RefreshButtons();
         }
 
@@ -57,7 +69,40 @@ namespace Game.Setup
         {
             ResolveRandomFactions();
             GameSession.Players = _model.Players;
+            GameSession.SelectedMapSize = _model.MapSize;
+            GameSession.SelectedBiome = _model.Biome;
             SceneManager.LoadScene(SceneNames.Game);
+        }
+
+        // MapSize's own int values are ring radii (5/6/7/8, see MapSize), not 0-based dropdown
+        // indices — so the dropdown is indexed by position in this values array, never by
+        // casting the enum value itself, unlike Biome (which has no meaningful underlying value
+        // and can just cast straight to/from its ordinal).
+        private static readonly MapSize[] MapSizeValues = (MapSize[])System.Enum.GetValues(typeof(MapSize));
+
+        // Options come straight from the MapSize/Biome enum names (Small/Medium/Large/Huge,
+        // Arid/Desert) rather than a hand-authored label list — same reasoning as
+        // PlayerRowUI.SelectableFactions: it can't silently drift out of sync with the enum if
+        // a size or biome is ever added or renamed.
+        private void PopulateMapDropdowns()
+        {
+            if (mapSizeDropdown != null)
+            {
+                mapSizeDropdown.ClearOptions();
+                mapSizeDropdown.AddOptions(new List<string>(System.Enum.GetNames(typeof(MapSize))));
+                mapSizeDropdown.SetValueWithoutNotify(System.Array.IndexOf(MapSizeValues, _model.MapSize));
+                mapSizeDropdown.onValueChanged.RemoveAllListeners();
+                mapSizeDropdown.onValueChanged.AddListener(value => _model.MapSize = MapSizeValues[value]);
+            }
+
+            if (biomeDropdown != null)
+            {
+                biomeDropdown.ClearOptions();
+                biomeDropdown.AddOptions(new List<string>(System.Enum.GetNames(typeof(Biome))));
+                biomeDropdown.SetValueWithoutNotify((int)_model.Biome);
+                biomeDropdown.onValueChanged.RemoveAllListeners();
+                biomeDropdown.onValueChanged.AddListener(value => _model.Biome = (Biome)value);
+            }
         }
 
         // "Random" is a setup-time placeholder, never itself a real faction (see Faction's own

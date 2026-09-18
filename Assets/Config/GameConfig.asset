@@ -345,8 +345,7 @@ MonoBehaviour:
   resourceIconSpacing: 0.4
   resourceRowOffset: 0.6
   mapGeneration:
-    width: 12
-    height: 9
+    radius: 6
     outerRadius: 1
     blend: 0.15
     alpha: 0.95
@@ -433,6 +432,87 @@ MonoBehaviour:
     borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
     borderRaggedness: 0.85
     borderNoiseScale: 0.22
+    desertOverride:
+      terrainTypes:
+      - terrainName: City ruins
+        texture: {fileID: 2800000, guid: 920c40d031c55a849a52b5e1c5341cfe, type: 3}
+        alternativeTextures:
+        - {fileID: 2800000, guid: 69c636ddb8ca94342b2dd1249552b0a6, type: 3}
+        - {fileID: 2800000, guid: 88c59ea2ddbd18040b7fb677c00507a0, type: 3}
+        - {fileID: 2800000, guid: c570cc5cfcc028743939065b76786152, type: 3}
+        baselineWeight: 5
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 1
+        defenseModifier: 1
+      - terrainName: Desert
+        texture: {fileID: 2800000, guid: 74893629b977f9e4da84b2640d1460a3, type: 3}
+        alternativeTextures:
+        - {fileID: 2800000, guid: de1979af3c73f7743832d7c31e06b816, type: 3}
+        - {fileID: 2800000, guid: da03bb693c144154aa3670bde081e11b, type: 3}
+        - {fileID: 2800000, guid: 783216fbc2dabea43adb039212709eaf, type: 3}
+        - {fileID: 2800000, guid: 6ddc075071e1e6346943c323ab939b63, type: 3}
+        - {fileID: 2800000, guid: 4d9b066bc11f38349b428d99fb567b53, type: 3}
+        - {fileID: 2800000, guid: 1a63ac5e64743a84aa9878a5e7627345, type: 3}
+        - {fileID: 2800000, guid: 4b23c7fcc0c195141a161b1486f2d9c1, type: 3}
+        baselineWeight: 90
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 1
+        defenseModifier: 0
+      - terrainName: Mountains
+        texture: {fileID: 2800000, guid: ca042cbd5d70ec447b5ea05c20a59bd3, type: 3}
+        alternativeTextures:
+        - {fileID: 2800000, guid: 24a58b3d33963cf4eba9beda4be5dec1, type: 3}
+        - {fileID: 2800000, guid: dac7f95350a01114681aa7f61ef04718, type: 3}
+        - {fileID: 2800000, guid: 9d2c970fa1b3c02408fbeb29ecdf81b6, type: 3}
+        baselineWeight: 10
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 3
+        defenseModifier: 2
+      - terrainName: Rock desert
+        texture: {fileID: 2800000, guid: 3b5b3e8bc4e41d94285511a3c6308ee8, type: 3}
+        alternativeTextures:
+        - {fileID: 2800000, guid: fa5028903e988974b80470a932c65457, type: 3}
+        - {fileID: 2800000, guid: 49faa7cdce14c9f439bbc3e74e5e733b, type: 3}
+        - {fileID: 2800000, guid: 51429523637db8849bc202228c2d83dd, type: 3}
+        baselineWeight: 10
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 1
+        defenseModifier: 1
+      - terrainName: Sand dunes
+        texture: {fileID: 2800000, guid: 1b92812766508b54391954f6e3eb3ac5, type: 3}
+        alternativeTextures:
+        - {fileID: 2800000, guid: 1288cf09996ad6c4faa871baf0a4aa4c, type: 3}
+        - {fileID: 2800000, guid: ca815b5d884bdd04ebd08146335980c5, type: 3}
+        - {fileID: 2800000, guid: 945d31d4db5e07b45a4f416c60e84588, type: 3}
+        baselineWeight: 10
+        resourceYields:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        moveCost: 2
+        defenseModifier: 1
+      mountainsTerrainName: Mountains
+      mountainRangeCount: 3
+      mountainRangeLength: 2
+      groundColor: {r: 0.29, g: 0.26, b: 0.22, a: 1}
+      borderTint: {r: 0.35, g: 0.35, b: 0.35, a: 1}
   minPlayers: 2
   maxPlayers: 6
   playerRowPrefab: {fileID: 8350511687287818275, guid: a4721ff96011f6e468c7f56de46f5fec, type: 3}

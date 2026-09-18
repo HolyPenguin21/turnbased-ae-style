@@ -341,92 +341,112 @@ namespace Game.Setup
         }
 
         // --- Starting hex assignment (near the edge, spread apart) ---------------------
+        //
+        // The field is a hexagon of hexes around (0,0) now, not a rectangle (see
+        // HexMapGenerator) — "spread around the map" means angular sectors around that centre
+        // (one per player) rather than a farthest-point search over a rectangular edge band.
+        // Per the project owner's own call: still one player per sector so they can't clump,
+        // but BOTH the sector-ring rotation and which eligible hex within a sector gets picked
+        // are randomised per game, so starting spots don't always land in the same place.
 
         private void AssignStartingHexes(List<PlayerSetupData> players)
         {
             _startHexes.Clear();
 
             List<HexCoord> eligible = GetEdgeEligibleHexes();
-            Shuffle(eligible);
+            if (eligible.Count == 0 || players.Count == 0)
+                return;
 
-            var assigned = new List<HexCoord>();
-            foreach (PlayerSetupData player in players)
+            List<HexCoord>[] sectors = BucketByAngleAroundCenter(eligible, players.Count);
+
+            for (int i = 0; i < players.Count; i++)
             {
-                if (eligible.Count == 0)
-                    break;
+                // A sector can come up empty if the edge band is sparse there (e.g. corner/City
+                // ruins exclusions ate every candidate in it) — fall back to any still-unused
+                // eligible hex rather than leaving that player unplaced.
+                List<HexCoord> pool = sectors[i].Count > 0 ? sectors[i] : eligible;
+                HexCoord pick = pool[Random.Range(0, pool.Count)];
+                eligible.Remove(pick);
+                foreach (List<HexCoord> sector in sectors)
+                    sector.Remove(pick);
 
-                // Greedy farthest-point pick: the eligible hex whose distance to its nearest
-                // already-assigned neighbour is largest — spreads players out instead of
-                // clumping them even though each candidate is individually random.
-                HexCoord best = eligible[0];
-                int bestScore = -1;
-                foreach (HexCoord candidate in eligible)
-                {
-                    int score = assigned.Count == 0 ? 0 : MinDistanceTo(candidate, assigned);
-                    if (score > bestScore)
-                    {
-                        bestScore = score;
-                        best = candidate;
-                    }
-                }
-
-                assigned.Add(best);
-                eligible.Remove(best);
-                _startHexes[player] = best;
-
-                SpawnRegionHighlight(player, best);
+                _startHexes[players[i]] = pick;
+                SpawnRegionHighlight(players[i], pick);
             }
+        }
+
+        // Buckets `coords` into `sectorCount` angular slices around the field's (0,0) centre —
+        // shared by starting-hex assignment above and GenerateResources' outside-resource
+        // spread (CitadelSetupController.MapContent.cs's BuildEvenSectors calls this too). The
+        // slice boundaries themselves are rotated by a random offset each call so which exact
+        // hexes fall together isn't identical from one game to the next, on top of the random
+        // pick each caller then makes within a bucket.
+        private static List<HexCoord>[] BucketByAngleAroundCenter(List<HexCoord> coords, int sectorCount)
+        {
+            var buckets = new List<HexCoord>[sectorCount];
+            for (int i = 0; i < sectorCount; i++)
+                buckets[i] = new List<HexCoord>();
+
+            float sectorWidth = 360f / sectorCount;
+            float angleOffset = Random.Range(0f, sectorWidth);
+
+            foreach (HexCoord coord in coords)
+            {
+                float adjusted = (AngleAroundCenterDegrees(coord) - angleOffset + 360f) % 360f;
+                int sector = Mathf.Clamp((int)(adjusted / sectorWidth), 0, sectorCount - 1);
+                buckets[sector].Add(coord);
+            }
+
+            return buckets;
+        }
+
+        // Angle (0-360) of a hex's world position around the field's (0,0) centre — outerRadius
+        // doesn't affect the angle itself, only the distance, so 1f is fine as a stand-in.
+        private static float AngleAroundCenterDegrees(HexCoord coord)
+        {
+            Vector3 world = HexGridMath.AxialToWorld(coord.Q, coord.R, 1f);
+            return (Mathf.Atan2(world.z, world.x) * Mathf.Rad2Deg + 360f) % 360f;
         }
 
         private List<HexCoord> GetEdgeEligibleHexes()
         {
             List<HexCoord> cityRuinsHexes = GetCityRuinsHexes();
-            List<HexCoord> corners = GetMapCorners();
+            List<HexCoord> corners = GetFieldCorners();
+            var origin = new HexCoord(0, 0);
 
             var result = new List<HexCoord>();
-            for (int row = 0; row < map.Height; row++)
+            foreach (HexCoord coord in map.AllCoords)
             {
-                for (int col = 0; col < map.Width; col++)
-                {
-                    int edgeDistance = Mathf.Min(Mathf.Min(col, map.Width - 1 - col), Mathf.Min(row, map.Height - 1 - row));
-                    if (edgeDistance > gameConfig.maxEdgeDistance)
-                        continue;
+                int edgeDistance = map.FieldRadius - HexGridMath.Distance(origin, coord);
+                if (edgeDistance > gameConfig.maxEdgeDistance)
+                    continue;
 
-                    HexCoord coord = HexCoord.FromOffset(col, row);
-                    // A candidate must actually exist on the map — otherwise its selectable
-                    // neighbourhood would have a hole in the middle, which the boundary tracer
-                    // below can't draw as a single closed outline.
-                    if (!IsSelectable(coord))
-                        continue;
+                // Off the corner tiles specifically (project owner's own spec, 2026-08-22 —
+                // "не прям в угловых участках карты"), and kept at least
+                // gameConfig.minCityRuinsDistance hexes from every "City ruins" hex so a
+                // fresh citadel never opens the game already standing next to a garrisoned
+                // outpost.
+                if (corners.Any(corner => HexGridMath.Distance(coord, corner) <= gameConfig.cornerExclusionRadius))
+                    continue;
+                if (cityRuinsHexes.Any(ruin => HexGridMath.Distance(coord, ruin) < gameConfig.minCityRuinsDistance))
+                    continue;
 
-                    // Off the corner tiles specifically (project owner's own spec, 2026-08-22 —
-                    // "не прям в угловых участках карты"), and kept at least
-                    // gameConfig.minCityRuinsDistance hexes from every "City ruins" hex so a
-                    // fresh citadel never opens the game already standing next to a garrisoned
-                    // outpost.
-                    if (corners.Any(corner => HexGridMath.Distance(coord, corner) <= gameConfig.cornerExclusionRadius))
-                        continue;
-                    if (cityRuinsHexes.Any(ruin => HexGridMath.Distance(coord, ruin) < gameConfig.minCityRuinsDistance))
-                        continue;
-
-                    result.Add(coord);
-                }
+                result.Add(coord);
             }
             return result;
         }
 
-        // The map's own 4 offset-grid corners, converted to axial — anchor points for
-        // cornerExclusionRadius above. Doesn't check IsSelectable: a corner missing from the
-        // map entirely still works fine as a pure distance anchor for its neighbours.
-        private List<HexCoord> GetMapCorners()
+        // The field's own 6 corner hexes (a hexagon-of-hexes has 6, not 4) — anchor points for
+        // cornerExclusionRadius above. Every candidate already comes from map.AllCoords (see
+        // GetEdgeEligibleHexes), so unlike the old rectangular corners these are always real,
+        // on-map hexes too.
+        private List<HexCoord> GetFieldCorners()
         {
-            return new List<HexCoord>
-            {
-                HexCoord.FromOffset(0, 0),
-                HexCoord.FromOffset(map.Width - 1, 0),
-                HexCoord.FromOffset(0, map.Height - 1),
-                HexCoord.FromOffset(map.Width - 1, map.Height - 1),
-            };
+            var result = new List<HexCoord>();
+            int radius = map.FieldRadius;
+            foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+                result.Add(new HexCoord(dq * radius, dr * radius));
+            return result;
         }
 
         // Every hex whose terrain is "City ruins" — same name/lookup convention as
@@ -452,23 +472,6 @@ namespace Game.Setup
         private bool IsSelectable(HexCoord coord)
         {
             return map.TryGetTerrainAt(coord, out _);
-        }
-
-        private static int MinDistanceTo(HexCoord candidate, List<HexCoord> others)
-        {
-            int min = int.MaxValue;
-            foreach (HexCoord other in others)
-                min = Mathf.Min(min, HexGridMath.Distance(candidate, other));
-            return min;
-        }
-
-        private static void Shuffle(List<HexCoord> list)
-        {
-            for (int i = list.Count - 1; i > 0; i--)
-            {
-                int j = Random.Range(0, i + 1);
-                (list[i], list[j]) = (list[j], list[i]);
-            }
         }
 
         private void SpawnRegionHighlight(PlayerSetupData player, HexCoord coord)

@@ -112,7 +112,8 @@ namespace Game.Map
                 _propertyBlock = new MaterialPropertyBlock();
             }
 
-            _overlayRenderer.GetComponent<MeshFilter>().mesh = BuildQuadMesh(map, gameConfig.mapGeneration.ComputeBorderDepthWorld());
+            int activeRadius = GameSession.ResolveMapRadius(gameConfig.mapGeneration.radius);
+            _overlayRenderer.GetComponent<MeshFilter>().mesh = BuildQuadMesh(map, gameConfig.mapGeneration.ComputeBorderDepthWorld(activeRadius));
 
             FogOfWarStyle style = gameConfig.fogOfWarStyle;
             _overlayRenderer.sortingOrder = style != null ? style.sortingOrder : 4;

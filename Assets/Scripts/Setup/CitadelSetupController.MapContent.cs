@@ -23,11 +23,14 @@ namespace Game.Setup
         // below is owned by this, never by null (see that method's own comment on why).
         private PlayerSetupData _neutralPlayer;
 
-        // Two data points the user supplied directly (Normal 12x9 map, and a larger 16x13 one)
-        // — every count below is linearly interpolated/extrapolated from hex count (width *
-        // height) through those two points, so a custom map size still gets a proportional
-        // answer instead of a hardcoded number. Two points fully determine a line; recalibrate
-        // by changing these pairs if a third data point ever narrows things down further.
+        // Two data points the user supplied directly (Normal was the old 12x9 rectangular map,
+        // and a larger 16x13 one — 108 and 208 hexes respectively) — every count below is
+        // linearly interpolated/extrapolated from total hex count through those two points, so
+        // a custom map size still gets a proportional answer instead of a hardcoded number. The
+        // field itself is a hexagon-of-hexes now (see HexCountForRadius), but these two
+        // calibration points are still just hex counts, not tied to the old rectangle shape.
+        // Two points fully determine a line; recalibrate by changing these pairs if a third data
+        // point ever narrows things down further.
         private const int CalibrationSmallHexes = 12 * 9;
         private const int CalibrationLargeHexes = 16 * 13;
 
@@ -36,6 +39,12 @@ namespace Game.Setup
             float t = (hexCount - CalibrationSmallHexes) / (float)(CalibrationLargeHexes - CalibrationSmallHexes);
             return Mathf.RoundToInt(Mathf.Lerp(smallValue, largeValue, t));
         }
+
+        // Total hex count of a hexagon-of-hexes field of the given ring radius (the field shape
+        // HexMapGenerator actually builds now) — feeds CalibratedCount above the same way
+        // width*height once did for the old rectangular field; the calibration constants
+        // themselves don't need to change; only where hexCount comes from does.
+        private static int HexCountForRadius(int radius) => 1 + 3 * radius * (radius + 1);
 
         private static readonly ResourceType[] AllResourceTypes =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
@@ -159,38 +168,19 @@ namespace Game.Setup
             }
         }
 
-        // Splits `candidates` into up to `sectorCount` spatial buckets by (col, row) — offset
-        // coordinates, not axial, so bucket boundaries follow the map's own rectangular grid —
-        // so a caller can draw one hex per bucket instead of purely at random and get a result
-        // that's actually spread across the map (the user's own later call). Bucket grid
-        // dimensions approximate the map's aspect ratio so buckets are roughly square rather than
-        // tall slivers or wide strips. Empty buckets are dropped, so the result can hold fewer
-        // than `sectorCount` entries if candidates are sparse or clumped in one region.
+        // Splits `candidates` into up to `sectorCount` angular buckets around the field's (0,0)
+        // centre (see BucketByAngleAroundCenter in CitadelSetupController.cs, shared with
+        // starting-hex assignment) so a caller can draw one hex per bucket instead of purely at
+        // random and get a result that's actually spread across the map (the user's own later
+        // call). Empty buckets are dropped, so the result can hold fewer than `sectorCount`
+        // entries if candidates are sparse or clumped in one region.
         private List<List<HexCoord>> BuildEvenSectors(List<HexCoord> candidates, int sectorCount)
         {
             var sectors = new List<List<HexCoord>>();
             if (sectorCount <= 0 || candidates.Count == 0)
                 return sectors;
 
-            int width = Mathf.Max(1, gameConfig.mapGeneration.width);
-            int height = Mathf.Max(1, gameConfig.mapGeneration.height);
-
-            int cols = Mathf.Clamp(Mathf.RoundToInt(Mathf.Sqrt(sectorCount * (float)width / height)), 1, sectorCount);
-            int rows = Mathf.CeilToInt(sectorCount / (float)cols);
-
-            var buckets = new List<HexCoord>[cols * rows];
-            for (int i = 0; i < buckets.Length; i++)
-                buckets[i] = new List<HexCoord>();
-
-            foreach (HexCoord hex in candidates)
-            {
-                (int col, int row) = hex.ToOffset();
-                int cellX = Mathf.Clamp(col * cols / width, 0, cols - 1);
-                int cellY = Mathf.Clamp(row * rows / height, 0, rows - 1);
-                buckets[cellY * cols + cellX].Add(hex);
-            }
-
-            foreach (List<HexCoord> bucket in buckets)
+            foreach (List<HexCoord> bucket in BucketByAngleAroundCenter(candidates, sectorCount))
                 if (bucket.Count > 0)
                     sectors.Add(bucket);
 
@@ -273,7 +263,7 @@ namespace Game.Setup
             if (candidates.Count == 0)
                 return;
 
-            int hexCount = gameConfig.mapGeneration.width * gameConfig.mapGeneration.height;
+            int hexCount = HexCountForRadius(map.FieldRadius);
             int min = Mathf.Max(1, CalibratedCount(3, 12, hexCount));
             int max = Mathf.Max(min, CalibratedCount(5, 15, hexCount));
             int target = Mathf.Clamp(Random.Range(min, max + 1), 0, Mathf.Min(candidates.Count, neutralArmyCatalog.armies.Count));
@@ -494,7 +484,7 @@ namespace Game.Setup
             if (candidates.Count == 0 && guaranteedHexes.Count == 0)
                 return;
 
-            int hexCount = gameConfig.mapGeneration.width * gameConfig.mapGeneration.height;
+            int hexCount = HexCountForRadius(map.FieldRadius);
             int min = Mathf.Max(1, CalibratedCount(12, 24, hexCount));
             int max = Mathf.Max(min, CalibratedCount(15, 30, hexCount));
             // The guaranteed army hexes draw from the same total budget rather than stacking on

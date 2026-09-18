@@ -43,10 +43,12 @@ namespace Game.Cameras
         [SerializeField] private Vector2 boundsMax = new Vector2(30f, 30f);
 
         [Header("Initial Position (optional)")]
-        // When assigned, Start() re-centers the camera's ground target on the map's own x/z
-        // center instead of keeping whatever x/z the editor-placed transform happened to be
-        // at — camera height (y) is untouched either way, since that's fixed purely by
-        // _forward/distance below, never by _groundTarget's own y (always 0, the ground plane).
+        // When assigned, Start() re-centers the camera's ground target on (0, 0) instead of
+        // keeping whatever x/z the editor-placed transform happened to be at — the field is
+        // always generated centred on the Unity-world origin now (see HexMapGenerator), so
+        // there's no map-size-dependent centre to compute any more. Camera height (y) is
+        // untouched either way, since that's fixed purely by _forward/distance below, never by
+        // _groundTarget's own y (always 0, the ground plane).
         [SerializeField] private HexMap map;
 
         private Camera _camera;
@@ -82,11 +84,10 @@ namespace Game.Cameras
             // was placed in the editor, so panning/zooming starts from that same spot.
             _groundTarget = transform.position - _forward * distance;
 
-            if (map != null && map.Width > 0 && map.Height > 0)
+            if (map != null)
             {
-                Vector3 mapCenter = map.HexToWorld(HexCoord.FromOffset(map.Width / 2, map.Height / 2));
-                _groundTarget.x = mapCenter.x;
-                _groundTarget.z = mapCenter.z;
+                _groundTarget.x = 0f;
+                _groundTarget.z = 0f;
             }
 
             ApplyPosition();
