@@ -1,0 +1,61 @@
+name: One-shot AI V2 aviation future AP
+on:
+  push:
+    branches:
+      - ai-v2/production-development-calibration
+    paths:
+      - .github/workflows/ai-v2-aviation-investment-ap-once.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify source-locked two-file aviation patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = ai-v2/production-development-calibration
+          python3 - <<'PY'
+          import hashlib, subprocess
+          from pathlib import Path
+          sources = {
+              'Assets/Scripts/Ai/V2/Materialization/PlacementRules.cs': '65765d59fab62c0cd29c6de80ef0430691955ad6',
+              'Assets/Scripts/Ai/V2/Evaluation/Cards/NonCombatCardPlayer.cs': 'f856f0c86a9e01632058b56c99bdf01a0941c4c1',
+          }
+          for name, expected in sources.items():
+              actual = subprocess.check_output(['git','hash-object',name],text=True).strip()
+              if actual != expected:
+                  raise SystemExit(f'Source changed: {name}: {actual}')
+          content = Path('.github/ai-v2-aviation-investment-ap.patch').read_bytes()
+          sha = hashlib.sha256(content).hexdigest()
+          if sha != '5b1c09f62454fefb8bc537bacafcaefa24bb8a5b5d1442d0b0e27340552995e6':
+              raise SystemExit(f'Unexpected patch hash {sha}')
+          print('Two original source hashes and patch SHA verified:', sha)
+          PY
+          git apply --check .github/ai-v2-aviation-investment-ap.patch
+          git apply .github/ai-v2-aviation-investment-ap.patch
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+          a='Assets/Scripts/Ai/V2/Materialization/PlacementRules.cs'
+          b='Assets/Scripts/Ai/V2/Evaluation/Cards/NonCombatCardPlayer.cs'
+          actual=set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert actual == {a,b}, actual
+          placement=Path(a).read_text(); noncombat=Path(b).read_text()
+          assert 'bool requireCurrentAp = true' in placement
+          assert 'requireCurrentAp && !root.CanSpendActionPoints(deployApCost)' in placement
+          assert 'investmentPreview: true' in noncombat
+          assert 'requireCurrentAp: !investmentPreview' in noncombat
+          print('Future valuation alone bypasses current AP; immediate placement default remains strict')
+          PY
+          git config user.name ai-v2-scoped-patch
+          git config user.email ai-v2-scoped-patch@users.noreply.github.com
+          git add -- Assets/Scripts/Ai/V2/Materialization/PlacementRules.cs Assets/Scripts/Ai/V2/Evaluation/Cards/NonCombatCardPlayer.cs
+          git rm -f -- .github/ai-v2-aviation-investment-ap.patch .github/workflows/ai-v2-aviation-investment-ap-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'fix(ai-v2): value future aviation without current-turn AP gate [skip ci]'
+          git push origin HEAD:ai-v2/production-development-calibration
