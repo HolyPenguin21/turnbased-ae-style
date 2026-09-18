@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Cards;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
@@ -56,6 +57,9 @@ namespace Game.Ai.V2
         // WorldSnapshot changed yet, so without this explicit fact PublishStepObservationDelta sees
         // no typed invalidation and the typed loop stops before Phase A ever gets a chance to build.
         public bool EconomyDeliveryReady;
+        // A concrete Researcher/Assembler reached its exact Facility; Phase A must see the
+        // newly executable source immediately, not wait for an unrelated resource mutation.
+        public bool DevelopmentDeliveryReady;
 
         // Provisioned mission that produced this execution ledger row.
         public ProvisionedMission Source;
@@ -333,6 +337,16 @@ namespace Game.Ai.V2
                 results.Add(result);
                 if (result.StopReason != ExecutionStopReason.StepCompleted)
                     ReleaseEconomyReservation(player, ctx, pm);
+                yield break;
+            }
+
+            if (pm.Kind == MissionKind.Development)
+            {
+                yield return RunDevelopmentStep(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
                 yield break;
             }
 
@@ -965,6 +979,43 @@ namespace Game.Ai.V2
             // mission (hero already real) whose composition change and/or donor-loan suspend
             // Provisioning left pinned but unapplied (pm.EconomyPreparationPending), not only a
             // garrison-extraction candidate — see ApplyEconomyPreparation's own comment.
+            if (pm.Kind != MissionKind.Economy && pm.Kind != MissionKind.Development)
+                return false;
+            if (pm.Kind == MissionKind.Development)
+            {
+                if (pm.EconomyExtractionGarrisonArmyId < 0)
+                    return false;
+                ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
+                ProvisioningManager.GarrisonExtractionCandidate pinned = pm.EconomyExtractionPlan;
+                if (garrison == null || pinned.Tier == ProvisioningManager.GarrisonExtractionTier.None
+                    || !ReferenceEquals(pinned.Hero, pm.DevelopmentTarget.Hero)
+                    || !garrison.Members.Contains(pinned.Hero)
+                    || !AiArmyRoles.CanSpareGarrisonMember(player, garrison, pinned.Hero)
+                    || pinned.ApCost > pm.ClaimedAp + AiConfigV2.allocatorSliceEpsilon
+                    || root == null || !root.CanSpendActionPoints(Mathf.CeilToInt(pinned.ApCost)))
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    result.FinalHex = pm.ExecutionHex;
+                    return true;
+                }
+                ArmyData extracted = ProvisioningManager.ApplyGarrisonExtraction(
+                    player, garrison, pinned, ctx);
+                result.StartHex = pm.ExecutionHex;
+                result.FinalHex = extracted?.Hex ?? pm.ExecutionHex;
+                result.ActualActorArmyId = extracted?.Id;
+                result.ActorMaterialized = extracted != null;
+                result.StopReason = extracted == null
+                    ? ExecutionStopReason.TargetInvalidated : ExecutionStopReason.StepCompleted;
+                result.NeedsReplan = extracted == null;
+                result.ApSpent = Mathf.Max(0f, apBefore - root.ActionPoints);
+                if (extracted != null)
+                {
+                    pm.MoverArmyId = extracted.Id;
+                    pm.EconomyExtractionGarrisonArmyId = -1;
+                }
+                return true; // extraction is exactly one canonical mutation step
+            }
             if (pm.Kind != MissionKind.Economy
                 || (pm.EconomyExtractionGarrisonArmyId < 0 && !pm.EconomyPreparationPending))
                 return false;
@@ -1170,12 +1221,74 @@ namespace Game.Ai.V2
                 }
                 yield break;
             }
+            yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
+                target.TargetHex, $"economy — {target.Kind}");
+            HexCoord after = result.FinalHex;
+            bool recoveryArrived = target.Kind == EconomyTaskKind.ReturnBuilder
+                && after.Equals(target.TargetHex);
+            result.ReachedGoal = recoveryArrived;
+            if (recoveryArrived)
+                result.StopReason = ExecutionStopReason.ReachedGoal;
+            if (result.StopReason == ExecutionStopReason.MoveRejected)
+                result.NeedsReplan = true;
+        }
+
+        private static IEnumerator RunDevelopmentStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            DevelopmentMissionTarget target = pm.DevelopmentTarget;
+            if (army == null || !army.Members.Contains(target.Hero))
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            result.ActualActorArmyId = army.Id;
+            if (!army.Hex.Equals(target.FacilityHex))
+                yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
+                    target.FacilityHex, $"development — {target.Mode} hero={target.HeroKey}");
+
+            // A battle or event can interrupt an otherwise valid transport step; it must be
+            // settled by its domain owner before this delivery can be marked ready.
+            if (result.StopReason != ExecutionStopReason.BattleStarted
+                && result.StopReason != ExecutionStopReason.HexEventStarted
+                && ResearchProductionSystem.ActorStillQualifies(player, target.Hero,
+                    target.FacilityHex, target.Mode)
+                && ResearchProductionSystem.IsEligible(player, target.FacilityHex,
+                    target.Mode, out _))
+            {
+                result.ReachedGoal = true;
+                result.DevelopmentDeliveryReady = true;
+                result.StopReason = ExecutionStopReason.ReachedGoal;
+                result.NeedsReplan = false;
+                result.FinalHex = target.FacilityHex;
+                AiDebugLog.Write($"[AI][V2][Development] arrived hero={target.HeroKey} "
+                    + $"@({target.FacilityHex.Q},{target.FacilityHex.R}); production readmit");
+            }
+        }
+
+        // Economy and Development share ONE safe-path movement command and AP/step accounting.
+        // This helper only executes a bound adjacent step; it never selects actor or objective.
+        private static IEnumerator RunGroundTransportStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore,
+            HexCoord target, string label)
+        {
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            if (army == null)
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            result.ActualActorArmyId = army.Id;
+            result.FinalHex = army.Hex;
             if (army.CurrentMovement <= 0)
             {
                 result.StopReason = ExecutionStopReason.OutOfMovement;
                 yield break;
             }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, target.TargetHex);
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, target);
             if (!next.HasValue)
             {
                 result.StopReason = ExecutionStopReason.NoSafeStep;
@@ -1186,21 +1299,22 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player,
                 AiDecision.Move(army, next.Value,
-                    $"V2 economy — {target.Kind} at ({target.TargetHex.Q},{target.TargetHex.R})", 0f),
-                ctx, trace);
+                    $"V2 {label} at ({target.Q},{target.R})", 0f), ctx, trace);
             army = Resolve(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
             if (!after.Equals(before)) result.StepsMoved = 1;
-            bool recoveryArrived = target.Kind == EconomyTaskKind.ReturnBuilder
-                && after.Equals(target.TargetHex);
-            result.ReachedGoal = recoveryArrived;
-            result.StopReason = recoveryArrived ? ExecutionStopReason.ReachedGoal
-                : result.StepsMoved > 0 ? ExecutionStopReason.StepCompleted
-                : ExecutionStopReason.MoveRejected;
-            result.NeedsReplan = result.StepsMoved == 0 && !recoveryArrived;
+            result.StopReason = pm.Kind == MissionKind.Development && trace.BattleOccurred
+                ? ExecutionStopReason.BattleStarted
+                : pm.Kind == MissionKind.Development && trace.HexEventOccurred
+                    ? ExecutionStopReason.HexEventStarted
+                    : army == null ? ExecutionStopReason.MoverLost
+                        : result.StepsMoved > 0
+                            ? ExecutionStopReason.StepCompleted : ExecutionStopReason.MoveRejected;
+            result.NeedsReplan = army == null || result.StepsMoved == 0;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-            AiDebugLog.Write($"[AI][V2][Economy] move {pm.Key} ({before.Q},{before.R})->({after.Q},{after.R})");
+            AiDebugLog.Write($"[AI][V2] {label} move {pm.Key} "
+                + $"({before.Q},{before.R})->({after.Q},{after.R})");
         }
 
         private static void ReleaseEconomyReservation(PlayerSetupData player, AiTurnContext ctx,

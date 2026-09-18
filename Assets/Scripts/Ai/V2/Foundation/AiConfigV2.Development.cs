@@ -46,10 +46,5 @@ namespace Game.Ai.V2
         // cost, not a 1:1 trade (the unit is usually still played a later turn) — weight it down.
         public const float devAlternativeWeight = 0.5f;
         public const float devEquipGainFraction = 0.25f; // on-map unit FALLBACK when OriginatingCard is null: equipment adds ~this * UnitPower
-        public const float devImportanceRaidMatch = 1.5f; // recipient sits on a hex an Aggression objective targets
-        public const float devImportanceField = 1.0f;
-        public const float devImportanceGarrison = 0.5f;
-        public const float devImportanceHandCard = 0.9f;
-
     }
 }

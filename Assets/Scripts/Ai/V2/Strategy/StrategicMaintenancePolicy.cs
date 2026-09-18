@@ -51,8 +51,8 @@ namespace Game.Ai.V2
     //  capacity (not by affordability or by an already-open slot).
     //
     //  Card execution remains with its existing owner. Research/Production facilities require a
-    //  supported Development prerequisite; this policy may unlock their slot only with the same
-    //  concrete output/recipient witness. Other facilities keep the ordinary surplus path, scored
+    //  independent, profitable Development prerequisite; this policy unlocks their slot with the same
+    //  concrete output/recipient-or-deployment witness. Other facilities keep the ordinary surplus path, scored
     //  by StrategicCardEvaluator through NonCombatCardPlayer (spec §5, one card scorer). There is deliberately NO second card
     //  scorer here and NO hidden "facility, then capacity, then equipment, then generation"
     //  priority chain: EnumerateCandidates returns every eligible non-card action and the arbiter
@@ -124,7 +124,7 @@ namespace Game.Ai.V2
             var intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
             List<DevelopmentOpportunity> preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
                 snap, player, root, hand, ctx,
-                op => DemandLayer.HasSupportedDevelopmentAxisDemand(op, null, intents, player));
+                op => op != null && op.ExpectedGain > 0f, intents);
             bool NeedsDevelopment(CardData card) => card?.Definition?.grantedAbilities != null
                 && (card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research))
                     || card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)));
@@ -177,6 +177,7 @@ namespace Game.Ai.V2
                         && !ResourceBundle.All.Any(t => (tier.cost?.Get(t) ?? 0)
                             + (op.PreparationFacilityCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
                             + (op.PreparationOperatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                            + (op.PreparationOperatorGeneration?.GenerationResourceCost?.Get(t) ?? 0)
                             + (op.Card?.resourceCost?.Get(t) ?? 0)
                             > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                     : null;

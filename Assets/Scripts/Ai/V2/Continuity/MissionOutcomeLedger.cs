@@ -61,6 +61,8 @@ namespace Game.Ai.V2
         public bool RaidReinforcementHandoffAttempted;
         public bool HasEconomyPayload;
         public EconomyMissionTarget EconomyTarget;
+        public bool HasDevelopmentPayload;
+        public DevelopmentMissionTarget DevelopmentTarget;
         public bool EconomyBuildCompleted;
         public MissionIntentKey? EconomyLoanSource;
     }
@@ -167,6 +169,14 @@ namespace Game.Ai.V2
                 {
                     satisfied = EconomyObjectiveSatisfied(player, pm.EconomyTarget);
                 }
+                else if (pm.Kind == MissionKind.Development)
+                {
+                    satisfied = ResearchProductionSystem.ActorStillQualifies(player,
+                        pm.DevelopmentTarget.Hero, pm.DevelopmentTarget.FacilityHex,
+                        pm.DevelopmentTarget.Mode)
+                        && ResearchProductionSystem.IsEligible(player,
+                            pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode, out _);
+                }
                 else if (pm.ScoutKind == ScoutTargetKind.Surveil)
                 {
                     satisfied = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
@@ -226,6 +236,11 @@ namespace Game.Ai.V2
                         o.HasEconomyPayload = true;
                         o.EconomyTarget = r.Provisioned.EconomyTarget;
                         o.EconomyLoanSource = r.Provisioned.EconomyLoanSource;
+                    }
+                    else if (r.Provisioned.Kind == MissionKind.Development)
+                    {
+                        o.HasDevelopmentPayload = true;
+                        o.DevelopmentTarget = r.Provisioned.DevelopmentTarget;
                     }
                     else
                     {
@@ -362,6 +377,27 @@ namespace Game.Ai.V2
                         break;
                     case ExecutionStopReason.NoSafeStep:
                     case ExecutionStopReason.MoveRejected:
+                        o.Outcome = ExecutionOutcome.Blocked;
+                        break;
+                    default:
+                        o.Outcome = ExecutionOutcome.Failed;
+                        break;
+                }
+                return;
+            }
+
+            if (o.MissionKind == MissionKind.Development)
+            {
+                switch (e.StopReason)
+                {
+                    case ExecutionStopReason.StepCompleted:
+                    case ExecutionStopReason.OutOfMovement:
+                        o.Outcome = ExecutionOutcome.ProductiveStop;
+                        break;
+                    case ExecutionStopReason.NoSafeStep:
+                    case ExecutionStopReason.MoveRejected:
+                    case ExecutionStopReason.BattleStarted:
+                    case ExecutionStopReason.HexEventStarted:
                         o.Outcome = ExecutionOutcome.Blocked;
                         break;
                     default:

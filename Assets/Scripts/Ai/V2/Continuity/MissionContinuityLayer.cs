@@ -332,6 +332,40 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent intent in state.All.ToList())
             {
+                if (intent.Kind == MissionKind.Development)
+                {
+                    DevelopmentIntent d = intent.Development;
+                    ArmyData actual = d?.Hero == null ? null : ArmyRegistry.AllForOwner(player)
+                        .FirstOrDefault(a => a != null && !a.IsPrison
+                            && a.Members.Contains(d.Hero));
+                    BuildingData building = d == null ? null : BuildingRegistry.FindAt(d.FacilityHex);
+                    bool valid = d != null && actual != null && d.Hero.Owner == player
+                        && !d.Hero.IsPrisoner && d.Hero.IsHero
+                        && d.Hero.HasAbility(ResearchProductionSystem.RoleAbility(d.Mode))
+                        && string.Equals(d.HeroKey, GenerationSource.StableHeroKey(d.Hero),
+                            System.StringComparison.Ordinal)
+                        && building != null && building.Owner == player
+                        && building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(d.Mode))
+                        && (intent.PreferredMoverArmyId == actual.Id
+                            || !intent.PreferredMoverArmyId.HasValue);
+                    bool arrived = valid && ResearchProductionSystem.ActorStillQualifies(
+                        player, d.Hero, d.FacilityHex, d.Mode)
+                        && ResearchProductionSystem.IsEligible(player, d.FacilityHex, d.Mode, out _);
+                    if (!valid || arrived || ShouldReap(intent))
+                    {
+                        dead.Add(intent.IntentKey);
+                        AiDebugLog.Write($"[AI][V2][Development] retire {intent.IntentKey} "
+                            + $"valid={valid} arrived={arrived} stall={intent.StallTurns}");
+                        continue;
+                    }
+                    if (intent.Status == IntentStatus.Suspended)
+                    {
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
+                    }
+                    active.Add(intent);
+                    continue;
+                }
                 if (intent.Kind == MissionKind.Economy)
                 {
                     EconomyIntent ei = intent.Economy;
@@ -1289,7 +1323,8 @@ namespace Game.Ai.V2
                 if (intent.Status == IntentStatus.Suspended
                     && (intent.Suspended == SuspendReason.Siege
                         || intent.Suspended == SuspendReason.CapabilityUnavailable
-                        || intent.Suspended == SuspendReason.EconomyLoan))
+                        || intent.Suspended == SuspendReason.EconomyLoan)
+                    && intent.Kind != MissionKind.Development)
                     continue;
 
                 if (intent.LastReconciledTurn == turn)
@@ -1547,6 +1582,10 @@ namespace Game.Ai.V2
             {
                 CreateEconomyIntent(state, o, turn);
             }
+            else if (o.HasDevelopmentPayload && o.MadeProgress)
+            {
+                CreateDevelopmentIntent(state, o, turn);
+            }
 
         }
 
@@ -1593,7 +1632,8 @@ namespace Game.Ai.V2
                 // Economy actor ownership is durable. A replacement may only happen after
                 // ResolveActive retires a structurally invalid intent; an ordinary retry cannot
                 // atomically rewrite the mover behind continuity's back.
-                else if (intent.Kind != MissionKind.Economy
+                else if ((intent.Kind != MissionKind.Economy
+                        && intent.Kind != MissionKind.Development)
                     || !intent.PreferredMoverArmyId.HasValue
                     || intent.PreferredMoverArmyId.Value == o.MoverArmyId.Value)
                     intent.PreferredMoverArmyId = o.MoverArmyId;
@@ -1647,7 +1687,8 @@ namespace Game.Ai.V2
                 intent.LastProgressTurn = turn;
                 intent.StallTurns = 0;
             }
-            else if (firstReconcileThisTurn && !poolExhausted && !capabilityUnavailable)
+            else if (firstReconcileThisTurn && !poolExhausted
+                && (!capabilityUnavailable || intent.Kind == MissionKind.Development))
             {
                 intent.StallTurns++;
             }
@@ -1713,7 +1754,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            if (!capabilityUnavailable && ShouldReap(intent))
+            if ((!capabilityUnavailable || intent.Kind == MissionKind.Development)
+                && ShouldReap(intent))
             {
                 state.Remove(intent.IntentKey);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
@@ -1874,6 +1916,28 @@ namespace Game.Ai.V2
             MissionIntent intent = NewIntent(o, turn, MissionKind.Economy, funding, ei);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] continuity create {intent.IntentKey} mover=#{o.MoverArmyId}");
+        }
+
+        private static void CreateDevelopmentIntent(MissionIntentState state,
+            MissionTurnOutcome o, int turn)
+        {
+            DevelopmentMissionTarget target = o.DevelopmentTarget;
+            if (target.Hero == null || !o.MoverArmyId.HasValue
+                || state.All.Any(i => i?.Development?.Hero == target.Hero
+                    || i?.Development != null && i.Development.Mode == target.Mode
+                        && i.Development.FacilityHex.Equals(target.FacilityHex)))
+                return;
+            var objective = new DevelopmentIntent
+            {
+                Hero = target.Hero, HeroKey = target.HeroKey,
+                FacilityHex = target.FacilityHex, Mode = target.Mode,
+                IntrinsicValue = o.Proposal?.BaseValue ?? target.IntrinsicValue,
+            };
+            MissionIntent intent = NewIntent(o, turn, MissionKind.Development,
+                CommitmentTier.Soft, objective);
+            state.Put(intent);
+            AiDebugLog.Write($"[AI][V2][Development] continuity create {intent.IntentKey} "
+                + $"hero={target.HeroKey} actor=#{o.MoverArmyId}");
         }
 
         private static void RepayEconomyLoan(MissionIntentState state, MissionIntent economy,

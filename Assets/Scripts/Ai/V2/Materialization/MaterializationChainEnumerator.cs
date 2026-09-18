@@ -26,7 +26,9 @@ namespace Game.Ai.V2
             System.Collections.Generic.ISet<string> excludeGenKeys = null)
         {
             bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
-            bool Excluded(CardData c) => c != null && excludeCards != null && excludeCards.Contains(c);
+            bool Excluded(CardData c) => c != null
+                && ((excludeCards != null && excludeCards.Contains(c))
+                    || (reservation?.ClaimsDevelopmentOperatorCard(c) ?? false));
             bool ExcludedGen(GenerationStep g) => g != null && excludeGenKeys != null
                 && !string.IsNullOrEmpty(g.CardKey) && excludeGenKeys.Contains(g.CardKey);
 
@@ -146,7 +148,7 @@ namespace Game.Ai.V2
         // capability, not another recon lane; the physical portfolio cap must still reject that
         // same hero when placed into a new/empty army. This classification is owned here, together
         // with the chain shapes. Phase A's explicit Scout demands keep their solo-only contract.
-        private static CapabilityKind SurplusCapability(CardDefinition def,
+        internal static CapabilityKind SurplusCapability(CardDefinition def,
             IReadOnlyList<string> abilities, PlacementOption opt)
         {
             bool solo = opt.Kind == DeploymentKind.NewArmy
@@ -173,7 +175,8 @@ namespace Game.Ai.V2
             {
                 CardData card = handList[i];
                 CardDefinition def = card?.Definition;
-                if (def == null || def.isAviation) continue;
+                if (def == null || def.isAviation
+                    || (reservation?.ClaimsDevelopmentOperatorCard(card) ?? false)) continue;
                 bool recce = AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities);
                 bool hero = def.cardType == CardType.Hero;
                 if (!recce && def.cardType != CardType.Unit && !hero) continue;
@@ -233,6 +236,7 @@ namespace Game.Ai.V2
                             CardData host = handList[i];
                             CardDefinition hd = host?.Definition;
                             if (hd == null || hd.isAviation || host.Equipment != null
+                                || (reservation?.ClaimsDevelopmentOperatorCard(host) ?? false)
                                 || (hd.cardType != CardType.Unit && hd.cardType != CardType.Hero)
                                 || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
                                 continue;

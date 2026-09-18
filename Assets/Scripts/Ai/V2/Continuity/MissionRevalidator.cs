@@ -1,4 +1,5 @@
 using System.Linq;
+using Game.Cards;
 using Game.Map;
 using Game.Players;
 using UnityEngine;
@@ -37,6 +38,39 @@ namespace Game.Ai.V2
 
             if (pm.Kind == MissionKind.Scout && !AiArmyRoles.IsSoloRecce(mover))
                 return MissionValidity.StaleMoverLost;
+
+            if (pm.Kind == MissionKind.Development)
+            {
+                DevelopmentMissionTarget target = pm.DevelopmentTarget;
+                if (target.Hero == null || !mover.Members.Contains(target.Hero)
+                    || !string.Equals(target.HeroKey,
+                        GenerationSource.StableHeroKey(target.Hero),
+                        System.StringComparison.Ordinal)
+                    || target.Hero.Owner != player || target.Hero.IsPrisoner
+                    || !target.Hero.HasAbility(ResearchProductionSystem.RoleAbility(target.Mode)))
+                    return MissionValidity.StaleMoverLost;
+                BuildingData building = BuildingRegistry.FindAt(target.FacilityHex);
+                if (building == null || building.Owner != player
+                    || !building.HasFacilityWithAbility(
+                        ResearchProductionSystem.FacilityAbility(target.Mode)))
+                    return MissionValidity.StaleTargetInvalidated;
+                // Only this exact Hero completing the actual gameplay eligibility is success.
+                // A different operator at the site may justify retiring an unnecessary mission,
+                // but must never silently substitute for the bound actor.
+                if (ResearchProductionSystem.ActorStillQualifies(
+                        player, target.Hero, target.FacilityHex, target.Mode)
+                    && ResearchProductionSystem.IsEligible(player,
+                        target.FacilityHex, target.Mode, out _))
+                    return MissionValidity.StaleGoalMet;
+                if (mover.Hex.Equals(target.FacilityHex))
+                    return MissionValidity.StaleTargetInvalidated;
+                if (Game.Combat.BattleInitiator.FindEnemyAt(target.FacilityHex, player) != null)
+                    return MissionValidity.StaleTargetInvalidated;
+                if (root != null && !mover.HasActivatedThisTurn
+                    && root.ActionPoints < mover.ActivationApCost)
+                    return MissionValidity.StaleUnaffordable;
+                return MissionValidity.Valid;
+            }
 
             if (root != null && !mover.HasActivatedThisTurn && mover.ActivationApCost > 0
                 && root.ActionPoints < mover.ActivationApCost)

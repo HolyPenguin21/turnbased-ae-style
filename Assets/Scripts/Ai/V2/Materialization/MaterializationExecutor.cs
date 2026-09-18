@@ -73,6 +73,12 @@ namespace Game.Ai.V2
             if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
                 return new GenerationOutcome(false, false, null, false,
                     "generation AP/resources unaffordable");
+            // An earlier card, mission, or new reservation can change spendability after
+            // candidate enumeration. Raw gameplay affordability is not enough: enforce the
+            // same canonical reserved-resource gate at the last point before Challenge payment.
+            if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.CardDef))
+                return new GenerationOutcome(false, false, null, false,
+                    "generation resources reserved since planning");
 
             bool wasHidden = g.Hero != null && g.Hero.IsHidden;
             int ap0 = root.ActionPoints;
@@ -110,6 +116,16 @@ namespace Game.Ai.V2
             if (plan == null || player == null || root == null || hand == null || ctx == null)
             {
                 res.FailReason = "missing args";
+                return res;
+            }
+
+            // The candidate was admitted against a previous snapshot. Check the whole canonical
+            // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
+            // make this executor spend another axis's newly protected resources. No substitute
+            // budget model: the same ReservesOkAfterChain is used by feasibility.
+            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player))
+            {
+                res.FailReason = "chain no longer fits AP/spendable reserves";
                 return res;
             }
 
@@ -164,7 +180,7 @@ namespace Game.Ai.V2
                 if (equipmentCard == null || equipmentCard == baseCard || !hand.Hand.Contains(equipmentCard))
                 {
                     res.ApSpent = apStart - root.ActionPoints;
-                StampResources();
+                    StampResources();
                     res.FailReason = "equipment card missing";
                     return res;
                 }

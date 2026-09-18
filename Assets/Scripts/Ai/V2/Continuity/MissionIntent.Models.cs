@@ -52,6 +52,9 @@ namespace Game.Ai.V2
                         ? et.BuilderArmyId ?? 0
                         : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
                     et.TargetHex.Q, et.TargetHex.R);
+            if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
+                return new MissionIntentKey(MissionKind.Development, (int)dt.Mode,
+                    0, dt.FacilityHex.Q, dt.FacilityHex.R);
             return new MissionIntentKey(m?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
         }
 
@@ -75,6 +78,10 @@ namespace Game.Ai.V2
                         ? ei.BuilderArmyId ?? intent?.PreferredMoverArmyId ?? 0
                         : ei.ResourceType.HasValue ? (int)ei.ResourceType.Value + 1 : 0,
                     ei.TargetHex.Q, ei.TargetHex.R);
+            DevelopmentIntent di = intent?.Development;
+            if (di != null)
+                return new MissionIntentKey(MissionKind.Development, (int)di.Mode,
+                    0, di.FacilityHex.Q, di.FacilityHex.R);
             ScoutIntent s = intent?.Scout;
             if (s == null)
                 return new MissionIntentKey(intent?.Kind ?? MissionKind.Scout, 0, 0, 0, 0);
@@ -116,6 +123,8 @@ namespace Game.Ai.V2
                     : $"Intent(Raid Army#{ObjectiveId})";
             if (Kind == MissionKind.Economy)
                 return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
+            if (Kind == MissionKind.Development)
+                return $"Intent(Development {(ResearchProductionMode)SubKind} {Q},{R})";
             return $"Intent({Kind})";
         }
     }
@@ -215,6 +224,15 @@ namespace Game.Ai.V2
         public MissionIntentKey LoanSource;
     }
 
+    public sealed class DevelopmentIntent
+    {
+        public HexCoord FacilityHex;
+        public ResearchProductionMode Mode;
+        public Game.Units.UnitData Hero;
+        public string HeroKey;
+        public float IntrinsicValue;
+    }
+
     public sealed class MissionIntent
     {
         public MissionIntentKey IntentKey;
@@ -258,5 +276,6 @@ namespace Game.Ai.V2
         public ScoutIntent Scout => Objective as ScoutIntent;
         public RaidIntent Raid => Objective as RaidIntent;
         public EconomyIntent Economy => Objective as EconomyIntent;
+        public DevelopmentIntent Development => Objective as DevelopmentIntent;
     }
 }
