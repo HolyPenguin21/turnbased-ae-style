@@ -36,6 +36,9 @@ namespace Game.Ai.V2
         public GenerationStep Generation;
         public CardData PreparationFacilityCard;
         public CardData PreparationOperatorCard;
+        // Only an existing, eligible staffed source can mint an operator. The resulting card
+        // goes into the hand first; deployment remains the usual DevelopmentOperator action.
+        public GenerationStep PreparationOperatorGeneration;
         // Existing qualified hero selected for delivery, never misrepresented as an on-site
         // actor. Continuity pins this exact object until arrival or structural cancellation.
         public UnitData PreparationExistingHero;
@@ -248,40 +251,83 @@ namespace Game.Ai.V2
                             operatorCard = null;
                     }
                 }
-                if (actor == null && operatorCard == null && remote == null)
+                GenerationStep generatedOperator = null;
+                // Do not start a factory on the fantasy of a future Hero. A real, staffed,
+                // currently eligible OTHER facility must already offer the exact qualified
+                // Hero card. Source eligibility, authored identity and resources belong to
+                // GenerationSource; this evaluator only picks the cheapest legal witness.
+                if (actor == null && operatorCard == null && remote == null
+                    && garrison != null && PlacementRules.CanDepositIntoGarrison(garrison))
+                {
+                    generatedOperator = GenerationSource.Enumerate(player, root, ctx, hand,
+                            claimedUseKeys: null, triedCardKeys: null)
+                        .Where(g => IsGeneratedOperatorCandidate(g, mode)
+                            && PlacementRules.HasRequiredBuilding(player, hex, g.CardDef)
+                            && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
+                            && ArmyRegistry.AllAt(g.FacilityHex).Any(source => source != null
+                                && source.Owner == player && !source.IsPrison
+                                && source.Members.Contains(g.Hero)
+                                && !occupied.IsArmyClaimed(source.Id)))
+                        .OrderBy(g => ResearchProductionSystem.AttemptApCost(g.CardDef)
+                            * AiConfigV2.devApValue
+                            + StrategicCardEvaluator.StrategicResourceCostValue(
+                                g.GenerationResourceCost, snap))
+                        .ThenBy(g => g.CardKey, System.StringComparer.Ordinal)
+                        .FirstOrDefault();
+                }
+                if (actor == null && operatorCard == null && remote == null
+                    && generatedOperator == null)
                     continue;
                 UnitData projectedActor = actor ?? remote;
                 if (projectedActor == null)
                 {
-                    int fate = operatorCard.Definition.fate;
-                    if (operatorCard.Equipment?.equipment != null)
+                    CardDefinition operatorDefinition = operatorCard?.Definition
+                        ?? generatedOperator.CardDef;
+                    CardDefinition operatorEquipment = operatorCard?.Equipment;
+                    int fate = operatorDefinition.fate;
+                    if (operatorEquipment?.equipment != null)
                     {
                         PredictedEquipmentState projected = EquipmentSystem.Predict(
-                            operatorCard.Equipment.equipment,
+                            operatorEquipment.equipment,
                             new Dictionary<EquipmentStat, int> { [EquipmentStat.Fate] = fate },
-                            operatorCard.Definition.grantedAbilities);
+                            operatorDefinition.grantedAbilities);
                         if (projected.Stats.TryGetValue(EquipmentStat.Fate, out int equippedFate))
                             fate = equippedFate;
                     }
                     projectedActor = new UnitData { Fate = Mathf.Max(0, fate), IsHero = true,
-                        Owner = player, OriginatingCard = operatorCard.Definition,
-                        Equipment = operatorCard.Equipment };
+                        Owner = player, OriginatingCard = operatorDefinition,
+                        Equipment = operatorEquipment };
                     projectedActor.Abilities.UnionWith(MaterializationChainMatching.EffectiveAbilities(
-                        operatorCard.Definition, operatorCard.Equipment));
+                        operatorDefinition, operatorEquipment));
                 }
                 float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
                     .Sum(c => c.EffectivePlayApCost * AiConfigV2.devApValue
                         + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                     + (remote != null ? remoteCost : 0f);
+                if (generatedOperator != null)
+                {
+                    // Challenge is paid even on loss; deploy AP only on a won roll. Its
+                    // resource stake belongs to the source Challenge and is charged ONCE.
+                    var mintedPreview = new CardData(generatedOperator.CardDef)
+                        { ResearchProductionCreated = true };
+                    preparationCost += (ResearchProductionSystem.AttemptApCost(
+                            generatedOperator.CardDef)
+                        + generatedOperator.SuccessChance * CardCostRules.PlayAp(mintedPreview))
+                        * AiConfigV2.devApValue
+                        + StrategicCardEvaluator.StrategicResourceCostValue(
+                            generatedOperator.GenerationResourceCost, snap);
+                }
                 foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
                     ctx.ResearchProductionCatalog, mode, player.Faction))
                 {
-                    if (card == null || (card.cardType != CardType.Equipment
+                    if (card == null || (!card.isAviation
+                        && card.cardType != CardType.Equipment
                         && card.cardType != CardType.Unit && card.cardType != CardType.Hero))
                         continue;
                     if (ResourceBundle.All.Any(t =>
                         (facility?.EffectivePlayResourceCost?.Get(t) ?? 0)
                         + (operatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                        + (generatedOperator?.GenerationResourceCost?.Get(t) ?? 0)
                         + (card.resourceCost?.Get(t) ?? 0)
                         > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                         continue;
@@ -290,32 +336,43 @@ namespace Game.Ai.V2
                     // path. Use a projected GenerateDeploy plan to witness future investment
                     // utility; do NOT claim it is an executable source or create a CardUpgrade
                     // demand (those are specifically for Equipment/recipient attachments).
-                    if (card.cardType == CardType.Unit || card.cardType == CardType.Hero)
+                    if (card.isAviation || card.cardType == CardType.Unit
+                        || card.cardType == CardType.Hero)
                     {
                         // GenerationSource will not mint cards lacking an authored retry key.
                         if (string.IsNullOrWhiteSpace(card.authoredKey))
                             continue;
-                        float futureValue = ProjectedDeployableInvestmentValue(card, mode, hex,
-                            projectedActor, snap, player, root, hand, ctx, inv, occupied);
+                        // Aviation is owned by the generated non-combat lane and needs real
+                        // airfield capacity; never pretend it is a ground GenerateDeploy.
+                        float futureValue = card.isAviation
+                            ? NonCombatCardPlayer.ProjectedAviationInvestmentValue(card, mode, hex,
+                                projectedActor, snap, player, root, hand, ctx)
+                            : ProjectedDeployableInvestmentValue(card, mode, hex,
+                                projectedActor, snap, player, root, hand, ctx, inv, occupied);
                         if (futureValue <= 0f)
                             continue;
+                        float operatorChance = generatedOperator != null
+                            ? Mathf.Clamp01(generatedOperator.SuccessChance) : 1f;
                         var deployable = new DevelopmentOpportunity
                         {
                             Mode = mode, FacilityHex = hex, Card = card,
                             SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
-                            ProducesEquipment = false, ExpectedGain = futureValue,
-                            Ev = futureValue - preparationCost,
+                            ProducesEquipment = false, ExpectedGain = futureValue * operatorChance,
+                            Ev = futureValue * operatorChance - preparationCost,
                             PreparationFacilityCard = facility, PreparationOperatorCard = operatorCard,
+                            PreparationOperatorGeneration = generatedOperator,
                             PreparationExistingHero = remote, PreparationSourceArmyId = remoteArmyId,
                             PreparationTravelCost = remoteTravel,
-                            RecipientLabel = "deployable:" + card.displayName,
+                            RecipientLabel = (card.isAviation ? "aviation:" : "deployable:")
+                                + card.displayName,
                         };
                         if (deployable.Ev <= AiConfigV2.devEvMargin || !supportsNeed(deployable))
                             continue;
                         deployable.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue
                             * deployable.Ev, 0f, 100f);
                         deployable.Explain = $"prepare {mode} @({hex.Q},{hex.R}) for "
-                            + $"deployable {card.displayName}; canonical future value={futureValue:0.##} "
+                            + $"{(card.isAviation ? "aviation" : "deployable")} {card.displayName}; "
+                            + $"canonical future value={futureValue:0.##} "
                             + $"EV after prerequisites={deployable.Ev:0.##}";
                         result.Add(deployable);
                         continue;
@@ -333,9 +390,14 @@ namespace Game.Ai.V2
                     Score(op, snap, root, hand);
                     op.PreparationFacilityCard = facility;
                     op.PreparationOperatorCard = operatorCard;
+                    op.PreparationOperatorGeneration = generatedOperator;
                     op.PreparationExistingHero = remote;
                     op.PreparationSourceArmyId = remoteArmyId;
                     op.PreparationTravelCost = remoteTravel;
+                    // The output payoff is conditional on winning the prerequisite operator
+                    // Challenge; its AP/resources were already included in preparationCost.
+                    if (generatedOperator != null)
+                        op.Ev *= Mathf.Clamp01(generatedOperator.SuccessChance);
                     op.Ev -= preparationCost;
                     op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
                     if (op.Ev <= AiConfigV2.devEvMargin) continue;
@@ -346,6 +408,15 @@ namespace Game.Ai.V2
             }
             return result.OrderByDescending(o => o.BaseValue).ToList();
         }
+
+        // The operator-generation witness is a *real* existing source; its exact identity
+        // must remain stable through the stage transition. No hypothetical source or retry key.
+        internal static bool IsGeneratedOperatorCandidate(GenerationStep g,
+            ResearchProductionMode targetMode) => g?.CardDef?.cardType == CardType.Hero
+            && !g.CardDef.isAviation && g.SuccessChance > 0f
+            && !string.IsNullOrWhiteSpace(g.CardDef.authoredKey)
+            && MaterializationChainMatching.EffectiveAbilities(g.CardDef, null)
+                .Contains(ResearchProductionSystem.RoleAbility(targetMode));
 
         // Objectives only projects a prospective deployment. The future source becomes real
         // exclusively after Building/Actor delivery; GenerationSource and MaterializationFeasibility

@@ -95,6 +95,33 @@ namespace Game.Ai.V2
                 witnessedUsefulApDemand: witnessedUsefulApDemand,
                 logDynamicEffect: false);
 
+        // Preparation-only preview for aviation: use the SAME generated non-combat play
+        // builder as Phase B, including real airfield capacity, Challenge + deploy AP,
+        // exact resources and the canonical aviation scorer. No fake ground placement and
+        // no second aviation valuation. Nothing is minted or deployed by this method.
+        internal static float ProjectedAviationInvestmentValue(CardDefinition card,
+            ResearchProductionMode mode, HexCoord facilityHex, UnitData operatorHero,
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx)
+        {
+            if (card == null || !card.isAviation || operatorHero == null || snap == null
+                || player == null || root == null || hand?.Hand == null || ctx == null
+                || string.IsNullOrWhiteSpace(card.authoredKey))
+                return float.NegativeInfinity;
+            var generation = new GenerationStep
+            {
+                Mode = mode, FacilityHex = facilityHex, Hero = operatorHero, CardDef = card,
+                SuccessChance = ResearchProductionSystem.EstimateSuccessChance(operatorHero, card),
+                ProducesEquipment = false, UseKey = "investment-preview",
+                CardKey = "investment-preview:" + card.authoredKey,
+            };
+            var standIn = new CardData(card) { ResearchProductionCreated = true };
+            NonCombatPlay preview = BuildPlayFor(standIn, generation, snap, player, root,
+                hand, ctx, OwnedBaseHexes(snap, player), new List<string>());
+            return preview != null && preview.Kind == PlayKind.Aviation
+                ? preview.Score : float.NegativeInfinity;
+        }
+
         // Pure card-type router: which Phase-B lane owns this card. null => the Unit/Hero/Recce
         // materialization chain (MaterializationCandidateBuilder) owns it. Exhaustive over
         // CardType — no card falls through to "no lane", so card type is never on its own a reason

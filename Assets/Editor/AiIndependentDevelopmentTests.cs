@@ -15,6 +15,49 @@ namespace Game.EditorTests
     // Regression coverage alongside AiProductionScoreAlignmentTests; no separate test harness.
     public sealed class AiIndependentDevelopmentTests
     {
+        [Test]
+        public void GeneratedOperatorRequiresAuthenticQualifiedHeroAndPositiveChallengeChance()
+        {
+            var hero = new CardDefinition
+            {
+                cardType = CardType.Hero, authoredKey = "generated-assembler",
+                grantedAbilities = new List<string> { UnitAbilities.Assembler },
+            };
+            var source = new GenerationStep { CardDef = hero, SuccessChance = 0.5f };
+            Assert.That(DevelopmentOpportunityEvaluator.IsGeneratedOperatorCandidate(
+                source, ResearchProductionMode.Production), Is.True);
+            Assert.That(DevelopmentOpportunityEvaluator.IsGeneratedOperatorCandidate(
+                source, ResearchProductionMode.Research), Is.False);
+
+            source.SuccessChance = 0f;
+            Assert.That(DevelopmentOpportunityEvaluator.IsGeneratedOperatorCandidate(
+                source, ResearchProductionMode.Production), Is.False);
+            source.SuccessChance = 0.5f;
+            hero.authoredKey = null;
+            Assert.That(DevelopmentOpportunityEvaluator.IsGeneratedOperatorCandidate(
+                source, ResearchProductionMode.Production), Is.False);
+            hero.authoredKey = "generated-assembler";
+            hero.cardType = CardType.Unit;
+            Assert.That(DevelopmentOpportunityEvaluator.IsGeneratedOperatorCandidate(
+                source, ResearchProductionMode.Production), Is.False);
+        }
+
+        [Test]
+        public void ProspectiveAviationStaysInCanonicalNonCombatLaneAndRequiresRealPlacement()
+        {
+            var plane = new CardDefinition
+            {
+                cardType = CardType.Unit, isAviation = true, authoredKey = "candidate-plane",
+            };
+            Assert.That(NonCombatCardPlayer.LaneFor(plane),
+                Is.EqualTo(NonCombatCardPlayer.PlayKind.Aviation));
+            float withoutRealFacility = NonCombatCardPlayer.ProjectedAviationInvestmentValue(
+                plane, ResearchProductionMode.Production, new HexCoord(0, 0),
+                null, null, null, null, null, null);
+            Assert.That(withoutRealFacility, Is.EqualTo(float.NegativeInfinity),
+                "An aviation-only catalog may justify investment only with a real airfield and operator");
+        }
+
         [TestCase(CardType.Unit, CapabilityKind.FieldCombatPower)]
         [TestCase(CardType.Hero, CapabilityKind.Hero)]
         public void ProspectiveGeneratedBodyUsesCanonicalPlanAndCorrectSurplusCapability(

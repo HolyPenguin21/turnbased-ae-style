@@ -177,6 +177,7 @@ namespace Game.Ai.V2
                         && !ResourceBundle.All.Any(t => (tier.cost?.Get(t) ?? 0)
                             + (op.PreparationFacilityCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
                             + (op.PreparationOperatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
+                            + (op.PreparationOperatorGeneration?.GenerationResourceCost?.Get(t) ?? 0)
                             + (op.Card?.resourceCost?.Get(t) ?? 0)
                             > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                     : null;
