@@ -432,17 +432,13 @@ namespace Game.Ai.V2
                     .Where(a => a != null && a.Members != null && a.Members.Count > 0)
                     .Select(a => a.Members));
 
-            // Physical neutrals must be honestly sighted first; do not expose unseen neutrals.
-            // If a known neutral happens to be aviation, its observed identity still authorizes
-            // composition valuation exactly like a known ground neutral; its hidden Hex does not.
-            if (snap?.TrueWorld?.NeutralArmies != null && snap.Known?.NeutralSightings != null)
-            {
-                var knownIds = new HashSet<int>(snap.Known.NeutralSightings.Select(s => s.ArmyId));
-                result.AddRange(snap.TrueWorld.NeutralArmies
-                    .Where(a => a != null && knownIds.Contains(a.ArmyId)
-                        && a.Members != null && a.Members.Count > 0)
-                    .Select(a => a.Members));
-            }
+            // A neutral's last honestly observed defender profiles are the only permitted
+            // composition witness. After it disappears into fog, its hidden live roster may
+            // change; matching a known ArmyId back into TrueWorld would silently cheat.
+            if (snap?.Known?.NeutralSightings != null)
+                result.AddRange(snap.Known.NeutralSightings
+                    .Where(s => s.Defenders != null && s.Defenders.Count > 0)
+                    .Select(s => s.Defenders));
 
             // An event guard is not a live ArmyData until triggered. Its legitimately observed
             // defender profiles already belong to Known, so use those directly for WorthIt;
