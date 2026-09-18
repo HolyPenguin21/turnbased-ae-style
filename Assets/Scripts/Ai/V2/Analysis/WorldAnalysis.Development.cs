@@ -133,9 +133,22 @@ namespace Game.Ai.V2
             rd.AssemblerCardInHand = assemblerCardInHand;
             rd.DevPathViable = rd.AnyFacilityWithHero || facilities.Count > 0 || facilityCardInHand;
             rd.BestSuccessChance = offerings.Count > 0 ? offerings.Max(o => o.SuccessChance) : 0f;
-            rd.SurplusFraction = SurplusFraction(player, root, ctx);
+
+            float investmentSurplus = SurplusFraction(player, root, ctx);
+            bool hasExecutableOffering = offerings.Any(o => facilities.Any(f =>
+                f.Mode == o.Mode && f.Hex.Equals(o.FacilityHex) && f.HasHero && !f.Contested));
+            rd.SurplusFraction = DevelopmentRadarSurplus(investmentSurplus, hasExecutableOffering);
             return rd;
         }
+
+        // READY generation options have already passed ResearchProductionSystem affordability and
+        // StrategicSpendability for every resource they actually consume in GenerationSource.
+        // Applying the four-resource investment minimum again would make an unrelated empty
+        // resource (for example Tech on an Energy+Materials Equipment) suppress legal production.
+        // Without an executable ready offering, keep the coarse all-resource signal for the
+        // infrastructure/latent-investment lane exactly as before.
+        internal static float DevelopmentRadarSurplus(float investmentSurplus, bool hasExecutableOffering)
+            => hasExecutableOffering ? 1f : Mathf.Clamp01(investmentSurplus);
 
         // Coarse, four-resource readiness for the RADAR / infrastructure-investment context,
         // not a gate for an individual Equipment chain. Its resource pool must come from the
