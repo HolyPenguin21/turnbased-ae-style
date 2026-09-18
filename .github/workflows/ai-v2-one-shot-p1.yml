@@ -7,48 +7,36 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: "github.event.head_commit.message == 'chore(ai-v2): recover P0 transport and apply patch'"
+    if: "github.event.head_commit.message == 'chore(ai-v2): apply checksum-repaired P0 patch'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Recover checksum-verified transport and apply scoped P0
+      - name: Verify exact source patch and apply
         shell: bash
         run: |
           set -euo pipefail
           node - <<'JS'
-          const fs = require('fs');
-          const crypto = require('crypto');
-          const zlib = require('zlib');
+          const fs = require('fs'), crypto = require('crypto'), zlib = require('zlib');
           const sha = s => crypto.createHash('sha256').update(s).digest('hex');
           const expectedSegments = ['0497d614b3c8', '62ee58759be2', '0d8548a656b0', '2b6fcf08bd73', '1fa236de8da3', 'd6bc862ba20e'];
-          const segments = Array.from({length: 6}, (_, i) => fs.readFileSync(`.github/p0-patch-${i}.txt`, 'utf8').trim());
-          for (let i = 0; i < segments.length; i++) {
-            if (sha(segments[i]).startsWith(expectedSegments[i])) continue;
-            if (i !== 4 || segments[i].length !== 2999) throw Error(`unexpected segment ${i} length/hash`);
-            // The transport diagnostics proved precisely one dropped base64 character in segment 4.
-            // Recover only the unique insertion whose checksum matches the locally reviewed segment.
-            const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-            let matches = [];
-            for (let position = 0; position <= segments[i].length; position++) {
-              for (const ch of alphabet) {
-                const candidate = segments[i].slice(0, position) + ch + segments[i].slice(position);
-                if (sha(candidate).startsWith(expectedSegments[i])) matches.push(candidate);
-              }
-            }
-            if (matches.length !== 1) throw Error(`segment recovery not unique: ${matches.length}`);
-            segments[i] = matches[0];
-            console.log(`Restored segment ${i} with unique checksum match`);
+          const segments = Array.from({length:6}, (_,i) => fs.readFileSync(`.github/p0-patch-${i}.txt`, 'utf8').trim());
+          if (segments[4].length !== 2999 || !sha(segments[4]).startsWith('1dc5bed3e24f'))
+            throw Error('unexpected transport corruption; refuse patch');
+          // Compare with checked original: a single 2-character sequence was transcribed as 1 character.
+          const wrong = 'WPrQO5r7J44', correct = 'WPrQO5r7jL44';
+          if (segments[4].split(wrong).length !== 2) throw Error('transport replacement anchor drift');
+          segments[4] = segments[4].replace(wrong, correct);
+          for (let i=0;i<segments.length;i++) {
+            console.log(`segment ${i}: len=${segments[i].length} sha=${sha(segments[i]).slice(0,12)}`);
+            if (!sha(segments[i]).startsWith(expectedSegments[i])) throw Error(`segment ${i} checksum mismatch`);
           }
-          for (let i=0; i<segments.length; i++)
-            if (!sha(segments[i]).startsWith(expectedSegments[i])) throw Error(`segment ${i} mismatch`);
           const patch = zlib.brotliDecompressSync(Buffer.from(segments.join(''), 'base64'));
-          const actual = sha(patch);
-          const expected = 'c414de6295bf26a2a9efe76688060be79420040322e975fc5110f03f6a73d7d1';
+          const actual = sha(patch), expected = 'c414de6295bf26a2a9efe76688060be79420040322e975fc5110f03f6a73d7d1';
           if (actual !== expected) throw Error(`source patch checksum mismatch: ${actual}`);
-          fs.writeFileSync('/tmp/ai-v2-p0.patch', patch);
-          console.log(`Verified P0 patch SHA256=${actual}, size=${patch.length}`);
+          fs.writeFileSync('/tmp/ai-v2-p0.patch',patch);
+          console.log(`Verified exact patch sha256=${actual}, ${patch.length} bytes`);
           JS
           git apply --check /tmp/ai-v2-p0.patch
           git apply /tmp/ai-v2-p0.patch
