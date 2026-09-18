@@ -124,6 +124,34 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void RecipientStatusDoesNotCreateValueWithoutARealDifference()
+        {
+            var hand = new DevelopmentOpportunity
+            {
+                RecipientKind = DevRecipientKind.HandCard,
+                ExpectedGain = 10f,
+            };
+            var garrison = new DevelopmentOpportunity
+            {
+                RecipientKind = DevRecipientKind.GarrisonUnit,
+                ExpectedGain = 10f,
+            };
+            var field = new DevelopmentOpportunity
+            {
+                RecipientKind = DevRecipientKind.FieldUnit,
+                ExpectedGain = 10f,
+            };
+
+            float handValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(hand, null, null);
+            float garrisonValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(garrison, null, null);
+            float fieldValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(field, null, null);
+
+            Assert.That(garrisonValue, Is.EqualTo(handValue).Within(0.0001f));
+            Assert.That(fieldValue, Is.EqualTo(handValue).Within(0.0001f),
+                "Hand/garrison/field status must not recreate the removed fixed recipient multipliers");
+        }
+
+        [Test]
         public void HiddenEnemyCoordinatesAndIdentityCannotAffectCompositionOnlyFit()
         {
             var host = new CardData(new CardDefinition
