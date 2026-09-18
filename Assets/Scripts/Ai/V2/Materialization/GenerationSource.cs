@@ -5,7 +5,6 @@ using Game.Economy;
 using Game.Map;
 using Game.Players;
 using Game.Units;
-using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -113,31 +112,17 @@ namespace Game.Ai.V2
             return "unplaced";
         }
 
-        // Source-level resource gate: do not offer a card whose cost would consume resources
-        // already reserved elsewhere. AI-MGR-02 §P1.5 — the canonical "spendable" is the SAME one
-        // the end-of-turn tempo arbiter uses: the strategic reservation ledger AND the legacy
-        // recon-air reservation, whichever is tighter — so planning affordability == execution
-        // affordability. No arbitrary post-spend minimum is imposed here.
+        // Source enumeration must use the SAME owner-aware spendability authority as
+        // MaterializationFeasibility and WorldAnalysis.Development. Duplicating the ledger
+        // intersection here made the legality and reservation rules drift independently.
+        // Only the actually consumed resource types are checked by the canonical helper.
         internal static bool FitsReservedAffordability(PlayerRoot root, PlayerSetupData player,
             AiTurnContext ctx, CardDefinition card)
         {
-            ResourceCost cost = card.resourceCost;
-            if (cost == null)
-                return true;
-            foreach (ResourceType t in ResourceBundle.All)
-            {
-                int need = cost.Get(t);
-                if (need <= 0)
-                    continue;
-                float legacy = AiResourceReservation.Available(root, player, t);
-                float strategic = ctx != null
-                    ? StrategicResourceReservationLedger.Spendable(
-                        player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t), root.GetResource(t))
-                    : float.MaxValue;
-                if (Mathf.Min(legacy, strategic) < need)
-                    return false;
-            }
-            return true;
+            if (root == null || card == null)
+                return false;
+            return StrategicSpendability.FitsSpendableResources(
+                player, root, ctx, card.resourceCost);
         }
     }
 }
