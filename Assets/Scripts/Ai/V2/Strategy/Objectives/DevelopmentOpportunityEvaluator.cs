@@ -151,7 +151,11 @@ namespace Game.Ai.V2
                     || Game.Combat.BattleInitiator.FindEnemyAt(hex, player) != null)
                     continue;
                 bool facilityReady = building.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode));
-                if (snap.Development?.Facilities?.Any(f => f.Mode == mode && f.HasHero && !f.Contested) == true
+                // A staffed facility at base A must not silently veto staffing a separate
+                // already-built facility at base B. The duplicate-construction guard below
+                // remains global for the same mode; only the ready-site check is site-local.
+                if (snap.Development?.Facilities?.Any(f => f.Mode == mode && f.Hex.Equals(hex)
+                        && f.HasHero && !f.Contested) == true
                     || (!facilityReady && snap.Development?.Facilities?.Any(f => f.Mode == mode) == true))
                     continue;
                 UnitData actor = ResearchProductionSystem.FindActor(player, hex, mode);
