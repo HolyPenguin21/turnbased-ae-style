@@ -1,21 +1,19 @@
 using UnityEngine;
-using UnityEngine.Serialization;
 
 namespace Game.UI
 {
     // Hook these methods up to Button OnClick events in the MainMenu scene.
     public class MainMenuController : MonoBehaviour
     {
-        [SerializeField] private GameObject mainMenuCanvas;
-        [FormerlySerializedAs("gameSetupPanel")]
-        [SerializeField] private GameObject gameSetupCanvas;
+        [SerializeField] private GameObject mainMenuPanel;
+        [SerializeField] private GameObject gameSetupPanel;
 
         private void Update()
         {
-            // Guarded by mainMenuCanvas's own active state — this component isn't disabled
+            // Guarded by mainMenuPanel's own active state — this component isn't disabled
             // when the setup screen takes over, so Space would otherwise keep re-triggering
             // "New Game" from there too.
-            if (mainMenuCanvas != null && !mainMenuCanvas.activeSelf)
+            if (mainMenuPanel != null && !mainMenuPanel.activeSelf)
                 return;
 
             if (UIFocusUtility.WasSpacePressed())
@@ -24,10 +22,10 @@ namespace Game.UI
 
         public void OnNewGameClicked()
         {
-            if (gameSetupCanvas != null)
-                gameSetupCanvas.SetActive(true);
-            if (mainMenuCanvas != null)
-                mainMenuCanvas.SetActive(false);
+            if (gameSetupPanel != null)
+                gameSetupPanel.SetActive(true);
+            if (mainMenuPanel != null)
+                mainMenuPanel.SetActive(false);
         }
 
         public void OnQuitClicked()

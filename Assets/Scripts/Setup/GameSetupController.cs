@@ -16,7 +16,7 @@ namespace Game.Setup
     {
         [SerializeField] private Transform playerListContainer;
         [SerializeField] private Button addPlayerButton;
-        [SerializeField] private GameObject mainMenuCanvas;
+        [SerializeField] private GameObject mainMenuPanel;
         [SerializeField] private GameConfig gameConfig;
 
         [Header("Map")]
@@ -34,7 +34,7 @@ namespace Game.Setup
         // This component lives on the setup panel itself, so Update() only ever runs while
         // that panel is the active one — no extra "is this screen showing" guard needed
         // (unlike MainMenuController, which sits on a persistently-active object watching a
-        // separate canvas). Skips while a nickname field is focused — otherwise typing a
+        // separate panel). Skips while a nickname field is focused — otherwise typing a
         // space into a player's name would also launch the game.
         private void Update()
         {
@@ -121,8 +121,8 @@ namespace Game.Setup
         public void OnBackClicked()
         {
             gameObject.SetActive(false);
-            if (mainMenuCanvas != null)
-                mainMenuCanvas.SetActive(true);
+            if (mainMenuPanel != null)
+                mainMenuPanel.SetActive(true);
         }
 
         private void AddPlayerRow()
