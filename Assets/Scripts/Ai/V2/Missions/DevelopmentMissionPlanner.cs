@@ -71,9 +71,14 @@ namespace Game.Ai.V2
                 && !actor.HasActivatedThisTurn ? actor.ActivationApCost : 0f;
             // The garrison's entire roster is NOT the mover. Its legal, pinned extraction
             // envelope is calculated in Provisioning, using the canonical extraction tiers.
-            float desired = actor?.IsGarrison == true ? 0f : activation;
+            // A zero-cost reusable shell may exist, so keep ApMinimum at zero; but a
+            // fresh container can require CreateArmy AP. Reserve that conservative cost
+            // as the DESIRED (not only Maximum) envelope before lower-priority work
+            // spends it. Provisioning resolves the real Shell/Host/Create price and
+            // releases the difference through the existing allocator claim path.
             float upperBound = actor?.IsGarrison == true
                 ? ArmyActions.CreateArmyApCost : activation;
+            float desired = upperBound;
             var m = new MissionProposal
             {
                 Kind = MissionKind.Development, Target = target,
