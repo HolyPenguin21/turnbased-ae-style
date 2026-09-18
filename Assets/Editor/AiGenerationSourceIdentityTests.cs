@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using Game.Ai.V2;
 using Game.Cards;
+using Game.Map;
 using Game.Units;
 using NUnit.Framework;
 
