@@ -103,16 +103,24 @@ namespace Game.Ai.V2
                 foreach (CardData c in hand.Hand)
                 {
                     CardDefinition d = c?.Definition;
-                    if (d == null || d.grantedAbilities == null)
+                    if (d == null)
+                        continue;
+                    // Preparation and card deployment already use the canonical effective
+                    // ability projection. The readiness snapshot must not miss a qualified Hero
+                    // whose Researcher/Assembler ability comes from attached Equipment.
+                    IReadOnlyList<string> abilities = d.cardType == CardType.Hero
+                        ? MaterializationChainMatching.EffectiveAbilities(d, c.Equipment)
+                        : d.grantedAbilities;
+                    if (abilities == null)
                         continue;
                     if (d.cardType == CardType.Facility
-                        && (d.grantedAbilities.Contains(UnitAbilities.Research)
-                            || d.grantedAbilities.Contains(UnitAbilities.Production)))
+                        && (abilities.Contains(UnitAbilities.Research)
+                            || abilities.Contains(UnitAbilities.Production)))
                         facilityCardInHand = true;
                     if (d.cardType == CardType.Hero)
                     {
-                        if (d.grantedAbilities.Contains(UnitAbilities.Researcher)) researcherCardInHand = true;
-                        if (d.grantedAbilities.Contains(UnitAbilities.Assembler)) assemblerCardInHand = true;
+                        if (abilities.Contains(UnitAbilities.Researcher)) researcherCardInHand = true;
+                        if (abilities.Contains(UnitAbilities.Assembler)) assemblerCardInHand = true;
                     }
                 }
 
