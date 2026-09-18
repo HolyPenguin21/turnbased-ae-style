@@ -134,6 +134,12 @@ namespace Game.Ai.V2
             rd.DevPathViable = rd.AnyFacilityWithHero || facilities.Count > 0 || facilityCardInHand;
             rd.BestSuccessChance = offerings.Count > 0 ? offerings.Max(o => o.SuccessChance) : 0f;
 
+            // Operational generation is priced from the concrete chain by StrategicCardEvaluator /
+            // StrategicSpendability. Do not reintroduce a global weakest-resource multiplier here.
+            // Keeping this explicit makes every runtime snapshot neutral even while the legacy
+            // diagnostic field remains on DevelopmentReadiness for old tests/snapshots.
+            rd.ProductionSupport = 1f;
+
             float investmentSurplus = SurplusFraction(player, root, ctx);
             bool hasExecutableOffering = offerings.Any(o => facilities.Any(f =>
                 f.Mode == o.Mode && f.Hex.Equals(o.FacilityHex) && f.HasHero && !f.Contested));
