@@ -340,6 +340,18 @@ namespace Game.Ai
         // itself.
         private static int _currentTurn;
 
+        // Bumped on every write that could change what SafeStepPathing's SafeRouteBlocker
+        // returns for ANY hex/owner — a known enemy/neutral sighting appearing, moving or
+        // expiring (EnemySightings), or a scout-danger zone being marked/pruned
+        // (ScoutDangerZones). SafeStepPathing's route cache compares its own last-seen value of
+        // this against RouteMemoryVersion before trusting a cached path, so a route computed
+        // before a relevant memory change is never handed out after it. Deliberately coarse (one
+        // counter for all players/hexes, and OnVisibilityChanged bumps it even when only
+        // KnownResourceHexes/KnownBuildings/KnownEventGuards actually changed) — correctness over
+        // precision, since this is just an int compare, not a new lookup structure.
+        private static int _routeMemoryVersion;
+        public static int RouteMemoryVersion => _routeMemoryVersion;
+
         // Idempotent — safe to call every new-game setup without risking a doubled subscription
         // (see CitadelSetupController, which calls this alongside VisionSystem.Clear/Configure).
         public static void EnsureSubscribed(HexMap map = null)
@@ -389,6 +401,7 @@ namespace Game.Ai
             RaidPlanRejected.Clear();
             _currentTurn = 0;
             _map = null;
+            _routeMemoryVersion++;
         }
 
         // The memory layer classifies ownerless physical encounter armies with explicit neutrals;
@@ -432,6 +445,7 @@ namespace Game.Ai
                         (stale ?? (stale = new List<int>())).Add(kv.Key);
                 }
                 if (stale != null)
+                {
                     foreach (int armyId in stale)
                     {
                         AiDebugLog.Write($"[AI] {actor.Nickname}: memory — army sighting \"{sightings[armyId].Name}\" "
@@ -439,10 +453,13 @@ namespace Game.Ai
                             + $"{AiConfig.enemySightingMemoryTurns} turns.");
                         sightings.Remove(armyId);
                     }
+                    _routeMemoryVersion++;
+                }
             }
 
-            if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
-                zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn);
+            if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
+                && zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn) > 0)
+                _routeMemoryVersion++;
         }
 
         // Called by VisitHexTask.TryFlee the moment a retreat actually triggers — `center` is the
@@ -466,9 +483,11 @@ namespace Game.Ai
                 existing.Radius = radius;
                 if (avoidUntilTurn > existing.AvoidUntilTurn)
                     existing.AvoidUntilTurn = avoidUntilTurn;
+                _routeMemoryVersion++;
                 return;
             }
             zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
+            _routeMemoryVersion++;
         }
 
         // VisitHexTask's own FindTarget/FindNextSafeStep read this to keep a Recce scout out of a
@@ -713,6 +732,10 @@ namespace Game.Ai
                     buildings.Remove(hex);
                 }
             }
+            // Coarse: this whole method just ran, so treat it as a potential route-relevant
+            // change even if only KnownResourceHexes/KnownBuildings/KnownEventGuards actually
+            // moved this call — see RouteMemoryVersion's own comment.
+            _routeMemoryVersion++;
         }
 
         // The event's own guard just got beaten for real (reward claimed) — a genuine world-state

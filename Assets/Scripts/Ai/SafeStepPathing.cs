@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -55,9 +56,9 @@ namespace Game.Ai
         {
             if (map == null || owner == null)
                 return int.MaxValue;
-            HexPath path = HexPathfinder.FindPath(map, from, targetHex,
-                blockHex: SafeRouteBlocker(map, owner, targetHex, maxMovement));
-            return path?.TotalCost ?? int.MaxValue;
+            // Shares the cache with FindSafePath below — reads TotalCost off whatever's cached,
+            // never needing its own copy since an int is immutable.
+            return GetRoute(map, owner, from, targetHex, maxMovement)?.TotalCost ?? int.MaxValue;
         }
 
         // Same canonical route as FindSafePathCost, but returns the actual hex sequence so a
@@ -71,8 +72,43 @@ namespace Game.Ai
         {
             if (map == null || owner == null)
                 return null;
-            return HexPathfinder.FindPath(map, from, targetHex,
+            HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement);
+            // Never hand out the cached instance itself — HexPath.Hexes is a mutable List behind
+            // a readonly reference, and this same cached object can be returned again to a
+            // different caller for the rest of the AI turn. A defensive copy here means every
+            // caller keeps the "it's mine to do whatever with" contract FindSafePath always had,
+            // without every one of them having to remember to .ToList() it themselves.
+            return cached == null ? null : new HexPath(new List<HexCoord>(cached.Hexes), cached.TotalCost);
+        }
+
+        // Route cache, valid for as long as `map` and AiMapMemory.RouteMemoryVersion stay the
+        // same as they were on the call that populated it (see RouteMemoryVersion's own comment
+        // — bumped on every memory write that could change SafeRouteBlocker's answer for any
+        // hex). Deliberately self-invalidating on every access rather than requiring an explicit
+        // BeginTurn hook: a route computed for one AI player's turn is never reused once that
+        // player's memory (or the map itself) has moved on, whether or not every call site
+        // remembers to announce a new turn.
+        private static readonly Dictionary<(PlayerSetupData owner, HexCoord from, HexCoord target, int? maxMovement), HexPath>
+            _routeCache = new Dictionary<(PlayerSetupData, HexCoord, HexCoord, int?), HexPath>();
+        private static HexMap _cacheMap;
+        private static int _cacheMemoryVersion = -1;
+
+        private static HexPath GetRoute(HexMap map, PlayerSetupData owner,
+            HexCoord from, HexCoord targetHex, int? maxMovement)
+        {
+            if (map != _cacheMap || AiMapMemory.RouteMemoryVersion != _cacheMemoryVersion)
+            {
+                _routeCache.Clear();
+                _cacheMap = map;
+                _cacheMemoryVersion = AiMapMemory.RouteMemoryVersion;
+            }
+            var key = (owner, from, targetHex, maxMovement);
+            if (_routeCache.TryGetValue(key, out HexPath cached))
+                return cached;
+            HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
                 blockHex: SafeRouteBlocker(map, owner, targetHex, maxMovement));
+            _routeCache[key] = computed;
+            return computed;
         }
 
         // No map/maxMovement here — FindNextSafeStep's own caller, AiTurnController.
