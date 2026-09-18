@@ -5,19 +5,17 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // Shows/hides a UI panel with the selected hex's action buttons (Garrison/Base). Hidden by
-    // default (see Awake) — build the actual Canvas/panel hierarchy in the editor and wire the
-    // references here.
+    // default via panelRoot's own inactive state in the scene/prefab — build the actual Canvas/
+    // panel hierarchy in the editor and wire the references here. Deliberately no Awake() hiding
+    // it too: panelRoot IS this component's own GameObject in the current scene, and that
+    // GameObject starts inactive, so Awake() wouldn't run until the first SetActive(true) below
+    // triggers it — at which point it would immediately re-hide the panel it was just asked to
+    // show.
     public class HexInfoPanelUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private Button garrisonButton;
         [SerializeField] private Button baseButton;
-
-        private void Awake()
-        {
-            if (panelRoot != null)
-                panelRoot.SetActive(false);
-        }
 
         public void ShowHex()
         {
