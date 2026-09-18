@@ -277,7 +277,8 @@ namespace Game.Ai.V2
                         c.plan, c.followupAp, fillerPlans, root, player, ctx, hand, genRemaining)
                     : 0;
                 c.plan.Score = ScorePlanA(c.plan, demand, c.proj, inv, referenceMoveMax,
-                    hasCompetingHeroDemand, snap, witnessedUsefulApDemand, projectedLegalFillers);
+                    hasCompetingHeroDemand, snap, witnessedUsefulApDemand, projectedLegalFillers,
+                    player, root, ctx);
             }
 
             // AI-MGR-01 P0 review-r3 — DecisionScore = Play - Hold + urgency, computed ONCE here.
@@ -469,11 +470,13 @@ namespace Game.Ai.V2
         // still carries the Scout capability-quality breakdown + the new use breakdown for logging.
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
             CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand, WorldSnapshot snap,
-            float? witnessedUsefulApDemand, int projectedLegalFillers)
+            float? witnessedUsefulApDemand, int projectedLegalFillers,
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreForDemand(
                 p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap,
-                witnessedUsefulApDemand, projectedLegalFillers);
+                witnessedUsefulApDemand, projectedLegalFillers,
+                type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);
             p.QualityBreakdown = cand.QualityBreakdown;
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;

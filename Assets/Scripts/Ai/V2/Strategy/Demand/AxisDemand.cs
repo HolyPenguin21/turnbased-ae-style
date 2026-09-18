@@ -129,13 +129,19 @@ namespace Game.Ai.V2
         {
             if (demand == null)
                 return 0f;
-            bool legacyDevelopment = demand.RequestingAxis == DesireAxis.Development;
-            float lo = legacyDevelopment
-                ? AiConfigV2.stratHoldUrgencyRampLo : AiConfigV2.taskScoreUrgencyRampLo;
-            float hi = legacyDevelopment
-                ? AiConfigV2.stratHoldUrgencyRampHi : AiConfigV2.taskScoreUrgencyRampHi;
-            return Mathf.Clamp01((demand.Value - lo) / Mathf.Max(0.01f, hi - lo));
+            if (demand.RequestingAxis != DesireAxis.Development)
+                return NormalizedWorldValue(demand.Value);
+            return Mathf.Clamp01((demand.Value - AiConfigV2.stratHoldUrgencyRampLo)
+                / Mathf.Max(0.01f,
+                    AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
         }
+
+        // Verified AGG/RCN resource blocks carry the same migrated world TaskScore.Value.
+        // Keep both urgency consumers on this one existing scale adapter.
+        internal static float NormalizedWorldValue(float value) =>
+            Mathf.Clamp01((value - AiConfigV2.taskScoreUrgencyRampLo)
+                / Mathf.Max(0.01f,
+                    AiConfigV2.taskScoreUrgencyRampHi - AiConfigV2.taskScoreUrgencyRampLo));
 
         internal static float Bonus(AxisDemand demand) =>
             Normalized(demand) * AiConfigV2.stratHoldUrgencyMax;
