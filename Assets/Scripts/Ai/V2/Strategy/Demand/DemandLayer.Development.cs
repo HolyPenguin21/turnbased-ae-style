@@ -33,13 +33,14 @@ namespace Game.Ai.V2
             }
 
             AiHandData hand = AiHandRegistry.Peek(player);
-            bool SupportsNeed(DevelopmentOpportunity op) =>
-                HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player, s);
             int operatorPrerequisites = 0;
-            // Only prepare a mode/site with a concrete supported output, recipient and operator.
+            // An investment is justified by its own legal output, positive recipient gain and EV,
+            // not by a currently active Recon/Economy/Raid mission. EnumeratePreparation owns the
+            // actual catalog/recipient/operator/preparation-cost checks. Other demands may provide
+            // context to its evaluator, but cannot veto an independent production investment.
             // One best prerequisite per pass; the next settled pass sees the completed stage.
             DevelopmentOpportunity preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
-                s, player, root, hand, ctx, SupportsNeed).FirstOrDefault();
+                s, player, root, hand, ctx, op => op != null && op.ExpectedGain > 0f).FirstOrDefault();
             if (preparation != null)
             {
                 bool facilityReady = s.Development?.Facilities?.Any(f => f.Mode == preparation.Mode
@@ -58,25 +59,18 @@ namespace Game.Ai.V2
                     Explain = preparation.Explain,
                 };
             }
-            // Filter recipients BEFORE selecting the best one for each offering. Otherwise an
-            // unsupported combat upgrade can hide a smaller, useful Recon improvement.
+            // Filter illegal recipients before selecting the best one for each offering. The
+            // opportunity evaluator already does this via CanAttach and signed card utility;
+            // demanding a witness from another axis here would block useful autonomous Production.
             if (root != null && hand != null)
                 devOpportunities = DevelopmentOpportunityEvaluator.Enumerate(
-                    s, player, root, hand, null, SupportsNeed);
+                    s, player, root, hand, null);
             // An unstaffed mode must not suppress real opportunities from another ready mode.
             int emitted = 0;
             if (devOpportunities != null)
                 foreach (DevelopmentOpportunity op in devOpportunities)
                 {
                     if (op == null || op.BaseValue <= 0f) continue;
-                    if (!HasSupportedDevelopmentAxisDemand(
-                        op, formedDemands, activeIntents, player, s))
-                    {
-                        AiDebugLog.Write($"[AI][V2][Demand][Development] decision=REJECT "
-                            + $"card={op.Card?.displayName ?? "?"} recipient={op.RecipientLabel ?? "?"} "
-                            + "reason=no_supported_axis_demand");
-                        continue;
-                    }
                     emitted++;
                     yield return new AxisDemand
                     {
@@ -97,7 +91,7 @@ namespace Game.Ai.V2
                     + "reason=facility_ready_scored_opportunities");
             else if (operatorPrerequisites == 0)
                 AiDebugLog.Write("[AI][V2][Demand][Development] decision=SATISFIED "
-                    + "reason=no_supported_profitable_development_use");
+                    + "reason=no_profitable_development_use");
         }
 
 
@@ -306,4 +300,3 @@ namespace Game.Ai.V2
 
     }
 }
-
