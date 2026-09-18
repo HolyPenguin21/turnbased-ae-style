@@ -7,33 +7,22 @@ using UnityEngine;
 
 namespace Game.Ai
 {
-    // Layer-neutral scout-movement support (not V1, not V2 — both call it). Answers: given an
-    // army heading for a target, what is the next hex it should step to while routing AROUND
-    // remembered (fog-of-war-honest) enemy/neutral sightings and still-cooling scout-danger
-    // hexes? Extracted verbatim from the former Game.Ai.VisitHexTask (ARCH-01, 2026-09-04).
-    //
-    // Only a REMEMBERED army on the path is blocked (AiMapMemory.KnownEnemySightingAt — honest,
-    // fog-of-war-respecting, enemy AND neutral alike), never fog itself: the whole point of a
-    // scout is to walk into unseen ground. `targetHex` is exempt regardless — the caller already
-    // refuses to pick a destination with a known sighting on or near it; this only guards the
-    // hexes along the WAY. Null when no such route exists yet — treat as "nothing to do this
-    // step", not a reason to abandon the target.
+    // Layer-neutral, fog-honest routing shared by planning and execution. Route sequences
+    // retain HexPathfinder's destination-specific straightness tie break; cost-only fields
+    // below are used only where Economy needs a minimum cost, never a route/threat witness.
     public static class SafeStepPathing
     {
         public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex)
         {
             if (map == null || army == null)
                 return null;
-            // Routed through the shared AiTurnController.FindAffordableStep — this path (blocked
-            // around known sightings) can differ from an unblocked one, so THIS is the path whose
-            // first step must be checked against army.CurrentMovement.
+            EnsureCacheState(map, army.Owner);
+            // Execution still searches live with CurrentMovement and its own air/ground rule;
+            // only the equivalent remembered blocker membership is shared with planning.
             return AiTurnController.FindAffordableStep(map, army, targetHex,
                 SafeRouteBlocker(army, targetHex));
         }
 
-        // Canonical cost of the same fog-honest route FindNextSafeStep executes. Analysis freezes
-        // this witness into Economy opportunities; Provisioning re-runs it live immediately before
-        // binding. Keeping the blocker here prevents planning/execution from drifting.
         public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex)
         {
             if (map == null || army == null)
@@ -41,16 +30,8 @@ namespace Game.Ai
             return FindSafePathCost(map, army.Owner, army.Hex, targetHex, army.MaxMovement);
         }
 
-        // Same canonical blocker for a projected leg whose mover is not physically standing at
-        // `from` yet (Economy uses it for the post-build return leg). This keeps outbound and
-        // return costing on the exact route policy execution already uses.
-        //
-        // `maxMovement` — when given, hard-blocks any hex whose entry cost exceeds it, the same
-        // way a known sighting is hard-blocked: such a hex is impassable for this mover no
-        // matter how many turns it waits, so the search itself must route around it instead of
-        // returning the globally-cheapest route (which may run straight through it) for the
-        // caller to reject only after the fact (see WorldAnalysis's own per-hex MaxMovement
-        // check, bd283fb — this generalises that guard into the search).
+        // Projected legs (including Economy's return journeys) use the same blocker and
+        // maxMovement policy as executed ground movement.
         public static int FindSafePathCost(HexMap map, PlayerSetupData owner,
             HexCoord from, HexCoord targetHex, int? maxMovement = null)
         {
@@ -59,39 +40,94 @@ namespace Game.Ai
             return GetRoute(map, owner, from, targetHex, maxMovement)?.TotalCost ?? int.MaxValue;
         }
 
-        // Same canonical route as FindSafePathCost, but returns the actual hex sequence so a
-        // caller can check per-hex terrain cost against a specific mover's MaxMovement — a
-        // finite TotalCost only proves a route exists over however many turns it takes; it says
-        // nothing about whether any single hex on it costs more to enter than the mover can ever
-        // have in one turn (impassable for that mover regardless of turns banked). Passing
-        // `maxMovement` makes the search itself honour that instead of leaving it to the caller.
         public static HexPath FindSafePath(HexMap map, PlayerSetupData owner,
             HexCoord from, HexCoord targetHex, int? maxMovement = null)
         {
             if (map == null || owner == null)
                 return null;
             HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement);
-            // HexPath.Hexes is a mutable List behind a readonly reference. Never let a caller
-            // alter the shared witness used by another consumer (including the cost-only API).
+            // HexPath.Hexes is mutable. Never expose the cached witness to a caller that may
+            // edit it and silently change subsequent paths and cost-only reads.
             return cached == null ? null : new HexPath(new List<HexCoord>(cached.Hexes), cached.TotalCost);
         }
 
-        // AiMapMemory.RouteMemoryVersion is deliberately coarse: observing a resource or a
-        // building bumps it even when no route blocker changed. Keep a snapshot of the actual
-        // remembered blocker HEXES for this player. When the version changes, compare sets before
-        // discarding expensive routes; this also catches a newly cleared blocker that could
-        // permit a shorter route OUTSIDE the old path (checking only old path hexes would not).
-        // Restrict to one owner/map at a time to avoid retaining stale snapshots for other players.
-        // Bounded capacity prevents growth across turns when those inputs legitimately stay stable.
+        // Economy's PreparationTravelCost is min(base -> target), for many target hexes but
+        // fixed base positions. One forward cost field per base is built lazily and reused
+        // across candidates, refreshes and turns while map and remembered blockers stay equal.
+        // A blocked TARGET is terminal, not transit, matching FindSafePathCost's exemption.
+        public static int FindSafeBasePreparationCost(HexMap map, PlayerSetupData owner,
+            IReadOnlyList<HexCoord> baseHexes, HexCoord target)
+        {
+            if (map == null || owner == null || baseHexes == null || baseHexes.Count == 0)
+                return int.MaxValue;
+            EnsureCacheState(map, owner);
+            int minimum = int.MaxValue;
+            for (int i = 0; i < baseHexes.Count; i++)
+            {
+                HexCoord home = baseHexes[i];
+                if (!_baseCostFields.TryGetValue(home, out Dictionary<HexCoord, int> field))
+                {
+                    if (_baseCostFields.Count >= MaxCostFields)
+                        _baseCostFields.Clear();
+                    field = HexPathfinder.FindCosts(map, new[] { home },
+                        hex => _cachedMemoryBlockers.Contains(hex));
+                    _baseCostFields[home] = field;
+                }
+                if (field.TryGetValue(target, out int cost) && cost < minimum)
+                    minimum = cost;
+            }
+            return minimum;
+        }
+
+        // Return travel is target -> nearest base, NOT base -> target: entering-hex terrain
+        // makes the two directions asymmetric. One reverse multi-source cost field gives the
+        // exact minimum for every target at a specific mover MaxMovement. A blocked start can
+        // leave its hex, a blocked base is destination-exempt, and blocked intermediates cannot
+        // be crossed, exactly as in FindSafePathCost.
+        public static int FindNearestBaseReturnCost(HexMap map, PlayerSetupData owner,
+            HexCoord from, IReadOnlyList<HexCoord> baseHexes, int maxMovement)
+        {
+            if (map == null || owner == null || baseHexes == null || baseHexes.Count == 0)
+                return int.MaxValue;
+            EnsureCacheState(map, owner);
+            if (!_returnCostFields.TryGetValue(maxMovement, out ReturnCostField field)
+                || !field.Bases.SetEquals(baseHexes))
+            {
+                if (_returnCostFields.Count >= MaxCostFields)
+                    _returnCostFields.Clear();
+                field = new ReturnCostField
+                {
+                    Bases = new HashSet<HexCoord>(baseHexes),
+                    Costs = HexPathfinder.FindCosts(map, baseHexes,
+                        hex => _cachedMemoryBlockers.Contains(hex), maxMovement, reverse: true)
+                };
+                _returnCostFields[maxMovement] = field;
+            }
+            return field.Costs.TryGetValue(from, out int cost) ? cost : int.MaxValue;
+        }
+
         private const int MaxCachedRoutes = 512;
+        private const int MaxCostFields = 32;
         private static readonly Dictionary<(PlayerSetupData owner, HexCoord from, HexCoord target, int? maxMovement), HexPath>
             _routeCache = new Dictionary<(PlayerSetupData, HexCoord, HexCoord, int?), HexPath>();
+        private static readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> _baseCostFields =
+            new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
+        private sealed class ReturnCostField
+        {
+            public HashSet<HexCoord> Bases;
+            public Dictionary<HexCoord, int> Costs;
+        }
+        private static readonly Dictionary<int, ReturnCostField> _returnCostFields =
+            new Dictionary<int, ReturnCostField>();
         private static HexMap _cacheMap;
         private static int _cacheMapVersion = -1;
         private static PlayerSetupData _cacheOwner;
         private static int _cacheMemoryVersion = -1;
         private static HashSet<HexCoord> _cachedMemoryBlockers;
 
+        // AiMapMemory's version is intentionally coarse; resource/building observations can
+        // bump it without changing a route. Compare the complete blocker set before clearing
+        // anything, including the newly unblocked cells OUTSIDE a previously cached path.
         private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner)
         {
             var blocked = new HashSet<HexCoord>();
@@ -99,21 +135,25 @@ namespace Game.Ai
                 blocked.Add(sighting.Hex);
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner))
                 blocked.Add(sighting.Hex);
-            // ScoutDangerZones has no public enumeration API. Check the actual map cells using
-            // its canonical predicate rather than duplicating zone geometry or accessing internals.
             foreach (HexCoord hex in map.AllCoords)
                 if (AiMapMemory.IsScoutDangerous(owner, hex))
                     blocked.Add(hex);
             return blocked;
         }
 
-        private static HexPath GetRoute(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement)
+        private static void ClearCachedPathsAndFields()
+        {
+            _routeCache.Clear();
+            _baseCostFields.Clear();
+            _returnCostFields.Clear();
+        }
+
+        private static void EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
             int memoryVersion = AiMapMemory.RouteMemoryVersion;
             if (map != _cacheMap || map.PathingVersion != _cacheMapVersion || owner != _cacheOwner)
             {
-                _routeCache.Clear();
+                ClearCachedPathsAndFields();
                 _cacheMap = map;
                 _cacheMapVersion = map.PathingVersion;
                 _cacheOwner = owner;
@@ -122,18 +162,21 @@ namespace Game.Ai
             }
             else if (memoryVersion != _cacheMemoryVersion)
             {
-                HashSet<HexCoord> currentBlockers = CaptureMemoryBlockers(map, owner);
-                if (_cachedMemoryBlockers == null || !_cachedMemoryBlockers.SetEquals(currentBlockers))
-                    _routeCache.Clear();
-                _cachedMemoryBlockers = currentBlockers;
+                HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
+                if (_cachedMemoryBlockers == null || !_cachedMemoryBlockers.SetEquals(current))
+                    ClearCachedPathsAndFields();
+                _cachedMemoryBlockers = current;
                 _cacheMemoryVersion = memoryVersion;
             }
+        }
 
+        private static HexPath GetRoute(HexMap map, PlayerSetupData owner,
+            HexCoord from, HexCoord targetHex, int? maxMovement)
+        {
+            EnsureCacheState(map, owner);
             var key = (owner, from, targetHex, maxMovement);
             if (_routeCache.TryGetValue(key, out HexPath cached))
                 return cached;
-            // A missing path (null) is a valid cached result, but only for this exact key and
-            // unchanged topology/blocker set. Limit entries even if no turn-boundary mutation occurs.
             if (_routeCache.Count >= MaxCachedRoutes)
                 _routeCache.Clear();
             HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
@@ -142,24 +185,27 @@ namespace Game.Ai
             return computed;
         }
 
-        // No map/maxMovement here — FindNextSafeStep's own caller, AiTurnController.
-        // FindAffordableStep, already hard-blocks any hex over this army's MaxMovement itself.
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
             ArmyData army, HexCoord targetHex) =>
             SafeRouteBlocker(null, army.Owner, targetHex, null);
 
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            HexMap map, PlayerSetupData owner, HexCoord targetHex, int? maxMovement) => hex =>
+            HexMap map, PlayerSetupData owner, HexCoord targetHex, int? maxMovement)
         {
-            if (!hex.Equals(targetHex)
-                && (AiMapMemory.KnownEnemySightingAt(owner, hex).HasValue
-                    || AiMapMemory.IsScoutDangerous(owner, hex)))
-                return true;
-            if (maxMovement.HasValue && map != null
-                && map.TryGetTerrainAt(hex, out TerrainTypeEntry entry)
-                && Mathf.Max(1, entry.moveCost) > maxMovement.Value)
-                return true;
-            return false;
-        };
+            // Every caller has already validated this owner/map via EnsureCacheState. Capture
+            // the immutable set so each expanded hex is one O(1) lookup instead of scanning
+            // EnemySightings (keyed by ArmyId) and all scout-danger zones repeatedly.
+            HashSet<HexCoord> blocked = _cachedMemoryBlockers;
+            return hex =>
+            {
+                if (!hex.Equals(targetHex) && blocked.Contains(hex))
+                    return true;
+                if (maxMovement.HasValue && map != null
+                    && map.TryGetTerrainAt(hex, out TerrainTypeEntry entry)
+                    && Mathf.Max(1, entry.moveCost) > maxMovement.Value)
+                    return true;
+                return false;
+            };
+        }
     }
 }
