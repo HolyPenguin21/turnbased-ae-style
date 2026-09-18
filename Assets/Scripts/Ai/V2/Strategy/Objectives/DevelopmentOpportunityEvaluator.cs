@@ -13,34 +13,12 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  DEVELOPMENT OPPORTUNITY EVALUATOR
     // ===========================================================================================
-    //  Turns the shared snapshot.Development readiness into concrete, EV-scored upgrade
-    //  opportunities. One opportunity = "run THIS catalog card at THIS facility to strengthen THIS
-    //  recipient". SCOPE: EQUIPMENT offerings only — this axis is "strengthen existing cards".
-    //  Non-Equipment R/P mints (a whole new Unit/Hero card) stay with the existing
-    //  GenerationSource / MaterializationCandidateBuilder path.
-    //
-    //  HOW A CARD IS PICKED
-    //      For every Equipment offering: find its BEST legal recipient (the one with the largest
-    //      signed strategic gain G, including lost roles/abilities), then score
-    //      EV = p*G*persistence - A_total - dynamicResourceCost - apCost,
-    //      keep it if EV > margin.
-    //      Phase A then executes the surviving opportunities in descending BaseValue, re-scoring
-    //      after each Challenge. "Which card gets created" == "highest EV that still passes the
-    //      live gates".
-    //
-    //      p       = ResearchProductionSystem.EstimateSuccessChance  (deterministic)
-    //      G       = signed stat + ability/role delta under the canonical card evaluator,
-    //                * recipient importance (raid-bound field unit > field > garrison > hand card)
-    //      A_total = MARGINAL value actually displaced by staking these resources this turn:
-    //                strongest affordable hand Unit before the stake minus strongest still
-    //                affordable after it, discounted by surplus depth (deep surplus -> ~0).
-    //                AP is deliberately excluded from this delta because it is priced separately.
-    //
-    //  NOT a scoring gate: the enemy-on-hex rule (facility contested) — that is a Phase-A
-    //  execution precondition only.
-    //
-    //  Like DemandLayer this is NOT a pure WorldSnapshot function: CanAttach / recipient
-    //  enumeration need live CardData / UnitData. Deliberate, same exception DemandLayer takes.
+    //  Turns the shared snapshot.Development readiness into concrete upgrade opportunities.
+    //  One opportunity = "run THIS catalog card at THIS facility for THIS recipient". Equipment
+    //  only: Unit/Hero generation stays with MaterializationChainEnumerator. Preparation owns the
+    //  prerequisite investment EV; a READY facility's operational card decision belongs to the
+    //  canonical StrategicCardEvaluator and Phase-A portfolio, not another investment EV gate.
+    //  The live recipient and Challenge admission remain gameplay-executor responsibilities.
     // ===========================================================================================
     public enum DevRecipientKind { HandCard, GarrisonUnit, FieldUnit }
 
@@ -48,21 +26,21 @@ namespace Game.Ai.V2
     {
         public ResearchProductionMode Mode;
         public HexCoord FacilityHex;
-        public CardDefinition Card;          // the Equipment card a won Challenge mints
-        public bool ProducesEquipment;       // always true (kept for symmetry with the offering)
+        public CardDefinition Card;
+        public bool ProducesEquipment;
         public ResourceBundle StakeCost;
         public float SuccessChance;
-        public GenerationStep Generation;    // exact operator/source selected by GenerationSource
+        public GenerationStep Generation;
         public CardData PreparationFacilityCard;
         public CardData PreparationOperatorCard;
 
         public DevRecipientKind RecipientKind;
-        public CardData RecipientCard;       // HandCard
-        public UnitData RecipientUnit;       // Garrison / Field
+        public CardData RecipientCard;
+        public UnitData RecipientUnit;
         public string RecipientLabel;
 
-        public float ExpectedGain;           // G — frozen once (recipient is structural)
-        public float AlternativeValue;       // A_total — re-scored each Phase-A round
+        public float ExpectedGain;
+        public float AlternativeValue;
         public float Ev;
         public float ExpectedApCost;
         public float ResourceCostValue;
@@ -119,18 +97,24 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // A built, staffed factory is a SUNK investment. Keep Score's EV and cost
+                // breakdown for preparation diagnostics, but never use it as an admission veto
+                // for an already-ready card. Readiness describes only the intrinsic, positive
+                // marginal capability the card could add; StrategicCardEvaluator later prices
+                // the complete live chain (Challenge/attach/resource/alternative) exactly once.
                 Score(best, snap, root, hand);
-                string verdict = best.Ev > AiConfigV2.devEvMargin ? "ACCEPT" : "REJECT ev<=margin";
+                best.BaseValue = ReadyOpportunityValue(best);
                 AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} A={best.AlternativeValue:0.0} "
                     + $"resCost={best.ResourceCostValue:0.##} apCost={best.ExpectedApCost:0.##} "
-                    + $"prodSupport={best.ProductionSupport:0.00} EV={best.Ev:0.00} "
-                    + $"(margin {AiConfigV2.devEvMargin:0.00}) => {verdict}");
-                if (best.Ev <= AiConfigV2.devEvMargin)
+                    + $"prodSupport={best.ProductionSupport:0.00} investmentEV={best.Ev:0.00} "
+                    + $"intrinsicNeed={best.BaseValue:0.00} "
+                    + (best.BaseValue > 0f ? "=> ADMIT for card competition" : "=> REJECT no expected gain"));
+                if (best.BaseValue <= 0f)
                     continue;
                 best.Explain = $"{best.Mode} '{off.Card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} "
-                    + $"A={best.AlternativeValue:0.0} EV={best.Ev:0.0}";
+                    + $"A={best.AlternativeValue:0.0} investmentEV={best.Ev:0.0}";
                 result.Add(best);
             }
 
@@ -141,6 +125,14 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Dev]   {op.Explain} base {op.BaseValue:0.0}");
             return result;
         }
+
+        // This is a demand signal, NOT a second card-value score. It deliberately does not
+        // include AP, resources, alternate hand cards, persistence or radar. The single shared
+        // card scorer prices all of those at MaterializationCandidateBuilder.TopForDemand.
+        internal static float ReadyOpportunityValue(DevelopmentOpportunity op) =>
+            op == null ? 0f : Mathf.Clamp(AiConfigV2.devEvToBaseValue
+                * Mathf.Clamp01(op.SuccessChance) * Mathf.Max(0f, op.ExpectedGain)
+                / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate), 0f, 100f);
 
         // Preparation witnesses use the same catalog, legal recipient enumeration and scorer
         // as a ready Challenge. They carry no GenerationStep and never authorize execution.
@@ -422,4 +414,3 @@ namespace Game.Ai.V2
         }
     }
 }
-
