@@ -236,8 +236,15 @@ namespace Game.Ai.V2
                 if (demand.DevOpportunity == null || demand.DevOpportunity.Ev <= AiConfigV2.devEvMargin)
                     return new List<DemandCandidate>();
                 MaterializationPlan upgrade = candidates[0].plan;
-                upgrade.Score = demand.DevOpportunity.Ev;
-                float decision = upgrade.Score + DemandUrgencyPolicy.Bonus(demand);
+                // Development EV ranks/stages the opportunity in AiPower units; the
+                // shared portfolio MUST compare its card-use utility against other cards.
+                upgrade.Score = DevelopmentOpportunityEvaluator.MaterializationValue(
+                    demand.DevOpportunity, upgrade, snap, player, root, ctx);
+                float urgency = DemandUrgencyPolicy.Bonus(demand);
+                float decision = upgrade.Score + urgency * GenerationChanceForDecision(upgrade);
+                AiDebugLog.WriteVerbose($"[AI][V2][Dev] materialization EV={demand.DevOpportunity.Ev:0.00} "
+                    + $"cardScore={upgrade.Score:0.00} urgency={urgency:0.00} "
+                    + $"p={GenerationChanceForDecision(upgrade):0.00} decision={decision:0.00}");
                 return new List<DemandCandidate>
                 {
                     new DemandCandidate(upgrade, 0f, upgrade.Score, 0f, decision),
