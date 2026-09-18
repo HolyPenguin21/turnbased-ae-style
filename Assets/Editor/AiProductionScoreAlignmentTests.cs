@@ -2,6 +2,8 @@
 using System;
 using System.Reflection;
 using System.Linq;
+using Game.Combat;
+using Game.Units;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
@@ -164,6 +166,43 @@ namespace Game.EditorTests
                 Is.EqualTo(Evaluate(CardType.Unit, ResearchProductionMode.Production)).Within(0.0001f));
             Assert.That(Evaluate(CardType.Facility, ResearchProductionMode.Production), Is.Zero);
             Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.LessThan(0f));
+        }
+
+        [Test]
+        public void RaidEquipmentWitnessRequiresActualWorthItImprovement()
+        {
+            var primary = new UnitData
+            {
+                Attack = 1, Defense = 2, Initiative = 2,
+                HitPointsCurrent = 8, HitPointsMax = 8,
+            };
+            var guards = new[]
+            {
+                new WorthIt.DefenderProfile(defense: 4, hasCeramicArmor: false,
+                    attack: 6, hitPoints: 8, initiative: 2),
+            };
+            var moveOnly = new EquipmentGrant();
+            moveOnly.statChanges.Add(new EquipmentStatChange
+            {
+                stat = EquipmentStat.MoveMax, amount = 3,
+            });
+            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+                primary, new[] { primary }, moveOnly, guards), Is.False,
+                "Mobility alone cannot claim a WorthIt combat improvement against known guards");
+            var weapon = new EquipmentGrant();
+            weapon.statChanges.Add(new EquipmentStatChange
+            {
+                stat = EquipmentStat.Attack, amount = 20,
+            });
+            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+                primary, new[] { primary }, weapon, guards), Is.True,
+                "A proven improvement in the primary's combat outcome can support its Raid");
+            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+                primary, new[] { primary }, weapon, Array.Empty<WorthIt.DefenderProfile>()), Is.False,
+                "An unobserved enemy cannot justify speculative Raid equipment");
+            Assert.That(primary.Attack, Is.EqualTo(1),
+                "Projection must never mutate the living army before generation/attachment");
+            Assert.That(primary.Equipment, Is.Null);
         }
 
         [Test]
