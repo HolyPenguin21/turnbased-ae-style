@@ -21,7 +21,13 @@ namespace Game.Ai.V2
             bool recce = AbilityParams.AbilitiesHaveAnyRecce(d.grantedAbilities);
             switch (kind)
             {
-                case CapabilityKind.ScoutCapability: return recce;
+                // A non-Recce Unit/Hero may gain Recce from an attached hand or generated
+                // Equipment card. This is only the host prefilter: EnumerateForDemand checks
+                // the complete chain's effective abilities and required traits before emitting
+                // a plan, and Scout placement still enforces soloOnly. Requiring native Recce
+                // here would discard those legal AttachDeploy/GenerateAttachDeploy chains early.
+                case CapabilityKind.ScoutCapability:
+                    return d.cardType == CardType.Unit || d.cardType == CardType.Hero;
                 case CapabilityKind.Hero: return d.cardType == CardType.Hero && !recce;
                 case CapabilityKind.FieldCombatPower:
                     return !recce && (d.cardType == CardType.Unit || d.cardType == CardType.Hero);
