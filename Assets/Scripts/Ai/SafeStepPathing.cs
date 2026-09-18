@@ -56,8 +56,6 @@ namespace Game.Ai
         {
             if (map == null || owner == null)
                 return int.MaxValue;
-            // Shares the cache with FindSafePath below — reads TotalCost off whatever's cached,
-            // never needing its own copy since an int is immutable.
             return GetRoute(map, owner, from, targetHex, maxMovement)?.TotalCost ?? int.MaxValue;
         }
 
@@ -73,38 +71,71 @@ namespace Game.Ai
             if (map == null || owner == null)
                 return null;
             HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement);
-            // Never hand out the cached instance itself — HexPath.Hexes is a mutable List behind
-            // a readonly reference, and this same cached object can be returned again to a
-            // different caller for the rest of the AI turn. A defensive copy here means every
-            // caller keeps the "it's mine to do whatever with" contract FindSafePath always had,
-            // without every one of them having to remember to .ToList() it themselves.
+            // HexPath.Hexes is a mutable List behind a readonly reference. Never let a caller
+            // alter the shared witness used by another consumer (including the cost-only API).
             return cached == null ? null : new HexPath(new List<HexCoord>(cached.Hexes), cached.TotalCost);
         }
 
-        // Route cache, valid for as long as `map` and AiMapMemory.RouteMemoryVersion stay the
-        // same as they were on the call that populated it (see RouteMemoryVersion's own comment
-        // — bumped on every memory write that could change SafeRouteBlocker's answer for any
-        // hex). Deliberately self-invalidating on every access rather than requiring an explicit
-        // BeginTurn hook: a route computed for one AI player's turn is never reused once that
-        // player's memory (or the map itself) has moved on, whether or not every call site
-        // remembers to announce a new turn.
+        // AiMapMemory.RouteMemoryVersion is deliberately coarse: observing a resource or a
+        // building bumps it even when no route blocker changed. Keep a snapshot of the actual
+        // remembered blocker HEXES for this player. When the version changes, compare sets before
+        // discarding expensive routes; this also catches a newly cleared blocker that could
+        // permit a shorter route OUTSIDE the old path (checking only old path hexes would not).
+        // Restrict to one owner/map at a time to avoid retaining stale snapshots for other players.
+        // Bounded capacity prevents growth across turns when those inputs legitimately stay stable.
+        private const int MaxCachedRoutes = 512;
         private static readonly Dictionary<(PlayerSetupData owner, HexCoord from, HexCoord target, int? maxMovement), HexPath>
             _routeCache = new Dictionary<(PlayerSetupData, HexCoord, HexCoord, int?), HexPath>();
         private static HexMap _cacheMap;
+        private static int _cacheMapVersion = -1;
+        private static PlayerSetupData _cacheOwner;
         private static int _cacheMemoryVersion = -1;
+        private static HashSet<HexCoord> _cachedMemoryBlockers;
+
+        private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner)
+        {
+            var blocked = new HashSet<HexCoord>();
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(owner))
+                blocked.Add(sighting.Hex);
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner))
+                blocked.Add(sighting.Hex);
+            // ScoutDangerZones has no public enumeration API. Check the actual map cells using
+            // its canonical predicate rather than duplicating zone geometry or accessing internals.
+            foreach (HexCoord hex in map.AllCoords)
+                if (AiMapMemory.IsScoutDangerous(owner, hex))
+                    blocked.Add(hex);
+            return blocked;
+        }
 
         private static HexPath GetRoute(HexMap map, PlayerSetupData owner,
             HexCoord from, HexCoord targetHex, int? maxMovement)
         {
-            if (map != _cacheMap || AiMapMemory.RouteMemoryVersion != _cacheMemoryVersion)
+            int memoryVersion = AiMapMemory.RouteMemoryVersion;
+            if (map != _cacheMap || map.PathingVersion != _cacheMapVersion || owner != _cacheOwner)
             {
                 _routeCache.Clear();
                 _cacheMap = map;
-                _cacheMemoryVersion = AiMapMemory.RouteMemoryVersion;
+                _cacheMapVersion = map.PathingVersion;
+                _cacheOwner = owner;
+                _cachedMemoryBlockers = CaptureMemoryBlockers(map, owner);
+                _cacheMemoryVersion = memoryVersion;
             }
+            else if (memoryVersion != _cacheMemoryVersion)
+            {
+                HashSet<HexCoord> currentBlockers = CaptureMemoryBlockers(map, owner);
+                if (_cachedMemoryBlockers == null || !_cachedMemoryBlockers.SetEquals(currentBlockers))
+                    _routeCache.Clear();
+                _cachedMemoryBlockers = currentBlockers;
+                _cacheMemoryVersion = memoryVersion;
+            }
+
             var key = (owner, from, targetHex, maxMovement);
             if (_routeCache.TryGetValue(key, out HexPath cached))
                 return cached;
+            // A missing path (null) is a valid cached result, but only for this exact key and
+            // unchanged topology/blocker set. Limit entries even if no turn-boundary mutation occurs.
+            if (_routeCache.Count >= MaxCachedRoutes)
+                _routeCache.Clear();
             HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
                 blockHex: SafeRouteBlocker(map, owner, targetHex, maxMovement));
             _routeCache[key] = computed;
