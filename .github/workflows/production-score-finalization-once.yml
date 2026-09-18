@@ -7,11 +7,11 @@ permissions:
   contents: write
 jobs:
   finalize:
-    if: "github.event.head_commit.message == 'chore(ai-v2): run guarded production score finalization'"
+    if: "github.event.head_commit.message == 'chore(ai-v2): apply raid equipment witness'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Patch scoring ownership and output type invariants
+      - name: Patch Raid evidence into existing Development demand
         shell: bash
         run: |
           set -euo pipefail
@@ -21,6 +21,6 @@ jobs:
           git diff --stat
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add Assets/Scripts/Ai/V2/Strategy/Objectives/DevelopmentOpportunityEvaluator.cs Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs Assets/Scripts/Ai/V2/Materialization/MaterializationPlanFactory.cs Assets/Editor/AiProductionScoreAlignmentTests.cs
-          git commit -m 'fix(ai-v2): score equipment upgrades centrally and distinguish generated bodies'
+          git add Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Development.cs Assets/Editor/AiProductionScoreAlignmentTests.cs
+          git commit -m 'fix(ai-v2): support raid-specific equipment only on WorthIt improvement'
           git push origin HEAD:tune/ai-v2-production-score-alignment
