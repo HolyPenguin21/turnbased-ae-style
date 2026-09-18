@@ -65,6 +65,54 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void HandDefensiveEquipmentCanImproveMatchupAfterPenetrationAlreadyExists()
+        {
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit,
+                attack = 20, defenseRating = 1, hitPoints = 8, initiative = 2,
+            });
+            var armor = new EquipmentGrant();
+            armor.statChanges.Add(new EquipmentStatChange
+            {
+                stat = EquipmentStat.Defense, amount = 20,
+            });
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition { cardType = CardType.Equipment, equipment = armor },
+                RecipientKind = DevRecipientKind.HandCard,
+                RecipientCard = host,
+            };
+            var snap = new WorldSnapshot
+            {
+                TrueWorld = new TrueWorldSnapshot
+                {
+                    EnemyArmies = new[]
+                    {
+                        new ArmySnapshot
+                        {
+                            Members = new[]
+                            {
+                                new WorthIt.DefenderProfile(defense: 5, hasCeramicArmor: false,
+                                    attack: 20, hitPoints: 8, initiative: 2),
+                            },
+                        },
+                    },
+                },
+            };
+
+            Assert.That(WorthIt.CanDamageAll(
+                new[] { new WorthIt.DefenderProfile(1, false, attack: 20, hitPoints: 8, initiative: 2) },
+                snap.TrueWorld.EnemyArmies[0].Members), Is.True,
+                "The host must already have penetration so this regression exercises defensive value");
+            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap), Is.EqualTo(1f),
+                "A large defensive improvement must be visible through canonical WorthIt outcomes");
+            Assert.That(host.Equipment, Is.Null,
+                "Projected defensive valuation must not mutate the hand card");
+        }
+
+        [Test]
         public void DeployedEquipmentMatchupUsesActualRosterWithoutMutatingItsRecipient()
         {
             var unit = new UnitData
