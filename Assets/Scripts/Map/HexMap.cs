@@ -21,6 +21,10 @@ namespace Game.Map
 
         public int FieldRadius => fieldRadius;
         public float OuterRadius => outerRadius;
+        // SetData can replace the terrain on the SAME HexMap instance. Reference identity alone
+        // is insufficient for path caches: an old route may cross terrain with a different cost.
+        // Only the existing map-data owner increments this revision, no parallel terrain registry.
+        public int PathingVersion { get; private set; }
 
         // Every hex actually on the map — used by post-generation passes (resources, neutral
         // armies, ...) that need to enumerate the whole map rather than look up one hex at a
@@ -41,6 +45,7 @@ namespace Game.Map
             _hexData.Clear();
             foreach (KeyValuePair<HexCoord, TerrainTypeEntry> entry in hexData)
                 _hexData[entry.Key] = entry.Value;
+            PathingVersion++;
         }
     }
 }
