@@ -233,16 +233,20 @@ namespace Game.Ai.V2
             if (demand.Capability == CapabilityKind.CardUpgrade)
             {
                 DevelopmentOpportunityEvaluator.Rescore(demand.DevOpportunity, snap, root, hand);
-                if (demand.DevOpportunity == null || demand.DevOpportunity.Ev <= AiConfigV2.devEvMargin)
+                if (demand.DevOpportunity == null)
                     return new List<DemandCandidate>();
                 MaterializationPlan upgrade = candidates[0].plan;
-                // Development EV ranks/stages the opportunity in AiPower units; the
-                // shared portfolio MUST compare its card-use utility against other cards.
+                // Investment EV explains whether constructing a facility/operator was justified;
+                // it is NOT a second operational veto once a legal, affordable chain exists.
+                // StrategicCardEvaluator alone prices the current card, and Phase A's existing
+                // portfolio solver decides whether that card should actually be played.
                 upgrade.Score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
                     demand.DevOpportunity, upgrade, snap, player, root, ctx);
+                if (float.IsNaN(upgrade.Score) || float.IsNegativeInfinity(upgrade.Score))
+                    return new List<DemandCandidate>();
                 float devUrgency = DemandUrgencyPolicy.Bonus(demand);
                 float decision = upgrade.Score + devUrgency * GenerationChanceForDecision(upgrade);
-                AiDebugLog.WriteVerbose($"[AI][V2][Dev] materialization EV={demand.DevOpportunity.Ev:0.00} "
+                AiDebugLog.WriteVerbose($"[AI][V2][Dev] materialization investmentEV={demand.DevOpportunity.Ev:0.00} "
                     + $"cardScore={upgrade.Score:0.00} urgency={devUrgency:0.00} "
                     + $"p={GenerationChanceForDecision(upgrade):0.00} decision={decision:0.00}");
                 return new List<DemandCandidate>
