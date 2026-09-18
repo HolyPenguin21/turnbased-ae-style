@@ -1,0 +1,25 @@
+name: AI V2 Production score alignment one-shot
+on:
+  push:
+    branches:
+      - tune/ai-v2-production-score-alignment
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: "github.event.head_commit.message == 'chore(ai-v2): apply guarded score currency alignment'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch canonical scorers and validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 Tools/production_score_alignment_once.py
+          git diff --check
+          git diff --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/Scripts/Ai/V2/Strategy/Objectives/DevelopmentOpportunityEvaluator.cs Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs
+          git commit -m 'fix(ai-v2): align upgrade score with mission-linked card utility'
+          git push origin HEAD:tune/ai-v2-production-score-alignment
