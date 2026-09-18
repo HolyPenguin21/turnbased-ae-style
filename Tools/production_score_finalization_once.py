@@ -1,194 +1,200 @@
 #!/usr/bin/env python3
-"""One-shot guarded relocation of upgrade card scoring and output-type validation."""
+"""One-time guarded Raid-to-Development witness patch; no new scorer or manager."""
 from pathlib import Path
 
-DEV = Path('Assets/Scripts/Ai/V2/Strategy/Objectives/DevelopmentOpportunityEvaluator.cs')
-SCORE = Path('Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs')
-BUILD = Path('Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs')
-FACTORY = Path('Assets/Scripts/Ai/V2/Materialization/MaterializationPlanFactory.cs')
+DEMAND = Path('Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Development.cs')
 TEST = Path('Assets/Editor/AiProductionScoreAlignmentTests.cs')
 
 
-def once(text, before, after, label):
-    count = text.count(before)
-    assert count == 1, f'{label}: expected exactly one anchor, found {count}'
-    print('PASS', label)
-    return text.replace(before, after, 1)
+def once(body, needle, replacement, title):
+    n = body.count(needle)
+    assert n == 1, f'{title}: expected 1 occurrence, got {n}'
+    print('PASS', title)
+    return body.replace(needle, replacement, 1)
 
 
-def patch_dev(text):
-    start = '        // Cross-lane calibration: Development.Ev is expressed in persistent AiPower units\n'
-    end = '        // Best legal recipient for an Equipment offering. Hand Unit/Hero cards + own on-map units,\n'
-    assert text.count(start) == text.count(end) == 1
-    prefix, rest = text.split(start, 1)
-    removed, suffix = rest.split(end, 1)
-    assert removed.count('internal static float MaterializationValue(') == 1
-    return prefix + end + suffix
-
-
-def patch_score(text):
-    marker = '        // -----------------------------------------------------------------------------------------\n        //  PHASE A — a chain closing an explicit AxisDemand. The demand pins the primary role.\n'
-    method = '''        // Generated Equipment strengthens an EXISTING host: price its marginal signed gain,
-        // never the host's total combat power. Development.Ev remains the separate owner of
-        // prerequisite investment ranking, expressed in persistent AiPower units. Phase A and
-        // other card chains share this evaluator's ONE AP/resource/chain cost function.
-        // Research and Production labels never decide output type: use the actual card definition.
-        internal static float ScoreGeneratedEquipmentUpgrade(DevelopmentOpportunity op,
-            MaterializationPlan plan, WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx)
+def patch_demand(text):
+    text = once(text, 'using Game.Players;\n', 'using Game.Players;\nusing Game.Units;\n', 'use gameplay UnitData namespace')
+    text = once(text,
+        'HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player);',
+        'HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player, s);',
+        'preparation witness receives snapshot')
+    text = once(text,
+        'op, formedDemands, activeIntents, player))',
+        'op, formedDemands, activeIntents, player, s))',
+        'final opportunity witness receives snapshot')
+    text = once(text,
+        '''        // Production amplifies an already-owned need; it never originates one. In the current
+        // scope only a real Recon capability delta or the exact builder of an Economy obligation
+        // is a valid witness. Attack/Defence matching remains with WorthIt when those axes return.
+''',
+        '''        // Production amplifies an already-owned need; never invent a mission. Recon and
+        // Economy keep their existing evidence; a bound active Raid can ALSO witness equipment
+        // when its own primary combat roster improves against the known target by WorthIt.
+        // Independent reinforcement FieldCombatPower demands are NOT fulfilled by upgrading
+        // their existing primary: only a separate deployable army can close those.
+''', 'development witness contract')
+    text = once(text,
+        '''            PlayerSetupData player)
         {
-            if (op == null || op.Card == null || op.Card.cardType != CardType.Equipment
-                || plan == null || plan.Kind != MaterializationChainKind.GenerateAttachUpgrade
-                || !object.ReferenceEquals(plan.GeneratedEquipmentDef, op.Card)
-                || !object.ReferenceEquals(plan.Generation?.CardDef, op.Card))
-                return float.NegativeInfinity;
-
-            float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
-            float marginalBenefit = op.SuccessChance * op.ExpectedGain * op.ProductionSupport / powerUnit;
-            float displacedAlternative = op.AlternativeValue / powerUnit;
-            System.Func<ResourceType, float> spendable = root == null ? null
-                : (System.Func<ResourceType, float>)(type =>
-                    StrategicSpendability.SpendableAmount(player, root, ctx, type));
-            return marginalBenefit - displacedAlternative - ResourceCost(plan, snap, spendable, player);
+            if (op == null)
+                return false;
+''',
+        '''            PlayerSetupData player, WorldSnapshot snap = null)
+        {
+            if (op == null)
+                return false;
+''', 'preserve witness API, optional snapshot for Raid')
+    text = once(text,
+        '''            return reconWitness && ImprovesReconCapability(op);
         }
 
-'''
-    return once(text, marker, method + marker, 'single strategic card scoring owner')
+        private static bool ImprovesReconCapability''',
+        '''            if (reconWitness && ImprovesReconCapability(op))
+                return true;
+
+            // Only an ACTUAL owned Raid primary may justify strengthening its existing unit.
+            // Research/Production mode has no bearing here: the offered output must be Equipment.
+            // A potential future raid (or an independent reinforcement demand) cannot create
+            // a generic "upgrade the strongest body" entitlement without a named recipient.
+            if (snap == null || op.RecipientUnit.IsHero || op.Card?.cardType != CardType.Equipment
+                || op.Card.equipment == null || activeIntents == null)
+                return false;
+            foreach (MissionIntent intent in activeIntents)
+            {
+                RaidIntent raid = intent?.Raid;
+                if (intent == null || intent.Status != IntentStatus.Active
+                    || intent.Kind != MissionKind.Raid || raid == null
+                    || !raid.Target.HasValue || raid.PrimaryArmyId != army.Id
+                    || (raid.Phase != RaidMissionPhase.Assault
+                        && raid.Phase != RaidMissionPhase.Reinforcement))
+                    continue;
+                var defenders = AiV2Util.KnownDefenders(snap, raid.Target);
+                if (defenders.Count == 0)
+                    continue;
+                // The same defender-side base bonus enters both immutable projections.
+                // Terrain is not present in the snapshot, so this is a marginal signal,
+                // never a substitute for Raid's final live WorthIt admission.
+                float hexBonus = WorthIt.HexDefenseBonus(raid.LastKnownHex, null);
+                if (ImprovesRaidCombatOutcome(op.RecipientUnit, army.Members,
+                    op.Card.equipment, defenders, hexBonus))
+                    return true;
+            }
+            return false;
+        }
+
+        // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability
+        // projection. Compare the SAME primary's roster before/after replacing only its recipient,
+        // without mutating gameplay UnitData or pretending the grant created a new combat body.
+        internal static bool ImprovesRaidCombatOutcome(UnitData recipient,
+            IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
+        {
+            if (recipient == null || recipient.IsHero || grant == null || members == null
+                || defenders == null || defenders.Count == 0 || !members.Contains(recipient))
+                return false;
+
+            var before = new List<WorthIt.DefenderProfile>();
+            var after = new List<WorthIt.DefenderProfile>();
+            var stats = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = recipient.Attack,
+                [EquipmentStat.Defense] = recipient.Defense,
+                [EquipmentStat.HitPoints] = recipient.HitPointsMax,
+                [EquipmentStat.Initiative] = recipient.Initiative,
+            };
+            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, stats, recipient.Abilities);
+            int attack = predicted.Stats.TryGetValue(EquipmentStat.Attack, out int atk)
+                ? atk : recipient.Attack;
+            int defense = predicted.Stats.TryGetValue(EquipmentStat.Defense, out int def)
+                ? def : recipient.Defense;
+            int maxHp = predicted.Stats.TryGetValue(EquipmentStat.HitPoints, out int hp)
+                ? hp : recipient.HitPointsMax;
+            int currentHp = Mathf.Clamp(recipient.HitPointsCurrent
+                + Mathf.Max(0, maxHp - recipient.HitPointsMax), 1, maxHp);
+            int initiative = predicted.Stats.TryGetValue(EquipmentStat.Initiative, out int init)
+                ? init : recipient.Initiative;
+            var projected = new WorthIt.DefenderProfile(defense,
+                predicted.Abilities.Contains(UnitAbilities.CeramicArmor), recipient.TypeTags.ToList(),
+                attack, currentHp, initiative, predicted.Abilities, maxHp);
+
+            foreach (UnitData unit in members)
+            {
+                if (unit == null || unit.IsHero)
+                    continue;
+                before.Add(WorthIt.FromLiveUnit(unit));
+                after.Add(object.ReferenceEquals(unit, recipient) ? projected : WorthIt.FromLiveUnit(unit));
+            }
+            bool coversBefore = WorthIt.CanDamageAll(before, defenders, hexBonus);
+            bool coversAfter = WorthIt.CanDamageAll(after, defenders, hexBonus);
+            if (!coversAfter)
+                return false;
+            if (!coversBefore)
+                return true;
+
+            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus);
+            WorthIt.BattleEstimate improved = WorthIt.Estimate(after, defenders, hexBonus);
+            return improved.WinChance > previous.WinChance
+                || (improved.WinChance == previous.WinChance
+                    && (improved.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
+                        || improved.CriticalAfterBattleChance < previous.CriticalAfterBattleChance));
+        }
+
+        private static bool ImprovesReconCapability''', 'raid-bound WorthIt improvement only')
+    assert text.count('ImprovesRaidCombatOutcome(') == 2
+    return text
 
 
-def patch_build(text):
-    return once(text,
-        'upgrade.Score = DevelopmentOpportunityEvaluator.MaterializationValue(',
-        'upgrade.Score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(',
-        'builder routes upgrade card valuation to canonical scorer')
-
-
-def patch_factory(text):
-    return once(text,
-        '''            if (g == null || g.CardDef == null)
-                return null;
-
-            ResourceCost rc = g.CardDef.resourceCost;''',
-        '''            // Only a generated Equipment card can upgrade an existing recipient.
-            // Unit/Hero generation is a different materialization outcome, never an upgrade.
-            if (g?.CardDef == null || g.CardDef.cardType != CardType.Equipment
-                || !g.ProducesEquipment || !object.ReferenceEquals(g.CardDef, op.Card)
-                || (op.RecipientCard == null && op.RecipientUnit == null))
-                return null;
-
-            ResourceCost rc = g.CardDef.resourceCost;''',
-        'factory enforces output-type and recipient invariant')
-
-
-def patch_test(text):
-    assert text.count('DevelopmentOpportunityEvaluator.MaterializationValue(') == 4
-    text = text.replace('DevelopmentOpportunityEvaluator.MaterializationValue(',
-                        'StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(')
-    # The two score tests construct genuine generated-equipment plans, not impossible bare plans.
-    first = '            float resourceCost = StrategicCardEvaluator.StrategicResourceCostValue(plan.ResCost, snapshot);'
-    second = '            float weak = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade('
-    fixture = '''            var equipment = new CardDefinition { cardType = CardType.Equipment };
-            opportunity.Card = equipment;
-            plan.Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true };
-            plan.GeneratedEquipmentDef = equipment;
-'''
-    text = once(text, first, fixture + first, 'cost calibration uses genuine equipment plan')
-    text = once(text, second, fixture + second, 'marginal gain calibration uses genuine equipment plan')
-    text = once(text, 'using System.Reflection;\n', 'using System.Reflection;\nusing System.Linq;\n',
-                'test imports Linq for reflection overload selection')
+def patch_tests(text):
+    text = once(text, 'using System.Linq;\n',
+        'using System.Linq;\nusing Game.Combat;\nusing Game.Units;\n', 'test namespaces')
     marker = '''        [Test]
         public void EquipmentSupport_UsesTheProducedCardNotResearchOrProductionMode()
 '''
-    newtests = '''        [Test]
-        public void GeneratedUnitCannotBeMistakenForAnExistingCardUpgrade()
+    tests = '''        [Test]
+        public void RaidEquipmentWitnessRequiresActualWorthItImprovement()
         {
-            var unit = new CardDefinition { cardType = CardType.Unit };
-            var generation = new GenerationStep
+            var primary = new UnitData
             {
-                CardDef = unit, ProducesEquipment = false, CardKey = "unit",
+                Attack = 1, Defense = 2, Initiative = 2,
+                HitPointsCurrent = 8, HitPointsMax = 8,
             };
-            var opportunity = new DevelopmentOpportunity
+            var guards = new[]
             {
-                Card = unit, Generation = generation,
-                RecipientCard = new CardData(new CardDefinition { cardType = CardType.Unit }),
-                SuccessChance = 1f, ExpectedGain = 99f, ProductionSupport = 1f,
+                new WorthIt.DefenderProfile(defense: 4, hasCeramicArmor: false,
+                    attack: 6, hitPoints: 8, initiative: 2),
             };
-            var demand = new AxisDemand
+            var moveOnly = new EquipmentGrant();
+            moveOnly.statChanges.Add(new EquipmentStatChange
             {
-                RequestingAxis = DesireAxis.Development,
-                Capability = CapabilityKind.CardUpgrade,
-                DevOpportunity = opportunity,
-            };
-            Assert.That(MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand), Is.Null,
-                "A new combat body must use GenerateDeploy, not attach-to-existing-host valuation");
-            var invalid = new MaterializationPlan
+                stat = EquipmentStat.MoveMax, amount = 3,
+            });
+            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+                primary, new[] { primary }, moveOnly, guards), Is.False,
+                "Mobility alone cannot claim a WorthIt combat improvement against known guards");
+            var weapon = new EquipmentGrant();
+            weapon.statChanges.Add(new EquipmentStatChange
             {
-                Kind = MaterializationChainKind.GenerateAttachUpgrade,
-                GeneratedEquipmentDef = unit, Generation = generation,
-            };
-            Assert.That(StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
-                opportunity, invalid, null, null, null, null), Is.EqualTo(float.NegativeInfinity));
-
-            var equipment = new CardDefinition { cardType = CardType.Equipment, activationApCost = 1 };
-            opportunity.Card = equipment;
-            generation.CardDef = equipment;
-            generation.ProducesEquipment = true;
-            MaterializationPlan valid = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);
-            Assert.That(valid, Is.Not.Null);
-            Assert.That(valid.GeneratedEquipmentDef, Is.SameAs(equipment));
-            Assert.That(valid.GeneratedBaseDef, Is.Null);
-        }
-
-        [Test]
-        public void GenerationSupportDependsOnUnitOrEquipmentOutputNotFactoryVsLab()
-        {
-            var snap = new WorldSnapshot
-            {
-                Development = new DevelopmentReadiness
-                {
-                    ProductionSupport = AiConfigV2.productionSupportMin,
-                },
-            };
-            MethodInfo support = typeof(StrategicCardEvaluator)
-                .GetMethods(BindingFlags.NonPublic | BindingFlags.Static)
-                .Single(m => m.Name == "ProductionSupportAdjustment"
-                    && m.GetParameters().Length == 4
-                    && m.GetParameters()[1].ParameterType == typeof(GenerationStep));
-            float Evaluate(CardType type, ResearchProductionMode mode)
-            {
-                var score = new StrategicUseScoreBreakdown { RoleFit = 2f };
-                var generation = new GenerationStep
-                {
-                    Mode = mode, CardDef = new CardDefinition { cardType = type },
-                };
-                return (float)support.Invoke(null, new object[] { score, generation, snap, 0f });
-            }
-            Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Research),
-                Is.EqualTo(Evaluate(CardType.Unit, ResearchProductionMode.Production)).Within(0.0001f));
-            Assert.That(Evaluate(CardType.Equipment, ResearchProductionMode.Research),
-                Is.EqualTo(Evaluate(CardType.Unit, ResearchProductionMode.Production)).Within(0.0001f));
-            Assert.That(Evaluate(CardType.Facility, ResearchProductionMode.Production), Is.Zero);
-            Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.LessThan(0f));
+                stat = EquipmentStat.Attack, amount = 20,
+            });
+            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+                primary, new[] { primary }, weapon, guards), Is.True,
+                "A proven improvement in the primary's combat outcome can support its Raid");
+            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+                primary, new[] { primary }, weapon, Array.Empty<WorthIt.DefenderProfile>()), Is.False,
+                "An unobserved enemy cannot justify speculative Raid equipment");
+            Assert.That(primary.Attack, Is.EqualTo(1),
+                "Projection must never mutate the living army before generation/attachment");
+            Assert.That(primary.Equipment, Is.Null);
         }
 
 '''
-    text = once(text, marker, newtests + marker, 'output-specific production regression coverage')
-    return text
+    return once(text, marker, tests + marker, 'raid before/after nonmutating regression test')
 
-# Read/check every source before touching any file; a stale branch fails closed.
-updated = {
-    DEV: patch_dev(DEV.read_text(encoding='utf-8')),
-    SCORE: patch_score(SCORE.read_text(encoding='utf-8')),
-    BUILD: patch_build(BUILD.read_text(encoding='utf-8')),
-    FACTORY: patch_factory(FACTORY.read_text(encoding='utf-8')),
-    TEST: patch_test(TEST.read_text(encoding='utf-8')),
-}
-assert updated[DEV].count('MaterializationValue(') == 0
-assert updated[SCORE].count('ScoreGeneratedEquipmentUpgrade(') == 1
-assert updated[BUILD].count('StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(') == 1
-assert 'case MaterializationChainKind.GenerateAttachUpgrade:' in updated[SCORE]
-assert 'gd.cardType != CardType.Unit && gd.cardType != CardType.Hero' in Path(
-    'Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs').read_text(encoding='utf-8')
+updated = {DEMAND: patch_demand(DEMAND.read_text(encoding='utf-8')),
+           TEST: patch_tests(TEST.read_text(encoding='utf-8'))}
+assert 'GenerateDeploy' in Path('Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs').read_text(encoding='utf-8')
+assert 'ScoreGeneratedEquipmentUpgrade' in Path('Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs').read_text(encoding='utf-8')
 for path, content in updated.items():
     path.write_text(content, encoding='utf-8')
-print('PASS five source/test files updated, type paths remain separate')
+print('PASS two files patched, generation path and scoring ownership preserved')
