@@ -48,12 +48,19 @@ namespace Game.Ai.V2
         public int ObservationDeficit;
         public int GroundTraversalDeficit;
 
-        // Raw usable-supply counts behind the two deficits above (pre-bootstrap). Persistence-gate
-        // Rule 1 (zero-capacity bootstrap) needs the EXACT class-scoped supply, not the cross-class
-        // union in ExistingGroundUsableCapacity below — an Observation lane can be served by air
-        // with zero ground actors present, so "0 ground usable" must not gate Observation bootstrap.
+        // Current-turn usable-supply counts behind the two deficits above. These may drop to
+        // zero simply because an otherwise valid scout has spent its movement this turn.
         public int GroundTraversalSupply;
         public int ObservationSupply;
+
+        // Durable/structural capacity for Rule 1 (zero-capacity bootstrap). Unlike the executable
+        // supply above, an existing generic scout still counts here when it has spent its MP or was
+        // trimmed for the remainder of THIS turn: it will be usable again after the normal turn
+        // refresh, so that transient condition must not immediately manufacture another Scout.
+        // Active generic lanes are counted regardless of current MP. Non-Recon claimed actors stay
+        // excluded; a genuinely unavailable actor must not mask a persistent capacity deficit.
+        public int StructuralGroundTraversalSupply;
+        public int StructuralObservationSupply;
 
         // Distinct GENERIC GROUND actors already in hand — deduped ids (a scout counted once even
         // though it could serve either class): active generic Explore/Refresh/Surveil lanes plus
@@ -139,18 +146,25 @@ namespace Game.Ai.V2
                         cap.GenericObservationLaneActors.Add(id);   // Refresh / Surveil == observation freshness
                 }
 
-            // --- Idle-usable ground scouts (solo Recce, MP left, not committed, not on a lane).
-            //     A scout on a stealth lane is `claimed`, so it is excluded here automatically.
+            // --- Idle ground scouts. Keep TWO horizons:
+            //     * structuralIdleGroundScouts — the physical generic capacity that survives a
+            //       turn refresh (MP may be 0 / this actor may have been trimmed for this turn);
+            //     * IdleGroundScouts — executable THIS turn, used by the real deficits/matching.
+            // A scout claimed by another durable mission (including a stealth lane) belongs to
+            // neither pool. Active generic Recon lanes are counted by their lane sets above.
             IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>();
+            var structuralIdleGroundScouts = new HashSet<int>();
             foreach (ArmySnapshot a in armies)
             {
                 if (a == null || !a.IsSoloRecce || a.IsPrison || a.IsAir || a.MemberCount <= 0)
                     continue;
-                if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
-                    continue;
                 if (claimed.Contains(a.ArmyId)
                     || cap.GenericGroundLaneActors.Contains(a.ArmyId)
                     || cap.GenericObservationLaneActors.Contains(a.ArmyId))
+                    continue;
+
+                structuralIdleGroundScouts.Add(a.ArmyId);
+                if (a.CurrentMovement <= 0 || trimmedThisTurn.Contains(a.ArmyId))
                     continue;
                 cap.IdleGroundScouts.Add(a.ArmyId);
             }
@@ -162,6 +176,9 @@ namespace Game.Ai.V2
             cap.GroundTraversalDeficit =
                 Mathf.Max(0, cap.DesiredGroundTraversalConcurrency - groundTravSupply);
 
+            cap.StructuralGroundTraversalSupply =
+                cap.GenericGroundLaneActors.Count + structuralIdleGroundScouts.Count;
+
             int idleConsumedByTraversal = Mathf.Min(cap.IdleGroundScouts.Count,
                 Mathf.Max(0, cap.DesiredGroundTraversalConcurrency - cap.GenericGroundLaneActors.Count));
             int idleGroundForObs = cap.IdleGroundScouts.Count - idleConsumedByTraversal;
@@ -172,6 +189,19 @@ namespace Game.Ai.V2
                 + idleGroundForObs;
             cap.ObservationSupply = obsSupply;
             cap.ObservationDeficit = Mathf.Max(0, cap.DesiredObservationConcurrency - obsSupply);
+
+            // The bootstrap horizon mirrors the same ground-first sharing rule, but uses physical
+            // idle scouts rather than only movers that can execute right now. Air stays on the
+            // canonical air-capacity counts: this change fixes the proven ground-scout time-horizon
+            // bug without introducing a second air-readiness authority.
+            int structuralIdleConsumedByTraversal = Mathf.Min(structuralIdleGroundScouts.Count,
+                Mathf.Max(0, cap.DesiredGroundTraversalConcurrency - cap.GenericGroundLaneActors.Count));
+            int structuralIdleGroundForObs =
+                structuralIdleGroundScouts.Count - structuralIdleConsumedByTraversal;
+            cap.StructuralObservationSupply = cap.GenericObservationLaneActors.Count
+                + cap.AirborneReconLanes
+                + cap.SpareAirObservationSorties
+                + structuralIdleGroundForObs;
 
             var distinctGround = new HashSet<int>(cap.GenericGroundLaneActors);
             distinctGround.UnionWith(cap.GenericObservationLaneActors);

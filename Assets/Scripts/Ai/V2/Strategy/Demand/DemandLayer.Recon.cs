@@ -189,29 +189,33 @@ namespace Game.Ai.V2
             bool groundPersist = ReconCapacityDeficitRegistry.RegisterAndCheck(
                 player, turn, ReconDeficitKind.GroundTraversal, groundEffectiveDeficit, out int groundStreak);
 
-            // --- Rule 1 (persistence-gate spec) — Zero-Capacity Bootstrap. A real runnable
-            //     opportunity that NO usable actor of the required class can currently serve at all
-            //     must get at least its first unit of capacity right away — persistence exists to
-            //     stop churny re-materialization of ADDITIONAL capacity, not to starve an axis that
-            //     has nothing usable whatsoever. Scoped per class: Observation counts air supply too
-            //     (an idle helicopter means Observation is not zero-capacity even with 0 ground
-            //     actors), GroundTraversal never does (aviation cannot substitute a physical visit).
-            int groundBootstrap = groundWitnessedSupply == 0 && groundVisitRunnable.Count > 0
-                ? Mathf.Min(1, groundEffectiveDeficit) : 0;
-            int obsBootstrap = obsWitnessedSupply == 0 && observationRunnable.Count > 0
-                ? Mathf.Min(1, obsEffectiveDeficit) : 0;
+            // --- Rule 1 (persistence-gate spec) — Zero-Capacity Bootstrap. Bootstrap answers a
+            //     STRUCTURAL question: "do we own any durable capacity of this class at all?", not
+            //     "can one of those actors execute another step right now?". A scout that simply
+            //     spent its MP earlier this turn must therefore suppress immediate bootstrap while
+            //     the witnessed deficit still feeds the persistence gate below. This preserves the
+            //     intended escape hatch for genuinely missing capacity without turning normal turn
+            //     exhaustion / continuity trimming into instant duplicate production.
+            int groundBootstrap = capacity.StructuralGroundTraversalSupply == 0
+                && groundVisitRunnable.Count > 0
+                    ? Mathf.Min(1, groundEffectiveDeficit) : 0;
+            int obsBootstrap = capacity.StructuralObservationSupply == 0
+                && observationRunnable.Count > 0
+                    ? Mathf.Min(1, obsEffectiveDeficit) : 0;
 
             int obsNew = obsBootstrap + (obsPersist ? Mathf.Max(0, obsEffectiveDeficit - obsBootstrap) : 0);
             int groundNew = groundBootstrap + (groundPersist ? Mathf.Max(0, groundEffectiveDeficit - groundBootstrap) : 0);
             if (groundBootstrap > 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=GroundTraversal runnable={groundVisitRunnable.Count} "
+                    + $"structuralSupply={capacity.StructuralGroundTraversalSupply} "
                     + $"rawSupply={capacity.GroundTraversalSupply} witnessedSupply={groundWitnessedSupply} "
                     + $"rawDeficit={capacity.GroundTraversalDeficit} effectiveDeficit={groundEffectiveDeficit} "
                     + $"bootstrapped={groundBootstrap}");
             if (obsBootstrap > 0)
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=Observation runnable={observationRunnable.Count} "
+                    + $"structuralSupply={capacity.StructuralObservationSupply} "
                     + $"rawSupply={capacity.ObservationSupply} witnessedSupply={obsWitnessedSupply} "
                     + $"rawDeficit={capacity.ObservationDeficit} effectiveDeficit={obsEffectiveDeficit} "
                     + $"bootstrapped={obsBootstrap}");
