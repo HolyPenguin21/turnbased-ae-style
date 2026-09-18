@@ -1,5 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Threading;
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
@@ -33,6 +35,19 @@ namespace Game.Ai.V2
         private static readonly ResearchProductionMode[] Modes =
             { ResearchProductionMode.Research, ResearchProductionMode.Production };
 
+        // Generator retry identity belongs here, not to the hero's current army or hex. An army
+        // transfer/reorder can happen between bounded mid-turn passes, but it cannot reset the
+        // gameplay attempt identity (hero, mode, authored card). Weak keys avoid retaining dead
+        // units across battles; the monotonic id keeps distinct identical-name heroes distinct.
+        private sealed class HeroIdentity
+        {
+            public readonly long Id;
+            public HeroIdentity(long id) { Id = id; }
+        }
+        private static readonly ConditionalWeakTable<UnitData, HeroIdentity> HeroIdentities =
+            new ConditionalWeakTable<UnitData, HeroIdentity>();
+        private static long _nextHeroIdentity;
+
         // Every (hero-on-Facility, offered card) combination usable RIGHT NOW, in deterministic
         // order. `triedCardKeys` is the actual retry guard: gameplay defines the spent attempt as
         // (hero, mode, authored card key), not "this hero may only Challenge once". includeContested
@@ -64,7 +79,9 @@ namespace Game.Ai.V2
                     List<UnitData> actors = ResearchProductionSystem.FindActors(player, b.Hex, mode);
                     foreach (UnitData hero in actors)
                     {
-                        string useKey = $"{mode}:{b.Hex.Q},{b.Hex.R}:{StableHeroKey(hero)}";
+                        // FacilityHex on GenerationStep records location; it must NOT enter the
+                        // retry/portfolio key and enable a second identical Challenge after a move.
+                        string useKey = StableGeneratorUseKey(mode, hero);
 
                         foreach (CardDefinition card in ResearchProductionSystem
                             .OfferedCards(ctx.ResearchProductionCatalog, mode, player.Faction)
@@ -97,20 +114,18 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // Stable, collision-free identity for an eligible on-map hero. Names are display data and
-        // may repeat across copies, so use the owning army id plus authoritative member ordinal.
+        // Identity is tied to this UnitData instance rather than its army/member ordinal. The
+        // same hero remains the same generator after extraction, transfer or regrouping.
         public static string StableHeroKey(UnitData hero)
         {
             if (hero == null)
                 return "?";
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(hero.Owner).OrderBy(a => a.Id))
-            {
-                int memberIndex = army.Members.IndexOf(hero);
-                if (memberIndex >= 0)
-                    return $"{army.Id}:{memberIndex}";
-            }
-            return "unplaced";
+            return HeroIdentities.GetValue(hero,
+                _ => new HeroIdentity(Interlocked.Increment(ref _nextHeroIdentity))).Id.ToString();
         }
+
+        internal static string StableGeneratorUseKey(ResearchProductionMode mode, UnitData hero) =>
+            $"{mode}:{StableHeroKey(hero)}";
 
         // Source enumeration must use the SAME owner-aware spendability authority as
         // MaterializationFeasibility and WorldAnalysis.Development. Duplicating the ledger
