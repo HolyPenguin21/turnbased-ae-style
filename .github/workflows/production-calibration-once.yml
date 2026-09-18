@@ -1,0 +1,143 @@
+name: AI V2 production calibration one-shot patch
+on:
+  push:
+    branches:
+      - fix/ai-v2-production-calibration
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.event.head_commit.message == 'chore(ai-v2): apply production calibration fixes'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply four verified fixes within existing owners
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def change(path, before, after, label):
+              p = Path(path)
+              original = p.read_text(encoding='utf-8')
+              n = original.count(before)
+              assert n == 1, f'{label}: expected exactly one original block; found {n}'
+              p.write_text(original.replace(before, after, 1), encoding='utf-8')
+              print(f'PASS: {label}')
+
+          evaluator = 'Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs'
+          demand = 'Assets/Scripts/Ai/V2/Strategy/Demand/AxisDemand.cs'
+          builder = 'Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs'
+
+          # Keep the existing AxisDemand policy as the single adapter for both migrated
+          # world tasks and legacy Development. Registered resource blocks can only come
+          # from the current AGG/RCN diagnostic, hence they use the world-task variant.
+          change(demand,
+              '''            bool legacyDevelopment = demand.RequestingAxis == DesireAxis.Development;
+              float lo = legacyDevelopment
+                  ? AiConfigV2.stratHoldUrgencyRampLo : AiConfigV2.taskScoreUrgencyRampLo;
+              float hi = legacyDevelopment
+                  ? AiConfigV2.stratHoldUrgencyRampHi : AiConfigV2.taskScoreUrgencyRampHi;
+              return Mathf.Clamp01((demand.Value - lo) / Mathf.Max(0.01f, hi - lo));
+          }
+
+          internal static float Bonus''',
+              '''            if (demand.RequestingAxis != DesireAxis.Development)
+                  return NormalizedWorldValue(demand.Value);
+              return Mathf.Clamp01((demand.Value - AiConfigV2.stratHoldUrgencyRampLo)
+                  / Mathf.Max(0.01f,
+                      AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
+          }
+
+          // All verified resource blocks originate from AGG/RCN and carry world TaskScore.Value.
+          // Keep their conversion here rather than reintroducing an independent scale in Cards.
+          internal static float NormalizedWorldValue(float value) =>
+              Mathf.Clamp01((value - AiConfigV2.taskScoreUrgencyRampLo)
+                  / Mathf.Max(0.01f,
+                      AiConfigV2.taskScoreUrgencyRampHi - AiConfigV2.taskScoreUrgencyRampLo));
+
+          internal static float Bonus''', 'single world-task urgency owner')
+
+          change(evaluator,
+              '''                    Curves.Ramp(demand.Value, AiConfigV2.stratHoldUrgencyRampLo,
+                          AiConfigV2.stratHoldUrgencyRampHi));''',
+              '''                    DemandUrgencyPolicy.Normalized(demand));''',
+              'Phase-A Production demand floor uses the canonical urgency adapter')
+
+          change(evaluator,
+              '''            float urgency = Mathf.Clamp01(
+                  (block.DemandValue - AiConfigV2.stratHoldUrgencyRampLo)
+                  / Mathf.Max(0.01f,
+                      AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));''',
+              '''            float urgency = DemandUrgencyPolicy.NormalizedWorldValue(block.DemandValue);''',
+              'resource-starvation preservation uses the migrated world-task scale')
+
+          change(evaluator,
+              '''            bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy + ec.GlobalSynergy;''',
+              '''            // EquipmentUpgrade already receives this exact delta in RoleFitCore;
+              // other roles still earn it as a separate attachment synergy.
+              bd.SynergyValue = traits * 0.5f
+                  + (role == IntendedRole.EquipmentUpgrade ? 0f : equipmentUpgrade)
+                  + ec.Synergy + ec.GlobalSynergy;''',
+              'EquipmentUpgrade delta counted only once')
+
+          change(evaluator,
+              '''            System.Func<ResourceType, float> spendableResource = null)
+          {
+              var bd = new StrategicUseScoreBreakdown();
+              IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));''',
+              '''            System.Func<ResourceType, float> spendableResource = null,
+              PlayerSetupData player = null)
+          {
+              var bd = new StrategicUseScoreBreakdown();
+              IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));''',
+              'Phase-A evaluator accepts the canonical resource-reservation owner')
+
+          change(evaluator,
+              '''            bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource);''',
+              '''            bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);''',
+              'Phase-A resource price receives owner-aware spendability and block evidence')
+
+          change(builder,
+              '''                    hasCompetingHeroDemand, snap, witnessedUsefulApDemand, projectedLegalFillers);''',
+              '''                    hasCompetingHeroDemand, snap, witnessedUsefulApDemand, projectedLegalFillers,
+                      player, root, ctx);''',
+              'Phase-A candidate forwards the live player/root/context')
+
+          change(builder,
+              '''            float? witnessedUsefulApDemand, int projectedLegalFillers)
+          {
+              StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreForDemand(
+                  p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap,
+                  witnessedUsefulApDemand, projectedLegalFillers);''',
+              '''            float? witnessedUsefulApDemand, int projectedLegalFillers,
+              PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+          {
+              StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreForDemand(
+                  p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap,
+                  witnessedUsefulApDemand, projectedLegalFillers,
+                  type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);''',
+              'Phase-A candidate prices actual spendable resources, not gross stockpile')
+
+          # Assertions on architectural boundaries; never silently commit a partial patch.
+          ev = Path(evaluator).read_text(encoding='utf-8')
+          cb = Path(builder).read_text(encoding='utf-8')
+          ax = Path(demand).read_text(encoding='utf-8')
+          assert 'Curves.Ramp(demand.Value, AiConfigV2.stratHoldUrgencyRampLo' not in ev
+          assert 'block.DemandValue - AiConfigV2.stratHoldUrgencyRampLo' not in ev
+          assert 'bd.SynergyValue = traits * 0.5f + equipmentUpgrade' not in ev
+          assert ev.count('DemandUrgencyPolicy.Normalized(demand)') == 1
+          assert ev.count('DemandUrgencyPolicy.NormalizedWorldValue(block.DemandValue)') == 1
+          assert 'type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);' in cb
+          assert ax.count('internal static float NormalizedWorldValue(') == 1
+          assert cb.count('ScorePlanA(') == 2
+          print('PASS: all four patches and single-owner boundaries verified')
+          PY
+          git diff --check
+          git diff --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/Scripts/Ai/V2/Strategy/Demand/AxisDemand.cs Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs
+          git commit -m 'fix(ai-v2): calibrate production urgency, resource preservation and equipment valuation'
+          git push origin HEAD:fix/ai-v2-production-calibration
