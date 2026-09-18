@@ -705,7 +705,7 @@ namespace Game.Ai.V2
         {
             var contrib = m?.Axes?.Value;
             // Missing axis contributions are neutral, not an implicit Recon vote.
-            // An EXPLICIT Recon contribution still scales to zero if Recon Radar is zero.
+            // Explicit contributing axes (including Recon) still scale to zero if their Radar is zero.
             if (contrib == null || contrib.Count == 0)
                 return 1f;
             float acc = 0f, wsum = 0f;
