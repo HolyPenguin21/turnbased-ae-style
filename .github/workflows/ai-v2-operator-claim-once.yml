@@ -1,0 +1,71 @@
+name: One-shot AI V2 operator card claim
+on:
+  push:
+    branches:
+      - ai-v2/production-development-calibration
+    paths:
+      - .github/workflows/ai-v2-operator-claim-once.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify five exact source blobs, patch and scoped modifications
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = ai-v2/production-development-calibration
+          python3 - <<'PY'
+          from pathlib import Path
+          import hashlib, subprocess
+          sources = {
+              'Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs': '740cf9d86223f710feae13ea19c13c436353328b',
+              'Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs': '835546274353e6d088aba8d8436ecaf050712a85',
+              'Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs': 'c6434a1da3399ecfc45f9ddb978c7047a9d32150',
+              'Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs': 'defe09a4eb901061e896beccc242cff9ae2366ca',
+              'Assets/Editor/AiIndependentDevelopmentTests.cs': '3c83b6a81355e4d67faf6aaa406d3d7973356796',
+          }
+          for path, sha in sources.items():
+              actual = subprocess.check_output(['git', 'hash-object', path], text=True).strip()
+              if actual != sha:
+                  raise SystemExit(f'Source unexpectedly changed: {path}: {actual} != {sha}')
+          patch = Path('.github/ai-v2-operator-claim.patch').read_bytes()
+          actual = hashlib.sha256(patch).hexdigest()
+          expected = '170bc11a7b48ca86af05ec26af814c211fb86e6c896aa292144ff328cd740638'
+          if actual != expected:
+              raise SystemExit(f'Patch checksum mismatch: {actual}')
+          print('Verified five exact source blobs and patch SHA256:', actual)
+          PY
+          git apply --check .github/ai-v2-operator-claim.patch
+          git apply .github/ai-v2-operator-claim.patch
+          git diff --check
+          python3 - <<'PY'
+          import subprocess
+          from pathlib import Path
+          expected = {
+              'Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs',
+              'Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs',
+              'Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs',
+              'Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs',
+              'Assets/Editor/AiIndependentDevelopmentTests.cs',
+          }
+          changed = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          if changed != expected:
+              raise SystemExit(f'Unexpected modified source paths: {changed ^ expected}')
+          paths = [Path(p).read_text() for p in expected]
+          assert sum('ClaimDevelopmentOperatorCard(infra.GeneratedOperatorCard)' in x for x in paths) == 0 or any('ClaimDevelopmentOperatorCard(' in x and 'infra.GeneratedOperatorCard' in x for x in paths)
+          assert any('ClaimsDevelopmentOperatorCard(card)' in x for x in paths)
+          assert any('GeneratedOperatorCard = generated.Success ? generated.Minted : null' in x for x in paths)
+          assert any('GeneratedOperatorClaimProtectsOnlyItsExactPhysicalCard' in x for x in paths)
+          print('Five expected source/test paths only; operator claim connects minted card, Phase A and enumeration')
+          PY
+          git config user.name ai-v2-scoped-patch
+          git config user.email ai-v2-scoped-patch@users.noreply.github.com
+          git add -- Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs Assets/Scripts/Ai/V2/Materialization/MaterializationChainEnumerator.cs Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Editor/AiIndependentDevelopmentTests.cs
+          git rm -f -- .github/ai-v2-operator-claim.patch .github/workflows/ai-v2-operator-claim-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'fix(ai-v2): protect generated operator card through staffing [skip ci]'
+          git push origin HEAD:ai-v2/production-development-calibration
