@@ -108,6 +108,10 @@ namespace Game.Ai.V2
                 return result;
             demands ??= System.Array.Empty<AxisDemand>();
             radar ??= Radar.Even();
+            // A new turn constructs a fresh MaterializationReservation. Restore the exact
+            // pending Hero even when the current dirty-demand subset omits Development.
+            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, hand,
+                ctx.TurnNumber, result.Reservation);
             // Early admissions defer NEW zero-priority work, but never delay a durable
             // Economy build or a consumer-linked Raid reinforcement. Late residual admission
             // uses this same owner with deferFreshZeroRadar=false.
@@ -356,10 +360,15 @@ namespace Game.Ai.V2
                         if (infra.Generated)
                         {
                             result.GeneratedCardsSucceeded++;
-                            // Preserve the exact minted card until the existing operator
-                            // fulfillment can place it. No new card reserve or role system.
-                            result.Reservation.ClaimDevelopmentOperatorCard(
-                                infra.GeneratedOperatorCard);
+                            // A successful Challenge can exhaust AP before placement. Keep
+                            // the exact physical Hero and its destination in durable State.
+                            if (infra.GeneratedOperatorCard != null
+                                && istate.Demand.TargetHex.HasValue
+                                && istate.Demand.DevelopmentOperatorMode.HasValue)
+                                MissionIntentRegistry.GetOrCreate(player)
+                                    .RememberGeneratedDevelopmentOperator(
+                                        infra.GeneratedOperatorCard, istate.Demand.TargetHex.Value,
+                                        istate.Demand.DevelopmentOperatorMode.Value, ctx.TurnNumber);
                         }
                         result.Reservation.RecordGenerationAttempt(infra.Generation, null);
                         StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
@@ -391,7 +400,13 @@ namespace Game.Ai.V2
                             + $"{(infra.Built ? "built" : "operator Challenge")} {infra.Detail} "
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                         if (infra.StateChanged)
+                        {
                             snap = WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
+                            // A minted card is protected immediately. A consumed card or a
+                            // newly invalid factory loses protection in this same pass.
+                            InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player,
+                                hand, ctx.TurnNumber, result.Reservation);
+                        }
                         if (infra.Built && istate.Demand.RequestingAxis == DesireAxis.Economy
                             && infra.BuilderArmyId.HasValue)
                             MissionContinuityLayer.BeginEconomyBuilderRecovery(

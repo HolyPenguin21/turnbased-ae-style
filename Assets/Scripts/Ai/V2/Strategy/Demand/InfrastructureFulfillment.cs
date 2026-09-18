@@ -69,6 +69,38 @@ namespace Game.Ai.V2
             || k == CapabilityKind.DevelopmentInfrastructure
             || k == CapabilityKind.DevelopmentOperator;
 
+        // This existing staffing owner validates persisted claims before Phase A/B and after
+        // infrastructure mutations. Never duplicate generation, movement or card execution.
+        // Current AP/resources are deliberately NOT eligibility criteria for a future turn.
+        internal static void RestoreGeneratedOperatorClaims(PlayerSetupData player,
+            AiHandData hand, int turn, MaterializationReservation reservation)
+        {
+            if (player == null || reservation == null) return;
+            IReadOnlyList<CardData> cards = MissionIntentRegistry.GetOrCreate(player)
+                .ReconcileGeneratedDevelopmentOperators(turn, (card, site, mode) =>
+                {
+                    if (card?.Definition?.cardType != CardType.Hero
+                        || hand?.Hand?.Contains(card) != true
+                        || !MaterializationChainMatching.EffectiveAbilities(
+                            card.Definition, card.Equipment)
+                            .Contains(ResearchProductionSystem.RoleAbility(mode)))
+                        return false;
+                    BuildingData building = BuildingRegistry.FindAt(site);
+                    if (building == null || building.Owner != player
+                        || !building.HasFacilityWithAbility(
+                            ResearchProductionSystem.FacilityAbility(mode))
+                        || ResearchProductionSystem.FindActor(player, site, mode) != null
+                        || Game.Combat.BattleInitiator.FindEnemyAt(site, player) != null
+                        || !PlacementRules.HasRequiredBuilding(player, site, card.Definition))
+                        return false;
+                    return ArmyRegistry.AllAt(site).Any(g => g != null && g.Owner == player
+                        && g.IsGarrison && !g.IsPrison
+                        && PlacementRules.CanDepositIntoGarrison(g)
+                        && CardPlayExecutor.CanFitAfterDeploy(g, card.Definition));
+                });
+            reservation.ReconcileDevelopmentOperatorCards(cards);
+        }
+
         // One planned build: the authoritative action to run plus the cost to admit it against.
         private sealed class InfraCandidate
         {

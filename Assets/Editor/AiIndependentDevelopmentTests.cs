@@ -31,6 +31,48 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void MintedOperatorSurvivesTurnBoundaryAndOnlyItsPhysicalCardIsClaimed()
+        {
+            var persistent = new MissionIntentState();
+            var factory = new HexCoord(3, -2);
+            var definition = new CardDefinition { cardType = CardType.Hero };
+            var minted = new CardData(definition) { ResearchProductionCreated = true };
+            var otherCopy = new CardData(definition) { ResearchProductionCreated = true };
+            persistent.RememberGeneratedDevelopmentOperator(minted, factory,
+                ResearchProductionMode.Production, 2);
+            var nextTurn = new MaterializationReservation(); // not the T2 instance
+            foreach (CardData card in persistent.ReconcileGeneratedDevelopmentOperators(3,
+                (c, site, mode) => site.Equals(factory)
+                    && mode == ResearchProductionMode.Production))
+                nextTurn.ClaimDevelopmentOperatorCard(card);
+            Assert.That(nextTurn.ClaimsDevelopmentOperatorCard(minted), Is.True);
+            Assert.That(nextTurn.ClaimsDevelopmentOperatorCard(otherCopy), Is.False);
+        }
+
+        [Test]
+        public void MintedOperatorClaimReleasesOnInvalidDestinationAndFiniteExpiry()
+        {
+            var persistent = new MissionIntentState();
+            var minted = new CardData(new CardDefinition { cardType = CardType.Hero });
+            var factory = new HexCoord(3, -2);
+            persistent.RememberGeneratedDevelopmentOperator(minted, factory,
+                ResearchProductionMode.Production, 2);
+            var reservation = new MaterializationReservation();
+            reservation.ClaimDevelopmentOperatorCard(minted);
+            reservation.ReconcileDevelopmentOperatorCards(
+                persistent.ReconcileGeneratedDevelopmentOperators(3, (c, site, mode) => false));
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(minted), Is.False,
+                "Lost, staffed, contested or full factory must release its Hero");
+
+            persistent.RememberGeneratedDevelopmentOperator(minted, factory,
+                ResearchProductionMode.Production, 2);
+            int expiredTurn = 2 + System.Math.Max(1, AiConfigV2.commitmentStallTurns) + 1;
+            Assert.That(persistent.ReconcileGeneratedDevelopmentOperators(expiredTurn,
+                (c, site, mode) => true), Is.Empty,
+                "No permanent reservation when AP or structural availability never recovers");
+        }
+
+        [Test]
         public void GeneratedOperatorRequiresAuthenticQualifiedHeroAndPositiveChallengeChance()
         {
             var hero = new CardDefinition

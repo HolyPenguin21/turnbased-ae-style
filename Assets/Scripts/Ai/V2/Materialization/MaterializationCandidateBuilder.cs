@@ -118,6 +118,16 @@ namespace Game.Ai.V2
 
         public bool ClaimsDevelopmentOperatorCard(CardData card) =>
             card != null && claimedDevelopmentOperatorCards.Contains(card);
+
+        // Sync the per-turn projection with durable commitments; release cards in the SAME
+        // turn when staffing consumes them or their destination is no longer attainable.
+        internal void ReconcileDevelopmentOperatorCards(IEnumerable<CardData> cards)
+        {
+            claimedDevelopmentOperatorCards.Clear();
+            if (cards == null) return;
+            foreach (CardData card in cards)
+                ClaimDevelopmentOperatorCard(card);
+        }
         public readonly List<AxisDemand> UnresolvedDemands = new List<AxisDemand>();
         public int GenerationAttemptsUsed;
 
