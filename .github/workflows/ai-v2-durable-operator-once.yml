@@ -1,0 +1,64 @@
+name: One-shot AI V2 durable operator claim
+on:
+  push:
+    branches:
+      - ai-v2/production-development-calibration
+    paths:
+      - .github/workflows/ai-v2-durable-operator-once.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'HolyPenguin21/turnbased-ae-style'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ai-v2/production-development-calibration
+      - name: Verify exact blobs, implement and commit scoped fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git branch --show-current)" = 'ai-v2/production-development-calibration'
+          test "$(git hash-object .github/ai-v2-durable-operator-claim.py)" = fe25ec9cbd81d31b1bbb0d4fe37dcd11023bd1db
+          python3 - <<'PY'
+          import ast
+          from pathlib import Path
+          ast.parse(Path('.github/ai-v2-durable-operator-claim.py').read_text())
+          print('Patch script parsed; exact Git blob SHA verified')
+          PY
+          python3 .github/ai-v2-durable-operator-claim.py
+          git diff --check
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          expected = {
+            'Assets/Scripts/Ai/V2/Continuity/MissionIntentState.cs',
+            'Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs',
+            'Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs',
+            'Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs',
+            'Assets/Editor/AiIndependentDevelopmentTests.cs',
+          }
+          changed = set(subprocess.check_output(['git','diff','--name-only'],text=True).splitlines())
+          assert changed == expected, (changed, expected)
+          state = Path('Assets/Scripts/Ai/V2/Continuity/MissionIntentState.cs').read_text()
+          infra = Path('Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs').read_text()
+          phase = Path('Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs').read_text()
+          tests = Path('Assets/Editor/AiIndependentDevelopmentTests.cs').read_text()
+          assert 'ReconcileGeneratedDevelopmentOperators' in state
+          assert 'turn - claim.Value.Turn > System.Math.Max(1, AiConfigV2.commitmentStallTurns)' in state
+          assert 'ResearchProductionSystem.FindActor(player, site, mode) != null' in infra
+          assert 'InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player, hand,' in phase
+          assert 'RememberGeneratedDevelopmentOperator(' in phase
+          assert 'MintedOperatorSurvivesTurnBoundaryAndOnlyItsPhysicalCardIsClaimed' in tests
+          assert 'MintedOperatorClaimReleasesOnInvalidDestinationAndFiniteExpiry' in tests
+          print('Five intended paths only; durable T2 -> T3 claim, expiry and invalidation wired')
+          PY
+          git config user.name ai-v2-scoped-patch
+          git config user.email ai-v2-scoped-patch@users.noreply.github.com
+          git add -- Assets/Scripts/Ai/V2/Continuity/MissionIntentState.cs Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs Assets/Scripts/Ai/V2/Strategy/StrategicPhaseA.cs Assets/Editor/AiIndependentDevelopmentTests.cs
+          git rm -f -- .github/ai-v2-durable-operator-claim.py .github/workflows/ai-v2-durable-operator-once.yml
+          git diff --cached --check
+          git diff --cached --stat
+          git commit -m 'fix(ai-v2): keep generated operator claim across turns [skip ci]'
+          git push origin HEAD:ai-v2/production-development-calibration
