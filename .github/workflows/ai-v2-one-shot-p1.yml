@@ -7,13 +7,13 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: "github.event.head_commit.message == 'chore(ai-v2): execute scoped P0 patch'"
+    if: "github.event.head_commit.message == 'chore(ai-v2): diagnose P0 patch transport'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: true
-      - name: Verify and apply reviewed P0 source diff
+      - name: Diagnose, verify, apply reviewed P0 diff
         shell: bash
         run: |
           set -euo pipefail
@@ -21,9 +21,10 @@ jobs:
           const fs = require('fs');
           const crypto = require('crypto');
           const zlib = require('zlib');
-          const encoded = Array.from({length: 6}, (_, i) =>
-            fs.readFileSync(`.github/p0-patch-${i}.txt`, 'utf8').trim()).join('');
-          const patch = zlib.brotliDecompressSync(Buffer.from(encoded, 'base64'));
+          const segments = Array.from({length: 6}, (_, i) =>
+            fs.readFileSync(`.github/p0-patch-${i}.txt`, 'utf8').trim());
+          segments.forEach((s,i) => console.log(`segment ${i}: len=${s.length} sha=${crypto.createHash('sha256').update(s).digest('hex').slice(0,12)}`));
+          const patch = zlib.brotliDecompressSync(Buffer.from(segments.join(''), 'base64'));
           const actual = crypto.createHash('sha256').update(patch).digest('hex');
           const expected = 'c414de6295bf26a2a9efe76688060be79420040322e975fc5110f03f6a73d7d1';
           if (actual !== expected) throw Error(`source patch checksum mismatch: ${actual}`);
