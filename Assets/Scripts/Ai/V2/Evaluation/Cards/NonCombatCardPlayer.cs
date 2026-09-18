@@ -529,8 +529,7 @@ namespace Game.Ai.V2
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;
                     float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        equipCard.Definition, u, snap, inv)
-                        * (army.IsGarrison ? AiConfigV2.devImportanceGarrison : AiConfigV2.devImportanceField);
+                        equipCard.Definition, u, snap, inv);
                     string stableKey = $"{army.Id}:{army.Members.IndexOf(u)}";
                     if (best == null || delta > best.Value.upgrade + 0.0001f
                         || (System.Math.Abs(delta - best.Value.upgrade) <= 0.0001f
