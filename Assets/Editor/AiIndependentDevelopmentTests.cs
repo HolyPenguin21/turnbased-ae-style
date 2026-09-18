@@ -6,6 +6,8 @@ using System.Reflection;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
+using Game.HexGrid;
+using Game.Map;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -13,6 +15,42 @@ namespace Game.EditorTests
     // Regression coverage alongside AiProductionScoreAlignmentTests; no separate test harness.
     public sealed class AiIndependentDevelopmentTests
     {
+        [TestCase(CardType.Unit, CapabilityKind.FieldCombatPower)]
+        [TestCase(CardType.Hero, CapabilityKind.Hero)]
+        public void ProspectiveGeneratedBodyUsesCanonicalPlanAndCorrectSurplusCapability(
+            CardType type, CapabilityKind expectedCapability)
+        {
+            var definition = new CardDefinition
+            {
+                cardType = type, authoredKey = "prospective-asset",
+                resourceCost = new ResourceCost { energy = 4, materials = 3, tech = 0 },
+            };
+            var generation = new GenerationStep
+            {
+                CardDef = definition, SuccessChance = 0.8f,
+                CardKey = "investment-preview:prospective-asset",
+            };
+            var option = new PlacementOption(new HexCoord(0, 0), DeploymentKind.NewArmy, null);
+            var abilities = MaterializationChainMatching.EffectiveAbilities(definition, null);
+            var plan = MaterializationPlanFactory.MakeGeneratedPlan(
+                MaterializationChainKind.GenerateDeploy, null, generation,
+                baseInHand: null, baseIdx: -1, generatedIsEquipment: false,
+                opt: option, projected: abilities);
+            plan.FinalCapability = MaterializationChainEnumerator.SurplusCapability(
+                definition, abilities, option);
+
+            Assert.That(plan.GeneratedBaseDef, Is.SameAs(definition));
+            Assert.That(plan.Generation, Is.SameAs(generation));
+            Assert.That(plan.FinalCapability, Is.EqualTo(expectedCapability));
+            Assert.That(plan.ResCost.energy, Is.EqualTo(4));
+            Assert.That(plan.ResCost.materials, Is.EqualTo(3));
+            Assert.That(plan.ResCost.tech, Is.Zero,
+                "An irrelevant zero-Tech requirement cannot enter the prospective chain");
+            Assert.That(plan.ApCost, Is.GreaterThanOrEqualTo(
+                ResearchProductionSystem.AttemptApCost(definition)),
+                "Prospective Unit/Hero valuation must include the real Challenge AP");
+        }
+
         [Test]
         public void UsefulEquipmentOpportunityDoesNotRequireAnotherAxesDemand()
         {

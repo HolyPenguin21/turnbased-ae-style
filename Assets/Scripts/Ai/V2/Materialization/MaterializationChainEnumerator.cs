@@ -146,7 +146,7 @@ namespace Game.Ai.V2
         // capability, not another recon lane; the physical portfolio cap must still reject that
         // same hero when placed into a new/empty army. This classification is owned here, together
         // with the chain shapes. Phase A's explicit Scout demands keep their solo-only contract.
-        private static CapabilityKind SurplusCapability(CardDefinition def,
+        internal static CapabilityKind SurplusCapability(CardDefinition def,
             IReadOnlyList<string> abilities, PlacementOption opt)
         {
             bool solo = opt.Kind == DeploymentKind.NewArmy

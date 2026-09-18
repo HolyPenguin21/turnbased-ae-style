@@ -15,8 +15,10 @@ namespace Game.Ai.V2
     //  DEVELOPMENT OPPORTUNITY EVALUATOR
     // ===========================================================================================
     //  Turns the shared snapshot.Development readiness into concrete upgrade opportunities.
-    //  One opportunity = "run THIS catalog card at THIS facility for THIS recipient". Equipment
-    //  only: Unit/Hero generation stays with MaterializationChainEnumerator. Preparation owns the
+    //  READY opportunities represent Equipment recipients; Unit/Hero generation stays with
+    //  MaterializationChainEnumerator. Preparation may project those deployable catalog outputs
+    //  through the canonical scorer to justify an independent investment, never to mint them.
+    //  Preparation owns the
     //  prerequisite investment EV; a READY facility's operational card decision belongs to the
     //  canonical StrategicCardEvaluator and Phase-A portfolio, not another investment EV gate.
     //  The live recipient and Challenge admission remain gameplay-executor responsibilities.
@@ -274,13 +276,51 @@ namespace Game.Ai.V2
                 foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
                     ctx.ResearchProductionCatalog, mode, player.Faction))
                 {
-                    if (card?.cardType != CardType.Equipment || card.equipment == null)
+                    if (card == null || (card.cardType != CardType.Equipment
+                        && card.cardType != CardType.Unit && card.cardType != CardType.Hero))
                         continue;
                     if (ResourceBundle.All.Any(t =>
                         (facility?.EffectivePlayResourceCost?.Get(t) ?? 0)
                         + (operatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
                         + (card.resourceCost?.Get(t) ?? 0)
                         > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
+                        continue;
+
+                    // Non-equipment outputs already have ONE canonical materialization/scoring
+                    // path. Use a projected GenerateDeploy plan to witness future investment
+                    // utility; do NOT claim it is an executable source or create a CardUpgrade
+                    // demand (those are specifically for Equipment/recipient attachments).
+                    if (card.cardType == CardType.Unit || card.cardType == CardType.Hero)
+                    {
+                        // GenerationSource will not mint cards lacking an authored retry key.
+                        if (string.IsNullOrWhiteSpace(card.authoredKey))
+                            continue;
+                        float futureValue = ProjectedDeployableInvestmentValue(card, mode, hex,
+                            projectedActor, snap, player, root, hand, ctx, inv, occupied);
+                        if (futureValue <= 0f)
+                            continue;
+                        var deployable = new DevelopmentOpportunity
+                        {
+                            Mode = mode, FacilityHex = hex, Card = card,
+                            SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
+                            ProducesEquipment = false, ExpectedGain = futureValue,
+                            Ev = futureValue - preparationCost,
+                            PreparationFacilityCard = facility, PreparationOperatorCard = operatorCard,
+                            PreparationExistingHero = remote, PreparationSourceArmyId = remoteArmyId,
+                            PreparationTravelCost = remoteTravel,
+                            RecipientLabel = "deployable:" + card.displayName,
+                        };
+                        if (deployable.Ev <= AiConfigV2.devEvMargin || !supportsNeed(deployable))
+                            continue;
+                        deployable.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue
+                            * deployable.Ev, 0f, 100f);
+                        deployable.Explain = $"prepare {mode} @({hex.Q},{hex.R}) for "
+                            + $"deployable {card.displayName}; canonical future value={futureValue:0.##} "
+                            + $"EV after prerequisites={deployable.Ev:0.##}";
+                        result.Add(deployable);
+                        continue;
+                    }
+                    if (card.equipment == null)
                         continue;
                     var off = new DevelopmentOffering
                     {
@@ -305,6 +345,59 @@ namespace Game.Ai.V2
                 }
             }
             return result.OrderByDescending(o => o.BaseValue).ToList();
+        }
+
+        // Objectives only projects a prospective deployment. The future source becomes real
+        // exclusively after Building/Actor delivery; GenerationSource and MaterializationFeasibility
+        // retain all actual Challenge, placement and reservation gates. One canonical card scorer,
+        // one cost model, and no synthetic Production-only Unit/Hero strength formula.
+        internal static float ProjectedDeployableInvestmentValue(CardDefinition card,
+            ResearchProductionMode mode, HexCoord facilityHex, UnitData operatorHero,
+            WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+            AiTurnContext ctx, CapabilityInventory inv, ActorCommitments commitments)
+        {
+            if (card == null || operatorHero == null || snap?.Self == null || player == null
+                || root == null || hand == null || ctx == null || card.isAviation
+                || string.IsNullOrWhiteSpace(card.authoredKey)
+                || (card.cardType != CardType.Unit && card.cardType != CardType.Hero))
+                return float.NegativeInfinity;
+            IReadOnlyList<string> abilities = MaterializationChainMatching.EffectiveAbilities(card, null);
+            bool soloOnly = card.cardType == CardType.Unit
+                && AbilityParams.AbilitiesHaveAnyRecce(abilities);
+            List<PlacementOption> options = PlacementSelector.BuildOptions(
+                snap, player, card, commitments, soloOnly, phaseBSurplus: true);
+            if (options.Count == 0)
+                return float.NegativeInfinity;
+            var projectedGeneration = new GenerationStep
+            {
+                Mode = mode, FacilityHex = facilityHex, Hero = operatorHero, CardDef = card,
+                ProducesEquipment = false,
+                SuccessChance = ResearchProductionSystem.EstimateSuccessChance(operatorHero, card),
+                UseKey = "investment-preview", CardKey = "investment-preview:" + card.authoredKey,
+            };
+            float best = float.NegativeInfinity;
+            foreach (PlacementOption option in options)
+            {
+                // Exactly the same solo-Recce vs Hero vs combat classification as Phase B.
+                CapabilityKind capability = MaterializationChainEnumerator.SurplusCapability(
+                    card, abilities, option);
+                bool recce = capability == CapabilityKind.ScoutCapability
+                    && AbilityParams.AbilitiesHaveAnyRecce(abilities);
+                MaterializationPlan plan = MaterializationPlanFactory.MakeGeneratedPlan(
+                    MaterializationChainKind.GenerateDeploy, null, projectedGeneration,
+                    baseInHand: null, baseIdx: -1, generatedIsEquipment: false,
+                    opt: option, projected: abilities);
+                plan.FinalCapability = capability;
+                // This includes actual mint/deploy AP and H/E/M/T costs, Challenge chance,
+                // card effects, alternative role and hold. The investment cost is added ONCE
+                // by EnumeratePreparation after this score; it is not included in this plan.
+                StrategicCardUseCandidate score = StrategicCardEvaluator.ScoreSurplus(
+                    plan, inv, recce, card.cardType == CardType.Hero, hand, abilities, snap,
+                    spendableResource: t => StrategicSpendability.SpendableAmount(player, root, ctx, t),
+                    player: player);
+                best = Mathf.Max(best, score.NetScore);
+            }
+            return best;
         }
 
         public static void Rescore(DevelopmentOpportunity op, WorldSnapshot snap, PlayerRoot root, AiHandData hand)
