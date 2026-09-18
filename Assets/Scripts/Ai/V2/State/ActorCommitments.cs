@@ -83,6 +83,18 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (i.Kind == MissionKind.Development)
+                {
+                    int actorId = i.PreferredMoverArmyId.Value;
+                    ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
+                        && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.HasHero);
+                    ArmyData live = actor == null ? null : ArmyRegistry.AllForOwner(actor.Owner)
+                        .FirstOrDefault(a => a != null && a.Id == actorId);
+                    if (live?.Members.Contains(i.Development?.Hero) == true)
+                        c.Claim(actorId);
+                    continue;
+                }
+
                 if (i.Kind == MissionKind.Raid)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;

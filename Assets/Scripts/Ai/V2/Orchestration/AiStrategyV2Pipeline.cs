@@ -211,7 +211,8 @@ namespace Game.Ai.V2
                         | StrategicInvalidationReason.Capability
                         | StrategicInvalidationReason.ResourceSite;
                 case DesireAxis.Development:
-                    return StrategicInvalidationReason.Resources
+                    return StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.Resources
                         | StrategicInvalidationReason.Infrastructure
                         | StrategicInvalidationReason.Hand
                         | StrategicInvalidationReason.Capability
@@ -292,7 +293,7 @@ namespace Game.Ai.V2
 
     // Concrete mission kinds. Each maps to a V2 Task builder in TaskExecutor. Was a bare string
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
-    public enum MissionKind { Scout, Raid, Economy }
+    public enum MissionKind { Scout, Raid, Economy, Development }
 
     public enum EconomyTaskKind { BuildExtraction, FoundBase, ReturnBuilder }
 
@@ -311,6 +312,18 @@ namespace Game.Ai.V2
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
         public int ProjectedActivationApCost;
         public int ProjectedMaxMovement;
+    }
+
+    // The *existing* hero, not a card-in-hand or an anonymous "operator" demand. This target
+    // is persisted as a DevelopmentIntent and revalidated at every execution boundary.
+    public struct DevelopmentMissionTarget
+    {
+        public HexCoord FacilityHex;
+        public ResearchProductionMode Mode;
+        public Game.Units.UnitData Hero;
+        public string HeroKey;
+        public int? SourceArmyId;
+        public float IntrinsicValue;
     }
 
     // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
@@ -1661,6 +1674,8 @@ namespace Game.Ai.V2
             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Economy))
                 missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
                     activeIntents, demands));
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Development))
+                missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));
             missions = AiStrategyV2Scope.ApplyMissionScope(missions);
 
             foreach (MissionProposal m in missions)

@@ -34,6 +34,11 @@ namespace Game.Ai.V2
         public GenerationStep Generation;
         public CardData PreparationFacilityCard;
         public CardData PreparationOperatorCard;
+        // Existing qualified hero selected for delivery, never misrepresented as an on-site
+        // actor. Continuity pins this exact object until arrival or structural cancellation.
+        public UnitData PreparationExistingHero;
+        public int? PreparationSourceArmyId;
+        public int PreparationTravelCost;
 
         public DevRecipientKind RecipientKind;
         public CardData RecipientCard;
@@ -135,13 +140,15 @@ namespace Game.Ai.V2
         // as a ready Challenge. They carry no GenerationStep and never authorize execution.
         internal static List<DevelopmentOpportunity> EnumeratePreparation(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            System.Func<DevelopmentOpportunity, bool> supportsNeed)
+            System.Func<DevelopmentOpportunity, bool> supportsNeed,
+            IReadOnlyList<MissionIntent> activeIntents = null)
         {
             var result = new List<DevelopmentOpportunity>();
             if (snap?.Self?.BaseHexes == null || player == null || root == null
                 || hand?.Hand == null || ctx?.ResearchProductionCatalog == null || supportsNeed == null)
                 return result;
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
+            ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             foreach (ResearchProductionMode mode in new[]
                 { ResearchProductionMode.Research, ResearchProductionMode.Production })
             foreach (HexCoord hex in snap.Self.BaseHexes)
@@ -180,9 +187,68 @@ namespace Game.Ai.V2
                     .OrderBy(c => c.EffectivePlayApCost * AiConfigV2.devApValue
                         + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                     .FirstOrDefault();
-                if (actor == null && operatorCard == null)
+                UnitData remote = null;
+                int? remoteArmyId = null;
+                int remoteTravel = int.MaxValue;
+                float remoteCost = float.PositiveInfinity;
+                if (actor == null && ctx.Map != null)
+                {
+                    foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+                    {
+                        if (army == null || army.IsPrison || army.Hex.Equals(hex)
+                            || occupied.IsArmyClaimed(army.Id)
+                            || DemandLayer.EconomyBuilderUnderImmediateThreat(snap, army.Hex))
+                            continue;
+                        UnitData candidate = army.IsGarrison
+                            ? AiArmyRoles.BestSparableDevelopmentHero(player, army,
+                                ResearchProductionSystem.RoleAbility(mode))
+                            : AiArmyRoles.IsHeroLed(army) ? army.Members.FirstOrDefault(u =>
+                                u != null && u.IsHero && !u.IsPrisoner
+                                && u.HasAbility(ResearchProductionSystem.RoleAbility(mode))) : null;
+                        if (candidate == null || candidate.Owner != player)
+                            continue;
+                        // Never strip a different active facility of its exact operator.
+                        BuildingData sourceBuilding = BuildingRegistry.FindAt(army.Hex);
+                        if (sourceBuilding != null && sourceBuilding.Owner == player
+                            && new[] { ResearchProductionMode.Research, ResearchProductionMode.Production }
+                                .Any(m => sourceBuilding.HasFacilityWithAbility(
+                                    ResearchProductionSystem.FacilityAbility(m))
+                                    && ResearchProductionSystem.ActorStillQualifies(
+                                        player, candidate, army.Hex, m)))
+                            continue;
+                        int route = army.IsGarrison
+                            ? SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                                army.Hex, hex, candidate.MoveMax)
+                            : SafeStepPathing.FindSafePathCost(ctx.Map, army, hex);
+                        if (route == int.MaxValue)
+                            continue;
+                        // Count reassignment/route AP with the existing Development AP price;
+                        // the live AP envelope is recalculated in Provisioning, not here.
+                        float cost = (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f)
+                            + (army.HasActivatedThisTurn ? 0f : candidate.ActivationApCost)
+                            + (float)route / Mathf.Max(1, candidate.MoveMax);
+                        cost *= AiConfigV2.devApValue;
+                        if (cost >= remoteCost)
+                            continue;
+                        remote = candidate;
+                        remoteArmyId = army.Id;
+                        remoteTravel = route;
+                        remoteCost = cost;
+                    }
+                    if (operatorCard != null && remote != null)
+                    {
+                        float handCost = operatorCard.EffectivePlayApCost * AiConfigV2.devApValue
+                            + StrategicCardEvaluator.StrategicResourceCostValue(
+                                operatorCard.EffectivePlayResourceCost, snap);
+                        if (handCost <= remoteCost)
+                            remote = null;
+                        else
+                            operatorCard = null;
+                    }
+                }
+                if (actor == null && operatorCard == null && remote == null)
                     continue;
-                UnitData projectedActor = actor;
+                UnitData projectedActor = actor ?? remote;
                 if (projectedActor == null)
                 {
                     int fate = operatorCard.Definition.fate;
@@ -203,7 +269,8 @@ namespace Game.Ai.V2
                 }
                 float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
                     .Sum(c => c.EffectivePlayApCost * AiConfigV2.devApValue
-                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap));
+                        + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
+                    + (remote != null ? remoteCost : 0f);
                 foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
                     ctx.ResearchProductionCatalog, mode, player.Faction))
                 {
@@ -226,6 +293,9 @@ namespace Game.Ai.V2
                     Score(op, snap, root, hand);
                     op.PreparationFacilityCard = facility;
                     op.PreparationOperatorCard = operatorCard;
+                    op.PreparationExistingHero = remote;
+                    op.PreparationSourceArmyId = remoteArmyId;
+                    op.PreparationTravelCost = remoteTravel;
                     op.Ev -= preparationCost;
                     op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
                     if (op.Ev <= AiConfigV2.devEvMargin) continue;

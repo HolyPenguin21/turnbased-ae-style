@@ -231,7 +231,18 @@ namespace Game.Ai
         // Production operator, read from the same ResearchProductionSystem.FindActors source
         // ArmyReorgAnalyzer.MarkDevelopmentOperators already uses, so this never proposes pulling the
         // one hero a local facility depends on.
-        public static UnitData BestSparableEconomyHero(PlayerSetupData player, ArmyData garrison)
+        public static UnitData BestSparableEconomyHero(PlayerSetupData player, ArmyData garrison) =>
+            BestSparableHero(player, garrison, null);
+
+        // Development and Economy use the SAME garrison protection and extraction eligibility.
+        // The role filter only narrows the candidates; it cannot bypass the source's active
+        // facility operators or CanSpareGarrisonMember's defender floor.
+        public static UnitData BestSparableDevelopmentHero(PlayerSetupData player,
+            ArmyData garrison, string requiredRole) =>
+            string.IsNullOrEmpty(requiredRole) ? null : BestSparableHero(player, garrison, requiredRole);
+
+        private static UnitData BestSparableHero(PlayerSetupData player, ArmyData garrison,
+            string requiredRole)
         {
             if (player == null || garrison == null || !garrison.IsGarrison)
                 return null;
@@ -252,6 +263,7 @@ namespace Game.Ai
 
             return garrison.Members
                 .Where(u => u != null && u.IsHero
+                    && (requiredRole == null || u.HasAbility(requiredRole))
                     && (operators == null || !operators.Contains(u))
                     && CanSpareGarrisonMember(player, garrison, u))
                 .OrderByDescending(u => u.MoveMax)

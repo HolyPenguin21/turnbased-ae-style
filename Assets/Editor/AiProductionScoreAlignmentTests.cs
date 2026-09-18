@@ -7,6 +7,7 @@ using Game.Units;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
+using Game.HexGrid;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -14,6 +15,127 @@ namespace Game.EditorTests
 {
     public class AiProductionScoreAlignmentTests
     {
+        [Test]
+        public void RemoteOperatorDemandBecomesOneConcreteDevelopmentMission()
+        {
+            var hero = new UnitData { IsHero = true };
+            var site = new HexCoord(4, -2);
+            var opportunity = new DevelopmentOpportunity
+            {
+                FacilityHex = site, Mode = ResearchProductionMode.Production,
+                PreparationExistingHero = hero, PreparationSourceArmyId = 9,
+            };
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Development,
+                Capability = CapabilityKind.DevelopmentOperator,
+                DevOpportunity = opportunity, Value = 19f,
+            };
+            var proposals = DevelopmentMissionPlanner.Propose(null,
+                Array.Empty<MissionIntent>(), new[] { demand, demand });
+            Assert.That(proposals, Has.Count.EqualTo(1),
+                "One operator demand must not duplicate the same hero/facility mission");
+            MissionProposal mission = proposals.Single();
+            Assert.That(mission.Kind, Is.EqualTo(MissionKind.Development));
+            Assert.That(mission.BaseValue, Is.EqualTo(19f),
+                "The radar-independent investment value must be passed through unchanged");
+            Assert.That(mission.PreferredMoverArmyId, Is.EqualTo(9));
+            var target = (DevelopmentMissionTarget)mission.Target;
+            Assert.That(target.Hero, Is.SameAs(hero));
+            Assert.That(target.HeroKey, Is.EqualTo(GenerationSource.StableHeroKey(hero)));
+            Assert.That(MissionIntentKey.For(mission).Kind, Is.EqualTo(MissionKind.Development));
+            Assert.That(StableMissionKey.For(mission).Kind, Is.EqualTo(MissionKind.Development));
+            Assert.That(MissionAdmissionPolicy.LaneFor(mission), Is.EqualTo(ExecutionLane.Development));
+        }
+
+        [Test]
+        public void DevelopmentContinuationKeepsOriginalHeroAndPreventsDuplicateActorAssignment()
+        {
+            var hero = new UnitData { IsHero = true };
+            var site = new HexCoord(4, -2);
+            var existing = new MissionIntent
+            {
+                Kind = MissionKind.Development, Funding = CommitmentTier.Soft,
+                Status = IntentStatus.Active, PreferredMoverArmyId = 9,
+                Objective = new DevelopmentIntent
+                {
+                    FacilityHex = site, Mode = ResearchProductionMode.Research,
+                    Hero = hero, HeroKey = GenerationSource.StableHeroKey(hero),
+                    IntrinsicValue = 8f,
+                },
+            };
+            existing.IntentKey = MissionIntentKey.For(existing);
+            var refreshed = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Development,
+                Capability = CapabilityKind.DevelopmentOperator,
+                DevOpportunity = new DevelopmentOpportunity
+                {
+                    FacilityHex = site, Mode = ResearchProductionMode.Research,
+                    PreparationExistingHero = hero, PreparationSourceArmyId = 10,
+                },
+                Value = 70f,
+            };
+            var proposals = DevelopmentMissionPlanner.Propose(null,
+                new[] { existing }, new[] { refreshed });
+            Assert.That(proposals, Has.Count.EqualTo(1),
+                "A fresh candidate must not replace an existing site's durable operator");
+            MissionProposal ongoing = proposals.Single();
+            Assert.That(ongoing.FromDurableIntent, Is.True);
+            Assert.That(ongoing.PreferredMoverArmyId, Is.EqualTo(9));
+            Assert.That(ongoing.BaseValue, Is.EqualTo(8f));
+            Assert.That(MissionIntentKey.For(ongoing), Is.EqualTo(existing.IntentKey));
+            Assert.That(MissionAdmissionPolicy.Conflicts(ongoing, new MissionProposal
+            {
+                Kind = MissionKind.Development,
+                Target = new DevelopmentMissionTarget
+                {
+                    FacilityHex = new HexCoord(6, -2),
+                    Mode = ResearchProductionMode.Production, Hero = hero,
+                    SourceArmyId = 10,
+                },
+            }), Is.True, "One physical Hero cannot serve two different facilities");
+        }
+
+        [Test]
+        public void DevelopmentExecutionLedgerKeepsTheExactOperatorPayload()
+        {
+            var hero = new UnitData { IsHero = true };
+            var target = new DevelopmentMissionTarget
+            {
+                FacilityHex = new HexCoord(5, -2),
+                Mode = ResearchProductionMode.Production,
+                Hero = hero, HeroKey = GenerationSource.StableHeroKey(hero),
+                SourceArmyId = 7,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Development, Target = target,
+                BaseValue = 14f,
+            };
+            var pm = new ProvisionedMission
+            {
+                Mission = proposal, Kind = MissionKind.Development,
+                DevelopmentTarget = target, MoverArmyId = 7,
+                Key = StableMissionKey.For(proposal),
+            };
+            var ledger = new MissionOutcomeLedger();
+            ledger.RegisterProposals(new[] { proposal });
+            ledger.RecordProvisionSuccess(proposal, pm);
+            ledger.RecordExecution(new ExecutionResult
+            {
+                Key = pm.Key, Source = pm, StepsMoved = 1,
+                ActualActorArmyId = 7, StopReason = ExecutionStopReason.StepCompleted,
+            });
+            MissionTurnOutcome outcome = ledger.Finalize().Single();
+            Assert.That(outcome.MissionKind, Is.EqualTo(MissionKind.Development));
+            Assert.That(outcome.HasDevelopmentPayload, Is.True);
+            Assert.That(outcome.DevelopmentTarget.Hero, Is.SameAs(hero));
+            Assert.That(outcome.MoverArmyId, Is.EqualTo(7));
+            Assert.That(outcome.MadeProgress, Is.True);
+            Assert.That(outcome.Outcome, Is.EqualTo(ExecutionOutcome.ProductiveStop));
+        }
+
         [Test]
         public void MaterializationValue_ConvertsPowerToCardUnitsAndChargesCanonicalPlanCosts()
         {

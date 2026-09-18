@@ -40,7 +40,8 @@ namespace Game.Ai.V2
             // context to its evaluator, but cannot veto an independent production investment.
             // One best prerequisite per pass; the next settled pass sees the completed stage.
             DevelopmentOpportunity preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
-                s, player, root, hand, ctx, op => op != null && op.ExpectedGain > 0f).FirstOrDefault();
+                s, player, root, hand, ctx, op => op != null && op.ExpectedGain > 0f,
+                activeIntents).FirstOrDefault();
             if (preparation != null)
             {
                 bool facilityReady = s.Development?.Facilities?.Any(f => f.Mode == preparation.Mode
