@@ -351,7 +351,7 @@ namespace Game.Ai.V2
             if (grant == null)
                 return 0f;
 
-            List<ArmySnapshot> threats = EquipmentValuationThreats(snap);
+            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
             if (threats.Count == 0)
                 return 0f;
 
@@ -376,10 +376,9 @@ namespace Game.Ai.V2
 
             int comparable = 0;
             int improved = 0;
-            foreach (ArmySnapshot threat in threats)
+            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
             {
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = threat?.Members;
-                if (threat == null || threat.IsAir || defenders == null || defenders.Count == 0)
+                if (defenders == null || defenders.Count == 0)
                     continue;
                 comparable++;
                 if (cand.RecipientUnit != null && army?.Members != null)
@@ -418,23 +417,33 @@ namespace Game.Ai.V2
             return comparable > 0 ? (float)improved / comparable : 0f;
         }
 
-        private static List<ArmySnapshot> EquipmentValuationThreats(WorldSnapshot snap)
+        private static List<IReadOnlyList<WorthIt.DefenderProfile>> EquipmentValuationThreats(WorldSnapshot snap)
         {
-            var result = new List<ArmySnapshot>();
+            var result = new List<IReadOnlyList<WorthIt.DefenderProfile>>();
+            // Only composition crosses the TrueWorld boundary. Neither hidden coordinates nor
+            // army identity is passed to recipient selection or Mission planning.
             if (snap?.TrueWorld?.EnemyArmies != null)
-                result.AddRange(snap.TrueWorld.EnemyArmies.Where(a => a != null));
+                result.AddRange(snap.TrueWorld.EnemyArmies
+                    .Where(a => a != null && !a.IsAir && a.Members != null && a.Members.Count > 0)
+                    .Select(a => a.Members));
 
-            // Enemy composition is an explicitly sanctioned Production valuation cheat. Neutral
-            // composition is different: a neutral must first exist in honest memory. Match only
-            // the stable physical ArmyId, then borrow TrueWorld solely for its current roster.
-            // Never read the TrueWorld neutral Hex here: valuation must not manufacture a target.
-            if (snap?.TrueWorld?.NeutralArmies == null || snap.Known?.NeutralSightings == null)
-                return result;
-            var knownNeutralIds = new HashSet<int>(snap.Known.NeutralSightings.Select(s => s.ArmyId));
-            if (knownNeutralIds.Count == 0)
-                return result;
-            result.AddRange(snap.TrueWorld.NeutralArmies
-                .Where(a => a != null && knownNeutralIds.Contains(a.ArmyId)));
+            // Physical neutrals must be honestly sighted first; do not expose unseen neutrals.
+            if (snap?.TrueWorld?.NeutralArmies != null && snap.Known?.NeutralSightings != null)
+            {
+                var knownIds = new HashSet<int>(snap.Known.NeutralSightings.Select(s => s.ArmyId));
+                result.AddRange(snap.TrueWorld.NeutralArmies
+                    .Where(a => a != null && !a.IsAir && knownIds.Contains(a.ArmyId)
+                        && a.Members != null && a.Members.Count > 0)
+                    .Select(a => a.Members));
+            }
+
+            // An event guard is not a live ArmyData until triggered. Its legitimately observed
+            // defender profiles already belong to Known, so use those directly for WorthIt;
+            // never invent a synthetic army or read hidden live event state/positions.
+            if (snap?.Known?.EventGuards != null)
+                result.AddRange(snap.Known.EventGuards
+                    .Where(g => g.Defenders != null && g.Defenders.Count > 0)
+                    .Select(g => g.Defenders));
             return result;
         }
 
