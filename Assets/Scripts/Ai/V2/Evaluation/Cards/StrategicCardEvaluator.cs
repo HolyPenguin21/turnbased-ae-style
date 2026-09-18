@@ -284,7 +284,8 @@ namespace Game.Ai.V2
             TraitPreference projected, CapabilityInventory inv, int referenceMoveMax,
             bool hasCompetingHeroDemand, WorldSnapshot snap,
             float? witnessedUsefulApDemand = null, int projectedLegalFillers = 0,
-            System.Func<ResourceType, float> spendableResource = null)
+            System.Func<ResourceType, float> spendableResource = null,
+            PlayerSetupData player = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             IntendedRole role = RoleForCapability(demand.Capability, PlanBaseDef(plan));
@@ -339,12 +340,11 @@ namespace Game.Ai.V2
                 ? 0f
                 : Mathf.Lerp(AiConfigV2.productionSupportMin,
                     AiConfigV2.productionSupportEmergencyFloor,
-                    Curves.Ramp(demand.Value, AiConfigV2.stratHoldUrgencyRampLo,
-                        AiConfigV2.stratHoldUrgencyRampHi));
+                    DemandUrgencyPolicy.Normalized(demand));
             bd.ProductionSupportAdjustment = demand.Capability == CapabilityKind.CardUpgrade
                 ? 0f
                 : ProductionSupportAdjustment(bd, plan, snap, productionDemandFloor);
-            bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource);
+            bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
 
             // AGG-RAID Defence cleanup — GarrisonSaturationPenalty only ever applied to a
             // GarrisonCombatPower demand, which no longer exists.
@@ -462,7 +462,10 @@ namespace Game.Ai.V2
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
-            bd.SynergyValue = traits * 0.5f + equipmentUpgrade + ec.Synergy + ec.GlobalSynergy;
+            // EquipmentUpgrade already prices this exact delta in RoleFitCore.
+            bd.SynergyValue = traits * 0.5f
+                + (role == IntendedRole.EquipmentUpgrade ? 0f : equipmentUpgrade)
+                + ec.Synergy + ec.GlobalSynergy;
             // Phase B is optional surplus work: no mission urgency may lift the economy-derived
             // Production support. Direct cards from hand have no Generation step and remain neutral.
             bd.ProductionSupportAdjustment = ProductionSupportAdjustment(bd, plan, snap, 0f);
@@ -1455,10 +1458,7 @@ namespace Game.Ai.V2
             float attainability = Mathf.Clamp01(attainableSupply / block.Required);
             float setback = Mathf.Clamp01(
                 Mathf.Min(Mathf.Max(0f, availableNow), consumed) / block.Required);
-            float urgency = Mathf.Clamp01(
-                (block.DemandValue - AiConfigV2.stratHoldUrgencyRampLo)
-                / Mathf.Max(0.01f,
-                    AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
+            float urgency = DemandUrgencyPolicy.NormalizedWorldValue(block.DemandValue);
 
             return AiConfigV2.stratResidualResourcePreservationMax
                 * urgency * attainability * setback;
