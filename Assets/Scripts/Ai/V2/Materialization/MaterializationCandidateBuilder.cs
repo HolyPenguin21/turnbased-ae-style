@@ -240,10 +240,10 @@ namespace Game.Ai.V2
                 // shared portfolio MUST compare its card-use utility against other cards.
                 upgrade.Score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(
                     demand.DevOpportunity, upgrade, snap, player, root, ctx);
-                float urgency = DemandUrgencyPolicy.Bonus(demand);
-                float decision = upgrade.Score + urgency * GenerationChanceForDecision(upgrade);
+                float devUrgency = DemandUrgencyPolicy.Bonus(demand);
+                float decision = upgrade.Score + devUrgency * GenerationChanceForDecision(upgrade);
                 AiDebugLog.WriteVerbose($"[AI][V2][Dev] materialization EV={demand.DevOpportunity.Ev:0.00} "
-                    + $"cardScore={upgrade.Score:0.00} urgency={urgency:0.00} "
+                    + $"cardScore={upgrade.Score:0.00} urgency={devUrgency:0.00} "
                     + $"p={GenerationChanceForDecision(upgrade):0.00} decision={decision:0.00}");
                 return new List<DemandCandidate>
                 {
