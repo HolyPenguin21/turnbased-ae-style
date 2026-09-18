@@ -347,9 +347,12 @@ namespace Game.Ai.V2
         internal static float EquipmentMatchupFit(DevelopmentOpportunity cand, ArmyData army,
             WorldSnapshot snap)
         {
-            IReadOnlyList<ArmySnapshot> enemies = snap?.TrueWorld?.EnemyArmies;
             EquipmentGrant grant = cand?.Card?.equipment;
-            if (enemies == null || grant == null || enemies.Count == 0)
+            if (grant == null)
+                return 0f;
+
+            List<ArmySnapshot> threats = EquipmentValuationThreats(snap);
+            if (threats.Count == 0)
                 return 0f;
 
             WorthIt.DefenderProfile handBefore = default;
@@ -373,10 +376,10 @@ namespace Game.Ai.V2
 
             int comparable = 0;
             int improved = 0;
-            foreach (ArmySnapshot enemy in enemies)
+            foreach (ArmySnapshot threat in threats)
             {
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = enemy?.Members;
-                if (enemy == null || enemy.IsAir || defenders == null || defenders.Count == 0)
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = threat?.Members;
+                if (threat == null || threat.IsAir || defenders == null || defenders.Count == 0)
                     continue;
                 comparable++;
                 if (cand.RecipientUnit != null && army?.Members != null)
@@ -413,6 +416,26 @@ namespace Game.Ai.V2
                 }
             }
             return comparable > 0 ? (float)improved / comparable : 0f;
+        }
+
+        private static List<ArmySnapshot> EquipmentValuationThreats(WorldSnapshot snap)
+        {
+            var result = new List<ArmySnapshot>();
+            if (snap?.TrueWorld?.EnemyArmies != null)
+                result.AddRange(snap.TrueWorld.EnemyArmies.Where(a => a != null));
+
+            // Enemy composition is an explicitly sanctioned Production valuation cheat. Neutral
+            // composition is different: a neutral must first exist in honest memory. Match only
+            // the stable physical ArmyId, then borrow TrueWorld solely for its current roster.
+            // Never read the TrueWorld neutral Hex here: valuation must not manufacture a target.
+            if (snap?.TrueWorld?.NeutralArmies == null || snap.Known?.NeutralSightings == null)
+                return result;
+            var knownNeutralIds = new HashSet<int>(snap.Known.NeutralSightings.Select(s => s.ArmyId));
+            if (knownNeutralIds.Count == 0)
+                return result;
+            result.AddRange(snap.TrueWorld.NeutralArmies
+                .Where(a => a != null && knownNeutralIds.Contains(a.ArmyId)));
+            return result;
         }
 
         private static DevelopmentOpportunity Make(DevelopmentOffering off, DevRecipientKind kind,
