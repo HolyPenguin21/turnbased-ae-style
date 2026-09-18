@@ -97,6 +97,68 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ConcreteChainResourceCostIgnoresAResourceTheChainDoesNotConsume()
+        {
+            var chainCost = new ResourceCost { energy = 4, materials = 3, tech = 0 };
+            WorldSnapshot Make(float tech) => new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Stockpile = new ResourceBundle
+                    {
+                        Human = 12f, Energy = 12f, Materials = 8f, Tech = tech,
+                    },
+                    PerTurnIncome = new ResourceBundle
+                    {
+                        Human = 1f, Energy = 1f, Materials = 1f, Tech = 0f,
+                    },
+                    Hand = new[]
+                    {
+                        new CardData(new CardDefinition
+                        {
+                            resourceCost = new ResourceCost { energy = 6, materials = 5, tech = 20 },
+                        }),
+                    },
+                    Deck = Array.Empty<CardDefinition>(),
+                },
+            };
+
+            float noTech = StrategicCardEvaluator.StrategicResourceCostValue(chainCost, Make(0f));
+            float abundantTech = StrategicCardEvaluator.StrategicResourceCostValue(chainCost, Make(100f));
+
+            Assert.That(noTech, Is.EqualTo(abundantTech).Within(0.0001f),
+                "A resource with zero cost in the concrete production chain must not create a false operational penalty");
+        }
+
+        [Test]
+        public void ConcreteChainResourceCostRespondsToScarcityOfAResourceItActuallyConsumes()
+        {
+            var chainCost = new ResourceCost { energy = 4 };
+            WorldSnapshot Make(float energy) => new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Stockpile = new ResourceBundle { Energy = energy, Tech = 100f },
+                    PerTurnIncome = new ResourceBundle { Energy = 0f, Tech = 10f },
+                    Hand = new[]
+                    {
+                        new CardData(new CardDefinition
+                        {
+                            resourceCost = new ResourceCost { energy = 20 },
+                        }),
+                    },
+                    Deck = Array.Empty<CardDefinition>(),
+                },
+            };
+
+            float scarceEnergy = StrategicCardEvaluator.StrategicResourceCostValue(chainCost, Make(1f));
+            float abundantEnergy = StrategicCardEvaluator.StrategicResourceCostValue(chainCost, Make(100f));
+
+            Assert.That(scarceEnergy, Is.GreaterThan(abundantEnergy),
+                "Scarcity of a resource actually consumed by the chain must raise its canonical opportunity cost");
+        }
+
+        [Test]
         public void GeneratedUnitCannotBeMistakenForAnExistingCardUpgrade()
         {
             var unit = new CardDefinition { cardType = CardType.Unit };
