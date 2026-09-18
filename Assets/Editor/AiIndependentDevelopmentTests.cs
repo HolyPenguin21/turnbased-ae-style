@@ -128,6 +128,62 @@ namespace Game.EditorTests
             Assert.That(DevelopmentOpportunityEvaluator.ReadyOpportunityValue(op), Is.Zero,
                 "No net improvement means no operational demand");
         }
+
+        [Test]
+        public void ReadyEquipmentIgnoresFourResourceSupportWhileInvestmentRetainsIt()
+        {
+            var equipment = new CardDefinition
+            {
+                cardType = CardType.Equipment,
+                resourceCost = new ResourceCost { energy = 4, materials = 3 },
+            };
+            var source = new GenerationStep { CardDef = equipment, ProducesEquipment = true };
+            var snapshot = new WorldSnapshot
+            {
+                Development = new DevelopmentReadiness
+                {
+                    ProductionSupport = AiConfigV2.productionSupportMin,
+                    SurplusFraction = 0f,
+                },
+                Self = new SelfSnapshot
+                {
+                    Stockpile = new ResourceBundle { Human = 12f, Energy = 12f, Materials = 8f },
+                    PerTurnIncome = new ResourceBundle { Energy = 1f, Materials = 1f },
+                    Hand = Array.Empty<CardData>(), Deck = Array.Empty<CardDefinition>(),
+                },
+            };
+            MethodInfo score = typeof(DevelopmentOpportunityEvaluator).GetMethod(
+                "Score", BindingFlags.Static | BindingFlags.NonPublic);
+            Assert.That(score, Is.Not.Null);
+            var ready = new DevelopmentOpportunity
+            {
+                Card = equipment, Generation = source, SuccessChance = 0.8f, ExpectedGain = 8f,
+            };
+            score.Invoke(null, new object[] { ready, snapshot, null, null });
+            float initially = ready.Ev;
+            Assert.That(ready.ProductionSupport, Is.EqualTo(1f).Within(0.0001f));
+
+            // Tech is absent from this chain. Neither unrelated Tech inventory nor a changed
+            // four-resource investment signal may change its operational valuation.
+            snapshot.Self.Stockpile = new ResourceBundle
+            {
+                Human = 12f, Energy = 12f, Materials = 8f, Tech = 100f,
+            };
+            snapshot.Development.ProductionSupport = AiConfigV2.productionSupportMax;
+            snapshot.Development.SurplusFraction = 1f;
+            score.Invoke(null, new object[] { ready, snapshot, null, null });
+            Assert.That(ready.ProductionSupport, Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(ready.Ev, Is.EqualTo(initially).Within(0.0001f));
+
+            // The same card before a factory exists remains a different, investment decision.
+            var preparation = new DevelopmentOpportunity
+            {
+                Card = equipment, SuccessChance = 0.8f, ExpectedGain = 8f,
+            };
+            score.Invoke(null, new object[] { preparation, snapshot, null, null });
+            Assert.That(preparation.ProductionSupport,
+                Is.EqualTo(AiConfigV2.productionSupportMax).Within(0.0001f));
+        }
     }
 }
 #endif
