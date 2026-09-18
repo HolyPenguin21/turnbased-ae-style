@@ -262,6 +262,57 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void KnownEventGuardImprovesEquipmentFitWithoutExposingAnUnknownEvent()
+        {
+            var host = new CardData(new CardDefinition
+            {
+                cardType = CardType.Unit, attack = 1, defenseRating = 2, hitPoints = 8,
+            });
+            var weapon = new EquipmentGrant();
+            weapon.statChanges.Add(new EquipmentStatChange
+            {
+                stat = EquipmentStat.Attack, amount = 20,
+            });
+            var opportunity = new DevelopmentOpportunity
+            {
+                Card = new CardDefinition { cardType = CardType.Equipment, equipment = weapon },
+                RecipientKind = DevRecipientKind.HandCard, RecipientCard = host,
+            };
+            var defenders = new[]
+            {
+                new WorthIt.DefenderProfile(defense: 14, hasCeramicArmor: false,
+                    attack: 5, hitPoints: 8),
+            };
+            var guard = new AiMapMemory.GuardStrength(14f, 5f, defenders, "event guard");
+            var snap = new WorldSnapshot
+            {
+                Known = new KnownSnapshot
+                {
+                    EventGuards = new[]
+                    {
+                        new KnownEventGuardSnapshot(new HexCoord(3, 4), guard, "event guard", 1),
+                    },
+                },
+            };
+
+            float visible = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            Assert.That(visible, Is.EqualTo(1f),
+                "An honestly observed event guard is a legitimate neutral composition witness");
+            snap.Known.EventGuards = new[]
+            {
+                new KnownEventGuardSnapshot(new HexCoord(-15, 12), guard, "event guard", 1),
+            };
+            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap), Is.EqualTo(visible).Within(0.0001f),
+                "Location must not leak from an event witness into production valuation");
+
+            snap.Known.EventGuards = System.Array.Empty<KnownEventGuardSnapshot>();
+            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+                opportunity, null, snap), Is.Zero,
+                "An undiscovered event must not be fabricated as a Production target");
+        }
+
+        [Test]
         public void HiddenEnemyCoordinatesAndIdentityCannotAffectCompositionOnlyFit()
         {
             var host = new CardData(new CardDefinition
