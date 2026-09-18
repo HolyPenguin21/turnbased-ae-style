@@ -50,7 +50,6 @@ namespace Game.Map
             _selectedHex = null;
             if (highlight != null) highlight.Hide();
             if (infoPanel != null) infoPanel.Hide();
-            if (armyInfoPanel != null) armyInfoPanel.Hide();
             if (armyButtonRow != null) armyButtonRow.Hide();
 
             // Return value unused here — this caller never Hide()s the battle screen itself

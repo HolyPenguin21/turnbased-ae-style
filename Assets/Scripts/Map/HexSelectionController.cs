@@ -35,11 +35,10 @@ namespace Game.Map
         [SerializeField] private HexMap map;
         [SerializeField] private HexShaderHighlight highlight;
         [SerializeField] private HexInfoPanelUI infoPanel;
-        [SerializeField] private ArmyInfoPanelUI armyInfoPanel;
         [SerializeField] private GameConfig gameConfig;
         [SerializeField] private GameTurnController turnController;
-        // Shown instead of armyInfoPanel whenever the selected hex has 2+ armies on it (see
-        // SelectHex) — click opens armyViewerModal for that army.
+        // Shown whenever the selected hex has 2+ armies on it (see SelectHex) — click opens
+        // armyViewerModal for that army.
         [SerializeField] private ArmyButtonRowUI armyButtonRow;
         [SerializeField] private ArmyViewerModalUI armyViewerModal;
         [SerializeField] private BaseViewerModalUI baseViewerModal;
@@ -662,7 +661,6 @@ namespace Game.Map
             if (highlight != null)
                 highlight.ShowAt(hexCenter, map.OuterRadius);
 
-            (int col, int row) = coord.ToOffset();
             BuildingData buildingHere = BuildingRegistry.FindAt(coord);
             PlayerSetupData owner = buildingHere?.Owner;
             // The bonus (if any) belongs permanently to the hex itself — stamped once when a
@@ -671,29 +669,7 @@ namespace Game.Map
             ResourceYields effectiveYields = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(coord));
             if (infoPanel != null)
             {
-                // Terrain is always shown (see VisionSystem's own comment: the map itself is
-                // never fogged, only its content) — but a hex outside the current viewer's
-                // vision shows none of what's actually on it right now, own building/army aside
-                // (owning it is what grants the vision in the first place, so it's never hidden
-                // from its own owner).
-                bool contentVisible = owner == VisionSystem.CurrentViewer || VisionSystem.IsVisibleToCurrentViewer(coord);
-                bool buildingKnown = HumanVisualMemory.IsBuildingKnown(VisionSystem.CurrentViewer, coord);
-                string ownerName = contentVisible ? owner?.Nickname : "Unknown";
-                // Never use the live registry to distinguish "still there" from "destroyed"
-                // outside vision — doing so would leak the exact hidden change the remembered
-                // marker is meant to conceal. The current UI intentionally exposes no detailed
-                // building snapshot text, so both live-hidden and last-seen-only read Unknown.
-                string buildingName = contentVisible ? buildingHere?.Name : (buildingKnown ? "Unknown" : null);
-                // Resource yield is the one exception: terrain-derived and unchanging, so it's
-                // remembered in two tiers instead of hiding the instant vision leaves — merely
-                // having seen the hex (even from a neighbor's vision radius, never physically
-                // stood on) reveals which types it yields with the amount shown as "?"; having
-                // actually had an army/building stand on it reveals the exact amount (see
-                // VisionSystem.HasEverSeenByCurrentViewer vs. IsVisitedByCurrentViewer).
-                bool amountsKnown = contentVisible || VisionSystem.IsVisitedByCurrentViewer(coord);
-                bool resourceVisible = amountsKnown || VisionSystem.IsVisibleToCurrentViewer(coord) || VisionSystem.HasEverSeenByCurrentViewer(coord);
-                ResourceYields shownYields = resourceVisible ? effectiveYields : null;
-                infoPanel.ShowHex(col, row, entry, ownerName, buildingName, shownYields, amountsKnown);
+                infoPanel.ShowHex();
 
                 bool isOwn = owner != null && owner == turnController?.CurrentPlayer;
 
@@ -718,26 +694,16 @@ namespace Game.Map
 
             RefreshResourceActionRow(coord, buildingHere, effectiveYields);
 
-            // 2+ armies (or a garrison sharing the hex with a named army) on this hex — replace
-            // the brief army-info panel with one button per army instead. A lone garrison shows
-            // neither: it can't move and isn't "an army" for this purpose (see
-            // ArmyInfoPanelUI/the garrison button on HexInfoPanelUI for how to actually reach
-            // it). Only a hex with exactly one non-garrison army gets the plain info-panel +
-            // hover/pulse-animation treatment. Only the current player's OWN armies ever show
-            // here — an enemy army sharing the hex is what the battle trigger (see Game.Combat.
-            // BattleInitiator) is for, not something to select/command from this panel.
+            // 2+ armies (or a garrison sharing the hex with a named army) on this hex — one
+            // button per army. A lone garrison shows neither: it can't move and isn't "an army"
+            // for this purpose (see the garrison button on HexInfoPanelUI for how to actually
+            // reach it). Only the current player's OWN armies ever show here — an enemy army
+            // sharing the hex is what the battle trigger (see Game.Combat.BattleInitiator) is
+            // for, not something to select/command from this panel.
             List<ArmyData> armies = ArmyRegistry.AllAt(coord).FindAll(a => a.Owner == turnController?.CurrentPlayer);
             RefreshArmyButtonRow(armies);
 
             ArmyData soleArmy = armies.Count == 1 && !armies[0].IsGarrison ? armies[0] : null;
-
-            if (armyInfoPanel != null)
-            {
-                if (soleArmy != null)
-                    armyInfoPanel.ShowArmy(soleArmy);
-                else
-                    armyInfoPanel.Hide();
-            }
 
             if (preserveSelection)
                 return;
@@ -1039,7 +1005,6 @@ namespace Game.Map
             _selectedHex = null;
             if (highlight != null) highlight.Hide();
             if (infoPanel != null) infoPanel.Hide();
-            if (armyInfoPanel != null) armyInfoPanel.Hide();
             if (armyButtonRow != null) armyButtonRow.Hide();
             if (armyViewerModal != null) armyViewerModal.Hide();
             if (baseViewerModal != null) baseViewerModal.Hide();

@@ -1,19 +1,15 @@
 using System;
-using System.Collections.Generic;
-using Game.Economy;
-using Game.Terrain;
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // Shows/hides a UI panel with the selected hex's info. Build the actual Canvas/panel/text
-    // hierarchy in the editor and wire the references here.
+    // Shows/hides a UI panel with the selected hex's action buttons (Garrison/Base). Hidden by
+    // default (see Awake) — build the actual Canvas/panel hierarchy in the editor and wire the
+    // references here.
     public class HexInfoPanelUI : MonoBehaviour
     {
         [SerializeField] private GameObject panelRoot;
-        [SerializeField] private TMP_Text infoText;
         [SerializeField] private Button garrisonButton;
         [SerializeField] private Button baseButton;
 
@@ -23,28 +19,10 @@ namespace Game.UI
                 panelRoot.SetActive(false);
         }
 
-        // effectiveYields is the terrain's own yield plus any citadel bonus already combined
-        // (see HexResourceCalculator) — this panel just displays it, it doesn't compute it.
-        // ownerName/buildingName are both null when the hex has no citadel on it. amountsKnown is
-        // false for a hex only ever seen from a neighbor's vision radius, never physically stood
-        // on — the resource types are revealed but not their exact amount (see
-        // HexSelectionController.SelectHex).
-        public void ShowHex(int col, int row, TerrainTypeEntry terrain, string ownerName, string buildingName, ResourceYields effectiveYields, bool amountsKnown = true)
+        public void ShowHex()
         {
             if (panelRoot != null)
                 panelRoot.SetActive(true);
-            if (infoText == null || terrain == null)
-                return;
-
-            string text = $"Hex ({col}, {row})\n{terrain.terrainName}";
-
-            if (effectiveYields != null && effectiveYields.HasAnyYield)
-                text += $"\nYields: {FormatYields(effectiveYields, amountsKnown)}";
-
-            text += $"\nBuildings: {(string.IsNullOrEmpty(buildingName) ? "none" : buildingName)}";
-            text += $"\nOwner: {(string.IsNullOrEmpty(ownerName) ? "none" : ownerName)}";
-
-            infoText.text = text;
         }
 
         public void Hide()
@@ -86,19 +64,6 @@ namespace Game.UI
                 baseButton.onClick.RemoveAllListeners();
                 baseButton.onClick.AddListener(() => onClick?.Invoke());
             }
-        }
-
-        // Only the non-zero amounts, e.g. "2 Human, 1 Materials" — skips whichever of the
-        // four resources this hex doesn't produce instead of listing all four every time.
-        // amountsKnown false swaps every number for "?" (type seen, amount not — see ShowHex).
-        private static string FormatYields(ResourceYields yields, bool amountsKnown)
-        {
-            var parts = new List<string>();
-            if (yields.human > 0) parts.Add($"{(amountsKnown ? yields.human.ToString() : "?")} Human");
-            if (yields.energy > 0) parts.Add($"{(amountsKnown ? yields.energy.ToString() : "?")} Energy");
-            if (yields.materials > 0) parts.Add($"{(amountsKnown ? yields.materials.ToString() : "?")} Materials");
-            if (yields.tech > 0) parts.Add($"{(amountsKnown ? yields.tech.ToString() : "?")} Tech");
-            return string.Join(", ", parts);
         }
     }
 }

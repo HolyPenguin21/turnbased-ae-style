@@ -9,8 +9,8 @@ using UnityEngine.UI;
 namespace Game.UI
 {
     // A row of ArmyButtonUI, one per army — shared between two contexts: the hex-side row
-    // (HexSelectionController.SelectHex swaps it in for ArmyInfoPanelUI once a hex has 2+
-    // armies) and the row embedded inside ArmyViewerModalUI (for switching which army is shown
+    // (HexSelectionController.SelectHex shows it once a hex has 2+ armies) and the row embedded
+    // inside ArmyViewerModalUI (for switching which army is shown
     // without closing it, and as the drag-and-drop target for moving units between armies).
     // Same instantiate-per-item + tracked-list-cleared-before-every-render pattern as
     // TurnOrderPopupUI's dice rows, windowed by maxVisible/scroll buttons once there are more

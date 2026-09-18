@@ -647,7 +647,6 @@ namespace Game.Map
                         _selectedHex = null;
                         if (highlight != null) highlight.Hide();
                         if (infoPanel != null) infoPanel.Hide();
-                        if (armyInfoPanel != null) armyInfoPanel.Hide();
                         if (armyButtonRow != null) armyButtonRow.Hide();
                     }
                     // Re-arm the hover/pulse animation once the move finishes, if it's still the
