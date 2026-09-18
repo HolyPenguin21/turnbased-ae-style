@@ -1,0 +1,68 @@
+--- a/Assets/Scripts/Ai/V2/Materialization/PlacementRules.cs
++++ b/Assets/Scripts/Ai/V2/Materialization/PlacementRules.cs
+@@ -44,7 +44,8 @@
+         // its own stable citadel-first order), and AviationRules.FreeAirfieldCapacity (the exact
+         // STORED-container figure ArmyActions.DeployUnitFromCard itself gates on).
+         public static bool TryFindAviationPlacement(WorldSnapshot snapshot, PlayerSetupData player,
+-            PlayerRoot root, CardData card, out HexCoord target, out string reason)
++            PlayerRoot root, CardData card, out HexCoord target, out string reason,
++            bool requireCurrentAp = true)
+         {
+             target = default;
+             reason = null;
+@@ -52,7 +53,9 @@
+             { reason = "missing args"; return false; }
+ 
+             int deployApCost = CardCostRules.PlayAp(card);
+-            if (!root.CanSpendActionPoints(deployApCost))
++            // Only immediate execution needs AP *this turn*. A future investment witness
++            // still checks a real owned airfield and all physical capacity in this owner.
++            if (requireCurrentAp && !root.CanSpendActionPoints(deployApCost))
+             { reason = "unaffordable(ap)"; return false; }
+             if (!AiResourceReservation.CanAffordCardPlay(root, player, card))
+             { reason = "unaffordable(resources)"; return false; }
+--- a/Assets/Scripts/Ai/V2/Evaluation/Cards/NonCombatCardPlayer.cs
++++ b/Assets/Scripts/Ai/V2/Evaluation/Cards/NonCombatCardPlayer.cs
+@@ -96,9 +96,10 @@
+                 logDynamicEffect: false);
+ 
+         // Preparation-only preview for aviation: use the SAME generated non-combat play
+-        // builder as Phase B, including real airfield capacity, Challenge + deploy AP,
+-        // exact resources and the canonical aviation scorer. No fake ground placement and
+-        // no second aviation valuation. Nothing is minted or deployed by this method.
++        // builder as Phase B: real airfield capacity, exact resources, Challenge + deploy AP
++        // and canonical aviation scoring. Only current-turn AP admission is omitted for a
++        // FUTURE investment; actual Phase B deployment keeps the full live AP check.
++        // No fake ground placement or second aviation valuation. Nothing is minted here.
+         internal static float ProjectedAviationInvestmentValue(CardDefinition card,
+             ResearchProductionMode mode, HexCoord facilityHex, UnitData operatorHero,
+             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+@@ -117,7 +118,8 @@
+             };
+             var standIn = new CardData(card) { ResearchProductionCreated = true };
+             NonCombatPlay preview = BuildPlayFor(standIn, generation, snap, player, root,
+-                hand, ctx, OwnedBaseHexes(snap, player), new List<string>());
++                hand, ctx, OwnedBaseHexes(snap, player), new List<string>(),
++                investmentPreview: true);
+             return preview != null && preview.Kind == PlayKind.Aviation
+                 ? preview.Score : float.NegativeInfinity;
+         }
+@@ -229,7 +231,7 @@
+         private static NonCombatPlay BuildPlayFor(CardData card, GenerationStep generation,
+             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
+             AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked,
+-            float? witnessedUsefulApDemand = null)
++            float? witnessedUsefulApDemand = null, bool investmentPreview = false)
+         {
+             CardDefinition def = card?.Definition;
+             if (def == null)
+@@ -249,7 +251,8 @@
+             {
+                 // §1 final closure — V2-owned feasibility query, no V1 AiManagementPlanner.
+                 if (!PlacementRules.TryFindAviationPlacement(snap, player, root, card,
+-                        out HexCoord hx, out string why))
++                        out HexCoord hx, out string why,
++                        requireCurrentAp: !investmentPreview))
+                 {
+                     blocked.Add($"{def.displayName}:aviation({why ?? "noAirfieldSlot"})");
+                     return null;
