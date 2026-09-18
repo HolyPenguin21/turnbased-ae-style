@@ -424,19 +424,22 @@ namespace Game.Ai.V2
         private static List<IReadOnlyList<WorthIt.DefenderProfile>> EquipmentValuationThreats(WorldSnapshot snap)
         {
             var result = new List<IReadOnlyList<WorthIt.DefenderProfile>>();
-            // Only composition crosses the TrueWorld boundary. Neither hidden coordinates nor
-            // army identity is passed to recipient selection or Mission planning.
+            // Only composition crosses the TrueWorld boundary. Ground and aviation rosters are
+            // both legitimate Production valuation inputs; neither hidden coordinates nor army
+            // identity is passed to recipient selection or Mission planning.
             if (snap?.TrueWorld?.EnemyArmies != null)
                 result.AddRange(snap.TrueWorld.EnemyArmies
-                    .Where(a => a != null && !a.IsAir && a.Members != null && a.Members.Count > 0)
+                    .Where(a => a != null && a.Members != null && a.Members.Count > 0)
                     .Select(a => a.Members));
 
             // Physical neutrals must be honestly sighted first; do not expose unseen neutrals.
+            // If a known neutral happens to be aviation, its observed identity still authorizes
+            // composition valuation exactly like a known ground neutral; its hidden Hex does not.
             if (snap?.TrueWorld?.NeutralArmies != null && snap.Known?.NeutralSightings != null)
             {
                 var knownIds = new HashSet<int>(snap.Known.NeutralSightings.Select(s => s.ArmyId));
                 result.AddRange(snap.TrueWorld.NeutralArmies
-                    .Where(a => a != null && !a.IsAir && knownIds.Contains(a.ArmyId)
+                    .Where(a => a != null && knownIds.Contains(a.ArmyId)
                         && a.Members != null && a.Members.Count > 0)
                     .Select(a => a.Members));
             }
