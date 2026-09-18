@@ -1,0 +1,26 @@
+name: AI V2 Production finalization one-shot
+on:
+  push:
+    branches:
+      - tune/ai-v2-production-score-alignment
+permissions:
+  contents: write
+jobs:
+  finalize:
+    if: "github.event.head_commit.message == 'chore(ai-v2): run guarded production score finalization'"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch scoring ownership and output type invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile Tools/production_score_finalization_once.py
+          python3 Tools/production_score_finalization_once.py
+          git diff --check
+          git diff --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add Assets/Scripts/Ai/V2/Strategy/Objectives/DevelopmentOpportunityEvaluator.cs Assets/Scripts/Ai/V2/Evaluation/Cards/StrategicCardEvaluator.cs Assets/Scripts/Ai/V2/Materialization/MaterializationCandidateBuilder.cs Assets/Scripts/Ai/V2/Materialization/MaterializationPlanFactory.cs Assets/Editor/AiProductionScoreAlignmentTests.cs
+          git commit -m 'fix(ai-v2): score equipment upgrades centrally and distinguish generated bodies'
+          git push origin HEAD:tune/ai-v2-production-score-alignment
