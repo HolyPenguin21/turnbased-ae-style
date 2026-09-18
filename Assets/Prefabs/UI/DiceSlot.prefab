@@ -67,7 +67,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: d264f417b3727ea49b36b30342b1184d, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 8680d7e7f2054244284887d83e45cab4, type: 3}
   m_Type: 0
   m_PreserveAspect: 1
   m_FillCenter: 1
@@ -110,6 +110,6 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.UI.DiceSlotUI
   image: {fileID: 5551000000000004}
-  baseSprite: {fileID: 21300000, guid: d264f417b3727ea49b36b30342b1184d, type: 3}
-  hitSprite: {fileID: 21300000, guid: cb778ab0ebcb8d156743dcdec93ea136, type: 3}
-  missSprite: {fileID: 21300000, guid: f09d779560f46b12cba4b6f59dd27a08, type: 3}
+  baseSprite: {fileID: 21300000, guid: 8680d7e7f2054244284887d83e45cab4, type: 3}
+  hitSprite: {fileID: 21300000, guid: 943b864ce4a213d4086df7c82c71e164, type: 3}
+  missSprite: {fileID: 21300000, guid: 2c0c0f3916a83464fbfa9be16216563d, type: 3}
