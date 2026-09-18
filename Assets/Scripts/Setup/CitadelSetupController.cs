@@ -98,6 +98,14 @@ namespace Game.Setup
             if (hexSelectionController != null)
                 hexSelectionController.enabled = false;
 
+            // No player has a citadel on the map yet, so there's nothing meaningful to pan/zoom
+            // toward — camera stays locked on whatever framing it started with for this entire
+            // step (PanTo's own programmatic glides between candidates still work regardless,
+            // same as during the Tactical Battle Module; see SetPanningEnabled's own comment).
+            // Re-enabled in FinishAllPlacements once every player's citadel is actually placed.
+            if (cameraController != null)
+                cameraController.SetPanningEnabled(false);
+
             if (confirmButton != null)
             {
                 confirmButton.interactable = false;
@@ -573,6 +581,10 @@ namespace Game.Setup
 
             if (hexSelectionController != null)
                 hexSelectionController.enabled = true;
+
+            // Every citadel is placed now — hand manual pan/zoom back to the player.
+            if (cameraController != null)
+                cameraController.SetPanningEnabled(true);
 
             CreatePlayerRoots();
 
