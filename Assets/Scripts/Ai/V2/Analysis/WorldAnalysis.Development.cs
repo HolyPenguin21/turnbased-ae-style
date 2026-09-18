@@ -126,10 +126,11 @@ namespace Game.Ai.V2
             return rd;
         }
 
-        // [0..1] proxy for "am I spending surplus, not resources I need". Per resource type:
-        // spendable(t) (the tighter of the legacy + strategic reservation floors) over two turns of
-        // income; the WORST type governs. First pass — the analyzer's A_total (opportunity cost vs
-        // playing a card) is the real gate; this is the radar's coarse appetite signal. Tune later.
+        // Coarse, four-resource readiness for the RADAR / infrastructure-investment context,
+        // not a gate for an individual Equipment chain. Its resource pool must come from the
+        // SAME StrategicSpendability owner as materialization feasibility; do not recalculate
+        // reservation floors in Analysis. Operational production must be priced separately using
+        // the exact chain's nonzero ResourceCost types.
         private static float SurplusFraction(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
             if (player == null || root == null)
@@ -137,12 +138,8 @@ namespace Game.Ai.V2
             float worst = 1f;
             foreach (ResourceType t in ResourceBundle.All)
             {
-                float legacy = AiResourceReservation.Available(root, player, t);
-                float strategic = ctx != null
-                    ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber,
-                        StrategicResourceReservationLedger.Map(t), root.GetResource(t))
-                    : float.MaxValue;
-                float spendable = Mathf.Max(0f, Mathf.Min(legacy, strategic));
+                float spendable = Mathf.Max(0f,
+                    StrategicSpendability.SpendableAmount(player, root, ctx, t));
                 float income = Mathf.Max(1f, IncomeProjection.IncomeFor(player, t, ctx?.Map));
                 worst = Mathf.Min(worst, Mathf.Clamp01(spendable / (income * 2f)));
             }
