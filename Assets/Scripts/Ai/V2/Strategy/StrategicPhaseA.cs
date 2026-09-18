@@ -353,7 +353,14 @@ namespace Game.Ai.V2
                     if (infra.GenerationAttempted)
                     {
                         result.GeneratedCardAttempts++;
-                        if (infra.Generated) result.GeneratedCardsSucceeded++;
+                        if (infra.Generated)
+                        {
+                            result.GeneratedCardsSucceeded++;
+                            // Preserve the exact minted card until the existing operator
+                            // fulfillment can place it. No new card reserve or role system.
+                            result.Reservation.ClaimDevelopmentOperatorCard(
+                                infra.GeneratedOperatorCard);
+                        }
                         result.Reservation.RecordGenerationAttempt(infra.Generation, null);
                         StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
                     }

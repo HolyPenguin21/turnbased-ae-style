@@ -107,6 +107,17 @@ namespace Game.Ai.V2
         public readonly HashSet<string> ClaimedGeneratorUses = new HashSet<string>();
         public readonly HashSet<string> TriedGeneratorCards = new HashSet<string>();
         public readonly HashSet<CardData> ClaimedEconomyBuildCards = new HashSet<CardData>();
+        // A produced operator must reach its already-selected factory before other Phase A/B
+        // card chains may deploy it as a generic Hero. Turn-scoped like the other claims.
+        private readonly HashSet<CardData> claimedDevelopmentOperatorCards = new HashSet<CardData>();
+
+        public void ClaimDevelopmentOperatorCard(CardData card)
+        {
+            if (card != null) claimedDevelopmentOperatorCards.Add(card);
+        }
+
+        public bool ClaimsDevelopmentOperatorCard(CardData card) =>
+            card != null && claimedDevelopmentOperatorCards.Contains(card);
         public readonly List<AxisDemand> UnresolvedDemands = new List<AxisDemand>();
         public int GenerationAttemptsUsed;
 
@@ -195,7 +206,8 @@ namespace Game.Ai.V2
             if (g == null || reservation == null || !reservation.CanGenerateMore
                 || reservation.TriedGeneratorCards.Contains(g.CardKey)
                 || (excludeGenKeys != null && excludeGenKeys.Contains(g.CardKey))
-                || (op.RecipientCard != null && excludeCards != null && excludeCards.Contains(op.RecipientCard)))
+                || (op.RecipientCard != null && excludeCards != null && excludeCards.Contains(op.RecipientCard))
+                || reservation.ClaimsDevelopmentOperatorCard(op.RecipientCard))
                 return new List<MaterializationPlan>();
 
             MaterializationPlan p = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);

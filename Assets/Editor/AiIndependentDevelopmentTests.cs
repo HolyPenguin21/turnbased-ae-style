@@ -16,6 +16,21 @@ namespace Game.EditorTests
     public sealed class AiIndependentDevelopmentTests
     {
         [Test]
+        public void GeneratedOperatorClaimProtectsOnlyItsExactPhysicalCard()
+        {
+            var reservation = new MaterializationReservation();
+            var def = new CardDefinition { cardType = CardType.Hero };
+            var operatorCard = new CardData(def) { ResearchProductionCreated = true };
+            var unrelatedCard = new CardData(def) { ResearchProductionCreated = true };
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(operatorCard), Is.False);
+            reservation.ClaimDevelopmentOperatorCard(operatorCard);
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(operatorCard), Is.True);
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(unrelatedCard), Is.False,
+                "Same-definition Hero copies must remain available for ordinary missions");
+            Assert.That(reservation.ClaimsDevelopmentOperatorCard(null), Is.False);
+        }
+
+        [Test]
         public void GeneratedOperatorRequiresAuthenticQualifiedHeroAndPositiveChallengeChance()
         {
             var hero = new CardDefinition

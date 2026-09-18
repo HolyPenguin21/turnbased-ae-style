@@ -47,6 +47,7 @@ namespace Game.Ai.V2
         public bool GenerationAttempted;
         public bool Generated;
         public GenerationStep Generation;
+        public CardData GeneratedOperatorCard;
         public int? BuilderArmyId;
         public int StateVersionAfter = -1;
         public string Detail;
@@ -164,6 +165,7 @@ namespace Game.Ai.V2
                 {
                     Built = false, GenerationAttempted = generated.Attempted,
                     Generated = generated.Success, Generation = g,
+                    GeneratedOperatorCard = generated.Success ? generated.Minted : null,
                     ApSpent = beforeAp - root.ActionPoints, ResourcesSpent = paid,
                     StateChanged = generated.StateChanged, StateVersionAfter = version,
                     Detail = generated.Success
