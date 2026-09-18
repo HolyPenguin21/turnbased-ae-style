@@ -97,6 +97,26 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void EconomyBaseAdmission_StrategicPlacementCannotRescueNegativeEconomics()
+        {
+            var strategicallyExcellentButEconomicallyNegative = new TaskScore(
+                economicHexBenefit: 1f,
+                airfield: 8f,
+                frontProgress: 8f,
+                corridorAlignment: 8f,
+                terrainDefense: 8f,
+                cardPrice: 2f);
+
+            Assert.That(strategicallyExcellentButEconomicallyNegative.Value, Is.GreaterThan(0f),
+                "sanity: the full placement score is intentionally attractive");
+            Assert.That(DemandLayer.EconomyBaseAdmissionValue(
+                strategicallyExcellentButEconomicallyNegative), Is.LessThan(0f));
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
+                strategicallyExcellentButEconomicallyNegative), Is.False,
+                "placement quality may rank admitted sites, but it cannot pay for the Economy project itself");
+        }
+
+        [Test]
         public void ExtractionFacilitiesAreEligibleForLosslessBaseMerge()
         {
             var site = new BuildingData { HasTieredUnlock = false };
