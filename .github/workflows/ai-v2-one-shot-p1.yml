@@ -7,7 +7,7 @@ permissions:
   contents: write
 jobs:
   patch:
-    if: github.event.head_commit.message == 'chore(ai-v2): one-shot scoped P1 patch runner'
+    if: "github.event.head_commit.message == 'chore(ai-v2): repair one-shot P1 runner'"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,19 +26,17 @@ jobs:
           a = text.index(start); z = text.index(end, a)
           old = text[a:z]
           assert 'snap?.Development?.ProductionSupport' in old and 'return amplifiable * (support - 1f)' in old, 'P1 scorer implementation drift'
-          new = '''        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
-              GenerationStep generation, WorldSnapshot snap, float demandFloor)
-          {
-              // The actual MaterializationPlan (or ScoreNonCombat's actualResourceCost)
-              // already pays Challenge AP and precisely the resource types it consumes via
-              // ResourceCost/StrategicResourceCostValue. StrategicSpendability owns the
-              // reserved-resource eligibility gate. A second multiplier based on the weakest
-              // unrelated resource would penalize a valid chain twice; no separate support
-              // adjustment is warranted for a minted Unit, Hero or Equipment.
-              return 0f;
-          }
-
-'''
+          new = '\n'.join([
+              '        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,',
+              '            GenerationStep generation, WorldSnapshot snap, float demandFloor)',
+              '        {',
+              '            // ResourceCost(plan) / ScoreNonCombat(actualResourceCost) already price',
+              '            // the exact chain with StrategicResourceCostValue; StrategicSpendability',
+              '            // gates spendable resources. A global weakest-resource multiplier',
+              '            // double-charges irrelevant resource shortages on minted cards.',
+              '            return 0f;',
+              '        }', '', '',
+          ])
           text = text[:a] + new + text[z:]
           scorer.write_text(text, encoding='utf-8')
           tests = Path('Assets/Editor/AiProductionScoreAlignmentTests.cs')
@@ -48,7 +46,7 @@ jobs:
           assert text.count(before) == 1, 'P1 test name drift'
           text = text.replace(before, after)
           before = 'Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.LessThan(0f));'
-          after = 'Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.Zero,\n                "The concrete chain is already charged by ResourceCost; global support must not double-charge it");'
+          after = 'Assert.That(Evaluate(CardType.Unit, ResearchProductionMode.Production), Is.Zero);'
           assert text.count(before) == 1, 'P1 test assertion drift'
           text = text.replace(before, after)
           tests.write_text(text, encoding='utf-8')
