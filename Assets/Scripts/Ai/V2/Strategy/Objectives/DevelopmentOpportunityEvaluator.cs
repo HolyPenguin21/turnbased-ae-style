@@ -62,10 +62,6 @@ namespace Game.Ai.V2
                 return result;
 
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-            var raidHexes = new HashSet<HexCoord>();
-            if (aggObjectives != null)
-                foreach (AggressionObjective o in aggObjectives)
-                    if (o != null) raidHexes.Add(o.LastKnownHex);
 
             int skippedNonEquip = 0;
             foreach (DevelopmentOffering off in rd.Offerings)
@@ -81,7 +77,7 @@ namespace Game.Ai.V2
                 }
 
                 DevelopmentOpportunity best = BestEquipmentOpportunity(
-                    off, snap, inv, player, root, hand, raidHexes, out string recipDiag, supportsNeed);
+                    off, snap, inv, player, root, hand, out string recipDiag, supportsNeed);
                 if (best == null)
                 {
                     AiDebugLog.Write($"[AI][V2][Dev]   offering '{card}' {off.Mode} p={off.SuccessChance:0.00} "
@@ -225,7 +221,7 @@ namespace Game.Ai.V2
                         SuccessChance = ResearchProductionSystem.EstimateSuccessChance(projectedActor, card),
                     };
                     DevelopmentOpportunity op = BestEquipmentOpportunity(off, snap, inv, player,
-                        root, hand, new HashSet<HexCoord>(), out _, supportsNeed);
+                        root, hand, out _, supportsNeed);
                     if (op == null) continue;
                     Score(op, snap, root, hand);
                     op.PreparationFacilityCard = facility;
@@ -304,7 +300,7 @@ namespace Game.Ai.V2
         // gated by EquipmentSystem.CanAttach (host kind + type tags + free slot + affordability).
         private static DevelopmentOpportunity BestEquipmentOpportunity(DevelopmentOffering off,
             WorldSnapshot snap, CapabilityInventory inv, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, HashSet<HexCoord> raidHexes, out string diag,
+            AiHandData hand, out string diag,
             System.Func<DevelopmentOpportunity, bool> supportsNeed = null)
         {
             diag = "no equipment grant on the card";
@@ -321,11 +317,7 @@ namespace Game.Ai.V2
             {
                 if (cand == null || (supportsNeed != null && !supportsNeed(cand))) return;
                 if (cand.ExpectedGain <= 0f) { gainZero++; return; }
-                // Matchup is solely a RECIPIENT-RANKING signal. Do not put the coefficient into
-                // ExpectedGain or EV: the shared card evaluator prices the equipment's real delta.
-                // TrueWorld supplies only composition profiles, never enemy positions or IDs.
-                float matchup = EquipmentMatchupFit(cand, army, snap);
-                float selection = cand.ExpectedGain * (1f + matchup);
+                float selection = RecipientSelectionValue(cand, army, snap);
                 if (best == null || selection > bestSelectionValue)
                 {
                     best = cand;
@@ -334,7 +326,8 @@ namespace Game.Ai.V2
             }
 
             // Hand cards — projected delta via AiPower.EffectiveLine (composes any equipment
-            // already stashed on the card + the new grant).
+            // already stashed on the card + the new grant). Recipient location/type carries no
+            // standalone strategic multiplier; only the actual delta and matchup distinguish it.
             if (hand?.Hand != null)
                 foreach (CardData c in hand.Hand)
                 {
@@ -343,15 +336,15 @@ namespace Game.Ai.V2
                     handChecked++;
                     if (!EquipmentSystem.CanAttach(generatedPreview, c, root, out string why))
                     { lastReject = why; continue; }
-                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
+                    float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
                         off.Card, c, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, DevRecipientKind.HandCard, c, null,
-                        $"hand:{c.Definition.displayName}", delta * AiConfigV2.devImportanceHandCard));
+                        $"hand:{c.Definition.displayName}", gain));
                 }
 
-            // On-map own units — projected delta from the unit's OriginatingCard (+ its current
-            // equipment) + the new grant. Fallback to a flat fraction only when OriginatingCard is
-            // unknown (minted / event units).
+            // On-map own units — projected delta from the live unit + the new grant. Garrison,
+            // field and current Raid context are facts available to matchup evaluation, not fixed
+            // value multipliers. Equal real gains remain equal regardless of status/location.
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army == null || army.IsPrison) continue;
@@ -361,12 +354,8 @@ namespace Game.Ai.V2
                     mapChecked++;
                     if (!EquipmentSystem.CanAttach(generatedPreview, u, root, out string whyU))
                     { lastReject = whyU; continue; }
-                    float importance = army.IsGarrison
-                        ? AiConfigV2.devImportanceGarrison
-                        : raidHexes.Contains(army.Hex) ? AiConfigV2.devImportanceRaidMatch
-                        : AiConfigV2.devImportanceField;
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate * importance;
+                        off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
                         null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain), army);
                 }
@@ -377,6 +366,17 @@ namespace Game.Ai.V2
                     + $"positive-gain 0 (zero-gain {gainZero})"
                     + (lastReject != null ? $"; last CanAttach reject: \"{lastReject}\"" : "; all attachable but gain <= 0");
             return best;
+        }
+
+        // Selection compares end-state gain and a bounded, composition-only matchup improvement.
+        // Recipient category/location is deliberately absent: a garrison/field/hand label does not
+        // create utility on its own. Canonical card cost remains outside this recipient ranking.
+        internal static float RecipientSelectionValue(DevelopmentOpportunity cand, ArmyData army,
+            WorldSnapshot snap)
+        {
+            if (cand == null || cand.ExpectedGain <= 0f)
+                return float.NegativeInfinity;
+            return cand.ExpectedGain * (1f + EquipmentMatchupFit(cand, army, snap));
         }
 
         // A bounded [0..1] fraction of enemy COMPOSITIONS that this recipient becomes better
