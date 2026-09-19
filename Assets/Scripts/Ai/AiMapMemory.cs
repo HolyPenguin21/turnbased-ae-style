@@ -352,6 +352,23 @@ namespace Game.Ai
         private static int _routeMemoryVersion;
         public static int RouteMemoryVersion => _routeMemoryVersion;
 
+        // Snapshot invalidation is player-scoped: another player's observation must not force this
+        // AI to rebuild Known/MapKnowledge. This is only a revision of the memory already owned
+        // here; it adds no subscription, cached snapshot or alternate observation path.
+        private static readonly Dictionary<PlayerSetupData, int> KnowledgeVersions =
+            new Dictionary<PlayerSetupData, int>();
+
+        public static int KnowledgeVersionFor(PlayerSetupData player) =>
+            player != null && KnowledgeVersions.TryGetValue(player, out int version)
+                ? version : 0;
+
+        private static void BumpKnowledgeVersion(PlayerSetupData player)
+        {
+            if (player == null)
+                return;
+            KnowledgeVersions[player] = KnowledgeVersionFor(player) + 1;
+        }
+
         // Idempotent — safe to call every new-game setup without risking a doubled subscription
         // (see CitadelSetupController, which calls this alongside VisionSystem.Clear/Configure).
         public static void EnsureSubscribed(HexMap map = null)
@@ -399,6 +416,7 @@ namespace Game.Ai
             ScoutDangerZones.Clear();
             AirReconTargets.Clear();
             RaidPlanRejected.Clear();
+            KnowledgeVersions.Clear();
             _currentTurn = 0;
             _map = null;
             _routeMemoryVersion++;
@@ -454,12 +472,16 @@ namespace Game.Ai
                         sightings.Remove(armyId);
                     }
                     _routeMemoryVersion++;
+                    BumpKnowledgeVersion(actor);
                 }
             }
 
             if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
                 && zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn) > 0)
+            {
                 _routeMemoryVersion++;
+                BumpKnowledgeVersion(actor);
+            }
         }
 
         // Called by VisitHexTask.TryFlee the moment a retreat actually triggers — `center` is the
@@ -484,10 +506,12 @@ namespace Game.Ai
                 if (avoidUntilTurn > existing.AvoidUntilTurn)
                     existing.AvoidUntilTurn = avoidUntilTurn;
                 _routeMemoryVersion++;
+                BumpKnowledgeVersion(actor);
                 return;
             }
             zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
             _routeMemoryVersion++;
+            BumpKnowledgeVersion(actor);
         }
 
         // VisitHexTask's own FindTarget/FindNextSafeStep read this to keep a Recce scout out of a
@@ -736,6 +760,7 @@ namespace Game.Ai
             // change even if only KnownResourceHexes/KnownBuildings/KnownEventGuards actually
             // moved this call — see RouteMemoryVersion's own comment.
             _routeMemoryVersion++;
+            BumpKnowledgeVersion(player);
         }
 
         // The event's own guard just got beaten for real (reward claimed) — a genuine world-state
@@ -752,8 +777,11 @@ namespace Game.Ai
         private static void OnEventConsumed(HexCoord hex)
         {
             foreach (KeyValuePair<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> kv in KnownEventGuards)
-                if (VisionSystem.IsVisible(kv.Key, hex))
-                    kv.Value.Remove(hex);
+                if (VisionSystem.IsVisible(kv.Key, hex) && kv.Value.Remove(hex))
+                {
+                    _routeMemoryVersion++;
+                    BumpKnowledgeVersion(kv.Key);
+                }
         }
 
         // A hex's resource bonus counts as "known" the moment it's ever been merely VISIBLE, not

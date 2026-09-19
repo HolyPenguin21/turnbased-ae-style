@@ -112,19 +112,13 @@ namespace Game.Ai.V2
             var parkedAt = new Dictionary<string, int>(System.StringComparer.Ordinal);
             int iter = 0;
             string stopReason = null;
-            bool refreshStrategicKnowledge = false;
             while (!budget.TotalCapHit && iter <= AiConfigV2.maxEndOfTurnTempoActionsPerTurn + 1)
             {
-                if (refreshStrategicKnowledge)
-                {
-                    snap = WorldAnalysis.RefreshStrategicKnowledge(
-                        snap, player, root, hand, ctx);
+                int previousKnowledgeVersion = snap?.KnowledgeVersion ?? -1;
+                snap = WorldAnalysis.RefreshStrategicKnowledge(
+                    snap, player, root, hand, ctx);
+                if (snap.KnowledgeVersion != previousKnowledgeVersion)
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snap);
-                    refreshStrategicKnowledge = false;
-                }
-                else
-                    snap = WorldAnalysis.RefreshOperationalState(
-                        snap, player, root, hand, ctx);
                 float spendableAp = StrategicResourceReservationLedger.SpendableAp(
                     player, ctx.TurnNumber, root.ActionPoints);
 
@@ -229,7 +223,6 @@ namespace Game.Ai.V2
                         bool pc = false;
                         yield return StrategicPressureAdvance.Execute(player, root, ctx, best.Pressure, v => pc = v);
                         exec.Succeeded = exec.StateChanged = exec.Progressed = pc;
-                        exec.KnowledgeMayHaveChanged = pc;
                         if (!pc) exec.FailReason = "no advance step taken";
                         break;
                     }
@@ -269,8 +262,6 @@ namespace Game.Ai.V2
                         V2StateVersion.Bump();
                     result.StateChanged |= exec.StateChanged;
                 }
-                refreshStrategicKnowledge =
-                    exec.StateChanged && exec.KnowledgeMayHaveChanged;
                 if (!exec.Progressed)
                 {
                     parkedAt[best.ActionKey] = V2StateVersion.Current;

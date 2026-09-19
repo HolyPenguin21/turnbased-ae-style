@@ -19,10 +19,6 @@ namespace Game.Ai.V2
         public bool Interrupt;
         public float ApSpent, HumanSpent, EnergySpent, MaterialsSpent, TechSpent;
         public bool CardPlayed, Drawn, GenerationAttempted, Generated, Attached;
-        // True only for action kinds that can change visibility/known-map projections. The Phase-B
-        // arbiter uses this to choose the next immutable snapshot refresh without rescanning
-        // strategic knowledge after hand-only or resource-only actions.
-        public bool KnowledgeMayHaveChanged;
         public string FailReason;
     }
 
@@ -65,7 +61,6 @@ namespace Game.Ai.V2
             }
             exec.Generated |= play.Generated;
             exec.Attached |= play.Attached;
-            exec.KnowledgeMayHaveChanged |= play.Deployed || play.Attached;
             if (play.StateChanged) { exec.StateChanged = true; result.StateChanged = true; }
 
             if (!play.Deployed)
@@ -144,14 +139,12 @@ namespace Game.Ai.V2
             {
                 result.InfrastructureAttempts++;
                 result.InfrastructureBuilt++;
-                exec.KnowledgeMayHaveChanged = true;
             }
             else if (nc.Kind == NonCombatCardPlayer.PlayKind.Equipment)
             {
                 result.EquipmentAssignmentAttempts++;
                 result.EquipmentAssignmentsSucceeded++;
                 exec.Attached = true;
-                exec.KnowledgeMayHaveChanged = true;
             }
             AiDebugLog.Write($"[AI][V2]   strat.B non-combat — played {nc.Kind} {nc.Explain} (ap {F(ncRes.ApSpent)})");
             return WorldAnalysis.RefreshOperationalState(snap, player, root, hand, ctx);
