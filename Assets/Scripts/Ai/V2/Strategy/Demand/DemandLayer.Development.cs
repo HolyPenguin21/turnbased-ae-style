@@ -63,7 +63,9 @@ namespace Game.Ai.V2
             // Filter illegal recipients before selecting the best one for each offering. The
             // opportunity evaluator already does this via CanAttach and signed card utility;
             // demanding a witness from another axis here would block useful autonomous Production.
-            if (root != null && hand != null)
+            // Orchestration already computed and refreshed this list for the settled state.
+            // Enumerate here only for callers that did not supply it.
+            if (devOpportunities == null && root != null && hand != null)
                 devOpportunities = DevelopmentOpportunityEvaluator.Enumerate(
                     s, player, root, hand, null);
             // An unstaffed mode must not suppress real opportunities from another ready mode.
