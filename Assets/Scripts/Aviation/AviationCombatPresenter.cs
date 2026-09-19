@@ -123,13 +123,12 @@ namespace Game.Aviation
             yield return new WaitUntil(() => resolved);
             hexSelection?.RestackArmiesOn(airArmy.Hex, null);
 
-            // An AA hit changes HP or roster even when the air army survives, so
-            // Unregister never fires. A ground AA shot can hit a different hex; a moving
-            // aircraft still has its origin in Data.Hex until MoveArmy commits. Publish
-            // the real current position only after the shot's damage/removal is complete.
-            HexCoord observedHex = airArmy.Controller != null
-                ? airArmy.Controller.CurrentHex : airArmy.Hex;
-            VisionSystem.NotifyContentChanged(observedHex);
+            // An AA hit on a stationary wing changes HP/roster without an Unregister.
+            // During flight CurrentHex has advanced, but ArmyRegistry still indexes the
+            // origin until the order completes. MoveArmy will publish both final hexes;
+            // taking a snapshot before that atomic relocation would record false content.
+            if (airArmy.Controller == null || !airArmy.Controller.IsMoving)
+                VisionSystem.NotifyContentChanged(airArmy.Hex);
         }
 
         private IEnumerator RunAirStrike(ArmyData airArmy, List<ArmyData> targetArmies, AirStrikeResult result = null)
