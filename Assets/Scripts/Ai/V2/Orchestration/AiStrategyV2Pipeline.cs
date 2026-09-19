@@ -900,18 +900,16 @@ namespace Game.Ai.V2
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    }
-                    // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
-                    // settled snapshot before re-enumerating objectives, so a neutral destroyed
-                    // during the previous step is gone from the frozen report in the same turn.
-                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                        ? AggressionObjectiveEvaluator.Enumerate(
-                            snapshot, assessment.Breakdown.OpportunityReport)
-                        : new List<AggressionObjective>();
-                    if (!ownershipFreshAfterPhaseA)
-                    {
+                        // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
+                        // settled snapshot before re-enumerating objectives, so a neutral destroyed
+                        // during the previous step is gone from the report in the same turn.
+                        if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                            StrategyLayer.RefreshAggressionLanePressures(
+                                snapshot, assessment.Breakdown);
+                        aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                            ? AggressionObjectiveEvaluator.Enumerate(
+                                snapshot, assessment.Breakdown.OpportunityReport)
+                            : new List<AggressionObjective>();
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
                         activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
