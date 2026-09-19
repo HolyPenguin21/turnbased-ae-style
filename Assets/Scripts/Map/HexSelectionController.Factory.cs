@@ -19,21 +19,10 @@ using UnityEngine.InputSystem;
 
 namespace Game.Map
 {
-    // Entity-creation half of HexSelectionController — building/spawning UnitData/ArmyData/
-    // BuildingData and their map markers, plus the hero-built extraction Facility action. Split
-    // out of the main file (click/selection orchestration) and HexSelectionController.Movement.cs
-    // (hover preview/path/move orders) purely for file size — all three share the same fields and
-    // private helpers (ResolveArmyOffset, RestackArmiesOn, etc.), which stay in the main file
-    // since every part uses them, not just this one.
+    // Gameplay spawning/building half of HexSelectionController. The public extraction
+    // action is shared by the human resource buttons and InfrastructureActions for AI.
     public partial class HexSelectionController
     {
-        // Builds a brand-new unit's data — used by CardHandUI when a Unit/Hero card is played
-        // onto the map, and by CitadelSetupController's test-army spawning. Pure data only: a
-        // unit has no map presence of its own at all (only its ArmyData does — see
-        // ArmyData.Controller/CreateArmyMarker). The caller is responsible for adding the
-        // returned UnitData to whichever ArmyData it belongs to (ArmyData.AddMemberSorted) and,
-        // if that changes the army's own visibility (e.g. its first member ever), refreshing the
-        // hex with RestackArmiesOn.
         public UnitData SpawnUnit(string unitName, PlayerSetupData owner, int moveMax, int activationApCost, bool isHero, int commandRating, Sprite art, IEnumerable<string> grantedAbilities = null, int attack = 0, int range = 1, int hitPoints = 1, int initiative = 1, int fate = 0, int defense = 1, int resistance = 1, IEnumerable<UnitTypeTag> typeTags = null, Sprite detailArt = null, int apCost = 0, ResourceCost resourceCost = null, bool isAviation = false, int launchEnergyCost = 0, int turnsWithoutRefuel = 0, int antiAirRadius = 1, CardDefinition sourceDefinition = null)
         {
             if (owner == null)
@@ -61,37 +50,22 @@ namespace Game.Map
             if (typeTags != null)
                 foreach (UnitTypeTag tag in typeTags)
                     data.TypeTags.Add(tag);
-            // UnitAbilities.RapidReaction: "costs no AP to move when in an army" — overrides
-            // whatever activationApCost the card itself declared (see ArmyData.
-            // ActivationApCost, which sums each member's own cost).
             if (data.Abilities.Contains(UnitAbilities.RapidReaction))
                 data.ActivationApCost = 0;
             UnitRepair.InitializeRepairCost(data);
             return data;
         }
 
-        // The one and only place an army's map marker gets created — called once, right after
-        // ArmyRegistry.Register, by every ArmyData creation site (CitadelSetupController.
-        // CreateGarrison, SpawnBuilding's own garrison creation below, ArmyViewerModalUI's
-        // Create Army). A freshly created army starts with zero members and its marker starts
-        // invisible (see RestackArmiesOn, which never shows an empty army) — it becomes visible
-        // the moment its first member is added and RestackArmiesOn is re-run.
         public ArmyController CreateArmyMarker(ArmyData army)
         {
             if (map == null || army == null || army.Owner == null)
                 return null;
-
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(army.Owner.Faction)
                 : null;
             if (ownerCatalog == null || ownerCatalog.armyPrefab == null)
                 return null;
 
-            // A freshly launched air wing (AviationActions.LaunchAircraft) already carries
-            // IsAirArmy at creation time, so it starts with the right look straight away — no
-            // in-place swap needed. A "Create Army" empty shell that only becomes an air army
-            // later (its first aircraft joining) starts on armyPrefab and is switched in place
-            // by RefreshArmyAirLook once ArmyActions.TransferMember actually promotes it.
             MapObjectVisual prefab = AviationRules.IsAirArmy(army) && ownerCatalog.airArmyPrefab != null
                 ? ownerCatalog.airArmyPrefab
                 : ownerCatalog.armyPrefab;
@@ -99,26 +73,17 @@ namespace Game.Map
             ArmyController controller = marker.gameObject.AddComponent<ArmyController>();
             controller.SetData(army);
             army.Controller = controller;
-
             PlayerRoot root = PlayerRootRegistry.FindFor(army.Owner);
             if (root != null)
                 marker.transform.SetParent(root.transform, worldPositionStays: true);
-
             marker.transform.position = map.HexToWorld(army.Hex);
             marker.SetColor(PlayerColorPalette.Colors[army.Owner.ColorIndex]);
             marker.SetSortingOrder(MapSortingOrder.ArmyCircle, MapSortingOrder.ArmyIcon);
-            marker.SetVisible(false); // RestackArmiesOn below decides if it should actually show
-
+            marker.SetVisible(false);
             RestackArmiesOn(army.Hex, null);
             return controller;
         }
 
-        // Called once by ArmyActions.TransferMember right after it promotes a ground army shell
-        // to an air army (its first aircraft joining) — the marker was already created earlier
-        // on the ground armyPrefab (see CreateArmyMarker), so it needs an in-place art swap
-        // rather than a fresh Instantiate; that keeps the same ArmyController GameObject (its
-        // coroutines/selection state included). No-op if the faction never assigned an
-        // airArmyPrefab — the army just keeps its ground look.
         public void RefreshArmyAirLook(ArmyData army)
         {
             if (army?.Controller?.Visual == null || army.Owner == null)
@@ -130,28 +95,15 @@ namespace Game.Map
                 army.Controller.Visual.ApplyPrefabAppearance(ownerCatalog.airArmyPrefab);
         }
 
-        // Called explicitly wherever a member is actually REMOVED from a named army (see
-        // ArmyViewerModalUI.Hide, deferred until the modal actually closes) — a named army
-        // that's just been left with nobody in it has served its purpose and is gone for good:
-        // unregistered and its marker destroyed. Deliberately NOT folded into RestackArmiesOn's
-        // own membership-change handling — that runs for every membership change on a hex,
-        // including a brand-new army that was just created and hasn't received its first member
-        // yet (see CreateArmyMarker), which must stay merely invisible, not be torn down for it.
-        // Any army sitting empty on its own owner's Barracks hex is left alone indefinitely; an
-        // airfield container is likewise retained by its independent AirfieldCapacity rule.
         public void DeleteArmyIfEmptied(ArmyData army)
         {
             if (army == null || army.Members.Count > 0)
                 return;
-
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            // Ground staging belongs to Barracks; the dedicated aviation container belongs to
-            // AirfieldCapacity. Neither capability is silently made dependent on the other.
             if (building != null && building.Owner == army.Owner
                 && (building.HasAbility(UnitAbilities.Barracks)
                     || (army.IsAirfield && AviationRules.IsAirfieldBuilding(building, army.Owner))))
                 return;
-
             ArmyRegistry.Unregister(army);
             if (_selectedArmy == army.Controller)
                 SetSelectedArmy(null);
@@ -162,18 +114,10 @@ namespace Game.Map
             }
         }
 
-        // Spawns a brand-new Base building at `hex` for `owner` — used by CardHandUI when a
-        // CardType.Base card is played onto an empty hex (see CardHandUI.TryPlayCard). Uses the
-        // owner's own FactionCardCatalog.basePrefab — a distinct marker from the auto-placed
-        // starting citadel's own citadelPrefab (see CitadelSetupController.SpawnCitadelMarker).
-        // Position/offset resolution is left entirely to the RestackArmiesOn call at the end,
-        // same as CitadelSetupController relies on its own one-off HexObjectLayout call before
-        // either the registry or RestackArmiesOn existed.
         public BuildingData SpawnBuilding(CardDefinition definition, HexCoord hex, PlayerSetupData owner)
         {
             if (map == null || owner == null || definition == null)
                 return null;
-
             FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
                 : null;
@@ -198,52 +142,20 @@ namespace Game.Map
             foreach (string ability in definition.grantedAbilities)
                 building.Abilities.Add(ability);
             BuildingRegistry.Register(hex, building);
-
-            // Same rule as the auto-placed citadel (see CitadelSetupController.CreateGarrison):
-            // a Barracks-tagged building needs its own garrison to receive Unit/Hero cards
-            // deployed from hand — not every Base card grants Barracks, so BuildingRegistry.
-            // EnsureGarrisonForBuilding (shared with the capture path — see its own comment)
-            // no-ops unless the card's own grantedAbilities actually include it.
             BuildingRegistry.EnsureGarrisonForBuilding(building, this);
-
-            // AirfieldCapacity is authored on the Base card just like its garrison capability.
-            // Materialize the shared aviation container at the same lifecycle boundary so a Base
-            // founded underneath an existing air army is immediately a complete airfield.
             if (building.AirfieldCapacity > 0)
                 AviationActions.EnsureAirfield(this, owner, hex);
-
-            // A "Concord Citadel" card played from hand is otherwise identical to the starting
-            // citadel (same abilities, same stats) but per the user's own spec does NOT get the
-            // permanent hex resource bonus — that belongs only to the hex the player chose at
-            // game start (see CitadelSetupController.SpawnCitadelMarker/BuildingData.
-            // IsStartingCitadel). A later citadel only ever collects whatever the hex's own
-            // terrain actually yields.
-
-            // Now that BuildingRegistry actually has this building, re-resolve the layout for
-            // the whole hex — positions the new marker correctly (and re-centres any armies
-            // already sharing the hex, now that it has a building).
             RestackArmiesOn(hex, null);
-
-            // Stealth trigger B (see Game.Map.StealthSystem): a newly founded building is a
-            // fresh vision source — check enemy hidden units on hexes `owner` now sees.
             StealthSystem.RunChecksForNewVisionSource(building);
             return building;
         }
 
-        // Shared marker-instantiate-and-position logic for anything BuildingRegistry ends up
-        // holding — SpawnBuilding (a dragged CardType.Base card) and TryBuildExtractionFacility
-        // (a hero-built resource site) each use their own prefab (the owner's FactionCardCatalog.
-        // basePrefab vs. GameConfig.facilityMarkerPrefab — distinct visuals, not just a
-        // different icon on the same one).
-        // `icon` is optional: facilityMarkerPrefab bakes its own icon directly onto its
-        // Object_Image sprite, so passing null there leaves that alone instead of blanking it.
         private MapObjectVisual CreateBuildingMarker(HexCoord hex, PlayerSetupData owner, MapObjectVisual prefab, Sprite icon = null)
         {
             MapObjectVisual marker = Instantiate(prefab);
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root != null)
                 marker.transform.SetParent(root.transform, worldPositionStays: true);
-
             marker.transform.position = map.HexToWorld(hex);
             marker.SetColor(PlayerColorPalette.Colors[owner.ColorIndex]);
             if (icon != null)
@@ -252,9 +164,6 @@ namespace Game.Map
             return marker;
         }
 
-        // Shared by CardHandUI (founding a Base) and this controller's own resource-action
-        // buttons (founding/adding to a resource site) — a hero must be physically standing on
-        // the hex for either action.
         public static bool HasOwnHeroArmyAt(HexCoord hex, PlayerSetupData player)
         {
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
@@ -263,22 +172,6 @@ namespace Game.Map
             return false;
         }
 
-        // The role-aware "which Hero on this hex qualifies for Research/Production" rule moved to
-        // Game.Cards.ResearchProductionSystem.FindActor (spec P0 §4 — one rule source shared by
-        // the human UI and the AI Development planner). Nothing outside that module needs it.
-
-        // The hero action behind each of HexInfoPanelUI's up-to-4 resource buttons (see
-        // RefreshResourceActionRow) — builds `definition` (one of GameConfig.
-        // extractionFacilityCards) directly into whatever building already sits on `hex`,
-        // creating a brand-new minimal "resource site" building first if it's still bare. Never
-        // touches CardHandUI/a hand slot — these cards are never drawn or held.
-        // Same "no one to click a popup during another player's turn" contract as
-        // HexSelectionController.Movement.NotifyMoveBlocked (see its own comment — an unguarded
-        // ShowSpawnHint there once left the human-only blocking popup open, and input locked, for
-        // the rest of the game after an AI rejection). TryBuildExtractionFacility is reachable
-        // from the AI executor the same way (BuildingPlayExecutor.BuildExtractionFacility ->
-        // InfrastructureActions.TryBuildExtractionSite -> here), so every rejection branch below
-        // routes through this instead of calling ShowSpawnHint directly.
         private void NotifyBuildBlocked(PlayerSetupData owner, string message)
         {
             if (owner != null && owner.IsHuman)
@@ -301,12 +194,6 @@ namespace Game.Map
             bool isNewSite = building == null;
             if (isNewSite)
             {
-                // A generic identity, not the triggering card's own name/art — cell 0 in the
-                // shared modal shows this alongside the actual placed Facility (see
-                // BaseSlotCardUI), so borrowing e.g. "Materials Extractor" for the SITE itself
-                // reads as two identical entries once a Materials Extractor is also placed in a
-                // slot. No Visual/registration yet — deferred until every affordability check
-                // below passes, so a failed build never leaves an orphaned marker on the hex.
                 building = new BuildingData(totalFacilitySlots: 4)
                 {
                     Name = "Resource Site", Hex = hex, Owner = owner,
@@ -320,14 +207,14 @@ namespace Game.Map
             }
             else if (building.Owner != owner)
             {
-                return false; // not this player's building — no hint, same as any other irrelevant target
+                return false;
             }
 
             string ability = definition.grantedAbilities?.Find(
                 a => System.Array.IndexOf(UnitAbilities.CollectAbilities, a) >= 0);
             int resourceIndex = System.Array.IndexOf(UnitAbilities.CollectAbilities, ability);
             if (resourceIndex < 0)
-                return false; // malformed extraction definition
+                return false;
             if (building.HasFacilityWithAbility(ability))
             {
                 NotifyBuildBlocked(owner, $"{building.Name} already has a {definition.displayName}.");
@@ -360,7 +247,6 @@ namespace Game.Map
                 NotifyBuildBlocked(owner, $"{building.Name} has no free Facility slot for {definition.displayName}.");
                 return false;
             }
-
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null)
                 return false;
@@ -375,54 +261,38 @@ namespace Game.Map
                 return false;
             }
 
-            // Resolve the acting Hero army before the spend as part of the same authoritative
-            // action. HasOwnHeroArmyAt above guarantees one exists; the deterministic lowest-MP
-            // choice is shared by the movement charge and the post-commit stealth consequence.
             ArmyData actingHeroArmy = ArmyRegistry.AllAt(hex)
                 .Where(army => army != null && army.Owner == owner
                     && army.Members.Exists(member => member != null && member.IsHero))
                 .OrderBy(army => army.CurrentMovement)
                 .ThenBy(army => army.Id)
                 .FirstOrDefault();
-
-            // Build the Facility object BEFORE the spend: FacilityData.FromDefinition is the only
-            // step from here to the return that can throw (a malformed grantedAbilities list).
-            // Everything after the spend — slot assignment, the hero's move-point cost, and (for a
-            // new site) marker + registry — is infallible in normal operation, so the AP/resource
-            // spend is effectively the commit point.
             FacilityData facility = FacilityData.FromDefinition(definition);
 
             root.SpendActionPoints(definition.apCost);
             definition.resourceCost.PayFrom(root);
             building.FacilitySlots[slotIndex] = facility;
-
             if (isNewSite)
             {
                 FactionCardCatalog ownerCatalog = cardHandUI != null && cardHandUI.StartingDeckCatalog != null
                     ? cardHandUI.StartingDeckCatalog.GetCatalog(owner.Faction)
                     : null;
                 building.Visual = CreateBuildingMarker(hex, owner, gameConfig.facilityMarkerPrefab, ownerCatalog?.facilityIcon);
+                // The facility is already in the slot when Register publishes this site.
                 BuildingRegistry.Register(hex, building);
                 RestackArmiesOn(hex, null);
             }
-
             if (_selectedHex.HasValue && _selectedHex.Value.Equals(hex))
                 SelectHex(hex, preserveSelection: true);
-
-            // Stealth trigger B (see Game.Map.StealthSystem) — covers a facility card that
-            // itself carries an r1sX vision tag.
             StealthSystem.RunChecksForNewVisionSource(building, facility);
-
-            // Building a facility is that hero's whole action for the turn — it costs whatever
-            // move points its army had left and reveals the acting Hero. Keep this after every
-            // other build-side effect so a thrown/rolled-back transaction cannot leak a reveal.
             ApplyExtractionBuilderConsequences(actingHeroArmy);
+            // A newly registered site was already published with its facility in place.
+            // Adding to an existing building changes its slots/income without registration.
+            if (!isNewSite)
+                VisionSystem.NotifyContentChanged(hex);
             return true;
         }
 
-        // The post-commit consequence of the authoritative extraction build. Kept beside the
-        // action (rather than in AI/UI callers) so both entry paths reveal and exhaust the same
-        // acting Hero, while failed validation never reaches it.
         internal static void ApplyExtractionBuilderConsequences(ArmyData actingHeroArmy)
         {
             if (actingHeroArmy == null)
@@ -430,9 +300,6 @@ namespace Game.Map
             foreach (UnitData member in actingHeroArmy.Members)
                 if (member != null)
                     member.MoveCurrent = 0;
-
-            // A directed Hero action reveals only the participating Hero(s), just like Research;
-            // a hidden escort sharing the army did not perform the construction action.
             foreach (UnitData member in actingHeroArmy.Members)
                 if (member != null && member.IsHero)
                     StealthSystem.ExitStealth(member);
