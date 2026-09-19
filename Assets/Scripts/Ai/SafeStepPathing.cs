@@ -16,11 +16,11 @@ namespace Game.Ai
         {
             if (map == null || army == null)
                 return null;
-            EnsureCacheState(map, army.Owner);
+            PlayerRouteCache cache = EnsureCacheState(map, army.Owner);
             // Execution still searches live with CurrentMovement and its own air/ground rule;
             // only the equivalent remembered blocker membership is shared with planning.
             return AiTurnController.FindAffordableStep(map, army, targetHex,
-                SafeRouteBlocker(army, targetHex));
+                SafeRouteBlocker(null, cache.BlockedHexes, targetHex, null));
         }
 
         public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex)
@@ -60,18 +60,18 @@ namespace Game.Ai
         {
             if (map == null || owner == null || baseHexes == null || baseHexes.Count == 0)
                 return int.MaxValue;
-            EnsureCacheState(map, owner);
+            PlayerRouteCache cache = EnsureCacheState(map, owner);
             int minimum = int.MaxValue;
             for (int i = 0; i < baseHexes.Count; i++)
             {
                 HexCoord home = baseHexes[i];
-                if (!_baseCostFields.TryGetValue(home, out Dictionary<HexCoord, int> field))
+                if (!cache.BaseCostFields.TryGetValue(home, out Dictionary<HexCoord, int> field))
                 {
-                    if (_baseCostFields.Count >= MaxCostFields)
-                        _baseCostFields.Clear();
+                    if (cache.BaseCostFields.Count >= MaxCostFields)
+                        cache.BaseCostFields.Clear();
                     field = HexPathfinder.FindCosts(map, new[] { home },
-                        hex => _cachedMemoryBlockers.Contains(hex));
-                    _baseCostFields[home] = field;
+                        hex => cache.BlockedHexes.Contains(hex));
+                    cache.BaseCostFields[home] = field;
                 }
                 if (field.TryGetValue(target, out int cost) && cost < minimum)
                     minimum = cost;
@@ -89,45 +89,62 @@ namespace Game.Ai
         {
             if (map == null || owner == null || baseHexes == null || baseHexes.Count == 0)
                 return int.MaxValue;
-            EnsureCacheState(map, owner);
-            if (!_returnCostFields.TryGetValue(maxMovement, out ReturnCostField field)
+            PlayerRouteCache cache = EnsureCacheState(map, owner);
+            if (!cache.ReturnCostFields.TryGetValue(maxMovement, out ReturnCostField field)
                 || !field.Bases.SetEquals(baseHexes))
             {
-                if (_returnCostFields.Count >= MaxCostFields)
-                    _returnCostFields.Clear();
+                if (cache.ReturnCostFields.Count >= MaxCostFields)
+                    cache.ReturnCostFields.Clear();
                 field = new ReturnCostField
                 {
                     Bases = new HashSet<HexCoord>(baseHexes),
                     Costs = HexPathfinder.FindCosts(map, baseHexes,
-                        hex => _cachedMemoryBlockers.Contains(hex), maxMovement, reverse: true)
+                        hex => cache.BlockedHexes.Contains(hex), maxMovement, reverse: true)
                 };
-                _returnCostFields[maxMovement] = field;
+                cache.ReturnCostFields[maxMovement] = field;
             }
             return field.Costs.TryGetValue(from, out int cost) ? cost : int.MaxValue;
         }
 
         private const int MaxCachedRoutes = 512;
         private const int MaxCostFields = 32;
-        private static readonly Dictionary<(PlayerSetupData owner, HexCoord from, HexCoord target, int? maxMovement), HexPath>
-            _routeCache = new Dictionary<(PlayerSetupData, HexCoord, HexCoord, int?), HexPath>();
-        private static readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> _baseCostFields =
-            new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
+
+        // A player switch must not discard the other AI's stationary-base fields. Every owner
+        // keeps its own bounded route/cost caches and last-observed blockers. The global memory
+        // revision remains a cheap dirty signal; only the selected owner's blockers are compared.
+        private sealed class PlayerRouteCache
+        {
+            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement), HexPath>
+                Routes = new Dictionary<(HexCoord, HexCoord, int?), HexPath>();
+            public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields =
+                new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
+            public readonly Dictionary<int, ReturnCostField> ReturnCostFields =
+                new Dictionary<int, ReturnCostField>();
+            public HashSet<HexCoord> BlockedHexes;
+            public int MemoryVersion;
+
+            public void ClearPathsAndFields()
+            {
+                Routes.Clear();
+                BaseCostFields.Clear();
+                ReturnCostFields.Clear();
+            }
+        }
+
         private sealed class ReturnCostField
         {
             public HashSet<HexCoord> Bases;
             public Dictionary<HexCoord, int> Costs;
         }
-        private static readonly Dictionary<int, ReturnCostField> _returnCostFields =
-            new Dictionary<int, ReturnCostField>();
+
+        private static readonly Dictionary<PlayerSetupData, PlayerRouteCache> _playerCaches =
+            new Dictionary<PlayerSetupData, PlayerRouteCache>();
         private static HexMap _cacheMap;
         private static int _cacheMapVersion = -1;
-        private static PlayerSetupData _cacheOwner;
-        private static int _cacheMemoryVersion = -1;
-        private static HashSet<HexCoord> _cachedMemoryBlockers;
 
         // AiMapMemory's version is intentionally coarse; resource/building observations can
         // bump it without changing a route. Compare the complete blocker set before clearing
-        // anything, including the newly unblocked cells OUTSIDE a previously cached path.
+        // anything, including newly unblocked cells OUTSIDE a previously cached path.
         private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner)
         {
             var blocked = new HashSet<HexCoord>();
@@ -141,61 +158,58 @@ namespace Game.Ai
             return blocked;
         }
 
-        private static void ClearCachedPathsAndFields()
+        private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
-            _routeCache.Clear();
-            _baseCostFields.Clear();
-            _returnCostFields.Clear();
-        }
-
-        private static void EnsureCacheState(HexMap map, PlayerSetupData owner)
-        {
-            int memoryVersion = AiMapMemory.RouteMemoryVersion;
-            if (map != _cacheMap || map.PathingVersion != _cacheMapVersion || owner != _cacheOwner)
+            // Map identity and terrain revisions affect every owner's routes, unlike a single
+            // player's remembered hostiles and scout-danger zones.
+            if (map != _cacheMap || map.PathingVersion != _cacheMapVersion)
             {
-                ClearCachedPathsAndFields();
+                _playerCaches.Clear();
                 _cacheMap = map;
                 _cacheMapVersion = map.PathingVersion;
-                _cacheOwner = owner;
-                _cachedMemoryBlockers = CaptureMemoryBlockers(map, owner);
-                _cacheMemoryVersion = memoryVersion;
             }
-            else if (memoryVersion != _cacheMemoryVersion)
+
+            int memoryVersion = AiMapMemory.RouteMemoryVersion;
+            if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
+            {
+                cache = new PlayerRouteCache
+                {
+                    BlockedHexes = CaptureMemoryBlockers(map, owner),
+                    MemoryVersion = memoryVersion
+                };
+                _playerCaches[owner] = cache;
+            }
+            else if (memoryVersion != cache.MemoryVersion)
             {
                 HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
-                if (_cachedMemoryBlockers == null || !_cachedMemoryBlockers.SetEquals(current))
-                    ClearCachedPathsAndFields();
-                _cachedMemoryBlockers = current;
-                _cacheMemoryVersion = memoryVersion;
+                if (!cache.BlockedHexes.SetEquals(current))
+                    cache.ClearPathsAndFields();
+                cache.BlockedHexes = current;
+                cache.MemoryVersion = memoryVersion;
             }
+            return cache;
         }
 
         private static HexPath GetRoute(HexMap map, PlayerSetupData owner,
             HexCoord from, HexCoord targetHex, int? maxMovement)
         {
-            EnsureCacheState(map, owner);
-            var key = (owner, from, targetHex, maxMovement);
-            if (_routeCache.TryGetValue(key, out HexPath cached))
+            PlayerRouteCache cache = EnsureCacheState(map, owner);
+            var key = (from, targetHex, maxMovement);
+            if (cache.Routes.TryGetValue(key, out HexPath cached))
                 return cached;
-            if (_routeCache.Count >= MaxCachedRoutes)
-                _routeCache.Clear();
+            if (cache.Routes.Count >= MaxCachedRoutes)
+                cache.Routes.Clear();
             HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
-                blockHex: SafeRouteBlocker(map, owner, targetHex, maxMovement));
-            _routeCache[key] = computed;
+                blockHex: SafeRouteBlocker(map, cache.BlockedHexes, targetHex, maxMovement));
+            cache.Routes[key] = computed;
             return computed;
         }
 
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            ArmyData army, HexCoord targetHex) =>
-            SafeRouteBlocker(null, army.Owner, targetHex, null);
-
-        private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            HexMap map, PlayerSetupData owner, HexCoord targetHex, int? maxMovement)
+            HexMap map, HashSet<HexCoord> blocked, HexCoord targetHex, int? maxMovement)
         {
-            // Every caller has already validated this owner/map via EnsureCacheState. Capture
-            // the immutable set so each expanded hex is one O(1) lookup instead of scanning
-            // EnemySightings (keyed by ArmyId) and all scout-danger zones repeatedly.
-            HashSet<HexCoord> blocked = _cachedMemoryBlockers;
+            // Capture this owner's set, not a mutable global active-owner reference. Each
+            // expanded hex is one O(1) lookup instead of a scan of sightings/danger zones.
             return hex =>
             {
                 if (!hex.Equals(targetHex) && blocked.Contains(hex))
