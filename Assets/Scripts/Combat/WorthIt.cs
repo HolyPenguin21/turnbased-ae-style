@@ -82,12 +82,13 @@ namespace Game.Combat
         public static float DefenseAt(ArmyData defender, HexCoord hex, HexMap map) => DefenseSum(defender) + HexDefenseBonus(hex, map);
 
         // Number of simulated exchanges Score/WinChance each run per call — capped at 100 per the
-        // project owner's own explicit call (2026-08-22: "ограничиваемся сотней вызовов"). Every
-        // map-level caller here runs this once or twice per candidate per AI turn, never per
-        // frame, so 100 trials (each just a few hundred coin flips — see RollSuccesses) costs
-        // nothing worth measuring; it's a named constant purely so nobody quietly cranks it up on
-        // a hot path later without a reason to.
-        private const int MonteCarloTrials = 100;
+        // project owner's own explicit call (2026-08-22: "ограничиваемся сотней вызовов"),
+        // lowered to 25 (2026-09-19) once profiling showed CombatOpportunityAnalyzer actually
+        // calls this twice per known target, per settled step, many settled steps per AI turn —
+        // not "once or twice per turn" as assumed when the 100-trial limit was first set. 25
+        // trials still gives a usable win-chance estimate; it's a named constant purely so nobody
+        // quietly cranks it back up on a hot path without weighing that cost again.
+        private const int MonteCarloTrials = 25;
 
         // Deterministic per-matchup seed (2026-08-24 fix, project owner's own report) — built ONLY
         // from the raw numeric stats that describe the matchup itself (Attack/Defense/HP/
