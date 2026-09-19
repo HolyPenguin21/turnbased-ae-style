@@ -39,6 +39,13 @@ namespace Game.Ai
         // Mutable so a debug console/inspector can enable it for a focused run.
         public static bool VerboseEnabled = false;
 
+        // The file (Logs/AiDebug.log) is the actual trace anyone reads back after a run — the
+        // Editor Console mirror was only ever a live convenience, and Debug.Log itself (console
+        // entry formatting, stack trace capture, window repaint) is real per-call overhead that
+        // a heavy AI turn pays hundreds of times over for a window nobody's watching. Off by
+        // default; flip on for a session where the live Console view is actually wanted.
+        public static bool LogToUnityConsole = false;
+
         // BeforeSceneLoad fires exactly once per game run (Editor Play Mode entry, or a
         // standalone build's own launch), before anything else in the very first scene has had a
         // chance to log — guarantees the file exists and is fresh no matter which scene/object
@@ -78,9 +85,9 @@ namespace Game.Ai
             _writer = null;
         }
 
-        // Still shows up live in the Console (same as every call site used before this existed),
-        // plus appended to the file. A write failure here must never take down the AI turn that
-        // called it — same "cosmetic, must not break the real thing" reasoning as
+        // Appended to the file; also mirrored live to the Console when LogToUnityConsole is on
+        // (off by default — see that field's own comment). A write failure here must never take
+        // down the AI turn that called it — same "cosmetic, must not break the real thing" reasoning as
         // HexSelectionController.Movement.cs's own path-arrow try/catch — so this only warns
         // once, then quietly stops trying for the rest of the session.
         //
@@ -132,8 +139,11 @@ namespace Game.Ai
             // UnityEngine.Debug.Log itself throws when there's no player/editor loaded at all
             // (the Tools/stealth-sim harness runs the game logic headless), which must not abort
             // whatever gameplay path happened to log.
-            try { Debug.Log(tagged); }
-            catch { /* no Unity log sink available */ }
+            if (LogToUnityConsole)
+            {
+                try { Debug.Log(tagged); }
+                catch { /* no Unity log sink available */ }
+            }
             if (_writer == null)
                 return;
             try
