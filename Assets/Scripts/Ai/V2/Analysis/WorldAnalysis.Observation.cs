@@ -199,7 +199,8 @@ namespace Game.Ai.V2
             && a.HasAntiAir == b.HasAntiAir
             && a.RecceRadius == b.RecceRadius
             && a.RecceSpotStrength == b.RecceSpotStrength
-            && a.SeenTurn == b.SeenTurn;
+            && a.SeenTurn == b.SeenTurn
+            && SameCombatProfiles(a.Defenders, b.Defenders);
 
         private static HashSet<int> ChangedActorIds(WorldSnapshot before, WorldSnapshot after)
         {
@@ -229,7 +230,8 @@ namespace Game.Ai.V2
             && a.ActivationEnergyCost == b.ActivationEnergyCost
             && a.IsHidden == b.IsHidden && a.IsAir == b.IsAir
             && a.IsSoloRecce == b.IsSoloRecce
-            && a.IsStructuralRaidActor == b.IsStructuralRaidActor;
+            && a.IsStructuralRaidActor == b.IsStructuralRaidActor
+            && SameCombatCapability(a, b);
 
         private static HashSet<int> ChangedCapabilityActorIds(
             WorldSnapshot before, WorldSnapshot after)
@@ -247,13 +249,53 @@ namespace Game.Ai.V2
                     || prior.IsSoloRecce != kv.Value.IsSoloRecce
                     || prior.IsStructuralRaidActor != kv.Value.IsStructuralRaidActor
                     || prior.ActivationApCost != kv.Value.ActivationApCost
-                    || prior.ActivationEnergyCost != kv.Value.ActivationEnergyCost)
+                    || prior.ActivationEnergyCost != kv.Value.ActivationEnergyCost
+                    || !SameCombatCapability(prior, kv.Value))
                     changed.Add(kv.Key);
             }
             foreach (int id in old.Keys)
                 if (!current.ContainsKey(id))
                     changed.Add(id);
             return changed;
+        }
+
+        private static bool SameCombatCapability(ArmySnapshot a, ArmySnapshot b) =>
+            a.AttackSum == b.AttackSum
+            && a.DefenseSum == b.DefenseSum
+            && a.EffectiveArmyPower == b.EffectiveArmyPower
+            && a.CompositionQuality == b.CompositionQuality
+            && a.HasHero == b.HasHero
+            && a.HeroCommandRating == b.HeroCommandRating
+            && a.HasAntiAir == b.HasAntiAir
+            && a.Capacity == b.Capacity
+            && a.OccupiedBattleSlots == b.OccupiedBattleSlots
+            && a.StrategicCoverage == b.StrategicCoverage
+            && SameCombatProfiles(a.Members, b.Members);
+
+        private static bool SameCombatProfiles(
+            IReadOnlyList<WorthIt.DefenderProfile> a,
+            IReadOnlyList<WorthIt.DefenderProfile> b)
+        {
+            int aCount = a?.Count ?? 0;
+            int bCount = b?.Count ?? 0;
+            if (aCount != bCount)
+                return false;
+            for (int i = 0; i < aCount; i++)
+            {
+                WorthIt.DefenderProfile x = a[i];
+                WorthIt.DefenderProfile y = b[i];
+                if (x.Attack != y.Attack || x.Defense != y.Defense
+                    || x.HitPoints != y.HitPoints
+                    || x.MaxHitPoints != y.MaxHitPoints
+                    || x.Initiative != y.Initiative
+                    || x.HasCeramicArmor != y.HasCeramicArmor
+                    || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
+                        .SequenceEqual(y.TypeTags ?? System.Array.Empty<UnitTypeTag>())
+                    || !(x.Abilities ?? System.Array.Empty<string>())
+                        .SequenceEqual(y.Abilities ?? System.Array.Empty<string>()))
+                    return false;
+            }
+            return true;
         }
 
         private static bool ThreatChanged(WorldSnapshot before, WorldSnapshot after)
@@ -277,7 +319,8 @@ namespace Game.Ai.V2
             int contactId = t.Contact?.Army?.ArmyId ?? 0;
             HexCoord assetHex = t.Asset != null ? t.Asset.Hex : default;
             return $"{contactId}:{t.Asset?.Kind}:{assetHex.Q},{assetHex.R}:"
-                + $"{t.EnemyEta}:{t.ResponseEta}:{t.CanDamage}:{t.Severity:0.000}";
+                + $"{t.EnemyEta}:{t.ResponseEta}:{t.CanDamage}:"
+                + t.Severity.ToString("R", CultureInfo.InvariantCulture);
         }
 
         private static bool InfrastructureChanged(WorldSnapshot before, WorldSnapshot after)
