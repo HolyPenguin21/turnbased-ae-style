@@ -15,6 +15,8 @@ namespace Game.Ai.V2
             IReadOnlyList<AxisDemand> demands)
         {
             var result = new List<MissionProposal>();
+            ActorCommitments currentCommitments = ActorCommitments.FromIntents(
+                activeIntents, snapshot, null);
             foreach (MissionIntent intent in activeIntents ?? System.Array.Empty<MissionIntent>())
             {
                 if (intent?.Kind != MissionKind.Economy
@@ -65,7 +67,8 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy, Target = target,
                     BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
-                    Requirements = Requirements(target, intent, snapshot),
+                    Requirements = Requirements(target, intent, snapshot,
+                        activeIntents, currentCommitments),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
                     FromDurableIntent = true, DurableFundingTier = intent.Funding,
                     Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
@@ -122,7 +125,8 @@ namespace Game.Ai.V2
                     BaseValue = d.Value,
                     // Newly admitted Economy missions use their canonical net TaskScore.
                     LocalAdmissionScore = d.Value,
-                    Requirements = Requirements(target, incumbent, snapshot),
+                    Requirements = Requirements(target, incumbent, snapshot,
+                        activeIntents, currentCommitments),
                     PreferredMoverArmyId = incumbent?.PreferredMoverArmyId
                         ?? d.EconomyPreferredBuilderArmyId,
                     FromDurableIntent = incumbent != null,
@@ -139,7 +143,9 @@ namespace Game.Ai.V2
         }
 
         private static MissionRequirements Requirements(EconomyMissionTarget t,
-            MissionIntent incumbent, WorldSnapshot snapshot)
+            MissionIntent incumbent, WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> activeIntents,
+            ActorCommitments commitments)
         {
             if (t.Kind == EconomyTaskKind.ReturnBuilder)
             {
@@ -163,34 +169,21 @@ namespace Game.Ai.V2
             int? preferredId = incumbent?.PreferredMoverArmyId ?? t.BuilderArmyId;
             IReadOnlyList<EconomyBuilderRouteSnapshot> currentRoutes =
                 CurrentBuilderRoutes(snapshot, t);
-            EconomyBuilderRouteSnapshot? routeWitness = null;
-            if (preferredId.HasValue)
-            {
-                foreach (EconomyBuilderRouteSnapshot route in currentRoutes)
-                    if (route.ArmyId == preferredId.Value)
-                    {
-                        routeWitness = route;
-                        break;
-                    }
-            }
-            else if (currentRoutes.Count > 0)
-            {
-                routeWitness = currentRoutes.OrderBy(route => route.TravelCost)
-                    .ThenBy(route => route.ArmyId).First();
-                preferredId = routeWitness.Value.ArmyId;
-            }
+            DemandLayer.EconomyBuilderChoice currentBuilder =
+                DemandLayer.SelectEconomyBuilder(
+                snapshot, t.TargetHex, currentRoutes, activeIntents, commitments,
+                t.BuildValue, t.BuildApCost, includeReturn: false,
+                pinnedBuilderArmyId: preferredId);
+            EconomyBuilderRouteSnapshot? routeWitness = currentBuilder?.Route;
+            ArmySnapshot actor = currentBuilder?.Army;
 
-            ArmySnapshot actor = preferredId.HasValue
-                ? snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
-                    && a.ArmyId == preferredId.Value)
-                : null;
             var r = new MissionRequirements
             {
                 RequiresArmy = true,
                 RequiresHero = true,
-                // A durable actor identity without a route in the current immutable snapshot is
-                // not an executable mover witness. Provisioning may revalidate it later, but the
-                // allocator must not inherit the previous position's cost.
+                // DemandLayer remains the single owner of safe escort/lighten/reinforce
+                // projection. Without its current-snapshot witness the allocator must not inherit
+                // the previous position or roster's cost.
                 MoverKnown = actor != null && routeWitness.HasValue,
             };
             bool completionThisTurn = false;
