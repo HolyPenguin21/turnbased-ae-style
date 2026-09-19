@@ -83,7 +83,8 @@ namespace Game.Ai.V2
             // Generic Refresh is NOT enemy-contact surveillance. It revisits map information the
             // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
             // hexes by construction and current-visible hexes naturally have age 0.
-            List<ReconObjective> refresh = BuildRefreshObjectives(snap);
+            ReconDirectionSnapshot direction = null;
+            List<ReconObjective> refresh = BuildRefreshObjectives(snap, ref direction);
             list.AddRange(refresh);
 
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
@@ -96,8 +97,10 @@ namespace Game.Ai.V2
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
             if (auditPlayer != null)
             {
+                if (direction == null)
+                    direction = ReconDirectionModel.Build(snap);
                 ReconAcceptanceAudit.RecordDirectionBoundary(auditPlayer, snap.TurnNumber,
-                    ReconDirectionModel.Build(snap));
+                    direction);
 
                 ReconObjective topRefresh = refresh
                     .Where(o => o != null)
@@ -144,7 +147,8 @@ namespace Game.Ai.V2
             int? preferredMoverArmyId = null) =>
             c == null ? null : BuildSurveil(snap, c, preferredMoverArmyId);
 
-        private static List<ReconObjective> BuildRefreshObjectives(WorldSnapshot snap)
+        private static List<ReconObjective> BuildRefreshObjectives(WorldSnapshot snap,
+            ref ReconDirectionSnapshot direction)
         {
             var candidates = new List<ReconObjective>();
             foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
@@ -154,7 +158,9 @@ namespace Game.Ai.V2
                     continue;
                 if (snap.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(kv.Key, stealthCapable: false))
                     continue;
-                ReconObjective o = BuildRefresh(snap, kv.Key, age);
+                if (direction == null)
+                    direction = ReconDirectionModel.Build(snap);
+                ReconObjective o = BuildRefresh(snap, kv.Key, age, direction: direction);
                 if (o != null)
                     candidates.Add(o);
             }
@@ -272,7 +278,7 @@ namespace Game.Ai.V2
         }
 
         private static ReconObjective BuildRefresh(WorldSnapshot snap, HexCoord hex, int age,
-            int? preferredMoverArmyId = null)
+            int? preferredMoverArmyId = null, ReconDirectionSnapshot direction = null)
         {
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
@@ -281,7 +287,7 @@ namespace Game.Ai.V2
                 AiConfigV2.scoutSurveilStaleTurnsHi);
 
             float strategicRaw = StrategicRefreshRelevance(snap, hex);
-            ReconDirectionSnapshot direction = ReconDirectionModel.Build(snap);
+            direction = direction ?? ReconDirectionModel.Build(snap);
             ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
             float directionalRaw = direction?.EnemyDirectionSectors != null
                 && direction.EnemyDirectionSectors.TryGetValue(sector, out float pressure)
