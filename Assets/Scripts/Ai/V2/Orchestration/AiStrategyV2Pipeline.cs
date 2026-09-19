@@ -591,13 +591,23 @@ namespace Game.Ai.V2
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
                 radar: radar, deferFreshZeroRadar: true);
 
-            // S4. Operational self-state refresh — ONLY if StrategicManager changed gameplay state
-            //     (a partial CreateArmy + failed deploy still counts). Rebuilds Self + Economy;
-            //     keeps the frozen strategic observations (Known / TrueWorld / MapKnowledge / Threat
-            //     / radar / breakdown / reconObjectives).
+            // S4. Refresh only the snapshot families the completed Phase-A action can change.
+            //     Deployments, infrastructure and equipment may alter visibility/knowledge; pure
+            //     hand/generation/resource changes keep the frozen knowledge layers. Radar remains
+            //     fixed either way, while operational Aggression facts are refreshed below.
             if (phaseA.StateChanged)
             {
-                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                snapshot = phaseA.KnowledgeMayHaveChanged
+                    ? WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx)
+                    : WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                if (phaseA.KnowledgeMayHaveChanged)
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                    StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                    ? AggressionObjectiveEvaluator.Enumerate(
+                        snapshot, assessment.Breakdown.OpportunityReport)
+                    : new List<AggressionObjective>();
                 // Direct Economy construction can atomically turn the builder's existing intent
                 // into ReturnBuilder (or resume a safe scout). Re-read the same continuity owner
                 // before mission construction so stale pre-build actor claims cannot execute.
@@ -782,6 +792,8 @@ namespace Game.Ai.V2
                         .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
 
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                     aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                         ? AggressionObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport)
@@ -821,9 +833,19 @@ namespace Game.Ai.V2
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
                     {
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        snapshot = followup.KnowledgeMayHaveChanged
+                            ? WorldAnalysis.RefreshStrategicKnowledge(
+                                snapshot, player, root, hand, ctx)
+                            : WorldAnalysis.RefreshOperationalState(
+                                snapshot, player, root, hand, ctx);
+                        if (followup.KnowledgeMayHaveChanged)
+                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                            StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                        aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                            ? AggressionObjectiveEvaluator.Enumerate(
+                                snapshot, assessment.Breakdown.OpportunityReport)
+                            : new List<AggressionObjective>();
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
                         activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
@@ -878,18 +900,16 @@ namespace Game.Ai.V2
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    }
-                    // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
-                    // settled snapshot before re-enumerating objectives, so a neutral destroyed
-                    // during the previous step is gone from the frozen report in the same turn.
-                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                        ? AggressionObjectiveEvaluator.Enumerate(
-                            snapshot, assessment.Breakdown.OpportunityReport)
-                        : new List<AggressionObjective>();
-                    if (!ownershipFreshAfterPhaseA)
-                    {
+                        // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
+                        // settled snapshot before re-enumerating objectives, so a neutral destroyed
+                        // during the previous step is gone from the report in the same turn.
+                        if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                            StrategyLayer.RefreshAggressionLanePressures(
+                                snapshot, assessment.Breakdown);
+                        aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                            ? AggressionObjectiveEvaluator.Enumerate(
+                                snapshot, assessment.Breakdown.OpportunityReport)
+                            : new List<AggressionObjective>();
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
                         activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
@@ -947,19 +967,25 @@ namespace Game.Ai.V2
                             beforeRecovery, afterRecovery, null);
                         settledSteps++;
                         bool recoveryProgress = recoveryResult.Mutated;
-                        noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
                         TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
                             out StrategicInvalidationReason recoveryStrategicReasons,
                             out HashSet<DesireAxis> recoveryDirtyAxes);
                         bool recoveryStrategicChanged = ReenterStrategicAxes(
                             recoveryStrategicReasons, recoveryDirtyAxes);
-                        // AGG-RAID P1#2 — was Recon-only; now the same operational mask
-                        // TakeTypedTriggers itself uses, so an Aggression invalidation published by
-                        // this recovery step is not invisible to this follow-up re-check.
-                        StrategicInvalidation recoveryFollowupTriggers =
-                            StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                                AiStrategyV2Scope.OperationalInvalidationMask);
-                        recoveryOperationalReasons |= recoveryFollowupTriggers.Reasons;
+                        // Reentry may publish another compound fact (for example, materializing a
+                        // Raid reinforcement changes Actor + Capability). Route that fact through
+                        // the same typed fan-out before consuming it so Economy/Development cannot
+                        // lose their share to an operational-axis follow-up.
+                        TakeTypedTriggers(
+                            out StrategicInvalidationReason recoveryFollowupOperational,
+                            out StrategicInvalidationReason recoveryFollowupStrategic,
+                            out HashSet<DesireAxis> recoveryFollowupAxes);
+                        recoveryOperationalReasons |= recoveryFollowupOperational;
+                        recoveryStrategicReasons |= recoveryFollowupStrategic;
+                        recoveryStrategicChanged |= ReenterStrategicAxes(
+                            recoveryFollowupStrategic, recoveryFollowupAxes);
+                        recoveryProgress |= recoveryStrategicChanged;
+                        noProgressCycles = recoveryProgress ? 0 : noProgressCycles + 1;
                         AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} recovery actor=#{recovery.Id} "
                             + $"progress={(recoveryProgress ? 1 : 0)} "
                             + $"operationalTriggers={recoveryOperationalReasons} "
@@ -1193,14 +1219,19 @@ namespace Game.Ai.V2
                         out HashSet<DesireAxis> dirtyStrategicAxes);
                     bool strategicChanged = ReenterStrategicAxes(
                         strategicReasons, dirtyStrategicAxes);
+                    // A follow-up Phase A action may publish a reason shared by operational and
+                    // strategic families. Take one typed snapshot and acknowledge every affected
+                    // recipient before the registry clears that reason.
+                    TakeTypedTriggers(
+                        out StrategicInvalidationReason followupOperationalReasons,
+                        out StrategicInvalidationReason followupStrategicReasons,
+                        out HashSet<DesireAxis> followupDirtyAxes);
+                    operationalReasons |= followupOperationalReasons;
+                    strategicReasons |= followupStrategicReasons;
+                    strategicChanged |= ReenterStrategicAxes(
+                        followupStrategicReasons, followupDirtyAxes);
                     progressed |= strategicChanged;
                     noProgressCycles = progressed ? 0 : noProgressCycles + 1;
-                    // AGG-RAID P1#2 — was Recon-only; the main mid-turn loop's own follow-up
-                    // re-check now sees the same operational axes TakeTypedTriggers admits.
-                    StrategicInvalidation followupOperationalTriggers =
-                        StrategicInterruptRegistry.Consume(player, ctx.TurnNumber,
-                            AiStrategyV2Scope.OperationalInvalidationMask);
-                    operationalReasons |= followupOperationalTriggers.Reasons;
                     AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} task={selectedKey} "
                         + $"progress={(progressed ? 1 : 0)} stop={settled?.StopReason} "
                         + $"operationalTriggers={operationalReasons} strategicTriggers={strategicReasons} "
@@ -1264,11 +1295,22 @@ namespace Game.Ai.V2
                     bool strategicDirty = strategicReasons != StrategicInvalidationReason.None;
                     bool strategicChanged = ReenterStrategicAxes(
                         strategicReasons, dirtyStrategicAxes);
-                    // AGG-RAID P1#2 — was Recon-only; Phase B's end-of-turn management round
-                    // follow-up re-check now sees the same operational axes TakeTypedTriggers admits.
-                    operationalDirty |= StrategicInterruptRegistry.Consume(
-                        player, ctx.TurnNumber,
-                        AiStrategyV2Scope.OperationalInvalidationMask).Any;
+                    // Phase B reentry can itself publish a compound invalidation. Preserve its
+                    // full typed fan-out before acknowledging it.
+                    TakeTypedTriggers(
+                        out StrategicInvalidationReason managementFollowupOperational,
+                        out StrategicInvalidationReason managementFollowupStrategic,
+                        out HashSet<DesireAxis> managementFollowupAxes);
+                    operationalReasons |= managementFollowupOperational;
+                    strategicReasons |= managementFollowupStrategic;
+                    operationalDirty |= managementFollowupOperational
+                        != StrategicInvalidationReason.None;
+                    strategicDirty |= managementFollowupStrategic
+                        != StrategicInvalidationReason.None;
+                    strategicChanged |= ReenterStrategicAxes(
+                        managementFollowupStrategic, managementFollowupAxes);
+                    if (operationalDirty || strategicChanged)
+                        noProgressCycles = 0;
 
                     AiDebugLog.Write($"[AI][V2][Loop] management round={managementRound + 1} "
                         + $"strategicTriggers={strategicReasons} "
@@ -1309,6 +1351,8 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                     aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                         ? AggressionObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport)
@@ -1348,13 +1392,19 @@ namespace Game.Ai.V2
                             + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                         if (coldPass.StateChanged)
                         {
-                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                                snapshot, player, root, hand, ctx);
+                            snapshot = coldPass.KnowledgeMayHaveChanged
+                                ? WorldAnalysis.RefreshStrategicKnowledge(
+                                    snapshot, player, root, hand, ctx)
+                                : WorldAnalysis.RefreshOperationalState(
+                                    snapshot, player, root, hand, ctx);
                             WorldAnalysis.StepObservationStamp afterCold =
                                 WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
-                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                            if (coldPass.KnowledgeMayHaveChanged)
+                                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+                                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                             aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                                 ? AggressionObjectiveEvaluator.Enumerate(
                                     snapshot, assessment.Breakdown.OpportunityReport)
