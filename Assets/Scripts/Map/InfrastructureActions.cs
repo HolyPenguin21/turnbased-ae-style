@@ -12,36 +12,12 @@ using UnityEngine;
 
 namespace Game.Map
 {
-    // ===========================================================================================
-    //  INFRASTRUCTURE ACTIONS  (shared authoritative infrastructure transaction)
-    // ===========================================================================================
-    //  The SINGLE owner of "found a Base" / "place a Facility" / "build an extraction site" as an
-    //  all-or-nothing transaction, shared by the human UI (CardHandUI) and AI Strategy V2
-    //  (BuildingPlayExecutor). Legality is defined once (CanFoundBase / CanPlaceFacility); Try* is
-    //  that check plus the mutation.
-    //
-    //  TRANSACTION MODEL. AP + resources are spent FIRST (a pure, fully-reversible numeric change)
-    //  and the world-mutating primitive (SpawnBuilding / TryBuildExtractionFacility) is the LAST
-    //  step and the commit point:
-    //    · primitive reports failure  -> AP + resources are refunded to the exact pre-transaction
-    //      value; the primitive's own guard means it mutated nothing. FULLY ATOMIC.
-    //    · primitive THROWS            -> AP + resources are refunded, and any half-applied world
-    //      state the primitive left is rolled back best-effort: a building it registered over an
-    //      existing resource site is un-registered and the site re-registered; a garrison it
-    //      spawned (Barracks base) that did not exist before is removed. A hard error is logged.
-    //      The one thing that cannot be undone is StealthSystem's fog-of-war reveal — that is
-    //      information, not reservation/army-limbo state, and this path only happens when the
-    //      scene itself is misconfigured (null prefab, etc.).
-    //    · primitive succeeds         -> the only remaining steps are infallible array writes.
-    //
-    //  These methods do NOT touch any hand: the caller removes its own card representation
-    //  (CardHandUI.RemoveCard for the human, AiHandData.Hand for the AI) ONLY when Ok is true.
-    // ===========================================================================================
+    // Shared transaction result for human and AI infrastructure actions.
     public readonly struct InfrastructureBuildOutcome
     {
         public readonly bool Ok;
         public readonly BuildingData Building;
-        public readonly int SlotIndex;      // facility slot filled (-1 for a Base)
+        public readonly int SlotIndex;
         public readonly int ApSpent;
         public readonly string FailReason;
 
@@ -56,19 +32,14 @@ namespace Game.Map
             new InfrastructureBuildOutcome(false, null, -1, 0, why);
     }
 
+    // Canonical legality and atomic gameplay mutation for Base/Facility/extraction actions.
+    // Changes to already-visible hex contents are published here, after the final commit.
     public static class InfrastructureActions
     {
-        // Canonical structured-enough reason used by AI policy to distinguish a Facility that is
-        // blocked ONLY by Base capacity from affordability / ownership / card-type failures.
-        // Keep the text here with the authoritative legality check so callers never duplicate it.
         internal const string NoFreeFacilitySlotReason = "Base has no free Facility slot";
-
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
-        // A dragged Base card may land on a hero-built resource SITE (HasTieredUnlock == false) as
-        // long as the fresh Base's slot capacity can fit every Facility already there — they carry
-        // over. Anything else (a citadel, a real Base, another player's building) blocks it.
         public static bool CanMergeIntoResourceSite(BuildingData existing)
         {
             if (existing == null || existing.HasTieredUnlock)
@@ -80,7 +51,6 @@ namespace Game.Map
             return occupied <= BuildingData.DefaultTotalFacilitySlots;
         }
 
-        // ================================================================= Base =====
         public static bool CanFoundBase(CardDefinition definition, HexCoord hex, PlayerSetupData owner,
             int apCost, ResourceCost resourceCost, out string reason)
         {
@@ -89,7 +59,6 @@ namespace Game.Map
             { reason = "not a Base card"; return false; }
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null) { reason = "no player root"; return false; }
-
             BuildingData existing = BuildingRegistry.FindAt(hex);
             if (existing != null && (existing.Owner != owner || !CanMergeIntoResourceSite(existing)))
             { reason = "hex already has a building"; return false; }
@@ -119,12 +88,9 @@ namespace Game.Map
             bool ownerGarrisonExistedBefore = ArmyRegistry.AllAt(hex).Any(a => a != null && a.IsGarrison && a.Owner == owner);
             bool ownerAirfieldExistedBefore = AviationRules.FindAirfieldAt(hex, owner) != null;
 
-            // --- reversible spend FIRST ---
             int apBefore = root.ActionPoints;
             root.SpendActionPoints(apCost);
             resourceCost?.PayFrom(root);
-
-            // --- commit: SpawnBuilding is the point of no return ---
             BuildingData building = null;
             bool threw = false;
             try
@@ -149,7 +115,6 @@ namespace Game.Map
                     : "SpawnBuilding refused (missing scene config); rolled back");
             }
 
-            // --- infallible finalize: merge a carried-over resource site ---
             if (oldVisual != null)
                 UnityEngine.Object.Destroy(oldVisual.gameObject);
             if (carriedOver != null)
@@ -164,11 +129,14 @@ namespace Game.Map
                     building.FacilitySlots[slot] = facility;
                     slot++;
                 }
+                // SpawnBuilding already notified on registration, before inherited slots
+                // were copied. Publish the final merged building only if slots moved.
+                if (slot > 0)
+                    VisionSystem.NotifyContentChanged(hex);
             }
             return InfrastructureBuildOutcome.Success(building, -1, apBefore - root.ActionPoints);
         }
 
-        // Best-effort undo of a SpawnBuilding that partially mutated the world before throwing.
         private static void RollbackPartialSpawn(HexSelectionController hexSelection, HexCoord hex,
             PlayerSetupData owner, BuildingData siteBefore, bool ownerGarrisonExistedBefore,
             bool ownerAirfieldExistedBefore)
@@ -208,7 +176,6 @@ namespace Game.Map
             hexSelection?.RestackArmiesOn(hex, null);
         }
 
-        // ============================================================= Facility =====
         public static bool CanPlaceFacility(CardDefinition definition, HexCoord baseHex, PlayerSetupData owner,
             int apCost, ResourceCost resourceCost, out string reason)
         {
@@ -217,12 +184,9 @@ namespace Game.Map
             { reason = "not a Facility card"; return false; }
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root == null) { reason = "no player root"; return false; }
-
             BuildingData building = BuildingRegistry.FindAt(baseHex);
             if (building == null || building.Owner != owner || !building.IsBase)
             { reason = "no owned Base at the hex"; return false; }
-            // Report affordability before capacity so a caller can truthfully distinguish a card
-            // blocked ONLY by capacity from one independently blocked by its current costs.
             if (apCost < 0 || !root.CanSpendActionPoints(apCost))
             { reason = $"not enough action points ({apCost})"; return false; }
             if (resourceCost != null && !resourceCost.CanAfford(root))
@@ -241,8 +205,6 @@ namespace Game.Map
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             BuildingData building = BuildingRegistry.FindAt(baseHex);
             int slotIndex = building.FindFirstAvailableFacilitySlot();
-
-            // Fallible step (malformed grantedAbilities) FIRST, before any spend.
             FacilityData facility;
             try
             {
@@ -257,20 +219,13 @@ namespace Game.Map
             int apBefore = root.ActionPoints;
             root.SpendActionPoints(apCost);
             resourceCost?.PayFrom(root);
-            building.FacilitySlots[slotIndex] = facility;   // infallible commit
+            building.FacilitySlots[slotIndex] = facility;
+            // The building stays registered at the same visible hex; neither Register
+            // nor RecomputeFor fires. Notify once after the slot and its income change.
+            VisionSystem.NotifyContentChanged(baseHex);
             return InfrastructureBuildOutcome.Success(building, slotIndex, apBefore - root.ActionPoints);
         }
 
-        // ===================================================== extraction site =====
-        //  HexSelectionController.TryBuildExtractionFacility builds its FacilityData before the
-        //  spend, but AFTER the spend it does several more world mutations: the facility-slot
-        //  write, zeroing the acting hero-army's move points, and (for a brand-new site) the
-        //  marker + BuildingRegistry.Register + RestackArmiesOn. Its own affordability checks all
-        //  run before the spend, so a plain `false` return with nothing spent means nothing was
-        //  mutated. This wrapper captures every piece of post-spend state up front and, on a THROW
-        //  or on a false-return-that-nevertheless-spent, restores ALL of it -- AP, resources,
-        //  facility slots, hero move points, and a half-registered new site -- so a failed build
-        //  leaves the game state exactly as before (same contract as TryFoundBase).
         public static InfrastructureBuildOutcome TryBuildExtractionSite(HexSelectionController hexSelection,
             CardDefinition facilityDefinition, HexCoord hex, PlayerSetupData owner)
         {
@@ -284,9 +239,6 @@ namespace Game.Map
 
             int apBefore = root.ActionPoints;
             int[] resBefore = SnapshotResources(root);
-
-            // Everything TryBuildExtractionFacility can mutate after its (pre-spend) checks,
-            // captured so a throw or a spent-but-false return can be fully undone.
             BuildingData siteBefore = BuildingRegistry.FindAt(hex);
             bool wasNewSite = siteBefore == null;
             FacilityData[] slotsBefore = siteBefore != null
@@ -310,9 +262,6 @@ namespace Game.Map
             int apSpent = apBefore - root.ActionPoints;
             if (!ok)
             {
-                // A throw can land after the (infallible-in-practice) post-spend mutations even
-                // when apCost / resourceCost are both zero, so restore on ANY throw, not only on a
-                // measured spend. A plain false return only ever happens before the spend.
                 if (threw || apSpent != 0 || ResourcesMoved(resBefore, root))
                 {
                     root.ActionPoints = apBefore;
@@ -327,11 +276,11 @@ namespace Game.Map
                     ? "TryBuildExtractionFacility threw; transaction rolled back"
                     : "TryBuildExtractionFacility rejected the hex");
             }
+            // HexSelectionController.TryBuildExtractionFacility is also called directly by
+            // human UI. That primitive owns its content notification; do not double it here.
             return InfrastructureBuildOutcome.Success(BuildingRegistry.FindAt(hex), -1, apSpent);
         }
 
-        // Best-effort undo of a new resource SITE that TryBuildExtractionFacility registered before
-        // it threw: destroy the fresh marker, drop the registry entry, re-resolve the hex layout.
         private static void RollbackPartialExtractionSite(HexSelectionController hexSelection,
             HexCoord hex, BuildingData siteBefore)
         {
@@ -353,9 +302,6 @@ namespace Game.Map
                 building.FacilitySlots[i] = before[i];
         }
 
-        // Move points of every member of every one of `owner`'s hero-led armies on `hex` -- the
-        // superset of what TryBuildExtractionFacility zeroes (it charges the whole build to one
-        // acting army's remaining movement). Restore is idempotent for the armies it left alone.
         private static List<(UnitData Member, int Move)> SnapshotHeroArmyMovement(HexCoord hex, PlayerSetupData owner)
         {
             var snap = new List<(UnitData, int)>();
@@ -377,7 +323,6 @@ namespace Game.Map
                     member.MoveCurrent = move;
         }
 
-        // -------------------------------------------------------------- helpers ----
         private static void Refund(PlayerRoot root, ResourceCost cost)
         {
             if (root == null || cost == null) return;
