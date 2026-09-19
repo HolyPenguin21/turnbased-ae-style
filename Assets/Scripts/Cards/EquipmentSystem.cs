@@ -206,6 +206,7 @@ namespace Game.Cards
                 equipment != null ? equipment.resourceCost : null, owner);
             Apply(equipment.equipment, target);
             target.Equipment = equipment;
+            RefreshLiveHostObservation(target);
             return true;
         }
 
@@ -234,6 +235,7 @@ namespace Game.Cards
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
             Apply(equipment.equipment, target);
             target.Equipment = equipment;
+            RefreshLiveHostObservation(target);
             return true;
         }
 
@@ -246,6 +248,19 @@ namespace Game.Cards
                 equipmentCard != null ? equipmentCard.EffectivePlayResourceCost : null, owner);
             targetCard.Equipment = equipment;
             return true;
+        }
+
+        private static void RefreshLiveHostObservation(UnitData target)
+        {
+            ArmyData army = ArmyRegistry.FindArmyContaining(target);
+            if (army == null)
+                return;
+
+            // Equipment can change Recce radius and combat facts. The gameplay owner publishes
+            // both consequences once: the owner's visibility footprint is recomputed, while every
+            // player already watching the hex refreshes its honest content memory.
+            VisionSystem.RecomputeFor(army.Owner);
+            VisionSystem.NotifyContentChanged(army.Hex);
         }
 
         private static void PayCost(CardDefinition equipment, int apCost, ResourceCost resourceCost, PlayerRoot owner)

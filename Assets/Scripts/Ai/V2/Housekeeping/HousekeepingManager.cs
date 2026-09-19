@@ -41,8 +41,9 @@ namespace Game.Ai.V2
             carriedReservation = carriedReservation ?? new MaterializationReservation();
 
             // Phase B deliberately preserves AP while a discovery/hand interrupt is pending.
-            // Consume it here before maintenance, then rebuild the FULL world snapshot because the
-            // reaction may have changed both own forces and honest map knowledge.
+            // Consume it here before maintenance, then refresh through Analysis' knowledge
+            // revision: Reaction may change both own forces and honest map knowledge, but a full
+            // world scan is unnecessary when the authoritative memory revision stayed fixed.
             float apReservedForReactionBefore = (player != null && ctx != null)
                 ? StrategicResourceReservationLedger.Active(
                     player, ctx.TurnNumber, StrategicReservedResource.ActionPoints)
@@ -56,7 +57,8 @@ namespace Game.Ai.V2
             {
                 result.StateChanged |= reaction.StateChanged;
                 if (hand != null)
-                    snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                        snapshot, player, root, hand, ctx);
                 commitments = ActorCommitments.FromIntents(
                     MissionIntentRegistry.GetOrCreate(player).All,
                     snapshot,
@@ -87,7 +89,8 @@ namespace Game.Ai.V2
                     if (tempo.StateChanged)
                     {
                         result.StateChanged = true;
-                        snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                            snapshot, player, root, hand, ctx);
                         commitments = ActorCommitments.FromIntents(
                             MissionIntentRegistry.GetOrCreate(player).All,
                             snapshot,

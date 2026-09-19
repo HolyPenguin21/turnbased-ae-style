@@ -36,6 +36,11 @@ namespace Game.Ai.V2
     public sealed class WorldSnapshot
     {
         public int TurnNumber;
+        // Revision of the authoritative per-player knowledge memory captured by this immutable
+        // snapshot. AiMapMemory already owns and bumps this player-scoped signal when visibility,
+        // observed content or Recon route knowledge changes; Analysis uses it to avoid rebuilding the
+        // whole knowledge/map projection for operational-only mutations.
+        public int KnowledgeVersion;
 
         public SelfSnapshot Self;
         public KnownSnapshot Known;

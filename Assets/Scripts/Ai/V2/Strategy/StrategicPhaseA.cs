@@ -28,14 +28,6 @@ namespace Game.Ai.V2
         public int InfrastructureBuilt;
         public int CapabilityDeliveries;   // operational capability actually delivered to a demand
 
-        // Deploying an actor, building infrastructure or attaching equipment can change the
-        // authoritative visibility/knowledge projection. Pure hand/generation/resource changes
-        // cannot, so orchestration may keep the cheaper operational refresh for those actions.
-        public bool KnowledgeMayHaveChanged =>
-            MaterializationsSucceeded > 0
-            || InfrastructureBuilt > 0
-            || EquipmentAssignmentsSucceeded > 0;
-
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
         public MaterializationReservation Reservation;
 
@@ -409,11 +401,8 @@ namespace Game.Ai.V2
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                         if (infra.StateChanged)
                         {
-                            snap = infra.Built
-                                ? WorldAnalysis.RefreshStrategicKnowledge(
-                                    snap, player, root, hand, ctx)
-                                : WorldAnalysis.RefreshOperationalState(
-                                    snap, player, root, hand, ctx);
+                            snap = WorldAnalysis.RefreshStrategicKnowledge(
+                                snap, player, root, hand, ctx);
                             // A minted card is protected immediately. A consumed card or a
                             // newly invalid factory loses protection in this same pass.
                             InfrastructureFulfillment.RestoreGeneratedOperatorClaims(player,
@@ -670,11 +659,8 @@ namespace Game.Ai.V2
                     if (up.StateChanged)
                     {
                         result.StateChanged = true;
-                        snap = up.Attached
-                            ? WorldAnalysis.RefreshStrategicKnowledge(
-                                snap, player, root, hand, ctx)
-                            : WorldAnalysis.RefreshOperationalState(
-                                snap, player, root, hand, ctx);
+                        snap = WorldAnalysis.RefreshStrategicKnowledge(
+                            snap, player, root, hand, ctx);
                     }
                     AiDebugLog.Write($"[AI][V2][Dev] {(up.Executed ? "EXEC" : "SKIP")} — "
                         + $"{chosenDemand.Explain} :: {up.Detail} (ap {F(up.ApSpent)} -> DEV)");
@@ -732,11 +718,8 @@ namespace Game.Ai.V2
                     // refresh so the next TopForDemand enumerates against the current world, and
                     // leave the demand active. The loop is still bounded by chainAttempts.
                     if (play.StateChanged || play.PlacementStale)
-                        snap = play.Deployed || play.Attached
-                            ? WorldAnalysis.RefreshStrategicKnowledge(
-                                snap, player, root, hand, ctx)
-                            : WorldAnalysis.RefreshOperationalState(
-                                snap, player, root, hand, ctx);
+                        snap = WorldAnalysis.RefreshStrategicKnowledge(
+                            snap, player, root, hand, ctx);
                     if (!play.StateChanged && !play.PlacementStale && plan.Generation == null)
                         selected.State.Blocked = true;
                     continue;

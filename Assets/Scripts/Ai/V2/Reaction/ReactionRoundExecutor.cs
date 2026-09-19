@@ -31,6 +31,10 @@ namespace Game.Ai.V2
             AiHandData hand = AiHandRegistry.Peek(player);
             if (hand == null)
                 StrategicInterruptRegistry.TryGetHand(player, ctx.TurnNumber, out hand);
+            WorldSnapshot snapshot = hand != null
+                ? WorldAnalysis.RefreshStrategicKnowledge(
+                    priorSnapshot, player, root, hand, ctx)
+                : priorSnapshot;
 
             // §6 — immediately before the bounded round, re-run the SAME feasibility probe. If no
             // genuinely feasible reaction remains, release the budget + envelope reservation now so
@@ -38,8 +42,8 @@ namespace Game.Ai.V2
             // instead of being pinned to a dead budget.
             if (round == 0 && hand != null
                 && StrategicResourceReservationLedger.HasAny(player, ctx.TurnNumber)
-                && !StrategicReactionPass.ReactionStillActionable(player, root, ctx,
-                    WorldAnalysis.Scan(player, root, hand, ctx)))
+                && !StrategicReactionPass.ReactionStillActionable(
+                    player, root, ctx, snapshot))
             {
                 StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
                     StrategicReservationReason.StrategicReactionPass);
@@ -72,7 +76,6 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] reaction — BEGIN round {round + 1}/2 bounded strategic replan "
                 + $"targets=[{string.Join(",", targetIds.OrderBy(x => x))}] ap={apAtStart}");
 
-            WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
             RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
             Radar radar = assessment.Radar;
@@ -111,10 +114,10 @@ namespace Game.Ai.V2
             bool aggressionPressureFresh = false;
             if (phaseA.StateChanged)
             {
-                snapshot = phaseA.KnowledgeMayHaveChanged
-                    ? WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx)
-                    : WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
-                if (phaseA.KnowledgeMayHaveChanged)
+                int knowledgeVersionBeforePhaseA = snapshot.KnowledgeVersion;
+                snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                    snapshot, player, root, hand, ctx);
+                if (snapshot.KnowledgeVersion != knowledgeVersionBeforePhaseA)
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
                 // Full-mode Reaction keeps the turn's Radar fixed, but Phase A can reinforce a

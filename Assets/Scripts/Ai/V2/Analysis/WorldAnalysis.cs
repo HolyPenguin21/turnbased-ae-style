@@ -47,7 +47,11 @@ namespace Game.Ai.V2
     {
         public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            var snap = new WorldSnapshot { TurnNumber = ctx.TurnNumber };
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = ctx.TurnNumber,
+                KnowledgeVersion = AiMapMemory.KnowledgeVersionFor(player),
+            };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
@@ -71,12 +75,16 @@ namespace Game.Ai.V2
             var snap = new WorldSnapshot
             {
                 TurnNumber = prev.TurnNumber,
+                KnowledgeVersion = prev.KnowledgeVersion,
                 Known = prev.Known,
-                TrueWorld = prev.TrueWorld,
                 MapKnowledge = prev.MapKnowledge,
             };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
+            // Operational combat facts must follow the registries even when honest knowledge did
+            // not change (HP loss, reinforcement, destruction). This is materially cheaper than
+            // rebuilding MapKnowledge and keeps the sanctioned TrueWorld boundary explicit.
+            snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
             snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
                 snap.Economy, snap.Development.SurplusFraction);
@@ -96,7 +104,15 @@ namespace Game.Ai.V2
             if (prev == null)
                 return Scan(player, root, hand, ctx);
 
-            var snap = new WorldSnapshot { TurnNumber = prev.TurnNumber };
+            int knowledgeVersion = AiMapMemory.KnowledgeVersionFor(player);
+            if (prev.KnowledgeVersion == knowledgeVersion)
+                return RefreshOperationalState(prev, player, root, hand, ctx);
+
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = prev.TurnNumber,
+                KnowledgeVersion = knowledgeVersion,
+            };
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
