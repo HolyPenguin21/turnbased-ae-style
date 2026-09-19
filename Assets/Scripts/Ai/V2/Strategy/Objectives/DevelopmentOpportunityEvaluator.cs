@@ -154,6 +154,9 @@ namespace Game.Ai.V2
                 return result;
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
+            // One settled preparation evaluation has one immutable set of available sources.
+            // Keep site/mode-specific admission in the loop below, not in a global cache.
+            List<GenerationStep> generatedOperatorSources = null;
             foreach (ResearchProductionMode mode in new[]
                 { ResearchProductionMode.Research, ResearchProductionMode.Production })
             foreach (HexCoord hex in snap.Self.BaseHexes)
@@ -259,8 +262,10 @@ namespace Game.Ai.V2
                 if (actor == null && operatorCard == null && remote == null
                     && garrison != null && PlacementRules.CanDepositIntoGarrison(garrison))
                 {
-                    generatedOperator = GenerationSource.Enumerate(player, root, ctx, hand,
-                            claimedUseKeys: null, triedCardKeys: null)
+                    if (generatedOperatorSources == null)
+                        generatedOperatorSources = GenerationSource.Enumerate(player, root, ctx, hand,
+                            claimedUseKeys: null, triedCardKeys: null);
+                    generatedOperator = generatedOperatorSources
                         .Where(g => IsGeneratedOperatorCandidate(g, mode)
                             && PlacementRules.HasRequiredBuilding(player, hex, g.CardDef)
                             && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
