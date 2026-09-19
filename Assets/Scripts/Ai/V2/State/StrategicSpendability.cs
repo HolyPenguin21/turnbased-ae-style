@@ -17,6 +17,38 @@ namespace Game.Ai.V2
     // owner-aware ledger was not authoritative for materialization feasibility.
     public static class StrategicSpendability
     {
+        // An already-airborne wing whose canonical lifecycle projection demands Return is safety
+        // work, not another discretionary Recon sortie. Phase A runs before operational admission,
+        // so the typed loop's mandatory-return step alone cannot protect its first activation from
+        // earlier card spending. Read the SAME recovery predicate ReconAirExecutor executes, and
+        // the wing's actual unpaid activation costs. Do not reserve a fixed amount per aircraft,
+        // future-turn AP, or the cost of already activated wings. Re-evaluate against live actors:
+        // landing, activation, loss and lifecycle transitions release the protection immediately.
+        private static (float Ap, int Energy) OutstandingRecoveryActivation(
+            PlayerSetupData player, AiTurnContext ctx)
+        {
+            if (player == null || ctx?.Map == null)
+                return (0f, 0);
+            float ap = 0f;
+            int energy = 0;
+            foreach (ArmyData wing in ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx))
+            {
+                if (wing.HasActivatedThisTurn)
+                    continue;
+                ap += Mathf.Max(0, wing.ActivationApCost);
+                energy += Mathf.Max(0, wing.ActivationEnergyCost);
+            }
+            return (ap, energy);
+        }
+
+        // An existing owner-aware hold and the recovery obligation are independent claims on
+        // the SAME physical stock. Legacy reservations are a separate view of that stock and
+        // must not be subtracted a second time if they already protect a wing.
+        internal static float SpendableWithRecovery(float ownerAwareSpendable,
+            float legacySpendable, float unpaidRecoveryCost) =>
+            Mathf.Min(Mathf.Max(0f, ownerAwareSpendable - Mathf.Max(0f, unpaidRecoveryCost)),
+                Mathf.Max(0f, legacySpendable));
+
         // The canonical primitive: how much of resource `t` may actually be spent this turn.
         internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ResourceType t, string excludeOwner = null)
@@ -31,7 +63,9 @@ namespace Game.Ai.V2
                 ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber, srr, root.GetResource(t))
                 : StrategicResourceReservationLedger.SpendableExcludingOwner(
                     player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner);
-            return Mathf.Min(strategic, legacy);
+            float recovery = t == ResourceType.Energy
+                ? OutstandingRecoveryActivation(player, ctx).Energy : 0f;
+            return SpendableWithRecovery(strategic, legacy, recovery);
         }
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
@@ -66,6 +100,7 @@ namespace Game.Ai.V2
             float availableAp = player != null && ctx != null
                 ? StrategicResourceReservationLedger.SpendableAp(
                     player, ctx.TurnNumber, root.ActionPoints)
+                    - OutstandingRecoveryActivation(player, ctx).Ap
                 : root.ActionPoints;
             if (availableAp - plan.ApCost < 0f)
                 return false;
