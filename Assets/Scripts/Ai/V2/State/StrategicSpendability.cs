@@ -40,14 +40,21 @@ namespace Game.Ai.V2
                     : Mathf.Max(0, wing.ActivationApCost);
                 int activationEnergy = wing.HasActivatedThisTurn ? 0
                     : Mathf.Max(0, wing.ActivationEnergyCost);
-                if (ap + activationAp > root.ActionPoints
-                    || energy + activationEnergy > root.GetResource(ResourceType.Energy))
+                if (!CanFundRecoveryPrefix(root.ActionPoints,
+                    root.GetResource(ResourceType.Energy), ap, energy,
+                    activationAp, activationEnergy))
                     break;
                 ap += activationAp;
                 energy += activationEnergy;
             }
             return (ap, energy);
         }
+
+        internal static bool CanFundRecoveryPrefix(float availableAp, int availableEnergy,
+            float alreadyCommittedAp, int alreadyCommittedEnergy,
+            float nextActivationAp, int nextActivationEnergy) =>
+            alreadyCommittedAp + nextActivationAp <= availableAp
+            && alreadyCommittedEnergy + nextActivationEnergy <= availableEnergy;
 
         // An existing owner-aware hold and the recovery obligation are independent claims on
         // the SAME physical stock. Legacy reservations are a separate view of that stock and
@@ -78,7 +85,7 @@ namespace Game.Ai.V2
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
         // round 6/7 (P1) — `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
-        // key, not the shared Reason) so a re-probe of the reaction that placed a hold does not fail
+        // key, not by the shared Reason) so a re-probe of the reaction that placed a hold does not fail
         // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
