@@ -901,7 +901,8 @@ namespace Game.Ai.V2
                     // ReenterStrategicAxes replaces dirty families after a factual invalidation.
 
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
-                        reconObjectives, aggressionObjectives, radar, demands, trace);
+                        reconObjectives, aggressionObjectives, radar, demands, trace,
+                        aggressionPressureAlreadyRefreshed: true);
                     if (retryNextTurnThisPass.Count > 0)
                         missions = missions.Where(m => m == null
                             || !retryNextTurnThisPass.Contains(StableMissionKey.For(m))).ToList();
@@ -1655,7 +1656,8 @@ namespace Game.Ai.V2
             DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
             IReadOnlyList<ReconObjective> reconObjectives,
             IReadOnlyList<AggressionObjective> aggressionObjectives, Radar radar,
-            IReadOnlyList<AxisDemand> demands, V2TraceScope trace)
+            IReadOnlyList<AxisDemand> demands, V2TraceScope trace,
+            bool aggressionPressureAlreadyRefreshed = false)
         {
             // Orchestration owns mid-turn sequencing: refresh only the Recon lane pressures from
             // the current snapshot right before Missions consumes them, so a frontier completion
@@ -1664,7 +1666,8 @@ namespace Game.Ai.V2
             StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
             // AGG-RAID §3 — the same discipline for the Aggression lane: refresh only the
             // operational opportunity facts from the current snapshot, never the radar.
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                && !aggressionPressureAlreadyRefreshed)
                 StrategyLayer.RefreshAggressionLanePressures(snapshot, breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives);
