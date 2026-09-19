@@ -25,6 +25,21 @@ namespace Game.Ai.V2
                     || !intent.PreferredMoverArmyId.HasValue)
                     continue;
                 EconomyIntent e = intent.Economy;
+                // This is a per-pass execution admission, not cancellation of the durable intent.
+                // Phase B can re-enter the operational loop after changing the hand/resources,
+                // but neither change refills this committed builder's movement. Do not repeatedly
+                // fund the same impossible travel step; completion on the target hex is still
+                // allowed with zero MP, and a refreshed actor/movement state admits it again.
+                ArmySnapshot pinnedBuilder = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == intent.PreferredMoverArmyId.Value);
+                if (pinnedBuilder != null && pinnedBuilder.CurrentMovement <= 0
+                    && !pinnedBuilder.Hex.Equals(e.TargetHex))
+                {
+                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] defer travel this turn "
+                        + $"intent={intent.IntentKey} actor=#{pinnedBuilder.ArmyId} "
+                        + "reason=pinned_builder_movement_exhausted");
+                    continue;
+                }
                 AxisDemand refreshed = demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)
