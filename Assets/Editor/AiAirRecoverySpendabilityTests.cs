@@ -36,6 +36,30 @@ namespace Game.EditorTests
                 ownerAwareSpendable: 3f, legacySpendable: 3f, unpaidRecoveryCost: 0f),
                 Is.EqualTo(3f), "a landed or already activated wing owes no further activation");
         }
+
+        [Test]
+        public void RecoveryProtectionStopsAtThePhysicallyAffordablePrefix()
+        {
+            Assert.That(StrategicSpendability.CanFundRecoveryPrefix(
+                availableAp: 12f, availableEnergy: 3,
+                alreadyCommittedAp: 0f, alreadyCommittedEnergy: 0,
+                nextActivationAp: 1f, nextActivationEnergy: 2), Is.True);
+            Assert.That(StrategicSpendability.CanFundRecoveryPrefix(
+                availableAp: 12f, availableEnergy: 3,
+                alreadyCommittedAp: 1f, alreadyCommittedEnergy: 2,
+                nextActivationAp: 1f, nextActivationEnergy: 2), Is.False,
+                "a second wing that cannot be activated must not protect another 2 Energy");
+            Assert.That(StrategicSpendability.CanFundRecoveryPrefix(
+                availableAp: 12f, availableEnergy: 1,
+                alreadyCommittedAp: 0f, alreadyCommittedEnergy: 0,
+                nextActivationAp: 1f, nextActivationEnergy: 2), Is.False,
+                "a return already unaffordable at turn start must not freeze the last Energy");
+            Assert.That(StrategicSpendability.CanFundRecoveryPrefix(
+                availableAp: 0f, availableEnergy: 3,
+                alreadyCommittedAp: 0f, alreadyCommittedEnergy: 0,
+                nextActivationAp: 1f, nextActivationEnergy: 2), Is.False,
+                "Energy should remain spendable when recovery has no physical AP");
+        }
     }
 }
 #endif
