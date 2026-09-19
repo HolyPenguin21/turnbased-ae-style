@@ -54,14 +54,20 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // Physical guard for a whole materialization chain: AP must not go negative and every
-        // persistent resource in the chain's ResCost must fit the owner-aware spendable pool.
+        // Physical guard for a whole materialization chain: AP and every persistent resource
+        // must fit the SAME owner-aware spendable pool. Raw AP is not available to a discretionary
+        // chain while another owner holds an explicit reaction/completion reservation. Callers
+        // without a turn-scoped owner retain the historical raw-AP fallback.
         internal static bool ReservesOkAfterChain(PlayerRoot root, AiTurnContext ctx,
             MaterializationPlan plan, PlayerSetupData player = null)
         {
             if (root == null || plan == null)
                 return false;
-            if (root.ActionPoints - plan.ApCost < 0f)
+            float availableAp = player != null && ctx != null
+                ? StrategicResourceReservationLedger.SpendableAp(
+                    player, ctx.TurnNumber, root.ActionPoints)
+                : root.ActionPoints;
+            if (availableAp - plan.ApCost < 0f)
                 return false;
 
             ResourceCost cost = plan.ResCost;
