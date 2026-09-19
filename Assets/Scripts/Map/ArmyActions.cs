@@ -9,27 +9,12 @@ using Game.Units;
 
 namespace Game.Map
 {
-    // Player-agnostic core of two actions that used to live inline inside UI click handlers
-    // (ArmyViewerModalUI.CreateArmy, CardHandUI.DeployUnit) — pulled out so the AI turn
-    // controller (see Game.Ai.AiTurnController) can perform the exact same actions a human's
-    // click would, with the exact same AP/resource rules, instead of a parallel reimplementation.
-    // Both UI call sites now just wrap these and turn a null/false result into their own hint
-    // popup — nothing about their behaviour changes.
+    // Shared player-agnostic gameplay transactions for creating armies, deploying cards and
+    // transferring members. Both human and AI callers use these exact mutations and costs.
     public static class ArmyActions
     {
         public const int CreateArmyApCost = 2;
 
-        // Allocates a brand-new empty, non-garrison army at `hex`, costing CreateArmyApCost.
-        // One job, no reuse scan: every caller here genuinely wants a NEW container.
-        //  - Human "Create Army" button (ArmyViewerModalUI): the player must be able to stage as
-        //    many empty armies as they like; an earlier fold-the-empty-army-back-into-itself
-        //    scan made the button a silent no-op (and still charged AP) from the second click on.
-        //  - AI card play (CardPlayExecutor, DeploymentKind.NewArmy): the V2 planner already has
-        //    a first-class DeploymentKind.ReusableShell path (see ReusableArmySelector /
-        //    MaterializationCandidateBuilder) that redeploys into an existing PAID empty shell
-        //    for 0 AP and honours ActorCommitments. Reaching NewArmy means the planner
-        //    deliberately chose a fresh army over any reusable shell — grabbing one here anyway
-        //    would double-charge its AP and could hijack a shell another mission has claimed.
         public static ArmyData CreateArmy(PlayerSetupData owner, HexCoord hex, FactionCardCatalog catalog, HexSelectionController hexSelectionController)
         {
             if (owner == null || catalog == null)
@@ -39,12 +24,11 @@ namespace Game.Map
             if (root == null || !root.CanSpendActionPoints(CreateArmyApCost))
                 return null;
             root.SpendActionPoints(CreateArmyApCost);
-
             return RegisterNewArmy(owner, hex, catalog, hexSelectionController);
         }
 
-        // Atomic form of "create a field army and put its first ground member into it".
-        // Every fallible check runs before AP spend or ArmyRegistry identity allocation.
+        // Atomic form of creating an army with its first member: validate the final roster
+        // before spending AP, then publish the populated army after the transfer completes.
         public static ArmyData CreateArmyWithMember(PlayerSetupData owner, HexCoord hex,
             FactionCardCatalog catalog, ArmyData source, UnitData member,
             HexSelectionController hexSelectionController, out string failReason)
@@ -78,6 +62,11 @@ namespace Game.Map
             army.AddMemberSorted(member);
             army.MarkUnitActivationPaid(member);
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
+            if (AbilityParams.GetBestRecceRadius(member) > 0)
+                VisionSystem.RecomputeFor(owner);
+            // RegisterNewArmy notified while the shell was still empty. The finalized
+            // transfer must be observed as well; the old event cannot represent this roster.
+            VisionSystem.NotifyContentChanged(hex);
             return army;
         }
 
@@ -97,11 +86,6 @@ namespace Game.Map
             return army;
         }
 
-        // UnitAbilities.RapidReaction: "The AP cost to deploy the unit is 0" — overrides the
-        // card's own apCost outright rather than needing a spawned UnitData to check against
-        // (there isn't one yet at this point). Exposed separately from DeployUnitFromCard so a
-        // caller (see Game.Ai.AiTurnController.Decide) can check affordability BEFORE committing
-        // to a decision that deploys this card, instead of finding out only after the fact.
         public static int EffectiveDeployApCost(CardDefinition definition)
         {
             if (definition == null)
@@ -110,10 +94,6 @@ namespace Game.Map
                 ? 0 : definition.apCost;
         }
 
-        // Instance-aware variant: a Research/Production-created CardData pays activationApCost,
-        // not apCost, when it is finally played (its Create attempt already covered the rest).
-        // RapidReaction's 0-AP override still wins over both. A null card, or an ordinary
-        // (non-produced) one, falls straight back to the CardDefinition rule above.
         public static int EffectiveDeployApCost(CardData card)
         {
             if (card?.Definition == null)
@@ -124,14 +104,6 @@ namespace Game.Map
             return card.ResearchProductionCreated ? definition.activationApCost : definition.apCost;
         }
 
-        // Same rule CardHandUI.DeployUnit always enforced: spend AP/resources, spawn the unit,
-        // add it to targetArmy, refresh the hex's marker stack. `failReason` is set (and the
-        // call returns false) without spending anything on any of the checked failure paths —
-        // callers that want a human-readable hint (CardHandUI) show it; AI callers just log it.
-        // sourceCard (optional): the hand CardData this deploy came from. Supplied by the human
-        // hand paths so a Research/Production-created card pays activationApCost and skips its
-        // (already-paid) ResourceCost. AI callers pass none — every AI card is an ordinary one,
-        // so behaviour there is unchanged.
         public static bool DeployUnitFromCard(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy,
             PlayerRoot root, HexSelectionController hexSelectionController, out string failReason,
             CardDefinition attachedEquipment = null, CardData sourceCard = null)
@@ -159,12 +131,6 @@ namespace Game.Map
                 failReason = $"The airfield at {targetArmy.Hex} is full.";
                 return false;
             }
-            // Capacity must be evaluated against the roster AFTER this card joins. A hero can
-            // legitimately turn a full no-hero 2/2 formation into (for example) a legal 3/5
-            // formation, while a low-CommandRating hero can also make a previously roomy
-            // no-hero garrison too small. Using the old targetArmy.HasRoom check before spawn
-            // cannot represent either case and made AI planner feasibility disagree with the
-            // canonical gameplay action.
             if (!targetArmy.IsAirfield)
             {
                 int projectedCapacity = targetArmy.Capacity;
@@ -179,7 +145,6 @@ namespace Game.Map
 
             bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;
             int apCost = sourceCard != null ? EffectiveDeployApCost(sourceCard) : EffectiveDeployApCost(definition);
-
             if (!root.CanSpendActionPoints(apCost))
             {
                 failReason = $"Not enough action points to deploy {definition.displayName}.";
@@ -207,9 +172,6 @@ namespace Game.Map
                 return false;
             }
 
-            // Equipment attached to this card while it was still in hand (see EquipmentSystem /
-            // the attach flow in CardHandUI) rides along onto the spawned unit now — its cost
-            // was already paid at attach time, so this only applies the grant.
             if (attachedEquipment != null)
             {
                 EquipmentSystem.Apply(attachedEquipment.equipment, spawned);
@@ -217,32 +179,17 @@ namespace Game.Map
             }
 
             targetArmy.AddMemberSorted(spawned);
-            // The unit has no map presence of its own (see Game.Map.ArmyController) — only
-            // targetArmy's own marker does, and this may be its first member ever (e.g. a
-            // garrison that had zero units until now), so its visibility needs refreshing.
             hexSelectionController.RestackArmiesOn(targetArmy.Hex, null);
-
-            // Stealth trigger B (see Game.Map.StealthSystem): a deploy that adds an r1sX
-            // Recce source widens this army's vision — recompute it here (AddMemberSorted
-            // alone doesn't) — then check every enemy hidden unit now inside `owner`'s
-            // vision, base/citadel hexes included.
+            // A new Recce member (including Recce granted by equipment while in hand)
+            // changes the owner's footprint. Any deploy changes what already-visible
+            // opponents can see, even when that footprint remains identical.
             if (AbilityParams.GetBestRecceRadius(spawned) > 0)
                 VisionSystem.RecomputeFor(owner);
             StealthSystem.RunChecksForNewVisionSource(targetArmy, spawned);
+            VisionSystem.NotifyContentChanged(targetArmy.Hex);
             return true;
         }
 
-        // Same rule ArmyViewerModalUI.TryDropUnit's own drop-on-another-army branch always
-        // enforced (pulled out here so Game.Ai.AiManagementPlanner-driven moves — garrison
-        // overflow splits, lone-army consolidation — use the exact same rule a human's drag-drop
-        // does, rather than a parallel reimplementation): target must have room, and `source`
-        // must not be left holding more members than its own (possibly lower, if the moved unit
-        // was its commanding hero) capacity can still hold. AP is only charged for the incoming
-        // unit's own ActivationApCost, and only if `target` already spent its own
-        // ActivationApCost this turn — an army that hasn't moved yet pays for everyone, this
-        // unit included, on its own first move order as normal (see the project owner's own
-        // report this guards against: reinforcing an already-moved army for free by dragging
-        // units in from elsewhere).
         public static bool TransferMember(UnitData unit, ArmyData source, ArmyData target,
             HexSelectionController hexSelectionController, out string failReason)
         {
@@ -257,9 +204,6 @@ namespace Game.Map
                 failReason = $"{unit.Name} is not a member of {source.Name}.";
                 return false;
             }
-            // "Create Army" from an airfield intentionally creates the usual empty field army.
-            // Its first aircraft is the authoritative moment it becomes an air army; without
-            // this conversion the UI can never form one through its normal drag workflow.
             bool promoteToAirArmy = source.IsAirfield && unit.IsAviation && !AviationRules.IsAirArmy(target)
                 && !target.IsGarrison && !target.IsAirfield && target.Members.Count == 0;
             if (!promoteToAirArmy && !AviationRules.CanContain(target, unit))
@@ -276,10 +220,6 @@ namespace Game.Map
             }
             if (!target.IsAirfield)
             {
-                // Canonical projected-roster capacity check. In particular, a hero joining a
-                // currently-full 2/2 no-hero army may raise its capacity and therefore fit; the
-                // old target.HasRoom pre-check rejected that legal transition before the hero's
-                // CommandRating could be considered.
                 var projectedTarget = new List<UnitData>(target.Members) { unit };
                 if (ArmyData.ComputeCapacity(projectedTarget, target.IsGarrison) < projectedTarget.Count)
                 {
@@ -287,7 +227,6 @@ namespace Game.Map
                     return false;
                 }
             }
-
             if (!source.CanLeaveWithoutOvercrowding(unit))
             {
                 failReason = $"Moving {unit.Name} out would leave {source.Name} without room for everyone else.";
@@ -296,12 +235,6 @@ namespace Game.Map
 
             PlayerRoot targetRoot = null;
             bool requiresCharge = target.RequiresActivationCharge(unit);
-            // Aircraft joining an already-activated air army owes its own LaunchEnergyCost too —
-            // the sibling cost to ActivationApCost that HexSelectionController.Movement's own
-            // first-move charge (ArmyData.ActivationEnergyCost) already treats as part of getting
-            // an air army moving. `unit.IsAviation` joining here always results in an air army
-            // (CanContain above only ever let it through into one that's already all-aviation or
-            // still empty), so this never misfires against a ground/garrison target.
             int energyCost = requiresCharge && unit.IsAviation ? unit.LaunchEnergyCost : 0;
             if (requiresCharge)
             {
@@ -328,32 +261,18 @@ namespace Game.Map
                 if (energyCost > 0)
                     targetRoot?.AddResource(ResourceType.Energy, -energyCost);
             }
-            // Marks unit covered for THIS army regardless of whether a charge was actually due
-            // just now — a join into a not-yet-activated army is pre-covered here for free
-            // (MarkActivated would sweep it in anyway once the army first moves), so either way
-            // `unit` can leave and return to `target` later this same turn without being
-            // charged again (see ArmyData.RequiresActivationCharge's own comment — the bug this
-            // whole ledger fixes).
             target.MarkUnitActivationPaid(unit);
-            // Neither army has a marker of its own that follows individual units around (see
-            // ArmyController) — only whichever is each owner's visible representative on the
-            // shared hex does, and this move can flip either army between empty and non-empty,
-            // which changes that. source/target are always on the same hex in every call site
-            // today, but restacking both costs nothing extra if that ever stops being true.
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (!target.Hex.Equals(source.Hex))
                 hexSelectionController?.RestackArmiesOn(target.Hex, null);
+            PublishRosterChange(source, target, AbilityParams.GetBestRecceRadius(unit) > 0);
             return true;
         }
 
-        // Side-effect-free preflight for an all-or-nothing multi-member transfer. This is the
-        // canonical batch counterpart of TransferMember: validate both FINAL rosters and the
-        // combined activated-destination AP charge before any member is removed.
         public static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, out string failReason)
             => CanTransferMembers(units, source, target, out _, out _, out _, out failReason);
 
-        // Immediate AP price for members joining this destination now.
         public static int TransferMembersApCost(IEnumerable<UnitData> units, ArmyData target)
         {
             if (units == null || target == null)
@@ -403,7 +322,6 @@ namespace Game.Map
                 failReason = $"The batch would leave {source.Name} without room for everyone else.";
                 return false;
             }
-
             var projectedTarget = new List<UnitData>(target.Members);
             foreach (UnitData unit in distinct)
             {
@@ -423,18 +341,10 @@ namespace Game.Map
                 return false;
             }
 
-            // Same per-unit ledger TransferMember uses (see ArmyData.RequiresActivationCharge) —
-            // only units NOT already covered for `target` this turn actually cost anything, so a
-            // batch that includes a unit cycling back into an army it already paid into earlier
-            // this turn isn't charged for that one twice.
             var chargeable = distinct.Where(target.RequiresActivationCharge).ToList();
             if (chargeable.Count > 0)
             {
                 totalApCost = TransferMembersApCost(chargeable, target);
-                // Same sibling Energy cost TransferMember now charges per-unit — see its own
-                // comment. A batch transfer only ever carries aircraft when `target` is/becomes
-                // an air army (CanContain above already enforced that), so this is 0 for every
-                // ordinary ground/garrison batch.
                 totalEnergyCost = chargeable.Where(u => u.IsAviation).Sum(u => u.LaunchEnergyCost);
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost)
@@ -448,9 +358,6 @@ namespace Game.Map
             return true;
         }
 
-        // Applies only after the complete batch preflight succeeds. No callback or fallible action
-        // occurs between removals, so callers observe either the original two rosters or the final
-        // two rosters — never a partially folded source army.
         public static bool TransferMembersAtomic(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, HexSelectionController hexSelectionController, out string failReason)
         {
@@ -465,32 +372,16 @@ namespace Game.Map
             targetRoot?.SpendActionPoints(totalApCost);
             if (totalEnergyCost > 0)
                 targetRoot?.AddResource(ResourceType.Energy, -totalEnergyCost);
-            // Every transferred unit is now covered for `target` for the rest of the turn — see
-            // TransferMember's own comment on why this is unconditional, not just for the ones
-            // CanTransferMembers actually charged.
             foreach (UnitData unit in units)
                 target.MarkUnitActivationPaid(unit);
 
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (!target.Hex.Equals(source.Hex))
                 hexSelectionController?.RestackArmiesOn(target.Hex, null);
+            PublishRosterChange(source, target, units.Any(u => AbilityParams.GetBestRecceRadius(u) > 0));
             return true;
         }
 
-        // A direct 1-for-1 exchange between two armies — the same net effect as two TransferMember
-        // calls but without either one ever needing a free slot, since a straight swap never
-        // changes either army's headcount. TransferMember alone can't express this: it always
-        // requires the DESTINATION to already have room, so two armies that are BOTH already full
-        // can never trade a single member through it at all (Game.Ai.GarrisonReorgTask's own
-        // "garrison full, every field army full too" dead end — project owner's own 2026-08-20 call
-        // to add this instead of leaving that a permanent no-op). Capacity is still re-checked on
-        // both sides — a swap that drags a hero out (or in) changes that army's own Capacity, so
-        // the resulting headcount still needs to actually fit once the trade lands.
-        // Read-only preflight for SwapMembers — every check it performs before actually moving
-        // anything, with no side effects, so callers deciding WHETHER to propose a swap (see
-        // Game.Ai.AiDefencePlanner.TryStrengthenCandidate) can use the exact same feasibility
-        // rule execution enforces, instead of a swap that looked useful at candidate-generation
-        // time getting rejected here and leaving the AI stuck re-proposing it every turn.
         public static bool CanSwapMembers(UnitData unitA, ArmyData armyA, UnitData unitB, ArmyData armyB,
             out string failReason)
         {
@@ -501,16 +392,6 @@ namespace Game.Map
                 failReason = "Invalid swap request.";
                 return false;
             }
-            // Same composition boundary TransferMember already enforces via AviationRules.
-            // CanContain (see that method's own check) — SwapMembers never called it, so nothing
-            // stopped a ground-army reorg swap from silently mixing an aircraft into a ground
-            // army/garrison or a ground unit into an airfield's own stored container/an air army,
-            // since none of those callers were ever written with aviation in mind. A flat refusal
-            // rather than CanContain's own per-target rules (which assume a single unit joining a
-            // STABLE target, not two simultaneous swaps) — nothing in this codebase has a legitimate
-            // reason to swap a member between an aviation-composed army and anything else; aviation's
-            // own launch/land flow never uses SwapMembers at all (see AviationActions.TryLaunch/
-            // AiAviationSupport.LaunchRoutine).
             if (armyA.IsAirfield || AviationRules.IsAirArmy(armyA) || armyB.IsAirfield || AviationRules.IsAirArmy(armyB)
                 || unitA.IsAviation || unitB.IsAviation)
             {
@@ -536,7 +417,6 @@ namespace Game.Map
                 failReason = $"{unitB.Name} wouldn't fit in {armyA.Name} once {unitA.Name} leaves.";
                 return false;
             }
-
             var remainingB = new List<UnitData>(armyB.Members);
             remainingB.Remove(unitB);
             remainingB.Add(unitA);
@@ -546,20 +426,6 @@ namespace Game.Map
                 return false;
             }
 
-            // Same "already-activated armies pay for what joins them" rule TransferMember
-            // enforces — but unlike TransferMember (always two DIFFERENT owners' armies) a swap's
-            // two armies are routinely the SAME AI player's own (e.g. AiDefencePlanner.
-            // TryStrengthenCandidate trading between its own garrison and a field army), so rootA
-            // and rootB can be the identical PlayerRoot. Checked and charged as ONE combined
-            // requirement against that shared pool when they match — two independent
-            // CanSpendActionPoints calls against the SAME starting AP would both pass even when
-            // the pool can't actually cover both costs together (e.g. 3 AP, 2+2 needed), and
-            // PlayerRoot.SpendActionPoints silently no-ops on an overdraft rather than throwing,
-            // so SwapMembers would have gone on to mutate both rosters while only ever actually
-            // paying for one side (project owner's own report).
-            // Same per-unit ledger TransferMember uses (see ArmyData.RequiresActivationCharge) —
-            // an incoming unit this army already covered earlier this turn (e.g. it's swapping
-            // back into an army it left a moment ago) isn't charged for again.
             bool chargeAIncoming = armyA.RequiresActivationCharge(unitB);
             bool chargeBIncoming = armyB.RequiresActivationCharge(unitA);
             PlayerRoot rootA = chargeAIncoming ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
@@ -602,7 +468,6 @@ namespace Game.Map
                     return false;
                 }
             }
-
             return true;
         }
 
@@ -612,10 +477,6 @@ namespace Game.Map
             if (!CanSwapMembers(unitA, armyA, unitB, armyB, out failReason))
                 return false;
 
-            // Resolved BEFORE either roster changes, same as CanSwapMembers — and must ask the
-            // exact same question CanSwapMembers already answered (RequiresActivationCharge
-            // against the PRE-swap membership), not re-derive it after AddMemberSorted below has
-            // already mutated who's a "current member".
             bool chargeAIncoming = armyA.RequiresActivationCharge(unitB);
             bool chargeBIncoming = armyB.RequiresActivationCharge(unitA);
             PlayerRoot rootA = chargeAIncoming ? PlayerRootRegistry.FindFor(armyA.Owner) : null;
@@ -625,9 +486,6 @@ namespace Game.Map
             armyB.Members.Remove(unitB);
             armyA.AddMemberSorted(unitB);
             armyB.AddMemberSorted(unitA);
-            // Same-owner combined charge — see CanSwapMembers' own comment. Two separate
-            // SpendActionPoints calls against the SAME root would double-count the pool's
-            // headroom the same way two separate CanSpendActionPoints checks did.
             if (rootA != null && rootA == rootB)
             {
                 int combinedCost = (chargeAIncoming ? unitB.ActivationApCost : 0)
@@ -639,15 +497,30 @@ namespace Game.Map
                 rootA?.SpendActionPoints(unitB.ActivationApCost);
                 rootB?.SpendActionPoints(unitA.ActivationApCost);
             }
-            // Both incoming units are now covered for their new army for the rest of the turn —
-            // unconditional, same reasoning as TransferMember's own MarkUnitActivationPaid call.
             armyA.MarkUnitActivationPaid(unitB);
             armyB.MarkUnitActivationPaid(unitA);
-
             hexSelectionController?.RestackArmiesOn(armyA.Hex, null);
             if (!armyB.Hex.Equals(armyA.Hex))
                 hexSelectionController?.RestackArmiesOn(armyB.Hex, null);
+            PublishRosterChange(armyA, armyB,
+                AbilityParams.GetBestRecceRadius(unitA) > 0 || AbilityParams.GetBestRecceRadius(unitB) > 0);
             return true;
+        }
+
+        // Only completed roster transactions publish visibility. One content notification
+        // per distinct hex, not one per transferred member; a Recce member additionally
+        // changes the owner's vision footprint. This is gameplay ownership, not AI policy.
+        private static void PublishRosterChange(ArmyData source, ArmyData target, bool recceTransferred)
+        {
+            if (recceTransferred)
+            {
+                VisionSystem.RecomputeFor(source.Owner);
+                if (source.Owner != target.Owner)
+                    VisionSystem.RecomputeFor(target.Owner);
+            }
+            VisionSystem.NotifyContentChanged(source.Hex);
+            if (!target.Hex.Equals(source.Hex))
+                VisionSystem.NotifyContentChanged(target.Hex);
         }
     }
 }
