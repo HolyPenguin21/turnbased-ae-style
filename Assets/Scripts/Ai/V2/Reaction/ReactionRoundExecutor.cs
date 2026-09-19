@@ -108,13 +108,33 @@ namespace Game.Ai.V2
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
+            bool aggressionPressureFresh = false;
             if (phaseA.StateChanged)
-                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+            {
+                snapshot = phaseA.KnowledgeMayHaveChanged
+                    ? WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx)
+                    : WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                if (phaseA.KnowledgeMayHaveChanged)
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+
+                // Full-mode Reaction keeps the turn's Radar fixed, but Phase A can reinforce a
+                // Raid or change the set of visible targets. Rebuild the operational report first,
+                // then every derivative that consumes its Aggression objectives.
+                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                aggressionPressureFresh = true;
+                aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                    snapshot, assessment.Breakdown.OpportunityReport);
+                activeIntents = MissionContinuityLayer.ResolveActive(
+                    player, snapshot, reconObjectives, aggressionObjectives);
+                actorCommitments = ActorCommitments.FromIntents(
+                    activeIntents, snapshot, reconObjectives);
+            }
 
             // Same Orchestration-owned refresh as the main pass (AiStrategyV2Pipeline.BuildMissionSet)
             // — Missions must receive current Recon pressures, not trigger their recomputation.
             StrategyLayer.RefreshReconLanePressures(snapshot, assessment.Breakdown);
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
+            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
+                && !aggressionPressureFresh)
                 StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);

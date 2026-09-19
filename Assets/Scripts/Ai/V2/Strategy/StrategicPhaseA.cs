@@ -28,6 +28,14 @@ namespace Game.Ai.V2
         public int InfrastructureBuilt;
         public int CapabilityDeliveries;   // operational capability actually delivered to a demand
 
+        // Deploying an actor, building infrastructure or attaching equipment can change the
+        // authoritative visibility/knowledge projection. Pure hand/generation/resource changes
+        // cannot, so orchestration may keep the cheaper operational refresh for those actions.
+        public bool KnowledgeMayHaveChanged =>
+            MaterializationsSucceeded > 0
+            || InfrastructureBuilt > 0
+            || EquipmentAssignmentsSucceeded > 0;
+
         public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
         public MaterializationReservation Reservation;
 

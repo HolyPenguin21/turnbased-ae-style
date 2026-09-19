@@ -591,13 +591,17 @@ namespace Game.Ai.V2
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
                 radar: radar, deferFreshZeroRadar: true);
 
-            // S4. Operational self-state refresh — ONLY if StrategicManager changed gameplay state
-            //     (a partial CreateArmy + failed deploy still counts). Rebuilds Self + Economy;
-            //     keeps the frozen strategic observations (Known / TrueWorld / MapKnowledge / Threat
-            //     / radar / breakdown / reconObjectives).
+            // S4. Refresh only the snapshot families the completed Phase-A action can change.
+            //     Deployments, infrastructure and equipment may alter visibility/knowledge; pure
+            //     hand/generation/resource changes keep the frozen knowledge layers. Radar remains
+            //     fixed either way, while operational Aggression facts are refreshed below.
             if (phaseA.StateChanged)
             {
-                snapshot = WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                snapshot = phaseA.KnowledgeMayHaveChanged
+                    ? WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx)
+                    : WorldAnalysis.RefreshOperationalState(snapshot, player, root, hand, ctx);
+                if (phaseA.KnowledgeMayHaveChanged)
+                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                 if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                     StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                 aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
@@ -829,9 +833,13 @@ namespace Game.Ai.V2
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
                     {
-                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                            snapshot, player, root, hand, ctx);
-                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        snapshot = followup.KnowledgeMayHaveChanged
+                            ? WorldAnalysis.RefreshStrategicKnowledge(
+                                snapshot, player, root, hand, ctx)
+                            : WorldAnalysis.RefreshOperationalState(
+                                snapshot, player, root, hand, ctx);
+                        if (followup.KnowledgeMayHaveChanged)
+                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                             StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                         aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
@@ -1386,13 +1394,17 @@ namespace Game.Ai.V2
                             + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                         if (coldPass.StateChanged)
                         {
-                            snapshot = WorldAnalysis.RefreshStrategicKnowledge(
-                                snapshot, player, root, hand, ctx);
+                            snapshot = coldPass.KnowledgeMayHaveChanged
+                                ? WorldAnalysis.RefreshStrategicKnowledge(
+                                    snapshot, player, root, hand, ctx)
+                                : WorldAnalysis.RefreshOperationalState(
+                                    snapshot, player, root, hand, ctx);
                             WorldAnalysis.StepObservationStamp afterCold =
                                 WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
-                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                            if (coldPass.KnowledgeMayHaveChanged)
+                                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                                 StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                             aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
