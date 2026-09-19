@@ -65,8 +65,7 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy, Target = target,
                     BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
-                    Requirements = Requirements(target, intent, snapshot,
-                        refreshed?.EconomyTravelCost ?? -1f),
+                    Requirements = Requirements(target, intent, snapshot),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
                     FromDurableIntent = true, DurableFundingTier = intent.Funding,
                     Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
@@ -123,8 +122,7 @@ namespace Game.Ai.V2
                     BaseValue = d.Value,
                     // Newly admitted Economy missions use their canonical net TaskScore.
                     LocalAdmissionScore = d.Value,
-                    Requirements = Requirements(target, incumbent, snapshot,
-                        d.EconomyTravelCost),
+                    Requirements = Requirements(target, incumbent, snapshot),
                     PreferredMoverArmyId = incumbent?.PreferredMoverArmyId
                         ?? d.EconomyPreferredBuilderArmyId,
                     FromDurableIntent = incumbent != null,
@@ -141,7 +139,7 @@ namespace Game.Ai.V2
         }
 
         private static MissionRequirements Requirements(EconomyMissionTarget t,
-            MissionIntent incumbent, WorldSnapshot snapshot, float witnessedTravelCost)
+            MissionIntent incumbent, WorldSnapshot snapshot)
         {
             if (t.Kind == EconomyTaskKind.ReturnBuilder)
             {
@@ -163,63 +161,54 @@ namespace Game.Ai.V2
             }
 
             int? preferredId = incumbent?.PreferredMoverArmyId ?? t.BuilderArmyId;
-            var r = new MissionRequirements
+            IReadOnlyList<EconomyBuilderRouteSnapshot> currentRoutes =
+                CurrentBuilderRoutes(snapshot, t);
+            EconomyBuilderRouteSnapshot? routeWitness = null;
+            if (preferredId.HasValue)
             {
-                RequiresArmy = true, RequiresHero = true, MoverKnown = preferredId.HasValue,
-            };
-            // An off-site garrison is a real builder candidate only when Analysis witnessed a
-            // sparable hero and its safe route. The GARRISON's MP/activation belong to the whole
-            // stationary roster, not to the hero who will be extracted in Execution.
-            EconomyBuilderRouteSnapshot? extractionRoute = null;
-            if (preferredId.HasValue && t.BuilderRoutes != null)
-                foreach (EconomyBuilderRouteSnapshot route in t.BuilderRoutes)
-                    if (route.ArmyId == preferredId.Value && route.RequiresGarrisonExtraction)
+                foreach (EconomyBuilderRouteSnapshot route in currentRoutes)
+                    if (route.ArmyId == preferredId.Value)
                     {
-                        extractionRoute = route;
+                        routeWitness = route;
                         break;
                     }
-            List<ArmySnapshot> heroes = snapshot?.Self?.Armies?
-                .Where(a => a != null && (a.IsMobileEconomyBuilder
-                    || (a.IsGarrison && a.HasHero && (a.Hex.Equals(t.TargetHex)
-                        || (extractionRoute.HasValue && a.ArmyId == preferredId.Value))))).ToList();
-            ArmySnapshot nearest = null;
-            // With a durable owner but no matching snapshot actor, NEVER price a different hero.
-            // The allocator may still retry the commitment; provisioning owns actual validity.
-            bool completionThisTurn = !preferredId.HasValue;
-            float activation = 0f;
-            if (heroes != null && heroes.Count > 0)
-            {
-                nearest = preferredId.HasValue
-                    ? heroes.FirstOrDefault(a => a.ArmyId == preferredId.Value)
-                    : null;
-                if (!preferredId.HasValue)
-                    nearest = heroes.OrderBy(a => HexGridMath.Distance(a.Hex, t.TargetHex))
-                        .ThenBy(a => a.ArmyId).First();
             }
-            if (nearest != null)
+            else if (currentRoutes.Count > 0)
             {
-                int distance = witnessedTravelCost >= 0f
-                    ? UnityEngine.Mathf.CeilToInt(witnessedTravelCost)
-                    : extractionRoute.HasValue ? extractionRoute.Value.TravelCost
-                        : HexGridMath.Distance(nearest.Hex, t.TargetHex);
-                int movement = extractionRoute.HasValue
-                    ? extractionRoute.Value.CurrentMovement : nearest.CurrentMovement;
-                bool activated = extractionRoute.HasValue
-                    ? extractionRoute.Value.HasActivatedThisTurn : nearest.HasActivatedThisTurn;
+                routeWitness = currentRoutes.OrderBy(route => route.TravelCost)
+                    .ThenBy(route => route.ArmyId).First();
+                preferredId = routeWitness.Value.ArmyId;
+            }
+
+            ArmySnapshot actor = preferredId.HasValue
+                ? snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.ArmyId == preferredId.Value)
+                : null;
+            var r = new MissionRequirements
+            {
+                RequiresArmy = true,
+                RequiresHero = true,
+                // A durable actor identity without a route in the current immutable snapshot is
+                // not an executable mover witness. Provisioning may revalidate it later, but the
+                // allocator must not inherit the previous position's cost.
+                MoverKnown = actor != null && routeWitness.HasValue,
+            };
+            bool completionThisTurn = false;
+            float activation = 0f;
+            if (actor != null && routeWitness.HasValue)
+            {
+                EconomyBuilderRouteSnapshot route = routeWitness.Value;
+                int distance = route.TravelCost;
+                int movement = route.CurrentMovement;
                 bool travelNeeded = distance > 0;
                 completionThisTurn = distance <= movement;
-                int projectedActivation = t.ProjectedActivationApCost > 0
-                    ? t.ProjectedActivationApCost
-                    : extractionRoute.HasValue ? extractionRoute.Value.ActivationApCost
-                        : nearest.ActivationApCost;
-                int projectedMove = t.ProjectedMaxMovement > 0
-                    ? t.ProjectedMaxMovement : nearest.MaxMovement;
-                activation = travelNeeded && !activated ? projectedActivation : 0f;
+                activation = travelNeeded && !route.HasActivatedThisTurn
+                    ? route.ActivationApCost : 0f;
                 r.EstimatedDistance = distance;
                 r.EtaTurns = completionThisTurn ? 0
                     : UnityEngine.Mathf.CeilToInt(
                         UnityEngine.Mathf.Max(0, distance - movement)
-                            / (float)UnityEngine.Mathf.Max(1, projectedMove));
+                            / (float)UnityEngine.Mathf.Max(1, route.MaxMovement));
             }
 
             float ap = UnityEngine.Mathf.Max(0f, activation
@@ -241,6 +230,36 @@ namespace Game.Ai.V2
                 r.TechMinimum = r.TechDesired = r.TechMaximum = cost.Get(ResourceType.Tech);
             }
             return r;
+        }
+
+        private static IReadOnlyList<EconomyBuilderRouteSnapshot> CurrentBuilderRoutes(
+            WorldSnapshot snapshot, EconomyMissionTarget target)
+        {
+            if (target.Kind == EconomyTaskKind.BuildExtraction)
+            {
+                foreach (EconomyExtractionOpportunity opportunity
+                         in snapshot?.Economy?.ExtractionOpportunities
+                            ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                    if (opportunity.Hex.Equals(target.TargetHex)
+                        && (!target.ResourceType.HasValue
+                            || opportunity.ResourceType == target.ResourceType.Value))
+                        return opportunity.BuilderRoutes
+                            ?? System.Array.Empty<EconomyBuilderRouteSnapshot>();
+                return System.Array.Empty<EconomyBuilderRouteSnapshot>();
+            }
+
+            if (target.Kind == EconomyTaskKind.FoundBase)
+            {
+                foreach (EconomyBaseOpportunity opportunity
+                         in snapshot?.Economy?.BaseOpportunities
+                            ?? System.Array.Empty<EconomyBaseOpportunity>())
+                    if (opportunity.Hex.Equals(target.TargetHex))
+                        return opportunity.BuilderRoutes
+                            ?? System.Array.Empty<EconomyBuilderRouteSnapshot>();
+                return System.Array.Empty<EconomyBuilderRouteSnapshot>();
+            }
+
+            return System.Array.Empty<EconomyBuilderRouteSnapshot>();
         }
 
         public static string OwnerKey(StableMissionKey key) => $"Economy:{key}";
