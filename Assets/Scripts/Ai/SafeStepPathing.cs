@@ -152,8 +152,11 @@ namespace Game.Ai
                 blocked.Add(sighting.Hex);
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner))
                 blocked.Add(sighting.Hex);
-            foreach (HexCoord hex in map.AllCoords)
-                if (AiMapMemory.IsScoutDangerous(owner, hex))
+            // Expand only the (few, small) zones themselves instead of testing every hex on the
+            // map against every zone — this ran once per rebuild, and a rebuild used to happen
+            // on nearly every AiMapMemory write.
+            foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
+                foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius))
                     blocked.Add(hex);
             return blocked;
         }

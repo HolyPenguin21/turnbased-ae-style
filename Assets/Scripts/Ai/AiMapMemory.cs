@@ -520,8 +520,29 @@ namespace Game.Ai
         // sector opens back up once AvoidUntilTurn passes (OnTurnStarted purges it above).
         public static bool IsScoutDangerous(PlayerSetupData actor, HexCoord hex)
         {
-            return ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
-                && zones.Any(z => HexGridMath.Distance(z.Center, hex) <= z.Radius);
+            if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
+                return false;
+            // Plain loop, not zones.Any(z => ...) — that lambda captures `hex` fresh on every
+            // call (a new closure allocation each time) and List<T>.Any boxes its enumerator
+            // when resolved through IEnumerable<T>. Called per-hex by SafeStepPathing's own
+            // blocker snapshot, so both costs were multiplying by map size.
+            for (int i = 0; i < zones.Count; i++)
+                if (HexGridMath.Distance(zones[i].Center, hex) <= zones[i].Radius)
+                    return true;
+            return false;
+        }
+
+        // Every scout-danger zone this player currently has, as a cheap (center, radius) pair —
+        // SafeStepPathing's blocker snapshot expands just these (bounded by zone radius) instead
+        // of calling IsScoutDangerous once per hex on the WHOLE map, which cost O(map size ×
+        // zone count) plus one allocation per call for no reason when zones are typically few
+        // and small.
+        public static IEnumerable<(HexCoord Center, int Radius)> ScoutDangerZoneRanges(PlayerSetupData actor)
+        {
+            if (!ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones))
+                yield break;
+            foreach (ScoutDangerZone zone in zones)
+                yield return (zone.Center, zone.Radius);
         }
 
         // Stamps `hex` as the target an AirRecon sortie is currently flying toward, at
@@ -596,6 +617,14 @@ namespace Game.Ai
                 KnownBuildings[player] = buildings;
             }
 
+            // Route-relevant changes only ever touch `sightings` (KnownResourceHexes/
+            // KnownBuildings/KnownEventGuards never feed SafeRouteBlocker) — RouteMemoryVersion
+            // only bumps once, at the end, if this call actually wrote or removed a sighting.
+            // Bumping unconditionally here (this runs on EVERY vision recompute, of which a
+            // single AI turn with several moving armies can trigger many) forced SafeStepPathing's
+            // per-owner blocker snapshot to rebuild — an O(map size) scan — on nearly every
+            // pathing call, even when nothing about known hostiles/danger zones had changed.
+            bool sightingsChanged = false;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
                 ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
@@ -666,6 +695,7 @@ namespace Game.Ai
                         RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
                             .Select(m => AbilityParams.GetBestRecceSpotStrength(m)).DefaultIfEmpty(0).Max(),
                     };
+                    sightingsChanged = true;
                 }
 
                 // A fresh observation of THIS hex invalidates every old identity no longer
@@ -682,6 +712,7 @@ namespace Game.Ai
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{stale.Name}\" at "
                             + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
                     sightings.Remove(staleId);
+                    sightingsChanged = true;
                 }
 
                 HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
@@ -756,11 +787,15 @@ namespace Game.Ai
                     buildings.Remove(hex);
                 }
             }
-            // Coarse: this whole method just ran, so treat it as a potential route-relevant
-            // change even if only KnownResourceHexes/KnownBuildings/KnownEventGuards actually
-            // moved this call — see RouteMemoryVersion's own comment.
-            _routeMemoryVersion++;
+            // KnowledgeVersion (WorldAnalysis's own snapshot-refresh gate) stays coarse on
+            // purpose — resource/building/event observations matter to it even when nothing
+            // route-relevant changed. RouteMemoryVersion (SafeStepPathing's blocker-snapshot
+            // gate) only bumps when this call actually wrote or removed a sighting: it used to
+            // bump unconditionally here too, which forced an O(map size) blocker rebuild on
+            // nearly every pathing call regardless of whether hostiles/danger zones changed.
             BumpKnowledgeVersion(player);
+            if (sightingsChanged)
+                _routeMemoryVersion++;
         }
 
         // The event's own guard just got beaten for real (reward claimed) — a genuine world-state
