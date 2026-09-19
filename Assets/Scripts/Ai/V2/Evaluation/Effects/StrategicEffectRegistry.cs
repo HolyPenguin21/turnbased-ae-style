@@ -238,6 +238,12 @@ namespace Game.Ai.V2
         public RoleCoverage With(IntendedRole r) => new RoleCoverage(_bits | (1 << (int)r));
         public RoleCoverage Union(RoleCoverage other) => new RoleCoverage(_bits | other._bits);
         public bool Any => _bits != 0;
+
+        public static bool operator ==(RoleCoverage a, RoleCoverage b) => a._bits == b._bits;
+        public static bool operator !=(RoleCoverage a, RoleCoverage b) => a._bits != b._bits;
+        public bool Equals(RoleCoverage other) => _bits == other._bits;
+        public override bool Equals(object obj) => obj is RoleCoverage other && Equals(other);
+        public override int GetHashCode() => _bits;
     }
 
     // The world context every contextual scaler reads. Built once per Card x IntendedUse
