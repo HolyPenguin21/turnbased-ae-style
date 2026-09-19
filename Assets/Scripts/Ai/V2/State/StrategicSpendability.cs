@@ -24,19 +24,27 @@ namespace Game.Ai.V2
         // the wing's actual unpaid activation costs. Do not reserve a fixed amount per aircraft,
         // future-turn AP, or the cost of already activated wings. Re-evaluate against live actors:
         // landing, activation, loss and lifecycle transitions release the protection immediately.
+        // The executor visits actors in ID order and stops when its recovery step cannot progress;
+        // protect only the prefix whose unpaid costs fit today's physical AP/Energy. An already
+        // unaffordable recovery must not freeze otherwise usable resources for the rest of the turn.
         private static (float Ap, int Energy) OutstandingRecoveryActivation(
-            PlayerSetupData player, AiTurnContext ctx)
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
-            if (player == null || ctx?.Map == null)
+            if (player == null || root == null || ctx?.Map == null)
                 return (0f, 0);
             float ap = 0f;
             int energy = 0;
             foreach (ArmyData wing in ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx))
             {
-                if (wing.HasActivatedThisTurn)
-                    continue;
-                ap += Mathf.Max(0, wing.ActivationApCost);
-                energy += Mathf.Max(0, wing.ActivationEnergyCost);
+                float activationAp = wing.HasActivatedThisTurn ? 0f
+                    : Mathf.Max(0, wing.ActivationApCost);
+                int activationEnergy = wing.HasActivatedThisTurn ? 0
+                    : Mathf.Max(0, wing.ActivationEnergyCost);
+                if (ap + activationAp > root.ActionPoints
+                    || energy + activationEnergy > root.GetResource(ResourceType.Energy))
+                    break;
+                ap += activationAp;
+                energy += activationEnergy;
             }
             return (ap, energy);
         }
@@ -64,14 +72,14 @@ namespace Game.Ai.V2
                 : StrategicResourceReservationLedger.SpendableExcludingOwner(
                     player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner);
             float recovery = t == ResourceType.Energy
-                ? OutstandingRecoveryActivation(player, ctx).Energy : 0f;
+                ? OutstandingRecoveryActivation(player, root, ctx).Energy : 0f;
             return SpendableWithRecovery(strategic, legacy, recovery);
         }
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
         // round 6/7 (P1) — `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
         // key, not the shared Reason) so a re-probe of the reaction that placed a hold does not fail
-        // against itself and two owners sharing a Reason can't shadow each other.
+        // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
         {
@@ -100,7 +108,7 @@ namespace Game.Ai.V2
             float availableAp = player != null && ctx != null
                 ? StrategicResourceReservationLedger.SpendableAp(
                     player, ctx.TurnNumber, root.ActionPoints)
-                    - OutstandingRecoveryActivation(player, ctx).Ap
+                    - OutstandingRecoveryActivation(player, root, ctx).Ap
                 : root.ActionPoints;
             if (availableAp - plan.ApCost < 0f)
                 return false;
