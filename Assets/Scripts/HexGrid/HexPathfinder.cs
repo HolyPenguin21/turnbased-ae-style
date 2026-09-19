@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Game.Map;
 using Game.Terrain;
@@ -5,56 +6,118 @@ using UnityEngine;
 
 namespace Game.HexGrid
 {
-    // Cheapest-path search over the hex grid, weighted by each terrain's moveCost — only
-    // hexes off the map block movement; every on-map hex is enterable, just at whatever cost
-    // its terrain sets (e.g. Mountains are simply expensive, not blocked). Plain Dijkstra
-    // rather than A*: maps here are small enough (~100 hexes) that the extra heuristic
-    // bookkeeping isn't worth it, and the frontier is just a linear-scanned list.
-    //
-    // Equal-cost routes (the common case on open, uniform terrain) are broken by a secondary
-    // key: the route whose hexes stay closest to the straight line from start to destination
-    // wins. Without it the raw expansion order makes the search commit fully to one diagonal
-    // and only turn toward the target at the end — an L-shaped route that reads as "wrong
-    // direction then a corner" even though its hex count is identical to the staircase route
-    // that heads straight at the target (project owner's own report — the *choice* of hexes,
-    // not how the arrow is drawn through them). The tie-breaker never overrides a genuinely
-    // cheaper route: it only orders routes of exactly equal routing cost.
+    // Cheapest-path search over terrain-weighted hexes. Equal-cost paths still prefer the
+    // route with the smallest accumulated distance from the start-to-destination line.
     public static class HexPathfinder
     {
-        // Added to a hex's routing cost when `avoidHex` flags it (see FindPath) — steers the
-        // search toward a detour when a reasonable one exists, without making the hex
-        // impassable: a route with no other way through (including the hex actually BEING the
-        // destination, e.g. a deliberate attack order) still gets found, just costed higher.
-        // A flat constant well above this project's terrain moveCost range (small integers)
-        // rather than derived from it, since even a several-hex detour should usually still
-        // come out cheaper than eating this penalty once.
         private const int AvoidPenalty = 20;
 
-        // avoidHex: optional soft-avoidance predicate (see the user's own request — route
-        // around a hex holding an enemy army when a reasonable detour exists, e.g.
-        // `hex => BattleInitiator.FindEnemyAt(hex, mover.Owner) != null`, left to the caller so
-        // this stays free of a Game.Combat dependency). Only steers which route gets chosen —
-        // the returned HexPath.TotalCost is real terrain cost only, recomputed separately below,
-        // matching what ArmyController.MoveRoutine will actually charge during the move itself
-        // (it recomputes cost from terrain independently, never reads this search's own routing
-        // cost) — so a preview/order never shows or spends an inflated AP/MP figure.
-        //
-        // blockHex: optional HARD block — unlike avoidHex, a flagged hex is never entered at
-        // all, even if that means a longer detour or no route exists (see AiTurnController's
-        // own "герой должен идти по посещённым хексам" case: an unvisited hex can hide an
-        // enemy the hero has no way to react to, so it must never be crossed blind, not just
-        // discouraged). The caller is responsible for exempting `destination` itself if it
-        // should still be reachable despite being flagged.
-        //
-        // flatCost: routes for an air mover, whose real charge is a flat 1 MP per hex regardless
-        // of terrain (see AviationRules.MovementCost/PathMoveCost) — without this, the search
-        // still ranks routes by ground moveCost, so it can hand back a longer detour around
-        // expensive terrain (mountains) instead of the true shortest hex-count route an aircraft
-        // would actually fly, and can wrongly reject a sortie that's really within range (2026-08-26
-        // fix, project owner's own report). Ground movers must never pass this — their real charge
-        // genuinely IS terrain-weighted, so flattening it here would misroute them too.
+        // Decrease-key heap instead of scanning the full frontier and using List.Contains for
+        // every expanded neighbor. Order is retained when a queued node improves, matching the
+        // old List's stable first-in tie break (cost, then straightness, then insertion order).
+        private struct FrontierNode
+        {
+            public HexCoord Hex;
+            public int Cost;
+            public float Straightness;
+            public long Order;
+        }
+
+        private sealed class Frontier
+        {
+            private readonly List<FrontierNode> _heap = new List<FrontierNode>();
+            private readonly Dictionary<HexCoord, int> _indices = new Dictionary<HexCoord, int>();
+            private long _nextOrder;
+
+            public int Count => _heap.Count;
+
+            private static bool Less(FrontierNode a, FrontierNode b)
+            {
+                if (a.Cost != b.Cost) return a.Cost < b.Cost;
+                if (a.Straightness != b.Straightness) return a.Straightness < b.Straightness;
+                return a.Order < b.Order;
+            }
+
+            private void Swap(int a, int b)
+            {
+                FrontierNode temp = _heap[a];
+                _heap[a] = _heap[b];
+                _heap[b] = temp;
+                _indices[_heap[a].Hex] = a;
+                _indices[_heap[b].Hex] = b;
+            }
+
+            private void SiftUp(int index)
+            {
+                while (index > 0)
+                {
+                    int parent = (index - 1) / 2;
+                    if (!Less(_heap[index], _heap[parent])) break;
+                    Swap(index, parent);
+                    index = parent;
+                }
+            }
+
+            private void SiftDown(int index)
+            {
+                while (true)
+                {
+                    int left = index * 2 + 1;
+                    if (left >= _heap.Count) break;
+                    int best = left;
+                    int right = left + 1;
+                    if (right < _heap.Count && Less(_heap[right], _heap[left])) best = right;
+                    if (!Less(_heap[best], _heap[index])) break;
+                    Swap(index, best);
+                    index = best;
+                }
+            }
+
+            public void AddOrDecrease(HexCoord hex, int cost, float straightness)
+            {
+                if (_indices.TryGetValue(hex, out int index))
+                {
+                    FrontierNode node = _heap[index];
+                    node.Cost = cost;
+                    node.Straightness = straightness;
+                    _heap[index] = node;
+                    SiftUp(index);
+                    return;
+                }
+                var added = new FrontierNode
+                {
+                    Hex = hex, Cost = cost, Straightness = straightness, Order = _nextOrder++
+                };
+                _indices[hex] = _heap.Count;
+                _heap.Add(added);
+                SiftUp(_heap.Count - 1);
+            }
+
+            public HexCoord PopMin()
+            {
+                HexCoord result = _heap[0].Hex;
+                _indices.Remove(result);
+                int last = _heap.Count - 1;
+                if (last == 0)
+                {
+                    _heap.RemoveAt(0);
+                    return result;
+                }
+                FrontierNode replacement = _heap[last];
+                _heap.RemoveAt(last);
+                _heap[0] = replacement;
+                _indices[replacement.Hex] = 0;
+                SiftDown(0);
+                return result;
+            }
+        }
+
+        // avoidHex is a soft penalty; the returned TotalCost is terrain cost only. blockHex
+        // forbids entry outright. flatCost is used by aviation (one MP per hex). Preserve the
+        // exact destination-specific straightness tie break: Economy's route-threat witness
+        // depends on the resulting HEX SEQUENCE, not merely the minimum travel cost.
         public static HexPath FindPath(HexMap map, HexCoord start, HexCoord destination,
-            System.Func<HexCoord, bool> avoidHex = null, System.Func<HexCoord, bool> blockHex = null,
+            Func<HexCoord, bool> avoidHex = null, Func<HexCoord, bool> blockHex = null,
             bool flatCost = false)
         {
             if (map == null)
@@ -64,14 +127,10 @@ namespace Game.HexGrid
 
             var costSoFar = new Dictionary<HexCoord, int> { [start] = 0 };
             var cameFrom = new Dictionary<HexCoord, HexCoord>();
-            var frontier = new List<HexCoord> { start };
+            var straightnessCost = new Dictionary<HexCoord, float> { [start] = 0f };
+            var frontier = new Frontier();
+            frontier.AddOrDecrease(start, 0, 0f);
 
-            // Straight-line reference for the equal-cost tie-breaker (see the class comment).
-            // Planar coords from the shared axial->world helper at unit radius — no map
-            // transform needed, only relative distances matter. straightnessCost[h] is the sum
-            // of every hex's perpendicular offset from this line along the route that reached
-            // h, so among two routes of identical routing cost the one hugging the line has the
-            // smaller total and wins.
             Vector3 startPlane = HexGridMath.AxialToWorld(start.Q, start.R, 1f);
             Vector3 lineDir = HexGridMath.AxialToWorld(destination.Q, destination.R, 1f) - startPlane;
             float lineLen = lineDir.magnitude;
@@ -82,56 +141,41 @@ namespace Game.HexGrid
                 Vector3 p = HexGridMath.AxialToWorld(h.Q, h.R, 1f) - startPlane;
                 return Mathf.Abs(p.x * lineDir.z - p.z * lineDir.x) / lineLen;
             }
-            var straightnessCost = new Dictionary<HexCoord, float> { [start] = 0f };
 
             while (frontier.Count > 0)
             {
-                int bestIndex = 0;
-                for (int i = 1; i < frontier.Count; i++)
-                {
-                    int c = costSoFar[frontier[i]];
-                    int cBest = costSoFar[frontier[bestIndex]];
-                    if (c < cBest || (c == cBest && straightnessCost[frontier[i]] < straightnessCost[frontier[bestIndex]]))
-                        bestIndex = i;
-                }
-
-                HexCoord current = frontier[bestIndex];
-                frontier.RemoveAt(bestIndex);
-
+                HexCoord current = frontier.PopMin();
                 if (current.Equals(destination))
                     break;
-
-                foreach (HexCoord next in HexGridMath.Neighbors(current))
+                int currentCost = costSoFar[current];
+                float currentStraightness = straightnessCost[current];
+                // Avoid the iterator allocation of HexGridMath.Neighbors once per visited hex.
+                foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
                 {
+                    var next = new HexCoord(current.Q + dq, current.R + dr);
                     if (!map.TryGetTerrainAt(next, out TerrainTypeEntry entry))
                         continue;
                     if (blockHex != null && blockHex(next))
                         continue;
-
                     int stepCost = flatCost ? 1 : Mathf.Max(1, entry.moveCost);
                     if (avoidHex != null && avoidHex(next))
                         stepCost += AvoidPenalty;
-                    int newCost = costSoFar[current] + stepCost;
+                    int newCost = currentCost + stepCost;
                     bool seen = costSoFar.TryGetValue(next, out int existing);
                     if (seen && existing < newCost)
                         continue;
-
-                    // Equal routing cost: keep whichever route so far hugged the line more.
-                    float newStraightness = straightnessCost[current] + OffsetFromLine(next);
+                    float newStraightness = currentStraightness + OffsetFromLine(next);
                     if (seen && existing == newCost && straightnessCost[next] <= newStraightness)
                         continue;
-
                     costSoFar[next] = newCost;
                     straightnessCost[next] = newStraightness;
                     cameFrom[next] = current;
-                    if (!frontier.Contains(next))
-                        frontier.Add(next);
+                    frontier.AddOrDecrease(next, newCost, newStraightness);
                 }
             }
 
             if (!costSoFar.ContainsKey(destination))
-                return null; // unreachable — blocked off, or past the map edge
-
+                return null;
             var hexes = new List<HexCoord> { destination };
             HexCoord walk = destination;
             while (!walk.Equals(start))
@@ -140,23 +184,71 @@ namespace Game.HexGrid
                 hexes.Add(walk);
             }
             hexes.Reverse();
-
-            int realCost;
+            int realCost = 0;
             if (flatCost)
-            {
                 realCost = hexes.Count - 1;
-            }
             else
-            {
-                realCost = 0;
                 for (int i = 1; i < hexes.Count; i++)
                 {
                     map.TryGetTerrainAt(hexes[i], out TerrainTypeEntry stepEntry);
                     realCost += stepEntry != null ? Mathf.Max(1, stepEntry.moveCost) : 1;
                 }
-            }
-
             return new HexPath(hexes, realCost);
+        }
+
+        // Cost-only Dijkstra for a fixed base (forward) or the nearest of several bases
+        // (reverse). A blocked hex is allowed as an ENDPOINT but never expanded as transit;
+        // this is exactly FindSafePathCost's destination exemption for every queried endpoint.
+        // Reverse edges charge the terrain of 'current', not 'next': entering a hex is directed,
+        // so cost(A -> B) cannot be inferred from cost(B -> A).
+        public static Dictionary<HexCoord, int> FindCosts(HexMap map,
+            IEnumerable<HexCoord> sources, Func<HexCoord, bool> blockHex = null,
+            int? maxMovement = null, bool reverse = false)
+        {
+            var costs = new Dictionary<HexCoord, int>();
+            if (map == null || sources == null)
+                return costs;
+            var sourceSet = new HashSet<HexCoord>();
+            var frontier = new Frontier();
+            foreach (HexCoord start in sources)
+                if (map.TryGetTerrainAt(start, out TerrainTypeEntry _) && sourceSet.Add(start))
+                {
+                    costs[start] = 0;
+                    frontier.AddOrDecrease(start, 0, 0f);
+                }
+
+            while (frontier.Count > 0)
+            {
+                HexCoord current = frontier.PopMin();
+                if (!sourceSet.Contains(current) && blockHex != null && blockHex(current))
+                    continue;
+                int currentCost = costs[current];
+                int reverseStepCost = 0;
+                if (reverse)
+                {
+                    map.TryGetTerrainAt(current, out TerrainTypeEntry currentEntry);
+                    reverseStepCost = Mathf.Max(1, currentEntry.moveCost);
+                    // Even a destination-exempt base cannot be ENTERED if its terrain costs
+                    // more than the mover can ever pay; standing on it still costs zero.
+                    if (maxMovement.HasValue && reverseStepCost > maxMovement.Value)
+                        continue;
+                }
+                foreach ((int dq, int dr) in HexGridMath.NeighborDirectionsByEdge)
+                {
+                    var next = new HexCoord(current.Q + dq, current.R + dr);
+                    if (!map.TryGetTerrainAt(next, out TerrainTypeEntry nextEntry))
+                        continue;
+                    int stepCost = reverse ? reverseStepCost : Mathf.Max(1, nextEntry.moveCost);
+                    if (!reverse && maxMovement.HasValue && stepCost > maxMovement.Value)
+                        continue;
+                    int newCost = currentCost + stepCost;
+                    if (costs.TryGetValue(next, out int oldCost) && oldCost <= newCost)
+                        continue;
+                    costs[next] = newCost;
+                    frontier.AddOrDecrease(next, newCost, 0f);
+                }
+            }
+            return costs;
         }
     }
 }

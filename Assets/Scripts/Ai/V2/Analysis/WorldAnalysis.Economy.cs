@@ -81,6 +81,19 @@ namespace Game.Ai.V2
             var knownBuildings = (snap.Known?.Buildings
                 ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .GroupBy(x => x.Hex).ToDictionary(g => g.Key, g => g.First());
+            // The same hex may yield several resource types AND qualify as a Base site. Its
+            // army routes/threat witnesses are identical within this immutable world scan;
+            // compute them only once without caching across snapshots or projected-army calls.
+            var builderRoutesByHex = new Dictionary<HexCoord, IReadOnlyList<EconomyBuilderRouteSnapshot>>();
+            IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutesFor(HexCoord hex)
+            {
+                if (!builderRoutesByHex.TryGetValue(hex, out IReadOnlyList<EconomyBuilderRouteSnapshot> routes))
+                {
+                    routes = EconomyBuilderRoutes(snap, player, ctx, hex);
+                    builderRoutesByHex[hex] = routes;
+                }
+                return routes;
+            }
             var extraction = new List<EconomyExtractionOpportunity>();
             foreach ((HexCoord Hex, ResourceType Type, int Yield) site
                      in KnownExtractionYields(snap))
@@ -127,7 +140,7 @@ namespace Game.Ai.V2
                     CurrentBuildingCollection = currentCollection,
                     MarginalIncomeGain = marginal,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
-                    BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, site.Hex),
+                    BuilderRoutes = BuilderRoutesFor(site.Hex),
                 });
             }
             eco.ExtractionOpportunities = extraction;
@@ -187,9 +200,13 @@ namespace Game.Ai.V2
                         if (HexGridMath.Distance(hex, targetCitadel) <= AiConfigV2.economyBaseMinSpacing
                             && HexGridMath.Distance(hex, targetCitadel) < supportDistance)
                             continue;
-                        int preparationTravel = snap.Self.BaseHexes.Min(home => ctx?.Map != null
-                            ? SafeStepPathing.FindSafePathCost(ctx.Map, player, home, hex)
-                            : HexGridMath.Distance(home, hex));
+                        // The starting citadel and later Bases are stationary. SafeStepPathing
+                        // retains their forward cost fields across scans, building a field only
+                        // on first demand or when route-relevant inputs change.
+                        int preparationTravel = ctx?.Map != null
+                            ? SafeStepPathing.FindSafeBasePreparationCost(ctx.Map, player,
+                                snap.Self.BaseHexes, hex)
+                            : snap.Self.BaseHexes.Min(home => HexGridMath.Distance(home, hex));
                         if (preparationTravel == int.MaxValue)
                             continue;
 
@@ -228,7 +245,7 @@ namespace Game.Ai.V2
                             CorridorAlignmentValue = corridorAlignment,
                             DefenseBonusValue = defenseBonus,
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
-                            BuilderRoutes = EconomyBuilderRoutes(snap, player, ctx, hex),
+                            BuilderRoutes = BuilderRoutesFor(hex),
                         });
                     }
             }
@@ -389,15 +406,8 @@ namespace Game.Ai.V2
                         ctx.Map, player, army.Hex, target, sparableHero.MoveMax);
                     if (garrisonRoute != null)
                     {
-                        int garrisonReturnCost = int.MaxValue;
-                        foreach (HexCoord home in snap.Self.BaseHexes
-                                     ?? System.Array.Empty<HexCoord>())
-                        {
-                            int candidateCost = SafeStepPathing.FindSafePathCost(
-                                ctx.Map, player, target, home, sparableHero.MoveMax);
-                            if (candidateCost < garrisonReturnCost)
-                                garrisonReturnCost = candidateCost;
-                        }
+                        int garrisonReturnCost = SafeStepPathing.FindNearestBaseReturnCost(
+                            ctx.Map, player, target, snap.Self.BaseHexes, sparableHero.MoveMax);
                         if (garrisonReturnCost == int.MaxValue)
                             garrisonReturnCost = HexGridMath.Distance(target, army.Hex);
 
@@ -445,13 +455,8 @@ namespace Game.Ai.V2
                 }
                 if (!everyStepAffordable)
                     continue;
-                int returnCost = int.MaxValue;
-                foreach (HexCoord home in snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
-                {
-                    int candidate = SafeStepPathing.FindSafePathCost(
-                        ctx.Map, player, target, home, army.MaxMovement);
-                    if (candidate < returnCost) returnCost = candidate;
-                }
+                int returnCost = SafeStepPathing.FindNearestBaseReturnCost(
+                    ctx.Map, player, target, snap.Self.BaseHexes, army.MaxMovement);
                 if (returnCost == int.MaxValue)
                     returnCost = HexGridMath.Distance(target, army.Hex);
                 result.Add(new EconomyBuilderRouteSnapshot
