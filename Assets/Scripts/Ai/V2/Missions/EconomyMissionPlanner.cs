@@ -216,14 +216,14 @@ namespace Game.Ai.V2
                 int? actorId = incumbent?.PreferredMoverArmyId ?? t.CollectorArmyId;
                 ArmySnapshot collector = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
                     && actorId.HasValue && a.ArmyId == actorId.Value);
-                float activation = collector != null && !collector.HasActivatedThisTurn
+                float collectorActivation = collector != null && !collector.HasActivatedThisTurn
                     && !collector.Hex.Equals(t.TargetHex) ? collector.ActivationApCost : 0f;
                 int distance = collector == null ? 0
                     : HexGridMath.Distance(collector.Hex, t.TargetHex);
                 return new MissionRequirements
                 {
                     RequiresArmy = true, RequiresHero = false, MoverKnown = collector != null,
-                    ApMinimum = activation, ApDesired = activation, ApMaximum = activation,
+                    ApMinimum = collectorActivation, ApDesired = collectorActivation, ApMaximum = collectorActivation,
                     EstimatedDistance = distance,
                     EtaTurns = collector == null ? 0 : UnityEngine.Mathf.CeilToInt(distance
                         / (float)UnityEngine.Mathf.Max(1, collector.MaxMovement)),

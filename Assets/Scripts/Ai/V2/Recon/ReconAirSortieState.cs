@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 
 using Game.Aviation;

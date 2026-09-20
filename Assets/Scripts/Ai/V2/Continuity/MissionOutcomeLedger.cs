@@ -40,6 +40,10 @@ namespace Game.Ai.V2
         public ScoutTargetKind ScoutKind;
         public bool ScoutRequiresStealth;   // AI-RECON-02 — provisioned Scout requirement was a stealth one
         public HexCoord FocusHex;
+        // The mover's actual hex after this turn's execution step — set from
+        // ExecutionResult.FinalHex. Continuity reads it to tell "arrived at target this turn"
+        // apart from "still en route" (e.g. EconomyIntent.ArrivalTurn for MobileCollection).
+        public HexCoord FinalHex;
         public int? TrackedArmyId;
         public int BaselineObservedTurn;
         public bool HasScoutPayload;
@@ -263,6 +267,7 @@ namespace Game.Ai.V2
                     ExecutionResult e = r.Execution;
                     o.StepsMoved = e.StepsMoved;
                     o.ApSpent = e.ApSpent;
+                    o.FinalHex = e.FinalHex;
                     // RECON-AIR-06 — an AirLaunch mission was bound at Assignment time to a
                     // synthetic per-airfield actor id (no ArmyData existed yet); once execution
                     // actually launched the aircraft, ActualActorArmyId carries the REAL ArmyId, and
