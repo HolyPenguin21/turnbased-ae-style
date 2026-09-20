@@ -47,9 +47,10 @@ namespace Game.Ai.V2
                 currentWin, currentWin, default, reason);
     }
 
-    // Pure, snapshot-only comparison of the two ways an already-started Raid can regain the
-    // existing raidMinViableWinChance. It predicts exact executable roster/repair effects through
-    // WorthIt/GroundCombatFeasibility and returns one frozen next action; it mutates no live state.
+    // Pure comparison of the two ways an already-started Raid can regain the existing
+    // raidMinViableWinChance. Combat/resources come from the immutable snapshot; Continuity supplies
+    // the existing read-only SafeStepPathing oracle so route viability uses the same cached blocker
+    // rules as execution. It returns one frozen next action and mutates no live state.
     internal static class RaidRecoveryPlanner
     {
         private sealed class SimMember
