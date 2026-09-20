@@ -123,19 +123,19 @@ namespace Game.Ai.V2
                     CollectorSourceArmyId = op.CollectorArmyId,
                     ExpectedMarginalYield = op.EffectiveRemainingYield,
                     SafeReturnHex = op.SafeReturnHex,
-                    BuildValue = op.UsefulMarginalGain,
+                    BuildValue = op.EffectiveRemainingYield,
                 };
                 var mission = new MissionProposal
                 {
                     Kind = MissionKind.Economy,
                     Target = target,
-                    BaseValue = op.UsefulMarginalGain,
-                    LocalAdmissionScore = op.UsefulMarginalGain,
+                    BaseValue = op.TaskScoreValue,
+                    LocalAdmissionScore = op.TaskScoreValue,
                     PreferredMoverArmyId = op.CollectorArmyId,
                     Requirements = Requirements(target, null, snapshot, activeIntents,
                         currentCommitments),
                     Explain = $"economy mobile-collect {op.ResourceType} actor=#{op.CollectorArmyId} "
-                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={op.UsefulMarginalGain:0.##}",
+                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={op.TaskScoreValue:0.##}",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
                 result.Add(mission);
