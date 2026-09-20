@@ -53,6 +53,9 @@ namespace Game.Ai.V2
         // never be inferred from the intent's already-mutated current phase.
         public bool RaidReinforcementHandoffAttempted;
         public bool RaidAirSupportStrikeSucceeded;
+        public RaidRefitAction RaidRefitAction;
+        public bool RaidRefitSucceeded;
+        public ResourceVector ResourcesSpent;
 
         // Set when an Economy builder reaches its BuildExtraction/FoundBase target this step but
         // the infrastructure itself is not up yet (that's Phase A's job next admission). Nothing in
@@ -508,7 +511,8 @@ namespace Game.Ai.V2
             // AGG-RAID §10/§SupportReturn — four atomic legs. Execution never picks a different
             // target, a different base, re-scores anything, or creates a replacement mission: it
             // carries out exactly the plan Provisioning pinned onto `pm`.
-            if (pm.RaidPhase == RaidMissionPhase.Return || pm.RaidPhase == RaidMissionPhase.SupportReturn)
+            if (pm.RaidPhase == RaidMissionPhase.Return || pm.RaidPhase == RaidMissionPhase.SupportReturn
+                || pm.RaidPhase == RaidMissionPhase.RecoveryReturn)
             {
                 yield return RunRaidReturnStep(player, root, ctx, pm, result, army, snapshot);
                 yield break;
@@ -521,6 +525,11 @@ namespace Game.Ai.V2
             if (pm.RaidPhase == RaidMissionPhase.Reinforcement)
             {
                 yield return RunRaidReinforcementStep(player, root, ctx, pm, result, army, snapshot);
+                yield break;
+            }
+            if (pm.RaidPhase == RaidMissionPhase.Refit)
+            {
+                yield return RunRaidRefitStep(player, root, ctx, pm, result, army);
                 yield break;
             }
 
@@ -753,12 +762,20 @@ namespace Game.Ai.V2
             WorldSnapshot snapshot)
         {
             bool isSupportLeg = pm.RaidPhase == RaidMissionPhase.SupportReturn;
+            bool isRecoveryLeg = pm.RaidPhase == RaidMissionPhase.RecoveryReturn;
             void ReportArrived()
             {
                 if (isSupportLeg)
                 {
                     MissionContinuityLayer.CompleteRaidSupportReturn(player, snapshot,
                         pm.RaidPrimaryArmyId ?? pm.MoverArmyId, $"support #{pm.MoverArmyId} arrived home");
+                    result.DurableRoleContinues = true;
+                }
+                else if (isRecoveryLeg)
+                {
+                    MissionContinuityLayer.CompleteRaidRecoveryReturn(player, snapshot,
+                        pm.RaidPrimaryArmyId ?? pm.MoverArmyId,
+                        $"primary #{pm.MoverArmyId} arrived at recovery base");
                     result.DurableRoleContinues = true;
                 }
                 result.ReachedGoal = true;
@@ -788,7 +805,7 @@ namespace Game.Ai.V2
 
             HexCoord before = army.Hex;
             var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — {(isSupportLeg ? "support " : "")}return to base ({home.Q},{home.R})", 0f);
+                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})", 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -819,6 +836,113 @@ namespace Game.Ai.V2
             result.StopReason = army.CurrentMovement > 0
                 ? ExecutionStopReason.StepCompleted
                 : ExecutionStopReason.OutOfMovement;
+        }
+
+        // One frozen Refit action, one authoritative gameplay mutation. Readiness and the next
+        // action are deliberately left to Continuity after the resulting typed invalidation has
+        // produced a fresh snapshot.
+        private static IEnumerator RunRaidRefitStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData primary)
+        {
+            RaidRefitAction action = pm.RaidRefitAction;
+            result.RaidRefitAction = action;
+            if (!action.HasValue || primary == null || primary.Id != action.PrimaryArmyId
+                || !primary.Hex.Equals(action.BaseHex) || !UnitRepair.CanRepairAt(action.BaseHex, player))
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+
+            float humanBefore = root?.GetResource(ResourceType.Human) ?? 0f;
+            float energyBefore = root?.GetResource(ResourceType.Energy) ?? 0f;
+            float materialsBefore = root?.GetResource(ResourceType.Materials) ?? 0f;
+            float techBefore = root?.GetResource(ResourceType.Tech) ?? 0f;
+            bool success = false;
+            string detail;
+            if (action.Kind == RaidRefitActionKind.RepairUnit)
+            {
+                UnitData unit = primary.Members.FirstOrDefault(u => u != null
+                    && u.RuntimeId == action.UnitRuntimeId);
+                if (unit == null || !UnitRepair.IsWounded(unit)
+                    || unit.RepairResourceCost == null)
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+                success = UnitRepair.TryRepair(unit, primary.Hex, root, out detail);
+            }
+            else
+            {
+                ArmyData donor = action.DonorArmyId.HasValue
+                    ? Resolve(player, action.DonorArmyId.Value) : null;
+                UnitData incoming = donor?.Members?.FirstOrDefault(u => u != null
+                    && u.RuntimeId == action.UnitRuntimeId);
+                if (donor == null || donor.Owner != player || incoming == null
+                    || !donor.Hex.Equals(primary.Hex))
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+                if (action.Kind == RaidRefitActionKind.TransferUnit)
+                    success = ArmyActions.TransferMember(incoming, donor, primary,
+                        ctx.HexSelection, out detail);
+                else if (action.Kind == RaidRefitActionKind.SwapUnit)
+                {
+                    UnitData displaced = primary.Members.FirstOrDefault(u => u != null
+                        && u.RuntimeId == action.DisplacedUnitRuntimeId);
+                    if (displaced == null)
+                    {
+                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        result.NeedsReplan = true;
+                        yield break;
+                    }
+                    success = ArmyActions.SwapMembers(incoming, donor, displaced, primary,
+                        ctx.HexSelection, out detail);
+                }
+                else
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+            }
+
+            if (!success)
+            {
+                AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=STALE action={action.Kind} "
+                    + $"primary={primary.Id} unit={action.UnitRuntimeId} reason={detail}");
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+
+            result.ResourcesSpent = new ResourceVector(0f,
+                Mathf.Max(0f, humanBefore - (root?.GetResource(ResourceType.Human) ?? humanBefore)),
+                Mathf.Max(0f, energyBefore - (root?.GetResource(ResourceType.Energy) ?? energyBefore)),
+                Mathf.Max(0f, materialsBefore - (root?.GetResource(ResourceType.Materials) ?? materialsBefore)),
+                Mathf.Max(0f, techBefore - (root?.GetResource(ResourceType.Tech) ?? techBefore)));
+            result.RaidRefitSucceeded = true;
+            result.CombatChanged = true;
+            result.ActualActorArmyId = primary.Id;
+            V2StateVersion.Bump();
+            StrategicInvalidationReason reasons = StrategicInvalidationReason.Actor
+                | StrategicInvalidationReason.Capability;
+            if (action.Kind == RaidRefitActionKind.RepairUnit)
+                reasons |= StrategicInvalidationReason.Resources;
+            var actors = action.DonorArmyId.HasValue
+                ? new[] { primary.Id, action.DonorArmyId.Value }
+                : new[] { primary.Id };
+            StrategicInterruptRegistry.Mark(player, ctx.TurnNumber, reasons, actorIds: actors);
+            result.ReachedGoal = true;
+            result.DurableRoleContinues = true;
+            result.StopReason = ExecutionStopReason.ReachedGoal;
+            AiDebugLog.Write($"[AI][V2][RaidRecovery] decision={action.Kind.ToString().ToUpperInvariant()} "
+                + $"primary={primary.Id} unit={action.UnitRuntimeId} donor={action.DonorArmyId} "
+                + $"ap={action.ApCost} resources=[{result.ResourcesSpent.FmtPhysical()}] "
+                + $"win={action.WinChanceBefore:0.00}->{action.WinChanceAfter:0.00}");
         }
 
         // =====================================================================================

@@ -66,6 +66,9 @@ namespace Game.Ai.V2
         public HexCoord? RaidAirSupportLandingHex;
         public bool RaidAirSupportStrikeSucceeded;
         public bool RaidReinforcementHandoffAttempted;
+        public RaidRefitAction RaidRefitAction;
+        public bool RaidRefitSucceeded;
+        public ResourceVector RaidResourcesSpent;
         public bool HasEconomyPayload;
         public EconomyMissionTarget EconomyTarget;
         public bool HasDevelopmentPayload;
@@ -239,6 +242,7 @@ namespace Game.Ai.V2
                         o.RaidSupportArmyId = r.Provisioned.RaidSupportArmyId;
                         o.RaidAirSupportArmyId = r.Provisioned.RaidAirSupportArmyId;
                         o.RaidAirSupportLandingHex = r.Provisioned.RaidAirSupportLandingHex;
+                        o.RaidRefitAction = r.Provisioned.RaidRefitAction;
                     }
                     else if (r.Provisioned.Kind == MissionKind.Economy)
                     {
@@ -291,6 +295,8 @@ namespace Game.Ai.V2
                             e.RaidReinforcementHandoffAttempted;
                         o.RaidAirSupportStrikeSucceeded =
                             e.RaidAirSupportStrikeSucceeded;
+                        o.RaidRefitSucceeded = e.RaidRefitSucceeded;
+                        o.RaidResourcesSpent = e.ResourcesSpent;
                     }
                     if (o.MissionKind == MissionKind.Economy)
                         o.EconomyBuildCompleted = e.InfrastructureChanged;
@@ -363,7 +369,8 @@ namespace Game.Ai.V2
                         o.Outcome = o.HasRaidPayload
                             && (o.RaidPhase == RaidMissionPhase.AirSupport
                                 || o.RaidPhase == RaidMissionPhase.Reinforcement
-                                || o.RaidPhase == RaidMissionPhase.SupportReturn)
+                                || o.RaidPhase == RaidMissionPhase.SupportReturn
+                                || o.RaidPhase == RaidMissionPhase.Refit)
                             ? ExecutionOutcome.Blocked
                             : ExecutionOutcome.Failed;
                         break;
@@ -493,7 +500,8 @@ namespace Game.Ai.V2
                     // consume this already-home fact on the next reconciliation/reaction pass.
                     if (o.MissionKind == MissionKind.Raid
                         && o.Proposal?.Target is RaidMissionTarget raidTarget
-                        && raidTarget.Phase == RaidMissionPhase.SupportReturn)
+                        && (raidTarget.Phase == RaidMissionPhase.SupportReturn
+                            || raidTarget.Phase == RaidMissionPhase.RecoveryReturn))
                     {
                         o.Outcome = ExecutionOutcome.ProductiveStop;
                         o.MadeProgress = true;
@@ -515,7 +523,8 @@ namespace Game.Ai.V2
                     // keeps its existing failure semantics (notably a lost primary in Reinforcement).
                     if (o.MissionKind == MissionKind.Raid
                         && o.Proposal?.Target is RaidMissionTarget invalidRaidTarget
-                        && invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn)
+                        && (invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn
+                            || invalidRaidTarget.Phase == RaidMissionPhase.Refit))
                     {
                         o.Outcome = ExecutionOutcome.Blocked;
                         break;

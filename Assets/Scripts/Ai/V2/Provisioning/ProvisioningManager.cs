@@ -44,6 +44,7 @@ namespace Game.Ai.V2
         // Reinforcement only: the support army is already standing on the primary's hex, so this
         // step is the ATOMIC roster handoff (transfer / swap) and must perform no movement.
         public bool RaidHandoffReady;
+        public RaidRefitAction RaidRefitAction;
         public EconomyMissionTarget EconomyTarget;
         public DevelopmentMissionTarget DevelopmentTarget;
         public string ReservationOwner;
@@ -304,6 +305,10 @@ namespace Game.Ai.V2
                     && ((raid.Phase == RaidMissionPhase.Reinforcement
                             && raid.SupportArmyId == pinnedId)
                         || (raid.Phase == RaidMissionPhase.Return
+                            && raid.PrimaryArmyId == pinnedId)
+                        || (raid.Phase == RaidMissionPhase.RecoveryReturn
+                            && raid.PrimaryArmyId == pinnedId)
+                        || (raid.Phase == RaidMissionPhase.Refit
                             && raid.PrimaryArmyId == pinnedId)
                         || (raid.Phase == RaidMissionPhase.SupportReturn
                             && raid.SupportArmyId == pinnedId));
@@ -632,6 +637,9 @@ namespace Game.Ai.V2
                         continue;
                     if (rt.PrimaryArmyId.HasValue) pinnedByOtherLegs.Add(rt.PrimaryArmyId.Value);
                     if (rt.SupportArmyId.HasValue) pinnedByOtherLegs.Add(rt.SupportArmyId.Value);
+                    if (rt.Phase == RaidMissionPhase.Refit
+                        && rt.RefitAction.DonorArmyId.HasValue)
+                        pinnedByOtherLegs.Add(rt.RefitAction.DonorArmyId.Value);
                 }
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
@@ -2438,6 +2446,11 @@ namespace Game.Ai.V2
             if (target.Phase == RaidMissionPhase.Return)
                 return ProvisionReturn(player, root, ctx, session, funded, target, key, eps,
                     RaidMissionPhase.Return, target.PrimaryArmyId);
+            if (target.Phase == RaidMissionPhase.RecoveryReturn)
+                return ProvisionReturn(player, root, ctx, session, funded, target, key, eps,
+                    RaidMissionPhase.RecoveryReturn, target.PrimaryArmyId);
+            if (target.Phase == RaidMissionPhase.Refit)
+                return ProvisionRefit(player, root, ctx, session, funded, target, key, eps);
             if (target.Phase == RaidMissionPhase.SupportReturn)
                 return ProvisionReturn(player, root, ctx, session, funded, target, key, eps,
                     RaidMissionPhase.SupportReturn, target.SupportArmyId);
@@ -2785,7 +2798,8 @@ namespace Game.Ai.V2
             RaidMissionTarget target, StableMissionKey key, float eps,
             RaidMissionPhase phase, int? moverArmyId)
         {
-            string roleLabel = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
+            string roleLabel = phase == RaidMissionPhase.SupportReturn ? "support"
+                : phase == RaidMissionPhase.RecoveryReturn ? "recovery primary" : "primary";
             if (!moverArmyId.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"raid {roleLabel} return has no mover assigned"));
@@ -2833,7 +2847,8 @@ namespace Game.Ai.V2
                     $"turn AP exhausted: raid return needs {N(activationAp)}"));
 
             AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} — OK "
-                + $"{(phase == RaidMissionPhase.SupportReturn ? "SUPPORT_RETURN" : "RETURN")} "
+                + $"{(phase == RaidMissionPhase.SupportReturn ? "SUPPORT_RETURN"
+                    : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY_RETURN" : "RETURN")} "
                 + $"{roleLabel} #{mover.Id} -> ({home.Q},{home.R}) ap {N(activationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -2854,6 +2869,184 @@ namespace Game.Ai.V2
                 ClaimedAp = activationAp,
                 StealthApReserved = false,
             });
+        }
+
+        private static ProvisioningResult ProvisionRefit(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            RaidMissionTarget target, StableMissionKey key, float eps)
+        {
+            RaidRefitAction action = target.RefitAction;
+            if (!target.PrimaryArmyId.HasValue || !action.HasValue
+                || action.PrimaryArmyId != target.PrimaryArmyId.Value)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "raid refit has no exact frozen action/primary"));
+            ArmyData primary = ResolveArmy(player, action.PrimaryArmyId);
+            if (primary == null || primary.Owner != player || primary.IsPrison
+                || primary.IsAirfield || AviationRules.IsAirArmy(primary)
+                || primary.Members.Count == 0 || !primary.Hex.Equals(action.BaseHex)
+                || !UnitRepair.CanRepairAt(action.BaseHex, player))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"raid refit primary #{action.PrimaryArmyId} is not on owned base ({action.BaseHex.Q},{action.BaseHex.R})"));
+            if (session.ClaimedArmyIds.Contains(primary.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid refit primary #{primary.Id} was claimed earlier this cycle"));
+
+            UnitData exact = null;
+            ArmyData donor = null;
+            UnitData displaced = null;
+            int exactAp;
+            ResourceVector exactPhysical;
+            if (action.Kind == RaidRefitActionKind.RepairUnit)
+            {
+                exact = primary.Members.FirstOrDefault(u => u != null
+                    && u.RuntimeId == action.UnitRuntimeId);
+                if (exact == null || !UnitRepair.IsWounded(exact))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"stale raid repair candidate unit#{action.UnitRuntimeId}"));
+                // Never call UnitRepair.ResourceCost here: it may initialize a missing legacy cost
+                // through RNG. Only spawn/load-initialized costs are plannable.
+                if (exact.RepairResourceCost == null)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"raid repair unit#{action.UnitRuntimeId} has no initialized repair cost"));
+                exactAp = UnitRepair.ApCost(exact);
+                exactPhysical = CostVector(exact.RepairResourceCost);
+                if (!SamePhysical(exactPhysical, action.ResourceCost, eps))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"raid repair unit#{action.UnitRuntimeId} cost changed since planning"));
+            }
+            else
+            {
+                if (!action.DonorArmyId.HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        "raid refit roster action has no donor"));
+                donor = ResolveArmy(player, action.DonorArmyId.Value);
+                exact = donor?.Members?.FirstOrDefault(u => u != null
+                    && u.RuntimeId == action.UnitRuntimeId);
+                if (donor == null || donor.Owner != player || donor == primary
+                    || !donor.Hex.Equals(action.BaseHex) || donor.IsPrison || donor.IsAirfield
+                    || AviationRules.IsAirArmy(donor) || donor.Members.Count <= 1
+                    || exact == null || exact.IsHero || exact.IsAviation
+                    || !donor.CanLeaveWithoutOvercrowding(exact)
+                    || (donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, donor, exact)))
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"stale/unsafe raid refit donor unit#{action.UnitRuntimeId}"));
+                if (session.ClaimedArmyIds.Contains(donor.Id))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"raid refit donor #{donor.Id} is already claimed"));
+                exactPhysical = ResourceVector.Zero;
+                if (action.Kind == RaidRefitActionKind.TransferUnit)
+                {
+                    if (!ArmyActions.CanTransferMembers(new[] { exact }, donor, primary,
+                            out string why))
+                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                            $"raid refit transfer became stale: {why}"));
+                    exactAp = ArmyActions.TransferMembersApCost(new[] { exact }, primary);
+                }
+                else if (action.Kind == RaidRefitActionKind.SwapUnit)
+                {
+                    displaced = primary.Members.FirstOrDefault(u => u != null
+                        && u.RuntimeId == action.DisplacedUnitRuntimeId);
+                    if (displaced == null || displaced.IsHero || displaced.IsAviation)
+                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                            "raid refit displaced unit became stale"));
+                    if (!ArmyActions.CanSwapMembers(exact, donor, displaced, primary,
+                            out string why))
+                        return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                            $"raid refit swap became stale: {why}"));
+                    exactAp = (primary.RequiresActivationCharge(exact) ? exact.ActivationApCost : 0)
+                        + (donor.RequiresActivationCharge(displaced) ? displaced.ActivationApCost : 0);
+                }
+                else
+                {
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                        $"unknown raid refit action {action.Kind}"));
+                }
+            }
+
+            if (exactAp != action.ApCost || exactAp > funded.Tentative.Ap + eps
+                || !funded.PhysicalDraw.CoversPhysical(exactPhysical, eps))
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
+                    new ProvisionRequirement(exactAp, exactPhysical),
+                    "raid refit exact AP/resource cost exceeds its funded envelope"));
+            if (root == null || !root.CanSpendActionPoints(exactAp)
+                || root.GetResource(ResourceType.Human) + eps < exactPhysical.Human
+                || root.GetResource(ResourceType.Energy) + eps < exactPhysical.Energy
+                || root.GetResource(ResourceType.Materials) + eps < exactPhysical.Materials
+                || root.GetResource(ResourceType.Tech) + eps < exactPhysical.Tech)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "raid refit exact AP/resources are no longer available"));
+            if (!RefitImprovesOdds(primary, donor, exact, displaced, action.Kind,
+                    AiV2Util.KnownDefenders(session.Snapshot, target.Target), out float before,
+                    out float after) || after <= before + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"raid refit action became stale/non-beneficial ({before:0.00}->{after:0.00})"));
+
+            session.ClaimedArmyIds.Add(primary.Id);
+            if (donor != null) session.ClaimedArmyIds.Add(donor.Id);
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Raid,
+                MoverArmyId = primary.Id,
+                FocusHex = action.BaseHex,
+                ExecutionHex = action.BaseHex,
+                RaidPhase = RaidMissionPhase.Refit,
+                RaidPrimaryArmyId = primary.Id,
+                RaidDestinationHex = action.BaseHex,
+                RaidTarget = target.Target,
+                RaidLastKnownHex = target.LastKnownHex,
+                RaidTargetIsNeutral = target.TargetIsNeutral,
+                RaidRefitAction = action,
+                ClaimedPhysical = exactPhysical,
+                ClaimedAp = exactAp,
+            });
+        }
+
+        private static bool SamePhysical(ResourceVector a, ResourceVector b, float eps) =>
+            Mathf.Abs(a.Human - b.Human) <= eps && Mathf.Abs(a.Energy - b.Energy) <= eps
+            && Mathf.Abs(a.Materials - b.Materials) <= eps && Mathf.Abs(a.Tech - b.Tech) <= eps;
+
+        private static bool RefitImprovesOdds(ArmyData primary, ArmyData donor, UnitData incoming,
+            UnitData displaced, RaidRefitActionKind kind,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, out float before, out float after)
+        {
+            var current = primary.Members.Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .Select(WorthIt.FromLiveUnit).ToList();
+            var projected = new List<WorthIt.DefenderProfile>(current);
+            before = defenders == null || defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(current,
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            if (kind == RaidRefitActionKind.RepairUnit)
+            {
+                if (incoming.IsHero || incoming.IsAviation)
+                {
+                    after = before;
+                    return false;
+                }
+                int index = primary.Members.Where(u => u != null && !u.IsHero && !u.IsAviation)
+                    .ToList().FindIndex(u => object.ReferenceEquals(u, incoming));
+                if (index < 0) { after = before; return false; }
+                WorthIt.DefenderProfile p = WorthIt.FromLiveUnit(incoming);
+                projected[index] = new WorthIt.DefenderProfile(p.Defense, p.HasCeramicArmor,
+                    p.TypeTags, p.Attack, p.MaxHitPoints, p.Initiative, p.Abilities,
+                    p.MaxHitPoints);
+            }
+            else if (kind == RaidRefitActionKind.TransferUnit)
+            {
+                projected.Add(WorthIt.FromLiveUnit(incoming));
+            }
+            else
+            {
+                var liveBodies = primary.Members.Where(u => u != null && !u.IsHero && !u.IsAviation).ToList();
+                int index = liveBodies.FindIndex(u => object.ReferenceEquals(u, displaced));
+                if (index < 0) { after = before; return false; }
+                projected[index] = WorthIt.FromLiveUnit(incoming);
+            }
+            after = defenders == null || defenders.Count == 0 ? 1f
+                : WorthIt.WinChance(projected,
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+            return true;
         }
 
         // =====================================================================================
