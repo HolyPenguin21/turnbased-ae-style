@@ -34,6 +34,38 @@ Everything stays in namespace `Game.Ai.V2` (flat). Folders express ownership onl
 | `Recon/` | Recon-mission machinery (route/step planning, scout pricing, air/ground policy). |
 | `Diagnostics/` | Logging, telemetry, audit. No influence on ordering, score, eligibility or state. |
 
+## Mission axes (`MissionKind`)
+
+Four axes compete for the same turn's AP/resources, all through the same
+`MissionProposal` shape and the same allocator. No fifth axis exists (Defence
+is reactive-only today, via `Reaction/`, not a proactive mission axis).
+
+| Axis | Produced by | Task shape |
+|---|---|---|
+| `Economy` | `Missions/EconomyMissionPlanner` | `EconomyTaskKind`: BuildExtraction, FoundBase, MobileCollection, ReturnCollector, ReturnBuilder |
+| `Raid` | `Missions/AggressionMissionPlanner` | One durable multi-turn mission moving through `RaidMissionPhase`: Assault → Reinforcement/SupportReturn/Return → AirSupport / RecoveryReturn → Refit. Not five competing tasks — five phases of one committed raid. |
+| `Scout` (Recon) | `Missions/ReconMissionPlanner` | `ScoutTargetKind`: Explore, Surveil, Refresh — crossed with `ScoutExecutorKind` (Ground / AirExisting / AirLaunch) at Assignment time. Air can never take Explore or any `StealthRequirement.Required`/positive-`DetectionRisk` target (Surveil is always `Required` → ground-only in practice); only a low-risk Refresh is air-eligible. |
+| `Development` | `Missions/DevelopmentMissionPlanner` | Place an existing hero as operator on a Research or Production facility (`ResearchProductionMode`). |
+
+## Unified task scoring (one struct, one fold)
+
+`Evaluation/TaskScore.cs` is the **only** way a mission candidate's merit may be
+computed. It is a plain struct of named bonus/penalty slots (CardPrice, Delivery,
+OwnTerritoryProximity, MoverOpportunityCost, MilitaryTargetRelevance/RaidReward,
+TerrainDefense, DetectionRisk, InfoGain, ContactRelevance, Staleness, …) folded
+by `TaskScoreEvaluator`/`.Value` into one comparable number across Economy, Raid,
+Recon and Development alike. A new scoring fact must be added as a named slot on
+`TaskScore` and constructed *before* the fold — never applied to `.Value`/
+`BaseValue` after the fact from planner- or allocator-local code. See the
+canonical-seams table below.
+
+One known, deliberate exception exists today: `Missions/MissionAdmissionPolicy.AdmissionRank`
+adds a flat `economySameTurnCompletionBonus` on top of an already-folded
+`BaseValue`, Economy-only, used only as the allocator's same-`EffectiveValue`
+tie-break (`Allocation/ResourceAllocator.cs`). It predates ARCH-02 and is not yet
+migrated into a proper `TaskScore` slot — treat any other post-fold score
+adjustment found elsewhere as a bug, not a precedent.
+
 ## Dependency direction (must hold)
 
 ```
@@ -79,17 +111,22 @@ inside their mutation boundary.
 | Step | admitted task result is selected | execution settles and result is observed | no executor-local planning state |
 
 Phase A and Phase B are not deleted. Their existing policies remain the owners of
-capability fulfilment and surplus/tempo arbitration. During rollout they are
-re-entered only through bounded adapters and retain turn-scoped parking/reservation
-state; the terminal Phase-B/reaction path remains the final safety net. The initial
-rollout scope excludes Aggression through the existing `AiStrategyV2Scope` gate,
-so the current Full/Aggression batch path remains available while Recon/Development
-is validated.
+capability fulfilment and surplus/tempo arbitration. They are re-entered only
+through bounded adapters and retain turn-scoped parking/reservation state; the
+terminal Phase-B/reaction path remains the final safety net.
+
+**Rollout is complete, not partial.** The bounded typed loop (`AiStrategyV2Scope.UsesTypedLoop`,
+always `true`) is the production execution path for every scope, including `Full` — there is no
+longer a separate legacy batch orchestrator it falls back to, and no axis is disabled by default.
+Default mode is `ReconAggressionEconomyDevelopment` (`AiStrategyV2Scope.cs`): all four axes —
+Recon, Aggression (incl. Raid), Economy, Development — run through this same loop. `AiStrategyV2Scope`
+still exists for isolated diagnostics/focus-testing (e.g. `ReconOnly`), not as a rollout gate.
 
 ## Canonical seams (one owner each)
 
 | Concern | Canonical owner |
 |---|---|
+| Cross-axis mission/task scoring | `Evaluation/TaskScore.cs` (`TaskScoreEvaluator`) — the only mission-candidate scorer; see "Unified task scoring" above |
 | Own-force power | `Evaluation/Power/AiPower` — no `ReactionPower` / `RaidPower` |
 | Tactical roster odds + per-defender penetration | `Game.Combat.WorthIt` — skill-aware; no Attack+Defense composition surrogate |
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
@@ -98,7 +135,7 @@ is validated.
 | Chain enumeration (raw shapes only — no preflight, no feasibility, no score) | `Materialization/MaterializationChainEnumerator` |
 | Per-chain feasibility (Preflight + Phase-A entitlement/AP/resource gate + Phase-B reserves/strategic-claim gate) | `Materialization/MaterializationFeasibility` (`FilterForDemand` / `FilterSurplus`) |
 | Air-recon per-step tactical decisions (phase machine / mode / `Pick` / return-step + landing hysteresis / activation gates / opportunistic-strike arbitration) | `Recon/AirReconStepDirector` |
-| Air-recon information-weighting (Explore vs Refresh) | `Recon/AirReconModePolicy` |
+| Air-recon information-weighting (Explore vs Refresh) | `AirReconModePolicy` (internal class inside `Recon/AirReconStepDirector.cs`, not its own file) |
 | Plan construction + `StrategicActionCost` + `StableKey` | `Materialization/MaterializationPlanFactory` |
 | Capability / trait / equipment-host matching | `Materialization/MaterializationChainMatching` |
 | Joint physical projection (recipient / hero / hand slots) | `Materialization/ProjectedPhysicalState` |
@@ -114,13 +151,13 @@ is validated.
 | Card placement legality | `Materialization/PlacementRules` |
 | Strategic spendability ("does this cost fit spendable resources") | `State/StrategicSpendability` |
 | Actor occupancy truth | `State/ActorCommitments` |
-| Explicit resource reservations (owner-aware) | `State/StrategicResourceReservationLedger` |
+| Explicit resource reservations (owner-aware) | `StrategicResourceReservationLedger` (`State/StrategicResourceReservation.cs`) |
 | AP entitlement split | `State/AxisBudgetLedger` (AP-only) |
 | Turn tempo budget | `State/StrategicTempoBudget` |
 | Persistent-resource hold policy | `Strategy/PhaseB/HoldEvaluator` |
-| Raid actor eligibility | `Missions/Raid/RaidActorEligibility.IsStructuralRaidActor` (no "Ready" alias) |
-| Raid win-chance gates (start vs continue) | `Missions/Raid/RaidAdmissionPolicy` |
-| Reaction feasibility evidence | `Reaction/ReactionWitness` + `ReactionOpportunityProbe` |
+| Raid actor eligibility | `IsStructuralRaidActor` field on the army snapshot in `WorldSnapshot`, computed by `Analysis/WorldAnalysis.Self.cs` (no separate `RaidActorEligibility` type any more — no "Ready" alias) |
+| Raid win-chance gates (start vs continue) | `RaidAdmissionPolicy` (internal class inside `Missions/GroundCombat/GroundCombatAssemblyPlanner.cs`, not `Missions/Raid/`) |
+| Reaction feasibility evidence | `ReactionWitness` (struct in `Reaction/StrategicReactionPass.cs`) + `Reaction/ReactionOpportunityProbe` |
 | Reaction witness arbitration (§28) | `Reaction/ReactionWitnessSelector` |
 
 ## Verified boundary invariants (02F–02H audit)
