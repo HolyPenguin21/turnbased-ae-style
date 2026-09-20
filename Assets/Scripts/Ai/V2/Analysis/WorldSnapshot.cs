@@ -620,12 +620,12 @@ namespace Game.Ai.V2
         public readonly int TravelAp;
         public readonly int TurnsToFirstIncome;
         public readonly float ThreatExposure;
-        public readonly float UsefulMarginalGain;
+        public readonly float TaskScoreValue;
         public readonly HexCoord SafeReturnHex;
 
         public MobileCollectionOpportunity(HexCoord targetHex, ResourceType resourceType,
             int effectiveRemainingYield, int collectorArmyId, int travelAp,
-            int turnsToFirstIncome, float threatExposure, float usefulMarginalGain,
+            int turnsToFirstIncome, float threatExposure, float taskScoreValue,
             HexCoord safeReturnHex)
         {
             TargetHex = targetHex;
@@ -635,7 +635,7 @@ namespace Game.Ai.V2
             TravelAp = travelAp;
             TurnsToFirstIncome = turnsToFirstIncome;
             ThreatExposure = threatExposure;
-            UsefulMarginalGain = usefulMarginalGain;
+            TaskScoreValue = taskScoreValue;
             SafeReturnHex = safeReturnHex;
         }
     }
