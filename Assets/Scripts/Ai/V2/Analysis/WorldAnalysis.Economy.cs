@@ -248,8 +248,15 @@ namespace Game.Ai.V2
                     var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,
                         marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
                         taskScore, safeReturn.Value);
-                    if (!best.HasValue || candidate.TaskScoreValue
-                        > best.Value.TaskScoreValue)
+                    if (!best.HasValue
+                        || candidate.Score.Value > best.Value.Score.Value
+                        || (Mathf.Approximately(candidate.Score.Value, best.Value.Score.Value)
+                            && (candidate.TurnsToFirstIncome < best.Value.TurnsToFirstIncome
+                                || (candidate.TurnsToFirstIncome == best.Value.TurnsToFirstIncome
+                                    && (candidate.TravelAp < best.Value.TravelAp
+                                        || (candidate.TravelAp == best.Value.TravelAp
+                                            && candidate.CollectorArmyId
+                                                < best.Value.CollectorArmyId))))))
                         best = candidate;
                 }
                 if (best.HasValue)
