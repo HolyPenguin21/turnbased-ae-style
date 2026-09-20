@@ -64,11 +64,15 @@ namespace Game.EditorTests
                 winChance: TaskScoreEvaluator.WinChance(plan.ProjectedWinChance),
                 cardPrice: TaskScoreEvaluator.CardPrice(plan.ApCost,
                     plan.ResourceCost.Human + plan.ResourceCost.Energy
-                    + plan.ResourceCost.Materials + plan.ResourceCost.Tech),
+                    + plan.ResourceCost.Materials + plan.ResourceCost.Tech)
+                    + primary.ActivationApCost
+                        * AiConfigV2.taskScoreReactivationApWeight,
                 delivery: 0f,
                 moverOpportunityCost: System.Math.Max(0, plan.BlockedActors - 1));
             Assert.That(plan.Score.Delivery, Is.Zero,
                 "atomic refit AP is CardPrice, not a fabricated extra travel turn");
+            Assert.That(plan.Score.CardPrice, Is.EqualTo(expected.CardPrice).Within(0.0001f),
+                "repair AP and the first army activation use their shared canonical rates");
             Assert.That(plan.Score.Value, Is.EqualTo(expected.Value).Within(0.0001f));
         }
 
