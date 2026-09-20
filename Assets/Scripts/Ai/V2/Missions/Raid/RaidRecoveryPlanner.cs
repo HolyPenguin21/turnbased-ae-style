@@ -123,10 +123,27 @@ namespace Game.Ai.V2
             return best;
         }
 
+        internal static RaidRecoveryProjection ProjectAirSupportForWing(
+            WorldSnapshot snap, RaidIntent raid, int wingArmyId)
+        {
+            if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
+                return RaidRecoveryProjection.None(0f, "missing primary snapshot");
+            ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(x => x != null
+                && x.ArmyId == raid.PrimaryArmyId.Value);
+            if (primary == null)
+                return RaidRecoveryProjection.None(0f, "primary no longer exists");
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                AiV2Util.KnownDefenders(snap, raid.Target);
+            float currentWin = Win(CombatRoster(primary), defenders, out _);
+            return ProjectAirSupport(snap, raid, primary, defenders,
+                unavailableArmyIds: null, currentWin, wingArmyId);
+        }
+
         private static RaidRecoveryProjection ProjectAirSupport(WorldSnapshot snap,
             RaidIntent raid, ArmySnapshot primary,
             IReadOnlyList<WorthIt.DefenderProfile> defenders,
-            ISet<int> unavailableArmyIds, float currentWin)
+            ISet<int> unavailableArmyIds, float currentWin,
+            int? fixedWingArmyId = null)
         {
             if (raid.Target.Kind != RaidTargetKind.NeutralArmy
                 || raid.AirSupportAttemptedTurn == snap.TurnNumber || defenders.Count <= 1)
@@ -154,6 +171,7 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot wing in (snap.Self.Armies ?? Array.Empty<ArmySnapshot>())
                 .Where(x => x != null && x.IsAir && !x.IsAirfield && !x.IsPrison
                     && x.MemberCount > 0 && x.CurrentMovement > 0
+                    && (!fixedWingArmyId.HasValue || x.ArmyId == fixedWingArmyId.Value)
                     && (unavailableArmyIds == null
                         || !unavailableArmyIds.Contains(x.ArmyId)))
                 .OrderBy(x => x.ArmyId))
