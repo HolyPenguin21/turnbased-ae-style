@@ -1,0 +1,182 @@
+#if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
+using Game.Ai.V2;
+using Game.Combat;
+using Game.HexGrid;
+using Game.Players;
+using NUnit.Framework;
+
+namespace Game.EditorTests
+{
+    public sealed class AiRaidRecoveryTests
+    {
+        [Test]
+        public void BaseRecovery_ChoosesExactRepairThatCrossesRaidThreshold()
+        {
+            var player = new PlayerSetupData { Nickname = "Repair" };
+            HexCoord home = new HexCoord(0, 0);
+            WorthIt.DefenderProfile wounded = Profile(attack: 20, defense: 0, hp: 1,
+                maxHp: 10, initiative: 1);
+            WorthIt.DefenderProfile healthy = Profile(attack: 20, defense: 0, hp: 10,
+                maxHp: 10, initiative: 1);
+            WorthIt.DefenderProfile defender = Profile(attack: 4, defense: 0, hp: 5,
+                maxHp: 5, initiative: 10);
+            ArmySnapshot primary = Army(0, player, home, capacity: 1,
+                Member(101, 0, wounded, healthy, repairable: true,
+                    repairCost: new ResourceVector(0, 1, 0, 0, 0)));
+            WorldSnapshot snap = Snapshot(primary, human: 3);
+            var raid = Raid(primary.ArmyId, new HexCoord(2, 0));
+            float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
+
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
+                primary, new[] { defender }, new HashSet<int>(), before, home);
+
+            Assert.That(before, Is.LessThan(AiConfigV2.raidMinViableWinChance),
+                "fixture must start below the existing raid gate");
+            Assert.That(plan.Viable, Is.True);
+            Assert.That(plan.Phase, Is.EqualTo(RaidMissionPhase.Refit));
+            Assert.That(plan.FirstRefitAction.Kind, Is.EqualTo(RaidRefitActionKind.RepairUnit));
+            Assert.That(plan.FirstRefitAction.UnitRuntimeId, Is.EqualTo(101));
+            Assert.That(plan.ProjectedWinChance, Is.GreaterThanOrEqualTo(
+                AiConfigV2.raidMinViableWinChance));
+        }
+
+        [Test]
+        public void BaseRecovery_FullRosterChoosesSwapWhenRepairCannotHelp()
+        {
+            var player = new PlayerSetupData { Nickname = "Swap" };
+            HexCoord home = new HexCoord(0, 0);
+            WorthIt.DefenderProfile weak = Profile(2, 0, 1, 2, 1);
+            WorthIt.DefenderProfile strong = Profile(20, 0, 10, 10, 1);
+            WorthIt.DefenderProfile defender = Profile(4, 0, 5, 5, 10);
+            ArmySnapshot primary = Army(7, player, home, 1,
+                Member(201, 0, weak, weak, repairable: false));
+            ArmySnapshot donor = Army(8, player, home, 2,
+                Member(301, 0, strong, strong, repairable: false, canSpare: true));
+            donor.MemberCount = 2; // one retained body is represented only by the aggregate count
+            WorldSnapshot snap = Snapshot(new[] { primary, donor }, human: 0);
+            var raid = Raid(primary.ArmyId, new HexCoord(2, 0));
+            float before = WorthIt.WinChance(new[] { weak }, new[] { defender }, 0f);
+
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
+                primary, new[] { defender }, new HashSet<int>(), before, home);
+
+            Assert.That(plan.Viable, Is.True);
+            Assert.That(plan.FirstRefitAction.Kind, Is.EqualTo(RaidRefitActionKind.SwapUnit));
+            Assert.That(plan.FirstRefitAction.DonorArmyId, Is.EqualTo(8));
+            Assert.That(plan.FirstRefitAction.UnitRuntimeId, Is.EqualTo(301));
+            Assert.That(plan.FirstRefitAction.DisplacedUnitRuntimeId, Is.EqualTo(201));
+        }
+
+        [Test]
+        public void RefitStableKey_DistinguishesActionAndExactUnit()
+        {
+            RaidMissionTarget repair = Target(RaidRefitActionKind.RepairUnit, 11);
+            RaidMissionTarget transfer = Target(RaidRefitActionKind.TransferUnit, 12);
+
+            Assert.That(StableMissionKey.ForRaid(repair), Is.Not.EqualTo(
+                StableMissionKey.ForRaid(transfer)));
+        }
+
+        [Test]
+        public void RecoveryCommitments_ClaimArmyZeroAndFrozenDonor()
+        {
+            var player = new PlayerSetupData { Nickname = "Claims" };
+            WorldSnapshot snap = Snapshot(new[]
+            {
+                new ArmySnapshot { ArmyId = 0, Owner = player, MemberCount = 1 },
+                new ArmySnapshot { ArmyId = 2, Owner = player, MemberCount = 2 },
+            }, 0);
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Raid,
+                Status = IntentStatus.Active,
+                Objective = new RaidIntent
+                {
+                    Target = RaidTargetRef.ForNeutralArmy(9),
+                    PrimaryArmyId = 0,
+                    Phase = RaidMissionPhase.Refit,
+                    PendingRefitAction = new RaidRefitAction
+                    {
+                        Kind = RaidRefitActionKind.TransferUnit,
+                        PrimaryArmyId = 0,
+                        DonorArmyId = 2,
+                        UnitRuntimeId = 88,
+                    },
+                },
+            };
+
+            ActorCommitments claims = ActorCommitments.FromIntents(
+                new[] { intent }, snap, null);
+
+            Assert.That(claims.IsArmyClaimed(0), Is.True, "army id zero is a valid primary");
+            Assert.That(claims.IsArmyClaimed(2), Is.True);
+        }
+
+        private static RaidMissionTarget Target(RaidRefitActionKind kind, int unitId) =>
+            new RaidMissionTarget
+            {
+                Phase = RaidMissionPhase.Refit,
+                PrimaryArmyId = 0,
+                Target = RaidTargetRef.ForNeutralArmy(5),
+                DestinationHex = new HexCoord(1, 1),
+                RefitAction = new RaidRefitAction
+                {
+                    Kind = kind,
+                    PrimaryArmyId = 0,
+                    UnitRuntimeId = unitId,
+                    BaseHex = new HexCoord(1, 1),
+                },
+            };
+
+        private static RaidIntent Raid(int primaryId, HexCoord target) => new RaidIntent
+        {
+            Target = RaidTargetRef.ForNeutralArmy(99),
+            LastKnownHex = target,
+            TargetIsNeutral = true,
+            PrimaryArmyId = primaryId,
+            OperationStarted = true,
+        };
+
+        private static WorldSnapshot Snapshot(ArmySnapshot army, float human) =>
+            Snapshot(new[] { army }, human);
+
+        private static WorldSnapshot Snapshot(IReadOnlyList<ArmySnapshot> armies, float human) =>
+            new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Armies = armies,
+                    BaseHexes = new[] { new HexCoord(0, 0) },
+                    Stockpile = new ResourceBundle { Human = human },
+                },
+            };
+
+        private static ArmySnapshot Army(int id, PlayerSetupData owner, HexCoord hex,
+            int capacity, params RaidRecoveryMemberSnapshot[] members) => new ArmySnapshot
+        {
+            ArmyId = id,
+            Owner = owner,
+            Hex = hex,
+            Capacity = capacity,
+            MemberCount = members.Length,
+            MaxMovement = 3,
+            CurrentMovement = 3,
+            IsStructuralRaidActor = true,
+            RecoveryMembers = members,
+            Members = new List<WorthIt.DefenderProfile>(),
+        };
+
+        private static RaidRecoveryMemberSnapshot Member(int id, int index,
+            WorthIt.DefenderProfile current, WorthIt.DefenderProfile full,
+            bool repairable, ResourceVector repairCost = default, bool canSpare = false) =>
+            new RaidRecoveryMemberSnapshot(id, index, false, false, canSpare, 0,
+                current, full, repairable, repairCost);
+
+        private static WorthIt.DefenderProfile Profile(float attack, float defense,
+            float hp, float maxHp, int initiative) =>
+            new WorthIt.DefenderProfile(defense, false, attack: attack,
+                hitPoints: hp, maxHitPoints: maxHp, initiative: initiative);
+    }
+}
+#endif
