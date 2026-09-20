@@ -968,7 +968,12 @@ namespace Game.Turns
                 foreach (UnitData unit in army.Members)
                     if (unit.HasAbility(UnitAbilities.Regeneration)
                         && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax)
+                    {
                         unit.HitPointsCurrent++;
+                        // Mutates HP directly, not through ArmyRegistry — see the matching notify
+                        // in AviationTurnLifecycle.ResolveEndOfTurn for the same gap.
+                        VisionSystem.NotifyContentChanged(army.Hex);
+                    }
             }
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
             {
@@ -976,7 +981,10 @@ namespace Game.Turns
                     continue;
                 if (building.HasAbility(UnitAbilities.Regeneration)
                     && building.StructurePointsCurrent > 0 && building.StructurePointsCurrent < building.StructurePointsMax)
+                {
                     building.StructurePointsCurrent++;
+                    VisionSystem.NotifyContentChanged(building.Hex);
+                }
             }
         }
 

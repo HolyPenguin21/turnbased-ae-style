@@ -40,6 +40,12 @@ namespace Game.Aviation
                     // current HP; repairing it naturally lets it survive another missed landing.
                     aircraft.HitPointsCurrent -= AviationRules.EmergencyHpLoss(aircraft);
                     aircraft.HasEmergencyFlightPenalty = true;
+                    // Mutates HP/roster directly (never through ArmyRegistry), so any player
+                    // watching this hex needs an explicit nudge — see the matching comment on
+                    // BattleScreenUI.Combat.cs's OnBattleOutcomeAcknowledged for the same gap in
+                    // ground combat and why a stale AiMapMemory.KnowledgeVersion otherwise serves
+                    // pre-damage sightings for this hex.
+                    VisionSystem.NotifyContentChanged(airArmy.Hex);
                     if (aircraft.HitPointsCurrent > 0)
                     {
                         messages.Add($"{airArmy.Name} at {FormatGameCoord(airArmy.Hex)}: {aircraft.Name} lost 50% max HP because it did not finish the turn at an airfield.");
