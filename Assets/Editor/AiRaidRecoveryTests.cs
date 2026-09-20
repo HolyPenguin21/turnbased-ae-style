@@ -105,7 +105,7 @@ namespace Game.EditorTests
             var raid = Raid(primary.ArmyId, new HexCoord(4, 0));
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
-                new HashSet<int>(), safeRouteCost: (from, to) => int.MaxValue);
+                new HashSet<int>(), safeRouteCost: (from, to, maxMovement) => int.MaxValue);
 
             Assert.That(plan.Viable, Is.False,
                 "geometrically close support is not viable without a safe structural route");
@@ -131,7 +131,7 @@ namespace Game.EditorTests
             snap.Self.BaseHexes = new[] { near, useful };
             var raid = Raid(primary.ArmyId, target);
 
-            int Route(HexCoord from, HexCoord to)
+            int Route(HexCoord from, HexCoord to, int maxMovement)
             {
                 if (from.Equals(near) && to.Equals(target))
                     return int.MaxValue;
