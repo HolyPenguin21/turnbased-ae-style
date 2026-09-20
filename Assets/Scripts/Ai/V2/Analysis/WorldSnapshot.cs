@@ -620,12 +620,14 @@ namespace Game.Ai.V2
         public readonly int TravelAp;
         public readonly int TurnsToFirstIncome;
         public readonly float ThreatExposure;
-        public readonly float TaskScoreValue;
+        // Preserve the canonical score components, not an opaque local scalar, so every
+        // downstream comparison and diagnostic uses the one TaskScore fold.
+        public readonly TaskScore Score;
         public readonly HexCoord SafeReturnHex;
 
         public MobileCollectionOpportunity(HexCoord targetHex, ResourceType resourceType,
             int effectiveRemainingYield, int collectorArmyId, int travelAp,
-            int turnsToFirstIncome, float threatExposure, float taskScoreValue,
+            int turnsToFirstIncome, float threatExposure, TaskScore score,
             HexCoord safeReturnHex)
         {
             TargetHex = targetHex;
@@ -635,7 +637,7 @@ namespace Game.Ai.V2
             TravelAp = travelAp;
             TurnsToFirstIncome = turnsToFirstIncome;
             ThreatExposure = threatExposure;
-            TaskScoreValue = taskScoreValue;
+            Score = score;
             SafeReturnHex = safeReturnHex;
         }
     }
