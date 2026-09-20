@@ -65,9 +65,10 @@ namespace Game.EditorTests
                 cardPrice: TaskScoreEvaluator.CardPrice(plan.ApCost,
                     plan.ResourceCost.Human + plan.ResourceCost.Energy
                     + plan.ResourceCost.Materials + plan.ResourceCost.Tech),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(primary.ActivationApCost,
-                    plan.EtaTurns, AiConfigV2.taskScoreReactivationApWeight),
+                delivery: 0f,
                 moverOpportunityCost: System.Math.Max(0, plan.BlockedActors - 1));
+            Assert.That(plan.Score.Delivery, Is.Zero,
+                "atomic refit AP is CardPrice, not a fabricated extra travel turn");
             Assert.That(plan.Score.Value, Is.EqualTo(expected.Value).Within(0.0001f));
         }
 
