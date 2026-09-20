@@ -112,6 +112,31 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void BaseRecovery_RejectsThresholdClearingRefitWhenTargetRouteIsDeadEnd()
+        {
+            var player = new PlayerSetupData { Nickname = "DeadEnd" };
+            HexCoord home = new HexCoord(0, 0);
+            HexCoord target = new HexCoord(3, 0);
+            WorthIt.DefenderProfile wounded = Profile(20, 0, 1, 10, 1);
+            WorthIt.DefenderProfile healthy = Profile(20, 0, 10, 10, 1);
+            WorthIt.DefenderProfile defender = Profile(4, 0, 5, 5, 10);
+            ArmySnapshot primary = Army(15, player, home, 1,
+                Member(251, 0, wounded, healthy, repairable: true,
+                    repairCost: new ResourceVector(0, 1, 0, 0, 0)));
+            WorldSnapshot snap = Snapshot(primary, human: 3);
+            var raid = Raid(primary.ArmyId, target);
+            float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
+
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
+                primary, new[] { defender }, new HashSet<int>(), before, home,
+                (from, to, maxMovement) => to.Equals(target)
+                    ? int.MaxValue : HexGridMath.Distance(from, to));
+
+            Assert.That(plan.Viable, Is.False,
+                "repair alone is not a complete recovery plan without a safe return to the target");
+        }
+
+        [Test]
         public void RecoveryChoice_ConsidersAllBasesAndRequiresRouteBackToTarget()
         {
             var player = new PlayerSetupData { Nickname = "Bases" };
