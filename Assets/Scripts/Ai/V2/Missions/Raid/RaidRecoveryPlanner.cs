@@ -47,9 +47,10 @@ namespace Game.Ai.V2
                 currentWin, currentWin, default, reason);
     }
 
-    // Pure, snapshot-only comparison of the two ways an already-started Raid can regain the
-    // existing raidMinViableWinChance. It predicts exact executable roster/repair effects through
-    // WorthIt/GroundCombatFeasibility and returns one frozen next action; it mutates no live state.
+    // Pure comparison of the two ways an already-started Raid can regain the existing
+    // raidMinViableWinChance. Combat/resources come from the immutable snapshot; Continuity supplies
+    // the existing read-only SafeStepPathing oracle so route viability uses the same cached blocker
+    // rules as execution. It returns one frozen next action and mutates no live state.
     internal static class RaidRecoveryPlanner
     {
         private sealed class SimMember
@@ -83,7 +84,8 @@ namespace Game.Ai.V2
         }
 
         internal static RaidRecoveryProjection Choose(WorldSnapshot snap, RaidIntent raid,
-            ISet<int> unavailableArmyIds, HexCoord? fixedBase = null)
+            ISet<int> unavailableArmyIds, HexCoord? fixedBase = null,
+            Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
             if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
                 return RaidRecoveryProjection.None(0f, "missing primary snapshot");
@@ -97,21 +99,46 @@ namespace Game.Ai.V2
 
             RaidRecoveryProjection field = fixedBase.HasValue
                 ? RaidRecoveryProjection.None(currentWin, "field comparison suppressed by fixed recovery base")
-                : ProjectField(snap, primary, defenders, unavailableArmyIds, currentWin);
-            RaidRecoveryProjection atBase = ProjectBase(snap, raid, primary, defenders,
-                unavailableArmyIds, currentWin, fixedBase);
+                : ProjectField(snap, primary, defenders, unavailableArmyIds, currentWin,
+                    safeRouteCost);
+            RaidRecoveryProjection atBase = fixedBase.HasValue
+                ? ProjectBase(snap, raid, primary, defenders, unavailableArmyIds, currentWin,
+                    fixedBase, safeRouteCost)
+                : ProjectBestBase(snap, raid, primary, defenders, unavailableArmyIds,
+                    currentWin, safeRouteCost);
             if (!field.Viable) return atBase;
             if (!atBase.Viable) return field;
             return Compare(field, atBase) <= 0 ? field : atBase;
         }
 
+        private static RaidRecoveryProjection ProjectBestBase(WorldSnapshot snap, RaidIntent raid,
+            ArmySnapshot primary, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            ISet<int> unavailableArmyIds, float currentWin,
+            Func<HexCoord, HexCoord, int, int> safeRouteCost)
+        {
+            RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
+                "no owned recovery base has a complete safe threshold-clearing plan");
+            IEnumerable<HexCoord> bases = (snap.Self.BaseHexes ?? Array.Empty<HexCoord>())
+                .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R);
+            foreach (HexCoord baseHex in bases)
+            {
+                RaidRecoveryProjection option = ProjectBase(snap, raid, primary, defenders,
+                    unavailableArmyIds, currentWin, baseHex, safeRouteCost);
+                if (option.Viable && (!best.Viable || Compare(option, best) < 0))
+                    best = option;
+            }
+            return best;
+        }
+
         internal static RaidRecoveryProjection ProjectBase(WorldSnapshot snap, RaidIntent raid,
             ArmySnapshot primary, IReadOnlyList<WorthIt.DefenderProfile> defenders,
-            ISet<int> unavailableArmyIds, float currentWin, HexCoord? fixedBase = null)
+            ISet<int> unavailableArmyIds, float currentWin, HexCoord? fixedBase = null,
+            Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
             HexCoord? baseHex = fixedBase ?? MissionContinuityLayer.SelectReturnBase(
                 snap, primary.Owner, primary.ArmyId);
-            if (!baseHex.HasValue)
+            if (!baseHex.HasValue
+                || !(snap.Self.BaseHexes ?? Array.Empty<HexCoord>()).Contains(baseHex.Value))
                 return RaidRecoveryProjection.None(currentWin, "no owned recovery base");
             bool atBase = primary.Hex.Equals(baseHex.Value);
             if (!atBase && (primary.ReachableOwnBaseHexes == null
@@ -176,9 +203,18 @@ namespace Game.Ai.V2
                     "no bounded repair/fill/swap sequence reaches the raid threshold");
 
             int moveBudget = Math.Max(1, primary.MaxMovement);
-            int toBase = atBase ? 0 : CeilTurns(primary, HexGridMath.Distance(primary.Hex, baseHex.Value));
-            int toTarget = Math.Max(1,
-                (HexGridMath.Distance(baseHex.Value, raid.LastKnownHex) + moveBudget - 1) / moveBudget);
+            int toBaseDistance = atBase ? 0 : RouteCost(primary.Hex, baseHex.Value, primary.MaxMovement,
+                safeRouteCost, HexGridMath.Distance(primary.Hex, baseHex.Value));
+            if (toBaseDistance == int.MaxValue)
+                return RaidRecoveryProjection.None(currentWin,
+                    "recovery base has no safe structural route");
+            int toTargetDistance = RouteCost(baseHex.Value, raid.LastKnownHex, primary.MaxMovement,
+                safeRouteCost, HexGridMath.Distance(baseHex.Value, raid.LastKnownHex));
+            if (toTargetDistance == int.MaxValue)
+                return RaidRecoveryProjection.None(currentWin,
+                    "recovery base has no safe route back to the raid target");
+            int toBase = atBase ? 0 : CeilTurns(primary, toBaseDistance);
+            int toTarget = Math.Max(1, (toTargetDistance + moveBudget - 1) / moveBudget);
             int eta = toBase + actions + toTarget;
             int donorsBlocked = donors.Where(d => usedDonors.Contains(d.Member.RuntimeId))
                 .Select(d => d.Army.ArmyId).Distinct().Count();
@@ -190,7 +226,7 @@ namespace Game.Ai.V2
 
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds,
-            float currentWin)
+            float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                 snap, primary.ArmyId, defenders, unavailableArmyIds);
@@ -212,7 +248,11 @@ namespace Game.Ai.V2
                 bool clears = GroundCombatFeasibility.Clears(projected, defenders,
                     AiConfigV2.raidMinViableWinChance, out float after, out _);
                 if (!clears) continue;
-                int eta = CeilTurns(support, HexGridMath.Distance(support.Hex, primary.Hex)) + 1;
+                int routeDistance = RouteCost(support.Hex, primary.Hex, support.MaxMovement, safeRouteCost,
+                    HexGridMath.Distance(support.Hex, primary.Hex));
+                if (routeDistance == int.MaxValue)
+                    continue;
+                int eta = CeilTurns(support, routeDistance) + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, eta, ap, ResourceVector.Zero, 2,
@@ -276,7 +316,7 @@ namespace Game.Ai.V2
                         DonorArmyId = donorArmy.ArmyId,
                         UnitRuntimeId = donor.RuntimeId,
                         BaseHex = baseHex,
-                        ApCost = primary.HasActivatedThisTurn ? donor.ActivationApCost : 0,
+                        ApCost = JoinActivationAp(primary, donor),
                         ResourceCost = ResourceVector.Zero,
                         WinChanceBefore = winBefore,
                         WinChanceAfter = after,
@@ -292,8 +332,8 @@ namespace Game.Ai.V2
                     var projected = roster.Select(x => x.Profile).ToList();
                     projected[roster.IndexOf(displaced)] = donor.CurrentProfile;
                     float after = Win(projected, defenders, out _);
-                    int transferAp = (primary.HasActivatedThisTurn ? donor.ActivationApCost : 0)
-                        + (donorArmy.HasActivatedThisTurn ? displaced.Source.ActivationApCost : 0);
+                    int transferAp = JoinActivationAp(primary, donor)
+                        + JoinActivationAp(donorArmy, displaced.Source);
                     var action = new RaidRefitAction
                     {
                         Kind = RaidRefitActionKind.SwapUnit,
@@ -364,6 +404,25 @@ namespace Game.Ai.V2
             GroundCombatFeasibility.Clears(roster, defenders,
                 AiConfigV2.raidMinViableWinChance, out float win, out cover);
             return win;
+        }
+
+        internal static int JoinActivationAp(ArmySnapshot target,
+            RaidRecoveryMemberSnapshot incoming)
+        {
+            if (target == null || !target.HasActivatedThisTurn)
+                return 0;
+            IReadOnlyCollection<int> covered = target.ActivationCoveredUnitRuntimeIds
+                ?? Array.Empty<int>();
+            return covered.Contains(incoming.RuntimeId) ? 0 : incoming.ActivationApCost;
+        }
+
+        private static int RouteCost(HexCoord from, HexCoord to, int maxMovement,
+            Func<HexCoord, HexCoord, int, int> safeRouteCost, int fallbackDistance)
+        {
+            if (from.Equals(to)) return 0;
+            return safeRouteCost != null
+                ? safeRouteCost(from, to, Math.Max(1, maxMovement))
+                : fallbackDistance;
         }
 
         private static int CeilTurns(ArmySnapshot army, int distance)

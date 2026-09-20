@@ -246,6 +246,10 @@ namespace Game.Ai.V2
         public int ActivationApCost;
         public int ActivationEnergyCost;   // game rule: non-zero ONLY for a real air army
         public bool HasActivatedThisTurn;
+        // Exact per-army activation ledger frozen from ArmyData. Needed because a unit may leave
+        // and rejoin the same army in one turn without paying its activation share twice.
+        public IReadOnlyCollection<int> ActivationCoveredUnitRuntimeIds =
+            System.Array.Empty<int>();
         public int CurrentMovement;        // MP left THIS turn (MaxMovement minus what's spent)
         public bool IsSoloRecce;           // AiArmyRoles.IsSoloRecce — the cheap dedicated scout shape
         // Frozen from the canonical AiArmyRoles.IsHeroLed predicate. Economy consumers add only

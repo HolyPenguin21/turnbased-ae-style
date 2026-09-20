@@ -103,6 +103,11 @@ namespace Game.Map
         public bool RequiresActivationCharge(UnitData unit)
             => HasActivatedThisTurn && !_activationCoveredUnits.Contains(unit);
 
+        // Read-only projection boundary for AI snapshots. The authoritative ledger remains private;
+        // Analysis only asks whether this exact live unit has already paid for this exact army.
+        public bool HasActivationCoverageFor(UnitData unit)
+            => unit != null && _activationCoveredUnits.Contains(unit);
+
         // Called once, the moment this army is actually given its first move order of the turn
         // (see HexSelectionController.Movement.TryIssueMoveOrder) — the lump ActivationApCost
         // payment made right then already covers every CURRENT member, so all of them become
