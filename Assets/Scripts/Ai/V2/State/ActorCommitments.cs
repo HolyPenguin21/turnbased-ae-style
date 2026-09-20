@@ -76,6 +76,18 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
                         + $"support={raid.SupportArmyId.Value} phase={raid.Phase} reason=support_actor_en_route");
                 }
+                if (raid != null && raid.Phase == RaidMissionPhase.Refit
+                    && raid.PendingRefitAction.DonorArmyId.HasValue
+                    && snap.Self.Armies.Any(a => a != null
+                        && a.ArmyId == raid.PendingRefitAction.DonorArmyId.Value
+                        && !a.IsPrison && !a.IsAir && a.MemberCount > 0))
+                {
+                    c.Claim(raid.PendingRefitAction.DonorArmyId.Value);
+                    AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
+                        $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
+                        + $"donor={raid.PendingRefitAction.DonorArmyId.Value} phase=Refit "
+                        + "reason=frozen_local_refit_action");
+                }
 
                 if (i?.PreferredMoverArmyId == null)
                     continue;
@@ -107,7 +119,9 @@ namespace Game.Ai.V2
                 if (i.Kind == MissionKind.Raid)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;
-                    if (raid != null && raid.Phase == RaidMissionPhase.Return)
+                    if (raid != null && (raid.Phase == RaidMissionPhase.Return
+                            || raid.Phase == RaidMissionPhase.RecoveryReturn
+                            || raid.Phase == RaidMissionPhase.Refit))
                     {
                         ArmySnapshot returningPrimary = snap.Self.Armies.FirstOrDefault(a => a != null
                             && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
@@ -116,7 +130,7 @@ namespace Game.Ai.V2
                             c.Claim(actorId);
                             AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
                                 $"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} actor={actorId} "
-                                + "reason=return_actor_still_matches_ground_container_gate");
+                                + $"reason={raid.Phase}_actor_still_matches_ground_container_gate");
                         }
                         else
                         {
