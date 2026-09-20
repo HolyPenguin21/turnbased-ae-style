@@ -208,6 +208,9 @@ namespace Game.Ai.V2
                         site.Yield, buildingCollection, capacity, armiesAlreadyThere, true);
                     if (marginal < AiConfigV2.mobileCollectionMinMarginalYield)
                         continue;
+                    float usefulGain = standing.UsefulMarginalIncomeGain(marginal);
+                    if (usefulGain <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
 
                     int remaining = Mathf.Max(0, route.TotalCost - collector.CurrentMovement);
                     int turnsToArrival = Mathf.CeilToInt(remaining
@@ -219,7 +222,7 @@ namespace Game.Ai.V2
                         snap, site.Hex);
                     var taskScore = new TaskScore(
                         economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
-                            marginal, priority),
+                            usefulGain, priority),
                         payback: TaskScoreEvaluator.Payback(firstIncome),
                         ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
                             homeDistance),
@@ -233,7 +236,8 @@ namespace Game.Ai.V2
                         hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
                     float score = taskScore.Value;
                     TaskScoreDiagnostics.Log("MobileCollection", site.Hex, taskScore,
-                        $"resource={site.Type} marginal={marginal} priority={priority:0.###} "
+                        $"resource={site.Type} marginal={marginal} useful={usefulGain:0.###} "
+                        + $"priority={priority:0.###} "
                         + $"firstIncome={firstIncome} activationAp={activationAp:0.###} "
                         + $"exposure={exposure:0.###} collector=#{collector.ArmyId}");
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
