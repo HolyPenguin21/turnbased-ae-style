@@ -201,9 +201,8 @@ namespace Game.Ai.V2
                 float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
                 float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
                 ResourceVector resources = new ResourceVector(0f, 0f, energy, 0f, 0f);
-                TaskScore score = PlanScore(after,
-                    actionApCost: 0f, activationApNow: ap, resources, eta,
-                    wing.ActivationApCost, blockedActors: 2);
+                TaskScore score = PlanScore(after, 0f, ap, resources, eta,
+                    wing.ActivationApCost, 2);
                 HexCoord landing = bases
                     .OrderBy(x => HexGridMath.Distance(x, raid.LastKnownHex))
                     .ThenBy(x => x.Q).ThenBy(x => x.R).First();
@@ -326,8 +325,7 @@ namespace Game.Ai.V2
             int blockedActors = 1 + donorsBlocked;
             float activationApNow = primary.HasActivatedThisTurn
                 || toBase + toTarget <= 0 ? 0f : primary.ActivationApCost;
-            TaskScore score = PlanScore(win, actionApCost: ap,
-                activationApNow, spent, toBase + toTarget,
+            TaskScore score = PlanScore(win, ap, activationApNow, spent, toBase + toTarget,
                 primary.ActivationApCost, blockedActors);
             return new RaidRecoveryProjection(true, atBase ? RaidMissionPhase.Refit
                     : RaidMissionPhase.RecoveryReturn, baseHex, null, null, null, eta, ap, spent,
@@ -386,9 +384,8 @@ namespace Game.Ai.V2
                 int travelTurns = CeilTurns(support, routeDistance);
                 int eta = travelTurns + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
-                TaskScore score = PlanScore(after,
-                    actionApCost: 0f, activationApNow: ap, ResourceVector.Zero, travelTurns,
-                    support.ActivationApCost, blockedActors: 2);
+                TaskScore score = PlanScore(after, 0f, ap, ResourceVector.Zero, travelTurns,
+                    support.ActivationApCost, 2);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, null, null, eta, ap, ResourceVector.Zero, 2,
                     currentWin, after, score, default,
