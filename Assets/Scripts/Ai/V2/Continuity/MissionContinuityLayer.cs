@@ -774,14 +774,26 @@ namespace Game.Ai.V2
                                 + "reason=recovery_base_lost_and_no_viable_fallback");
                             continue;
                         }
-                        if (replacement.Phase == RaidMissionPhase.Reinforcement)
+                        if (replacement.Phase == RaidMissionPhase.AirSupport)
+                        {
+                            ri.Phase = RaidMissionPhase.AirSupport;
+                            ri.AirSupportArmyId = replacement.AirSupportArmyId;
+                            ri.AirSupportLandingHex = replacement.AirSupportLandingHex;
+                            ri.SupportArmyId = null;
+                            ClearRaidRecovery(ri);
+                        }
+                        else if (replacement.Phase == RaidMissionPhase.Reinforcement)
                         {
                             ri.Phase = RaidMissionPhase.Reinforcement;
                             ri.SupportArmyId = replacement.SupportArmyId;
+                            ri.AirSupportArmyId = null;
+                            ri.AirSupportLandingHex = null;
                             ClearRaidRecovery(ri);
                         }
                         else
                         {
+                            ri.AirSupportArmyId = null;
+                            ri.AirSupportLandingHex = null;
                             ri.RecoveryBaseHex = replacement.BaseHex;
                             ri.PendingRefitAction = replacement.Phase == RaidMissionPhase.Refit
                                 ? replacement.FirstRefitAction : default;
@@ -1167,13 +1179,20 @@ namespace Game.Ai.V2
                     ri.PendingRefitAction = default;
                     RaidRecoveryProjection fallback = RaidRecoveryPlanner.Choose(
                         snap, ri, unavailableArmyIds, safeRouteCost: safeRouteCost);
-                    if (fallback.Viable && fallback.Phase == RaidMissionPhase.Reinforcement)
+                    if (fallback.Viable && (fallback.Phase == RaidMissionPhase.Reinforcement
+                            || fallback.Phase == RaidMissionPhase.AirSupport))
                     {
-                        ri.Phase = RaidMissionPhase.Reinforcement;
-                        ri.SupportArmyId = fallback.SupportArmyId;
+                        ri.Phase = fallback.Phase;
+                        ri.SupportArmyId = fallback.Phase == RaidMissionPhase.Reinforcement
+                            ? fallback.SupportArmyId : null;
+                        ri.AirSupportArmyId = fallback.Phase == RaidMissionPhase.AirSupport
+                            ? fallback.AirSupportArmyId : null;
+                        ri.AirSupportLandingHex = fallback.Phase == RaidMissionPhase.AirSupport
+                            ? fallback.AirSupportLandingHex : null;
                         ClearRaidRecovery(ri);
-                        AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=FIELD_REINFORCEMENT "
+                        AiDebugLog.Write($"[AI][V2][RaidRecovery] decision={fallback.Phase} "
                             + $"intent={intent.IntentKey} support={fallback.SupportArmyId} "
+                            + $"air={fallback.AirSupportArmyId} "
                             + $"reason=refit_no_longer_viable {fallback.Reason}");
                         return true;
                     }
@@ -1298,9 +1317,22 @@ namespace Game.Ai.V2
 
             raid.SupportArmyId = plan.Phase == RaidMissionPhase.Reinforcement
                 ? plan.SupportArmyId : null;
+            raid.AirSupportArmyId = plan.Phase == RaidMissionPhase.AirSupport
+                ? plan.AirSupportArmyId : null;
+            raid.AirSupportLandingHex = plan.Phase == RaidMissionPhase.AirSupport
+                ? plan.AirSupportLandingHex : null;
             raid.ReinforcementRequestedTurn = -1;
             raid.Phase = plan.Phase;
-            if (plan.Phase == RaidMissionPhase.Reinforcement)
+            if (plan.Phase == RaidMissionPhase.AirSupport)
+            {
+                ClearRaidRecovery(raid);
+                AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=AIR_SUPPORT "
+                    + $"intent={intent.IntentKey} primary={raid.PrimaryArmyId} target={raid.Target.DiagnosticLabel} "
+                    + $"currentWin={plan.CurrentWinChance:0.00} projectedWin={plan.ProjectedWinChance:0.00} "
+                    + $"eta={plan.EtaTurns} wing={plan.AirSupportArmyId} score={plan.Score.Value:0.00} "
+                    + $"reason={reason}; {plan.Reason}");
+            }
+            else if (plan.Phase == RaidMissionPhase.Reinforcement)
             {
                 ClearRaidRecovery(raid);
                 AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=FIELD_REINFORCEMENT "

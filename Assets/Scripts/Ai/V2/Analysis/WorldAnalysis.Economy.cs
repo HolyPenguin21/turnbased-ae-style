@@ -208,28 +208,50 @@ namespace Game.Ai.V2
                         site.Yield, buildingCollection, capacity, armiesAlreadyThere, true);
                     if (marginal < AiConfigV2.mobileCollectionMinMarginalYield)
                         continue;
+                    float usefulGain = standing.UsefulMarginalIncomeGain(marginal);
+                    if (usefulGain <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
 
                     int remaining = Mathf.Max(0, route.TotalCost - collector.CurrentMovement);
                     int turnsToArrival = Mathf.CeilToInt(remaining
                         / (float)Mathf.Max(1, collector.MaxMovement));
                     int firstIncome = Mathf.Max(1, turnsToArrival + 1);
-                    float benefit = TaskScoreEvaluator.EconomicHexBenefit(marginal, priority)
-                        * AiConfigV2.mobileCollectionBenefitFactor;
-                    float score = new TaskScore(
-                        economicHexBenefit: benefit,
-                        payback: TaskScoreEvaluator.Payback(firstIncome),
+                    float activationAp = !collector.HasActivatedThisTurn
+                        && route.TotalCost > 0 ? collector.ActivationApCost : 0f;
+                    int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                        snap, site.Hex);
+                    var taskScore = new TaskScore(
+                        economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
+                            usefulGain, priority),
+                        // Mobile collection has no capital/resource outlay. Arrival time is
+                        // priced once by Delivery; it is not a second, fake payback period.
+                        payback: TaskScoreEvaluator.Payback(0f),
+                        ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
+                            homeDistance),
+                        // Army activation is a reactivation fee, not a played-card/action AP cost.
+                        cardPrice: activationAp * AiConfigV2.taskScoreReactivationApWeight,
                         delivery: TaskScoreEvaluator.DeliveryFromEta(
-                            collector.ActivationApCost, firstIncome, 1f),
-                        moverOpportunityCost: collector.EffectiveArmyPower
-                            * AiConfigV2.mobileCollectionPowerOpportunityScale,
-                        hexThreatRisk: exposure).Value;
+                            collector.ActivationApCost, firstIncome,
+                            AiConfigV2.taskScoreReactivationApWeight),
+                        // committed actors were filtered above. A free collector does not
+                        // manufacture an opportunity penalty from its combat power.
+                        moverOpportunityCost: 0f,
+                        hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+                    float score = taskScore.Value;
+                    TaskScoreDiagnostics.Log("MobileCollection", site.Hex, taskScore,
+                        $"resource={site.Type} marginal={marginal} useful={usefulGain:0.###} "
+                        + $"priority={priority:0.###} "
+                        + $"firstIncome={firstIncome} activationAp={activationAp:0.###} "
+                        + $"exposure={exposure:0.###} collector=#{collector.ArmyId}");
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
                     var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,
                         marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
-                        score, safeReturn.Value);
-                    if (!best.HasValue || candidate.UsefulMarginalGain
-                        > best.Value.UsefulMarginalGain)
+                        taskScore, safeReturn.Value);
+                    if (!best.HasValue
+                        || candidate.Score.Value > best.Value.Score.Value
+                        || (Mathf.Approximately(candidate.Score.Value, best.Value.Score.Value)
+                            && candidate.CollectorArmyId < best.Value.CollectorArmyId))
                         best = candidate;
                 }
                 if (best.HasValue)
