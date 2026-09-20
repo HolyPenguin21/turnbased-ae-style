@@ -441,6 +441,12 @@ namespace Game.Ai.V2
 
         internal static bool EconomyObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
         {
+            if (t.Kind == EconomyTaskKind.MobileCollection)
+                return false;
+            if (t.Kind == EconomyTaskKind.ReturnCollector)
+                return t.CollectorArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
+                    && a.Id == t.CollectorArmyId.Value && a.Owner == player
+                    && a.Hex.Equals(t.TargetHex));
             if (t.Kind == EconomyTaskKind.ReturnBuilder)
                 return t.BuilderArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
                     && a.Id == t.BuilderArmyId.Value && a.Owner == player

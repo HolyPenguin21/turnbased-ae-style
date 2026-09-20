@@ -140,6 +140,8 @@ namespace Game.Ai.V2
                 return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
                         ? et.BuilderArmyId ?? 0
+                        : et.Kind == EconomyTaskKind.ReturnCollector
+                            ? et.CollectorArmyId ?? 0
                         : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
                     et.TargetHex.Q, et.TargetHex.R);
             if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)

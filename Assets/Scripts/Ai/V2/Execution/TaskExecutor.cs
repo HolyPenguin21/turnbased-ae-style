@@ -1198,7 +1198,8 @@ namespace Game.Ai.V2
             EconomyMissionTarget target = pm.EconomyTarget;
             if (army.Hex.Equals(target.TargetHex))
             {
-                result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder;
+                result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder
+                    || target.Kind == EconomyTaskKind.ReturnCollector;
                 result.StopReason = result.ReachedGoal
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.StepCompleted;
@@ -1216,15 +1217,22 @@ namespace Game.Ai.V2
                         + $"({army.Hex.Q},{army.Hex.R})");
                 else
                 {
-                    result.EconomyDeliveryReady = true;
-                    AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                    if (target.Kind == EconomyTaskKind.MobileCollection)
+                        AiDebugLog.Write($"[AI][V2][Economy][Mobile] collector #{army.Id} holding "
+                            + $"@({army.Hex.Q},{army.Hex.R}) for global income tick");
+                    else
+                    {
+                        result.EconomyDeliveryReady = true;
+                        AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                    }
                 }
                 yield break;
             }
             yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
                 target.TargetHex, $"economy — {target.Kind}");
             HexCoord after = result.FinalHex;
-            bool recoveryArrived = target.Kind == EconomyTaskKind.ReturnBuilder
+            bool recoveryArrived = (target.Kind == EconomyTaskKind.ReturnBuilder
+                    || target.Kind == EconomyTaskKind.ReturnCollector)
                 && after.Equals(target.TargetHex);
             result.ReachedGoal = recoveryArrived;
             if (recoveryArrived)

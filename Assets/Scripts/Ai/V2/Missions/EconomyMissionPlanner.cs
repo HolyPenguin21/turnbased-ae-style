@@ -25,6 +25,8 @@ namespace Game.Ai.V2
                     || !intent.PreferredMoverArmyId.HasValue)
                     continue;
                 EconomyIntent e = intent.Economy;
+                bool mobile = e.Kind == EconomyTaskKind.MobileCollection
+                    || e.Kind == EconomyTaskKind.ReturnCollector;
                 // This is a per-pass execution admission, not cancellation of the durable intent.
                 // Phase B can re-enter the operational loop after changing the hand/resources,
                 // but neither change refills this committed builder's movement. Do not repeatedly
@@ -40,7 +42,7 @@ namespace Game.Ai.V2
                         + "reason=pinned_builder_movement_exhausted");
                     continue;
                 }
-                AxisDemand refreshed = demands?.FirstOrDefault(d => d != null
+                AxisDemand refreshed = mobile ? null : demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)
                     && d.EconomyResourceType == e.ResourceType
@@ -57,10 +59,16 @@ namespace Game.Ai.V2
                     ResourceType = e.ResourceType,
                     ObjectiveId = e.Kind == EconomyTaskKind.ReturnBuilder
                         ? $"ReturnBuilder:{intent.PreferredMoverArmyId.Value}"
+                        : e.Kind == EconomyTaskKind.ReturnCollector
+                            ? $"ReturnCollector:{intent.PreferredMoverArmyId.Value}"
                         : $"{e.Kind}:{e.TargetHex.Q},{e.TargetHex.R}",
                     // PreferredMoverArmyId is the continuity-owned actor identity. The payload is
                     // kept synchronized with it so provisioning never sees two competing builders.
                     BuilderArmyId = intent.PreferredMoverArmyId,
+                    CollectorArmyId = mobile ? intent.PreferredMoverArmyId : e.CollectorArmyId,
+                    CollectorSourceArmyId = e.CollectorSourceArmyId,
+                    ExpectedMarginalYield = e.ExpectedMarginalYield,
+                    SafeReturnHex = e.SafeReturnHex,
                     BuildCard = refreshed?.EconomyBuildCard ?? e.BuildCard,
                     BuildResourceCost = refreshed?.EconomyBuildResourceCost ?? e.BuildResourceCost,
                     BuildApCost = refreshed?.EconomyBuildApCost ?? e.BuildApCost,
@@ -76,7 +84,8 @@ namespace Game.Ai.V2
                 // is a legacy operational/site fact and must not replace it in global admission.
                 // A ReturnBuilder is lifecycle work, not a new world task: its priority belongs to
                 // its durable commitment rather than to the site it finished building.
-                float intrinsic = e.Kind == EconomyTaskKind.ReturnBuilder ? 0f
+                float intrinsic = e.Kind == EconomyTaskKind.ReturnBuilder
+                    || e.Kind == EconomyTaskKind.ReturnCollector ? 0f
                     : refreshed?.Value ?? e.IntrinsicValue ?? 0f;
                 var mission = new MissionProposal
                 {
@@ -88,6 +97,45 @@ namespace Game.Ai.V2
                     FromDurableIntent = true, DurableFundingTier = intent.Funding,
                     Explain = $"economy committed {target.Kind} #{intent.PreferredMoverArmyId.Value} "
                         + $"@({target.TargetHex.Q},{target.TargetHex.R}) intrinsic={intrinsic:0.##}",
+                };
+                mission.Axes.Value[DesireAxis.Economy] = 1f;
+                result.Add(mission);
+            }
+
+            // Mobile collection is an economy mission in its own right. It is emitted directly
+            // from the immutable analysis snapshot and therefore does not need an infrastructure
+            // card demand from Phase A.
+            foreach (MobileCollectionOpportunity op in snapshot?.Economy?.MobileCollectionOpportunities
+                         ?? System.Array.Empty<MobileCollectionOpportunity>())
+            {
+                if (activeIntents?.Any(i => i?.Status == IntentStatus.Active
+                    && i.Economy?.Kind == EconomyTaskKind.MobileCollection
+                    && i.Economy.ResourceType == op.ResourceType
+                    && i.Economy.TargetHex.Equals(op.TargetHex)) == true)
+                    continue;
+                var target = new EconomyMissionTarget
+                {
+                    Kind = EconomyTaskKind.MobileCollection,
+                    TargetHex = op.TargetHex,
+                    ResourceType = op.ResourceType,
+                    ObjectiveId = $"MobileCollection:{op.ResourceType}:{op.TargetHex.Q},{op.TargetHex.R}",
+                    CollectorArmyId = op.CollectorArmyId,
+                    CollectorSourceArmyId = op.CollectorArmyId,
+                    ExpectedMarginalYield = op.EffectiveRemainingYield,
+                    SafeReturnHex = op.SafeReturnHex,
+                    BuildValue = op.UsefulMarginalGain,
+                };
+                var mission = new MissionProposal
+                {
+                    Kind = MissionKind.Economy,
+                    Target = target,
+                    BaseValue = op.UsefulMarginalGain,
+                    LocalAdmissionScore = op.UsefulMarginalGain,
+                    PreferredMoverArmyId = op.CollectorArmyId,
+                    Requirements = Requirements(target, null, snapshot, activeIntents,
+                        currentCommitments),
+                    Explain = $"economy mobile-collect {op.ResourceType} actor=#{op.CollectorArmyId} "
+                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={op.UsefulMarginalGain:0.##}",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
                 result.Add(mission);
@@ -162,6 +210,25 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments)
         {
+            if (t.Kind == EconomyTaskKind.MobileCollection
+                || t.Kind == EconomyTaskKind.ReturnCollector)
+            {
+                int? actorId = incumbent?.PreferredMoverArmyId ?? t.CollectorArmyId;
+                ArmySnapshot collector = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && actorId.HasValue && a.ArmyId == actorId.Value);
+                float activation = collector != null && !collector.HasActivatedThisTurn
+                    && !collector.Hex.Equals(t.TargetHex) ? collector.ActivationApCost : 0f;
+                int distance = collector == null ? 0
+                    : HexGridMath.Distance(collector.Hex, t.TargetHex);
+                return new MissionRequirements
+                {
+                    RequiresArmy = true, RequiresHero = false, MoverKnown = collector != null,
+                    ApMinimum = activation, ApDesired = activation, ApMaximum = activation,
+                    EstimatedDistance = distance,
+                    EtaTurns = collector == null ? 0 : UnityEngine.Mathf.CeilToInt(distance
+                        / (float)UnityEngine.Mathf.Max(1, collector.MaxMovement)),
+                };
+            }
             if (t.Kind == EconomyTaskKind.ReturnBuilder)
             {
                 ArmySnapshot recoveryActor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null

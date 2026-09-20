@@ -77,8 +77,11 @@ namespace Game.Ai.V2
                 if (i.Kind == MissionKind.Economy)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;
+                    bool mobile = i.Economy?.Kind == EconomyTaskKind.MobileCollection
+                        || i.Economy?.Kind == EconomyTaskKind.ReturnCollector;
                     ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
-                        && a.ArmyId == actorId && a.HasHero && !a.IsPrison && !a.IsAir);
+                        && a.ArmyId == actorId && !a.IsPrison && !a.IsAir
+                        && (mobile || a.HasHero));
                     if (actor != null) c.Claim(actorId);
                     continue;
                 }

@@ -145,6 +145,98 @@ namespace Game.Ai.V2
             }
             eco.ExtractionOpportunities = extraction;
 
+            var mobileCollection = new List<MobileCollectionOpportunity>();
+            var committedCollectors = new HashSet<int>(MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i != null && i.Status == IntentStatus.Active
+                    && i.PreferredMoverArmyId.HasValue)
+                .Select(i => i.PreferredMoverArmyId.Value));
+            foreach ((HexCoord Hex, ResourceType Type, int Yield) site in KnownExtractionYields(snap))
+            {
+                if (!eco.IsIncomeDeficient(snap.Self, site.Type)
+                    || KnownHostileAtHex(snap, site.Hex))
+                    continue;
+
+                int buildingCollection = 0;
+                if (knownBuildings.TryGetValue(site.Hex, out AiMapMemory.KnownBuilding known)
+                    && known.Owner == player)
+                    buildingCollection = known.CollectedAmount(site.Type);
+                int armiesAlreadyThere = Mathf.RoundToInt((snap.Self.Armies
+                        ?? System.Array.Empty<ArmySnapshot>())
+                    .Where(a => a != null && a.Hex.Equals(site.Hex))
+                    .Sum(a => a.CollectionCapacity.Get(site.Type)));
+
+                EconomyResourceStanding standing = standings[site.Type];
+                float priority = TaskScoreEvaluator.ResourcePriority(standing,
+                    ResourceStarvationRegistry.Pressure(player, site.Type));
+                MobileCollectionOpportunity? best = null;
+                foreach (ArmySnapshot collector in (snap.Self.Armies
+                             ?? System.Array.Empty<ArmySnapshot>()).Where(a => a != null
+                             && !a.IsAir && !a.IsAirfield && !a.IsGarrison && !a.IsPrison
+                             && !committedCollectors.Contains(a.ArmyId)
+                             && !a.Hex.Equals(site.Hex)
+                             && a.CollectionCapacity.Get(site.Type) > 0f)
+                         .OrderBy(a => a.ArmyId))
+                {
+                    HexPath route = SafeStepPathing.FindSafePath(ctx.Map, player,
+                        collector.Hex, site.Hex, collector.MaxMovement);
+                    if (route == null)
+                        continue;
+                    IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
+                        KnownThreatsAffectingEconomyRoute(snap, route.Hexes);
+                    float exposure = threats.Count > 0 ? 1f : 0f;
+                    if (exposure > AiConfigV2.mobileCollectionMaxThreatExposure)
+                        continue;
+
+                    HexCoord? safeReturn = null;
+                    int returnCost = int.MaxValue;
+                    foreach (HexCoord home in snap.Self.BaseHexes
+                                 ?? System.Array.Empty<HexCoord>())
+                    {
+                        int cost = SafeStepPathing.FindSafePathCost(ctx.Map, player,
+                            site.Hex, home, collector.MaxMovement);
+                        if (cost < returnCost)
+                        {
+                            returnCost = cost;
+                            safeReturn = home;
+                        }
+                    }
+                    if (!safeReturn.HasValue || returnCost == int.MaxValue)
+                        continue;
+
+                    int capacity = Mathf.RoundToInt(collector.CollectionCapacity.Get(site.Type));
+                    int marginal = IncomeProjection.MarginalOwnerCollectionAtHex(
+                        site.Yield, buildingCollection, capacity, armiesAlreadyThere, true);
+                    if (marginal < AiConfigV2.mobileCollectionMinMarginalYield)
+                        continue;
+
+                    int remaining = Mathf.Max(0, route.TotalCost - collector.CurrentMovement);
+                    int turnsToArrival = Mathf.CeilToInt(remaining
+                        / (float)Mathf.Max(1, collector.MaxMovement));
+                    int firstIncome = Mathf.Max(1, turnsToArrival + 1);
+                    float benefit = TaskScoreEvaluator.EconomicHexBenefit(marginal, priority)
+                        * AiConfigV2.mobileCollectionBenefitFactor;
+                    float score = new TaskScore(
+                        economicHexBenefit: benefit,
+                        payback: TaskScoreEvaluator.Payback(firstIncome),
+                        delivery: TaskScoreEvaluator.DeliveryFromEta(
+                            collector.ActivationApCost, firstIncome, 1f),
+                        moverOpportunityCost: collector.EffectiveArmyPower
+                            * AiConfigV2.mobileCollectionPowerOpportunityScale,
+                        hexThreatRisk: exposure).Value;
+                    if (score <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,
+                        marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
+                        score, safeReturn.Value);
+                    if (!best.HasValue || candidate.UsefulMarginalGain
+                        > best.Value.UsefulMarginalGain)
+                        best = candidate;
+                }
+                if (best.HasValue)
+                    mobileCollection.Add(best.Value);
+            }
+            eco.MobileCollectionOpportunities = mobileCollection;
+
             // Base opportunities are structural site facts only. Card-specific value/cost remains
             // Strategy/Demand's responsibility, but Analysis owns the one legal candidate set so
             // the desire gate and demand emission cannot disagree. Built independently of whether a
@@ -255,7 +347,8 @@ namespace Game.Ai.V2
             bool baseActionable = baseOpportunities.Count > 0 && baseCards.Count > 0;
             bool extractionActionable = extraction.Any(site =>
                 site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
-            eco.HasActionableOpportunity = extractionActionable || baseActionable;
+            eco.HasActionableOpportunity = extractionActionable || baseActionable
+                || mobileCollection.Count > 0;
 
             return eco;
         }

@@ -1131,6 +1131,9 @@ namespace Game.Ai.V2
         {
             MissionProposal m = funded.Mission;
             StableMissionKey key = StableMissionKey.For(m);
+            if (target.Kind == EconomyTaskKind.MobileCollection
+                || target.Kind == EconomyTaskKind.ReturnCollector)
+                return ProvisionMobileCollection(player, root, ctx, session, funded, target, key);
             if (target.Kind == EconomyTaskKind.ReturnBuilder)
                 return ProvisionEconomyRecovery(player, root, ctx, session, funded, target, key);
             if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, target))
@@ -2066,6 +2069,67 @@ namespace Game.Ai.V2
                 ExecutionHex = target.TargetHex, EconomyTarget = target,
                 ClaimedAp = activation, ClaimedPhysical = ResourceVector.Zero,
                 ReservationOwner = null,
+            });
+        }
+
+        private static ProvisioningResult ProvisionMobileCollection(
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            ProvisioningSession session, FundedEntry funded,
+            EconomyMissionTarget target, StableMissionKey key)
+        {
+            MissionProposal mission = funded.Mission;
+            int? actorId = mission.PreferredMoverArmyId ?? target.CollectorArmyId;
+            if (!actorId.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    "mobile collection mission has no pinned collector"));
+            ArmySnapshot frozen = session.Snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == actorId.Value);
+            bool returning = target.Kind == EconomyTaskKind.ReturnCollector;
+            if (frozen == null || frozen.IsAir || frozen.IsAirfield || frozen.IsGarrison
+                || frozen.IsPrison || (!returning && (!target.ResourceType.HasValue
+                    || frozen.CollectionCapacity.Get(target.ResourceType.Value) <= 0f)))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"collector #{actorId.Value} is no longer eligible"));
+            ArmyData actor = ResolveArmy(player, actorId.Value);
+            if (actor == null || actor.Owner != player || actor.IsAirArmy || actor.IsAirfield
+                || actor.IsGarrison || actor.IsPrison)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"collector #{actorId.Value} no longer exists"));
+            if (session.ClaimedArmyIds.Contains(actor.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"collector #{actor.Id} already claimed this pass"));
+            if (actor.Hex.Equals(target.TargetHex))
+            {
+                if (returning)
+                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                        $"collector #{actor.Id} already protected"));
+                return ProvisioningResult.Ok(new ProvisionedMission
+                {
+                    Mission = mission, Key = key, Kind = MissionKind.Economy,
+                    MoverArmyId = actor.Id, FocusHex = target.TargetHex,
+                    ExecutionHex = target.TargetHex, EconomyTarget = target,
+                    ClaimedAp = 0f, ClaimedPhysical = ResourceVector.Zero,
+                });
+            }
+            if (actor.CurrentMovement <= 0
+                || !SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.TargetHex).HasValue
+                || SafeStepPathing.FindSafePathCost(ctx.Map, actor, target.TargetHex) == int.MaxValue)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"collector #{actor.Id} has no safe executable step"));
+            float activation = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+            if (activation > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activation,
+                    $"collector #{actor.Id} needs {activation:0.##} AP"));
+            if (root == null || activation > root.ActionPoints - session.ApClaimed
+                + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "collector activation AP no longer available"));
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = mission, Key = key, Kind = MissionKind.Economy,
+                MoverArmyId = actor.Id, FocusHex = target.TargetHex,
+                ExecutionHex = target.TargetHex, EconomyTarget = target,
+                ClaimedAp = activation, ClaimedPhysical = ResourceVector.Zero,
             });
         }
 
