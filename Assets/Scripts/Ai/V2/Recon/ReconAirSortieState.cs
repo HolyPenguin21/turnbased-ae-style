@@ -53,6 +53,36 @@ namespace Game.Ai.V2
         // снизился").
         public float BestOutboundStepScore;
 
+        // Frozen launch profile. The outbound limit is derived once from the group's starting
+        // movement/endurance and never from the shrinking CurrentMovement value. A group that may
+        // safely end a turn aloft can spend its whole launch budget outbound; a same-turn-return
+        // group may spend at most floor(budget / 2), preserving the other half for recovery.
+        public int LaunchMovementBudget;
+        public int OutboundMovementSpent;
+        public int OutboundMovementCap;
+        public int LaunchSafeUnlandedEnds;
+
+        public void EnsureLaunchProfile(ArmyData airArmy)
+        {
+            if (LaunchMovementBudget > 0 || airArmy == null)
+                return;
+            LaunchMovementBudget = System.Math.Max(0, airArmy.MaxMovement);
+            LaunchSafeUnlandedEnds = AviationRange.SafeUnlandedEndsRemaining(airArmy);
+            OutboundMovementCap = LaunchSafeUnlandedEnds > 0
+                ? LaunchMovementBudget
+                : LaunchMovementBudget / 2;
+            // A state can be reconstructed for an already-airborne wing. Account for movement
+            // already spent this turn instead of granting a second outbound budget.
+            OutboundMovementSpent = System.Math.Max(0,
+                LaunchMovementBudget - System.Math.Max(0, airArmy.CurrentMovement));
+        }
+
+        public void RecordOutboundMovement(int movementSpent)
+        {
+            OutboundMovementSpent = System.Math.Min(LaunchMovementBudget,
+                System.Math.Max(0, OutboundMovementSpent + System.Math.Max(0, movementSpent)));
+        }
+
         // ===================================================================================
         //  AI-AIR-02 PERSISTENT SORTIE PLAN — the durable bits of the spec's AirSortiePlan that
         //  are not already covered by an existing aviation rule. Endurance itself

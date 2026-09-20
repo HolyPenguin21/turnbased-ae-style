@@ -443,6 +443,9 @@ namespace Game.Ai.V2
                 lp.AirfieldHex, pm?.FocusHex ?? lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
             ReconPatrolStateRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
             ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
+            launchSortie.EnsureLaunchProfile(launched);
+            launchSortie.OutboundMovementSpent = Math.Max(0,
+                launchSortie.LaunchMovementBudget - launched.CurrentMovement);
             launchSortie.LaunchTurn = ctx.TurnNumber;
             launchSortie.RecordStep(launched.Hex);
             launchSortie.ArrivalStrikeCheckPending = true;
@@ -779,6 +782,7 @@ namespace Game.Ai.V2
             }
 
             bool stepMoved = false;
+            int movementBeforeStep = air.CurrentMovement;
             control.CommandAttempted = true;
             yield return MoveOne(player, ctx, air, d.Step,
                 $"V2 Air Recon — {assignment.Mode} {sortie.Phase} one-step live replan",
@@ -794,7 +798,12 @@ namespace Game.Ai.V2
             control.MovedAny = true;
             if (perMissionResult != null) perMissionResult.StepsMoved++;
             ArmyData afterStep = Resolve(player, armyId);
-            if (afterStep != null) sortie.RecordStep(afterStep.Hex);
+            if (afterStep != null)
+            {
+                sortie.RecordStep(afterStep.Hex);
+                sortie.RecordOutboundMovement(Math.Max(1,
+                    movementBeforeStep - afterStep.CurrentMovement));
+            }
             ReconAirSortieLifecycle.Apply(sortie, d);
             sortie.ArrivalStrikeCheckPending = true;
             if (d.PivotToReturnAfterMove)
