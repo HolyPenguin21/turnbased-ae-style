@@ -105,8 +105,7 @@ namespace Game.Ai.V2
                         if (sret.HasValue) incumbents.Add(sret.Value);
                         continue;
                     }
-                    if (intent.Raid.Phase == RaidMissionPhase.AirSupport
-                        || intent.Raid.Phase == RaidMissionPhase.Reinforcement)
+                    if (intent.Raid.Phase == RaidMissionPhase.AirSupport)
                     {
                         RaidCandidate? air = AirSupportCandidate(snap, intent, committed);
                         if (air.HasValue)
@@ -358,41 +357,29 @@ namespace Game.Ai.V2
             ISet<int> committed)
         {
             RaidIntent ri = intent?.Raid;
-            bool continuing = ri?.Phase == RaidMissionPhase.AirSupport;
-            if (ri == null || ri.Target.Kind != RaidTargetKind.NeutralArmy
-                || !ri.PrimaryArmyId.HasValue
-                || (!continuing && ri.SupportArmyId.HasValue))
-                return null;
-            AiMapMemory.KnownEnemySighting? sighting = (snap?.Known?.NeutralSightings
-                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                .Where(s => s.ArmyId == ri.Target.ArmyId)
-                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, ri.Target);
-            if (!continuing && (!sighting.HasValue || sighting.Value.SeenTurn != snap.TurnNumber
-                    || defenders.Count <= 1 || ri.AirSupportAttemptedTurn == snap.TurnNumber))
+            if (ri == null || ri.Phase != RaidMissionPhase.AirSupport
+                || ri.Target.Kind != RaidTargetKind.NeutralArmy
+                || !ri.PrimaryArmyId.HasValue || !ri.AirSupportArmyId.HasValue)
                 return null;
 
-            int? airId = continuing ? ri.AirSupportArmyId : null;
-            if (!airId.HasValue)
-            {
-                airId = (snap.Self.Armies ?? System.Array.Empty<ArmySnapshot>())
-                    .Where(a => a != null && a.IsAir && !a.IsAirfield && !a.IsPrison
-                        && a.MemberCount > 0 && a.CurrentMovement > 0
-                        && (committed == null || !committed.Contains(a.ArmyId)))
-                    .OrderBy(a => HexGridMath.Distance(a.Hex, ri.LastKnownHex))
-                    .ThenBy(a => a.ArmyId)
-                    .Select(a => (int?)a.ArmyId).FirstOrDefault();
-            }
-            if (!airId.HasValue)
-                return null;
-            ArmySnapshot wing = snap.Self.Armies.FirstOrDefault(a => a != null
-                && a.ArmyId == airId.Value && a.IsAir && !a.IsAirfield && !a.IsPrison);
+            int airId = ri.AirSupportArmyId.Value;
+            ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == airId && a.IsAir && !a.IsAirfield && !a.IsPrison);
             if (wing == null)
                 return null;
+
+            // Actor choice and strategic importance were already resolved by
+            // RaidRecoveryPlanner through the canonical TaskScore. This candidate is only the
+            // durable execution leg and must never re-rank wings by distance or object name.
             HexCoord landing = ri.AirSupportLandingHex
                 ?? (snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
                     .OrderBy(h => HexGridMath.Distance(h, ri.LastKnownHex))
                     .ThenBy(h => h.Q).ThenBy(h => h.R).FirstOrDefault();
+            int distance = HexGridMath.Distance(wing.Hex, ri.LastKnownHex);
+            int eta = distance <= wing.CurrentMovement ? 1
+                : 1 + (distance - wing.CurrentMovement
+                    + System.Math.Max(1, wing.MaxMovement) - 1)
+                    / System.Math.Max(1, wing.MaxMovement);
             var target = new RaidMissionTarget
             {
                 Phase = RaidMissionPhase.AirSupport,
@@ -403,14 +390,14 @@ namespace Game.Ai.V2
                 Target = ri.Target,
                 LastKnownHex = ri.LastKnownHex,
                 TargetIsNeutral = true,
-                DefenderCount = defenders.Count,
-                EstimatedEta = 1,
+                DefenderCount = AiV2Util.KnownDefenders(snap, ri.Target).Count,
+                EstimatedEta = eta,
                 AirSupportAttemptedTurn = ri.AirSupportAttemptedTurn,
                 AirSupportStrikeSucceeded = ri.AirSupportStrikeSucceeded,
             };
             float value = default(TaskScore).Value;
             return new RaidCandidate(target, value, value,
-                $"Raid {ri.Target.DiagnosticLabel} AirSupport: wing #{airId.Value} softens exact target nonlethally",
+                $"Raid {ri.Target.DiagnosticLabel} AirSupport: execute scored wing #{airId}",
                 true, intent.Funding, airId, airId);
         }
 
@@ -511,7 +498,7 @@ namespace Game.Ai.V2
                     EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
                     EstimatedDistance = wing == null ? 0
                         : HexGridMath.Distance(wing.Hex, c.Target.DestinationHex),
-                    EtaTurns = 1,
+                    EtaTurns = System.Math.Max(1, c.Target.EstimatedEta),
                 };
             }
             else if (c.Target.Phase == RaidMissionPhase.Refit)
