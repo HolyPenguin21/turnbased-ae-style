@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.Aviation;
 using Game.HexGrid;
 using UnityEngine;
 
@@ -13,6 +14,8 @@ namespace Game.Ai.V2
         internal readonly RaidMissionPhase Phase;
         internal readonly HexCoord? BaseHex;
         internal readonly int? SupportArmyId;
+        internal readonly int? AirSupportArmyId;
+        internal readonly HexCoord? AirSupportLandingHex;
         internal readonly int EtaTurns;
         internal readonly float ApCost;
         internal readonly ResourceVector ResourceCost;
@@ -24,7 +27,8 @@ namespace Game.Ai.V2
         internal readonly string Reason;
 
         internal RaidRecoveryProjection(bool viable, RaidMissionPhase phase, HexCoord? baseHex,
-            int? supportArmyId, int etaTurns, float apCost, ResourceVector resourceCost,
+            int? supportArmyId, int? airSupportArmyId, HexCoord? airSupportLandingHex,
+            int etaTurns, float apCost, ResourceVector resourceCost,
             int blockedActors, float currentWinChance, float projectedWinChance,
             TaskScore score, RaidRefitAction firstRefitAction, string reason)
         {
@@ -32,6 +36,8 @@ namespace Game.Ai.V2
             Phase = phase;
             BaseHex = baseHex;
             SupportArmyId = supportArmyId;
+            AirSupportArmyId = airSupportArmyId;
+            AirSupportLandingHex = airSupportLandingHex;
             EtaTurns = etaTurns;
             ApCost = apCost;
             ResourceCost = resourceCost;
@@ -44,7 +50,7 @@ namespace Game.Ai.V2
         }
 
         internal static RaidRecoveryProjection None(float currentWin, string reason) =>
-            new RaidRecoveryProjection(false, RaidMissionPhase.Return, null, null,
+            new RaidRecoveryProjection(false, RaidMissionPhase.Return, null, null, null, null,
                 int.MaxValue, float.MaxValue, ResourceVector.Zero, int.MaxValue,
                 currentWin, currentWin, default, default, reason);
     }
@@ -95,17 +101,99 @@ namespace Game.Ai.V2
             float currentWin = Win(CombatRoster(primary), defenders, out _);
 
             RaidRecoveryProjection field = fixedBase.HasValue
-                ? RaidRecoveryProjection.None(currentWin, "field comparison suppressed by fixed recovery base")
+                ? RaidRecoveryProjection.None(currentWin,
+                    "field comparison suppressed by fixed recovery base")
                 : ProjectField(snap, primary, defenders, unavailableArmyIds, currentWin,
                     safeRouteCost);
+            RaidRecoveryProjection air = fixedBase.HasValue
+                ? RaidRecoveryProjection.None(currentWin,
+                    "air comparison suppressed by fixed recovery base")
+                : ProjectAirSupport(snap, raid, primary, defenders,
+                    unavailableArmyIds, currentWin);
             RaidRecoveryProjection atBase = fixedBase.HasValue
                 ? ProjectBase(snap, raid, primary, defenders, unavailableArmyIds, currentWin,
                     fixedBase, safeRouteCost)
                 : ProjectBestBase(snap, raid, primary, defenders, unavailableArmyIds,
                     currentWin, safeRouteCost);
-            if (!field.Viable) return atBase;
-            if (!atBase.Viable) return field;
-            return Compare(field, atBase) <= 0 ? field : atBase;
+            return new[] { field, air, atBase }.Where(x => x.Viable)
+                .OrderBy(x => x, Comparer<RaidRecoveryProjection>.Create(Compare))
+                .FirstOrDefault();
+        }
+
+        private static RaidRecoveryProjection ProjectAirSupport(WorldSnapshot snap,
+            RaidIntent raid, ArmySnapshot primary,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            ISet<int> unavailableArmyIds, float currentWin)
+        {
+            if (raid.Target.Kind != RaidTargetKind.NeutralArmy
+                || raid.AirSupportAttemptedTurn == snap.TurnNumber || defenders.Count <= 1)
+                return RaidRecoveryProjection.None(currentWin,
+                    "air support is not eligible for this recovery decision");
+
+            AiMapMemory.KnownEnemySighting? sighting =
+                (snap.Known?.NeutralSightings
+                    ?? Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(x => x.ArmyId == raid.Target.ArmyId)
+                .Select(x => (AiMapMemory.KnownEnemySighting?)x)
+                .FirstOrDefault();
+            if (!sighting.HasValue || sighting.Value.SeenTurn != snap.TurnNumber)
+                return RaidRecoveryProjection.None(currentWin,
+                    "air support requires a fresh exact neutral sighting");
+
+            List<HexCoord> bases = (snap.Self.BaseHexes ?? Array.Empty<HexCoord>())
+                .Distinct().OrderBy(x => x.Q).ThenBy(x => x.R).ToList();
+            if (bases.Count == 0)
+                return RaidRecoveryProjection.None(currentWin,
+                    "air support has no owned recovery landing base");
+
+            RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
+                "no free air wing produces a positive canonical recovery score");
+            foreach (ArmySnapshot wing in (snap.Self.Armies ?? Array.Empty<ArmySnapshot>())
+                .Where(x => x != null && x.IsAir && !x.IsAirfield && !x.IsPrison
+                    && x.MemberCount > 0 && x.CurrentMovement > 0
+                    && (unavailableArmyIds == null
+                        || !unavailableArmyIds.Contains(x.ArmyId)))
+                .OrderBy(x => x.ArmyId))
+            {
+                List<float> attacks = (wing.RecoveryMembers
+                        ?? Array.Empty<RaidRecoveryMemberSnapshot>())
+                    .Where(x => x.IsAviation)
+                    .OrderBy(x => x.UnitIndex)
+                    .Select(x => x.CurrentProfile.Attack).ToList();
+                if (attacks.Count == 0)
+                    continue;
+
+                AviationCombatEstimator.AirStrikeEstimate estimate =
+                    AviationCombatEstimator.EstimateAirStrike(attacks,
+                        sighting.Value.DefenseSum, sighting.Value.AttackSum, defenders,
+                        AirStrikePolicy.RaidSupport(raid.Target.ArmyId));
+                if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
+                    || estimate.ExpectedDefendersAfter.Count < 1)
+                    continue;
+                float after = Win(CombatRoster(primary),
+                    estimate.ExpectedDefendersAfter, out _);
+                if (after <= currentWin + AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+
+                int distance = HexGridMath.Distance(wing.Hex, raid.LastKnownHex);
+                int eta = CeilTurns(wing, distance);
+                float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
+                float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
+                ResourceVector resources = new ResourceVector(0f, 0f, energy, 0f, 0f);
+                TaskScore score = PlanScore(after, ap, resources, eta,
+                    wing.ActivationApCost, blockedActors: 2);
+                HexCoord landing = bases
+                    .OrderBy(x => HexGridMath.Distance(x, raid.LastKnownHex))
+                    .ThenBy(x => x.Q).ThenBy(x => x.R).First();
+                var option = new RaidRecoveryProjection(true,
+                    RaidMissionPhase.AirSupport, null, null, wing.ArmyId, landing,
+                    eta, ap, resources, 2, currentWin, after, score, default,
+                    $"air support #{wing.ArmyId} reaches {after:0.00} "
+                    + $"with canonical score {score.Value:0.00}");
+                if (!best.Viable || Compare(option, best) < 0)
+                    best = option;
+            }
+            return best;
         }
 
         private static RaidRecoveryProjection ProjectBestBase(WorldSnapshot snap, RaidIntent raid,
@@ -217,7 +305,7 @@ namespace Game.Ai.V2
             TaskScore score = PlanScore(win, ap, spent, eta,
                 primary.ActivationApCost, blockedActors);
             return new RaidRecoveryProjection(true, atBase ? RaidMissionPhase.Refit
-                    : RaidMissionPhase.RecoveryReturn, baseHex, null, eta, ap, spent,
+                    : RaidMissionPhase.RecoveryReturn, baseHex, null, null, null, eta, ap, spent,
                 blockedActors, currentWin, win, score, first,
                 $"base recovery reaches {win:0.00} in {eta} turn-step(s) with {actions} action(s)");
         }
@@ -256,7 +344,7 @@ namespace Game.Ai.V2
                 TaskScore score = PlanScore(after, ap, ResourceVector.Zero, eta,
                     support.ActivationApCost, blockedActors: 2);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
-                    null, support.ArmyId, eta, ap, ResourceVector.Zero, 2,
+                    null, support.ArmyId, null, null, eta, ap, ResourceVector.Zero, 2,
                     currentWin, after, score, default,
                     $"field support #{support.ArmyId} reaches {after:0.00} in {eta} turn-step(s)");
                 if (!best.Viable || Compare(option, best) < 0) best = option;
