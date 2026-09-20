@@ -118,6 +118,10 @@ namespace Game.Ai.V2
 
         public static StableMissionKey ForRaid(RaidMissionTarget rt)
         {
+            if (rt.Phase == RaidMissionPhase.AirSupport)
+                return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.AirSupport,
+                    rt.AirSupportArmyId ?? 0, rt.DestinationHex.Q, rt.DestinationHex.R,
+                    rt.Target.Kind);
             if (rt.Phase == RaidMissionPhase.Assault)
                 return ForRaidAssault(rt.Target);
             if (rt.Phase == RaidMissionPhase.SupportReturn)
@@ -140,6 +144,8 @@ namespace Game.Ai.V2
                 return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
                         ? et.BuilderArmyId ?? 0
+                        : et.Kind == EconomyTaskKind.ReturnCollector
+                            ? et.CollectorArmyId ?? 0
                         : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
                     et.TargetHex.Q, et.TargetHex.R);
             if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)

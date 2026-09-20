@@ -50,6 +50,8 @@ namespace Game.Ai.V2
                 return new MissionIntentKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
                         ? et.BuilderArmyId ?? 0
+                        : et.Kind == EconomyTaskKind.ReturnCollector
+                            ? et.CollectorArmyId ?? 0
                         : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
                     et.TargetHex.Q, et.TargetHex.R);
             if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
@@ -76,6 +78,8 @@ namespace Game.Ai.V2
                 return new MissionIntentKey(MissionKind.Economy, (int)ei.Kind,
                     ei.Kind == EconomyTaskKind.ReturnBuilder
                         ? ei.BuilderArmyId ?? intent?.PreferredMoverArmyId ?? 0
+                        : ei.Kind == EconomyTaskKind.ReturnCollector
+                            ? ei.CollectorArmyId ?? intent?.PreferredMoverArmyId ?? 0
                         : ei.ResourceType.HasValue ? (int)ei.ResourceType.Value + 1 : 0,
                     ei.TargetHex.Q, ei.TargetHex.R);
             DevelopmentIntent di = intent?.Development;
@@ -183,6 +187,11 @@ namespace Game.Ai.V2
         // legitimately be 0, so 0 is NOT used as "unbound" — see AiV2 raid-target-unification).
         public int? PrimaryArmyId;
 
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
+        public int AirSupportAttemptedTurn = -1;
+        public bool AirSupportStrikeSucceeded;
+
         // The separate mobile support army delivering reinforcement to the primary, and later the
         // one returning home after a full/full swap (RaidMissionPhase.SupportReturn). HasValue only
         // during Reinforcement/SupportReturn; released (without destroying the Raid) if lost.
@@ -209,6 +218,12 @@ namespace Game.Ai.V2
         public HexCoord TargetHex;
         public ResourceType? ResourceType;
         public int? BuilderArmyId;
+        public int? CollectorArmyId;
+        public int? CollectorSourceArmyId;
+        public int ExpectedMarginalYield;
+        public HexCoord? SafeReturnHex;
+        public int ArrivalTurn = -1;
+        public int LastConfirmedIncomeTick = -1;
         public CardData BuildCard;
         public ResourceCost BuildResourceCost;
         public float BuildApCost;

@@ -8,6 +8,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using Game.Aviation;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -51,6 +52,7 @@ namespace Game.Ai.V2
         // RaidIntent phase before the outcome ledger reconciles it, so actor-role ownership must
         // never be inferred from the intent's already-mutated current phase.
         public bool RaidReinforcementHandoffAttempted;
+        public bool RaidAirSupportStrikeSucceeded;
 
         // Set when an Economy builder reaches its BuildExtraction/FoundBase target this step but
         // the infrastructure itself is not up yet (that's Phase A's job next admission). Nothing in
@@ -511,6 +513,11 @@ namespace Game.Ai.V2
                 yield return RunRaidReturnStep(player, root, ctx, pm, result, army, snapshot);
                 yield break;
             }
+            if (pm.RaidPhase == RaidMissionPhase.AirSupport)
+            {
+                yield return RunRaidAirSupportStep(player, root, ctx, pm, result, army);
+                yield break;
+            }
             if (pm.RaidPhase == RaidMissionPhase.Reinforcement)
             {
                 yield return RunRaidReinforcementStep(player, root, ctx, pm, result, army, snapshot);
@@ -638,6 +645,99 @@ namespace Game.Ai.V2
             result.StopReason = army.CurrentMovement > 0
                 ? ExecutionStopReason.StepCompleted
                 : ExecutionStopReason.OutOfMovement;
+        }
+
+        private static IEnumerator RunRaidAirSupportStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData wing)
+        {
+            if (!AviationRules.IsValidAirArmy(wing)
+                || pm.RaidTarget.Kind != RaidTargetKind.NeutralArmy
+                || !pm.RaidAirSupportLandingHex.HasValue)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            AirSortie sortie = AirSortieRegistry.ForArmy(player, wing);
+            if (sortie == null)
+            {
+                sortie = new AirSortie
+                {
+                    Kind = AirSortieKind.Strike, Army = wing,
+                    TargetHex = pm.RaidLastKnownHex,
+                    LandingHex = pm.RaidAirSupportLandingHex.Value,
+                    Outbound = true,
+                };
+                AirSortieRegistry.Add(player, sortie);
+            }
+            if (sortie.Kind != AirSortieKind.Strike)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                yield break;
+            }
+
+            if (sortie.Outbound && wing.Hex.Equals(pm.RaidLastKnownHex))
+            {
+                AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
+                if (presenter == null)
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    yield break;
+                }
+                var strike = new AviationCombatPresenter.AirStrikeResult();
+                wing.PendingAirStrikePolicy = AirStrikePolicy.RaidSupport(pm.RaidTarget.ArmyId);
+                yield return presenter.ResolveAirStrikeAtCurrentHex(wing, wing.Hex,
+                    wing.PendingAirStrikePolicy.Value, strike);
+                wing.PendingAirStrikePolicy = null;
+                wing.LastAirStrikeHex = wing.Hex;
+                wing.LastAirStrikeAttacked = strike.Attacked;
+                result.CombatChanged |= strike.Attacked;
+                result.RaidAirSupportStrikeSucceeded |= strike.Attacked;
+                sortie.Outbound = false;
+                sortie.TargetHex = sortie.LandingHex;
+                result.ActualActorArmyId = wing.Id;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                yield break;
+            }
+
+            AiDecision move = AiAirSortiePlanner.ContinueSortie(player, root, ctx, sortie,
+                "RaidSupport", "flies toward exact raid target", 0f);
+            if (move == null)
+            {
+                result.StopReason = wing.CurrentMovement <= 0
+                    ? ExecutionStopReason.OutOfMovement : ExecutionStopReason.NoSafeStep;
+                yield break;
+            }
+            HexCoord before = wing.Hex;
+            bool enteringTarget = sortie.Outbound
+                && move.TargetHex.Equals(pm.RaidLastKnownHex);
+            if (enteringTarget)
+                wing.PendingAirStrikePolicy = AirStrikePolicy.RaidSupport(pm.RaidTarget.ArmyId);
+            var trace = new AiMoveExecutionTrace();
+            yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
+            wing.PendingAirStrikePolicy = null;
+            ArmyData after = Resolve(player, pm.MoverArmyId);
+            HexCoord final = after?.Hex ?? trace.EndHex;
+            if (!final.Equals(before))
+                result.StepsMoved++;
+            result.FinalHex = final;
+            result.ActualActorArmyId = pm.MoverArmyId;
+            if (after != null && after.LastAirStrikeHex.HasValue
+                && after.LastAirStrikeHex.Value.Equals(pm.RaidLastKnownHex)
+                && after.LastAirStrikeAttacked)
+            {
+                result.CombatChanged = true;
+                result.RaidAirSupportStrikeSucceeded = true;
+                sortie.Outbound = false;
+                sortie.TargetHex = sortie.LandingHex;
+            }
+            if (!sortie.Outbound && final.Equals(sortie.LandingHex))
+            {
+                AirSortieRegistry.Remove(player, sortie);
+                result.ReachedGoal = true;
+                result.DurableRoleContinues = true;
+            }
+            result.StopReason = ExecutionStopReason.StepCompleted;
         }
 
         // =====================================================================================
@@ -1198,7 +1298,8 @@ namespace Game.Ai.V2
             EconomyMissionTarget target = pm.EconomyTarget;
             if (army.Hex.Equals(target.TargetHex))
             {
-                result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder;
+                result.ReachedGoal = target.Kind == EconomyTaskKind.ReturnBuilder
+                    || target.Kind == EconomyTaskKind.ReturnCollector;
                 result.StopReason = result.ReachedGoal
                     ? ExecutionStopReason.ReachedGoal
                     : ExecutionStopReason.StepCompleted;
@@ -1216,15 +1317,22 @@ namespace Game.Ai.V2
                         + $"({army.Hex.Q},{army.Hex.R})");
                 else
                 {
-                    result.EconomyDeliveryReady = true;
-                    AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                    if (target.Kind == EconomyTaskKind.MobileCollection)
+                        AiDebugLog.Write($"[AI][V2][Economy][Mobile] collector #{army.Id} holding "
+                            + $"@({army.Hex.Q},{army.Hex.R}) for global income tick");
+                    else
+                    {
+                        result.EconomyDeliveryReady = true;
+                        AiDebugLog.Write($"[AI][V2][Economy] delivery ready {pm.Key}; request Phase-A build follow-up");
+                    }
                 }
                 yield break;
             }
             yield return RunGroundTransportStep(player, root, ctx, pm, result, apBefore,
                 target.TargetHex, $"economy — {target.Kind}");
             HexCoord after = result.FinalHex;
-            bool recoveryArrived = target.Kind == EconomyTaskKind.ReturnBuilder
+            bool recoveryArrived = (target.Kind == EconomyTaskKind.ReturnBuilder
+                    || target.Kind == EconomyTaskKind.ReturnCollector)
                 && after.Equals(target.TargetHex);
             result.ReachedGoal = recoveryArrived;
             if (recoveryArrived)

@@ -6,6 +6,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Aviation;
 
 namespace Game.Ai.V2
 {
@@ -298,7 +299,8 @@ namespace Game.Ai.V2
             var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
             MissionIntent primaryEconomyBuild = state.All
                 .Where(i => i?.Kind == MissionKind.Economy && i.Economy != null
-                    && i.Economy.Kind != EconomyTaskKind.ReturnBuilder)
+                    && (i.Economy.Kind == EconomyTaskKind.BuildExtraction
+                        || i.Economy.Kind == EconomyTaskKind.FoundBase))
                 .OrderByDescending(i => i.StepsMovedTotal)
                 .ThenByDescending(i => i.CumulativeApSpent)
                 .ThenBy(i => i.CreatedTurn)
@@ -369,7 +371,9 @@ namespace Game.Ai.V2
                 if (intent.Kind == MissionKind.Economy)
                 {
                     EconomyIntent ei = intent.Economy;
-                    if (ei?.Kind != EconomyTaskKind.ReturnBuilder
+                    bool infrastructure = ei?.Kind == EconomyTaskKind.BuildExtraction
+                        || ei?.Kind == EconomyTaskKind.FoundBase;
+                    if (infrastructure
                         && !object.ReferenceEquals(intent, primaryEconomyBuild))
                     {
                         MissionIntent duplicateLender = null;
@@ -384,8 +388,76 @@ namespace Game.Ai.V2
                             + $"committed={primaryEconomyBuild?.IntentKey}");
                         continue;
                     }
+                    bool collectorMission = ei?.Kind == EconomyTaskKind.MobileCollection
+                        || ei?.Kind == EconomyTaskKind.ReturnCollector;
                     ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
-                        && a.ArmyId == intent.PreferredMoverArmyId && a.HasHero && !a.IsPrison && !a.IsAir);
+                        && a.ArmyId == intent.PreferredMoverArmyId && !a.IsPrison && !a.IsAir
+                        && (collectorMission || a.HasHero));
+                    if (ei?.Kind == EconomyTaskKind.MobileCollection)
+                    {
+                        bool capable = actor != null && ei.ResourceType.HasValue
+                            && actor.CollectionCapacity.Get(ei.ResourceType.Value) > 0f;
+                        bool arrived = capable && actor.Hex.Equals(ei.TargetHex);
+                        if (arrived && ei.ArrivalTurn < 0)
+                            ei.ArrivalTurn = snap.TurnNumber;
+                        if (arrived && snap.TurnNumber > ei.ArrivalTurn)
+                            ei.LastConfirmedIncomeTick = snap.TurnNumber;
+                        bool useful = capable && ei.ResourceType.HasValue
+                            && snap.Economy.IsIncomeDeficient(snap.Self, ei.ResourceType.Value)
+                            && WorldAnalysis.KnownExtractionYields(snap).Any(x =>
+                                x.Hex.Equals(ei.TargetHex) && x.Type == ei.ResourceType.Value
+                                && x.Yield > 0);
+                        bool safe = !WorldAnalysis.KnownHostileAtHex(snap, ei.TargetHex);
+                        if (!capable)
+                        {
+                            dead.Add(intent.IntentKey);
+                            AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire {intent.IntentKey} "
+                                + "reason=collector_lost_or_capability_lost");
+                            continue;
+                        }
+                        if (arrived && ei.LastConfirmedIncomeTick >= 0 && (!useful || !safe))
+                        {
+                            HexCoord? home = ei.SafeReturnHex;
+                            if (!home.HasValue || !IsProtectedEconomyHex(snap, player, home.Value))
+                                home = SelectEconomyRecoveryTarget(snap, player, actor);
+                            if (!home.HasValue)
+                            {
+                                dead.Add(intent.IntentKey);
+                                continue;
+                            }
+                            MissionIntentKey oldKey = intent.IntentKey;
+                            ei.Kind = EconomyTaskKind.ReturnCollector;
+                            ei.TargetHex = home.Value;
+                            intent.IntentKey = MissionIntentKey.For(intent);
+                            if (!oldKey.Equals(intent.IntentKey))
+                                rekeys.Add((oldKey, intent));
+                            active.Add(intent);
+                            AiDebugLog.Write($"[AI][V2][Economy][Mobile] return collector "
+                                + $"#{actor.ArmyId} -> ({home.Value.Q},{home.Value.R})");
+                            continue;
+                        }
+                        if (intent.Status == IntentStatus.Suspended)
+                        {
+                            intent.Status = IntentStatus.Active;
+                            intent.Suspended = SuspendReason.None;
+                        }
+                        active.Add(intent);
+                        continue;
+                    }
+                    if (ei?.Kind == EconomyTaskKind.ReturnCollector)
+                    {
+                        bool completed = actor != null && actor.Hex.Equals(ei.TargetHex);
+                        bool targetValid = IsProtectedEconomyHex(snap, player, ei.TargetHex);
+                        if (completed || actor == null || !targetValid)
+                        {
+                            dead.Add(intent.IntentKey);
+                            AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire return "
+                                + $"{intent.IntentKey} arrived={(completed ? 1 : 0)}");
+                            continue;
+                        }
+                        active.Add(intent);
+                        continue;
+                    }
                     if (ei?.Kind == EconomyTaskKind.ReturnBuilder)
                     {
                         bool completed = actor != null && actor.Hex.Equals(ei.TargetHex);
@@ -500,6 +572,29 @@ namespace Game.Ai.V2
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (no raid objective)");
                         continue;
+                    }
+
+                    if (ri.Phase == RaidMissionPhase.AirSupport)
+                    {
+                        ArmyData airWing = ri.AirSupportArmyId.HasValue
+                            ? AiV2Util.ResolveArmy(player, ri.AirSupportArmyId.Value) : null;
+                        AirSortie sortie = airWing != null
+                            ? AirSortieRegistry.ForArmy(player, airWing) : null;
+                        if (airWing == null || !AviationRules.IsValidAirArmy(airWing)
+                            || sortie == null)
+                        {
+                            int? released = ri.AirSupportArmyId;
+                            ri.AirSupportAttemptedTurn = snap.TurnNumber;
+                            ri.AirSupportArmyId = null;
+                            ri.AirSupportLandingHex = null;
+                            ri.Phase = PrimaryClearsTarget(snap, player,
+                                ri.PrimaryArmyId, ri.Target)
+                                ? RaidMissionPhase.Assault
+                                : RaidMissionPhase.Reinforcement;
+                            AiDebugLog.Write($"[AI][V2][Raid][AirSupport] wing "
+                                + $"#{(released.HasValue ? released.Value.ToString() : "none")} "
+                                + $"released; next phase={ri.Phase}");
+                        }
                     }
 
                     // §5 actor ownership — a LOST SUPPORT actor releases only the support claim;
@@ -1620,7 +1715,20 @@ namespace Game.Ai.V2
                     && o.RaidPrimaryArmyId == raid.PrimaryArmyId
                     && o.RaidSupportArmyId.HasValue
                     && o.RaidSupportArmyId.Value == o.MoverArmyId.Value;
-                if (supportExecutedThisTurn)
+                bool airSupportExecutedThisTurn = raid != null && o.HasRaidPayload
+                    && o.RaidPhase == RaidMissionPhase.AirSupport
+                    && o.RaidAirSupportArmyId.HasValue
+                    && o.RaidAirSupportArmyId.Value == o.MoverArmyId.Value;
+                if (airSupportExecutedThisTurn)
+                {
+                    raid.Phase = RaidMissionPhase.AirSupport;
+                    raid.AirSupportArmyId = o.RaidAirSupportArmyId;
+                    raid.AirSupportLandingHex = o.RaidAirSupportLandingHex;
+                    raid.AirSupportStrikeSucceeded |= o.RaidAirSupportStrikeSucceeded;
+                    AiDebugLog.WriteVerbose($"[AI][V2][Raid][AirSupport] {intent.IntentKey} "
+                        + $"executed by wing #{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept");
+                }
+                else if (supportExecutedThisTurn)
                 {
                     if (o.RaidPhase == RaidMissionPhase.Reinforcement
                         && !o.RaidReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
@@ -1902,7 +2010,15 @@ namespace Game.Ai.V2
             var ei = new EconomyIntent
             {
                 Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
-                BuilderArmyId = o.MoverArmyId,
+                BuilderArmyId = t.Kind == EconomyTaskKind.MobileCollection
+                    || t.Kind == EconomyTaskKind.ReturnCollector ? t.BuilderArmyId : o.MoverArmyId,
+                CollectorArmyId = t.Kind == EconomyTaskKind.MobileCollection
+                    || t.Kind == EconomyTaskKind.ReturnCollector ? o.MoverArmyId : t.CollectorArmyId,
+                CollectorSourceArmyId = t.CollectorSourceArmyId,
+                ExpectedMarginalYield = t.ExpectedMarginalYield,
+                SafeReturnHex = t.SafeReturnHex,
+                ArrivalTurn = t.Kind == EconomyTaskKind.MobileCollection
+                    && o.FinalHex.Equals(t.TargetHex) ? turn : -1,
                 BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
                 BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
                 IntrinsicValue = o.Proposal?.BaseValue,

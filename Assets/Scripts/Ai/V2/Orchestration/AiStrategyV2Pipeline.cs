@@ -295,7 +295,14 @@ namespace Game.Ai.V2
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
     public enum MissionKind { Scout, Raid, Economy, Development }
 
-    public enum EconomyTaskKind { BuildExtraction, FoundBase, ReturnBuilder }
+    public enum EconomyTaskKind
+    {
+        BuildExtraction,
+        FoundBase,
+        MobileCollection,
+        ReturnCollector,
+        ReturnBuilder,
+    }
 
     public struct EconomyMissionTarget
     {
@@ -304,6 +311,10 @@ namespace Game.Ai.V2
         public ResourceType? ResourceType;
         public string ObjectiveId;
         public int? BuilderArmyId;
+        public int? CollectorArmyId;
+        public int? CollectorSourceArmyId;
+        public int ExpectedMarginalYield;
+        public HexCoord? SafeReturnHex;
         public CardData BuildCard;
         public ResourceCost BuildResourceCost;
         public float BuildApCost;

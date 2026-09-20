@@ -566,6 +566,35 @@ namespace Game.Ai.V2
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }
 
+    public readonly struct MobileCollectionOpportunity
+    {
+        public readonly HexCoord TargetHex;
+        public readonly ResourceType ResourceType;
+        public readonly int EffectiveRemainingYield;
+        public readonly int CollectorArmyId;
+        public readonly int TravelAp;
+        public readonly int TurnsToFirstIncome;
+        public readonly float ThreatExposure;
+        public readonly float UsefulMarginalGain;
+        public readonly HexCoord SafeReturnHex;
+
+        public MobileCollectionOpportunity(HexCoord targetHex, ResourceType resourceType,
+            int effectiveRemainingYield, int collectorArmyId, int travelAp,
+            int turnsToFirstIncome, float threatExposure, float usefulMarginalGain,
+            HexCoord safeReturnHex)
+        {
+            TargetHex = targetHex;
+            ResourceType = resourceType;
+            EffectiveRemainingYield = effectiveRemainingYield;
+            CollectorArmyId = collectorArmyId;
+            TravelAp = travelAp;
+            TurnsToFirstIncome = turnsToFirstIncome;
+            ThreatExposure = threatExposure;
+            UsefulMarginalGain = usefulMarginalGain;
+            SafeReturnHex = safeReturnHex;
+        }
+    }
+
     public struct EconomyBaseOpportunity
     {
         // Safe route from an owned base, independent of whether its next builder exists yet.
@@ -595,6 +624,8 @@ namespace Game.Ai.V2
         // reconstructs site legality or resource physics independently.
         public IReadOnlyList<EconomyExtractionOpportunity> ExtractionOpportunities =
             System.Array.Empty<EconomyExtractionOpportunity>();
+        public IReadOnlyList<MobileCollectionOpportunity> MobileCollectionOpportunities =
+            System.Array.Empty<MobileCollectionOpportunity>();
         public IReadOnlyList<EconomyBaseOpportunity> BaseOpportunities =
             System.Array.Empty<EconomyBaseOpportunity>();
 

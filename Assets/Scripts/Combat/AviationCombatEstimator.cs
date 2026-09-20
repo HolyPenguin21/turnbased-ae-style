@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.Aviation;
 using Game.Units;
 using UnityEngine;
 
@@ -85,6 +86,12 @@ namespace Game.Combat
         // ground raid arriving after a real air strike would.
         public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<UnitData> aircraft, float knownDefense, float knownAttack,
             IReadOnlyList<WorthIt.DefenderProfile> knownDefenders)
+            => EstimateAirStrike(aircraft, knownDefense, knownAttack, knownDefenders,
+                AirStrikePolicy.Standard);
+
+        public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<UnitData> aircraft,
+            float knownDefense, float knownAttack,
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy)
         {
             if (aircraft == null || aircraft.Count == 0 || knownDefenders == null || knownDefenders.Count == 0)
                 return new AirStrikeEstimate(knownDefense, knownAttack, knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>(), 0f);
@@ -109,7 +116,7 @@ namespace Game.Combat
 
                 foreach (UnitData plane in aircraft)
                 {
-                    if (alive.Count == 0)
+                    if (alive.Count <= policy.MinimumSurvivors)
                         break; // nothing left standing this trial either — matches RunAirStrike's own early-out
                     int idx = alive[rng.Next(alive.Count)];
                     int atk = WorthIt.RollSuccesses(plane.Attack, rng);

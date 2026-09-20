@@ -92,6 +92,14 @@ namespace Game.Ai.V2
                     return MissionValidity.StaleMoverLost;
                 if (MissionOutcomeLedger.EconomyObjectiveSatisfied(player, pm.EconomyTarget))
                     return MissionValidity.StaleGoalMet;
+                if (pm.EconomyTarget.Kind == EconomyTaskKind.ReturnCollector)
+                    return pm.EconomyTarget.CollectorArmyId == mover.Id
+                        ? MissionValidity.Valid
+                        : MissionValidity.StaleMoverLost;
+                if (pm.EconomyTarget.Kind == EconomyTaskKind.MobileCollection)
+                    return pm.EconomyTarget.CollectorArmyId == mover.Id
+                        ? MissionValidity.Valid
+                        : MissionValidity.StaleMoverLost;
                 if (pm.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder)
                     return pm.EconomyTarget.BuilderArmyId == mover.Id
                         ? MissionValidity.Valid

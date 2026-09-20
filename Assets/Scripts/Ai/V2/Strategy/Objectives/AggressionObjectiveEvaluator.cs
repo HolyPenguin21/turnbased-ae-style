@@ -12,10 +12,11 @@ namespace Game.Ai.V2
 
     public enum RaidMissionPhase
     {
-        Assault,
-        Reinforcement,
-        SupportReturn,
-        Return,
+        Assault = 0,
+        Reinforcement = 1,
+        SupportReturn = 2,
+        Return = 3,
+        AirSupport = 4,
     }
 
     public sealed class AggressionObjective
@@ -67,6 +68,8 @@ namespace Game.Ai.V2
         public RaidMissionPhase Phase;
         public int? PrimaryArmyId;
         public int? SupportArmyId;
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
         public HexCoord DestinationHex;
         public RaidTargetRef Target;
         public HexCoord LastKnownHex;
@@ -79,6 +82,8 @@ namespace Game.Ai.V2
         public int DefenderCount;
         public float TargetPower;
         public int EstimatedEta;
+        public int AirSupportAttemptedTurn;
+        public bool AirSupportStrikeSucceeded;
 
         public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
     }

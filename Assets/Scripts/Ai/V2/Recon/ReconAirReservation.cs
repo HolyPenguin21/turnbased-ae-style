@@ -179,6 +179,10 @@ namespace Game.Ai.V2
                 proj.ClaimedSector = real.ClaimedSector;
                 proj.HasClaim = real.HasClaim;
                 proj.BestOutboundStepScore = real.BestOutboundStepScore;
+                proj.LaunchMovementBudget = real.LaunchMovementBudget;
+                proj.OutboundMovementSpent = real.OutboundMovementSpent;
+                proj.OutboundMovementCap = real.OutboundMovementCap;
+                proj.LaunchSafeUnlandedEnds = real.LaunchSafeUnlandedEnds;
 
                 bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
                 bool canRemain = ctx.Map != null
@@ -203,9 +207,9 @@ namespace Game.Ai.V2
                 proj.Phase = ReconAirPhase.Outbound;
                 proj.LaunchHex = wing.Hex;
                 proj.Trail.Add(wing.Hex);
+                proj.EnsureLaunchProfile(wing);
             }
             return proj;
         }
     }
 }
-

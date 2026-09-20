@@ -39,6 +39,7 @@ namespace Game.Ai.V2
         // Idempotent facts about where the wing physically is right now — not a pending transition.
         internal static void Observe(ReconAirSortieState sortie, ArmyData air, AiTurnContext ctx, bool atAirfield)
         {
+            sortie.EnsureLaunchProfile(air);
             if (sortie.LaunchTurn < 0)
                 sortie.LaunchTurn = atAirfield ? ctx.TurnNumber : ctx.TurnNumber - 1;
             if (!air.Hex.Equals(sortie.LaunchHex))
@@ -196,10 +197,18 @@ namespace Game.Ai.V2
             ReconAirPhase workingPhase = sortie.Phase;
             string decisionReason = null;
             float? nextBestOutboundScore = null;
+            bool pivotAfterForward = false;
 
             bool canRemainAirborne = !atAirfield
                 && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
             bool mustRecoverThisTurn = !atAirfield && airborneTurns >= 1 && !canRemainAirborne;
+
+            if (!atAirfield && workingPhase == ReconAirPhase.Outbound
+                && sortie.OutboundMovementSpent >= sortie.OutboundMovementCap)
+            {
+                workingPhase = ReconAirPhase.Return;
+                decisionReason = "outbound_cap_reached";
+            }
 
             // ---- Hold resolution -------------------------------------------------------------
             if (workingPhase == ReconAirPhase.Hold)
@@ -248,15 +257,31 @@ namespace Game.Ai.V2
                     && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * bestOutbound;
                 bool returnReserve = choice.Value.RequiredTurns <= 1
                     && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack;
-                if (returnReserve && canRemainAirborne && !mustRecoverThisTurn)
+                int stepCost = 1; // aviation movement is flat-cost per adjacent step
+                int spentAfterStep = sortie.OutboundMovementSpent + stepCost;
+                bool wouldExceedOutboundCap = spentAfterStep > sortie.OutboundMovementCap;
+                bool reachesOutboundCap = spentAfterStep >= sortie.OutboundMovementCap;
+
+                // The frozen launch cap, not diminishing CurrentMovement, owns normal route depth.
+                // Before that cap a score drop is only a tie-break signal; hard safety/no-value
+                // rejection is still owned by Pick and the recovery planner.
+                if (wouldExceedOutboundCap)
                 {
-                    decisionReason = "hold_airborne: two-turn endurance window, return deferred";
-                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound hold_airborne "
-                        + $"reason=two_turn_window mpSlackAfter={mpSlackAfterStep} "
-                        + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
+                    workingPhase = ReconAirPhase.Return;
+                    decisionReason = "outbound_cap_preserves_recovery";
+                }
+                else if (reachesOutboundCap)
+                {
+                    pivotAfterForward = true;
+                    decisionReason = "outbound_cap_reached_after_step";
+                }
+                else
+                {
+                    marginalDrop = false;
                     returnReserve = false;
                 }
-                if (marginalDrop || returnReserve)
+
+                if (workingPhase == ReconAirPhase.Outbound && (marginalDrop || returnReserve))
                 {
                     string why = returnReserve ? "return_reserve" : "marginal_gain";
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Turning reason={why} "
@@ -333,7 +358,8 @@ namespace Game.Ai.V2
 
             bool pivotStep = workingPhase == ReconAirPhase.Turning;
             return StepDecision.Forward(choice.Value.Hex, choice.Value.LandingHex, mode,
-                choice.Value.Score, pivotStep, choice.Value.Reason, decisionReason, nextBestOutboundScore);
+                choice.Value.Score, pivotStep || pivotAfterForward, choice.Value.Reason,
+                decisionReason, nextBestOutboundScore);
         }
 
         // ==========================================================================================

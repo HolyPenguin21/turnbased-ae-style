@@ -58,6 +58,9 @@ namespace Game.Ai.V2
         public RaidMissionPhase RaidPhase;
         public int? RaidPrimaryArmyId;
         public int? RaidSupportArmyId;
+        public int? RaidAirSupportArmyId;
+        public HexCoord? RaidAirSupportLandingHex;
+        public bool RaidAirSupportStrikeSucceeded;
         public bool RaidReinforcementHandoffAttempted;
         public bool HasEconomyPayload;
         public EconomyMissionTarget EconomyTarget;
@@ -230,6 +233,8 @@ namespace Game.Ai.V2
                         o.RaidPhase = r.Provisioned.RaidPhase;
                         o.RaidPrimaryArmyId = r.Provisioned.RaidPrimaryArmyId;
                         o.RaidSupportArmyId = r.Provisioned.RaidSupportArmyId;
+                        o.RaidAirSupportArmyId = r.Provisioned.RaidAirSupportArmyId;
+                        o.RaidAirSupportLandingHex = r.Provisioned.RaidAirSupportLandingHex;
                     }
                     else if (r.Provisioned.Kind == MissionKind.Economy)
                     {
@@ -279,6 +284,8 @@ namespace Game.Ai.V2
                             || e.StepsMoved > 0 || raidEngaged;
                         o.RaidReinforcementHandoffAttempted =
                             e.RaidReinforcementHandoffAttempted;
+                        o.RaidAirSupportStrikeSucceeded =
+                            e.RaidAirSupportStrikeSucceeded;
                     }
                     if (o.MissionKind == MissionKind.Economy)
                         o.EconomyBuildCompleted = e.InfrastructureChanged;
@@ -349,7 +356,8 @@ namespace Game.Ai.V2
                         // owns the canonical support cleanup/replacement on the next reaction pass.
                         // The same stop remains fatal for Assault/Return where the mover is primary.
                         o.Outcome = o.HasRaidPayload
-                            && (o.RaidPhase == RaidMissionPhase.Reinforcement
+                            && (o.RaidPhase == RaidMissionPhase.AirSupport
+                                || o.RaidPhase == RaidMissionPhase.Reinforcement
                                 || o.RaidPhase == RaidMissionPhase.SupportReturn)
                             ? ExecutionOutcome.Blocked
                             : ExecutionOutcome.Failed;
@@ -441,6 +449,12 @@ namespace Game.Ai.V2
 
         internal static bool EconomyObjectiveSatisfied(PlayerSetupData player, EconomyMissionTarget t)
         {
+            if (t.Kind == EconomyTaskKind.MobileCollection)
+                return false;
+            if (t.Kind == EconomyTaskKind.ReturnCollector)
+                return t.CollectorArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
+                    && a.Id == t.CollectorArmyId.Value && a.Owner == player
+                    && a.Hex.Equals(t.TargetHex));
             if (t.Kind == EconomyTaskKind.ReturnBuilder)
                 return t.BuilderArmyId.HasValue && ArmyRegistry.AllForOwner(player).Any(a => a != null
                     && a.Id == t.BuilderArmyId.Value && a.Owner == player
