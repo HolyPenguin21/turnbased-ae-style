@@ -2048,6 +2048,10 @@ namespace Game.Ai.V2
                         intent.Raid.RepairsCompleted++;
                     if (o.RaidRefitSucceeded)
                     {
+                        // The bound is consecutive no-progress time, not total recovery duration:
+                        // a useful atomic repair/transfer/swap earns a fresh wait window for the
+                        // next exact step of the already-proven bounded recovery sequence.
+                        intent.Raid.RecoveryStartedTurn = turn;
                         intent.Raid.RecoveryWaitTurns = 0;
                         intent.LastProgressTurn = turn;
                         intent.StallTurns = 0;
