@@ -253,6 +253,13 @@ namespace Game.Ai.V2
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,
+                ActivationCoveredUnitRuntimeIds = ArmyRegistry.AllForOwner(a.Owner)
+                    .Where(other => other != null)
+                    .SelectMany(other => other.Members)
+                    .Where(unit => unit != null && a.HasActivationCoverageFor(unit))
+                    .Select(unit => unit.RuntimeId)
+                    .Distinct()
+                    .ToList(),
                 CurrentMovement = a.CurrentMovement,
                 IsSoloRecce = isOwn && AiArmyRoles.IsSoloRecce(a),
                 IsMobileEconomyBuilder = isOwn && AiArmyRoles.IsHeroLed(a),
