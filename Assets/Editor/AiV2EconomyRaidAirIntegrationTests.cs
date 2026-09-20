@@ -67,7 +67,10 @@ namespace Game.EditorTests
                     MobileCollectionOpportunities = new[]
                     {
                         new MobileCollectionOpportunity(target, ResourceType.Materials,
-                            2, 0, 2, 1, 0f, 3.5f, new HexCoord(0, 0)),
+                            2, 0, 2, 1, 0f,
+                            new TaskScore(economicHexBenefit: 6f, payback: 2f,
+                                cardPrice: 1.5f, delivery: 3f),
+                            new HexCoord(0, 0)),
                     },
                 },
             };
@@ -81,6 +84,8 @@ namespace Game.EditorTests
             Assert.That(payload.CollectorArmyId, Is.EqualTo(0), "army id zero is valid");
             Assert.That(mission.Requirements.RequiresHero, Is.False);
             Assert.That(mission.BaseValue, Is.EqualTo(3.5f));
+            Assert.That(mission.LocalAdmissionScore, Is.EqualTo(3.5f),
+                "the proposal must transport the canonical TaskScore fold unchanged");
         }
 
         [Test]
