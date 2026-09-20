@@ -213,23 +213,36 @@ namespace Game.Ai.V2
                     int turnsToArrival = Mathf.CeilToInt(remaining
                         / (float)Mathf.Max(1, collector.MaxMovement));
                     int firstIncome = Mathf.Max(1, turnsToArrival + 1);
-                    float benefit = TaskScoreEvaluator.EconomicHexBenefit(marginal, priority)
-                        * AiConfigV2.mobileCollectionBenefitFactor;
-                    float score = new TaskScore(
-                        economicHexBenefit: benefit,
+                    float activationAp = !collector.HasActivatedThisTurn
+                        && route.TotalCost > 0 ? collector.ActivationApCost : 0f;
+                    int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                        snap, site.Hex);
+                    var taskScore = new TaskScore(
+                        economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
+                            marginal, priority),
                         payback: TaskScoreEvaluator.Payback(firstIncome),
+                        ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
+                            homeDistance),
+                        cardPrice: TaskScoreEvaluator.CardPrice(activationAp, 0f),
                         delivery: TaskScoreEvaluator.DeliveryFromEta(
-                            collector.ActivationApCost, firstIncome, 1f),
-                        moverOpportunityCost: collector.EffectiveArmyPower
-                            * AiConfigV2.mobileCollectionPowerOpportunityScale,
-                        hexThreatRisk: exposure).Value;
+                            collector.ActivationApCost, firstIncome,
+                            AiConfigV2.taskScoreReactivationApWeight),
+                        // committed actors were filtered above. A free collector does not
+                        // manufacture an opportunity penalty from its combat power.
+                        moverOpportunityCost: 0f,
+                        hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+                    float score = taskScore.Value;
+                    TaskScoreDiagnostics.Log("MobileCollection", site.Hex, taskScore,
+                        $"resource={site.Type} marginal={marginal} priority={priority:0.###} "
+                        + $"firstIncome={firstIncome} activationAp={activationAp:0.###} "
+                        + $"exposure={exposure:0.###} collector=#{collector.ArmyId}");
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
                     var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,
                         marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
                         score, safeReturn.Value);
-                    if (!best.HasValue || candidate.UsefulMarginalGain
-                        > best.Value.UsefulMarginalGain)
+                    if (!best.HasValue || candidate.TaskScoreValue
+                        > best.Value.TaskScoreValue)
                         best = candidate;
                 }
                 if (best.HasValue)
