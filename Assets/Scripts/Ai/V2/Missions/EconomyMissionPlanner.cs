@@ -129,13 +129,13 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy,
                     Target = target,
-                    BaseValue = op.TaskScoreValue,
-                    LocalAdmissionScore = op.TaskScoreValue,
+                    BaseValue = op.Score.Value,
+                    LocalAdmissionScore = op.Score.Value,
                     PreferredMoverArmyId = op.CollectorArmyId,
                     Requirements = Requirements(target, null, snapshot, activeIntents,
                         currentCommitments),
                     Explain = $"economy mobile-collect {op.ResourceType} actor=#{op.CollectorArmyId} "
-                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={op.TaskScoreValue:0.##}",
+                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={op.Score.Value:0.##}",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
                 result.Add(mission);
