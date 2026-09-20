@@ -223,10 +223,13 @@ namespace Game.Ai.V2
                     var taskScore = new TaskScore(
                         economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
                             usefulGain, priority),
-                        payback: TaskScoreEvaluator.Payback(firstIncome),
+                        // Mobile collection has no capital/resource outlay. Arrival time is
+                        // priced once by Delivery; it is not a second, fake payback period.
+                        payback: TaskScoreEvaluator.Payback(0f),
                         ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
                             homeDistance),
-                        cardPrice: TaskScoreEvaluator.CardPrice(activationAp, 0f),
+                        // Army activation is a reactivation fee, not a played-card/action AP cost.
+                        cardPrice: activationAp * AiConfigV2.taskScoreReactivationApWeight,
                         delivery: TaskScoreEvaluator.DeliveryFromEta(
                             collector.ActivationApCost, firstIncome,
                             AiConfigV2.taskScoreReactivationApWeight),
@@ -244,7 +247,7 @@ namespace Game.Ai.V2
                         continue;
                     var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,
                         marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
-                        score, safeReturn.Value);
+                        taskScore, safeReturn.Value);
                     if (!best.HasValue || candidate.TaskScoreValue
                         > best.Value.TaskScoreValue)
                         best = candidate;
