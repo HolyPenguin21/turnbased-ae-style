@@ -602,7 +602,7 @@ namespace Game.Ai.V2
                             {
                                 HashSet<int> unavailable = RecoveryUnavailable(raidClaims, ri);
                                 if (!TransitionToBestRecovery(player, snap, intent, ri, unavailable,
-                                        "air support ended below threshold"))
+                                        "air support ended below threshold", safeRouteCost))
                                 {
                                     dead.Add(intent.IntentKey);
                                     continue;
