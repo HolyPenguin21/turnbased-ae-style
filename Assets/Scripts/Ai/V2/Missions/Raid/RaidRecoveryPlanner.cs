@@ -344,7 +344,7 @@ namespace Game.Ai.V2
                 AiV2Util.KnownDefenders(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), defenders, out _);
             return ProjectField(snap, primary, defenders, null, currentWin,
-                safeRouteCost: null, supportArmyId);
+                null, supportArmyId);
         }
 
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
