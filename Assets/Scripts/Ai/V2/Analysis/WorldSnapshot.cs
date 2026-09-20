@@ -218,6 +218,11 @@ namespace Game.Ai.V2
         // read, projected here because Demand/RankEconomyBuilders only ever sees this snapshot,
         // never the live UnitData. Own armies only in practice.
         public bool HeroIsHomeVocation;
+        // Exact Research/Production roles are kept separately from the broader home-vocation
+        // heuristic. Strategic re-admission uses these facts to distinguish an operator whose
+        // movement can change Development preparation from an unrelated army movement.
+        public bool HasResearchOperator;
+        public bool HasProductionOperator;
         public bool IsHiddenFromUs;
 
         public float AttackSum;             // WorthIt-style raw sum, non-hero
@@ -821,4 +826,3 @@ namespace Game.Ai.V2
         public bool UnderSiege;
     }
 }
-

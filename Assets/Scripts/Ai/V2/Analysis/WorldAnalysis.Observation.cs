@@ -266,6 +266,8 @@ namespace Game.Ai.V2
             && a.CompositionQuality == b.CompositionQuality
             && a.HasHero == b.HasHero
             && a.HeroCommandRating == b.HeroCommandRating
+            && a.HasResearchOperator == b.HasResearchOperator
+            && a.HasProductionOperator == b.HasProductionOperator
             && a.HasAntiAir == b.HasAntiAir
             && a.Capacity == b.Capacity
             && a.OccupiedBattleSlots == b.OccupiedBattleSlots
