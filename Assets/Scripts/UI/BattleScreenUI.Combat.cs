@@ -728,6 +728,11 @@ namespace Game.UI
             hero.Owner = capturer;
             hero.IsPrisoner = true;
             prison.Members.Add(hero);
+            // citadelHex is the CAPTOR's own citadel, not the battle hex the caller already
+            // notifies for — a hero landing in Prison is a real roster change there (Prison isn't
+            // filtered out of BattleInitiator.IsEngageable/AiMapMemory's enemy-sighting scan), and
+            // this citadel can be anywhere on the map relative to where the capture happened.
+            VisionSystem.NotifyContentChanged(citadelHex);
             return true;
         }
 

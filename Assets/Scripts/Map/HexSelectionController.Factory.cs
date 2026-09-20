@@ -99,6 +99,14 @@ namespace Game.Map
         {
             if (army == null || army.Members.Count > 0)
                 return;
+            // Going empty is itself a content change any watcher needs, whether or not the shell
+            // below survives — the Barracks/Airfield branch keeps the ArmyData/marker alive as a
+            // persistent empty container, which used to mean callers relying solely on this method
+            // (e.g. AviationActions.ReturnAircraftToDeck) never told anyone the hex just lost its
+            // whole roster. ArmyRegistry.Unregister below already publishes on the normal path —
+            // this makes the guarded "kept as a shell" path do the same instead of silently
+            // skipping it.
+            VisionSystem.NotifyContentChanged(army.Hex);
             BuildingData building = BuildingRegistry.FindAt(army.Hex);
             if (building != null && building.Owner == army.Owner
                 && (building.HasAbility(UnitAbilities.Barracks)
