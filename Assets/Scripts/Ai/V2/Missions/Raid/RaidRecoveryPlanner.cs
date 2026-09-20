@@ -19,13 +19,14 @@ namespace Game.Ai.V2
         internal readonly int BlockedActors;
         internal readonly float CurrentWinChance;
         internal readonly float ProjectedWinChance;
+        internal readonly TaskScore Score;
         internal readonly RaidRefitAction FirstRefitAction;
         internal readonly string Reason;
 
         internal RaidRecoveryProjection(bool viable, RaidMissionPhase phase, HexCoord? baseHex,
             int? supportArmyId, int etaTurns, float apCost, ResourceVector resourceCost,
             int blockedActors, float currentWinChance, float projectedWinChance,
-            RaidRefitAction firstRefitAction, string reason)
+            TaskScore score, RaidRefitAction firstRefitAction, string reason)
         {
             Viable = viable;
             Phase = phase;
@@ -37,6 +38,7 @@ namespace Game.Ai.V2
             BlockedActors = blockedActors;
             CurrentWinChance = currentWinChance;
             ProjectedWinChance = projectedWinChance;
+            Score = score;
             FirstRefitAction = firstRefitAction;
             Reason = reason;
         }
@@ -44,7 +46,7 @@ namespace Game.Ai.V2
         internal static RaidRecoveryProjection None(float currentWin, string reason) =>
             new RaidRecoveryProjection(false, RaidMissionPhase.Return, null, null,
                 int.MaxValue, float.MaxValue, ResourceVector.Zero, int.MaxValue,
-                currentWin, currentWin, default, reason);
+                currentWin, currentWin, default, default, reason);
     }
 
     // Pure comparison of the two ways an already-started Raid can regain the existing
@@ -63,21 +65,16 @@ namespace Game.Ai.V2
         {
             internal readonly RaidRefitAction Action;
             internal readonly float Gain;
-            internal readonly float Efficiency;
-            internal readonly bool Hero;
-            internal readonly float FullValue;
+            internal readonly TaskScore Score;
             internal readonly int StableIndex;
-            internal readonly int DonorArmyId;
+            internal readonly int? DonorArmyId;
 
-            internal Candidate(RaidRefitAction action, float gain, bool hero,
-                float fullValue, int stableIndex, int donorArmyId)
+            internal Candidate(RaidRefitAction action, float gain,
+                int stableIndex, int? donorArmyId)
             {
                 Action = action;
                 Gain = gain;
-                float scarcity = 1f + action.ApCost + PhysicalMagnitude(action.ResourceCost);
-                Efficiency = gain / scarcity;
-                Hero = hero;
-                FullValue = fullValue;
+                Score = ActionScore(action);
                 StableIndex = stableIndex;
                 DonorArmyId = donorArmyId;
             }
@@ -180,10 +177,8 @@ namespace Game.Ai.V2
                 List<Candidate> candidates = BuildCandidates(snap, primary, baseHex.Value,
                     roster, initialCombatBodyCount, donors, usedDonors, defenders, spent, win);
                 Candidate best = candidates
-                    .OrderByDescending(c => c.Efficiency)
+                    .OrderByDescending(c => c.Score.Value)
                     .ThenByDescending(c => c.Gain)
-                    .ThenByDescending(c => c.Hero)
-                    .ThenByDescending(c => c.FullValue)
                     .ThenBy(c => c.DonorArmyId)
                     .ThenBy(c => c.StableIndex)
                     .FirstOrDefault();
@@ -218,9 +213,12 @@ namespace Game.Ai.V2
             int eta = toBase + actions + toTarget;
             int donorsBlocked = donors.Where(d => usedDonors.Contains(d.Member.RuntimeId))
                 .Select(d => d.Army.ArmyId).Distinct().Count();
+            int blockedActors = 1 + donorsBlocked;
+            TaskScore score = PlanScore(win, ap, spent, eta,
+                primary.ActivationApCost, blockedActors);
             return new RaidRecoveryProjection(true, atBase ? RaidMissionPhase.Refit
                     : RaidMissionPhase.RecoveryReturn, baseHex, null, eta, ap, spent,
-                1 + donorsBlocked, currentWin, win, first,
+                blockedActors, currentWin, win, score, first,
                 $"base recovery reaches {win:0.00} in {eta} turn-step(s) with {actions} action(s)");
         }
 
@@ -239,7 +237,8 @@ namespace Game.Ai.V2
                 List<WorthIt.DefenderProfile> supportBodies = (support.RecoveryMembers
                         ?? Array.Empty<RaidRecoveryMemberSnapshot>())
                     .Where(m => m.CanSpareForRaid && !m.IsHero && !m.IsAviation)
-                    .OrderByDescending(m => ProfileValue(m.CurrentProfile))
+                    .OrderByDescending(m => m.FullCombatValue)
+                    .ThenBy(m => m.UnitIndex)
                     .Select(m => m.CurrentProfile).ToList();
                 if (!GroundCombatAssemblyPlanner.TryProjectReinforcement(CombatRoster(primary),
                         supportBodies, primary.Capacity, primary.MemberCount, defenders,
@@ -254,9 +253,11 @@ namespace Game.Ai.V2
                     continue;
                 int eta = CeilTurns(support, routeDistance) + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
+                TaskScore score = PlanScore(after, ap, ResourceVector.Zero, eta,
+                    support.ActivationApCost, blockedActors: 2);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, eta, ap, ResourceVector.Zero, 2,
-                    currentWin, after, default,
+                    currentWin, after, score, default,
                     $"field support #{support.ArmyId} reaches {after:0.00} in {eta} turn-step(s)");
                 if (!best.Viable || Compare(option, best) < 0) best = option;
             }
@@ -292,8 +293,7 @@ namespace Game.Ai.V2
                     WinChanceBefore = winBefore,
                     WinChanceAfter = after,
                 };
-                result.Add(new Candidate(action, gain, source.IsHero,
-                    source.FullCombatValue, source.UnitIndex, 0));
+                result.Add(new Candidate(action, gain, source.UnitIndex, null));
             }
 
             int currentMemberCount = primary.MemberCount + (roster.Count - initialCombatBodyCount);
@@ -321,14 +321,13 @@ namespace Game.Ai.V2
                         WinChanceBefore = winBefore,
                         WinChanceAfter = after,
                     };
-                    result.Add(new Candidate(action, after - winBefore, false,
-                        donor.FullCombatValue, donor.UnitIndex, donorArmy.ArmyId));
+                    result.Add(new Candidate(action, after - winBefore,
+                        donor.UnitIndex, donorArmy.ArmyId));
                     continue;
                 }
 
                 foreach (SimMember displaced in roster.Where(x => !x.Source.IsHero && !x.Source.IsAviation))
                 {
-                    if (ProfileValue(donor.CurrentProfile) <= ProfileValue(displaced.Profile)) continue;
                     var projected = roster.Select(x => x.Profile).ToList();
                     projected[roster.IndexOf(displaced)] = donor.CurrentProfile;
                     float after = Win(projected, defenders, out _);
@@ -347,8 +346,8 @@ namespace Game.Ai.V2
                         WinChanceBefore = winBefore,
                         WinChanceAfter = after,
                     };
-                    result.Add(new Candidate(action, after - winBefore, false,
-                        donor.FullCombatValue, donor.UnitIndex, donorArmy.ArmyId));
+                    result.Add(new Candidate(action, after - winBefore,
+                        donor.UnitIndex, donorArmy.ArmyId));
                 }
             }
             return result;
@@ -379,12 +378,9 @@ namespace Game.Ai.V2
 
         private static int Compare(RaidRecoveryProjection a, RaidRecoveryProjection b)
         {
-            int c = a.EtaTurns.CompareTo(b.EtaTurns); if (c != 0) return c;
-            c = a.ApCost.CompareTo(b.ApCost); if (c != 0) return c;
-            c = PhysicalMagnitude(a.ResourceCost).CompareTo(PhysicalMagnitude(b.ResourceCost));
-            if (c != 0) return c;
-            c = a.BlockedActors.CompareTo(b.BlockedActors); if (c != 0) return c;
+            int c = b.Score.Value.CompareTo(a.Score.Value); if (c != 0) return c;
             c = b.ProjectedWinChance.CompareTo(a.ProjectedWinChance); if (c != 0) return c;
+            c = a.EtaTurns.CompareTo(b.EtaTurns); if (c != 0) return c;
             c = Nullable.Compare(a.SupportArmyId, b.SupportArmyId); if (c != 0) return c;
             if (a.BaseHex.HasValue && b.BaseHex.HasValue)
             {
@@ -436,10 +432,28 @@ namespace Game.Ai.V2
             stock.Human + 0.001f >= cost.Human && stock.Energy + 0.001f >= cost.Energy
             && stock.Materials + 0.001f >= cost.Materials && stock.Tech + 0.001f >= cost.Tech;
 
-        private static float PhysicalMagnitude(ResourceVector v) =>
-            v.Human + v.Energy + v.Materials + v.Tech;
+        private static TaskScore ActionScore(RaidRefitAction action) =>
+            new TaskScore(
+                winChance: TaskScoreEvaluator.WinChance(action.WinChanceAfter),
+                cardPrice: TaskScoreEvaluator.CardPrice(
+                    action.ApCost, ResourceMagnitude(action.ResourceCost)),
+                moverOpportunityCost: action.DonorArmyId.HasValue ? 1f : 0f);
 
-        private static float ProfileValue(WorthIt.DefenderProfile p) =>
-            p.Attack + p.Defense + p.HitPoints + 0.25f * p.Initiative;
+        private static TaskScore PlanScore(float projectedWinChance, float apCost,
+            ResourceVector resourceCost, int etaTurns, float recurringActivationAp,
+            int blockedActors) =>
+            new TaskScore(
+                winChance: TaskScoreEvaluator.WinChance(projectedWinChance),
+                cardPrice: TaskScoreEvaluator.CardPrice(
+                    apCost, ResourceMagnitude(resourceCost)),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(
+                    recurringActivationAp, etaTurns,
+                    AiConfigV2.taskScoreReactivationApWeight),
+                // The primary is already committed in every recovery option. Only additional
+                // support/donor actors are an opportunity cost.
+                moverOpportunityCost: Math.Max(0, blockedActors - 1));
+
+        private static float ResourceMagnitude(ResourceVector v) =>
+            v.Human + v.Energy + v.Materials + v.Tech;
     }
 }
