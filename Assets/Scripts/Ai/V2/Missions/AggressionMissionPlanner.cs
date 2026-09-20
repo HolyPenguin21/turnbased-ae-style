@@ -105,7 +105,8 @@ namespace Game.Ai.V2
                         if (sret.HasValue) incumbents.Add(sret.Value);
                         continue;
                     }
-                    if (intent.Raid.Phase == RaidMissionPhase.AirSupport)
+                    if (intent.Raid.Phase == RaidMissionPhase.AirSupport
+                        || intent.Raid.Phase == RaidMissionPhase.Reinforcement)
                     {
                         RaidCandidate? air = AirSupportCandidate(snap, intent, committed);
                         if (air.HasValue)
@@ -357,24 +358,44 @@ namespace Game.Ai.V2
             ISet<int> committed)
         {
             RaidIntent ri = intent?.Raid;
-            if (ri == null || ri.Phase != RaidMissionPhase.AirSupport
-                || ri.Target.Kind != RaidTargetKind.NeutralArmy
-                || !ri.PrimaryArmyId.HasValue || !ri.AirSupportArmyId.HasValue)
+            if (ri == null || ri.Target.Kind != RaidTargetKind.NeutralArmy
+                || !ri.PrimaryArmyId.HasValue
+                || (ri.Phase != RaidMissionPhase.AirSupport
+                    && ri.Phase != RaidMissionPhase.Reinforcement))
                 return null;
 
-            int airId = ri.AirSupportArmyId.Value;
+            RaidRecoveryProjection scored;
+            int airId;
+            HexCoord landing;
+            if (ri.Phase == RaidMissionPhase.AirSupport)
+            {
+                if (!ri.AirSupportArmyId.HasValue)
+                    return null;
+                airId = ri.AirSupportArmyId.Value;
+                scored = RaidRecoveryPlanner.ProjectAirSupportForWing(snap, ri, airId);
+                landing = ri.AirSupportLandingHex
+                    ?? (snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
+                        .OrderBy(h => HexGridMath.Distance(h, ri.LastKnownHex))
+                        .ThenBy(h => h.Q).ThenBy(h => h.R).FirstOrDefault();
+            }
+            else
+            {
+                // A not-yet-started weak Raid can still request aviation, but wing choice and
+                // importance now come only from the same canonical comparison as field/base
+                // recovery. Missions never applies a second nearest-wing heuristic.
+                scored = RaidRecoveryPlanner.Choose(snap, ri, committed);
+                if (!scored.Viable || scored.Phase != RaidMissionPhase.AirSupport
+                    || !scored.AirSupportArmyId.HasValue
+                    || !scored.AirSupportLandingHex.HasValue)
+                    return null;
+                airId = scored.AirSupportArmyId.Value;
+                landing = scored.AirSupportLandingHex.Value;
+            }
+
             ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
                 && a.ArmyId == airId && a.IsAir && !a.IsAirfield && !a.IsPrison);
             if (wing == null)
                 return null;
-
-            // Actor choice and strategic importance were already resolved by
-            // RaidRecoveryPlanner through the canonical TaskScore. This candidate is only the
-            // durable execution leg and must never re-rank wings by distance or object name.
-            HexCoord landing = ri.AirSupportLandingHex
-                ?? (snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
-                    .OrderBy(h => HexGridMath.Distance(h, ri.LastKnownHex))
-                    .ThenBy(h => h.Q).ThenBy(h => h.R).FirstOrDefault();
             int distance = HexGridMath.Distance(wing.Hex, ri.LastKnownHex);
             int eta = distance <= wing.CurrentMovement ? 1
                 : 1 + (distance - wing.CurrentMovement
@@ -395,8 +416,6 @@ namespace Game.Ai.V2
                 AirSupportAttemptedTurn = ri.AirSupportAttemptedTurn,
                 AirSupportStrikeSucceeded = ri.AirSupportStrikeSucceeded,
             };
-            RaidRecoveryProjection scored =
-                RaidRecoveryPlanner.ProjectAirSupportForWing(snap, ri, airId);
             float value = scored.Viable ? scored.Score.Value : default(TaskScore).Value;
             return new RaidCandidate(target, value, value,
                 $"Raid {ri.Target.DiagnosticLabel} AirSupport: execute scored wing #{airId}; "
