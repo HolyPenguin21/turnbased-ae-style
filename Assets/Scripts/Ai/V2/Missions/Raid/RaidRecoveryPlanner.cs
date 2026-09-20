@@ -80,7 +80,7 @@ namespace Game.Ai.V2
             {
                 Action = action;
                 Gain = gain;
-                Score = ActionScore(action);
+                Score = ScoreRefitAction(action);
                 StableIndex = stableIndex;
                 DonorArmyId = donorArmyId;
             }
@@ -331,12 +331,31 @@ namespace Game.Ai.V2
                 $"base recovery reaches {win:0.00} in {eta} turn-step(s) with {actions} action(s)");
         }
 
+        internal static RaidRecoveryProjection ProjectFieldForSupport(
+            WorldSnapshot snap, RaidIntent raid, int? supportArmyId = null)
+        {
+            if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
+                return RaidRecoveryProjection.None(0f, "missing primary snapshot");
+            ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(x => x != null
+                && x.ArmyId == raid.PrimaryArmyId.Value);
+            if (primary == null)
+                return RaidRecoveryProjection.None(0f, "primary no longer exists");
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                AiV2Util.KnownDefenders(snap, raid.Target);
+            float currentWin = Win(CombatRoster(primary), defenders, out _);
+            return ProjectField(snap, primary, defenders, null, currentWin,
+                safeRouteCost: null, supportArmyId);
+        }
+
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds,
-            float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost)
+            float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost,
+            int? fixedSupportArmyId = null)
         {
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                 snap, primary.ArmyId, defenders, unavailableArmyIds);
+            if (fixedSupportArmyId.HasValue)
+                ids = ids.Where(x => x == fixedSupportArmyId.Value).ToList();
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
                 "no free field support can deliver a threshold-clearing roster");
             foreach (int id in ids)
@@ -541,7 +560,7 @@ namespace Game.Ai.V2
             stock.Human + 0.001f >= cost.Human && stock.Energy + 0.001f >= cost.Energy
             && stock.Materials + 0.001f >= cost.Materials && stock.Tech + 0.001f >= cost.Tech;
 
-        private static TaskScore ActionScore(RaidRefitAction action) =>
+        internal static TaskScore ScoreRefitAction(RaidRefitAction action) =>
             new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(action.WinChanceAfter),
                 cardPrice: TaskScoreEvaluator.CardPrice(
