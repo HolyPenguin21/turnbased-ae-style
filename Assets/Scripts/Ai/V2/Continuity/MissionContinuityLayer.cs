@@ -918,11 +918,6 @@ namespace Game.Ai.V2
                 return x.IntentKey.CompareTo(y.IntentKey);
             });
 
-            if (state.Count > 0)
-                AiDebugLog.WriteVerbose($"[AI][V2] continuity — {state.Count} intent(s): "
-                    + string.Join(" ", state.All.Select(i =>
-                        $"{i.IntentKey}[{i.Funding}/{i.Status}{(i.Suspended != SuspendReason.None ? ":" + i.Suspended : "")} "
-                        + $"t{i.TurnsActive} stall{i.StallTurns}{(i.PreferredMoverArmyId.HasValue ? " mv#" + i.PreferredMoverArmyId : "")}]")));
 
             // §P1 — if desired concurrency has fallen below the number of active durable Scout
             // lanes (map mostly explored, fewer reachable regions), retire the surplus lanes
@@ -2006,17 +2001,12 @@ namespace Game.Ai.V2
                     raid.AirSupportArmyId = o.RaidAirSupportArmyId;
                     raid.AirSupportLandingHex = o.RaidAirSupportLandingHex;
                     raid.AirSupportStrikeSucceeded |= o.RaidAirSupportStrikeSucceeded;
-                    AiDebugLog.WriteVerbose($"[AI][V2][Raid][AirSupport] {intent.IntentKey} "
-                        + $"executed by wing #{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept");
                 }
                 else if (supportExecutedThisTurn)
                 {
                     if (o.RaidPhase == RaidMissionPhase.Reinforcement
                         && !o.RaidReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
                         raid.SupportArmyId = o.MoverArmyId.Value;
-                    AiDebugLog.WriteVerbose($"[AI][V2][Raid] {intent.IntentKey} step executed by support "
-                        + $"#{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept; "
-                        + $"handoffAttempted={(o.RaidReinforcementHandoffAttempted ? 1 : 0)}");
                 }
                 // Economy actor ownership is durable. A replacement may only happen after
                 // ResolveActive retires a structurally invalid intent; an ordinary retry cannot

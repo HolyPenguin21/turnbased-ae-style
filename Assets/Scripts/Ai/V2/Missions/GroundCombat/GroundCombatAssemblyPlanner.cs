@@ -109,9 +109,16 @@ namespace Game.Ai.V2
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders =
                 request.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            // Perf — Record()'s caller re-invokes Plan() once per already-found army (excluding it
+            // each time) to enumerate the whole eligible set, and both loops below return on the
+            // FIRST army that clears the estimator. Trying the strongest army first means a
+            // decisive matchup exits after one Monte-Carlo call instead of working through weaker
+            // armies that were never going to beat it there first anyway. OrderBy is stable, so
+            // this ordering survives untouched through the PreferredPrimaryArmyId reorder below.
             List<ArmySnapshot> eligible = GroundCombatActorEligibility
                 .EligibleReadyArmies(snap, request.ExcludedArmyIds)
                 .Where(a => Admissible(a, request))
+                .OrderByDescending(a => a.EffectiveArmyPower)
                 .ToList();
             if (request.PinToPreferred && request.PreferredPrimaryArmyId.HasValue)
                 eligible = eligible.Where(a => a.ArmyId == request.PreferredPrimaryArmyId.Value).ToList();

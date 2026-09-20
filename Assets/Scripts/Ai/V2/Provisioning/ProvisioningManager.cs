@@ -502,12 +502,7 @@ namespace Game.Ai.V2
                 container = ArmyActions.CreateArmyWithMember(player, garrison.Hex, catalog,
                     garrison, candidate.Hero, ctx.HexSelection, out string whyCreate);
                 if (container == null)
-                {
-                    if (!string.IsNullOrEmpty(whyCreate))
-                        AiDebugLog.WriteVerbose($"[AI][V2][Economy] garrison hero extraction "
-                            + $"(Create) failed atomically: {whyCreate}");
                     return null;
-                }
                 AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
                     + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "
                     + $"ap {candidate.ApCost:0.##}) for economy mobile_hero duty");
@@ -516,11 +511,7 @@ namespace Game.Ai.V2
 
             if (!ArmyActions.TransferMember(candidate.Hero, garrison, container,
                     ctx.HexSelection, out string why))
-            {
-                AiDebugLog.WriteVerbose($"[AI][V2][Economy] garrison hero extraction "
-                    + $"({candidate.Tier}) to #{container.Id} failed: {why}");
                 return null;
-            }
             AiDebugLog.Write($"[AI][V2][Economy] extracted idle hero {candidate.Hero.Name} "
                 + $"from garrison #{garrison.Id} into #{container.Id} ({candidate.Tier}, "
                 + $"ap {candidate.ApCost:0.##}) for economy mobile_hero duty");
@@ -943,7 +934,6 @@ namespace Game.Ai.V2
             {
                 if (!ArmyActions.TransferMember(plannedExtractUnit, garrisonArmy, destinationShell, ctx.HexSelection, out string why))
                 {
-                    AiDebugLog.WriteVerbose($"[AI][V2][Recon] garrison Recce extraction failed: {why}");
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"garrison #{exec.SourceGarrisonArmyId} extraction into shell #{exec.MaterializationArmyId} failed: {why}"));
                 }
@@ -1878,18 +1868,12 @@ namespace Game.Ai.V2
             {
                 if (!ArmyActions.TransferMembersAtomic(
                         unload, builder, garrison, ctx.HexSelection, out string whyUnload))
-                {
-                    if (!string.IsNullOrEmpty(whyUnload))
-                        AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder lighten skipped: {whyUnload}");
                     return 0;
-                }
                 unloadApplied = true;
             }
             if (reinforcement.Count > 0 && !ArmyActions.TransferMembersAtomic(
                     reinforcement, garrison, builder, ctx.HexSelection, out string whyAdd))
             {
-                if (!string.IsNullOrEmpty(whyAdd))
-                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] builder reinforce skipped: {whyAdd}");
                 // 2026-09-14 review round 6 (P0) — unload+reinforce is ONE canonical composition
                 // change, not two independent ones: a reinforcement failure must not leave an
                 // already-applied unload silently uncommitted-for (caller reported failure while the

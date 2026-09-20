@@ -969,9 +969,26 @@ namespace Game.Ai.V2
                     // candidate set — the existing intra-step "chance within the batch" is untouched.
                     var retryNextTurnThisPass = new HashSet<StableMissionKey>();
 
+                    // Perf: an AI turn can run dozens of settled steps back-to-back with no other
+                    // yield in between (each step's own yields resolve synchronously — see the
+                    // profiler frame that motivated this), so the whole turn used to land in one
+                    // single-frame hitch (observed ~885ms / 15 FPS). Give a real frame back to the
+                    // engine whenever the wall-clock budget since the last frame is exceeded, so the
+                    // same total work is spread across several frames instead of freezing one.
+                    // Total AI-turn wall-clock time goes UP by roughly one frame per yield — that
+                    // tradeoff (smoother frame pacing over shorter total wait) is the project
+                    // owner's explicit call, 2026-09-20.
+                    const float yieldBudgetSeconds = 0.008f;
+                    float lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
+
                     while (settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
                         && noProgressCycles < AiConfigV2.maxMidTurnNoProgressCycles)
                     {
+                    if (UnityEngine.Time.realtimeSinceStartup - lastYieldTime >= yieldBudgetSeconds)
+                    {
+                        yield return null;
+                        lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
+                    }
                     // Every admission reads a settled world. Strategic observations are refreshed
                     // here. The radar frame stays stable for this turn; typed Development facts
                     // re-enter the existing manager immediately after the settled task boundary.
@@ -1818,24 +1835,6 @@ namespace Game.Ai.V2
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
 
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
-            foreach (MissionProposal m in missions)
-            {
-                MissionRequirements r = m.Requirements;
-                AiDebugLog.WriteVerbose($"[AI][V2]   mission — [{m.AttemptId}] causeDemand={m.CauseDemandTrace} {m.Kind} baseValue "
-                    + $"{m.BaseValue.ToString("0.0", CultureInfo.InvariantCulture)} "
-                    + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} "
-                    + $"las {m.LocalAdmissionScore.ToString("0.00", CultureInfo.InvariantCulture)} "
-                    + $"axes[{string.Join(",", m.Axes.Value.Select(kv => $"{DesireAxes.Abbrev(kv.Key)}={kv.Value.ToString("0.00", CultureInfo.InvariantCulture)}"))}] "
-                    + $"| req ap {Fmt(r?.ApMinimum)}/{Fmt(r?.ApDesired)}/{Fmt(r?.ApMaximum)} "
-                    + $"energy {Fmt(r?.EnergyMinimum)}/{Fmt(r?.EnergyDesired)}/{Fmt(r?.EnergyMaximum)} "
-                    + (r != null && (r.HumanDesired > 0f || r.MaterialsDesired > 0f || r.TechDesired > 0f)
-                        ? $"hmt {Fmt(r.HumanDesired)}/{Fmt(r.MaterialsDesired)}/{Fmt(r.TechDesired)} " : "")
-                    + (r != null && r.RequiresArmy
-                        ? $"army{(r.RequiresHero ? "+hero" : "")} cp {Fmt(r.CombatPowerMinimum)}/{Fmt(r.CombatPowerDesired)} " : "")
-                    + $"eta {r?.EtaTurns} moverKnown {(r?.MoverKnown == true ? 1 : 0)}"
-                    + $"{(m.PreferredMoverArmyId.HasValue ? " prefMv#" + m.PreferredMoverArmyId : "")} "
-                    + $"| {m.Explain}");
-            }
             return missions;
         }
 
@@ -1866,8 +1865,6 @@ namespace Game.Ai.V2
                     actionableAtStart, unactivatedActionable, hadPotentialWork));
         }
 
-        private static string Fmt(float? v) =>
-            v.HasValue ? v.Value.ToString("0.0", CultureInfo.InvariantCulture) : "-";
     }
 
     // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own

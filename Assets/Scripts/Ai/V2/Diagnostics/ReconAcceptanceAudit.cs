@@ -343,12 +343,9 @@ namespace Game.Ai.V2
             if (previous == final && previous != Status.NotObserved)
                 return;
             state.SummaryWritten = false;
-            string line = $"[AI][V2][Recon][Acceptance] turn={turn} scenario={scenario} "
-                + $"status={Name(final)} {details}";
             if (final == Status.Fail)
-                AiDebugLog.Write(line);
-            else
-                AiDebugLog.WriteVerbose(line);
+                AiDebugLog.Write($"[AI][V2][Recon][Acceptance] turn={turn} scenario={scenario} "
+                    + $"status={Name(final)} {details}");
         }
 
         private static string Name(Status status)

@@ -410,11 +410,6 @@ namespace Game.Ai.V2
                 + $"{F(self.Stockpile.Materials)}/{F(self.Stockpile.Tech)} "
                 + $"| income={F(self.PerTurnIncome.Human)}/{F(self.PerTurnIncome.Energy)}/"
                 + $"{F(self.PerTurnIncome.Materials)}/{F(self.PerTurnIncome.Tech)}");
-            foreach (ArmySnapshot a in self.Armies)
-                AiDebugLog.WriteVerbose($"[AI][V2]     army \"{ArmyLabel(a)}\" @{a.Hex.Q},{a.Hex.R} eff={F(a.EffectiveArmyPower)} "
-                    + $"(compo={P(a.CompositionQuality)}, rawAtk/Def={F(a.AttackSum)}/{F(a.DefenseSum)}, n={a.MemberCount}"
-                    + $"{(a.HasHero ? ", hero" : "")}){(a.IsGarrison ? " [garrison]" : "")}");
-
             AiDebugLog.Write($"[AI][V2]   economy.security={P(eco.EconomicSecurity)} "
                 + $"(absFloor={P(eco.AbsFloor)} rel={F(eco.RelativePressure)} bottleneck={P(eco.BottleneckPressure)}) "
                 + $"| deckNeed H/E/M/T={F(eco.DeckResourceNeed.Human)}/{F(eco.DeckResourceNeed.Energy)}/"
@@ -422,31 +417,10 @@ namespace Game.Ai.V2
                 + $"| targetIncome H/E/M/T={F(eco.IncomeTarget.Human)}/{F(eco.IncomeTarget.Energy)}/"
                 + $"{F(eco.IncomeTarget.Materials)}/{F(eco.IncomeTarget.Tech)} total={F(eco.IncomeTarget.Sum)} "
                 + $"actualIncome={F(self.PerTurnIncome.Sum)}");
-            foreach (EconomyResourceStanding rs in eco.PerType)
-                AiDebugLog.WriteVerbose($"[AI][V2]     eco.{rs.Type} own={F(rs.OwnIncome)} fieldMedian={F(rs.FieldMedianIncome)} "
-                    + $"ratio={F(rs.Ratio)}");
-
             int honest = th.Contacts.Count(c => c.Source == ContactSource.Honest);
             int cheat = th.Contacts.Count - honest;
             AiDebugLog.Write($"[AI][V2]   threat: contacts {th.Contacts.Count} (honest={honest} cheat={cheat}) "
                 + $"assets {th.Assets.Count} listedThreats {th.Threats.Count} siege={(th.UnderSiege ? 1 : 0)}");
-            foreach (AssetThreatSnapshot t in th.Threats.OrderByDescending(x => x.Severity).Take(6))
-                AiDebugLog.WriteVerbose($"[AI][V2]     THREAT sev={F(t.Severity)} asset={t.Asset.Kind}@{t.Asset.Hex.Q},{t.Asset.Hex.R} "
-                    + $"val={F(t.Asset.Value)} def={F(t.Asset.Defense)} vs {ContactLabel(t.Contact)} "
-                    + $"canDmg={(t.CanDamage ? 1 : 0)} win={P(t.AttackWinChance)} "
-                    + $"etaE={(t.EnemyEta?.ToString() ?? "-")} etaR={(t.ResponseEta?.ToString() ?? "-")} "
-                    + $"dmg={P(t.PotentialDamage)} conf={P(t.Confidence)}");
-        }
-
-        private static string ArmyLabel(ArmySnapshot a) => a.Owner?.Nickname ?? "army";
-
-        private static string ContactLabel(EnemyContactSnapshot c)
-        {
-            string who = c.Army?.Owner?.Nickname ?? "enemy";
-            string where = c.Position.HasValue
-                ? $"@{c.Position.Value.Q},{c.Position.Value.R}"
-                : c.RegionCenter.HasValue ? $"~{c.RegionCenter.Value.Q},{c.RegionCenter.Value.R}r{c.RegionRadius}" : "?";
-            return $"{who}({c.Knowledge},{c.Source},{where},pow={F(c.Army?.EffectiveArmyPower ?? 0f)})";
         }
 
         private static string F(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);

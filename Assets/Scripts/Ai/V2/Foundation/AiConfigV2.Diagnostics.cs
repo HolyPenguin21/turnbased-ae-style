@@ -10,8 +10,7 @@ namespace Game.Ai.V2
         // AiFrameLog — readable per-block dump of the frozen turn frame (GAME STATE .. MISSION
         // CONTINUITY) into AiDebugLog. Mutable so it can be toggled from a console/inspector.
         // Disabled in the normal compact trace because WorldAnalysis already writes the canonical
-        // turn snapshot. Enable for a focused human-readable dump; independent of the global
-        // AiDebugLog.VerboseEnabled switch so this one explicit frame can be requested alone.
+        // turn snapshot. Enable for a focused human-readable dump.
         public static bool frameLogEnabled = false;
 
         // =======================================================================================

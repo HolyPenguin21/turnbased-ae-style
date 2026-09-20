@@ -229,10 +229,6 @@ namespace Game.Ai.V2
                 delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
                     AiConfigV2.taskScoreReactivationApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
-            TaskScoreDiagnostics.Log("ReconExplore", hex, score,
-                $"freshNeighbors={freshNeighbors} infoGain={infoGainRaw:0.###} "
-                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
-                + $"notionalAp={cost.ApDesired:0.###} etaTurns={cost.EtaTurns:0.###}");
 
             return new ReconObjective
             {
@@ -310,10 +306,6 @@ namespace Game.Ai.V2
                 delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
                     AiConfigV2.taskScoreReactivationApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
-            TaskScoreDiagnostics.Log("ReconRefresh", hex, score,
-                $"age={age} stale={staleRaw:0.###} strategic={strategicRaw:0.###} "
-                + $"direction={directionalRaw:0.###} homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
-                + $"notionalAp={cost.ApDesired:0.###} etaTurns={cost.EtaTurns:0.###}");
 
             var objective = new ReconObjective
             {
@@ -373,11 +365,6 @@ namespace Game.Ai.V2
                 delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
                     AiConfigV2.taskScoreReactivationApWeight),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
-            TaskScoreDiagnostics.Log("ReconSurveil", pos, score,
-                $"age={age} stale={stalenessRaw:0.###} confidence={c.Confidence:0.###} "
-                + $"severity={maxSeverity:0.###} contact={contactRelevanceRaw:0.###} "
-                + $"homeDistance={homeDist} detectionRisk={riskRaw:0.###} "
-                + $"notionalAp={cost.ApDesired:0.###} etaTurns={cost.EtaTurns:0.###}");
 
             return new ReconObjective
             {

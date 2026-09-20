@@ -104,13 +104,6 @@ namespace Game.Ai.V2
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
             }
-            if (verbose)
-                foreach (string reason in nonCombatBlocked
-                    .Where(x => !string.IsNullOrEmpty(x))
-                    .Distinct(System.StringComparer.Ordinal)
-                    .OrderBy(x => x, System.StringComparer.Ordinal))
-                    AiDebugLog.WriteVerbose($"[AI][V2]     cand PlayNonCombat BLOCKED: {reason}");
-
             // §P0.1 — only card alternatives actually selectable under the shared generation
             // budget and live spendable pools suppress Draw. Structurally blocked cards do not.
             bool CardSelectableNow(TempoCandidate c) => c != null

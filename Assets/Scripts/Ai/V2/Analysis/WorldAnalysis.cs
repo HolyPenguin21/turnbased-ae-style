@@ -90,11 +90,6 @@ namespace Game.Ai.V2
                 snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
 
-            SelfSnapshot s = snap.Self;
-            AiDebugLog.WriteVerbose($"[AI][V2] {player?.Nickname} op-refresh — AP {s.ActionPoints} "
-                + $"hand {s.Hand.Count}/{s.HandCapacity} armies {s.Armies.Count} "
-                + $"field {F(s.FieldPower)} garrison {F(s.GarrisonPower)} "
-                + $"bestStack {F(s.BestStackPotential)} threats {snap.Threat?.Threats?.Count ?? 0}");
             return snap;
         }
 
@@ -124,10 +119,6 @@ namespace Game.Ai.V2
                 snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
 
-            AiDebugLog.WriteVerbose($"[AI][V2] {player?.Nickname} knowledge-refresh — "
-                + $"enemyKnown {snap.Known.EnemySightings.Count} neutralKnown {snap.Known.NeutralSightings.Count} "
-                + $"visited {snap.MapKnowledge.VisitedHexes}/{snap.MapKnowledge.TotalHexes} "
-                + $"frontier {snap.MapKnowledge.Frontier.Count} threats {snap.Threat.Threats.Count}");
             return snap;
         }
 

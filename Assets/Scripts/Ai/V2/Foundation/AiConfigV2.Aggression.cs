@@ -78,6 +78,19 @@ namespace Game.Ai.V2
         // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
         // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
         public const float raidMinViableWinChance = 0.65f;
+        // Perf pre-filter (2026-09-20, project owner's own call — profiler frame showed
+        // GroundCombatAdmissionRegistry.Record()/GroundCombatAssemblyPlanner.Plan() re-running the
+        // 25-trial Monte-Carlo WinChance O(readyArmies^2) times per Raid target, per settled step).
+        // Below this attackerPower/defenderPower ratio (same aggregate Attack+Defense+HP+0.25*
+        // Initiative sum GroundCombatFeasibility.Clears already had the ingredients for), Monte
+        // Carlo is skipped outright and the matchup is treated as not clearing raidMinViableWinChance
+        // without ever running it. Calibrated against a real playthrough's AiDebug.log
+        // ([AI][V2][CALIBRATION] lines, since removed): across 2644 real matchups, the lowest ratio
+        // that ever produced win >= 0.65 was 0.57, and every one of the 869 matchups below that
+        // topped out at win 0.24. This constant sits well under that observed floor (0.57) to leave
+        // margin for roster compositions this one playthrough didn't happen to hit — raise it only
+        // after a fresh calibration pass confirms the floor is still safely above it.
+        public const float raidPowerRatioPreFilter = 0.40f;
         // CombatPower the requirement projection asks for when no ready force clears the target:
         // the target's own EffectiveArmyPower times this margin.
         public const float raidCombatPowerMargin = 1.25f;

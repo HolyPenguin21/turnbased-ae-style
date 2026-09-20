@@ -882,56 +882,11 @@ namespace Game.Ai.V2
 
         private static void LogDump(TentativeAllocation a, int turn)
         {
-            if (!AiDebugLog.VerboseEnabled)
-            {
-                AiDebugLog.WriteDeduped($"p{a.PassNumber}",
-                    $"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)}, "
-                    + $"locked {LogNum(a.LockedClaim.Ap)}, funded {a.Funded.Count} ({a.Funded.Count(f => f.IsCommitment)} commit), "
-                    + $"deferred {a.Deferred.Count}, unused {LogNum(a.Unused.Ap)}, "
-                    + $"overdraft axis/global {LogNum(a.AxisOverdraft.Ap)}/{LogNum(a.GlobalOverdraft.Ap)}"
-                    + (a.CommitmentsStarveFreshDecisions ? " [commitments starve fresh]" : ""));
-                return;
-            }
-
-            AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)} "
-                + $"(ap {LogNum(a.InitialPool.Ap + a.ManagerReserve.Ap)} − mgr {LogNum(a.ManagerReserve.Ap)}) "
-                + $"| locked {LogNum(a.LockedClaim.Ap)} (off the top)");
-            if (a.PhysicalPool.AnyPhysical || a.PhysicalFunded.AnyPhysical)
-                AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — physical pool [{a.PhysicalPool.FmtPhysical()}] "
-                    + $"− locked [{a.PhysicalLocked.FmtPhysical()}] − funded [{a.PhysicalFunded.FmtPhysical()}]");
-
-            foreach (FundedEntry fe in a.Funded)
-            {
-                string axes = fe.Mission?.Axes?.Value == null ? "" : string.Join(",", DesireAxes.All
-                    .Where(ax => fe.Mission.Axes.Value.TryGetValue(ax, out float v) && v > 0f)
-                    .Select(DesireAxes.Abbrev));
-                AiDebugLog.Write($"[AI][V2]   {(fe.IsCommitment ? "commit" : "fund  ")} "
-                    + $"[{AiV2Trace.FormatCorrelation(fe.Mission)}] {StableMissionKey.For(fe.Mission)} "
-                    + $"base {LogNum(fe.Mission.BaseValue)} eff {LogNum(fe.Mission.EffectiveValue)} "
-                    + $"ap {LogNum(fe.Tentative.Ap)} (strict {LogNum(fe.StrictAp)}) axes[{axes}] "
-                    + $"rem+ {LogNum(fe.RemainderTopUp.Ap)} {fe.Stage.ToString().ToLowerInvariant()}");
-            }
-
-            foreach (DeferredEntry d in a.Deferred)
-            {
-                string why = d.Reason == DeferReason.InsufficientBudget
-                    ? $"need {LogNum(d.Required.Ap)} have {LogNum(d.Available.Ap)} miss {LogNum(d.Missing.Ap)}"
-                    : d.Reason == DeferReason.InsufficientPhysical
-                        ? $"need [{d.Required.FmtPhysical()}] have [{d.Available.FmtPhysical()}]"
-                        : d.Reason == DeferReason.OnCooldown
-                            ? $"reason={d.CooldownReason ?? "StructuralFailure"} start=t{d.CooldownStartedTurn} "
-                              + $"until=t{d.CooldownUntilTurn} remaining={Mathf.Max(0, d.CooldownUntilTurn - turn + 1)}"
-                            : "";
-                AiDebugLog.Write($"[AI][V2]   defer [{AiV2Trace.FormatCorrelation(d.Mission)}] {StableMissionKey.For(d.Mission)} "
-                    + $"base {LogNum(d.Mission.BaseValue)} eff {LogNum(d.Mission.EffectiveValue)} — {d.Reason} {why}");
-            }
-
-            AiDebugLog.Write($"[AI][V2]   remainder {LogNum(a.RemainderGenerated.Ap)} gen "
-                + $"→ spent {LogNum(a.RemainderSpent.Ap)} | unused {LogNum(a.Unused.Ap)}");
-            AiDebugLog.Write($"[AI][V2] allocator p{a.PassNumber} — funded {a.Funded.Count} "
-                + $"({a.Funded.Count(f => f.IsCommitment)} commit), deferred {a.Deferred.Count}, "
-                + $"strictAp {LogNum(a.StrictFunded.Ap)}, commitmentAp {LogNum(a.CommitmentDraw.Ap)}, "
-                + $"axisOverdraft {LogNum(a.AxisOverdraft.Ap)}, globalOverdraft {LogNum(a.GlobalOverdraft.Ap)}"
+            AiDebugLog.WriteDeduped($"p{a.PassNumber}",
+                $"[AI][V2] allocator p{a.PassNumber} — pool {LogNum(a.InitialPool.Ap)}, "
+                + $"locked {LogNum(a.LockedClaim.Ap)}, funded {a.Funded.Count} ({a.Funded.Count(f => f.IsCommitment)} commit), "
+                + $"deferred {a.Deferred.Count}, unused {LogNum(a.Unused.Ap)}, "
+                + $"overdraft axis/global {LogNum(a.AxisOverdraft.Ap)}/{LogNum(a.GlobalOverdraft.Ap)}"
                 + (a.CommitmentsStarveFreshDecisions ? " [commitments starve fresh]" : ""));
         }
     }

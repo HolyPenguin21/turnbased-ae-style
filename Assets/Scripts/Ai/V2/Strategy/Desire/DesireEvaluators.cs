@@ -342,9 +342,6 @@ namespace Game.Ai.V2
             breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
-            AiDebugLog.WriteVerbose("[AI][V2][Aggression] lane refresh — "
-                + $"neutrals={opp.NeutralOpportunities.Count} opportunity={opportunity:0.00} "
-                + $"raidOpportunity={breakdown.AggRaidOpportunity:0.00} (radar NOT renormalized)");
         }
 
         private static float ReconExploration(WorldSnapshot snap)

@@ -260,29 +260,4 @@ namespace Game.Ai.V2
             Mathf.Clamp01(probability) * AiConfigV2.taskScoreWinChanceMax;
     }
 
-    internal static class TaskScoreDiagnostics
-    {
-        internal static void Log(string kind, HexCoord? target, TaskScore score, string rawFacts = null)
-        {
-            string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
-            string targetText = target.HasValue ? $"({target.Value.Q},{target.Value.R})" : "none";
-            // Every candidate hex/target gets one of these per cycle — on a full map that's
-            // thousands of lines per turn, drowning out the decision/action trace this log exists
-            // for (see AiDebugLog's own header). Gate it behind VerboseEnabled so it's still one
-            // flip away when tuning a specific axis's scoring, without bloating every normal run.
-            AiDebugLog.WriteVerbose($"[AI][V2][TaskScore] kind={kind} target={targetText} "
-                + $"economic={F(score.EconomicHexBenefit)} payback={F(score.Payback)} "
-                + $"airfield={F(score.Airfield)} global={F(score.GlobalCardEffect)} "
-                + $"info={F(score.InfoGain)} stale={F(score.Staleness)} "
-                + $"strategic={F(score.StrategicRelevance)} threatDir={F(score.ThreatDirection)} "
-                + $"contact={F(score.ContactRelevance)} front={F(score.FrontProgress)} "
-                + $"corridor={F(score.CorridorAlignment)} proximity={F(score.OwnTerritoryProximity)} "
-                + $"defense={F(score.TerrainDefense)} raidReward={F(score.RaidReward)} "
-                + $"win={F(score.WinChance)} cardPrice={F(score.CardPrice)} "
-                + $"delivery={F(score.Delivery)} moverOpp={F(score.MoverOpportunityCost)} "
-                + $"hexRisk={F(score.HexThreatRisk)} detection={F(score.DetectionRisk)} "
-                + $"final={F(score.Value)}"
-                + (string.IsNullOrEmpty(rawFacts) ? string.Empty : $" raw=[{rawFacts}]"));
-        }
-    }
 }

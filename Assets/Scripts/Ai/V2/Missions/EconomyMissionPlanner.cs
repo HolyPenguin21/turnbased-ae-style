@@ -36,12 +36,7 @@ namespace Game.Ai.V2
                     && a.ArmyId == intent.PreferredMoverArmyId.Value);
                 if (pinnedBuilder != null && pinnedBuilder.CurrentMovement <= 0
                     && !pinnedBuilder.Hex.Equals(e.TargetHex))
-                {
-                    AiDebugLog.WriteVerbose($"[AI][V2][Economy] defer travel this turn "
-                        + $"intent={intent.IntentKey} actor=#{pinnedBuilder.ArmyId} "
-                        + "reason=pinned_builder_movement_exhausted");
                     continue;
-                }
                 AxisDemand refreshed = mobile ? null : demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)

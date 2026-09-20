@@ -268,9 +268,6 @@ namespace Game.Ai.V2
                     return new List<DemandCandidate>();
                 float devUrgency = DemandUrgencyPolicy.Bonus(demand);
                 float decision = upgrade.Score + devUrgency * GenerationChanceForDecision(upgrade);
-                AiDebugLog.WriteVerbose($"[AI][V2][Dev] materialization investmentEV={demand.DevOpportunity.Ev:0.00} "
-                    + $"cardScore={upgrade.Score:0.00} urgency={devUrgency:0.00} "
-                    + $"p={GenerationChanceForDecision(upgrade):0.00} decision={decision:0.00}");
                 return new List<DemandCandidate>
                 {
                     new DemandCandidate(upgrade, 0f, upgrade.Score, 0f, decision),

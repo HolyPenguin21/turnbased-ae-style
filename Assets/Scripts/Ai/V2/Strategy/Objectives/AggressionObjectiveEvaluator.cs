@@ -209,9 +209,6 @@ namespace Game.Ai.V2
             var score = new TaskScore(
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 militaryTargetRelevance: AiConfigV2.RaidReward);
-            TaskScoreDiagnostics.Log("RaidObjective", o.TargetHex, score,
-                $"raidReward={score.RaidReward:0.###} "
-                + $"confidence={o.Confidence:0.###} stale=0 stationary_raid homeDistance={homeDistance}");
 
             bool readyViable = o.CanCoverAllDefenders
                 && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;

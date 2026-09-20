@@ -126,9 +126,6 @@ namespace Game.Ai.V2
                     reconObjectives, spendableAp, budget, verbose: iter == 0);
 
                 float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility;   // 0
-                float holdPolicyFull = HoldEvaluator.HoldResourcesUtility(root, snap, null); // whole pool — diagnostic only
-
-                LogTempoIterationHeader(ctx, root, snap, player, hand, budget, iter, spendableAp);
 
                 // §P0 (round 4) — ONE comparable space, but HoldResources is NOT a global stop gate.
                 //   · PlayCard (mat / non-combat): utility = StrategicCardEvaluator NetScore VERBATIM
@@ -150,19 +147,12 @@ namespace Game.Ai.V2
                     float marginalResCost = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
                         ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost, player, ctx) : 0f;
                     float eff = c.Utility - marginalResCost;
-                    AiDebugLog.WriteVerbose($"[AI][V2]     cand {c.Kind} rawUtil {F(c.Utility)} marginalResCost {F(marginalResCost)}"
-                        + $" eff {F(eff)} apCost {F(c.ApCost)} resCost [{ResCostStr(c.ResCost)}] key={c.ActionKey}"
-                        + (block != null ? $" BLOCKED: {block}" : "")
-                        + (c.DrawDiag != null ? $" {{{c.DrawDiag}}}" : "")
-                        + $" — {c.Label}");
                     if (block == null && eff > bestEff)
                     {
                         best = c;
                         bestEff = eff;
                     }
                 }
-
-                AiDebugLog.WriteVerbose($"[AI][V2]     policy Hold(full pool) {F(holdPolicyFull)} (diag only)  |  EndTurn {F(endU)}");
 
                 float spendBar = Mathf.Max(AiConfigV2.tempoMinSpendUtility, endU);
                 if (best == null)
@@ -301,32 +291,6 @@ namespace Game.Ai.V2
             if (c == null) return "-";
             if (c.human == 0 && c.energy == 0 && c.materials == 0 && c.tech == 0) return "0";
             return $"H{c.human} E{c.energy} M{c.materials} T{c.tech}";
-        }
-
-        // Per-iteration mandatory diagnostic: AP, per-resource total/reserved/spendable/runway-target/
-        // expected-income/strategic-overstock (NOT a physical overflow — the game has no storage cap),
-        // hand, deck, and the shared turn budget.
-        private static void LogTempoIterationHeader(AiTurnContext ctx, PlayerRoot root, WorldSnapshot snap,
-            PlayerSetupData player, AiHandData hand, StrategicTempoBudget budget, int iter, float spendableAp)
-        {
-            var sb = new System.Text.StringBuilder();
-            sb.Append($"[AI][V2]   tempo[{iter}] T{ctx.TurnNumber} — ap {root.ActionPoints} spendable {F(spendableAp)}; ");
-            float comfortable = Mathf.Max(1f, AiConfigV2.tempoHoldResourceComfortableStock);
-            foreach (ResourceType rt in ResourceBundle.All)
-            {
-                int stock = root.GetResource(rt);
-                float reserved = StrategicResourceReservationLedger.Active(
-                    player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(rt));
-                float spendable = Mathf.Max(0f, stock - reserved);
-                float incomeTarget = snap?.Economy?.IncomeTarget.Get(rt) ?? 0f;
-                float nextIncome = snap?.Self != null ? snap.Self.PerTurnIncome.Get(rt) : 0f;
-                float runwayTarget = Mathf.Max(comfortable, incomeTarget * AiConfigV2.tempoHoldOverstockRunwayHorizon);
-                float overstock = Mathf.Max(0f, (stock + nextIncome) - runwayTarget);
-                sb.Append($"{rt.ToString()[0]} {stock}(rsv {F(reserved)} sp {F(spendable)} runway {F(runwayTarget)} inc {F(nextIncome)} overstock {F(overstock)}) ");
-            }
-            sb.Append($"| hand {hand.Hand.Count}/{ctx.HandCapacity} deck {hand.RemainingDeckCount} ");
-            sb.Append(BudgetSummary(budget));
-            AiDebugLog.WriteVerbose(sb.ToString());
         }
 
         // null => the candidate may be chosen; otherwise a short reason it is currently blocked.

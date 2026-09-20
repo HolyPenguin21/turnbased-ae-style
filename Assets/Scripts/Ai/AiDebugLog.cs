@@ -33,12 +33,6 @@ namespace Game.Ai
         // every real change, it just stops repeating the same fact turn-cycle after turn-cycle.
         private static readonly Dictionary<string, string> _dedupLastByKey = new Dictionary<string, string>();
 
-        // Full candidate/allocation/snapshot diagnostics are useful while tuning one subsystem,
-        // but make the normal whole-game trace hard to read. This is the single verbosity owner
-        // for both V1 and V2 logging; decision, action, warning and error lines still use Write.
-        // Mutable so a debug console/inspector can enable it for a focused run.
-        public static bool VerboseEnabled = false;
-
         // The file (Logs/AiDebug.log) is the actual trace anyone reads back after a run — the
         // Editor Console mirror was only ever a live convenience, and Debug.Log itself (console
         // entry formatting, stack trace capture, window repaint) is real per-call overhead that
@@ -100,18 +94,6 @@ namespace Game.Ai
             [CallerMemberName] string callerMember = "",
             [CallerLineNumber] int callerLine = 0)
             => WriteCore(message, callerFile, callerMember, callerLine);
-
-        // Verbose calls retain the ORIGINAL call-site metadata. Calling Write(message) from here
-        // would incorrectly tag every line as AiDebugLog.WriteVerbose.
-        public static void WriteVerbose(string message,
-            [CallerFilePath] string callerFile = "",
-            [CallerMemberName] string callerMember = "",
-            [CallerLineNumber] int callerLine = 0)
-        {
-            if (!VerboseEnabled)
-                return;
-            WriteCore(message, callerFile, callerMember, callerLine);
-        }
 
         // dedupKey identifies WHICH recurring thing this line is about (e.g. a target id, an actor
         // id, an allocator pass name) — distinct keys at the same call site are tracked and printed

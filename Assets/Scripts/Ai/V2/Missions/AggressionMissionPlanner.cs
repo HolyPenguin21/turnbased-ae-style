@@ -157,11 +157,6 @@ namespace Game.Ai.V2
                             delivery: TaskScoreEvaluator.DeliveryFromEta(staleEstimate.RecurringActivationAp,
                                 staleCost.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
                         float staleValue = staleTask.Value;
-                        TaskScoreDiagnostics.Log("Raid", intent.Raid.LastKnownHex, staleTask,
-                            $"continuation=tracking_in_fog confidence=unknown stale=0 homeDistance={homeDistance} actor="
-                            + (intent.PreferredMoverArmyId.HasValue
-                                ? intent.PreferredMoverArmyId.Value.ToString() : "none")
-                            + $" recurringAp={staleEstimate.RecurringActivationAp:0.###}");
                         incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId, intent.PreferredMoverArmyId));
@@ -470,11 +465,6 @@ namespace Game.Ai.V2
                     AiConfigV2.taskScoreReactivationApWeight),
                 moverOpportunityCost: 0f);
             float las = score.Value;
-            TaskScoreDiagnostics.Log("Raid", o.LastKnownHex, score,
-                $"target={o.Target.DiagnosticLabel} confidence={o.Confidence:0.###} "
-                + $"readyWin={readyWin:0.###} coversAll={(live.CoversAllDefenders ? 1 : 0)} "
-                + $"selectedMover={(estimate.PlannedMoverArmyId.HasValue ? estimate.PlannedMoverArmyId.Value.ToString() : "none")} "
-                + $"currentActivationAp={currentActivationAp:0.###} recurringActivationAp={recurringActivationAp:0.###} etaTurns={etaTurns:0.###}");
 
             string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
                 + $"task {F(score.Value)} readyWin {F(readyWin)} frozenReady {F(o.ReadyWinChance)} "

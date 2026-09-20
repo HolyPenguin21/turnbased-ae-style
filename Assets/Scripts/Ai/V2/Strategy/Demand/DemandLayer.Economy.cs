@@ -104,11 +104,6 @@ namespace Game.Ai.V2
                     moverOpportunityCost: Mathf.Max(0f, opportunity),
                     hexThreatRisk: siteOnlyScore.HexThreatRisk);
                 float value = score.Value;
-                TaskScoreDiagnostics.Log("Extraction", site.Hex, score,
-                    $"resource={site.ResourceType} priority={resourcePriority:0.###} "
-                    + $"marginalGain={gain:0.###} usefulGain={usefulGain:0.###} paybackTurns={payback:0.###} cardAp={cardAp:0.###} "
-                    + $"resourceCost={resourceCost:0.###} distance={travel:0.###} extraAp={extraAp:0.###} "
-                    + $"exposure={exposure:0.###} moverOpportunity={opportunity:0.###}");
 
                 if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon)
                 {
@@ -898,15 +893,6 @@ namespace Game.Ai.V2
                         hexThreatRisk: risk);
                     float value = score.Value;
 
-                    TaskScoreDiagnostics.Log("Base", site.Hex, score,
-                        $"economicGain={economicGainFact:0.###} usefulEconomicGain={usefulGainTotal:0.###} resourcePriority={basePriority:0.###} "
-                        + $"paybackTurns={(float.IsInfinity(paybackTurns) ? -1f : paybackTurns):0.###} "
-                        + $"airfieldRaw={facts.Airfield:0.###} globalRaw={facts.GlobalEffect:0.###} "
-                        + $"frontRaw={site.ForwardProgressValue:0.###} corridorRaw={site.CorridorAlignmentValue:0.###} "
-                        + $"defenseRaw={site.DefenseBonusValue:0.###} "
-                        + $"distance={travel:0.###} extraAp={extraAp:0.###} exposure={facts.Exposure:0.###} "
-                        + $"moverOpportunity={heroCost:0.###}");
-
                     meaningfulDemands.Add(new AxisDemand
                     {
                         RequestingAxis = DesireAxis.Economy,
@@ -944,13 +930,7 @@ namespace Game.Ai.V2
                 bool committed = IsActiveBaseCommitment(
                     activeIntents, demand.TargetHex, demand.EconomyBuildCard);
                 // Do not turn negative net benefit into a new mission through elapsed time.
-                float economyAdmissionValue = EconomyBaseAdmissionValue(demand.WorldTaskScore);
                 bool admitted = committed || HasMeaningfulBaseBenefit(demand.WorldTaskScore);
-                AiDebugLog.WriteVerbose($"[AI][V2][Economy][BaseAdmission] "
-                    + $"card={demand.EconomyBuildCard?.Definition?.displayName} "
-                    + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
-                    + $"value={demand.Value:0.##} economyAdmission={economyAdmissionValue:0.##} "
-                    + $"committed={committed} decision={(admitted ? "keep" : "defer")}");
                 if (!admitted)
                 {
                     if (!demand.EconomyPreferredBuilderArmyId.HasValue)
