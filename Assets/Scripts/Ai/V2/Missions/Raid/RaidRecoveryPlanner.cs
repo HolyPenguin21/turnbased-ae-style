@@ -136,7 +136,7 @@ namespace Game.Ai.V2
                 AiV2Util.KnownDefenders(snap, raid.Target);
             float currentWin = Win(CombatRoster(primary), defenders, out _);
             return ProjectAirSupport(snap, raid, primary, defenders,
-                unavailableArmyIds: null, currentWin, wingArmyId);
+                null, currentWin, wingArmyId);
         }
 
         private static RaidRecoveryProjection ProjectAirSupport(WorldSnapshot snap,
