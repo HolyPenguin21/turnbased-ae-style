@@ -102,7 +102,8 @@ namespace Game.Ai
             return removed;
         }
 
-        // Same PopRandomCard + AddCard pairing CardHandUI's own OnDrawClicked uses, minus
+        // Same DeckDraw.PopRandom + AddCard pairing CardHandUI's own OnDrawClicked uses (the
+        // draw-from-deck mechanic itself is shared via DeckDraw, so the two can't drift), minus
         // the AP check (the caller's job — see AiTurnController) and minus any UI animation.
         // Null once the deck's empty, same "nothing left to draw" outcome CardHandUI has too.
         public CardData DrawOne()
@@ -114,9 +115,9 @@ namespace Game.Ai
             if (_remainingDeck.Count == 0 || !HasFreeSlot)
                 return null;
 
-            int poolIndex = UnityEngine.Random.Range(0, _remainingDeck.Count);
-            CardDefinition definition = _remainingDeck[poolIndex];
-            _remainingDeck.RemoveAt(poolIndex);
+            CardDefinition definition = DeckDraw.PopRandom(_remainingDeck);
+            if (definition == null)
+                return null;
 
             var card = new CardData(definition);
             AddCard(card);

@@ -236,16 +236,10 @@ namespace Game.UI
 
         // Removes and returns one random card from the remaining deck (null if it's empty) —
         // shared by the starting-hand draw above and OnDrawClicked below, so both pull from the
-        // same shrinking pool without replacement.
-        private CardDefinition PopRandomCard()
-        {
-            if (_remainingDeck.Count == 0)
-                return null;
-            int poolIndex = Random.Range(0, _remainingDeck.Count);
-            CardDefinition card = _remainingDeck[poolIndex];
-            _remainingDeck.RemoveAt(poolIndex);
-            return card;
-        }
+        // same shrinking pool without replacement. The actual draw mechanic lives in
+        // DeckDraw.PopRandom, the one place AiHandData.DrawOne's headless mirror also calls it
+        // from, so the human and AI draw algorithm can never quietly diverge.
+        private CardDefinition PopRandomCard() => DeckDraw.PopRandom(_remainingDeck);
 
         // Called once by GameTurnController.BeginGame, right after citadel setup — same
         // trigger as ResourceBarUI/the end-turn button. The panel starts inactive in the
