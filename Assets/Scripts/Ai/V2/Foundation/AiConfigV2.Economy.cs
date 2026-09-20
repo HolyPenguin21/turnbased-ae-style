@@ -39,11 +39,6 @@ namespace Game.Ai.V2
         public const float mobileCollectionMaxThreatExposure = 0.25f;
         public const float mobileCollectionMinSafeRetreatMargin = 0f;
         public const int mobileCollectionMinCommitmentTurns = 1;
-        // A temporary collector has no card/build cost, but does not receive the full long-term
-        // infrastructure value of a permanent facility.
-        public const float mobileCollectionBenefitFactor = 0.65f;
-        public const float mobileCollectionPowerOpportunityScale = 0.08f;
-
         public const float economySecurityAbsWeight = 0.5f;
         public const float economySecurityRelWeight = 0.3f;
         public const float economySecurityBottleneckWeight = 0.2f;
