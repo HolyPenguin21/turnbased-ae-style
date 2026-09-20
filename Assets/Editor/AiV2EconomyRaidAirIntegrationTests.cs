@@ -99,9 +99,19 @@ namespace Game.EditorTests
                 AviationCombatEstimator.EstimateAirStrike(aircraft, 0f, 0f, defenders,
                     AirStrikePolicy.RaidSupport(42));
 
+            AviationCombatEstimator.AirStrikeEstimate snapshotSupport =
+                AviationCombatEstimator.EstimateAirStrike(
+                    aircraft.Select(x => x.Attack).ToList(), 0f, 0f, defenders,
+                    AirStrikePolicy.RaidSupport(42));
+
             Assert.That(support.WipeProbability, Is.Zero);
             Assert.That(support.ExpectedDefendersAfter.Count, Is.GreaterThanOrEqualTo(1));
             Assert.That(support.ExpectedKillCount, Is.LessThanOrEqualTo(2f));
+            Assert.That(snapshotSupport.ExpectedDamage,
+                Is.EqualTo(support.ExpectedDamage).Within(0.0001f),
+                "planning and live provisioning must share one air-strike estimator");
+            Assert.That(snapshotSupport.ExpectedKillCount,
+                Is.EqualTo(support.ExpectedKillCount).Within(0.0001f));
         }
 
         [Test]
