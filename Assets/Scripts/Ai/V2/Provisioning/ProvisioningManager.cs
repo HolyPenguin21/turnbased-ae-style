@@ -2846,9 +2846,10 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: raid return needs {N(activationAp)}"));
 
+            string returnLabel = phase == RaidMissionPhase.SupportReturn ? "SUPPORT_RETURN"
+                : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY_RETURN" : "RETURN";
             AiDebugLog.Write($"[AI][V2]   raid provision [{funded.Mission.AttemptId}] {key} — OK "
-                + $"{(phase == RaidMissionPhase.SupportReturn ? "SUPPORT_RETURN"
-                    : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY_RETURN" : "RETURN")} "
+                + $"{returnLabel} "
                 + $"{roleLabel} #{mover.Id} -> ({home.Q},{home.R}) ap {N(activationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -2909,7 +2910,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         $"raid repair unit#{action.UnitRuntimeId} has no initialized repair cost"));
                 exactAp = UnitRepair.ApCost(exact);
-                exactPhysical = CostVector(exact.RepairResourceCost);
+                exactPhysical = ProvisioningManager.CostVector(exact.RepairResourceCost);
                 if (!SamePhysical(exactPhysical, action.ResourceCost, eps))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         $"raid repair unit#{action.UnitRuntimeId} cost changed since planning"));
