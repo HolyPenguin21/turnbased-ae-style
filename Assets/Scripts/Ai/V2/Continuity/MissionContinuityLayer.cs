@@ -766,7 +766,7 @@ namespace Game.Ai.V2
                         && !RecoveryBaseStillValid(snap, player, ri.PrimaryArmyId, ri.RecoveryBaseHex))
                     {
                         RaidRecoveryProjection replacement = RaidRecoveryPlanner.Choose(
-                            snap, ri, recoveryUnavailable);
+                            snap, ri, recoveryUnavailable, safeRouteCost: safeRouteCost);
                         if (!replacement.Viable)
                         {
                             dead.Add(intent.IntentKey);
