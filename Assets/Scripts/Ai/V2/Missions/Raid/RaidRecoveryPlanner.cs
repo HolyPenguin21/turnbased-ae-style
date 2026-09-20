@@ -287,7 +287,8 @@ namespace Game.Ai.V2
                     roster, initialCombatBodyCount, donors, usedDonors, defenders, spent, win);
                 Candidate best = candidates
                     .OrderByDescending(c => c.Score.Value)
-                    .ThenByDescending(c => c.Gain)
+                    // Gain is an eligibility fact below, not a second ranking scale.
+                    // Exact score ties end only on stable actor/unit identity.
                     .ThenBy(c => c.DonorArmyId)
                     .ThenBy(c => c.StableIndex)
                     .FirstOrDefault();
@@ -510,8 +511,9 @@ namespace Game.Ai.V2
         private static int Compare(RaidRecoveryProjection a, RaidRecoveryProjection b)
         {
             int c = b.Score.Value.CompareTo(a.Score.Value); if (c != 0) return c;
-            c = b.ProjectedWinChance.CompareTo(a.ProjectedWinChance); if (c != 0) return c;
-            c = a.EtaTurns.CompareTo(b.EtaTurns); if (c != 0) return c;
+            // Win chance, ETA, AP, resources and actor cost already live in TaskScore.
+            // Once the canonical fold is exactly equal, use identity-only deterministic keys.
+            c = a.Phase.CompareTo(b.Phase); if (c != 0) return c;
             c = Nullable.Compare(a.SupportArmyId, b.SupportArmyId); if (c != 0) return c;
             c = Nullable.Compare(a.AirSupportArmyId, b.AirSupportArmyId); if (c != 0) return c;
             if (a.BaseHex.HasValue && b.BaseHex.HasValue)
