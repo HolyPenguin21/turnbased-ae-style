@@ -84,7 +84,7 @@ namespace Game.Ai.V2
 
         internal static RaidRecoveryProjection Choose(WorldSnapshot snap, RaidIntent raid,
             ISet<int> unavailableArmyIds, HexCoord? fixedBase = null,
-            Func<HexCoord, HexCoord, int> safeRouteCost = null)
+            Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
             if (snap?.Self?.Armies == null || raid == null || !raid.PrimaryArmyId.HasValue)
                 return RaidRecoveryProjection.None(0f, "missing primary snapshot");
@@ -113,7 +113,7 @@ namespace Game.Ai.V2
         private static RaidRecoveryProjection ProjectBestBase(WorldSnapshot snap, RaidIntent raid,
             ArmySnapshot primary, IReadOnlyList<WorthIt.DefenderProfile> defenders,
             ISet<int> unavailableArmyIds, float currentWin,
-            Func<HexCoord, HexCoord, int> safeRouteCost)
+            Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
                 "no owned recovery base has a complete safe threshold-clearing plan");
@@ -132,7 +132,7 @@ namespace Game.Ai.V2
         internal static RaidRecoveryProjection ProjectBase(WorldSnapshot snap, RaidIntent raid,
             ArmySnapshot primary, IReadOnlyList<WorthIt.DefenderProfile> defenders,
             ISet<int> unavailableArmyIds, float currentWin, HexCoord? fixedBase = null,
-            Func<HexCoord, HexCoord, int> safeRouteCost = null)
+            Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
             HexCoord? baseHex = fixedBase ?? MissionContinuityLayer.SelectReturnBase(
                 snap, primary.Owner, primary.ArmyId);
@@ -202,12 +202,12 @@ namespace Game.Ai.V2
                     "no bounded repair/fill/swap sequence reaches the raid threshold");
 
             int moveBudget = Math.Max(1, primary.MaxMovement);
-            int toBaseDistance = atBase ? 0 : RouteCost(primary.Hex, baseHex.Value,
+            int toBaseDistance = atBase ? 0 : RouteCost(primary.Hex, baseHex.Value, primary.MaxMovement,
                 safeRouteCost, HexGridMath.Distance(primary.Hex, baseHex.Value));
             if (toBaseDistance == int.MaxValue)
                 return RaidRecoveryProjection.None(currentWin,
                     "recovery base has no safe structural route");
-            int toTargetDistance = RouteCost(baseHex.Value, raid.LastKnownHex,
+            int toTargetDistance = RouteCost(baseHex.Value, raid.LastKnownHex, primary.MaxMovement,
                 safeRouteCost, HexGridMath.Distance(baseHex.Value, raid.LastKnownHex));
             if (toTargetDistance == int.MaxValue)
                 return RaidRecoveryProjection.None(currentWin,
@@ -225,7 +225,7 @@ namespace Game.Ai.V2
 
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds,
-            float currentWin, Func<HexCoord, HexCoord, int> safeRouteCost)
+            float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
                 snap, primary.ArmyId, defenders, unavailableArmyIds);
@@ -247,7 +247,7 @@ namespace Game.Ai.V2
                 bool clears = GroundCombatFeasibility.Clears(projected, defenders,
                     AiConfigV2.raidMinViableWinChance, out float after, out _);
                 if (!clears) continue;
-                int routeDistance = RouteCost(support.Hex, primary.Hex, safeRouteCost,
+                int routeDistance = RouteCost(support.Hex, primary.Hex, support.MaxMovement, safeRouteCost,
                     HexGridMath.Distance(support.Hex, primary.Hex));
                 if (routeDistance == int.MaxValue)
                     continue;
@@ -415,11 +415,13 @@ namespace Game.Ai.V2
             return covered.Contains(incoming.RuntimeId) ? 0 : incoming.ActivationApCost;
         }
 
-        private static int RouteCost(HexCoord from, HexCoord to,
-            Func<HexCoord, HexCoord, int> safeRouteCost, int fallbackDistance)
+        private static int RouteCost(HexCoord from, HexCoord to, int maxMovement,
+            Func<HexCoord, HexCoord, int, int> safeRouteCost, int fallbackDistance)
         {
             if (from.Equals(to)) return 0;
-            return safeRouteCost != null ? safeRouteCost(from, to) : fallbackDistance;
+            return safeRouteCost != null
+                ? safeRouteCost(from, to, Math.Max(1, maxMovement))
+                : fallbackDistance;
         }
 
         private static int CeilTurns(ArmySnapshot army, int distance)
