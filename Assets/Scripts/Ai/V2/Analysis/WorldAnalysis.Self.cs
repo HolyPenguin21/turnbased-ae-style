@@ -235,6 +235,8 @@ namespace Game.Ai.V2
                 OccupiedBattleSlots = a.Members.Count,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),
                 MembersWithHeroes = a.Members.Select(WorthIt.FromLiveUnit).ToList(),
+                RecoveryMembers = a.Members.Select((u, index) => ToRaidRecoveryMember(
+                    a, u, index, viewer, isOwn)).ToList(),
                 NonHeroActivationApCosts = nonHero.Select(u => u.ActivationApCost).ToList(),
                 NonHeroMoveMax = nonHero.Select(u => u.MoveMax).ToList(),
                 NonHeroIsAviation = nonHero.Select(u => u.IsAviation).ToList(),
@@ -266,6 +268,33 @@ namespace Game.Ai.V2
                 EffectiveVisionRadius = armyVisionRadius + AbilityParams.GetBestRecceRadius(a),
                 CollectionCapacity = isOwn ? CollectionCapacityOf(a) : default(ResourceBundle),
             };
+        }
+
+        private static RaidRecoveryMemberSnapshot ToRaidRecoveryMember(ArmyData army, UnitData unit,
+            int index, PlayerSetupData viewer, bool isOwn)
+        {
+            WorthIt.DefenderProfile current = WorthIt.FromLiveUnit(unit);
+            var full = new WorthIt.DefenderProfile(current.Defense, current.HasCeramicArmor,
+                current.TypeTags, current.Attack, current.MaxHitPoints, current.Initiative,
+                current.Abilities, current.MaxHitPoints);
+            bool initialized = isOwn && unit.RepairResourceCost != null;
+            if (isOwn && unit.HitPointsCurrent < unit.HitPointsMax && !initialized)
+                AiDebugLog.WriteDeduped($"repair-cost:{unit.RuntimeId}",
+                    $"[AI][V2][RaidRecovery] decision=SKIP_REPAIR unit={unit.RuntimeId} "
+                    + "reason=repair_cost_not_initialized_at_spawn_or_load_boundary");
+            ResourceVector cost = initialized
+                ? new ResourceVector(0f,
+                    unit.RepairResourceCost.Get(ResourceType.Human),
+                    unit.RepairResourceCost.Get(ResourceType.Energy),
+                    unit.RepairResourceCost.Get(ResourceType.Materials),
+                    unit.RepairResourceCost.Get(ResourceType.Tech))
+                : ResourceVector.Zero;
+            bool canSpare = isOwn && army.Members.Count > 1 && !unit.IsHero && !unit.IsAviation
+                && army.CanLeaveWithoutOvercrowding(unit)
+                && (!army.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(viewer, army, unit));
+            return new RaidRecoveryMemberSnapshot(unit.RuntimeId, index, unit.IsHero,
+                unit.IsAviation, canSpare, unit.ActivationApCost, current, full,
+                initialized, cost);
         }
 
         private static ResourceBundle CollectionCapacityOf(ArmyData army)

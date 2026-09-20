@@ -207,6 +207,15 @@ namespace Game.Ai.V2
         // (primary already has ReturnHex set from a previous campaign leg).
         public HexCoord? SupportReturnHex;
 
+        // RecoveryReturn and Refit are continuation legs of this same durable Raid. The selected
+        // base remains fixed until it is lost/unreachable; PendingRefitAction is refreshed from a
+        // new immutable snapshot after every atomic mutation.
+        public HexCoord? RecoveryBaseHex;
+        public int RecoveryStartedTurn = -1;
+        public int RecoveryWaitTurns;
+        public int RepairsCompleted;
+        public RaidRefitAction PendingRefitAction;
+
         // Turn on which the reinforcement demand was raised, so exactly ONE support intent is
         // requested per weakened primary (no duplicate convoys).
         public int ReinforcementRequestedTurn = -1;

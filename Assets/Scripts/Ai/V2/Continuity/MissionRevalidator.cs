@@ -72,7 +72,9 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
-            if (root != null && !mover.HasActivatedThisTurn && mover.ActivationApCost > 0
+            if (root != null && !(pm.Kind == MissionKind.Raid
+                    && pm.RaidPhase == RaidMissionPhase.Refit)
+                && !mover.HasActivatedThisTurn && mover.ActivationApCost > 0
                 && root.ActionPoints < mover.ActivationApCost)
                 return MissionValidity.StaleUnaffordable;
 

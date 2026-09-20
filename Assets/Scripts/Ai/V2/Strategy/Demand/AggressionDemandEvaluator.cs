@@ -107,7 +107,9 @@ namespace Game.Ai.V2
 
                     // A Return/SupportReturn leg consumes no target and needs no combat capability
                     // at all — the target (if any) is already handled or irrelevant to this leg.
-                    if (ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn)
+                    if (ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn
+                        || ri.Phase == RaidMissionPhase.RecoveryReturn
+                        || ri.Phase == RaidMissionPhase.Refit)
                     {
                         if (ri.Target.HasValue) coveredTargets.Add(ri.Target);
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
