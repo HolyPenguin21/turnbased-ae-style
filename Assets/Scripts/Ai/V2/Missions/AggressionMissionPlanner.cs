@@ -283,7 +283,7 @@ namespace Game.Ai.V2
                 CanCoverAllDefenders = true,
                 RefitAction = action,
             };
-            float value = default(TaskScore).Value;
+            float value = RaidRecoveryPlanner.ScoreRefitAction(action).Value;
             return new RaidCandidate(target, value, value,
                 $"Raid {raid.Target.DiagnosticLabel} Refit {action.Kind}: primary "
                 + $"#{raid.PrimaryArmyId.Value} at ({action.BaseHex.Q},{action.BaseHex.R}) "
@@ -325,7 +325,10 @@ namespace Game.Ai.V2
                     AssemblableWinChance = 1f,
                     CanCoverAllDefenders = true,
                 };
-                float unpinnedValue = default(TaskScore).Value;
+                RaidRecoveryProjection projection =
+                    RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri);
+                float unpinnedValue = projection.Viable
+                    ? projection.Score.Value : default(TaskScore).Value;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
                     + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
                 return new RaidCandidate(unpinned, unpinnedValue, unpinnedValue,
@@ -346,7 +349,10 @@ namespace Game.Ai.V2
                 AssemblableWinChance = 1f,
                 CanCoverAllDefenders = true,
             };
-            float value = default(TaskScore).Value;
+            RaidRecoveryProjection projection =
+                RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri, ri.SupportArmyId.Value);
+            float value = projection.Viable
+                ? projection.Score.Value : default(TaskScore).Value;
             AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE {intent.IntentKey}: support "
                 + $"#{ri.SupportArmyId.Value} -> primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
             return new RaidCandidate(target, value, value,
