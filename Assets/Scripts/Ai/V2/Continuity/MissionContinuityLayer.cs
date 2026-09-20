@@ -287,9 +287,13 @@ namespace Game.Ai.V2
         // mirroring the Scout re-focus pattern instead of retiring and re-creating the operation.
         public static List<MissionIntent> ResolveActive(PlayerSetupData player, WorldSnapshot snap,
             IReadOnlyList<ReconObjective> reconObjectives = null,
-            IReadOnlyList<AggressionObjective> aggressionObjectives = null)
+            IReadOnlyList<AggressionObjective> aggressionObjectives = null,
+            AiTurnContext ctx = null)
         {
             var active = new List<MissionIntent>();
+            Func<HexCoord, HexCoord, int> safeRouteCost = ctx?.Map == null ? null
+                : (Func<HexCoord, HexCoord, int>)((from, to) =>
+                    SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to));
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             if (state.Count == 0)
                 return active;
@@ -710,7 +714,7 @@ namespace Game.Ai.V2
                     HashSet<int> recoveryUnavailable = RecoveryUnavailable(raidClaims, ri);
                     if (!isReturnLeg
                         && !AdvanceRaidPhase(player, snap, intent, ri, aggressionObjectives,
-                            activeRaidTargets, rekeys, recoveryUnavailable))
+                            activeRaidTargets, rekeys, recoveryUnavailable, safeRouteCost))
                     {
                         dead.Add(intent.IntentKey);
                         continue;
@@ -1105,7 +1109,8 @@ namespace Game.Ai.V2
             IReadOnlyList<AggressionObjective> aggressionObjectives,
             HashSet<RaidTargetRef> activeRaidTargets,
             List<(MissionIntentKey Old, MissionIntent Intent)> rekeys,
-            ISet<int> unavailableArmyIds)
+            ISet<int> unavailableArmyIds,
+            Func<HexCoord, HexCoord, int> safeRouteCost)
         {
             // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
             // positive live read (ours / another player's roster / honest map memory / event-guard
@@ -1146,7 +1151,7 @@ namespace Game.Ai.V2
                         ? RaidRecoveryProjection.None(0f, "primary missing")
                         : RaidRecoveryPlanner.ProjectBase(snap, ri, primary,
                             AiV2Util.KnownDefenders(snap, ri.Target), unavailableArmyIds,
-                            CurrentRaidWinChance(snap, ri), ri.RecoveryBaseHex);
+                            CurrentRaidWinChance(snap, ri), ri.RecoveryBaseHex, safeRouteCost);
                     if (refit.Viable && refit.FirstRefitAction.HasValue)
                     {
                         ri.PendingRefitAction = refit.FirstRefitAction;
@@ -1161,7 +1166,7 @@ namespace Game.Ai.V2
 
                     ri.PendingRefitAction = default;
                     RaidRecoveryProjection fallback = RaidRecoveryPlanner.Choose(
-                        snap, ri, unavailableArmyIds);
+                        snap, ri, unavailableArmyIds, safeRouteCost: safeRouteCost);
                     if (fallback.Viable && fallback.Phase == RaidMissionPhase.Reinforcement)
                     {
                         ri.Phase = RaidMissionPhase.Reinforcement;
@@ -1202,7 +1207,8 @@ namespace Game.Ai.V2
                 {
                     if (ri.OperationStarted)
                         return TransitionToBestRecovery(player, snap, intent, ri,
-                            unavailableArmyIds, "primary_no_longer_clears_current_target");
+                            unavailableArmyIds, "primary_no_longer_clears_current_target",
+                            safeRouteCost);
                     ri.Phase = RaidMissionPhase.Reinforcement;
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Assault -> Reinforcement "
                         + "reason=primary_no_longer_clears_current_target_before_operation_start");
@@ -1256,7 +1262,7 @@ namespace Game.Ai.V2
             }
             else if (ri.OperationStarted
                 && !TransitionToBestRecovery(player, snap, intent, ri, unavailableArmyIds,
-                    "next_target_requires_recovery"))
+                    "next_target_requires_recovery", safeRouteCost))
                 return false;
             AiDebugLog.Write($"[AI][V2][Raid] {oldKey} target completed -> re-oriented to {intent.IntentKey} "
                 + $"phase={ri.Phase} primary=#{ri.PrimaryArmyId} worthIt={(strongEnough ? 1 : 0)}");
@@ -1276,9 +1282,11 @@ namespace Game.Ai.V2
         }
 
         private static bool TransitionToBestRecovery(PlayerSetupData player, WorldSnapshot snap,
-            MissionIntent intent, RaidIntent raid, ISet<int> unavailableArmyIds, string reason)
+            MissionIntent intent, RaidIntent raid, ISet<int> unavailableArmyIds, string reason,
+            Func<HexCoord, HexCoord, int> safeRouteCost)
         {
-            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid, unavailableArmyIds);
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
+                unavailableArmyIds, safeRouteCost: safeRouteCost);
             if (!plan.Viable)
             {
                 AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=ABANDON intent={intent.IntentKey} "
