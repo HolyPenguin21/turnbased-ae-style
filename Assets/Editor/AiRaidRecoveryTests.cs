@@ -69,6 +69,85 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void RefitTransferAp_UsesIncomingUnitAndExactTargetCoverage()
+        {
+            var player = new PlayerSetupData { Nickname = "Activation" };
+            ArmySnapshot primary = Army(1, player, new HexCoord(0, 0), 2,
+                Member(101, 0, Profile(2, 0, 2, 2, 1), Profile(2, 0, 2, 2, 1),
+                    repairable: false));
+            primary.HasActivatedThisTurn = true;
+            RaidRecoveryMemberSnapshot incoming = Member(202, 0,
+                Profile(8, 0, 5, 5, 1), Profile(8, 0, 5, 5, 1),
+                repairable: false, canSpare: true, activationAp: 3);
+
+            Assert.That(RaidRecoveryPlanner.JoinActivationAp(primary, incoming), Is.EqualTo(3),
+                "the incoming unit's AP, not the donor army aggregate, is authoritative");
+
+            primary.ActivationCoveredUnitRuntimeIds = new[] { 202 };
+            Assert.That(RaidRecoveryPlanner.JoinActivationAp(primary, incoming), Is.Zero,
+                "a same-turn rejoin already covered by this target army must not pay twice");
+        }
+
+        [Test]
+        public void RecoveryChoice_SkipsStructurallyUnreachableFieldSupport()
+        {
+            var player = new PlayerSetupData { Nickname = "Route" };
+            WorthIt.DefenderProfile weak = Profile(1, 0, 2, 2, 1);
+            WorthIt.DefenderProfile strong = Profile(20, 0, 10, 10, 2);
+            WorthIt.DefenderProfile defender = Profile(5, 0, 6, 6, 1);
+            ArmySnapshot primary = Army(10, player, new HexCoord(0, 0), 2,
+                Member(101, 0, weak, weak, repairable: false));
+            ArmySnapshot support = Army(11, player, new HexCoord(2, 0), 2,
+                Member(201, 0, strong, strong, repairable: false, canSpare: true));
+            support.MemberCount = 2;
+            WorldSnapshot snap = Snapshot(new[] { primary, support }, 0);
+            snap.Self.BaseHexes = System.Array.Empty<HexCoord>();
+            var raid = Raid(primary.ArmyId, new HexCoord(4, 0));
+
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
+                new HashSet<int>(), safeRouteCost: (from, to) => int.MaxValue);
+
+            Assert.That(plan.Viable, Is.False,
+                "geometrically close support is not viable without a safe structural route");
+        }
+
+        [Test]
+        public void RecoveryChoice_ConsidersAllBasesAndRequiresRouteBackToTarget()
+        {
+            var player = new PlayerSetupData { Nickname = "Bases" };
+            HexCoord near = new HexCoord(0, 0);
+            HexCoord useful = new HexCoord(2, 0);
+            HexCoord target = new HexCoord(4, 0);
+            WorthIt.DefenderProfile weak = Profile(1, 0, 2, 2, 1);
+            WorthIt.DefenderProfile strong = Profile(20, 0, 10, 10, 2);
+            WorthIt.DefenderProfile defender = Profile(5, 0, 6, 6, 1);
+            ArmySnapshot primary = Army(20, player, near, 2,
+                Member(301, 0, weak, weak, repairable: false));
+            primary.ReachableOwnBaseHexes = new[] { near, useful };
+            ArmySnapshot donor = Army(21, player, useful, 2,
+                Member(401, 0, strong, strong, repairable: false, canSpare: true));
+            donor.MemberCount = 2;
+            WorldSnapshot snap = Snapshot(new[] { primary, donor }, 0);
+            snap.Self.BaseHexes = new[] { near, useful };
+            var raid = Raid(primary.ArmyId, target);
+
+            int Route(HexCoord from, HexCoord to)
+            {
+                if (from.Equals(near) && to.Equals(target))
+                    return int.MaxValue;
+                return HexGridMath.Distance(from, to);
+            }
+
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
+                new HashSet<int>(), safeRouteCost: Route);
+
+            Assert.That(plan.Viable, Is.True);
+            Assert.That(plan.BaseHex, Is.EqualTo(useful),
+                "the planner must reject the nearest dead-end base and select the complete plan");
+            Assert.That(plan.FirstRefitAction.DonorArmyId, Is.EqualTo(21));
+        }
+
+        [Test]
         public void RefitStableKey_DistinguishesActionAndExactUnit()
         {
             RaidMissionTarget repair = Target(RaidRefitActionKind.RepairUnit, 11);
@@ -169,8 +248,9 @@ namespace Game.EditorTests
 
         private static RaidRecoveryMemberSnapshot Member(int id, int index,
             WorthIt.DefenderProfile current, WorthIt.DefenderProfile full,
-            bool repairable, ResourceVector repairCost = default, bool canSpare = false) =>
-            new RaidRecoveryMemberSnapshot(id, index, false, false, canSpare, 0,
+            bool repairable, ResourceVector repairCost = default, bool canSpare = false,
+            int activationAp = 0) =>
+            new RaidRecoveryMemberSnapshot(id, index, false, false, canSpare, activationAp,
                 current, full, repairable, repairCost);
 
         private static WorthIt.DefenderProfile Profile(float attack, float defense,
