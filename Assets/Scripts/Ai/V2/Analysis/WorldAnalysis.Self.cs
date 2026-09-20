@@ -244,6 +244,10 @@ namespace Game.Ai.V2
                     .Select(u => u.MoveMax).DefaultIfEmpty(a.MaxMovement).Min(),
                 HeroIsHomeVocation = a.Members.Where(u => u.IsHero)
                     .Any(HeroRoleEvaluator.HasSupportVocation),
+                HasResearchOperator = a.Members.Any(u => u.IsHero && !u.IsPrisoner
+                    && u.HasAbility(UnitAbilities.Researcher)),
+                HasProductionOperator = a.Members.Any(u => u.IsHero && !u.IsPrisoner
+                    && u.HasAbility(UnitAbilities.Assembler)),
                 ActivationApCost = a.ActivationApCost,
                 ActivationEnergyCost = a.ActivationEnergyCost,
                 HasActivatedThisTurn = a.HasActivatedThisTurn,

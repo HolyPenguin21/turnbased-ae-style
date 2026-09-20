@@ -476,6 +476,73 @@ namespace Game.Ai.V2
             || !lastHandled.TryGetValue(axis, out string previous)
             || previous != fingerprint;
 
+        internal static bool RefreshDevelopmentOpportunities(ISet<DesireAxis> dirtyAxes) =>
+            dirtyAxes != null && dirtyAxes.Contains(DesireAxis.Development);
+
+        internal static string DevelopmentAdmissionFingerprint(WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> activeIntents, int actionPoints,
+            string resources, int handVersion) =>
+            $"axis={DesireAxis.Development}|ap={actionPoints}|res={resources}"
+            + $"|hand={handVersion}|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
+
+        // Development's actor dependency is narrower than the operational Actor invalidation.
+        // Every army movement must still wake Recon/Aggression, but only a Researcher/Assembler
+        // move can change operator delivery. Composition/capability remains represented for every
+        // army because equipment recipient selection genuinely depends on it.
+        internal static string DevelopmentAdmissionFacts(WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            DevelopmentReadiness rd = snapshot?.Development;
+            string facilities = string.Join(";", (rd?.Facilities
+                    ?? System.Array.Empty<DevelopmentFacility>())
+                .OrderBy(f => f.Hex.Q).ThenBy(f => f.Hex.R).ThenBy(f => (int)f.Mode)
+                .Select(f => $"{f.Hex.Q},{f.Hex.R}:{(int)f.Mode}:{(f.HasHero ? 1 : 0)}:"
+                    + $"{(f.Contested ? 1 : 0)}:{f.HeroFate}:{f.HeroCommandRating}"));
+            string offerings = string.Join(";", (rd?.Offerings
+                    ?? System.Array.Empty<DevelopmentOffering>())
+                .OrderBy(o => o.FacilityHex.Q).ThenBy(o => o.FacilityHex.R)
+                .ThenBy(o => (int)o.Mode)
+                .ThenBy(o => o.Card?.authoredKey ?? o.Card?.displayName,
+                    System.StringComparer.Ordinal)
+                .Select(o => $"{o.FacilityHex.Q},{o.FacilityHex.R}:{(int)o.Mode}:"
+                    + $"{o.Card?.authoredKey ?? o.Card?.displayName}:{o.SuccessChance:0.###}:"
+                    + $"{(o.ProducesEquipment ? 1 : 0)}:{o.StakeCost.Human:0.###},"
+                    + $"{o.StakeCost.Energy:0.###},{o.StakeCost.Materials:0.###},"
+                    + $"{o.StakeCost.Tech:0.###}"));
+            string armies = string.Join(";", (snapshot?.Self?.Armies
+                    ?? System.Array.Empty<ArmySnapshot>())
+                .Where(a => a != null).OrderBy(a => a.ArmyId)
+                .Select(a =>
+                {
+                    bool developmentOperator = a.HasResearchOperator || a.HasProductionOperator;
+                    string operatorState = developmentOperator
+                        ? $":operator={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:"
+                          + $"{(a.HasActivatedThisTurn ? 1 : 0)}:{(a.IsGarrison ? 1 : 0)}"
+                        : string.Empty;
+                    return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
+                        + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
+                        + $"{a.EffectiveArmyPower:0.###}:{a.CompositionQuality:0.###}:"
+                        + $"{a.Capacity}:{a.OccupiedBattleSlots}:{(int)a.StrategicCoverage}:"
+                        + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}"
+                        + operatorState;
+                }));
+            string bases = string.Join(";", (snapshot?.Self?.BaseHexes
+                    ?? System.Array.Empty<Game.HexGrid.HexCoord>())
+                .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h => $"{h.Q},{h.R}"));
+            string owners = string.Join(";", (activeIntents ?? new List<MissionIntent>())
+                .Where(i => i != null).OrderBy(i => i.IntentKey)
+                .Select(i => $"{i.IntentKey}:{i.Kind}:{i.Status}:{i.PreferredMoverArmyId}"));
+            return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|owners={owners}"
+                + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
+                + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
+                + $"{(rd?.ResearcherCardInHand == true ? 1 : 0)}:"
+                + $"{(rd?.AssemblerCardInHand == true ? 1 : 0)}:"
+                + $"{(rd?.DevPathViable == true ? 1 : 0)}:{rd?.UpgradeTargetCount ?? 0}:"
+                + $"{(rd?.BestSuccessChance ?? 0f):0.###}:"
+                + $"{(rd?.SurplusFraction ?? 0f):0.###}:"
+                + $"{(rd?.ProductionSupport ?? 0f):0.###}";
+        }
+
         public static IEnumerator RunTurn(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
             AiDebugLog.Write($"[AI][V2] === {player?.Nickname} — Strategy V2 pipeline owns this turn "
@@ -657,6 +724,9 @@ namespace Game.Ai.V2
                     string resources = root == null ? "-" : string.Join(",",
                         ResourceBundle.All.Select(t => root.GetResource(t).ToString("0.###",
                             CultureInfo.InvariantCulture)));
+                    if (axis == DesireAxis.Development)
+                        return DevelopmentAdmissionFingerprint(snapshot, activeIntents,
+                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1);
                     string armies = string.Join(";", (snapshot?.Self?.Armies
                             ?? System.Array.Empty<ArmySnapshot>())
                         .Where(a => a != null).OrderBy(a => a.ArmyId)
@@ -684,8 +754,9 @@ namespace Game.Ai.V2
                             .OrderBy(i => i.IntentKey)
                             .Select(i => $"{i.IntentKey}:{i.Status}:{i.PreferredMoverArmyId}"))
                         : string.Empty;
-                    return $"v={V2StateVersion.Current}|axis={axis}|ap={root?.ActionPoints ?? 0}"
-                        + $"|res={resources}|hand={hand?.MutationVersion ?? -1}|armies={armies}"
+                    return $"axis={axis}|ap={root?.ActionPoints ?? 0}"
+                        + $"|res={resources}|hand={hand?.MutationVersion ?? -1}"
+                        + $"|v={V2StateVersion.Current}|armies={armies}"
                         + economyFacts;
                 }
 
@@ -802,10 +873,10 @@ namespace Game.Ai.V2
                     activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
-                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                        ? DevelopmentOpportunityEvaluator.Enumerate(
-                            snapshot, player, root, hand, aggressionObjectives)
-                        : new List<DevelopmentOpportunity>();
+                    if (RefreshDevelopmentOpportunities(dirtyAxes)
+                        && AiStrategyV2Scope.AxisInScope(DesireAxis.Development))
+                        devOpportunities = DevelopmentOpportunityEvaluator.Enumerate(
+                            snapshot, player, root, hand, aggressionObjectives);
                     List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
                         actorCommitments, player, ctx, root, devOpportunities,
