@@ -323,7 +323,7 @@ namespace Game.Ai.V2
             int donorsBlocked = donors.Where(d => usedDonors.Contains(d.Member.RuntimeId))
                 .Select(d => d.Army.ArmyId).Distinct().Count();
             int blockedActors = 1 + donorsBlocked;
-            TaskScore score = PlanScore(win, ap, spent, eta,
+            TaskScore score = PlanScore(win, ap, spent, toBase + toTarget,
                 primary.ActivationApCost, blockedActors);
             return new RaidRecoveryProjection(true, atBase ? RaidMissionPhase.Refit
                     : RaidMissionPhase.RecoveryReturn, baseHex, null, null, null, eta, ap, spent,
@@ -379,9 +379,10 @@ namespace Game.Ai.V2
                     HexGridMath.Distance(support.Hex, primary.Hex));
                 if (routeDistance == int.MaxValue)
                     continue;
-                int eta = CeilTurns(support, routeDistance) + 1;
+                int travelTurns = CeilTurns(support, routeDistance);
+                int eta = travelTurns + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
-                TaskScore score = PlanScore(after, ap, ResourceVector.Zero, eta,
+                TaskScore score = PlanScore(after, ap, ResourceVector.Zero, travelTurns,
                     support.ActivationApCost, blockedActors: 2);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, null, null, eta, ap, ResourceVector.Zero, 2,
@@ -568,14 +569,14 @@ namespace Game.Ai.V2
                 moverOpportunityCost: action.DonorArmyId.HasValue ? 1f : 0f);
 
         private static TaskScore PlanScore(float projectedWinChance, float apCost,
-            ResourceVector resourceCost, int etaTurns, float recurringActivationAp,
-            int blockedActors) =>
+            ResourceVector resourceCost, int deliveryEtaTurns,
+            float recurringActivationAp, int blockedActors) =>
             new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(projectedWinChance),
                 cardPrice: TaskScoreEvaluator.CardPrice(
                     apCost, ResourceMagnitude(resourceCost)),
                 delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    recurringActivationAp, etaTurns,
+                    recurringActivationAp, deliveryEtaTurns,
                     AiConfigV2.taskScoreReactivationApWeight),
                 // The primary is already committed in every recovery option. Only additional
                 // support/donor actors are an opportunity cost.
