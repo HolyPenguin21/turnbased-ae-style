@@ -55,7 +55,7 @@ namespace Game.Ai.V2
                 currentWin, currentWin, default, default, reason);
     }
 
-    // Pure comparison of the two ways an already-started Raid can regain the existing
+    // Pure comparison of the available ways an already-started Raid can regain the existing
     // raidMinViableWinChance. Combat/resources come from the immutable snapshot; Continuity supplies
     // the existing read-only SafeStepPathing oracle so route viability uses the same cached blocker
     // rules as execution. It returns one frozen next action and mutates no live state.
@@ -116,7 +116,7 @@ namespace Game.Ai.V2
                 : ProjectBestBase(snap, raid, primary, defenders, unavailableArmyIds,
                     currentWin, safeRouteCost);
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
-                "no field, air, or base recovery plan has positive canonical value");
+                "no viable field, air, or base recovery plan");
             foreach (RaidRecoveryProjection option in new[] { field, air, atBase })
                 if (option.Viable && (!best.Viable || Compare(option, best) < 0))
                     best = option;
@@ -167,7 +167,7 @@ namespace Game.Ai.V2
                     "air support has no owned recovery landing base");
 
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
-                "no free air wing produces a positive canonical recovery score");
+                "no free air wing produces a viable canonical recovery plan");
             foreach (ArmySnapshot wing in (snap.Self.Armies ?? Array.Empty<ArmySnapshot>())
                 .Where(x => x != null && x.IsAir && !x.IsAirfield && !x.IsPrison
                     && x.MemberCount > 0 && x.CurrentMovement > 0
@@ -201,7 +201,8 @@ namespace Game.Ai.V2
                 float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
                 float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
                 ResourceVector resources = new ResourceVector(0f, 0f, energy, 0f, 0f);
-                TaskScore score = PlanScore(after, ap, resources, eta,
+                TaskScore score = PlanScore(after,
+                    actionApCost: 0f, activationApNow: ap, resources, eta,
                     wing.ActivationApCost, blockedActors: 2);
                 HexCoord landing = bases
                     .OrderBy(x => HexGridMath.Distance(x, raid.LastKnownHex))
@@ -323,7 +324,10 @@ namespace Game.Ai.V2
             int donorsBlocked = donors.Where(d => usedDonors.Contains(d.Member.RuntimeId))
                 .Select(d => d.Army.ArmyId).Distinct().Count();
             int blockedActors = 1 + donorsBlocked;
-            TaskScore score = PlanScore(win, ap, spent, toBase + toTarget,
+            float activationApNow = primary.HasActivatedThisTurn
+                || toBase + toTarget <= 0 ? 0f : primary.ActivationApCost;
+            TaskScore score = PlanScore(win, actionApCost: ap,
+                activationApNow, spent, toBase + toTarget,
                 primary.ActivationApCost, blockedActors);
             return new RaidRecoveryProjection(true, atBase ? RaidMissionPhase.Refit
                     : RaidMissionPhase.RecoveryReturn, baseHex, null, null, null, eta, ap, spent,
@@ -382,7 +386,8 @@ namespace Game.Ai.V2
                 int travelTurns = CeilTurns(support, routeDistance);
                 int eta = travelTurns + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
-                TaskScore score = PlanScore(after, ap, ResourceVector.Zero, travelTurns,
+                TaskScore score = PlanScore(after,
+                    actionApCost: 0f, activationApNow: ap, ResourceVector.Zero, travelTurns,
                     support.ActivationApCost, blockedActors: 2);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, null, null, eta, ap, ResourceVector.Zero, 2,
@@ -511,6 +516,7 @@ namespace Game.Ai.V2
             c = b.ProjectedWinChance.CompareTo(a.ProjectedWinChance); if (c != 0) return c;
             c = a.EtaTurns.CompareTo(b.EtaTurns); if (c != 0) return c;
             c = Nullable.Compare(a.SupportArmyId, b.SupportArmyId); if (c != 0) return c;
+            c = Nullable.Compare(a.AirSupportArmyId, b.AirSupportArmyId); if (c != 0) return c;
             if (a.BaseHex.HasValue && b.BaseHex.HasValue)
             {
                 c = a.BaseHex.Value.Q.CompareTo(b.BaseHex.Value.Q); if (c != 0) return c;
@@ -568,13 +574,17 @@ namespace Game.Ai.V2
                     action.ApCost, ResourceMagnitude(action.ResourceCost)),
                 moverOpportunityCost: action.DonorArmyId.HasValue ? 1f : 0f);
 
-        private static TaskScore PlanScore(float projectedWinChance, float apCost,
-            ResourceVector resourceCost, int deliveryEtaTurns,
+        private static TaskScore PlanScore(float projectedWinChance, float actionApCost,
+            float activationApNow, ResourceVector resourceCost, int deliveryEtaTurns,
             float recurringActivationAp, int blockedActors) =>
             new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(projectedWinChance),
+                // Action AP uses the shared card/action rate. Army activation uses the
+                // shared reactivation rate; both remain one physical CardPrice slot.
                 cardPrice: TaskScoreEvaluator.CardPrice(
-                    apCost, ResourceMagnitude(resourceCost)),
+                    actionApCost, ResourceMagnitude(resourceCost))
+                    + Mathf.Max(0f, activationApNow)
+                        * AiConfigV2.taskScoreReactivationApWeight,
                 delivery: TaskScoreEvaluator.DeliveryFromEta(
                     recurringActivationAp, deliveryEtaTurns,
                     AiConfigV2.taskScoreReactivationApWeight),
