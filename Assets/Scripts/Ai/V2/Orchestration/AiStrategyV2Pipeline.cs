@@ -522,7 +522,7 @@ namespace Game.Ai.V2
                     return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
                         + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
                         + $"{a.EffectiveArmyPower:0.###}:{a.CompositionQuality:0.###}:"
-                        + $"{a.Capacity}:{a.OccupiedBattleSlots}:{(int)a.StrategicCoverage}:"
+                        + $"{a.Capacity}:{a.OccupiedBattleSlots}:{a.StrategicCoverage.GetHashCode()}:"
                         + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}"
                         + operatorState;
                 }));
