@@ -84,6 +84,20 @@ namespace Game.Ai.V2
                         if (ret.HasValue) incumbents.Add(ret.Value);
                         continue;
                     }
+                    if (intent.Raid.Phase == RaidMissionPhase.RecoveryReturn)
+                    {
+                        RaidCandidate? recovery = ReturnCandidate(intent,
+                            RaidMissionPhase.RecoveryReturn, intent.Raid.PrimaryArmyId,
+                            intent.Raid.RecoveryBaseHex);
+                        if (recovery.HasValue) incumbents.Add(recovery.Value);
+                        continue;
+                    }
+                    if (intent.Raid.Phase == RaidMissionPhase.Refit)
+                    {
+                        RaidCandidate? refit = RefitCandidate(intent);
+                        if (refit.HasValue) incumbents.Add(refit.Value);
+                        continue;
+                    }
                     if (intent.Raid.Phase == RaidMissionPhase.SupportReturn)
                     {
                         RaidCandidate? sret = ReturnCandidate(intent, RaidMissionPhase.SupportReturn,
@@ -238,7 +252,8 @@ namespace Game.Ai.V2
                 CanCoverAllDefenders = true,
             };
             float value = default(TaskScore).Value;
-            string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN" : "RETURN";
+            string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN"
+                : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY-RETURN" : "RETURN";
             string role = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
             AiDebugLog.Write($"[AI][V2]   raid mission — {label} {intent.IntentKey}: {role} "
                 + $"#{moverArmyId.Value} -> ({homeHex.Value.Q},{homeHex.Value.R})");
@@ -246,6 +261,34 @@ namespace Game.Ai.V2
                 $"Raid {ri.Target.DiagnosticLabel} {phase}: {role} #{moverArmyId.Value} to base "
                 + $"({homeHex.Value.Q},{homeHex.Value.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
                 true, intent.Funding, moverArmyId, moverArmyId);
+        }
+
+        private static RaidCandidate? RefitCandidate(MissionIntent intent)
+        {
+            RaidIntent raid = intent?.Raid;
+            RaidRefitAction action = raid?.PendingRefitAction ?? default;
+            if (raid == null || !raid.PrimaryArmyId.HasValue || !raid.RecoveryBaseHex.HasValue
+                || !action.HasValue)
+                return null;
+            var target = new RaidMissionTarget
+            {
+                Phase = RaidMissionPhase.Refit,
+                PrimaryArmyId = raid.PrimaryArmyId,
+                DestinationHex = raid.RecoveryBaseHex.Value,
+                Target = raid.Target,
+                LastKnownHex = raid.LastKnownHex,
+                TargetIsNeutral = raid.TargetIsNeutral,
+                EstimatedEta = 1,
+                AssemblableWinChance = action.WinChanceAfter,
+                CanCoverAllDefenders = true,
+                RefitAction = action,
+            };
+            float value = default(TaskScore).Value;
+            return new RaidCandidate(target, value, value,
+                $"Raid {raid.Target.DiagnosticLabel} Refit {action.Kind}: primary "
+                + $"#{raid.PrimaryArmyId.Value} at ({action.BaseHex.Q},{action.BaseHex.R}) "
+                + $"unit={action.UnitRuntimeId}; intrinsic={F(value)}; Hard funding protection is allocator-owned",
+                true, intent.Funding, raid.PrimaryArmyId, raid.PrimaryArmyId);
         }
 
         // Reinforcement is a durable continuation leg. Target discovery/value is not recomputed here;
@@ -468,6 +511,31 @@ namespace Game.Ai.V2
                     EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
                     EstimatedDistance = wing == null ? 0
                         : HexGridMath.Distance(wing.Hex, c.Target.DestinationHex),
+                    EtaTurns = 1,
+                };
+            }
+            else if (c.Target.Phase == RaidMissionPhase.Refit)
+            {
+                RaidRefitAction action = c.Target.RefitAction;
+                req = new MissionRequirements
+                {
+                    RequiresArmy = true,
+                    MoverKnown = true,
+                    ApMinimum = action.ApCost,
+                    ApDesired = action.ApCost,
+                    ApMaximum = action.ApCost,
+                    HumanMinimum = action.ResourceCost.Human,
+                    HumanDesired = action.ResourceCost.Human,
+                    HumanMaximum = action.ResourceCost.Human,
+                    EnergyMinimum = action.ResourceCost.Energy,
+                    EnergyDesired = action.ResourceCost.Energy,
+                    EnergyMaximum = action.ResourceCost.Energy,
+                    MaterialsMinimum = action.ResourceCost.Materials,
+                    MaterialsDesired = action.ResourceCost.Materials,
+                    MaterialsMaximum = action.ResourceCost.Materials,
+                    TechMinimum = action.ResourceCost.Tech,
+                    TechDesired = action.ResourceCost.Tech,
+                    TechMaximum = action.ResourceCost.Tech,
                     EtaTurns = 1,
                 };
             }

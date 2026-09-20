@@ -104,11 +104,15 @@ namespace Game.Ai.V2
         public readonly int Q;
         public readonly int R;
         public readonly RaidTargetKind TargetKind;
+        public readonly int ActorId;
+        public readonly int DetailId;
 
         public StableMissionKey(MissionKind kind, int subKind, int targetId, int q, int r,
-            RaidTargetKind targetKind = RaidTargetKind.NeutralArmy)
+            RaidTargetKind targetKind = RaidTargetKind.NeutralArmy, int actorId = 0,
+            int detailId = 0)
         {
-            Kind = kind; SubKind = subKind; TargetId = targetId; Q = q; R = r; TargetKind = targetKind;
+            Kind = kind; SubKind = subKind; TargetId = targetId; Q = q; R = r;
+            TargetKind = targetKind; ActorId = actorId; DetailId = detailId;
         }
 
         public static StableMissionKey ForRaidAssault(RaidTargetRef target) =>
@@ -127,6 +131,17 @@ namespace Game.Ai.V2
             if (rt.Phase == RaidMissionPhase.SupportReturn)
                 return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.SupportReturn,
                     rt.SupportArmyId ?? 0, rt.DestinationHex.Q, rt.DestinationHex.R);
+            if (rt.Phase == RaidMissionPhase.Refit)
+            {
+                RaidRefitAction action = rt.RefitAction;
+                int targetId = rt.Target.Kind == RaidTargetKind.NeutralArmy
+                    ? rt.Target.ArmyId : unchecked(rt.Target.Hex.Q * 397 ^ rt.Target.Hex.R);
+                int detail = unchecked((((int)action.Kind * 397 + action.UnitRuntimeId) * 397
+                    + action.DisplacedUnitRuntimeId) * 397 + (action.DonorArmyId ?? 0));
+                return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Refit,
+                    targetId, rt.DestinationHex.Q, rt.DestinationHex.R, rt.Target.Kind,
+                    rt.PrimaryArmyId ?? 0, detail);
+            }
             return new StableMissionKey(MissionKind.Raid, (int)rt.Phase, rt.PrimaryArmyId ?? 0,
                 rt.DestinationHex.Q, rt.DestinationHex.R);
         }
@@ -156,9 +171,22 @@ namespace Game.Ai.V2
 
         public bool Equals(StableMissionKey o) =>
             Kind == o.Kind && SubKind == o.SubKind && TargetId == o.TargetId && Q == o.Q && R == o.R
-            && TargetKind == o.TargetKind;
+            && TargetKind == o.TargetKind && ActorId == o.ActorId && DetailId == o.DetailId;
         public override bool Equals(object obj) => obj is StableMissionKey o && Equals(o);
-        public override int GetHashCode() => ((int)Kind, SubKind, TargetId, Q, R, (int)TargetKind).GetHashCode();
+        public override int GetHashCode()
+        {
+            unchecked
+            {
+                int hash = (int)Kind;
+                hash = hash * 397 ^ SubKind;
+                hash = hash * 397 ^ TargetId;
+                hash = hash * 397 ^ Q;
+                hash = hash * 397 ^ R;
+                hash = hash * 397 ^ (int)TargetKind;
+                hash = hash * 397 ^ ActorId;
+                return hash * 397 ^ DetailId;
+            }
+        }
         public override string ToString() =>
             Kind == MissionKind.Scout
                 ? (TargetId != 0
@@ -181,7 +209,9 @@ namespace Game.Ai.V2
             c = TargetId.CompareTo(o.TargetId); if (c != 0) return c;
             c = ((int)TargetKind).CompareTo((int)o.TargetKind); if (c != 0) return c;
             c = Q.CompareTo(o.Q); if (c != 0) return c;
-            return R.CompareTo(o.R);
+            c = R.CompareTo(o.R); if (c != 0) return c;
+            c = ActorId.CompareTo(o.ActorId); if (c != 0) return c;
+            return DetailId.CompareTo(o.DetailId);
         }
     }
 
