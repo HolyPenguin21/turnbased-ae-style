@@ -578,6 +578,14 @@ namespace Game.UI
                 hexSelectionController?.DeleteArmyIfEmptied(targetArmy);
                 hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
 
+                // Killed/Captured/Escaped all mutate roster or HP at this hex, but this encounter
+                // never goes through OnBattleOutcomeAcknowledged (see this closure's own comment
+                // above), which is where a normal battle's own notify lives — without this, AI
+                // knowledge of this hex's content (AiMapMemory.KnowledgeVersion) never advances,
+                // so a stale pre-encounter sighting survives until some unrelated event on this
+                // hex happens to refresh it.
+                VisionSystem.NotifyContentChanged(hunterHex);
+
                 // Same "what's left on this hex" resolution OnBattleOutcomeAcknowledged's own
                 // chain uses (see ResolveHexAfterVictory's own comment) — needed here too since a
                 // hero-only guard/contact never goes through that method at all, it resolves
@@ -908,6 +916,16 @@ namespace Game.UI
             bool attackerHere = _attacker != null && _attacker.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_attacker);
             bool defenderHere = _defender != null && _defender.Hex.Equals(hex) && BattleInitiator.IsCombatCapable(_defender);
             ArmyData survivor = attackerHere != defenderHere ? (attackerHere ? _attacker : _defender) : null;
+
+            // ResolveDamage/ApplySecondarySkillHit/RemoveUnit mutate HP and roster directly on
+            // _attacker/_defender's UnitData and never touch ArmyRegistry, so nothing during the
+            // fight itself calls VisionSystem.NotifyContentChanged. Without this, every player
+            // watching `hex` keeps AiMapMemory.KnowledgeVersion unchanged after a real combat
+            // outcome, so WorldAnalysis.RefreshStrategicKnowledge's cheap path never re-observes
+            // this hex and Known.EnemySightings can serve pre-battle HP/composition indefinitely.
+            // One call here (not per-hit) covers the whole battle, matching how ArmyActions/
+            // BuildingRegistry publish once per completed operation, not per sub-step.
+            VisionSystem.NotifyContentChanged(hex);
 
             hexSelectionController?.DeleteArmyIfEmptied(_attacker);
             hexSelectionController?.DeleteArmyIfEmptied(_defender);
