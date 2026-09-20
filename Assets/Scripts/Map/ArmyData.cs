@@ -140,6 +140,9 @@ namespace Game.Map
         // TryContinueAirStrikeTask). Aviation only; a ground army never sets these.
         public HexCoord? LastAirStrikeHex;
         public bool LastAirStrikeAttacked;
+        // One-shot mission-owned endpoint policy. AviationCombatPresenter consumes and clears it;
+        // ordinary movement leaves it null and therefore retains Standard strike behaviour.
+        public AirStrikePolicy? PendingAirStrikePolicy;
 
         // How much AP it costs to activate this army for its first move order of the turn —
         // the sum of every member's own ActivationApCost (a bigger army costs more to get

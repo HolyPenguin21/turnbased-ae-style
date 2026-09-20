@@ -6,6 +6,7 @@ using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Aviation;
 
 namespace Game.Ai.V2
 {
@@ -571,6 +572,29 @@ namespace Game.Ai.V2
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (no raid objective)");
                         continue;
+                    }
+
+                    if (ri.Phase == RaidMissionPhase.AirSupport)
+                    {
+                        ArmyData airWing = ri.AirSupportArmyId.HasValue
+                            ? AiV2Util.ResolveArmy(player, ri.AirSupportArmyId.Value) : null;
+                        AirSortie sortie = airWing != null
+                            ? AirSortieRegistry.ForArmy(player, airWing) : null;
+                        if (airWing == null || !AviationRules.IsValidAirArmy(airWing)
+                            || sortie == null)
+                        {
+                            int? released = ri.AirSupportArmyId;
+                            ri.AirSupportAttemptedTurn = snap.TurnNumber;
+                            ri.AirSupportArmyId = null;
+                            ri.AirSupportLandingHex = null;
+                            ri.Phase = PrimaryClearsTarget(snap, player,
+                                ri.PrimaryArmyId, ri.Target)
+                                ? RaidMissionPhase.Assault
+                                : RaidMissionPhase.Reinforcement;
+                            AiDebugLog.Write($"[AI][V2][Raid][AirSupport] wing "
+                                + $"#{(released.HasValue ? released.Value.ToString() : "none")} "
+                                + $"released; next phase={ri.Phase}");
+                        }
                     }
 
                     // §5 actor ownership — a LOST SUPPORT actor releases only the support claim;
@@ -1691,7 +1715,20 @@ namespace Game.Ai.V2
                     && o.RaidPrimaryArmyId == raid.PrimaryArmyId
                     && o.RaidSupportArmyId.HasValue
                     && o.RaidSupportArmyId.Value == o.MoverArmyId.Value;
-                if (supportExecutedThisTurn)
+                bool airSupportExecutedThisTurn = raid != null && o.HasRaidPayload
+                    && o.RaidPhase == RaidMissionPhase.AirSupport
+                    && o.RaidAirSupportArmyId.HasValue
+                    && o.RaidAirSupportArmyId.Value == o.MoverArmyId.Value;
+                if (airSupportExecutedThisTurn)
+                {
+                    raid.Phase = RaidMissionPhase.AirSupport;
+                    raid.AirSupportArmyId = o.RaidAirSupportArmyId;
+                    raid.AirSupportLandingHex = o.RaidAirSupportLandingHex;
+                    raid.AirSupportStrikeSucceeded |= o.RaidAirSupportStrikeSucceeded;
+                    AiDebugLog.WriteVerbose($"[AI][V2][Raid][AirSupport] {intent.IntentKey} "
+                        + $"executed by wing #{o.MoverArmyId.Value}; primary #{raid.PrimaryArmyId} kept");
+                }
+                else if (supportExecutedThisTurn)
                 {
                     if (o.RaidPhase == RaidMissionPhase.Reinforcement
                         && !o.RaidReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)

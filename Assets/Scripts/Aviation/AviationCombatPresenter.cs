@@ -10,6 +10,29 @@ using UnityEngine;
 
 namespace Game.Aviation
 {
+    public enum AirStrikePolicyKind { Standard, RaidSupport }
+
+    // A transient policy supplied by the caller that owns the mission. Standard preserves the
+    // ordinary endpoint strike exactly; RaidSupport pins one physical target and a survivor floor.
+    public readonly struct AirStrikePolicy
+    {
+        public readonly AirStrikePolicyKind Kind;
+        public readonly int? ExactTargetArmyId;
+        public readonly int MinimumSurvivors;
+
+        public AirStrikePolicy(AirStrikePolicyKind kind, int? exactTargetArmyId = null,
+            int minimumSurvivors = 0)
+        {
+            Kind = kind;
+            ExactTargetArmyId = exactTargetArmyId;
+            MinimumSurvivors = Mathf.Max(0, minimumSurvivors);
+        }
+
+        public static AirStrikePolicy Standard => new AirStrikePolicy(AirStrikePolicyKind.Standard);
+        public static AirStrikePolicy RaidSupport(int targetArmyId) =>
+            new AirStrikePolicy(AirStrikePolicyKind.RaidSupport, targetArmyId, 1);
+    }
+
     // Map/UI adapter for aviation combat. Ordinary ground contact and aviation share
     // ArmyController.MoveAlong's per-step resolution; AA and air strikes remain here.
     public class AviationCombatPresenter : MonoBehaviour
@@ -40,6 +63,7 @@ namespace Game.Aviation
 
             if (airArmy.Members.Count == 0)
             {
+                airArmy.PendingAirStrikePolicy = null;
                 outcome.StopMovement = true;
                 hexSelection?.DeleteArmyIfEmptied(airArmy);
                 yield break;
@@ -53,7 +77,9 @@ namespace Game.Aviation
             // The per-step hex is authoritative: ArmyData.Hex still points to the origin
             // while a multi-hex movement order is in progress.
             var result = new AirStrikeResult();
-            yield return ResolveAirStrikeAtCurrentHex(airArmy, hex, result);
+            AirStrikePolicy policy = airArmy.PendingAirStrikePolicy ?? AirStrikePolicy.Standard;
+            yield return ResolveAirStrikeAtCurrentHex(airArmy, hex, policy, result);
+            airArmy.PendingAirStrikePolicy = null;
             airArmy.LastAirStrikeHex = hex;
             airArmy.LastAirStrikeAttacked = result.Attacked;
         }
@@ -61,19 +87,32 @@ namespace Game.Aviation
         public sealed class AirStrikeResult
         {
             public bool Attacked;
+            public int? AttackedArmyId;
+            public int DefenderCountBefore;
+            public int DefenderCountAfter;
+            public int DamageDealt;
         }
 
         // Shared endpoint strike for movement and stationary repeat strikes. Publish the
         // final defenders once after the entire aircraft group has finished resolving.
         public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex, AirStrikeResult result = null)
+            => ResolveAirStrikeAtCurrentHex(airArmy, hex, AirStrikePolicy.Standard, result);
+
+        public IEnumerator ResolveAirStrikeAtCurrentHex(ArmyData airArmy, HexCoord hex,
+            AirStrikePolicy policy, AirStrikeResult result = null)
         {
             if (airArmy == null || airArmy.Members.Count == 0)
                 yield break;
-            List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner);
+            List<ArmyData> targets = FindAirStrikeTargetsAt(hex, airArmy.Owner,
+                policy.ExactTargetArmyId);
             if (targets.Count == 0)
                 yield break;
 
-            yield return RunAirStrike(airArmy, targets, result);
+            if (result != null)
+                result.DefenderCountBefore = targets.Sum(a => a.Members.Count);
+            yield return RunAirStrike(airArmy, targets, policy, result);
+            if (result != null)
+                result.DefenderCountAfter = targets.Sum(a => a.Members.Count);
             VisionSystem.NotifyContentChanged(hex);
         }
 
@@ -131,12 +170,16 @@ namespace Game.Aviation
                 VisionSystem.NotifyContentChanged(airArmy.Hex);
         }
 
-        private IEnumerator RunAirStrike(ArmyData airArmy, List<ArmyData> targetArmies, AirStrikeResult result = null)
+        private IEnumerator RunAirStrike(ArmyData airArmy, List<ArmyData> targetArmies,
+            AirStrikePolicy policy, AirStrikeResult result = null)
         {
             foreach (UnitData aircraft in airArmy.Members.ToList())
             {
                 if (aircraft.HasAirAttackedThisTurn || airArmy.Members.Count == 0)
                     continue;
+
+                if (targetArmies.Sum(a => a.Members.Count) <= policy.MinimumSurvivors)
+                    break;
 
                 List<(UnitData unit, ArmyData army)> pool = CollectStrikeTargets(targetArmies, airArmy.Owner);
                 if (pool.Count == 0)
@@ -146,7 +189,10 @@ namespace Game.Aviation
                 aircraft.HasAirAttackedThisTurn = true;
                 Game.Map.StealthSystem.ExitStealth(target);
                 if (result != null)
+                {
                     result.Attacked = true;
+                    result.AttackedArmyId = targetArmy.Id;
+                }
 
                 UnitData defenderHero = target.IsHero ? target : targetArmy.Members.Find(unit => unit.IsHero);
                 int? defenderPoolOverride = target.IsHero ? target.FateMax : (int?)null;
@@ -156,6 +202,8 @@ namespace Game.Aviation
                     onResolved: (damage, died) =>
                     {
                         resolved = true;
+                        if (result != null)
+                            result.DamageDealt += Mathf.Max(0, damage);
                         if (died)
                         {
                             targetArmy.Members.Remove(target);
@@ -185,11 +233,17 @@ namespace Game.Aviation
         // This query is shared with the move-arrow preview; event guards and aircraft
         // stored in an airfield are not strike targets.
         public static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner)
+            => FindAirStrikeTargetsAt(hex, owner, null);
+
+        public static List<ArmyData> FindAirStrikeTargetsAt(HexCoord hex, PlayerSetupData owner,
+            int? exactTargetArmyId)
         {
             var result = new List<ArmyData>();
             foreach (ArmyData army in ArmyRegistry.AllAt(hex))
             {
                 if (army.Owner == owner || army.Owner == null || army.IsPrison || army.Members.Count == 0)
+                    continue;
+                if (exactTargetArmyId.HasValue && army.Id != exactTargetArmyId.Value)
                     continue;
                 if (AviationRules.IsAirfield(army))
                     continue;

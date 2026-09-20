@@ -38,6 +38,8 @@ namespace Game.Ai.V2
         public RaidMissionPhase RaidPhase = RaidMissionPhase.Assault;
         public int? RaidPrimaryArmyId;
         public int? RaidSupportArmyId;
+        public int? RaidAirSupportArmyId;
+        public HexCoord? RaidAirSupportLandingHex;
         public HexCoord RaidDestinationHex;
         // Reinforcement only: the support army is already standing on the primary's hex, so this
         // step is the ATOMIC roster handoff (transfer / swap) and must perform no movement.
@@ -2431,6 +2433,8 @@ namespace Game.Ai.V2
             // same-hex assembly verbatim. Reinforcement, Return and SupportReturn are their own,
             // much narrower provisioning shapes; Return and SupportReturn share one implementation
             // (mover = primary vs. mover = support), never re-picking the destination.
+            if (target.Phase == RaidMissionPhase.AirSupport)
+                return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
             if (target.Phase == RaidMissionPhase.Return)
                 return ProvisionReturn(player, root, ctx, session, funded, target, key, eps,
                     RaidMissionPhase.Return, target.PrimaryArmyId);
@@ -2618,6 +2622,103 @@ namespace Game.Ai.V2
                 ClaimedAp = activationAp,
                 StealthApReserved = false,
             }, applied.Count);
+        }
+
+        private static ProvisioningResult ProvisionAirSupport(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            RaidMissionTarget target, StableMissionKey key, float eps)
+        {
+            if (target.Target.Kind != RaidTargetKind.NeutralArmy
+                || !target.AirSupportArmyId.HasValue || !target.PrimaryArmyId.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "raid air support requires one exact physical neutral target and wing"));
+            ArmyData wing = ResolveArmy(player, target.AirSupportArmyId.Value);
+            if (wing == null || !AviationRules.IsValidAirArmy(wing) || wing.Owner != player
+                || wing.Members.Count == 0 || session.ClaimedArmyIds.Contains(wing.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"raid support wing #{target.AirSupportArmyId.Value} unavailable"));
+            AirSortie active = AirSortieRegistry.ForArmy(player, wing);
+            bool continuing = active != null && active.Kind == AirSortieKind.Strike
+                && (active.Outbound && active.TargetHex.Equals(target.LastKnownHex)
+                    || !active.Outbound);
+            bool returning = active != null && active.Kind == AirSortieKind.Strike
+                && !active.Outbound;
+            if (active != null && !continuing)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"wing #{wing.Id} is reserved by another sortie"));
+
+            AiMapMemory.KnownEnemySighting? sighting = (session.Snapshot?.Known?.NeutralSightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(s => s.ArmyId == target.Target.ArmyId)
+                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            ArmyData defender = ArmyRegistry.AllAt(target.LastKnownHex)
+                .FirstOrDefault(a => a != null && a.Id == target.Target.ArmyId
+                    && a.Owner != null && a.Owner.IsNeutral && a.Members.Count > 1
+                    && !HexEventRegistry.IsEventGuardArmy(target.LastKnownHex, a));
+            if (!returning && (!sighting.HasValue
+                    || sighting.Value.SeenTurn != session.Snapshot.TurnNumber
+                    || defender == null))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "raid air support target is stale, absent, event-owned, or has only one defender"));
+
+            HexCoord landing;
+            if (continuing)
+                landing = active.LandingHex;
+            else
+            {
+                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing,
+                    target.LastKnownHex, ctx.Map, player);
+                MultiTurnSortie? multi = sameTurn.HasValue ? null
+                    : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing,
+                        target.LastKnownHex, ctx.Map, player);
+                if (!sameTurn.HasValue && !multi.HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        $"wing #{wing.Id} has no AA-safe recoverable route to exact raid target"));
+                landing = sameTurn?.LandingHex ?? multi.Value.LandingHex;
+
+                IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                    AiV2Util.KnownDefenders(session.Snapshot, target.Target);
+                AviationCombatEstimator.AirStrikeEstimate estimate =
+                    AviationCombatEstimator.EstimateAirStrike(wing.Members,
+                        sighting.Value.DefenseSum, sighting.Value.AttackSum, defenders,
+                        AirStrikePolicy.RaidSupport(target.Target.ArmyId));
+                ArmyData primary = ResolveArmy(player, target.PrimaryArmyId.Value);
+                float beforeWin = primary == null || defenders.Count == 0 ? 0f
+                    : WorthIt.WinChance(primary, defenders, 0f);
+                float afterWin = primary == null || estimate.ExpectedDefendersAfter.Count == 0
+                    ? beforeWin
+                    : WorthIt.WinChance(primary, estimate.ExpectedDefendersAfter, 0f);
+                if (estimate.ExpectedDamage <= eps
+                    || estimate.ExpectedDefendersAfter.Count < 1
+                    || afterWin <= beforeWin + eps)
+                    return ProvisioningResult.Fail(ProvisionFailure.SortieNotWorthwhile(
+                        "nonlethal raid support does not improve the primary's projected odds"));
+            }
+
+            float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
+            float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
+            if (ap > funded.Tentative.Ap + eps || energy > funded.PhysicalDraw.Energy + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
+                    new ProvisionRequirement(ap, new ResourceVector(0f, 0f, energy, 0f, 0f)),
+                    $"raid support wing #{wing.Id} exceeds AP/Energy envelope"));
+
+            target.AirSupportLandingHex = landing;
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission, Key = key, Kind = MissionKind.Raid,
+                MoverArmyId = wing.Id, FocusHex = target.LastKnownHex,
+                ExecutionHex = target.LastKnownHex,
+                RaidPhase = RaidMissionPhase.AirSupport,
+                RaidPrimaryArmyId = target.PrimaryArmyId,
+                RaidAirSupportArmyId = wing.Id,
+                RaidAirSupportLandingHex = landing,
+                RaidDestinationHex = target.LastKnownHex,
+                RaidTarget = target.Target,
+                RaidLastKnownHex = target.LastKnownHex,
+                RaidTargetIsNeutral = true,
+                ClaimedAp = ap, ClaimedEnergy = energy,
+                ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
+            });
         }
 
         // A single binding path for assault, used by both the real Provision method and

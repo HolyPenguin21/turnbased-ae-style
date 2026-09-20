@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Linq;
 using Game.HexGrid;
 using Game.Combat;
+using Game.Aviation;
 
 namespace Game.Ai.V2
 {
@@ -89,6 +90,16 @@ namespace Game.Ai.V2
                             intent.Raid.SupportArmyId, intent.Raid.SupportReturnHex);
                         if (sret.HasValue) incumbents.Add(sret.Value);
                         continue;
+                    }
+                    if (intent.Raid.Phase == RaidMissionPhase.AirSupport
+                        || intent.Raid.Phase == RaidMissionPhase.Reinforcement)
+                    {
+                        RaidCandidate? air = AirSupportCandidate(snap, intent, committed);
+                        if (air.HasValue)
+                        {
+                            incumbents.Add(air.Value);
+                            continue;
+                        }
                     }
                     if (intent.Raid.Phase == RaidMissionPhase.Reinforcement)
                     {
@@ -300,6 +311,66 @@ namespace Game.Ai.V2
                 true, intent.Funding, ri.SupportArmyId, ri.SupportArmyId);
         }
 
+        private static RaidCandidate? AirSupportCandidate(WorldSnapshot snap, MissionIntent intent,
+            ISet<int> committed)
+        {
+            RaidIntent ri = intent?.Raid;
+            bool continuing = ri?.Phase == RaidMissionPhase.AirSupport;
+            if (ri == null || ri.Target.Kind != RaidTargetKind.NeutralArmy
+                || !ri.PrimaryArmyId.HasValue
+                || (!continuing && ri.SupportArmyId.HasValue))
+                return null;
+            AiMapMemory.KnownEnemySighting? sighting = (snap?.Known?.NeutralSightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(s => s.ArmyId == ri.Target.ArmyId)
+                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, ri.Target);
+            if (!continuing && (!sighting.HasValue || sighting.Value.SeenTurn != snap.TurnNumber
+                    || defenders.Count <= 1 || ri.AirSupportAttemptedTurn == snap.TurnNumber))
+                return null;
+
+            int? airId = continuing ? ri.AirSupportArmyId : null;
+            if (!airId.HasValue)
+            {
+                airId = (snap.Self.Armies ?? System.Array.Empty<ArmySnapshot>())
+                    .Where(a => a != null && a.IsAir && !a.IsAirfield && !a.IsPrison
+                        && a.MemberCount > 0 && a.CurrentMovement > 0
+                        && (committed == null || !committed.Contains(a.ArmyId)))
+                    .OrderBy(a => HexGridMath.Distance(a.Hex, ri.LastKnownHex))
+                    .ThenBy(a => a.ArmyId)
+                    .Select(a => (int?)a.ArmyId).FirstOrDefault();
+            }
+            if (!airId.HasValue)
+                return null;
+            ArmySnapshot wing = snap.Self.Armies.FirstOrDefault(a => a != null
+                && a.ArmyId == airId.Value && a.IsAir && !a.IsAirfield && !a.IsPrison);
+            if (wing == null)
+                return null;
+            HexCoord landing = ri.AirSupportLandingHex
+                ?? (snap.Self.BaseHexes ?? System.Array.Empty<HexCoord>())
+                    .OrderBy(h => HexGridMath.Distance(h, ri.LastKnownHex))
+                    .ThenBy(h => h.Q).ThenBy(h => h.R).FirstOrDefault();
+            var target = new RaidMissionTarget
+            {
+                Phase = RaidMissionPhase.AirSupport,
+                PrimaryArmyId = ri.PrimaryArmyId,
+                AirSupportArmyId = airId,
+                AirSupportLandingHex = landing,
+                DestinationHex = ri.LastKnownHex,
+                Target = ri.Target,
+                LastKnownHex = ri.LastKnownHex,
+                TargetIsNeutral = true,
+                DefenderCount = defenders.Count,
+                EstimatedEta = 1,
+                AirSupportAttemptedTurn = ri.AirSupportAttemptedTurn,
+                AirSupportStrikeSucceeded = ri.AirSupportStrikeSucceeded,
+            };
+            float value = default(TaskScore).Value;
+            return new RaidCandidate(target, value, value,
+                $"Raid {ri.Target.DiagnosticLabel} AirSupport: wing #{airId.Value} softens exact target nonlethally",
+                true, intent.Funding, airId, airId);
+        }
+
         private static RaidCandidate ToCandidate(WorldSnapshot snap, AggressionObjective o,
             DesireBreakdown bd, int? pinnedPrimaryArmyId = null, bool operationStarted = false,
             ISet<int> unavailableArmyIds = null)
@@ -381,6 +452,25 @@ namespace Game.Ai.V2
             int? pricedMover = c.PreferredMover ?? c.CostedMover;
             RaidCostEstimate estimate = RaidCostModel.Estimate(snap, c.Target, pricedMover);
             MissionRequirements req = estimate.Requirements;
+            if (c.Target.Phase == RaidMissionPhase.AirSupport)
+            {
+                ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                    && c.Target.AirSupportArmyId.HasValue
+                    && a.ArmyId == c.Target.AirSupportArmyId.Value);
+                float activation = wing != null && !wing.HasActivatedThisTurn
+                    ? wing.ActivationApCost : 0f;
+                float energy = wing != null && !wing.HasActivatedThisTurn
+                    ? wing.ActivationEnergyCost : 0f;
+                req = new MissionRequirements
+                {
+                    RequiresArmy = true, RequiresHero = false, MoverKnown = wing != null,
+                    ApMinimum = activation, ApDesired = activation, ApMaximum = activation,
+                    EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
+                    EstimatedDistance = wing == null ? 0
+                        : HexGridMath.Distance(wing.Hex, c.Target.DestinationHex),
+                    EtaTurns = 1,
+                };
+            }
             int? plannedMover = c.PreferredMover ?? estimate.PlannedMoverArmyId ?? c.CostedMover;
 
             var proposal = new MissionProposal

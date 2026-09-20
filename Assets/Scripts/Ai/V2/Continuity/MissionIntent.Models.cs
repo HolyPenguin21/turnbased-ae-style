@@ -187,6 +187,11 @@ namespace Game.Ai.V2
         // legitimately be 0, so 0 is NOT used as "unbound" — see AiV2 raid-target-unification).
         public int? PrimaryArmyId;
 
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
+        public int AirSupportAttemptedTurn = -1;
+        public bool AirSupportStrikeSucceeded;
+
         // The separate mobile support army delivering reinforcement to the primary, and later the
         // one returning home after a full/full swap (RaidMissionPhase.SupportReturn). HasValue only
         // during Reinforcement/SupportReturn; released (without destroying the Raid) if lost.

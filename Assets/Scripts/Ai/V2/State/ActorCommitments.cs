@@ -61,6 +61,12 @@ namespace Game.Ai.V2
                 // (SupportReturn): Housekeeping (and every other mission lane) must never see the
                 // convoy as a free army during either leg. Losing it releases just this claim.
                 RaidIntent raid = i?.Raid;
+                if (raid != null && raid.Phase == RaidMissionPhase.AirSupport
+                    && raid.AirSupportArmyId.HasValue
+                    && snap.Self.Armies.Any(a => a != null
+                        && a.ArmyId == raid.AirSupportArmyId.Value && a.IsAir
+                        && !a.IsAirfield && a.MemberCount > 0))
+                    c.Claim(raid.AirSupportArmyId.Value);
                 if (raid != null && raid.SupportArmyId.HasValue
                     && (raid.Phase == RaidMissionPhase.Reinforcement || raid.Phase == RaidMissionPhase.SupportReturn)
                     && snap.Self.Armies.Any(a => a != null && a.ArmyId == raid.SupportArmyId.Value

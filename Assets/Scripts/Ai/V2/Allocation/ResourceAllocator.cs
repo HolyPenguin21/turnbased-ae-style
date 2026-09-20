@@ -118,6 +118,10 @@ namespace Game.Ai.V2
 
         public static StableMissionKey ForRaid(RaidMissionTarget rt)
         {
+            if (rt.Phase == RaidMissionPhase.AirSupport)
+                return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.AirSupport,
+                    rt.AirSupportArmyId ?? 0, rt.DestinationHex.Q, rt.DestinationHex.R,
+                    rt.Target.Kind);
             if (rt.Phase == RaidMissionPhase.Assault)
                 return ForRaidAssault(rt.Target);
             if (rt.Phase == RaidMissionPhase.SupportReturn)
