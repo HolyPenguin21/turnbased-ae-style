@@ -395,9 +395,12 @@ namespace Game.Ai.V2
                 AirSupportAttemptedTurn = ri.AirSupportAttemptedTurn,
                 AirSupportStrikeSucceeded = ri.AirSupportStrikeSucceeded,
             };
-            float value = default(TaskScore).Value;
+            RaidRecoveryProjection scored =
+                RaidRecoveryPlanner.ProjectAirSupportForWing(snap, ri, airId);
+            float value = scored.Viable ? scored.Score.Value : default(TaskScore).Value;
             return new RaidCandidate(target, value, value,
-                $"Raid {ri.Target.DiagnosticLabel} AirSupport: execute scored wing #{airId}",
+                $"Raid {ri.Target.DiagnosticLabel} AirSupport: execute scored wing #{airId}; "
+                    + $"intrinsic={F(value)}",
                 true, intent.Funding, airId, airId);
         }
 
