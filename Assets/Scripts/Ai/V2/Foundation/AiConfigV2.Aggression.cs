@@ -4,6 +4,8 @@ namespace Game.Ai.V2
     // Aggression / Raid — desire sub-block + momentum, and the Aggression/Raid objective/mission lane.
     public static partial class AiConfigV2
     {
+        public const int raidRecoveryMaxWaitTurns = 2;
+        public const float raidRepairMinWinChanceGain = 0.001f;
         // ---- Aggression (single axis; two internal drivers, max()'d) -----------------------
         //  raidOpportunity — "there is a profitable target I can take right now" (from the shared
         //                    CombatOpportunityAnalyzer — same estimator MissionLayer/Provisioning

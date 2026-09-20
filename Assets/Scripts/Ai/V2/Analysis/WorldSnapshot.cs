@@ -283,8 +283,49 @@ namespace Game.Ai.V2
         // CurrentMovement / NoExecutableStep checks own that narrower question). Own armies only.
         public IReadOnlyList<HexCoord> ReachableOwnBaseHexes = System.Array.Empty<HexCoord>();
 
+        // Exact immutable recovery facts for own live members. RepairResourceCost is copied only
+        // when spawn/load already initialized it; snapshot construction never calls the random,
+        // mutating UnitRepair.ResourceCost initializer.
+        public IReadOnlyList<RaidRecoveryMemberSnapshot> RecoveryMembers =
+            System.Array.Empty<RaidRecoveryMemberSnapshot>();
+
         // Per-combatant profiles for WorthIt's full-roster Monte Carlo / coverage checks.
         public IReadOnlyList<WorthIt.DefenderProfile> Members;
+    }
+
+    public readonly struct RaidRecoveryMemberSnapshot
+    {
+        public readonly int RuntimeId;
+        public readonly int UnitIndex;
+        public readonly bool IsHero;
+        public readonly bool IsAviation;
+        public readonly bool CanSpareForRaid;
+        public readonly int ActivationApCost;
+        public readonly WorthIt.DefenderProfile CurrentProfile;
+        public readonly WorthIt.DefenderProfile FullHealthProfile;
+        public readonly bool RepairCostInitialized;
+        public readonly ResourceVector RepairCost;
+
+        public RaidRecoveryMemberSnapshot(int runtimeId, int unitIndex, bool isHero,
+            bool isAviation, bool canSpareForRaid, int activationApCost,
+            WorthIt.DefenderProfile currentProfile, WorthIt.DefenderProfile fullHealthProfile,
+            bool repairCostInitialized, ResourceVector repairCost)
+        {
+            RuntimeId = runtimeId;
+            UnitIndex = unitIndex;
+            IsHero = isHero;
+            IsAviation = isAviation;
+            CanSpareForRaid = canSpareForRaid;
+            ActivationApCost = activationApCost;
+            CurrentProfile = currentProfile;
+            FullHealthProfile = fullHealthProfile;
+            RepairCostInitialized = repairCostInitialized;
+            RepairCost = repairCost;
+        }
+
+        public bool IsWounded => CurrentProfile.HitPoints < FullHealthProfile.MaxHitPoints;
+        public float FullCombatValue => FullHealthProfile.Attack + FullHealthProfile.Defense
+            + FullHealthProfile.MaxHitPoints + 0.25f * FullHealthProfile.Initiative;
     }
 
     public sealed class BuildingSnapshot

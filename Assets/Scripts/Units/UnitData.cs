@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Threading;
 using Game.Cards;
 using Game.Players;
 using UnityEngine;
@@ -10,6 +11,14 @@ namespace Game.Units
     // deliberately no per-unit Hex field to keep in sync with that.
     public class UnitData
     {
+        private static int _nextRuntimeId;
+
+        // Stable identity for this live card instance. Names and roster indexes are not identities:
+        // two copies of the same card may share both over a turn, and a transfer can reorder them.
+        // AI V2 freezes this value into a Refit proposal and re-resolves the exact unit immediately
+        // before execution. It is intentionally runtime-only; UnitData itself is runtime state.
+        public readonly int RuntimeId = Interlocked.Increment(ref _nextRuntimeId);
+
         public string Name;
         public PlayerSetupData Owner;
 

@@ -17,6 +17,34 @@ namespace Game.Ai.V2
         SupportReturn = 2,
         Return = 3,
         AirSupport = 4,
+        RecoveryReturn = 5,
+        Refit = 6,
+    }
+
+    public enum RaidRefitActionKind
+    {
+        None = 0,
+        RepairUnit = 1,
+        TransferUnit = 2,
+        SwapUnit = 3,
+    }
+
+    // Frozen, snapshot-derived instruction for exactly one bounded Refit mutation. Execution must
+    // re-resolve every runtime identity and may never silently substitute a different candidate.
+    public struct RaidRefitAction
+    {
+        public RaidRefitActionKind Kind;
+        public int PrimaryArmyId;
+        public int? DonorArmyId;
+        public int UnitRuntimeId;
+        public int DisplacedUnitRuntimeId;
+        public HexCoord BaseHex;
+        public int ApCost;
+        public ResourceVector ResourceCost;
+        public float WinChanceBefore;
+        public float WinChanceAfter;
+
+        public bool HasValue => Kind != RaidRefitActionKind.None && UnitRuntimeId > 0;
     }
 
     public sealed class AggressionObjective
@@ -84,6 +112,7 @@ namespace Game.Ai.V2
         public int EstimatedEta;
         public int AirSupportAttemptedTurn;
         public bool AirSupportStrikeSucceeded;
+        public RaidRefitAction RefitAction;
 
         public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
     }
