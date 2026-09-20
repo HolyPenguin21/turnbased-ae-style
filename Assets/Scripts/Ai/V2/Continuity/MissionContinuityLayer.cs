@@ -291,9 +291,9 @@ namespace Game.Ai.V2
             AiTurnContext ctx = null)
         {
             var active = new List<MissionIntent>();
-            Func<HexCoord, HexCoord, int> safeRouteCost = ctx?.Map == null ? null
-                : (Func<HexCoord, HexCoord, int>)((from, to) =>
-                    SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to));
+            Func<HexCoord, HexCoord, int, int> safeRouteCost = ctx?.Map == null ? null
+                : (Func<HexCoord, HexCoord, int, int>)((from, to, maxMovement) =>
+                    SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to, maxMovement));
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             if (state.Count == 0)
                 return active;
@@ -1110,7 +1110,7 @@ namespace Game.Ai.V2
             HashSet<RaidTargetRef> activeRaidTargets,
             List<(MissionIntentKey Old, MissionIntent Intent)> rekeys,
             ISet<int> unavailableArmyIds,
-            Func<HexCoord, HexCoord, int> safeRouteCost)
+            Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
             // positive live read (ours / another player's roster / honest map memory / event-guard
@@ -1283,7 +1283,7 @@ namespace Game.Ai.V2
 
         private static bool TransitionToBestRecovery(PlayerSetupData player, WorldSnapshot snap,
             MissionIntent intent, RaidIntent raid, ISet<int> unavailableArmyIds, string reason,
-            Func<HexCoord, HexCoord, int> safeRouteCost)
+            Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             RaidRecoveryProjection plan = RaidRecoveryPlanner.Choose(snap, raid,
                 unavailableArmyIds, safeRouteCost: safeRouteCost);
