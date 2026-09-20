@@ -115,9 +115,12 @@ namespace Game.Ai.V2
                     fixedBase, safeRouteCost)
                 : ProjectBestBase(snap, raid, primary, defenders, unavailableArmyIds,
                     currentWin, safeRouteCost);
-            return new[] { field, air, atBase }.Where(x => x.Viable)
-                .OrderBy(x => x, Comparer<RaidRecoveryProjection>.Create(Compare))
-                .FirstOrDefault();
+            RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
+                "no field, air, or base recovery plan has positive canonical value");
+            foreach (RaidRecoveryProjection option in new[] { field, air, atBase })
+                if (option.Viable && (!best.Viable || Compare(option, best) < 0))
+                    best = option;
+            return best;
         }
 
         private static RaidRecoveryProjection ProjectAirSupport(WorldSnapshot snap,
