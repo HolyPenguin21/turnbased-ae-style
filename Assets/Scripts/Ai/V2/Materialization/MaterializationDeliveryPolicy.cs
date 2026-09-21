@@ -78,17 +78,44 @@ namespace Game.Ai.V2
                 case CapabilityKind.ScoutCapability:
                     return DeliveryAssessment.Ok;
                 case CapabilityKind.CollectorCapability:
-                    // Collection is a separate solo army, not an attachment to combat forces or
-                    // garrisons. The enumerator supplies these two shapes; policy also enforces
-                    // that invariant for every feasibility caller. Actual site/route selection
-                    // remains WorldAnalysis.Economy + EconomyMissionPlanner's responsibility.
+                {
+                    // A collector is a separate solo field army. Reuse the SAME SafeStepPathing
+                    // oracle and fog-honest threat witness as Economy's real mobile-collection
+                    // admission BEFORE paying for a new army. Its later task/actor selection still
+                    // belongs exclusively to WorldAnalysis.Economy + EconomyMissionPlanner.
                     if (!demand.EconomyResourceType.HasValue || !demand.TargetHex.HasValue)
                         return DeliveryAssessment.No(DeliveryFailureReason.MissingTarget);
-                    return p.Deploy.Kind == DeploymentKind.NewArmy
-                        || p.Deploy.Kind == DeploymentKind.ReusableShell
-                            ? DeliveryAssessment.Ok
-                            : DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
-                                p.Deploy.Kind.ToString());
+                    if (p.Deploy.Kind != DeploymentKind.NewArmy
+                        && p.Deploy.Kind != DeploymentKind.ReusableShell)
+                        return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                            p.Deploy.Kind.ToString());
+                    if (snapshot?.Self?.BaseHexes == null
+                        || snapshot.Self.BaseHexes.Count == 0 || player == null || ctx?.Map == null)
+                        return DeliveryAssessment.No(DeliveryFailureReason.MissingWorldContext);
+                    if (WorldAnalysis.KnownHostileAtHex(snapshot, demand.TargetHex.Value))
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_target_occupied");
+                    int moveMax = CapabilityQualityEvaluator.ProjectedMoveMax(p);
+                    if (moveMax <= 0)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_cannot_move");
+                    var route = SafeStepPathing.FindSafePath(ctx.Map, player,
+                        p.Deploy.Hex, demand.TargetHex.Value, moveMax);
+                    if (route == null)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_outbound");
+                    float exposure = WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                        snapshot, route.Hexes).Count > 0 ? 1f : 0f;
+                    if (exposure > AiConfigV2.mobileCollectionMaxThreatExposure)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_route_threat");
+                    if (SafeStepPathing.FindNearestBaseReturnCost(ctx.Map, player,
+                            demand.TargetHex.Value, snapshot.Self.BaseHexes, moveMax)
+                        == int.MaxValue)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_no_safe_return");
+                    return DeliveryAssessment.Ok;
+                }
                 case CapabilityKind.Hero:
                     // Economy does not need a combat-ready hero stack: its canonical builder shape
                     // is AiArmyRoles.IsHeroLed, so a legal field placement may create a solo hero.
