@@ -173,12 +173,15 @@ namespace Game.Ai.V2
             return removed > 0;
         }
 
-        // Deferred Economy alternatives are mutually exclusive. Replacing their owner is one
-        // ledger mutation and deliberately leaves a provisioned completion hold untouched when it
-        // belongs to ANOTHER operation. For the SAME owner, however, writing the deferred stage is
-        // an explicit lifecycle downgrade: the actor can no longer complete this turn, so its old
-        // EconomyBuildCompletion rows (including AP) must disappear immediately while the durable
-        // mission itself remains protected by the deferred H/E/M/T rows written next.
+        // Multiple independent Economy deliveries can be active at once (P0-4, AI V2 economy audit
+        // 2026-09-21) — this reason is no longer a single mutually-exclusive global slot. With an
+        // explicit owner, this call touches ONLY that owner's own rows for the given reason and
+        // never another operation's hold; passing owner=null is the one legitimate whole-reason
+        // reset (see ClearDeferredEconomyResources, the once-per-turn full rebuild). For the SAME
+        // owner, writing the deferred stage is still an explicit lifecycle downgrade: that actor
+        // can no longer complete this turn, so its OWN old EconomyBuildCompletion rows (including
+        // AP) must disappear immediately while the durable mission remains protected by the
+        // deferred H/E/M/T rows written next — a different owner's completion hold is untouched.
         public static void ReplaceReasonOwner(PlayerSetupData player, int turn,
             StrategicReservationReason reason, string owner, bool replaceOwnerRows = false)
         {
@@ -192,7 +195,7 @@ namespace Game.Ai.V2
                     && r.Reason == StrategicReservationReason.EconomyBuildCompletion);
             }
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason
-                && (string.IsNullOrEmpty(owner) || r.Owner != owner || replaceOwnerRows));
+                && (string.IsNullOrEmpty(owner) || r.Owner == owner));
             if (downgraded > 0)
                 AiDebugLog.Write($"[AI][V2] reservation - downgraded {downgraded} completion row(s) "
                     + $"to deferred owner={owner}; active [{DebugLine(player, turn)}]");

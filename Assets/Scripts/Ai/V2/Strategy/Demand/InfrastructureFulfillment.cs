@@ -374,8 +374,11 @@ namespace Game.Ai.V2
                 return;
             if (reason == StrategicReservationReason.EconomyBuildCompletion)
             {
+                // This owner's own deferred hold is being promoted to completion — downgrade only
+                // ITS rows (P0-4: owner=null here used to wipe every other Economy build's still-
+                // legitimate deferred H/E/M/T hold the instant any ONE build proved completable).
                 StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
-                    StrategicReservationReason.EconomyDeferredBuild, null);
+                    StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
                 if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                         reason, cost, buildAp))
                     return;

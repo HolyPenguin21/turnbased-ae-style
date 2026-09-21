@@ -491,11 +491,60 @@ namespace Game.Ai.V2
 
                 if (route.RequiresGarrisonExtraction)
                 {
+                    // P0-1, AI V2 economy audit 2026-09-21 — a structural route existing (the
+                    // garrison has a sparable hero and a safe path to `target`) is not the same
+                    // fact as a deliverable builder: nothing here previously checked whether that
+                    // hero could actually be extracted into a real field container. Demand then
+                    // trusted EconomyPreferredBuilderArmyId as "already provided" and skipped
+                    // EconomyHeroPrerequisite entirely (see EconomyDemands), even when no shell,
+                    // host or fresh army could ever take delivery of the hero — the root cause of
+                    // the AP getting spent (or not) on a phantom builder while extraction never
+                    // started. Reuse the SAME pure Shell -> Host -> Create resolver Provisioning and
+                    // Execution already share (ProvisioningManager.ResolveGarrisonExtractionCandidate)
+                    // instead of re-deriving a second copy of that decision here. An unbounded
+                    // envelope is intentional: Demand does not yet know this turn's AP budget (that
+                    // stays Provisioning's job) — this call only answers "does ANY legal container
+                    // exist, and what does the cheapest one cost", the StructuralCandidate +
+                    // DeliveryFeasible half of the contract; ExecutableNow is still decided later,
+                    // with live commitments/session, inside Provisioning.
+                    ArmyData liveGarrison = ArmyRegistry.AllAt(army.Hex)
+                        .FirstOrDefault(a => a != null && a.Id == army.ArmyId);
+                    ProvisioningManager.GarrisonExtractionCandidate extraction = liveGarrison == null
+                        ? ProvisioningManager.GarrisonExtractionCandidate.No("garrison no longer exists")
+                        : ProvisioningManager.ResolveGarrisonExtractionCandidate(
+                            liveGarrison.Owner, liveGarrison, commitments: null, session: null,
+                            root: null, ecoApEnvelopeRemaining: float.MaxValue);
+                    if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
+                    {
+                        choice.IneligibleReason = extraction.Reason ?? "no_garrison_extraction_container";
+                        AiDebugLog.Write($"[ECO][Builder] site=({target.Q},{target.R}) "
+                            + $"actor=#{army.ArmyId} source=Garrison route=VALID extraction=None "
+                            + "decision=REJECT reason=" + choice.IneligibleReason);
+                        return choice;
+                    }
                     choice.Suitability = EconomyArmySuitability.Ready;
                     choice.IneligibleReason = null;
                     choice.MinimumEscortCount = 0;
-                    choice.ProjectedActivationApCost = route.ActivationApCost;
+                    // P0-2 — the real minimum delivery AP now includes the container's own cost
+                    // (Shell/Host transfer activation, or CreateArmyApCost) on top of the hero's own
+                    // reactivation. Fold it into a projected Route the same way every other branch
+                    // of this method already does, so TotalAssignmentApCost (builder ranking,
+                    // EconomyLoanAllowed, EconomyMissionOpportunityCost) and choice.Route.
+                    // ActivationApCost (what EconomyMissionPlanner.Requirements ultimately reads via
+                    // SelectEconomyBuilder) both see the identical real cost Provisioning will check
+                    // funds against — not just this struct's separate Projected* fields.
+                    EconomyBuilderRouteSnapshot projectedRoute = route;
+                    projectedRoute.ActivationApCost = route.ActivationApCost
+                        + Mathf.RoundToInt(extraction.ApCost);
+                    choice.Route = projectedRoute;
+                    choice.TotalAssignmentApCost = EstimateEconomyAssignmentAp(
+                        projectedRoute, buildApCost, includeReturn);
+                    choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
                     choice.ProjectedMaxMovement = route.MaxMovement;
+                    AiDebugLog.Write($"[ECO][Builder] site=({target.Q},{target.R}) "
+                        + $"actor=#{army.ArmyId} source=Garrison route=VALID "
+                        + $"extraction={extraction.Tier} requiredAp={extraction.ApCost:0.##} "
+                        + "decision=READY");
                     return choice;
                 }
 
