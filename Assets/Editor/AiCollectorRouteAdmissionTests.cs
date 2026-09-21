@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using Game.Ai;
 using Game.Ai.V2;
+using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
