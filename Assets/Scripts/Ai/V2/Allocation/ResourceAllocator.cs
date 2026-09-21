@@ -131,17 +131,6 @@ namespace Game.Ai.V2
             if (rt.Phase == RaidMissionPhase.SupportReturn)
                 return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.SupportReturn,
                     rt.SupportArmyId ?? 0, rt.DestinationHex.Q, rt.DestinationHex.R);
-            if (rt.Phase == RaidMissionPhase.Refit)
-            {
-                RaidRefitAction action = rt.RefitAction;
-                int targetId = rt.Target.Kind == RaidTargetKind.NeutralArmy
-                    ? rt.Target.ArmyId : unchecked(rt.Target.Hex.Q * 397 ^ rt.Target.Hex.R);
-                int detail = unchecked((((int)action.Kind * 397 + action.UnitRuntimeId) * 397
-                    + action.DisplacedUnitRuntimeId) * 397 + (action.DonorArmyId ?? 0));
-                return new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Refit,
-                    targetId, rt.DestinationHex.Q, rt.DestinationHex.R, rt.Target.Kind,
-                    rt.PrimaryArmyId ?? 0, detail);
-            }
             return new StableMissionKey(MissionKind.Raid, (int)rt.Phase, rt.PrimaryArmyId ?? 0,
                 rt.DestinationHex.Q, rt.DestinationHex.R);
         }

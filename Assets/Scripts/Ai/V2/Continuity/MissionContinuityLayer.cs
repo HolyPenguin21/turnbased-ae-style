@@ -725,8 +725,7 @@ namespace Game.Ai.V2
                     isReturnLeg = ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn;
                     // SupportReturn still requires a combat-capable PRIMARY: only the primary's
                     // own Return leg relaxes that gate. Unfinished combat raids remain strict.
-                    bool recoveryGroundGate = ri.Phase == RaidMissionPhase.RecoveryReturn
-                        || ri.Phase == RaidMissionPhase.Refit;
+                    bool recoveryGroundGate = ri.Phase == RaidMissionPhase.RecoveryReturn;
                     if (ri.OperationStarted && ri.Phase != RaidMissionPhase.Return && !recoveryGroundGate
                         && (!ri.PrimaryArmyId.HasValue
                             || !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value)))
@@ -761,8 +760,7 @@ namespace Game.Ai.V2
                         ri.ReturnHex = replacement;
                         intent.StallTurns = 0;
                     }
-                    if ((ri.Phase == RaidMissionPhase.RecoveryReturn
-                            || ri.Phase == RaidMissionPhase.Refit)
+                    if (ri.Phase == RaidMissionPhase.RecoveryReturn
                         && !RecoveryBaseStillValid(snap, player, ri.PrimaryArmyId, ri.RecoveryBaseHex))
                     {
                         RaidRecoveryProjection replacement = RaidRecoveryPlanner.Choose(
@@ -795,13 +793,9 @@ namespace Game.Ai.V2
                             ri.AirSupportArmyId = null;
                             ri.AirSupportLandingHex = null;
                             ri.RecoveryBaseHex = replacement.BaseHex;
-                            ri.PendingRefitAction = replacement.Phase == RaidMissionPhase.Refit
-                                ? replacement.FirstRefitAction : default;
                             ri.Phase = replacement.Phase;
-                            ri.RecoveryStartedTurn = snap.TurnNumber;
-                            ri.RecoveryWaitTurns = 0;
                             intent.StallTurns = 0;
-                            AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETURN_FOR_REFIT "
+                            AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETURN_HOME "
                                 + $"intent={intent.IntentKey} base=({replacement.BaseHex.Value.Q},{replacement.BaseHex.Value.R}) "
                                 + "reason=recovery_base_retargeted");
                         }
@@ -1138,70 +1132,6 @@ namespace Game.Ai.V2
                     }
                     return true;
                 }
-                if (ri.Phase == RaidMissionPhase.Refit)
-                {
-                    if (PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
-                    {
-                        ri.Phase = RaidMissionPhase.Assault;
-                        ClearRaidRecovery(ri);
-                        AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RECOVERY_COMPLETE "
-                            + $"intent={intent.IntentKey} reason=raid_threshold_reached");
-                        return true;
-                    }
-
-                    ri.RecoveryWaitTurns = ri.RecoveryStartedTurn < 0 ? 0
-                        : System.Math.Max(0, snap.TurnNumber - ri.RecoveryStartedTurn);
-                    ArmySnapshot primary = ri.PrimaryArmyId.HasValue
-                        ? snap.Self?.Armies?.FirstOrDefault(a => a != null
-                            && a.ArmyId == ri.PrimaryArmyId.Value) : null;
-                    RaidRecoveryProjection refit = primary == null
-                        ? RaidRecoveryProjection.None(0f, "primary missing")
-                        : RaidRecoveryPlanner.ProjectBase(snap, ri, primary,
-                            AiV2Util.KnownDefenders(snap, ri.Target), unavailableArmyIds,
-                            CurrentRaidWinChance(snap, ri), ri.RecoveryBaseHex, safeRouteCost);
-                    if (refit.Viable && refit.FirstRefitAction.HasValue)
-                    {
-                        ri.PendingRefitAction = refit.FirstRefitAction;
-                        AiDebugLog.Write($"[AI][V2][RaidRecovery] decision={RefitDecision(refit.FirstRefitAction.Kind)} "
-                            + $"intent={intent.IntentKey} primary={ri.PrimaryArmyId} target={ri.Target.DiagnosticLabel} "
-                            + $"currentWin={refit.CurrentWinChance:0.00} projectedWin={refit.FirstRefitAction.WinChanceAfter:0.00} "
-                            + $"base=({refit.FirstRefitAction.BaseHex.Q},{refit.FirstRefitAction.BaseHex.R}) "
-                            + $"unit={refit.FirstRefitAction.UnitRuntimeId} donor={refit.FirstRefitAction.DonorArmyId} "
-                            + $"ap={refit.FirstRefitAction.ApCost} resources=[{refit.FirstRefitAction.ResourceCost.FmtPhysical()}]");
-                        return true;
-                    }
-
-                    ri.PendingRefitAction = default;
-                    RaidRecoveryProjection fallback = RaidRecoveryPlanner.Choose(
-                        snap, ri, unavailableArmyIds, safeRouteCost: safeRouteCost);
-                    if (fallback.Viable && (fallback.Phase == RaidMissionPhase.Reinforcement
-                            || fallback.Phase == RaidMissionPhase.AirSupport))
-                    {
-                        ri.Phase = fallback.Phase;
-                        ri.SupportArmyId = fallback.Phase == RaidMissionPhase.Reinforcement
-                            ? fallback.SupportArmyId : null;
-                        ri.AirSupportArmyId = fallback.Phase == RaidMissionPhase.AirSupport
-                            ? fallback.AirSupportArmyId : null;
-                        ri.AirSupportLandingHex = fallback.Phase == RaidMissionPhase.AirSupport
-                            ? fallback.AirSupportLandingHex : null;
-                        ClearRaidRecovery(ri);
-                        AiDebugLog.Write($"[AI][V2][RaidRecovery] decision={fallback.Phase} "
-                            + $"intent={intent.IntentKey} support={fallback.SupportArmyId} "
-                            + $"air={fallback.AirSupportArmyId} "
-                            + $"reason=refit_no_longer_viable {fallback.Reason}");
-                        return true;
-                    }
-                    if (ri.RecoveryWaitTurns <= AiConfigV2.raidRecoveryMaxWaitTurns)
-                    {
-                        AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
-                            $"[AI][V2][RaidRecovery] decision=WAIT intent={intent.IntentKey} "
-                            + $"wait={ri.RecoveryWaitTurns}/{AiConfigV2.raidRecoveryMaxWaitTurns} reason={refit.Reason}");
-                        return true;
-                    }
-                    return BeginTerminalRaidReturn(player, snap, intent, ri,
-                        "refit has no useful funded action within wait limit");
-                }
-
                 // A Reinforcement whose primary has since become strong enough again returns to
                 // Assault on its own; Provisioning re-checks this after every roster transfer too.
                 if (ri.Phase == RaidMissionPhase.Reinforcement && !ri.SupportArmyId.HasValue
@@ -1290,8 +1220,6 @@ namespace Game.Ai.V2
                 unavailable.Remove(raid.PrimaryArmyId.Value);
             if (raid != null && raid.SupportArmyId.HasValue)
                 unavailable.Remove(raid.SupportArmyId.Value);
-            if (raid != null && raid.PendingRefitAction.DonorArmyId.HasValue)
-                unavailable.Remove(raid.PendingRefitAction.DonorArmyId.Value);
             return unavailable;
         }
 
@@ -1308,20 +1236,6 @@ namespace Game.Ai.V2
                     + $"currentWin={plan.CurrentWinChance:0.00} reason={reason}; {plan.Reason}");
                 return BeginTerminalRaidReturn(player, snap, intent, raid,
                     $"recovery cannot prove a path to threshold: {plan.Reason}");
-            }
-
-            if (plan.Phase == RaidMissionPhase.Refit)
-            {
-                // Already sitting at the recovery base — no RecoveryReturn travel leg exists to
-                // retire on arrival, but the same call applies (see CompleteRaidRecoveryReturn's
-                // own comment): this operation is over now, never a commitment to refit and march
-                // back out to the same target. Retire immediately; StrategicMaintenancePolicy's
-                // own repair candidate heals the now-ordinary army independently, on its own time.
-                MissionIntentRegistry.GetOrCreate(player).Remove(intent.IntentKey);
-                AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETIRED intent={intent.IntentKey} "
-                    + $"primary={raid.PrimaryArmyId} base={plan.BaseHex} reason=already_at_base "
-                    + $"{reason}; {plan.Reason}");
-                return true;
             }
 
             raid.SupportArmyId = plan.Phase == RaidMissionPhase.Reinforcement
@@ -1352,12 +1266,7 @@ namespace Game.Ai.V2
             }
             else
             {
-                // Only RecoveryReturn reaches here now — Refit (already at base) retired above.
                 raid.RecoveryBaseHex = plan.BaseHex;
-                raid.RecoveryStartedTurn = snap.TurnNumber;
-                raid.RecoveryWaitTurns = 0;
-                raid.RepairsCompleted = 0;
-                raid.PendingRefitAction = default;
                 AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETURN_HOME "
                     + $"intent={intent.IntentKey} primary={raid.PrimaryArmyId} target={raid.Target.DiagnosticLabel} "
                     + $"currentWin={plan.CurrentWinChance:0.00} projectedWin={plan.ProjectedWinChance:0.00} "
@@ -1402,10 +1311,6 @@ namespace Game.Ai.V2
         {
             if (raid == null) return;
             raid.RecoveryBaseHex = null;
-            raid.RecoveryStartedTurn = -1;
-            raid.RecoveryWaitTurns = 0;
-            raid.RepairsCompleted = 0;
-            raid.PendingRefitAction = default;
         }
 
         private static float CurrentRaidWinChance(WorldSnapshot snap, RaidIntent raid)
@@ -2082,23 +1987,6 @@ namespace Game.Ai.V2
             if (o.HasRaidPayload && intent.Raid != null)
             {
                 intent.Raid.LastKnownHex = o.RaidLastKnownHex;
-                if (o.RaidPhase == RaidMissionPhase.Refit)
-                {
-                    intent.Raid.PendingRefitAction = default;
-                    if (o.RaidRefitSucceeded
-                        && o.RaidRefitAction.Kind == RaidRefitActionKind.RepairUnit)
-                        intent.Raid.RepairsCompleted++;
-                    if (o.RaidRefitSucceeded)
-                    {
-                        // The bound is consecutive no-progress time, not total recovery duration:
-                        // a useful atomic repair/transfer/swap earns a fresh wait window for the
-                        // next exact step of the already-proven bounded recovery sequence.
-                        intent.Raid.RecoveryStartedTurn = turn;
-                        intent.Raid.RecoveryWaitTurns = 0;
-                        intent.LastProgressTurn = turn;
-                        intent.StallTurns = 0;
-                    }
-                }
                 if (o.RaidOperationStarted)
                 {
                     intent.Raid.OperationStarted = true;

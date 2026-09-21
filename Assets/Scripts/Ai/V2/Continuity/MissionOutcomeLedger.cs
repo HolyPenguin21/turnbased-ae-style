@@ -369,8 +369,7 @@ namespace Game.Ai.V2
                         o.Outcome = o.HasRaidPayload
                             && (o.RaidPhase == RaidMissionPhase.AirSupport
                                 || o.RaidPhase == RaidMissionPhase.Reinforcement
-                                || o.RaidPhase == RaidMissionPhase.SupportReturn
-                                || o.RaidPhase == RaidMissionPhase.Refit)
+                                || o.RaidPhase == RaidMissionPhase.SupportReturn)
                             ? ExecutionOutcome.Blocked
                             : ExecutionOutcome.Failed;
                         break;
@@ -523,8 +522,7 @@ namespace Game.Ai.V2
                     // keeps its existing failure semantics (notably a lost primary in Reinforcement).
                     if (o.MissionKind == MissionKind.Raid
                         && o.Proposal?.Target is RaidMissionTarget invalidRaidTarget
-                        && (invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn
-                            || invalidRaidTarget.Phase == RaidMissionPhase.Refit))
+                        && invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn)
                     {
                         o.Outcome = ExecutionOutcome.Blocked;
                         break;

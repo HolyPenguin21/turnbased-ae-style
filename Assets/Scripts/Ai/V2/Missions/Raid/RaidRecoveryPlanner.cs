@@ -366,8 +366,12 @@ namespace Game.Ai.V2
                 || toBase + toTarget <= 0 ? 0f : primary.ActivationApCost;
             TaskScore score = PlanScore(win, ap, activationApNow, spent, toBase + toTarget,
                 primary.ActivationApCost, blockedActors);
-            return new RaidRecoveryProjection(true, atBase ? RaidMissionPhase.Refit
-                    : RaidMissionPhase.RecoveryReturn, baseHex, null, null, null, eta, ap, spent,
+            // Always RecoveryReturn, even when atBase leaves nothing to travel (toBase == 0): the
+            // primary retreating IS the operation ending, whether or not it had to walk there (see
+            // CompleteRaidRecoveryReturn's own comment) — there is no longer a distinct "already
+            // home, refit and march back out" phase to report.
+            return new RaidRecoveryProjection(true, RaidMissionPhase.RecoveryReturn,
+                    baseHex, null, null, null, eta, ap, spent,
                 blockedActors, currentWin, win, score, first,
                 $"base recovery reaches {win:0.00} in {eta} turn-step(s) with {actions} action(s)");
         }

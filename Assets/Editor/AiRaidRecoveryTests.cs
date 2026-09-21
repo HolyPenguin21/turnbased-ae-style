@@ -34,7 +34,7 @@ namespace Game.EditorTests
             Assert.That(before, Is.LessThan(AiConfigV2.raidMinViableWinChance),
                 "fixture must start below the existing raid gate");
             Assert.That(plan.Viable, Is.True);
-            Assert.That(plan.Phase, Is.EqualTo(RaidMissionPhase.Refit));
+            Assert.That(plan.Phase, Is.EqualTo(RaidMissionPhase.RecoveryReturn));
             Assert.That(plan.FirstRefitAction.Kind, Is.EqualTo(RaidRefitActionKind.RepairUnit));
             Assert.That(plan.FirstRefitAction.UnitRuntimeId, Is.EqualTo(101));
             Assert.That(plan.ProjectedWinChance, Is.GreaterThanOrEqualTo(
@@ -206,67 +206,6 @@ namespace Game.EditorTests
                 "the planner must reject the nearest dead-end base and select the complete plan");
             Assert.That(plan.FirstRefitAction.DonorArmyId, Is.EqualTo(21));
         }
-
-        [Test]
-        public void RefitStableKey_DistinguishesActionAndExactUnit()
-        {
-            RaidMissionTarget repair = Target(RaidRefitActionKind.RepairUnit, 11);
-            RaidMissionTarget transfer = Target(RaidRefitActionKind.TransferUnit, 12);
-
-            Assert.That(StableMissionKey.ForRaid(repair), Is.Not.EqualTo(
-                StableMissionKey.ForRaid(transfer)));
-        }
-
-        [Test]
-        public void RecoveryCommitments_ClaimArmyZeroAndFrozenDonor()
-        {
-            var player = new PlayerSetupData { Nickname = "Claims" };
-            WorldSnapshot snap = Snapshot(new[]
-            {
-                new ArmySnapshot { ArmyId = 0, Owner = player, MemberCount = 1 },
-                new ArmySnapshot { ArmyId = 2, Owner = player, MemberCount = 2 },
-            }, 0);
-            var intent = new MissionIntent
-            {
-                Kind = MissionKind.Raid,
-                Status = IntentStatus.Active,
-                Objective = new RaidIntent
-                {
-                    Target = RaidTargetRef.ForNeutralArmy(9),
-                    PrimaryArmyId = 0,
-                    Phase = RaidMissionPhase.Refit,
-                    PendingRefitAction = new RaidRefitAction
-                    {
-                        Kind = RaidRefitActionKind.TransferUnit,
-                        PrimaryArmyId = 0,
-                        DonorArmyId = 2,
-                        UnitRuntimeId = 88,
-                    },
-                },
-            };
-
-            ActorCommitments claims = ActorCommitments.FromIntents(
-                new[] { intent }, snap, null);
-
-            Assert.That(claims.IsArmyClaimed(0), Is.True, "army id zero is a valid primary");
-            Assert.That(claims.IsArmyClaimed(2), Is.True);
-        }
-
-        private static RaidMissionTarget Target(RaidRefitActionKind kind, int unitId) =>
-            new RaidMissionTarget
-            {
-                Phase = RaidMissionPhase.Refit,
-                PrimaryArmyId = 0,
-                Target = RaidTargetRef.ForNeutralArmy(5),
-                DestinationHex = new HexCoord(1, 1),
-                RefitAction = new RaidRefitAction
-                {
-                    Kind = kind,
-                    PrimaryArmyId = 0,
-                    UnitRuntimeId = unitId,
-                    BaseHex = new HexCoord(1, 1),
-                },
-            };
 
         private static RaidIntent Raid(int primaryId, HexCoord target) => new RaidIntent
         {

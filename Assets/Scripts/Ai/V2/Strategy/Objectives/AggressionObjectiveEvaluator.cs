@@ -18,7 +18,6 @@ namespace Game.Ai.V2
         Return = 3,
         AirSupport = 4,
         RecoveryReturn = 5,
-        Refit = 6,
     }
 
     public enum RaidRefitActionKind
