@@ -106,7 +106,7 @@ namespace Game.EditorTests
 
             AviationCombatEstimator.AirStrikeEstimate snapshotSupport =
                 AviationCombatEstimator.EstimateAirStrike(
-                    aircraft.Select(x => x.Attack).ToList(), 0f, 0f, defenders,
+                    aircraft.Select(x => (float)x.Attack).ToList(), 0f, 0f, defenders,
                     AirStrikePolicy.RaidSupport(42));
 
             Assert.That(support.WipeProbability, Is.Zero);
