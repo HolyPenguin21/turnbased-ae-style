@@ -238,11 +238,6 @@ namespace Game.Ai.V2
                         moverOpportunityCost: 0f,
                         hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
                     float score = taskScore.Value;
-                    TaskScoreDiagnostics.Log("MobileCollection", site.Hex, taskScore,
-                        $"resource={site.Type} marginal={marginal} useful={usefulGain:0.###} "
-                        + $"priority={priority:0.###} "
-                        + $"firstIncome={firstIncome} activationAp={activationAp:0.###} "
-                        + $"exposure={exposure:0.###} collector=#{collector.ArmyId}");
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
                     var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,

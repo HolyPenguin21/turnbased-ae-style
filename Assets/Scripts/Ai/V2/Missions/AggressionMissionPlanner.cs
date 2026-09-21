@@ -320,10 +320,10 @@ namespace Game.Ai.V2
                     AssemblableWinChance = 1f,
                     CanCoverAllDefenders = true,
                 };
-                RaidRecoveryProjection projection =
+                RaidRecoveryProjection unpinnedProjection =
                     RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri);
-                float unpinnedValue = projection.Viable
-                    ? projection.Score.Value : default(TaskScore).Value;
+                float unpinnedValue = unpinnedProjection.Viable
+                    ? unpinnedProjection.Score.Value : default(TaskScore).Value;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
                     + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
                 return new RaidCandidate(unpinned, unpinnedValue, unpinnedValue,

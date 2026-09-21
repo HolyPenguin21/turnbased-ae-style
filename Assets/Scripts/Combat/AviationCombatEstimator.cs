@@ -93,7 +93,7 @@ namespace Game.Combat
             float knownDefense, float knownAttack,
             IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy) =>
             EstimateAirStrike(
-                aircraft?.Where(x => x != null).Select(x => x.Attack).ToList(),
+                aircraft?.Where(x => x != null).Select(x => (float)x.Attack).ToList(),
                 knownDefense, knownAttack, knownDefenders, policy);
 
         // Snapshot-safe overload for strategic planning. The live UnitData overload above and
