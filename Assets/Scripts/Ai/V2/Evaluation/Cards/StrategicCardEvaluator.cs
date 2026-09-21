@@ -495,8 +495,12 @@ namespace Game.Ai.V2
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
                 : SurplusCapabilityGap(role, inv, baseline, snap, roleFitCore)) + ec.CapabilityGap + ec.GlobalCapabilityGap;
+            // Support excluded for the same reason CapabilityGapValue already is (P1.5): RoleFitCore
+            // is deliberately 0 for Support, and ForceGrowthValue's own SurplusCombatReadinessUtility
+            // call ignores role — without this exclusion a support hero's raw combat stats would
+            // earn standing-force credit the role's own RoleFitCore says it shouldn't compete on.
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
-                || role == IntendedRole.ResourceGain
+                || role == IntendedRole.ResourceGain || role == IntendedRole.Support
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
