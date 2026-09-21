@@ -1,0 +1,27 @@
+name: Apply guarded collector site correction once
+on:
+  push:
+    branches: [fix/ai-v2-collector-facility-slot-separation]
+    paths: [.github/workflows/ai-v2-collector-site-once.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply isolated source correction and remove temporary files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/ai-v2-collector-site-apply-once.py
+          python3 .github/ai-v2-collector-site-apply-once.py
+          git rm -- .github/ai-v2-collector-site-apply-once.py .github/workflows/ai-v2-collector-site-once.yml
+          git add -- Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Economy.cs Assets/Scripts/Ai/V2/Analysis/WorldSnapshot.cs Assets/Scripts/Ai/V2/Strategy/Demand/DemandLayer.Economy.cs Assets/Editor/AiEconomyDecisionTests.cs
+          git diff --cached --check
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): separate collector eligibility and physical marginal from facilities'
+          git push origin HEAD:fix/ai-v2-collector-facility-slot-separation
