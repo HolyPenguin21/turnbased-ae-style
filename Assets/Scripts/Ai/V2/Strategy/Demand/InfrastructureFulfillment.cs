@@ -369,6 +369,86 @@ namespace Game.Ai.V2
                 StrategicReservationReason.EconomyDeferredBuild);
         }
 
+        // The only Completion -> Deferred / Released transition. Repeating this on the
+        // same owner after the first downgrade is a no-op; unrelated projects are untouched.
+        internal static void ReconcileEconomyCompletionOwner(PlayerSetupData player, int turn,
+            string owner, MissionIntent intent, bool durableValid, bool completionThisTurn)
+        {
+            if (!StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
+                    StrategicReservationReason.EconomyBuildCompletion))
+                return;
+            if (!durableValid || intent?.Economy == null)
+            {
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn, owner);
+                return;
+            }
+            if (completionThisTurn)
+                return;
+
+            // Explicit owner-scoped downgrade: a repeated Phase A deferred request MUST NOT
+            // implicitly demote a still-executable Completion, but this settled lifecycle
+            // decision has proved it cannot finish this turn. Keep only durable H/E/M/T.
+            StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
+                StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
+            ReserveEconomyCost(player, turn, owner, intent.Economy.BuildResourceCost, 0f,
+                StrategicReservationReason.EconomyDeferredBuild);
+        }
+
+        // Called after settled operational steps AND immediately before each Phase B admission.
+        // Compute current-turn feasibility from the REAL actor/path/AP/card, not the snapshot
+        // used by the earlier Provisioning prediction. No global world rebuild or AP threshold.
+        internal static void ReconcileEconomyCompletionReservations(PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx)
+        {
+            if (player == null || root == null || ctx == null)
+                return;
+            int turn = ctx.TurnNumber;
+            IReadOnlyList<string> owners =
+                StrategicResourceReservationLedger.CompletionOwners(player, turn);
+            if (owners.Count == 0)
+                return;
+            List<MissionIntent> intents = MissionIntentRegistry.GetOrCreate(player).All
+                .Where(i => i != null && i.Kind == MissionKind.Economy && i.Economy != null
+                    && (i.Economy.Kind == EconomyTaskKind.FoundBase
+                        || i.Economy.Kind == EconomyTaskKind.BuildExtraction))
+                .ToList();
+            foreach (string owner in owners)
+            {
+                MissionIntent intent = intents.FirstOrDefault(i =>
+                    EconomyMissionPlanner.OwnerKey(i.LastAttemptKey) == owner);
+                if (intent == null)
+                {
+                    ReconcileEconomyCompletionOwner(player, turn, owner, null, false, false);
+                    continue;
+                }
+                EconomyIntent build = intent.Economy;
+                ArmyData actor = ArmyRegistry.AllForOwner(player).FirstOrDefault(a =>
+                    a != null && a.Id == intent.PreferredMoverArmyId && a.Owner == player
+                    && AiArmyRoles.IsHeroLed(a));
+                bool cardStillAvailable = build.Kind != EconomyTaskKind.FoundBase
+                    || (build.BuildCard != null && hand?.Hand?.Contains(build.BuildCard) == true);
+                bool durableValid = actor != null && cardStillAvailable;
+                if (!durableValid)
+                {
+                    ReconcileEconomyCompletionOwner(player, turn, owner, intent, false, false);
+                    continue;
+                }
+                int route = actor.Hex.Equals(build.TargetHex) ? 0
+                    : ctx.Map == null ? int.MaxValue
+                    : SafeStepPathing.FindSafePathCost(ctx.Map, actor, build.TargetHex);
+                float freeApWithOwnHold = StrategicResourceReservationLedger.SpendableExcludingOwner(
+                    player, turn, StrategicReservedResource.ActionPoints, root.ActionPoints, owner);
+                float activationAp = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+                bool completionThisTurn = intent.Status == IntentStatus.Active
+                    && route != int.MaxValue && route <= actor.CurrentMovement
+                    && freeApWithOwnHold + AiConfigV2.allocatorSliceEpsilon
+                        >= build.BuildApCost + (route > 0 ? activationAp : 0f)
+                    && (build.BuildResourceCost == null || build.BuildResourceCost.CanAfford(root));
+                ReconcileEconomyCompletionOwner(player, turn, owner, intent, true,
+                    completionThisTurn);
+            }
+        }
+
         internal static void ClearDeferredEconomyResources(PlayerSetupData player, int turn) =>
             StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, null);
