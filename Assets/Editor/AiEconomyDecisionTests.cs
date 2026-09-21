@@ -1343,6 +1343,80 @@ namespace Game.EditorTests
             Assert.That(types[ResourceType.Tech], Is.EqualTo(1));
         }
 
+        [TestCase(3, 0, 2, true, 1, 1)]
+        [TestCase(3, 0, 2, false, 1, 0)]
+        [TestCase(3, 1, 0, true, 1, 1)]
+        [TestCase(3, 3, 0, true, 0, 0)]
+        public void EconomyMarginalPhysics_FacilityAndCollectorAreDifferentOperations(
+            int yield, int building, int armies, bool canCollect,
+            int expectedFacility, int expectedCollector)
+        {
+            (int facility, int collector) = WorldAnalysis.MarginalSiteCollectionGains(
+                yield, building, armies, canCollect);
+            Assert.That(facility, Is.EqualTo(expectedFacility));
+            Assert.That(collector, Is.EqualTo(expectedCollector));
+        }
+
+        [Test]
+        public void ExtractionHost_BareResourceHexCanFoundSite_ButExistingSlotsStillConstrain()
+        {
+            var owner = new Game.Players.PlayerSetupData();
+            var rival = new Game.Players.PlayerSetupData();
+            var hex = new HexCoord(2, 0);
+            var emptySlots = new Game.Ai.AiMapMemory.KnownBuilding(
+                hex, owner, false, null, freeFacilitySlots: 0);
+            var foreign = new Game.Ai.AiMapMemory.KnownBuilding(
+                hex, rival, false, null, freeFacilitySlots: 4);
+            var available = new Game.Ai.AiMapMemory.KnownBuilding(
+                hex, owner, false, null, freeFacilitySlots: 1);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                false, default, owner, ResourceType.Materials), Is.True);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                true, emptySlots, owner, ResourceType.Materials), Is.False);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                true, foreign, owner, ResourceType.Materials), Is.False);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                true, available, owner, ResourceType.Materials), Is.True);
+        }
+
+        [Test]
+        public void CollectorDemand_SiteWithoutFacilityOpportunityStillGetsOwnDemand()
+        {
+            WorldSnapshot snap = SnapshotWithDeficits(0.8f, 0.8f, actionable: true);
+            var target = new HexCoord(2, 0);
+            snap.Economy.ExtractionOpportunities =
+                System.Array.Empty<EconomyExtractionOpportunity>();
+            snap.Economy.CollectorSites = new[]
+            {
+                ExtractionOpportunity(target, ResourceType.Materials, 2),
+            };
+            // IncomeTarget defaults to zero here. A useful deck-resource gain must still
+            // be actionable, or a created collector will never receive a mobile mission.
+            Assert.That(snap.Economy.IsIncomeDeficient(snap.Self, ResourceType.Materials),
+                Is.False);
+            List<AxisDemand> emitted = DemandLayer.EconomyDemands(
+                snap, new DesireBreakdown(), null, null, null).ToList();
+            Assert.That(emitted, Has.Count.EqualTo(1));
+            Assert.That(emitted[0].Capability, Is.EqualTo(CapabilityKind.CollectorCapability));
+            Assert.That(emitted[0].TargetHex, Is.EqualTo(target));
+            Assert.That(emitted[0].EconomyExpectedIncomeGain, Is.EqualTo(2f));
+        }
+
+        [Test]
+        public void CollectorDemand_DoesNotBorrowFacilitySiteWhenCollectorYieldIsExhausted()
+        {
+            WorldSnapshot snap = SnapshotWithDeficits(0.8f, 0.8f, actionable: true);
+            snap.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(new HexCoord(2, 0), ResourceType.Materials, 1),
+            };
+            snap.Economy.CollectorSites =
+                System.Array.Empty<EconomyExtractionOpportunity>();
+            Assert.That(DemandLayer.CollectorCapabilityDemands(snap,
+                snap.Economy.PerType.ToDictionary(x => x.Type, x => x), null, null),
+                Is.Empty);
+        }
+
         [Test]
         public void ExtractionDemand_OneFacilitySlotFundsOnlyOneResourceType()
         {

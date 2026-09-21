@@ -692,6 +692,11 @@ namespace Game.Ai.V2
     {
         // Frozen, fog-honest opportunity facts. Strategy scores these records; it never
         // reconstructs site legality or resource physics independently.
+        // A mobile Collector's marginal gain is the extra ARMY collection, not a
+        // Facility's net owner gain. This distinct physical site list ignores Facility
+        // ownership/slots, and only WorldAnalysis writes its observed facts.
+        public IReadOnlyList<EconomyExtractionOpportunity> CollectorSites =
+            System.Array.Empty<EconomyExtractionOpportunity>();
         public IReadOnlyList<EconomyExtractionOpportunity> ExtractionOpportunities =
             System.Array.Empty<EconomyExtractionOpportunity>();
         public IReadOnlyList<MobileCollectionOpportunity> MobileCollectionOpportunities =

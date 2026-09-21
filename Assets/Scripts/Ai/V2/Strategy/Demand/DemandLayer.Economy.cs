@@ -273,7 +273,7 @@ namespace Game.Ai.V2
                 .Where(c => c?.Definition != null && !c.Definition.isAviation
                     && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Hero))
                 .ToList();
-            if (s.Economy?.ExtractionOpportunities == null)
+            if (s.Economy?.CollectorSites == null)
                 yield break;
 
             var existingMobileCoverage = new HashSet<(HexCoord, ResourceType)>(
@@ -281,7 +281,7 @@ namespace Game.Ai.V2
                     .Select(o => (o.TargetHex, o.ResourceType)));
 
             var candidates = new List<AxisDemand>();
-            foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities)
+            foreach (EconomyExtractionOpportunity site in s.Economy.CollectorSites)
             {
                 if (existingMobileCoverage.Contains((site.Hex, site.ResourceType))
                     || !standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs)
