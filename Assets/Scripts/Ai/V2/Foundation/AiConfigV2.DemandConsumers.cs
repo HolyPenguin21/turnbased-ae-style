@@ -26,6 +26,10 @@ namespace Game.Ai.V2
         public const int economyMaxInfrastructureDemandsPerTurn = 1;
         public const int economyMaxExpansionBaseDemandsPerTurn = 1;
         public const int economyMaxCollectorDemandsPerTurn = 1;
+
+        // StrategicMaintenancePolicy's repair candidate (restored V1 RepairUnit task) — see its
+        // own comment. First-cut weight, not yet calibrated against a played log.
+        public const float repairPowerValueWeight = 1.5f;
         public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
 
     }

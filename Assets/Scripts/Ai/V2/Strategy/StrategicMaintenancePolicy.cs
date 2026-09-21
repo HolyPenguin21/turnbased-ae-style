@@ -1,10 +1,13 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Core;
 using Game.Economy;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -24,6 +27,8 @@ namespace Game.Ai.V2
 
         private readonly BuildingData _upgradeBuilding;
         private readonly BaseUpgradeTier _upgradeTier;
+        private readonly UnitData _repairUnit;
+        private readonly HexCoord _repairHex;
 
         internal StrategicSpendCandidate(BuildingData upgradeBuilding, BaseUpgradeTier upgradeTier)
         {
@@ -31,12 +36,25 @@ namespace Game.Ai.V2
             _upgradeTier = upgradeTier;
         }
 
+        // AI-MGR-02 follow-up (project owner's own 2026-09-21 call) — restores the V1 standalone
+        // "repair a wounded unit at its own Base" maintenance task (AiTaskKind.RepairUnit, dropped
+        // with AiTask.cs in ARCH-01 and never ported to V2), as an ordinary Phase-B tempo spend
+        // rather than something tied to any one mission. UnitRepair itself is unchanged — this is
+        // just the strategic candidate wrapper around it.
+        internal StrategicSpendCandidate(UnitData repairUnit, HexCoord repairHex)
+        {
+            _repairUnit = repairUnit;
+            _repairHex = repairHex;
+        }
+
         // Execute EXACTLY this candidate. No re-selection.
         public bool Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             out bool stateChanged, out bool progressed)
         {
-            bool ok = StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
-                player, root, ctx, _upgradeBuilding, _upgradeTier);
+            bool ok = _repairUnit != null
+                ? UnitRepair.TryRepair(_repairUnit, _repairHex, root, out _)
+                : StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
+                    player, root, ctx, _upgradeBuilding, _upgradeTier);
             stateChanged = ok;
             progressed = ok;
             return ok;
@@ -46,9 +64,11 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  STRATEGIC MAINTENANCE POLICY  (AI-MGR-02)
     // ===========================================================================================
-    //  ONLY non-card strategic actions live here now: upgrading a Base/Citadel to unlock the next
+    //  Non-card strategic actions live here: upgrading a Base/Citadel to unlock the next
     //  internal-Facility slot when a Facility already in hand is blocked SPECIFICALLY by slot
-    //  capacity (not by affordability or by an already-open slot).
+    //  capacity (not by affordability or by an already-open slot); and repairing a wounded unit at
+    //  its own Base (the V1 AiTaskKind.RepairUnit management task, restored as an ordinary Phase-B
+    //  tempo candidate — see StrategicSpendCandidate's own comment on the UnitData constructor).
     //
     //  Card execution remains with its existing owner. Research/Production facilities require a
     //  independent, profitable Development prerequisite; this policy unlocks their slot with the same
@@ -68,6 +88,31 @@ namespace Game.Ai.V2
             var list = new List<StrategicSpendCandidate>();
             if (player == null || root == null || hand == null || ctx == null)
                 return list;
+
+            foreach ((UnitData unit, HexCoord hex) in FindRepairCandidates(player))
+            {
+                float hpFraction = 1f - unit.HitPointsCurrent
+                    / (float)Mathf.Max(1, unit.HitPointsMax);
+                int apCost = UnitRepair.ApCost(unit);
+                float apOpportunityCost = AiConfigV2.stratCardApCostWeight * apCost;
+                // Restored combat power on AiPower's own per-unit scale (AiPower.UnitPower — the
+                // same stat-line-times-ability-multiplier reading ForceGrowth/CombatBody already
+                // use), weighted onto the shared utility scale by repairPowerValueWeight — a
+                // first-cut constant (project owner's own 2026-09-21 call: repair should land
+                // roughly at "half the cost of replaying an equivalent body", not calibrated
+                // against a played log yet, unlike most other weights in this file).
+                float utility = AiPower.UnitPower(unit) * hpFraction
+                    * AiConfigV2.repairPowerValueWeight - apOpportunityCost;
+                list.Add(new StrategicSpendCandidate(unit, hex)
+                {
+                    Label = $"repair {unit.Name} (#{unit.RuntimeId}) at ({hex.Q},{hex.R}): "
+                        + $"{unit.HitPointsCurrent}/{unit.HitPointsMax} HP",
+                    StableKey = "repair:" + unit.RuntimeId,
+                    Utility = utility,
+                    ApCost = apCost,
+                    ResCost = UnitRepair.ResourceCost(unit),
+                });
+            }
 
             foreach (CapacityUpgrade up in FindCapacityUpgrades(
                 snap, player, root, hand, ctx, witnessedUsefulApDemand))
@@ -93,6 +138,31 @@ namespace Game.Ai.V2
                 });
             }
             return list;
+        }
+
+        // ------------------------------------------------------------------------- repair ----
+
+        // Every wounded, non-prison, non-airfield own-army member currently sitting on this
+        // player's own Base — garrison included (a garrison's hex IS a Base hex by definition).
+        // Live ArmyRegistry, not the snapshot: the executed candidate must act on the exact same
+        // UnitData UnitRepair.TryRepair mutates, the same "candidate carries its own live payload"
+        // convention capacity-upgrade already uses above (BuildingData, not a snapshot DTO).
+        private static IEnumerable<(UnitData Unit, HexCoord Hex)> FindRepairCandidates(
+            PlayerSetupData player)
+        {
+            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
+            {
+                if (army == null || army.IsPrison || AviationRules.IsAirfield(army)
+                    || !UnitRepair.CanRepairAt(army.Hex, player))
+                    continue;
+                foreach (UnitData unit in army.Members)
+                    // A captured enemy hero can be mid-escort inside a normal (non-Prison) army;
+                    // it is never ours to repair (UnitRepair.CanRepairAt checks unit.Owner, not
+                    // army ownership, and would already refuse it — skip it here too so it never
+                    // surfaces as a candidate that is guaranteed to fail on execution).
+                    if (!unit.IsPrisoner && UnitRepair.IsWounded(unit))
+                        yield return (unit, army.Hex);
+            }
         }
 
         // ---------------------------------------------------------------- capacity upgrade ----
