@@ -335,11 +335,11 @@ namespace Game.Ai.V2
         public const float altUseForegoneFraction = 0.25f;     // AlternativeUseValue = this * next-best PLAY role score (Hold is priced only in NetScore)
         public const float stratHoldBeatsPlayMaxDemandValue = 40f; // legacy — superseded by the urgency ramp below
         // P0.2 review-r2 — Phase A ranks by NET decision value (play - hold + urgency) and plays
-        // only when it is positive. Urgency ramps with the demand's Value so a real threat / raid
-        // gap materialises even against a high-HoldValue card, while a soft baseline demand adds
-        // ~nothing and can genuinely lose to Hold.
-        public const float stratHoldUrgencyRampLo = 25f;   // demand Value at/under this -> urgency 0
-        public const float stratHoldUrgencyRampHi = 60f;   // demand Value at/over this -> full urgency
+        // only when it is positive. Urgency ramps with the demand's Value (DemandUrgencyPolicy,
+        // shared taskScoreUrgencyRampLo/Hi band — every demand family, including Development, is
+        // migrated onto TaskScore.Value) so a real threat / raid gap materialises even against a
+        // high-HoldValue card, while a soft baseline demand adds ~nothing and can genuinely lose
+        // to Hold.
         public const float stratHoldUrgencyMax = 2.0f;     // full urgency bonus added to net decision value
         // residual-resource continuity — extra opportunity cost charged to a Phase-B card that would
         // consume a resource whose CURRENT-turn, actor-aware AGG/RCN demand is proven blocked on that

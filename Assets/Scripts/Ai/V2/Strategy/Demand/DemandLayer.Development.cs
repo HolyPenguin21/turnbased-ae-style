@@ -34,13 +34,17 @@ namespace Game.Ai.V2
 
             AiHandData hand = AiHandRegistry.Peek(player);
             int operatorPrerequisites = 0;
-            // An investment is justified by its own legal output, positive recipient gain and EV,
-            // not by a currently active Recon/Economy/Raid mission. EnumeratePreparation owns the
-            // actual catalog/recipient/operator/preparation-cost checks. Other demands may provide
-            // context to its evaluator, but cannot veto an independent production investment.
+            // Production amplifies an ALREADY-owned need (Recon/Economy/Raid); it never invents a
+            // mission of its own (owner principle: Recon -> knowledge -> Economy -> budget ->
+            // Attack/Defence -> need -> Production amplifies need). HasSupportedDevelopmentAxisDemand
+            // is the one existing predicate for "is there a real, witnessed need this closes" —
+            // EnumeratePreparation/Enumerate still own the catalog/recipient/operator/cost checks,
+            // this only gates WHETHER an opportunity is allowed to compete at all.
             // One best prerequisite per pass; the next settled pass sees the completed stage.
+            bool SupportsNeed(DevelopmentOpportunity op) => op != null && op.ExpectedGain > 0f
+                && HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player, s);
             DevelopmentOpportunity preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
-                s, player, root, hand, ctx, op => op != null && op.ExpectedGain > 0f,
+                s, player, root, hand, ctx, SupportsNeed,
                 activeIntents).FirstOrDefault();
             if (preparation != null)
             {
@@ -60,21 +64,29 @@ namespace Game.Ai.V2
                     Explain = preparation.Explain,
                 };
             }
-            // Filter illegal recipients before selecting the best one for each offering. The
-            // opportunity evaluator already does this via CanAttach and signed card utility;
-            // demanding a witness from another axis here would block useful autonomous Production.
-            // Orchestration already computed and refreshed this list for the settled state.
-            // Enumerate here only for callers that did not supply it.
+            // Recipient legality (CanAttach, signed card utility) is filtered by the opportunity
+            // evaluator itself before "best" is chosen. Orchestration already computed and
+            // refreshed this list for the settled state; Enumerate here only for callers that did
+            // not supply it (formedDemands/activeIntents exist here, so this fallback call can gate
+            // on real need same as the primary path below).
             if (devOpportunities == null && root != null && hand != null)
                 devOpportunities = DevelopmentOpportunityEvaluator.Enumerate(
-                    s, player, root, hand, null);
+                    s, player, root, hand, null, SupportsNeed);
             // An unstaffed mode must not suppress real opportunities from another ready mode.
             int emitted = 0;
             if (devOpportunities != null)
                 foreach (DevelopmentOpportunity op in devOpportunities)
                 {
-                    if (op == null || op.BaseValue <= 0f) continue;
+                    // Orchestration's own Enumerate call (AiStrategyV2Pipeline step 3e) runs before
+                    // activeIntents/formedDemands exist this turn, so it cannot gate at
+                    // best-recipient selection time; re-check the SAME predicate here, the one
+                    // place in the pipeline that has real demand/intent context, before this
+                    // opportunity is ever allowed to become a competing AxisDemand.
+                    if (op == null || op.BaseValue <= 0f || !SupportsNeed(op)) continue;
                     emitted++;
+                    float supportStrength = SupportedNeedStrength(op, formedDemands, activeIntents, player, s);
+                    var devScore = new TaskScore(
+                        supportedNeedValue: TaskScoreEvaluator.SupportedNeedValue(supportStrength));
                     yield return new AxisDemand
                     {
                         RequestingAxis = DesireAxis.Development,
@@ -83,9 +95,10 @@ namespace Game.Ai.V2
                         RequiredTraits = TraitPreference.None,
                         MinimumFollowupAp = 0f,
                         TargetHex = op.FacilityHex,
-                        Value = op.BaseValue,   // radar-blind — see Radar §E note above
+                        WorldTaskScore = devScore,
+                        Value = devScore.Value,
                         DevOpportunity = op,
-                        Explain = op.Explain,
+                        Explain = $"{op.Explain} supportedNeed={supportStrength:0.##}",
                     };
                 }
 
@@ -171,6 +184,42 @@ namespace Game.Ai.V2
                     return true;
             }
             return false;
+        }
+
+        // The magnitude behind HasSupportedDevelopmentAxisDemand's gate, normalized onto the SAME
+        // canonical urgency scale every other migrated axis's demand.Value already uses
+        // (DemandUrgencyPolicy.NormalizedWorldValue) — so Development's Play-vs-Hold urgency
+        // (AiConfigV2.taskScoreUrgencyRampLo/Hi) compares like for like against Hero/Scout/Unit
+        // demands instead of a separate, unmigrated scale. Only meaningful for an op that already
+        // passed the gate above. A fresh formedDemand this cycle carries its own scored Value; a
+        // witness that is only a live MissionIntent (Economy/Recon already committed, or a
+        // confirmed Raid combat improvement) counts as a fully-proven need — the running operation
+        // itself is the evidence, not a candidate still being scored.
+        internal static float SupportedNeedStrength(DevelopmentOpportunity op,
+            IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
+            PlayerSetupData player, WorldSnapshot snap)
+        {
+            if (op == null)
+                return 0f;
+            if (op.RecipientKind == DevRecipientKind.HandCard)
+            {
+                AxisDemand reconDemand = formedDemands?.FirstOrDefault(d => d != null
+                    && d.RequestingAxis == DesireAxis.Recon
+                    && d.Capability == CapabilityKind.ScoutCapability);
+                return reconDemand != null
+                    ? DemandUrgencyPolicy.NormalizedWorldValue(reconDemand.Value) : 1f;
+            }
+            if (op.RecipientUnit == null || player == null)
+                return 0f;
+            ArmyData army = ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => a?.Members != null && a.Members.Contains(op.RecipientUnit));
+            if (army == null)
+                return 0f;
+            AxisDemand economyDemand = formedDemands?.FirstOrDefault(d => d != null
+                && d.RequestingAxis == DesireAxis.Economy
+                && d.EconomyPreferredBuilderArmyId == army.Id);
+            return economyDemand != null
+                ? DemandUrgencyPolicy.NormalizedWorldValue(economyDemand.Value) : 1f;
         }
 
         // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability

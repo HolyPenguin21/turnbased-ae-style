@@ -669,6 +669,11 @@ namespace Game.Ai.V2
         // (see AiConfigV2.economyBaseDefenseBonusValue's own comment): a defensible-but-empty hex
         // must not outscore a genuinely resource-rich one, only add on top of it.
         public float DefenseBonusValue;
+        // Structural Economy fact: count of known resource hexes this site's founding would bring
+        // within reach that no OWNED base already reaches (a new cluster of the hexagon network,
+        // not a duplicate claim on one already-serviceable area). Raw hex count, normalized by
+        // Evaluation — Analysis owns the fact, not its score weight.
+        public int NewResourceClusterHexes;
         public bool ConvertsOwnedExtractionSite;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
     }

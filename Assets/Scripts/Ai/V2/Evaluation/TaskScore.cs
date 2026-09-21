@@ -26,6 +26,17 @@ namespace Game.Ai.V2
         public readonly float CorridorAlignment;
         public readonly float OwnTerritoryProximity;
         public readonly float TerrainDefense;
+        // Structural Economy fact: this Base project would open a new hexagon of the resource
+        // network (a cluster not already reachable from an owned base), independent of whether
+        // that cluster's income is currently useful (EconomicHexBenefit prices that separately).
+        // Base-only slot; never populated by Extraction/Recon/Raid.
+        public readonly float EconomicExpansionValue;
+        // How strongly a Development/Production CardUpgrade closes an ALREADY-proven need of
+        // another axis (Recon/Economy/Raid) — the magnitude behind
+        // DemandLayer.Development.HasSupportedDevelopmentAxisDemand's gate, not the equipment's
+        // own raw combat gain (that stays priced separately by
+        // StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade). Development-only slot.
+        public readonly float SupportedNeedValue;
         // Legacy storage name retained for existing score transport and tests. Raid now fills this
         // ONE slot from the fixed reward, not from defender power. Never add both contributions.
         public readonly float MilitaryTargetRelevance;
@@ -57,7 +68,9 @@ namespace Game.Ai.V2
             float delivery = 0f,
             float moverOpportunityCost = 0f,
             float hexThreatRisk = 0f,
-            float detectionRisk = 0f)
+            float detectionRisk = 0f,
+            float economicExpansionValue = 0f,
+            float supportedNeedValue = 0f)
         {
             EconomicHexBenefit = economicHexBenefit;
             Payback = payback;
@@ -79,6 +92,8 @@ namespace Game.Ai.V2
             MoverOpportunityCost = moverOpportunityCost;
             HexThreatRisk = hexThreatRisk;
             DetectionRisk = detectionRisk;
+            EconomicExpansionValue = economicExpansionValue;
+            SupportedNeedValue = supportedNeedValue;
         }
 
         public float Value => TaskScoreEvaluator.Fold(this);
@@ -106,6 +121,8 @@ namespace Game.Ai.V2
             + score.TerrainDefense
             + score.MilitaryTargetRelevance
             + score.WinChance
+            + score.EconomicExpansionValue
+            + score.SupportedNeedValue
             - score.CardPrice
             - score.Delivery
             - score.MoverOpportunityCost
@@ -258,6 +275,12 @@ namespace Game.Ai.V2
 
         internal static float WinChance(float probability) =>
             Mathf.Clamp01(probability) * AiConfigV2.taskScoreWinChanceMax;
+
+        internal static float EconomicExpansionValue(float normalizedValue) =>
+            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreEconomicExpansionMax;
+
+        internal static float SupportedNeedValue(float normalizedValue) =>
+            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreSupportedNeedMax;
     }
 
 }

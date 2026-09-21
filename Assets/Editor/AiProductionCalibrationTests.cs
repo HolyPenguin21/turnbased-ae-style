@@ -14,6 +14,7 @@ namespace Game.EditorTests
         [TestCase(DesireAxis.Aggression)]
         [TestCase(DesireAxis.Recon)]
         [TestCase(DesireAxis.Economy)]
+        [TestCase(DesireAxis.Development)]
         public void WorldTaskUrgency_UsesOneSharedBand(DesireAxis axis)
         {
             var demand = new AxisDemand { RequestingAxis = axis };
@@ -24,18 +25,6 @@ namespace Game.EditorTests
             demand.Value = AiConfigV2.taskScoreUrgencyRampHi;
             Assert.That(DemandUrgencyPolicy.Normalized(demand), Is.EqualTo(1f).Within(0.0001f));
             Assert.That(DemandUrgencyPolicy.NormalizedWorldValue(demand.Value), Is.EqualTo(1f));
-        }
-
-        [Test]
-        public void DevelopmentUrgency_RetainsLegacyBand()
-        {
-            var demand = new AxisDemand { RequestingAxis = DesireAxis.Development };
-            demand.Value = AiConfigV2.stratHoldUrgencyRampLo;
-            Assert.That(DemandUrgencyPolicy.Normalized(demand), Is.Zero);
-            demand.Value = (AiConfigV2.stratHoldUrgencyRampLo + AiConfigV2.stratHoldUrgencyRampHi) * 0.5f;
-            Assert.That(DemandUrgencyPolicy.Normalized(demand), Is.EqualTo(0.5f).Within(0.0001f));
-            demand.Value = AiConfigV2.stratHoldUrgencyRampHi;
-            Assert.That(DemandUrgencyPolicy.Normalized(demand), Is.EqualTo(1f).Within(0.0001f));
         }
 
         [Test]

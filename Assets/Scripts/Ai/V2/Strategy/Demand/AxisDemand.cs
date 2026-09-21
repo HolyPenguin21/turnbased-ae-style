@@ -58,9 +58,8 @@ namespace Game.Ai.V2
     {
         public string TraceId;
         public DesireAxis RequestingAxis;
-        // Legacy transport value. Migrated world-map demand families assign this from
-        // WorldTaskScore.Value; non-world families (Development/Production) keep their existing
-        // value path until their own migration.
+        // Legacy transport value. Every demand family, including Development/Production, assigns
+        // this from WorldTaskScore.Value.
         public float Value;
         public TaskScore WorldTaskScore;
         public HexCoord? TargetHex;
@@ -129,16 +128,8 @@ namespace Game.Ai.V2
     // consumer must use this one adapter instead of guessing a numeric scale independently.
     internal static class DemandUrgencyPolicy
     {
-        internal static float Normalized(AxisDemand demand)
-        {
-            if (demand == null)
-                return 0f;
-            if (demand.RequestingAxis != DesireAxis.Development)
-                return NormalizedWorldValue(demand.Value);
-            return Mathf.Clamp01((demand.Value - AiConfigV2.stratHoldUrgencyRampLo)
-                / Mathf.Max(0.01f,
-                    AiConfigV2.stratHoldUrgencyRampHi - AiConfigV2.stratHoldUrgencyRampLo));
-        }
+        internal static float Normalized(AxisDemand demand) =>
+            demand == null ? 0f : NormalizedWorldValue(demand.Value);
 
         // Verified AGG/RCN resource blocks carry the same migrated world TaskScore.Value.
         // Keep both urgency consumers on this one existing scale adapter.

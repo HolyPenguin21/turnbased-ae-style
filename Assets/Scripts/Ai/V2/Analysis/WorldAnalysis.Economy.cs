@@ -357,6 +357,8 @@ namespace Game.Ai.V2
                             ForwardProgressValue = forwardProgress,
                             CorridorAlignmentValue = corridorAlignment,
                             DefenseBonusValue = defenseBonus,
+                            NewResourceClusterHexes = CountNewResourceClusterHexes(
+                                hex, snap.Self.BaseHexes, knownSites),
                             ConvertsOwnedExtractionSite = convertsOwnedExtraction,
                             BuilderRoutes = BuilderRoutesFor(hex),
                         });
@@ -640,6 +642,31 @@ namespace Game.Ai.V2
             int distance = snap.Self.BaseHexes.Min(h => HexGridMath.Distance(h, target));
             return 1f - Mathf.Clamp01((distance - 1f)
                 / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
+        }
+
+        // Structural Economy fact: how many KNOWN resource hexes this candidate would bring within
+        // the founding scan radius that no OWNED base already reaches within that same radius —
+        // i.e. a genuinely new cluster of the hexagon network, not a second claim on ground already
+        // serviceable from an existing base. Deliberately counts known sites only (fog-of-war
+        // symmetric with the rest of Analysis); a candidate with no direction/exploration nearby
+        // yields 0, same as an already-fully-covered one.
+        private static int CountNewResourceClusterHexes(HexCoord candidate,
+            IReadOnlyList<HexCoord> ownedBaseHexes, HashSet<HexCoord> knownResourceSites)
+        {
+            if (knownResourceSites == null || knownResourceSites.Count == 0)
+                return 0;
+            int radius = AiConfigV2.economyBaseFoundScanRadius;
+            int count = 0;
+            foreach (HexCoord site in knownResourceSites)
+            {
+                if (HexGridMath.Distance(candidate, site) > radius)
+                    continue;
+                bool alreadyReachable = ownedBaseHexes != null
+                    && ownedBaseHexes.Any(baseHex => HexGridMath.Distance(baseHex, site) <= radius);
+                if (!alreadyReachable)
+                    count++;
+            }
+            return count;
         }
 
         // Structural site fact only — how much of this hex's yield is left uncollected by

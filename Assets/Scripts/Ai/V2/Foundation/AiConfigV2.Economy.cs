@@ -24,6 +24,11 @@ namespace Game.Ai.V2
         public const int economyBaseFoundScanRadius = 3;
         public const int economyBaseMinSpacing = 3;
         public const float economyBaseMaxDefenseModifier = 2f;
+        // Normalizes EconomyBaseOpportunity.NewResourceClusterHexes into TaskScore's [0..1] input:
+        // reaching (or beating) this many newly-reachable known resource hexes counts as a full
+        // "genuinely new cluster" claim. 2 is deliberately low — even a modest new pocket the
+        // current base network cannot reach already justifies founding a Base there.
+        public const float economyBaseExpansionClusterFullCount = 2f;
 
         // Initial Base admission uses positive net TaskScore; commitment switching keeps hysteresis.
         public const float economyBaseSwitchHysteresisThreshold = 10f;

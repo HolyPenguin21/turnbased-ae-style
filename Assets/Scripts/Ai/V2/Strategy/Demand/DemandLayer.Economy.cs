@@ -942,6 +942,15 @@ namespace Game.Ai.V2
                     float corridor = TaskScoreEvaluator.CorridorAlignment(site.CorridorAlignmentValue);
                     float proximity = TaskScoreEvaluator.OwnTerritoryProximity(homeDistance);
                     float defense = TaskScoreEvaluator.TerrainDefense(site.DefenseBonusValue);
+                    // Economy-native structural fact (Analysis-owned, see
+                    // CountNewResourceClusterHexes): this Base would open a resource cluster no
+                    // owned base already reaches, regardless of whether that cluster's income is
+                    // USEFUL right now (economic/payback price that separately). Without this,
+                    // HasMeaningfulBaseBenefit only ever sees direct income/payback/global-effect —
+                    // a Base with no immediate useful gain can never originate even when it is the
+                    // only way to reach a whole new part of the map.
+                    float expansion = TaskScoreEvaluator.EconomicExpansionValue(
+                        site.NewResourceClusterHexes / AiConfigV2.economyBaseExpansionClusterFullCount);
                     float cardPrice = TaskScoreEvaluator.CardPrice(
                         card.EffectivePlayApCost, resourceCost);
                     float risk = TaskScoreEvaluator.HexThreatRisk(facts.Exposure);
@@ -958,7 +967,8 @@ namespace Game.Ai.V2
                         ownTerritoryProximity: proximity,
                         terrainDefense: defense,
                         cardPrice: cardPrice,
-                        hexThreatRisk: risk);
+                        hexThreatRisk: risk,
+                        economicExpansionValue: expansion);
                     // Economy owns the REASON to found this Base. Positional terms
                     // (airfield/front/corridor/defense/proximity) still rank WHERE an already
                     // economy-justified Base should go, but they must not manufacture an Economy
@@ -1005,7 +1015,8 @@ namespace Game.Ai.V2
                         cardPrice: cardPrice,
                         delivery: extraAp * AiConfigV2.taskScoreReactivationApWeight,
                         moverOpportunityCost: Mathf.Max(0f, heroCost),
-                        hexThreatRisk: risk);
+                        hexThreatRisk: risk,
+                        economicExpansionValue: expansion);
                     float value = score.Value;
 
                     meaningfulDemands.Add(new AxisDemand
@@ -1032,7 +1043,8 @@ namespace Game.Ai.V2
                         WorldTaskScore = score,
                         Value = score.Value,
                         Explain = $"Base task={score.Value:0.##} economic={economic:0.##} "
-                            + $"payback={payback:0.##} airfield={airfield:0.##} global={global:0.##} "
+                            + $"payback={payback:0.##} expansion={expansion:0.##} "
+                            + $"airfield={airfield:0.##} global={global:0.##} "
                             + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
                             + $"defense={defense:0.##} "
                             + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
@@ -1131,8 +1143,10 @@ namespace Game.Ai.V2
                 + AiConfigV2.economyBaseSwitchHysteresisThreshold;
 
         // Economy admission predicate for a NEW Base project. The axis may originate a Base
-        // only from economy-native value: useful local income/payback, or a PlayerGlobal effect
-        // explicitly evaluated for IntendedRole.Economy by StrategicCardEvaluator. Airfield,
+        // only from economy-native value: useful local income/payback, a PlayerGlobal effect
+        // explicitly evaluated for IntendedRole.Economy by StrategicCardEvaluator, or a structural
+        // network-expansion fact (EconomicExpansionValue — this site reaches a resource cluster no
+        // owned base already reaches, independent of whether that income is useful YET). Airfield,
         // front/corridor and terrain-defense terms remain in the FULL TaskScore so they can choose
         // WHERE an already-justified Base should go; they are deliberately absent from this
         // admission value and therefore cannot rescue a net-negative economy project.
@@ -1146,6 +1160,7 @@ namespace Game.Ai.V2
               score.EconomicHexBenefit
             + score.Payback
             + score.GlobalCardEffect
+            + score.EconomicExpansionValue
             - score.CardPrice
             - score.Delivery
             - score.MoverOpportunityCost
@@ -1156,7 +1171,8 @@ namespace Game.Ai.V2
             bool hasEconomyPurpose =
                 score.EconomicHexBenefit > AiConfigV2.allocatorSliceEpsilon
                 || score.Payback > AiConfigV2.allocatorSliceEpsilon
-                || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon;
+                || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon
+                || score.EconomicExpansionValue > AiConfigV2.allocatorSliceEpsilon;
             return hasEconomyPurpose
                 && EconomyBaseAdmissionValue(score) > AiConfigV2.allocatorSliceEpsilon;
         }

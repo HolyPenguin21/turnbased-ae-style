@@ -26,6 +26,16 @@ namespace Game.Ai.V2
         public const float taskScoreTerrainDefenseMax = 4f;
         public const float taskScoreMilitaryTargetMax = 12f;
         public const float taskScoreWinChanceMax = 12f;
+        // Base-only: this candidate would open a resource cluster not already reachable from an
+        // owned base. Deliberately smaller than the physical-income terms (10/8) — it justifies a
+        // Base existing at all when direct income is not yet needed, it must not outrank a site
+        // that is ALSO immediately income-positive.
+        public const float taskScoreEconomicExpansionMax = 6f;
+        // Development-only: how strongly a CardUpgrade closes an already-proven Recon/Economy/Raid
+        // need (DemandLayer.Development.HasSupportedDevelopmentAxisDemand's gate). Sized to reach
+        // the shared taskScoreUrgencyRampLo..Hi band (5..12) by itself for a genuinely supported
+        // opportunity, now that Development shares that same band (see taskScoreUrgencyRampLo).
+        public const float taskScoreSupportedNeedMax = 10f;
         // The expected resource/card reward of completing a Raid. Constant per eligible Raid,
         // never derived from defender power and never applied to Recon/Economy or Raid return legs.
         public const float RaidReward = 8f;
@@ -44,11 +54,11 @@ namespace Game.Ai.V2
         public const float taskScoreDetectionRiskMax = 8f;
 
         // Phase-A/Phase-B Play-vs-Hold urgency is lifecycle policy, not an intrinsic TaskScore slot,
-        // but migrated world-map demands feed it with TaskScore.Value. Keep one shared conversion
-        // band for every migrated world family instead of resurrecting Recon/Raid/Economy-specific
-        // multipliers. The 5..12 band is a provisional policy calibration, NOT a conversion
-        // from a retired Economy deficit weight. Revalidate against measured Play-vs-Hold choices.
-        // Development remains on its pre-migration 25..60 band until that non-world family migrates.
+        // but every migrated demand family (world-map AND Development, since its SupportedNeedValue
+        // migration) feeds it with TaskScore.Value. Keep one shared conversion band instead of
+        // resurrecting per-axis multipliers. The 5..12 band is a provisional policy calibration, NOT
+        // a conversion from a retired Economy deficit weight. Revalidate against measured
+        // Play-vs-Hold choices.
         public const float taskScoreUrgencyRampLo = 5f;
         public const float taskScoreUrgencyRampHi = 12f;
 
