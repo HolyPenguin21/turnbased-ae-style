@@ -101,6 +101,38 @@ namespace Game.Ai.V2
             ByProposal.Add(proposal, new Entry(ids));
         }
 
+        public static void RecordActiveDefence(MissionProposal proposal, WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds)
+        {
+            if (proposal == null || snap == null
+                || !(proposal.Target is ActiveDefenceMissionTarget target)
+                || target.Phase != ActiveDefencePhase.Intercept)
+                return;
+            var excluded = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            var ids = new List<int>();
+            while (true)
+            {
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                    new GroundCombatAssemblyRequest
+                    {
+                        Defenders = defenders ?? Array.Empty<WorthIt.DefenderProfile>(),
+                        WinChanceGate = proposal.FromDurableIntent
+                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                        PreferredPrimaryArmyId = proposal.FromDurableIntent
+                            ? proposal.PreferredMoverArmyId : null,
+                        PinToPreferred = proposal.FromDurableIntent
+                            && proposal.PreferredMoverArmyId.HasValue,
+                        ExcludedArmyIds = excluded,
+                    });
+                if (!plan.Feasible || !excluded.Add(plan.BaseArmyId)) break;
+                ids.Add(plan.BaseArmyId);
+            }
+            ByProposal.Remove(proposal);
+            ByProposal.Add(proposal, new Entry(ids));
+        }
+
         public static bool TryGet(MissionProposal proposal, out HashSet<int> ids)
         {
             if (proposal != null && ByProposal.TryGetValue(proposal, out Entry entry))

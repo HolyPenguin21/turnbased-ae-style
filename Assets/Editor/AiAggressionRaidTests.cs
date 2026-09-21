@@ -231,12 +231,8 @@ namespace Game.EditorTests
         [Test]
         public void Enumerate_MinBaseValueGate_StillAppliedToEveryAcceptedObjective()
         {
-            // raidObjectiveMinBaseValue is still consulted on every candidate (Enumerate rejects
-            // strictly below it) — with current tuning, Build's own Lerp floor (raidBaseValueMin)
-            // never actually drops under that gate, so every accepted objective's BaseValue must
-            // sit at or above raidObjectiveMinBaseValue; this pins that invariant so a future config
-            // change that violates it (raidBaseValueMin < raidObjectiveMinBaseValue) is caught here
-            // instead of only showing up as a silently-dropped objective downstream.
+            // raidObjectiveMinBaseValue is consulted on every candidate. There is no second
+            // Raid-local value scale or floor: accepted objective value is canonical TaskScore.
             WorldSnapshot snap = SnapshotWithNeutralSighting(armyId: 55, hex: new HexCoord(500, 500),
                 defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true, closeToBase: false);
             CombatOpportunityReport report = CombatOpportunityAnalyzer.Analyze(snap);

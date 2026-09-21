@@ -293,7 +293,7 @@ namespace Game.Ai.V2
 
     // Concrete mission kinds. Each maps to a V2 Task builder in TaskExecutor. Was a bare string
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
-    public enum MissionKind { Scout, Raid, Economy, Development }
+    public enum MissionKind { Scout, Raid, ActiveDefence, Economy, Development }
 
     public enum EconomyTaskKind
     {
@@ -1833,7 +1833,7 @@ namespace Game.Ai.V2
                 activeIntents, reconObjectives);
             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                 missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
-                    activeIntents, aggressionObjectives));
+                    activeIntents, aggressionObjectives, ctx));
             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Economy))
                 missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
                     activeIntents, demands));

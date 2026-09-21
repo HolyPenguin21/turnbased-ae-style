@@ -63,16 +63,6 @@ namespace Game.Ai.V2
         // Feasibility is still NOT part of this discovery gate: an objective may survive so Demand
         // can ask for the missing combat capability; WorthIt/assembly remain the execution owners.
         public const float raidObjectiveMinBaseValue = 0.25f;
-        // Legacy lifecycle/continuity constants below are not intrinsic TaskScore transforms.
-        public const float raidBaseValueMin = 12f;
-        public const float raidBaseValueMax = 90f;
-        public const float raidValueWeight = 0.75f;
-        public const float raidProximityWeight = 0.25f;
-        public const int raidProximityRampLo = 3;
-        public const int raidProximityRampHi = 16;
-        // Retained for legacy/non-migrated consumers only. Migrated Raid TaskScore admission does
-        // not multiply intrinsic value by a family-specific feasibility factor.
-        public const float raidLocalFeasibilityFloor = 0.25f;
         // N — how many Raid alternatives AggressionMissionPlanner hands downstream (beam width).
         // Execution capacity is bounded by real armies / heroes / commitments / resources, NOT a
         // fixed K (spec §20), so there is no maxConcurrentRaidExecutions.
@@ -104,9 +94,8 @@ namespace Game.Ai.V2
         // travel is slower than a scout leg).
         public const int raidIntentStallTurns = 3;
         public const int raidIntentMaxTurns = 10;
-        // A committed + ready (assembly applied / mover moving) Raid gets this Hard sunk-cost bump
-        // on its LocalAdmissionScore so a small Radar wobble cannot drop it for routine recon.
-        public const float raidHardCommitmentBonus = 8f;
+        // Active Defence may borrow the exact primary actor of a Raid only for a one-turn detour.
+        public const int activeDefenceRaidMaxDetourTurns = 1;
         // Structural-failure cooldown for a Raid mission key (assembly infeasible / no mover).
         public const int raidRejectCooldownTurns = 3;
 

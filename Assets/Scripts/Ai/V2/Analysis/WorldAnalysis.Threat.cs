@@ -292,17 +292,12 @@ namespace Game.Ai.V2
                 ? 1f / (1f + enemyEta.Value)
                 : 1f / (1f + AiConfigV2.etaUnknownContactPenalty);
 
-            float responseHeadstart = (enemyEta.HasValue && responseEta.HasValue)
-                ? Mathf.Clamp01((responseEta.Value - enemyEta.Value) / 4f)
-                : 0f;
-
             float posWeight = AiConfigV2.severityWinChanceWeight + AiConfigV2.severityDamageWeight
                 + AiConfigV2.severityEtaWeight + AiConfigV2.severityCanDamageWeight;
             float raw = AiConfigV2.severityWinChanceWeight * winChance
                 + AiConfigV2.severityDamageWeight * potentialDamage
                 + AiConfigV2.severityEtaWeight * etaUrgency
-                + AiConfigV2.severityCanDamageWeight * (canDamage ? 1f : 0f)
-                - AiConfigV2.severityResponseHeadstartWeight * responseHeadstart;
+                + AiConfigV2.severityCanDamageWeight * (canDamage ? 1f : 0f);
 
             return confidence * Mathf.Clamp01(raw / Mathf.Max(0.0001f, posWeight));
         }
@@ -310,4 +305,3 @@ namespace Game.Ai.V2
         private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);
     }
 }
-

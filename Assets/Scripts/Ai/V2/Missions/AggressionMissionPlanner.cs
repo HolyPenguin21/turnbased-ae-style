@@ -49,7 +49,7 @@ namespace Game.Ai.V2
 
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<AggressionObjective> frozenObjectives)
+            IReadOnlyList<AggressionObjective> frozenObjectives, AiTurnContext ctx = null)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || breakdown == null)
@@ -215,7 +215,190 @@ namespace Game.Ai.V2
             if (proposals.Count == 0)
                 AiDebugLog.WriteDeduped("none",
                     $"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
+
+            AppendActiveDefence(snap, activeIntents, committed, proposals, ctx);
             return proposals;
+        }
+
+        private static void AppendActiveDefence(WorldSnapshot snap,
+            IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
+            List<MissionProposal> proposals, AiTurnContext ctx)
+        {
+            if (activeIntents != null)
+                foreach (MissionIntent intent in activeIntents.Where(i => i?.ActiveDefence != null
+                    && i.Status == IntentStatus.Active
+                    && i.ActiveDefence.Phase == ActiveDefencePhase.Return
+                    && i.ActiveDefence.PrimaryArmyId.HasValue
+                    && i.ActiveDefence.ReturnHex.HasValue))
+                {
+                    ActiveDefenceIntent d = intent.ActiveDefence;
+                    ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                        && a.ArmyId == d.PrimaryArmyId.Value);
+                    if (actor == null) continue;
+                    int distance = HexGridMath.Distance(actor.Hex, d.ReturnHex.Value);
+                    int eta = AiV2Util.CeilDiv(distance,
+                        UnityEngine.Mathf.Max(1, actor.MaxMovement));
+                    float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+                    var target = new ActiveDefenceMissionTarget
+                    {
+                        Phase = ActiveDefencePhase.Return, EnemyArmyId = d.EnemyArmyId,
+                        LastKnownHex = d.LastKnownHex, LastObservedTurn = d.LastObservedTurn,
+                        Confidence = d.Confidence, ProtectedAssetHex = d.ProtectedAssetHex,
+                        ProtectedAssetKind = d.ProtectedAssetKind,
+                        ProtectedAssetValue = d.ProtectedAssetValue,
+                        ThreatSeverity = d.ThreatSeverity, PrimaryArmyId = d.PrimaryArmyId,
+                        ReturnHex = d.ReturnHex, EstimatedEta = eta,
+                    };
+                    var proposal = new MissionProposal
+                    {
+                        Kind = MissionKind.ActiveDefence, Target = target,
+                        BaseValue = 0f, LocalAdmissionScore = 0f,
+                        PreferredMoverArmyId = actor.ArmyId,
+                        FromDurableIntent = true, DurableFundingTier = intent.Funding,
+                        Requirements = new MissionRequirements
+                        {
+                            MoverKnown = true, RequiresArmy = true,
+                            ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
+                            EtaTurns = eta, EstimatedDistance = distance,
+                        },
+                        Explain = $"ActiveDefence Return actor #{actor.ArmyId} -> {d.ReturnHex.Value.Q},{d.ReturnHex.Value.R}",
+                    };
+                    proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+                    proposals.Add(proposal);
+                }
+            foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
+            {
+                MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
+                    && i.Status == IntentStatus.Active && i.Kind == MissionKind.ActiveDefence
+                    && i.ActiveDefence?.EnemyArmyId == objective.Target.EnemyArmyId);
+                int? pinnedActor = incumbent?.ActiveDefence?.PrimaryArmyId;
+                var excluded = committed == null
+                    ? new HashSet<int>() : new HashSet<int>(committed);
+                if (pinnedActor.HasValue) excluded.Remove(pinnedActor.Value);
+                EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c =>
+                    c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
+                    && c.Source == ContactSource.Honest && c.Position.HasValue);
+                if (contact == null) continue;
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = contact.Army.Members
+                    ?? System.Array.Empty<WorthIt.DefenderProfile>();
+
+                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                    new GroundCombatAssemblyRequest
+                    {
+                        Defenders = defenders,
+                        WinChanceGate = pinnedActor.HasValue
+                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                        PreferredPrimaryArmyId = pinnedActor,
+                        PinToPreferred = pinnedActor.HasValue,
+                        ExcludedArmyIds = excluded,
+                    });
+                float moverOpportunityCost = 0f;
+                MissionIntent borrowedRaid = null;
+                if (!plan.Feasible && incumbent == null && ctx?.Map != null && activeIntents != null)
+                {
+                    foreach (MissionIntent raidIntent in activeIntents.Where(i => i != null
+                        && i.Status == IntentStatus.Active && i.Kind == MissionKind.Raid
+                        && i.Raid != null && i.Raid.Phase == RaidMissionPhase.Assault
+                        && i.Raid.PrimaryArmyId.HasValue))
+                    {
+                        ArmySnapshot candidate = snap.Self.Armies.FirstOrDefault(a => a != null
+                            && a.ArmyId == raidIntent.Raid.PrimaryArmyId.Value);
+                        if (candidate == null) continue;
+                        int direct = SafeStepPathing.FindSafePathCost(ctx.Map, candidate.Owner,
+                            candidate.Hex, raidIntent.Raid.LastKnownHex, candidate.MaxMovement);
+                        int first = SafeStepPathing.FindSafePathCost(ctx.Map, candidate.Owner,
+                            candidate.Hex, objective.Target.LastKnownHex, candidate.MaxMovement);
+                        int second = SafeStepPathing.FindSafePathCost(ctx.Map, candidate.Owner,
+                            objective.Target.LastKnownHex, raidIntent.Raid.LastKnownHex,
+                            candidate.MaxMovement);
+                        if (direct == int.MaxValue || first == int.MaxValue || second == int.MaxValue)
+                            continue;
+                        int move = UnityEngine.Mathf.Max(1, candidate.MaxMovement);
+                        int detour = AiV2Util.CeilDiv(first + second, move)
+                            - AiV2Util.CeilDiv(direct, move);
+                        if (detour > AiConfigV2.activeDefenceRaidMaxDetourTurns) continue;
+                        var borrowExcluded = new HashSet<int>(committed);
+                        borrowExcluded.Remove(candidate.ArmyId);
+                        GroundCombatAssemblyPlan borrowed = GroundCombatAssemblyPlanner.Plan(snap,
+                            new GroundCombatAssemblyRequest
+                            {
+                                Defenders = defenders,
+                                WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                                PreferredPrimaryArmyId = candidate.ArmyId,
+                                PinToPreferred = true,
+                                ExcludedArmyIds = borrowExcluded,
+                            });
+                        if (!borrowed.Feasible) continue;
+                        plan = borrowed;
+                        excluded = borrowExcluded;
+                        borrowedRaid = raidIntent;
+                        moverOpportunityCost = UnityEngine.Mathf.Max(0, detour)
+                            * candidate.ActivationApCost
+                            * AiConfigV2.taskScoreReactivationApWeight;
+                        break;
+                    }
+                }
+                if (!plan.Feasible)
+                {
+                    AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId.ToString(),
+                        $"[AI][V2][ActiveDefence][Assembly] decision=REJECT enemy={objective.Target.EnemyArmyId} reason={plan.Reason}");
+                    continue;
+                }
+
+                ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
+                    && a.ArmyId == plan.BaseArmyId);
+                if (actor == null) continue;
+                int distance = HexGridMath.Distance(actor.Hex, objective.Target.LastKnownHex);
+                int eta = AiV2Util.CeilDiv(distance,
+                    UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, actor.MaxMovement));
+                TaskScore actorScore = ActiveDefenceObjectiveEvaluator.WithResponse(objective,
+                    actor, plan.ProjectedWinChance, eta, moverOpportunityCost);
+                ActiveDefenceMissionTarget target = objective.Target;
+                target.PrimaryArmyId = actor.ArmyId;
+                target.ProjectedWinChance = plan.ProjectedWinChance;
+                target.CoversAllDefenders = plan.CoversAllDefenders;
+                target.EstimatedEta = eta;
+                target.SuspendedRaidIntentKey = borrowedRaid?.IntentKey;
+                target.ReturnHex = actor.ReachableOwnBaseHexes?
+                    .OrderBy(h => HexGridMath.Distance(actor.Hex, h))
+                    .ThenBy(h => h.Q).ThenBy(h => h.R)
+                    .Select(h => (HexCoord?)h).FirstOrDefault()
+                    ?? snap.Self.BaseHexes.OrderBy(h => HexGridMath.Distance(actor.Hex, h))
+                        .ThenBy(h => h.Q).ThenBy(h => h.R)
+                        .Select(h => (HexCoord?)h).FirstOrDefault();
+                float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+                var proposal = new MissionProposal
+                {
+                    Kind = MissionKind.ActiveDefence,
+                    Target = target,
+                    BaseValue = actorScore.Value,
+                    LocalAdmissionScore = actorScore.Value,
+                    PreferredMoverArmyId = actor.ArmyId,
+                    FromDurableIntent = incumbent != null,
+                    DurableFundingTier = incumbent?.Funding ?? CommitmentTier.None,
+                    Requirements = new MissionRequirements
+                    {
+                        MoverKnown = true, RequiresArmy = true,
+                        ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
+                        EtaTurns = eta, EstimatedDistance = distance,
+                        CombatPowerMinimum = contact.Army.EffectiveArmyPower,
+                        CombatPowerDesired = contact.Army.EffectiveArmyPower,
+                    },
+                    Explain = $"ActiveDefence enemy #{target.EnemyArmyId} -> asset "
+                        + $"{target.ProtectedAssetKind}@{target.ProtectedAssetHex.Q},{target.ProtectedAssetHex.R} "
+                        + $"task {actorScore.Value:0.00} win {plan.ProjectedWinChance:0.00} eta {eta}",
+                };
+                proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+                GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, defenders, excluded);
+                if (GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible)
+                    && eligible.Count > 0)
+                {
+                    proposals.Add(proposal);
+                    AiDebugLog.WriteDeduped(target.EnemyArmyId.ToString(),
+                        $"[AI][V2][ActiveDefence][Admission] decision=PROPOSE enemy={target.EnemyArmyId} actor={actor.ArmyId} score={actorScore.Value:0.00}");
+                }
+            }
         }
 
         // Return/support-return are lifecycle/continuity legs, not fresh strategic target scoring.

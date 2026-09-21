@@ -201,7 +201,7 @@ namespace Game.Ai.V2
             PayloadBucket existing = null;
             e.PayloadByReason.TryGetValue(StrategicInvalidationReason.Contact, out existing);
             foreach (int id in armyIds)
-                if (id > 0 && (existing == null || !existing.ContactIds.Contains(id))
+                if (id >= 0 && (existing == null || !existing.ContactIds.Contains(id))
                     && !newIds.Contains(id))
                     newIds.Add(id);
             if (newIds.Count == 0) return;
@@ -312,7 +312,7 @@ namespace Game.Ai.V2
         {
             if (source == null) return;
             foreach (int id in source)
-                if (id > 0) target.Add(id);
+                if (id >= 0) target.Add(id);
         }
 
         private static void AddHexes(HashSet<HexCoord> target, IEnumerable<HexCoord> source)

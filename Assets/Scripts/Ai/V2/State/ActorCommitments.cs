@@ -143,6 +143,14 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (i.Kind == MissionKind.ActiveDefence)
+                {
+                    int actorId = i.PreferredMoverArmyId.Value;
+                    if (RaidActorStillValid(actorId, snap, out _))
+                        c.Claim(actorId);
+                    continue;
+                }
+
                 StealthRequirement req;
                 if (reqByKey.TryGetValue(i.IntentKey, out StealthRequirement r))
                 {
