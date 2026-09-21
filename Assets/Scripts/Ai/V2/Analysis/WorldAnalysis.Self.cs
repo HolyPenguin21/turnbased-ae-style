@@ -32,17 +32,16 @@ namespace Game.Ai.V2
                 .Where(a => a != null && !a.IsPrison)
                 .ToList();
 
-            var baseHexes = ownArmies
-                .Where(a => a.IsGarrison)
-                .Select(a => a.Hex)
-                .Distinct()
-                .ToList();
-
-            HexCoord citadel = player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
+            BuildingData citadelBuilding = BuildingRegistry.AllBuildings()
+                .FirstOrDefault(b => b != null && b.Owner == player && b.IsStartingCitadel);
+            HexCoord? canonicalCitadel = player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
                 ? new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value)
-                : (baseHexes.Count > 0 ? baseHexes[0] : default);
-            if (baseHexes.Count == 0)
-                baseHexes.Add(citadel);
+                : citadelBuilding != null ? (HexCoord?)citadelBuilding.Hex : null;
+            List<HexCoord> baseHexes = OwnedBaseHexes(
+                BuildingRegistry.AllBuildings(), player, canonicalCitadel);
+            HexCoord citadel = canonicalCitadel
+                ?? baseHexes.Select(h => (HexCoord?)h).FirstOrDefault()
+                ?? default;
 
             self.Citadel = citadel;
             self.BaseHexes = baseHexes;
@@ -124,6 +123,25 @@ namespace Game.Ai.V2
             self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(ceilingPool, ceilingCap);
 
             return self;
+        }
+
+        // Canonical Base topology projection. Garrison containers are deliberately absent from
+        // this contract: a temporarily empty/recreated garrison cannot make the strategic Base,
+        // airfield, repair point or Recon anchor disappear from Analysis.
+        internal static List<HexCoord> OwnedBaseHexes(IEnumerable<BuildingData> buildings,
+            PlayerSetupData player, HexCoord? citadel)
+        {
+            var result = (buildings ?? System.Array.Empty<BuildingData>())
+                .Where(b => b != null && b.Owner == player && b.IsBase)
+                .Select(b => b.Hex)
+                .Distinct()
+                .OrderBy(h => h.Q).ThenBy(h => h.R)
+                .ToList();
+            // Starting citadels are Bases by the domain contract, but retain this defensive
+            // fallback for old saves/test fixtures whose IsBase bit predates the invariant.
+            if (citadel.HasValue && !result.Contains(citadel.Value))
+                result.Add(citadel.Value);
+            return result;
         }
 
         private static bool IsMilitaryCard(CardDefinition d) =>

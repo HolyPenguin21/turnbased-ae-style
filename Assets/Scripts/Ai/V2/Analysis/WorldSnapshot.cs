@@ -345,10 +345,20 @@ namespace Game.Ai.V2
         public HexCoord Hex;
         public PlayerSetupData Owner;
         public bool IsStartingCitadel;
+        // Authoritative building identity copied from BuildingData. A Base is a domain type,
+        // never something Analysis may infer from an installed Facility ability such as Barracks.
+        public bool IsBase;
         public float Defense;
+        // Keep the building card's own abilities separate from inserted Facility-slot abilities.
+        // Consumers that care about a capability may intentionally query both through HasAbility;
+        // consumers that care about identity must use IsBase / IsStartingCitadel above.
+        public IReadOnlyCollection<string> BuildingAbilities;
         public IReadOnlyCollection<string> FacilityAbilities;
 
+        public bool HasBuildingAbility(string a) =>
+            BuildingAbilities != null && BuildingAbilities.Contains(a);
         public bool HasFacilityAbility(string a) => FacilityAbilities != null && FacilityAbilities.Contains(a);
+        public bool HasAbility(string a) => HasBuildingAbility(a) || HasFacilityAbility(a);
     }
 
     // =======================================================================================
