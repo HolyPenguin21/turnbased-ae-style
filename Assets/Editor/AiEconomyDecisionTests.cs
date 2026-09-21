@@ -1343,7 +1343,7 @@ namespace Game.EditorTests
             Assert.That(types[ResourceType.Tech], Is.EqualTo(1));
         }
 
-        [TestCase(3, 0, 2, true, 0, 1)]
+        [TestCase(3, 0, 2, true, 1, 1)]
         [TestCase(3, 0, 2, false, 1, 0)]
         [TestCase(3, 1, 0, true, 1, 1)]
         [TestCase(3, 3, 0, true, 0, 0)]
