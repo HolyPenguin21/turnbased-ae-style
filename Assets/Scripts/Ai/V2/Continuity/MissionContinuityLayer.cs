@@ -1504,22 +1504,28 @@ namespace Game.Ai.V2
                 + $"phase={ri.Phase} primaryClears={(nowClears ? 1 : 0)} {detail}");
         }
 
+        // The primary reached its recovery base. This operation is OVER the moment it retreats —
+        // never a commitment to refit and march back out at the same target (project owner's own
+        // 2026-09-21 call: repairing a unit and then spending AP to walk it back into the very
+        // raid it just retreated from is a mistake; a healed unit belongs to the standing force,
+        // not to a specific past operation). Repair itself is no longer this module's concern —
+        // StrategicMaintenancePolicy's own repair candidate (a parallel, independent Phase-B
+        // maintenance action) picks up any wounded member of this now-ordinary army on its own,
+        // whether or not it was ever part of a raid. A fresh RaidIntent decides independently,
+        // later, whether/where to raid again.
         internal static void CompleteRaidRecoveryReturn(PlayerSetupData player, WorldSnapshot snap,
             int primaryArmyId, string detail)
         {
             if (player == null) return;
-            MissionIntent intent = MissionIntentRegistry.GetOrCreate(player).All
-                .FirstOrDefault(i => i?.Raid?.PrimaryArmyId == primaryArmyId);
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            MissionIntent intent = state.All.FirstOrDefault(i => i?.Raid?.PrimaryArmyId == primaryArmyId);
             if (intent?.Raid == null) return;
             RaidIntent raid = intent.Raid;
             if (raid.Phase != RaidMissionPhase.RecoveryReturn)
                 return;
-            raid.Phase = RaidMissionPhase.Refit;
-            raid.PendingRefitAction = default;
-            raid.RecoveryWaitTurns = 0;
-            raid.RecoveryStartedTurn = snap?.TurnNumber ?? raid.RecoveryStartedTurn;
-            AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=REFIT intent={intent.IntentKey} "
-                + $"primary={primaryArmyId} base={raid.RecoveryBaseHex} {detail}");
+            state.Remove(intent.IntentKey);
+            AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETIRED intent={intent.IntentKey} "
+                + $"primary={primaryArmyId} base={raid.RecoveryBaseHex} reason=primary_home {detail}");
         }
 
         // §5/§6 — the one shared "can the primary take THIS target right now" question. Fresh
