@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ---- tempo candidate model ------------------------------------------------------------
-    internal enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, PressureSpend, Hold, EndTurn }
+    internal enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, PressureSpend, AviationRebase, Hold, EndTurn }
 
     internal sealed class TempoCandidate
     {
@@ -26,6 +26,7 @@ namespace Game.Ai.V2
         public MatSurplusDecision Mat;
         public NonCombatCardPlayer.NonCombatPlay Nc;
         public StrategicPressurePlan Pressure;
+        public AviationRebasePlan Rebase;
         public StrategicSpendCandidate Spend;   // non-card strategic spend — executed verbatim
     }
 
@@ -49,7 +50,8 @@ namespace Game.Ai.V2
     {
         internal static bool IsSpend(TempoKind k) =>
             k == TempoKind.PlayMat || k == TempoKind.PlayNonCombat || k == TempoKind.Draw
-            || k == TempoKind.MaintenanceSpend || k == TempoKind.PressureSpend;
+            || k == TempoKind.MaintenanceSpend || k == TempoKind.PressureSpend
+            || k == TempoKind.AviationRebase;
 
         internal static List<TempoCandidate> BuildTempoCandidates(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
@@ -180,6 +182,24 @@ namespace Game.Ai.V2
                     ActionKey = "pressure:" + pressure.Army.Id,
                     Label = $"advance army #{pressure.Army.Id} toward known enemy Citadel "
                         + $"({pressure.TargetHex.Q},{pressure.TargetHex.R})",
+                });
+
+            AviationRebasePlan rebase = AviationRebasePlanner.BuildPlan(
+                snap, player, root, ctx, reconObjectives);
+            if (rebase != null)
+                list.Add(new TempoCandidate
+                {
+                    Kind = TempoKind.AviationRebase,
+                    Rebase = rebase,
+                    Utility = rebase.Utility,
+                    ApCost = rebase.ActivationAp,
+                    ResCost = new ResourceCost(energy: rebase.EnergyCost),
+                    ActionKey = $"aviation-rebase:{rebase.Aircraft[0].RuntimeId}:"
+                        + $"{rebase.DestinationHex.Q},{rebase.DestinationHex.R}",
+                    Label = $"rebase aircraft #{rebase.Aircraft[0].RuntimeId} "
+                        + $"({rebase.SourceHex.Q},{rebase.SourceHex.R}) -> "
+                        + $"({rebase.DestinationHex.Q},{rebase.DestinationHex.R}); "
+                        + $"task {rebase.SourceWitness ?? "none"} -> {rebase.DestinationWitness ?? "none"}",
                 });
 
             // HoldResources — the value of NOT spending. AP is lost at EndTurn so holding it is ~0;
@@ -399,4 +419,3 @@ namespace Game.Ai.V2
         private static string F(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 }
-

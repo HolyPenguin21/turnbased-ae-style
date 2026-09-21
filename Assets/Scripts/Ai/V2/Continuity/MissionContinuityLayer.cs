@@ -108,45 +108,36 @@ namespace Game.Ai.V2
                 objective.TargetHex.Q, objective.TargetHex.R);
 
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            // Re-entry: the SAME objective already owned by the SAME actor is not a new mission.
-            // Refresh its cost/value payload in place and keep CreatedTurn / TurnsActive /
-            // StepsMovedTotal / CumulativeApSpent / its own reservation, so a repeated handoff in
-            // the same or a later pass is idempotent instead of resetting the commitment's history.
-            if (state.TryGet(intent.IntentKey, out MissionIntent reentered)
-                && reentered?.Economy != null
-                && reentered.PreferredMoverArmyId == builderArmyId)
+
+            // Reentry: this exact (target/resource/kind, actor) delivery is already the active
+            // intent — return the SAME object so its CreatedTurn/TurnsActive/StepsMovedTotal/
+            // Funding/LoanSource history survives, instead of deleting and rebuilding it fresh
+            // every time Provisioning re-confirms the same ongoing multi-turn walk.
+            if (state.TryGet(intent.IntentKey, out MissionIntent existing)
+                && existing.Status == IntentStatus.Active
+                && existing.PreferredMoverArmyId == builderArmyId)
             {
-                EconomyIntent live = reentered.Economy;
-                live.ResourceType = objective.ResourceType;
-                live.BuilderArmyId = builderArmyId;
-                live.BuildCard = objective.BuildCard;
-                live.BuildResourceCost = objective.BuildResourceCost;
-                live.BuildApCost = objective.BuildApCost;
-                live.IntrinsicValue = objective.IntrinsicValue;
-                live.BuildValue = objective.BuildValue;
-                live.MinimumFollowupAp = objective.MinimumFollowupAp;
-                live.ProjectedActivationApCost = objective.ProjectedActivationApCost;
-                live.ProjectedMaxMovement = objective.ProjectedMaxMovement;
-                if (reentered.Status == IntentStatus.Suspended
-                    && reentered.Suspended != SuspendReason.EconomyLoan)
-                {
-                    reentered.Status = IntentStatus.Active;
-                    reentered.Suspended = SuspendReason.None;
-                }
-                AiDebugLog.Write($"[AI][V2][Economy] materialization handoff (re-entry) "
-                    + $"{reentered.IntentKey} actor=#{builderArmyId}");
-                return reentered;
+                AiDebugLog.Write($"[ECO][Continuity] intent={existing.IntentKey} "
+                    + $"actor=#{builderArmyId} decision=REUSE createdTurn={existing.CreatedTurn} "
+                    + $"progress={existing.StepsMovedTotal} funding={existing.Funding}");
+                return existing;
             }
-            // 2026-09-21 Block A — this is the ONE place Economy ownership is granted, so it is the
-            // one place that resolves ownership CONFLICTS. A pre-existing Economy intent is
+
+            // P0-3 (AI V2 economy audit 2026-09-21) + 2026-09-21 Block A — this is the ONE place
+            // Economy ownership is granted, so it is the one place that resolves ownership
+            // CONFLICTS. Once the reentry case above has returned, a pre-existing Economy intent is
             // superseded only when it actually collides with the new grant:
-            //   · same objective identity (IntentKey) — two missions cannot build the same thing;
             //   · same actor (PreferredMoverArmyId) — one army cannot hold two assignments, and a
-            //     fresh delivery supersedes that same actor's own ReturnBuilder recovery walk;
-            //   · same physical build card — one card cannot fund two sites.
-            // An unrelated build (different site, different builder, different card) is NOT a
-            // conflict and is left exactly as it was. The previous predicate was the inverse of
-            // this test and therefore erased every other Economy intent on every handoff.
+            //     fresh delivery supersedes that same actor's own ReturnBuilder recovery walk (a
+            //     ReturnBuilder belonging to a DIFFERENT actor is untouched);
+            //   · same objective identity (IntentKey) — a takeover of this exact objective;
+            //   · same physical build card — one card cannot fund two sites at once.
+            // Any OTHER active Economy intent — a different target run by a different actor with a
+            // different card — is an independent delivery and survives this handoff untouched. The
+            // original predicate here was the logical INVERSE of this test
+            // (`!i.IntentKey.Equals(...) || i.PreferredMoverArmyId != ...`), so it was true for
+            // almost every unrelated intent and creating any one new delivery silently deleted
+            // every other one in flight.
             bool ConflictsWithGrant(MissionIntent i)
             {
                 if (i == null || i.Kind != MissionKind.Economy) return false;
@@ -157,13 +148,15 @@ namespace Game.Ai.V2
             }
             foreach (MissionIntent stale in state.All.Where(ConflictsWithGrant).ToList())
             {
-                if (object.ReferenceEquals(stale, intent)) continue;
-                // A superseded obligation must not keep holding the shared pool.
-                StrategicResourceReservationLedger.ReleaseByOwner(player, turn,
-                    EconomyMissionPlanner.OwnerKey(stale.LastAttemptKey));
                 if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
                     && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
                     ResumeEconomyLender(staleLender);
+                // P0-3 follow-up — a takeover/redirect conflict releases the DISPLACED intent's own
+                // reservation the same way its normal retirement path does (see Continuity's retire
+                // branch in ReconcileAfterTurn), so a forced handoff cannot leave this turn's H/E/M/T
+                // hold reserved for an owner key nothing will ever complete or release again.
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn,
+                    EconomyMissionPlanner.OwnerKey(stale.LastAttemptKey));
                 state.Remove(stale.IntentKey);
             }
             state.Put(intent);
@@ -631,6 +624,14 @@ namespace Game.Ai.V2
                         && defence?.PrimaryArmyId == a.ArmyId && a.IsStructuralRaidActor);
                     ActiveDefenceObjective objective = defence == null ? null
                         : ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
+                    if (defence != null && defence.Phase == ActiveDefencePhase.Intercept
+                        && objective == null && ProtectedBaseWasLost(snap, defence))
+                    {
+                        // Ownership is authoritative on the fresh Self snapshot. Treat a lost Base
+                        // like a completed/invalidated protection objective so the actor returns or
+                        // is released; never keep pursuing on behalf of foreign infrastructure.
+                        defence.ObjectiveCompleted = true;
+                    }
                     if (defence == null || actor == null || ShouldReap(intent))
                     {
                         // Resume ONLY a raid this defence actually preempted: a raid suspended for
@@ -658,6 +659,31 @@ namespace Game.Ai.V2
                     }
                     if (objective == null)
                     {
+                        if (defence.ObjectiveCompleted)
+                        {
+                            if (RequiresLocalBaseStabilization(snap, defence, actor))
+                            {
+                                // Releasing the mission claim is the hand-off to the existing
+                                // same-hex Housekeeping owner. It may package eligible members into
+                                // the garrison; Continuity never mutates rosters itself.
+                                dead.Add(intent.IntentKey);
+                                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=STABILIZE_RELEASE "
+                                    + $"actor={actor.ArmyId} base=({actor.Hex.Q},{actor.Hex.R})");
+                                continue;
+                            }
+                            defence.ObjectiveCompleted = false;
+                            HexCoord? completedHome = SelectReturnBase(
+                                snap, player, defence.PrimaryArmyId);
+                            if (!completedHome.HasValue || actor.Hex.Equals(completedHome.Value))
+                            {
+                                dead.Add(intent.IntentKey);
+                                continue;
+                            }
+                            defence.Phase = ActiveDefencePhase.Return;
+                            defence.ReturnHex = completedHome;
+                            active.Add(intent);
+                            continue;
+                        }
                         EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                             c?.Army != null && c.Army.ArmyId == defence.EnemyArmyId
                             && c.Source == ContactSource.Honest && c.Position.HasValue);
@@ -1701,6 +1727,31 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
         }
 
+        // Snapshot-pure hand-off gate between ActiveDefence and the existing Housekeeping owner.
+        // Only a defender already standing on the protected, still-owned secondary Base is held
+        // locally; Continuity never drags a remote army there and never edits a garrison roster.
+        internal static bool RequiresLocalBaseStabilization(WorldSnapshot snap,
+            ActiveDefenceIntent defence, ArmySnapshot actor)
+        {
+            if (snap?.Self == null || defence == null || actor == null
+                || defence.ProtectedAssetKind != AssetKind.Base
+                || !actor.Hex.Equals(defence.ProtectedAssetHex)
+                || snap.Self.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(defence.ProtectedAssetHex))
+                return false;
+            int garrisonNonHeroes = snap.Self.Armies?
+                .Where(a => a != null && a.IsGarrison
+                    && a.Hex.Equals(defence.ProtectedAssetHex))
+                .Sum(a => a.Members?.Count ?? 0) ?? 0;
+            return garrisonNonHeroes < AiConfig.secureBaseMinNonHeroUnits
+                && (actor.Members?.Count ?? 0) > 0;
+        }
+
+        internal static bool ProtectedBaseWasLost(WorldSnapshot snap, ActiveDefenceIntent defence) =>
+            defence != null && defence.ProtectedAssetKind == AssetKind.Base
+            && (snap?.Self?.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(defence.ProtectedAssetHex));
+
         private static float BaseCollectedAmount(WorldSnapshot snap, HexCoord hex)
         {
             float total = 0f;
@@ -1911,26 +1962,21 @@ namespace Game.Ai.V2
                         state.Remove(intent.IntentKey);
                         return;
                     }
-                    if (intent.ActiveDefence.ReturnHex.HasValue
-                        && !o.FinalHex.Equals(intent.ActiveDefence.ReturnHex.Value))
-                    {
-                        intent.ActiveDefence.Phase = ActiveDefencePhase.Return;
-                        intent.Status = IntentStatus.Active;
-                        intent.Suspended = SuspendReason.None;
-                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RETURN actor={intent.PreferredMoverArmyId}");
-                        return;
-                    }
-                    state.Remove(intent.IntentKey);
+                    intent.ActiveDefence.ObjectiveCompleted = true;
+                    intent.Status = IntentStatus.Active;
+                    intent.Suspended = SuspendReason.None;
+                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=REANALYZE_STABILIZATION actor={intent.PreferredMoverArmyId}");
                     return;
                 }
                 if (o.MissionKind == MissionKind.ActiveDefence && intent == null
                     && o.HasActiveDefencePayload && o.MoverArmyId.HasValue
-                    && !o.ActiveDefenceTarget.SuspendedRaidIntentKey.HasValue
-                    && o.ActiveDefenceTarget.ReturnHex.HasValue
-                    && !o.FinalHex.Equals(o.ActiveDefenceTarget.ReturnHex.Value))
+                    && !o.ActiveDefenceTarget.SuspendedRaidIntentKey.HasValue)
                 {
-                    o.ActiveDefenceTarget.Phase = ActiveDefencePhase.Return;
                     CreateActiveDefenceIntent(state, o, turn);
+                    if (state.TryGet(MissionIntentKey.ForActiveDefence(
+                            o.ActiveDefenceTarget.EnemyArmyId), out MissionIntent created)
+                        && created?.ActiveDefence != null)
+                        created.ActiveDefence.ObjectiveCompleted = true;
                     return;
                 }
                 // Raid completion ends only the CURRENT neutral target, not the durable campaign.

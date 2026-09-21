@@ -114,11 +114,9 @@ namespace Game.Ai.V2
             bool aggressionPressureFresh = false;
             if (phaseA.StateChanged)
             {
-                int knowledgeVersionBeforePhaseA = snapshot.KnowledgeVersion;
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
-                if (snapshot.KnowledgeVersion != knowledgeVersionBeforePhaseA)
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
                 // Full-mode Reaction keeps the turn's Radar fixed, but Phase A can reinforce a
                 // Raid or change the set of visible targets. Rebuild the operational report first,

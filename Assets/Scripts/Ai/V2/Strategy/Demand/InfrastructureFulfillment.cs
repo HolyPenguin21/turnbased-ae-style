@@ -156,10 +156,8 @@ namespace Game.Ai.V2
 
             // --- live gameplay affordability (the executor re-checks; this keeps the demand open
             //     cleanly rather than letting a doomed transaction run) ---
-            float spendableAp = economyOwner == null
-                ? StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints)
-                : StrategicResourceReservationLedger.SpendableExcludingOwner(player, ctx.TurnNumber,
-                    StrategicReservedResource.ActionPoints, root.ActionPoints, economyOwner);
+            float spendableAp = StrategicSpendability.SpendableAp(
+                player, root, ctx, economyOwner);
             if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
                 || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
                 || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
@@ -386,13 +384,11 @@ namespace Game.Ai.V2
                 return;
             if (reason == StrategicReservationReason.EconomyBuildCompletion)
             {
-                // Deferred → Completion is THIS owner's transition. Clearing the deferred reason
-                // globally (as this did) released every other active build's protected H/E/M/T the
-                // moment any one build became completable, so the survivors' resources could be
-                // spent out from under them. Only this owner's deferred rows are superseded.
+                // This owner's own deferred hold is being promoted to completion — downgrade only
+                // ITS rows (P0-4: owner=null here used to wipe every other Economy build's still-
+                // legitimate deferred H/E/M/T hold the instant any ONE build proved completable).
                 StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
-                    StrategicReservationReason.EconomyDeferredBuild, owner,
-                    replaceOwnerRows: true);
+                    StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
                 if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                         reason, cost, buildAp))
                     return;
@@ -722,4 +718,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

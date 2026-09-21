@@ -32,6 +32,7 @@ namespace Game.Ai.V2
                 contacts.Add(new EnemyContactSnapshot
                 {
                     Army = SightingToArmySnapshot(s),
+                    PhysicalArmyId = s.ArmyId,
                     Knowledge = visibleNow ? ContactKnowledge.Exact : ContactKnowledge.LastKnown,
                     Source = ContactSource.Honest,
                     Position = s.Hex,
@@ -47,6 +48,7 @@ namespace Game.Ai.V2
                 contacts.Add(new EnemyContactSnapshot
                 {
                     Army = ObservationToArmySnapshot(obs),
+                    PhysicalArmyId = obs.ArmyId,
                     Knowledge = ContactKnowledge.LastKnown,
                     Source = ContactSource.Honest,
                     Position = obs.LastObservedHex,
@@ -104,9 +106,11 @@ namespace Game.Ai.V2
                 var defenders = garrison?.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
                 float garrisonDef = defenders.Sum(d => d.Defense);
 
-                AssetKind kind = b.IsStartingCitadel ? AssetKind.Citadel
-                    : b.HasFacilityAbility(UnitAbilities.Barracks) ? AssetKind.Base
-                    : AssetKind.Facility;
+                AssetKind kind = ClassifyBuildingAsset(b);
+                if (kind == AssetKind.Base || kind == AssetKind.Citadel)
+                    AiDebugLog.WriteDeduped($"base:{b.Owner?.Nickname}:{b.Hex.Q}:{b.Hex.R}:{kind}",
+                        $"[AI][V2][Base] asset={kind}@({b.Hex.Q},{b.Hex.R}) "
+                        + $"owner={b.Owner?.Nickname ?? "none"} authoritativeIsBase={(b.IsBase ? 1 : 0)}");
 
                 assets.Add(new StrategicAssetSnapshot
                 {
@@ -192,10 +196,20 @@ namespace Game.Ai.V2
             return model;
         }
 
+        internal static AssetKind ClassifyBuildingAsset(BuildingSnapshot building)
+        {
+            if (building == null)
+                return AssetKind.Facility;
+            if (building.IsStartingCitadel)
+                return AssetKind.Citadel;
+            return building.IsBase ? AssetKind.Base : AssetKind.Facility;
+        }
+
         private static EnemyContactSnapshot MakeCheatContact(ArmySnapshot source, HexCoord regionCenter, int regionRadius)
         {
             return new EnemyContactSnapshot
             {
+                PhysicalArmyId = source.ArmyId,
                 Army = new ArmySnapshot
                 {
                     ArmyId = -1,
@@ -268,14 +282,14 @@ namespace Game.Ai.V2
                 case AssetKind.Base: return AiConfigV2.assetValueBase;
                 default:
                     float v = AiConfigV2.assetValueFacilityBase;
-                    if (b.HasFacilityAbility(UnitAbilities.Barracks))
+                    if (b.HasAbility(UnitAbilities.Barracks))
                         v += AiConfigV2.assetValueFacilityBarracksBonus;
-                    if (b.HasFacilityAbility(UnitAbilities.Research) || b.HasFacilityAbility(UnitAbilities.Production))
+                    if (b.HasAbility(UnitAbilities.Research) || b.HasAbility(UnitAbilities.Production))
                         v += AiConfigV2.assetValueFacilityDevBonus * (snap.Self.HasDevOperator || snap.Self.HasDevFacility ? 1f : 0.3f);
                     for (int i = 0; i < ResourceBundle.All.Length; i++)
                     {
                         ResourceType t = ResourceBundle.All[i];
-                        if (b.HasFacilityAbility(UnitAbilities.CollectAbilityFor(t)))
+                        if (b.HasAbility(UnitAbilities.CollectAbilityFor(t)))
                         {
                             float share = totalIncome > 0.0001f ? snap.Self.PerTurnIncome.Get(t) / totalIncome : 0.25f;
                             v += AiConfigV2.assetValueFacilityCollectorBonus * share;

@@ -227,58 +227,6 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (reaction.Action == ReconReactionAction.CaptureOpportunity)
-            {
-                bool captureStartedHidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
-                result.StealthChanged |= ExitArmyStealth(army);
-                VisionSystem.RecomputeFor(player);
-                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-                ReconReactionDecision afterDecloak = ReconReactionPolicy.Evaluate(
-                    player, ctx.Map, army, assignment, ctx.TurnNumber);
-                if (afterDecloak.Action == ReconReactionAction.Flee
-                    || afterDecloak.Action == ReconReactionAction.EvadeDetector
-                    || afterDecloak.Action == ReconReactionAction.StopAndReplan)
-                {
-                    AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} cancelled after decloak: {afterDecloak}");
-                    ReconAcceptanceAudit.RecordHiddenFacilityCancel(player, ctx.TurnNumber, army.Id,
-                        army.Hex, captureStartedHidden, afterDecloak.Action);
-                    reaction = afterDecloak;
-                    if (reaction.Action == ReconReactionAction.StopAndReplan)
-                    {
-                        control.StopReason = ExecutionStopReason.TargetInvalidated;
-                        yield break;
-                    }
-                }
-                else
-                {
-                    BuildingData before = BuildingRegistry.FindAt(army.Hex);
-                    PlayerSetupData previousOwner = before?.Owner;
-                    control.CommandAttempted = true;
-                    BuildingRegistry.CaptureOrDestroyIfUndefended(
-                        army.Hex, player, ctx.HexSelection, army);
-                    BuildingData after = BuildingRegistry.FindAt(army.Hex);
-                    bool changed = before != after || (after != null && after.Owner != previousOwner);
-                    ReconAcceptanceAudit.RecordHiddenFacilityCapture(player, ctx.TurnNumber, army.Id,
-                        army.Hex, captureStartedHidden, changed);
-                    if (changed)
-                    {
-                        result.InfrastructureChanged = true;
-                        ReconPatrolStateRegistry.MarkProgress(player, army.Id, ctx.TurnNumber);
-                        AiDebugLog.Write($"[AI][V2][Recon][Capture] actor=#{army.Id} resolved structure at "
-                            + $"({army.Hex.Q},{army.Hex.R}); movement={army.CurrentMovement}");
-                        RefreshObjectiveSatisfied(player, pm, result);
-                        control.CanContinue = army.CurrentMovement > 0;
-                        control.StopReason = control.CanContinue
-                            ? ExecutionStopReason.StepCompleted
-                            : ExecutionStopReason.OutOfMovement;
-                        yield break;
-                    }
-
-                    control.StopReason = ExecutionStopReason.TargetInvalidated;
-                    yield break;
-                }
-            }
-
             if (army.CurrentMovement <= 0)
             {
                 control.StopReason = ExecutionStopReason.OutOfMovement;

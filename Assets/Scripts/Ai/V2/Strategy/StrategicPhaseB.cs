@@ -86,7 +86,7 @@ namespace Game.Ai.V2
                     + $"{F(reactionOpp.ReservedApBudget)} AP"
                     + (reactionOpp.Envelope != null ? $" + envelope [{ResCostStr(reactionOpp.Envelope)}]" : "")
                     + $" (owner={reactionOpp.OwnerKey} exp=EndOfReaction; {reactionOpp.Rationale}), spendable AP now "
-                    + $"{F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}.");
+                    + $"{F(StrategicSpendability.SpendableAp(player, root, ctx))}.");
             }
             else
             {
@@ -114,13 +114,14 @@ namespace Game.Ai.V2
             string stopReason = null;
             while (!budget.TotalCapHit && iter <= AiConfigV2.maxEndOfTurnTempoActionsPerTurn + 1)
             {
-                int previousKnowledgeVersion = snap?.KnowledgeVersion ?? -1;
                 snap = WorldAnalysis.RefreshStrategicKnowledge(
                     snap, player, root, hand, ctx);
-                if (snap.KnowledgeVersion != previousKnowledgeVersion)
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snap);
-                float spendableAp = StrategicResourceReservationLedger.SpendableAp(
-                    player, ctx.TurnNumber, root.ActionPoints);
+                // Recon objectives also depend on live Self/Base anchors. Those are refreshed even
+                // when the player-scoped fog-memory revision is unchanged, so keying this derived
+                // projection only to KnowledgeVersion could serve stale objectives after a same-
+                // turn ownership or infrastructure change.
+                reconObjectives = ReconObjectiveEvaluator.Enumerate(snap);
+                float spendableAp = StrategicSpendability.SpendableAp(player, root, ctx);
 
                 var cands = TempoCandidateProvider.BuildTempoCandidates(snap, player, root, hand, ctx, commitments, result,
                     reconObjectives, spendableAp, budget, verbose: iter == 0);
@@ -216,6 +217,15 @@ namespace Game.Ai.V2
                         if (!pc) exec.FailReason = "no advance step taken";
                         break;
                     }
+                    case TempoKind.AviationRebase:
+                    {
+                        bool moved = false;
+                        yield return AviationRebasePlanner.Execute(
+                            player, root, ctx, best.Rebase, v => moved = v);
+                        exec.Succeeded = exec.StateChanged = exec.Progressed = moved;
+                        if (!moved) exec.FailReason = "aviation rebase took no safe step";
+                        break;
+                    }
                 }
                 exec.ApSpent = Mathf.Max(0, ap0 - root.ActionPoints);
                 exec.HumanSpent = Mathf.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human));
@@ -274,7 +284,7 @@ namespace Game.Ai.V2
                 + $"{AiConfigV2.maxEndOfTurnTempoActionsPerTurn} draws {budget.DrawActionsUsed}/{AiConfigV2.maxTerminalDrawsPerTurn}"
                 + $" gen {budget.GenerationAttemptsUsed}/{AiConfigV2.maxGenerationActionsPerTurn}; "
                 + $"cardsPlayed {result.CardsPlayed}, drawn {result.CardsDrawn}; ap {root.ActionPoints} "
-                + $"(spendable {F(StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints))}), "
+                + $"(spendable {F(StrategicSpendability.SpendableAp(player, root, ctx))}), "
                 + $"H/E/M/T {root.GetResource(Game.Economy.ResourceType.Human)}/{root.GetResource(Game.Economy.ResourceType.Energy)}/"
                 + $"{root.GetResource(Game.Economy.ResourceType.Materials)}/{root.GetResource(Game.Economy.ResourceType.Tech)}; "
                 + $"reservations [{StrategicResourceReservationLedger.DebugLine(player, ctx.TurnNumber)}]; stop={stopReason}");

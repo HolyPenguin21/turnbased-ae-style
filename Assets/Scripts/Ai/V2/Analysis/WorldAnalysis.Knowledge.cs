@@ -50,7 +50,9 @@ namespace Game.Ai.V2
             float nearBases = 0f;
             foreach (AiMapMemory.KnownEnemySighting s in known.EnemySightings)
             {
-                int d = baseHexes.Min(b => HexGridMath.Distance(b, s.Hex));
+                int d = baseHexes != null && baseHexes.Count > 0
+                    ? baseHexes.Min(b => HexGridMath.Distance(b, s.Hex))
+                    : 99;
                 if (d < nearest) nearest = d;
                 if (d <= AiConfig.raidThreatRadius + 2)
                     nearBases += s.DefenseSum + s.AttackSum;
@@ -113,7 +115,7 @@ namespace Game.Ai.V2
             return tw;
         }
 
-        private static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
+        internal static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
         {
             var abilities = new HashSet<string>();
             foreach (FacilityData f in b.FacilitySlots)
@@ -124,7 +126,9 @@ namespace Game.Ai.V2
                 Hex = b.Hex,
                 Owner = b.Owner,
                 IsStartingCitadel = b.IsStartingCitadel,
+                IsBase = b.IsBase,
                 Defense = b.Defense,
+                BuildingAbilities = new HashSet<string>(b.Abilities),
                 FacilityAbilities = abilities,
             };
         }
@@ -269,4 +273,3 @@ namespace Game.Ai.V2
 
     }
 }
-
