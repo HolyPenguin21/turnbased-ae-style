@@ -444,8 +444,17 @@ namespace Game.UI
 
         private void RenderDebugHand(AiHandData hand)
         {
+            // Destroy() is deferred to end-of-frame; the new player's cards are Instantiate'd into
+            // the same handContainer immediately below, so without this the outgoing player's cards
+            // are still live GameObjects for one frame alongside the incoming ones — visible as the
+            // two hands briefly "mixing" (project owner's own report) before self-correcting next
+            // frame. SetActive(false) hides them the instant this runs, same as the real-hand cards
+            // already do when this debug view takes over (see ShowAiHandDebug above).
             foreach (CardUI card in _debugCards)
+            {
+                card.gameObject.SetActive(false);
                 Destroy(card.gameObject);
+            }
             _debugCards.Clear();
 
             // The deck counter switches to THIS player's own remaining-deck count too —
