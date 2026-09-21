@@ -161,7 +161,7 @@ namespace Game.Ai.V2
 
     // --- A power-scored snapshot of one army (own or enemy). "Raw" Attack/DefenseSum are kept
     //     alongside the new EffectiveArmyPower purely so a caller that wants parity with a V1
-    //     read still has it. IsHiddenFromUs is only ever true inside TrueWorld (a fog/cheat-read
+    //     read still has it. IsHiddenFromUs is only ever true inside TrueWorld (a fog-honest
     //     Known sighting can't see a hidden army at all).
     public sealed class ArmySnapshot
     {
@@ -692,9 +692,9 @@ namespace Game.Ai.V2
     {
         // Frozen, fog-honest opportunity facts. Strategy scores these records; it never
         // reconstructs site legality or resource physics independently.
-        // Mobile collectors use the same physical marginal model as Facilities, but their
-        // sites do not require building ownership or a free Facility slot. Only Analysis writes
-        // this list; Demand must never reinterpret ExtractionOpportunities as collector sites.
+        // A mobile Collector's marginal gain is the extra ARMY collection, not a
+        // Facility's net owner gain. This distinct physical site list ignores Facility
+        // ownership/slots, and only WorldAnalysis writes its observed facts.
         public IReadOnlyList<EconomyExtractionOpportunity> CollectorSites =
             System.Array.Empty<EconomyExtractionOpportunity>();
         public IReadOnlyList<EconomyExtractionOpportunity> ExtractionOpportunities =
@@ -874,8 +874,8 @@ namespace Game.Ai.V2
     {
         public ArmySnapshot Army;
         // Stable physical identity for analyses that may legally correlate the same hidden force
-        // across several regional cheat contacts. It never supplies a position and therefore
-        // does not weaken the honest-contact boundary; ActiveDefence still admits Honest contacts only.
+        // across several regional cheat contacts. It never supplies a position and therefore does
+        // not weaken the honest-contact boundary; ActiveDefence still admits Honest contacts only.
         public int? PhysicalArmyId;
         public ContactKnowledge Knowledge;
         public ContactSource Source;

@@ -101,15 +101,14 @@ namespace Game.Ai.V2
             {
                 ResourceType resourceType = site.Type;
                 int effectiveYield = site.Yield;
-
                 if (KnownHostileAtHex(snap, site.Hex))
                     continue;
 
                 bool hasBuilding = knownBuildings.TryGetValue(site.Hex,
                     out AiMapMemory.KnownBuilding building);
-                // The building takes the first physical slice even when it is not ours. This is
-                // the same observed CollectedAmount IncomeProjection subtracts before army income;
-                // Facility ownership/slots have no bearing on a separate mobile collector.
+                // Real income consumes the building's portion FIRST, even if its owner is
+                // another player. A Facility needs our building and a free matching slot;
+                // a field Collector is independent of building ownership and slot capacity.
                 int currentCollection = hasBuilding ? building.CollectedAmount(resourceType) : 0;
                 int ownArmyCollectors = Mathf.RoundToInt((snap.Self.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
@@ -118,33 +117,39 @@ namespace Game.Ai.V2
                 bool armiesCanCollect = !(snap.Known?.EnemySightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                     .Any(enemy => enemy.Hex.Equals(site.Hex));
-                int marginal = Mathf.Max(0,
-                    IncomeProjection.OwnerCollectionAtHex(effectiveYield, currentCollection,
-                        ownArmyCollectors + 1, armiesCanCollect)
-                    - IncomeProjection.OwnerCollectionAtHex(effectiveYield, currentCollection,
-                        ownArmyCollectors, armiesCanCollect));
-                if (marginal <= 0)
+                (int facilityGain, int collectorGain) = MarginalSiteCollectionGains(
+                    effectiveYield, currentCollection, ownArmyCollectors, armiesCanCollect);
+
+                if (collectorGain > 0)
+                    collectorSites.Add(new EconomyExtractionOpportunity
+                    {
+                        Hex = site.Hex,
+                        ResourceType = resourceType,
+                        EffectiveYield = effectiveYield,
+                        CurrentBuildingCollection = currentCollection,
+                        MarginalIncomeGain = collectorGain,
+                        BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
+                        BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>(),
+                    });
+
+                // BuildingPlayExecutor.CanPlaceFacilityAt and the live building's
+                // HasFacilityWithAbility require an OWNED building, available Facility slot,
+                // and no existing facility with the same collection ability. In particular,
+                // none of those rules may filter the independent mobile collector list.
+                if (!hasBuilding || building.Owner != player || building.FreeFacilitySlots <= 0
+                    || building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(resourceType))
+                    || facilityGain <= 0)
                     continue;
-                var opportunity = new EconomyExtractionOpportunity
+                extraction.Add(new EconomyExtractionOpportunity
                 {
                     Hex = site.Hex,
                     ResourceType = resourceType,
                     EffectiveYield = effectiveYield,
                     CurrentBuildingCollection = currentCollection,
-                    MarginalIncomeGain = marginal,
+                    MarginalIncomeGain = facilityGain,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
-                    BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>(),
-                };
-                collectorSites.Add(opportunity);
-
-                // Only a Facility requires a suitable own building and a free slot; a Facility
-                // with the same Collect ability also blocks a second copy. This filter must NOT
-                // suppress the physical resource site used by CollectorCapability above.
-                if (hasBuilding && (building.Owner != player || building.FreeFacilitySlots <= 0
-                    || building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(resourceType))))
-                    continue;
-                opportunity.BuilderRoutes = BuilderRoutesFor(site.Hex);
-                extraction.Add(opportunity);
+                    BuilderRoutes = BuilderRoutesFor(site.Hex),
+                });
             }
             eco.CollectorSites = collectorSites;
             eco.ExtractionOpportunities = extraction;
@@ -156,9 +161,9 @@ namespace Game.Ai.V2
                 .Select(i => i.PreferredMoverArmyId.Value));
             foreach (EconomyExtractionOpportunity site in collectorSites)
             {
-                if (!eco.IsIncomeDeficient(snap.Self, site.ResourceType))
-                    continue;
-
+                // Demand admits a new collector for USEFUL income, not strictly for a
+                // rate below IncomeTarget. Apply that same UsefulMarginalIncomeGain test
+                // below to existing free actors, so a newly delivered collector gets work.
                 int buildingCollection = site.CurrentBuildingCollection;
                 int armiesAlreadyThere = Mathf.RoundToInt((snap.Self.Armies
                         ?? System.Array.Empty<ArmySnapshot>())
@@ -373,14 +378,33 @@ namespace Game.Ai.V2
             bool baseActionable = baseOpportunities.Count > 0 && baseCards.Count > 0;
             bool extractionActionable = extraction.Any(site =>
                 site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
+            // This is the same structural-opportunity interpretation as extractionActionable:
+            // Phase A/Materialization remain the sole owners of physical card and route admission.
             bool collectorActionable = collectorSites.Any(site =>
-                eco.IsIncomeDeficient(snap.Self, site.ResourceType)
-                && standings[site.ResourceType].UsefulMarginalIncomeGain(site.MarginalIncomeGain)
+                standings[site.ResourceType].UsefulMarginalIncomeGain(site.MarginalIncomeGain)
                     > AiConfigV2.allocatorSliceEpsilon);
             eco.HasActionableOpportunity = extractionActionable || baseActionable
                 || collectorActionable || mobileCollection.Count > 0;
 
             return eco;
+        }
+
+        // The only Analysis-level projection of the TWO different additions at a site.
+        // IncomeProjection owns all resource physics; this preserves a Facility's net
+        // owner gain when an army would merely lose the same slice, independently of
+        // the gain from deploying an additional mobile collector onto the remainder.
+        internal static (int FacilityGain, int CollectorGain) MarginalSiteCollectionGains(
+            int effectiveYield, int buildingCollection, int ownArmyCollectors,
+            bool armiesCanCollect)
+        {
+            int before = IncomeProjection.OwnerCollectionAtHex(effectiveYield,
+                buildingCollection, ownArmyCollectors, armiesCanCollect);
+            int facility = IncomeProjection.MarginalOwnerCollectionAtHex(effectiveYield,
+                buildingCollection, 1, ownArmyCollectors, armiesCanCollect);
+            int collector = Mathf.Max(0, IncomeProjection.OwnerCollectionAtHex(
+                effectiveYield, buildingCollection, ownArmyCollectors + 1,
+                armiesCanCollect) - before);
+            return (facility, collector);
         }
 
         // AiMapMemory owns the complete last-observed resource line. Economy enumerates that
