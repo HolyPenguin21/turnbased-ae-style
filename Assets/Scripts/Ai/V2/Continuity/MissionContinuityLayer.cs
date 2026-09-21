@@ -1310,6 +1310,20 @@ namespace Game.Ai.V2
                     $"recovery cannot prove a path to threshold: {plan.Reason}");
             }
 
+            if (plan.Phase == RaidMissionPhase.Refit)
+            {
+                // Already sitting at the recovery base — no RecoveryReturn travel leg exists to
+                // retire on arrival, but the same call applies (see CompleteRaidRecoveryReturn's
+                // own comment): this operation is over now, never a commitment to refit and march
+                // back out to the same target. Retire immediately; StrategicMaintenancePolicy's
+                // own repair candidate heals the now-ordinary army independently, on its own time.
+                MissionIntentRegistry.GetOrCreate(player).Remove(intent.IntentKey);
+                AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETIRED intent={intent.IntentKey} "
+                    + $"primary={raid.PrimaryArmyId} base={plan.BaseHex} reason=already_at_base "
+                    + $"{reason}; {plan.Reason}");
+                return true;
+            }
+
             raid.SupportArmyId = plan.Phase == RaidMissionPhase.Reinforcement
                 ? plan.SupportArmyId : null;
             raid.AirSupportArmyId = plan.Phase == RaidMissionPhase.AirSupport
@@ -1338,13 +1352,13 @@ namespace Game.Ai.V2
             }
             else
             {
+                // Only RecoveryReturn reaches here now — Refit (already at base) retired above.
                 raid.RecoveryBaseHex = plan.BaseHex;
                 raid.RecoveryStartedTurn = snap.TurnNumber;
                 raid.RecoveryWaitTurns = 0;
                 raid.RepairsCompleted = 0;
-                raid.PendingRefitAction = plan.Phase == RaidMissionPhase.Refit
-                    ? plan.FirstRefitAction : default;
-                AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETURN_FOR_REFIT "
+                raid.PendingRefitAction = default;
+                AiDebugLog.Write($"[AI][V2][RaidRecovery] decision=RETURN_HOME "
                     + $"intent={intent.IntentKey} primary={raid.PrimaryArmyId} target={raid.Target.DiagnosticLabel} "
                     + $"currentWin={plan.CurrentWinChance:0.00} projectedWin={plan.ProjectedWinChance:0.00} "
                     + $"recoveryEta={plan.EtaTurns} base=({plan.BaseHex.Value.Q},{plan.BaseHex.Value.R}) "
