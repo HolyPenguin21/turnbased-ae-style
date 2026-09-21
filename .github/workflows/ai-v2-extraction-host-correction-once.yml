@@ -1,0 +1,84 @@
+name: Correct empty extraction site eligibility once
+on:
+  push:
+    branches: [fix/ai-v2-collector-facility-slot-separation]
+    paths: [.github/workflows/ai-v2-extraction-host-correction-once.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore extraction-site creation legality and test it
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          analysis=Path('Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Economy.cs')
+          tests=Path('Assets/Editor/AiEconomyDecisionTests.cs')
+          s=analysis.read_text(encoding='utf-8')
+          t=tests.read_text(encoding='utf-8')
+          def once(text,old,new,name):
+              assert text.count(old)==1, f'{name}: found {text.count(old)} anchors'
+              return text.replace(old,new,1)
+          s=once(s,'another player. A Facility needs our building and a free matching slot;', 'another player. An extraction Facility can found a NEW resource site;', 'new site comment')
+          s=once(s,'a field Collector is independent of building ownership and slot capacity.', 'only EXISTING hosts require our ownership/free slots. A field Collector is independent.', 'collector comment')
+          s=once(s,"// BuildingPlayExecutor.CanPlaceFacilityAt and the live building's", '// HexSelectionController.TryBuildExtractionFacility may found a NEW resource site;', 'real domain primitive')
+          s=once(s,'// HasFacilityWithAbility require an OWNED building, available Facility slot,', '// only EXISTING buildings require our ownership, free Facility slots,', 'existing host comment')
+          s=once(s,'// and no existing facility with the same collection ability. In particular,', '// and no duplicate collection facility. In particular,', 'duplication comment')
+          old=('                if (!hasBuilding || building.Owner != player || building.FreeFacilitySlots <= 0\n'
+               '                    || building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(resourceType))\n'
+               '                    || facilityGain <= 0)')
+          new=('                if (facilityGain <= 0 || !IsExtractionHostStructurallyLegal(\n'
+               '                        hasBuilding, building, player, resourceType))')
+          s=once(s,old,new,'empty site false rejection')
+          anchor='        // The only Analysis-level projection of the TWO different additions at a site.\n'
+          helper=('        // Mirrors the HOST constraints in the live TryBuildExtractionFacility primitive.\n'
+                  '        // An empty resource hex can FOUND a site; only a pre-existing building\n'
+                  '        // needs matching owner, one free slot, and no duplicate collection.\n'
+                  '        internal static bool IsExtractionHostStructurallyLegal(\n'
+                  '            bool hasBuilding, AiMapMemory.KnownBuilding building,\n'
+                  '            PlayerSetupData player, ResourceType type) =>\n'
+                  '            !hasBuilding || (building.Owner == player && building.FreeFacilitySlots > 0\n'
+                  '                && !building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type)));\n\n')
+          s=once(s,anchor,helper+anchor,'canonical analysis predicate')
+          test_anchor='        [Test]\n        public void CollectorDemand_SiteWithoutFacilityOpportunityStillGetsOwnDemand()'
+          addition=('        [Test]\n'
+                    '        public void ExtractionHost_BareResourceHexCanFoundSite_ButExistingSlotsStillConstrain()\n'
+                    '        {\n'
+                    '            var owner = new Game.Players.PlayerSetupData();\n'
+                    '            var rival = new Game.Players.PlayerSetupData();\n'
+                    '            var hex = new HexCoord(2, 0);\n'
+                    '            var emptySlots = new Game.Ai.AiMapMemory.KnownBuilding(\n'
+                    '                hex, owner, false, null, freeFacilitySlots: 0);\n'
+                    '            var foreign = new Game.Ai.AiMapMemory.KnownBuilding(\n'
+                    '                hex, rival, false, null, freeFacilitySlots: 4);\n'
+                    '            var available = new Game.Ai.AiMapMemory.KnownBuilding(\n'
+                    '                hex, owner, false, null, freeFacilitySlots: 1);\n'
+                    '            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(\n'
+                    '                false, default, owner, ResourceType.Materials), Is.True);\n'
+                    '            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(\n'
+                    '                true, emptySlots, owner, ResourceType.Materials), Is.False);\n'
+                    '            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(\n'
+                    '                true, foreign, owner, ResourceType.Materials), Is.False);\n'
+                    '            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(\n'
+                    '                true, available, owner, ResourceType.Materials), Is.True);\n'
+                    '        }\n\n')
+          t=once(t,test_anchor,addition+test_anchor,'editor host regression test')
+          assert '[TestCase(3, 0, 2, true, 1, 1)]' in t, 'previous corrected marginal test must persist'
+          assert s.count('IsExtractionHostStructurallyLegal(')==2, 'exact owner and consumer expected'
+          analysis.write_text(s,encoding='utf-8')
+          tests.write_text(t,encoding='utf-8')
+          print('PASS: bare site allowed; existing host owner, slot, duplicate checks retained; test added')
+          PY
+          git rm -- .github/workflows/ai-v2-extraction-host-correction-once.yml
+          git add -- Assets/Scripts/Ai/V2/Analysis/WorldAnalysis.Economy.cs Assets/Editor/AiEconomyDecisionTests.cs
+          git diff --cached --check
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): keep legal new extraction sites when separating collectors'
+          git push origin HEAD:fix/ai-v2-collector-facility-slot-separation
