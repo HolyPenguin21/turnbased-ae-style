@@ -575,6 +575,9 @@ namespace Game.UI
                 // member of targetArmy and may have just retreated it to a different hex below.
                 HexCoord hunterHex = hunterArmy.Hex;
                 HandleBuildingOnArmyDefeat(hunterArmy, targetArmy);
+                // Hero-only challenges never use OnBattleOutcomeAcknowledged: publish their
+                // concrete participant pair and resolved roster here, before unregistering.
+                EncounterResolved?.Invoke(hunterArmy, targetArmy);
                 hexSelectionController?.DeleteArmyIfEmptied(targetArmy);
                 hexSelectionController?.RestackArmiesOn(targetArmy.Hex, null);
 
@@ -891,6 +894,9 @@ namespace Game.UI
             // report). Safe to call even when nothing chains afterward — Hide() (below, or via
             // onDelay) runs the exact same reset again, which is an idempotent no-op the second
             // time.
+            // An encounter result is attributed to its OWN participants at this terminal
+            // edge, never inferred from unrelated changes in the global army registry.
+            EncounterResolved?.Invoke(_attacker, _defender);
             ResetBattlePanel();
 
             // DeleteArmyIfEmptied only unregisters/destroys the ONE army's own marker — it

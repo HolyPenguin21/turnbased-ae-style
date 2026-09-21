@@ -226,6 +226,10 @@ namespace Game.UI
         // Lets GameTurnController react to a battle opening/closing instead of polling
         // IsShowing every frame (see GameTurnController.InputBlocked/CardDraggingBlocked).
         public event Action VisibilityChanged;
+        // The authoritative terminal outcome of ONE actual encounter. Consumers listen only
+        // for the duration of their own movement operation; chained and hero-only fights
+        // publish individually before their participant objects can be unregistered.
+        public event Action<ArmyData, ArmyData> EncounterResolved;
         // Read by BattleGridCellUI for the acting-unit ring (UIRaggedGlowUI) — settings live in
         // GameConfig rather than baked into the prefab, per the user's own spec.
         public HexHighlightStyle ActingHighlightStyle => gameConfig != null ? gameConfig.battleActingUnitHighlightStyle : null;
