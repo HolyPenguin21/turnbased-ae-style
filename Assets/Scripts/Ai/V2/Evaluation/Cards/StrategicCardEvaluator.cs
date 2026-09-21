@@ -115,11 +115,14 @@ namespace Game.Ai.V2
         public HexCoord? TargetContext;
         public StrategicUseScoreBreakdown Breakdown;
         public float TotalUseScore;   // == Breakdown.Total
-        public float HoldValue;       // scored separately (spec §3)
+        // Retained only so ToCompact()'s "hold" column and MaterializationCandidateBuilder's
+        // Decide()/logging keep compiling against a stable shape — the Hold mechanic itself was
+        // removed (user call: always play the best Total, never park a card "for later"). Always 0.
+        public float HoldValue;
         public MaterializationQualityBreakdown QualityBreakdown;
 
-        // Playing now vs leaving it in hand. The manager admits on this.
-        public float NetScore => TotalUseScore - Mathf.Max(0f, HoldValue);
+        // The manager admits on this. No Hold counterweight any more — NetScore == TotalUseScore.
+        public float NetScore => TotalUseScore;
     }
 
     // Radar-demand-INDEPENDENT standing-force signal (spec §4). Need in [0..1]: high when the
@@ -332,8 +335,14 @@ namespace Game.Ai.V2
             IReadOnlyList<string> pabil = plan.ProjectedAbilities ?? pdef?.grantedAbilities;
             bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(pabil);
             float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan, snap, inv) : 0f;
+
+            // Built before RoleFitCore so HeroLeadershipFit can read the destination army's capacity
+            // off the SAME EffectEvaluationContext.ResolveDestination walk the ability registry uses
+            // below, instead of re-walking snap.Self.Armies a second time (single-count invariant
+            // extended to the destination-army lookup, not just the score terms).
+            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
             float roleFitCore = RoleFitCore(role, plan, inv, recceCard, heroCard,
-                pabil, snap, 0f, equipUpgrade,
+                pabil, ectx, 0f, equipUpgrade,
                 demand, referenceMoveMax, hasCompetingHeroDemand, projectedLegalFillers,
                 out MaterializationQualityBreakdown qbd, out string heroCmdDetail);
 
@@ -341,7 +350,6 @@ namespace Game.Ai.V2
             // summon later) comes from the registry as a per-axis EffectContribution, added to the
             // matching bd.* term exactly once. RoleFit is target-fit-scaled like the core; the
             // PlayerGlobal terms (ec.Global*) are target-INDEPENDENT — added AFTER the fit multiplier.
-            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
                 role, pabil, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
@@ -353,7 +361,7 @@ namespace Game.Ai.V2
             bd.SynergyValue = SynergyValue(plan, snap, inv) + ec.Synergy + ec.GlobalSynergy;
             bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline)
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
-            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline)
+            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline, role, roleFitCore)
                 + ec.CapabilityGap + ec.GlobalCapabilityGap;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
 
@@ -377,13 +385,7 @@ namespace Game.Ai.V2
             bd.HandPressureBenefit = 0f;
             bd.Deployability = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.Total = SumTotal(bd);
-
-            // P1.6 review-r3 — card-level HoldValue: max reason-to-hold across ALL of the card's
-            // viable roles, not just the role this demand pins (an AA-capable card serving a
-            // FieldCombatPower demand still gets its "keep as a rare AA counter" hold value).
-            IReadOnlyList<IntendedRole> viableRoles = DeriveRoles(pdef,
-                plan.ProjectedAbilities ?? pdef?.grantedAbilities, plan, recceCard, heroCard);
-            bd.HoldValue = CardHoldValue(plan, viableRoles, inv, snap, baseline, surplus: false);
+            bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
             return new StrategicCardUseCandidate
             {
@@ -434,11 +436,8 @@ namespace Game.Ai.V2
             win.Breakdown.AlternativeUseValue = -altCost;
             win.Breakdown.Total = SumTotal(win.Breakdown);
             win.TotalUseScore = win.Breakdown.Total;
-            // P1.6 review-r3 — HoldValue is a property of the CARD, evaluated across ALL its viable
-            // roles (an AA-capable unit chosen as CombatBody still carries its "keep as a rare AA
-            // counter" hold value).
-            win.HoldValue = CardHoldValue(plan, roles, inv, snap, baseline, surplus: true);
-            win.Breakdown.HoldValue = win.HoldValue;
+            win.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
+            win.Breakdown.HoldValue = 0f;
             return win;
         }
 
@@ -458,11 +457,12 @@ namespace Game.Ai.V2
             // identically in Phase A. The evaluator no longer knows RecurringResource is special.
             float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan, snap, inv) : 0f;
 
-            float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, snap, versatility,
+            // Built before RoleFitCore — see ScoreForDemand's comment on the same ordering.
+            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
+            float roleFitCore = RoleFitCore(role, plan, inv, recce, hero, projected, ectx, versatility,
                 equipmentUpgrade, null, 0, false, projectedLegalFillers, out _, out string heroCmdDetail);
             // P1 ARCH — every ability-derived value comes from the registry as a per-axis
             // EffectContribution (see ScoreForDemand).
-            var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
             EffectContribution ec = StrategicEffectRegistry.Contributions(
                 role, projected, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
@@ -476,7 +476,7 @@ namespace Game.Ai.V2
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
-                : SurplusCapabilityGap(role, inv, baseline, snap)) + ec.CapabilityGap + ec.GlobalCapabilityGap;
+                : SurplusCapabilityGap(role, inv, baseline, snap, roleFitCore)) + ec.CapabilityGap + ec.GlobalCapabilityGap;
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
@@ -496,7 +496,7 @@ namespace Game.Ai.V2
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             bd.Deployability = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.Total = SumTotal(bd);
-            bd.HoldValue = HoldValue(plan, role, inv, snap, baseline, surplus: true);
+            bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
             return new StrategicCardUseCandidate
             {
@@ -514,7 +514,7 @@ namespace Game.Ai.V2
         // (P1 ARCH — so a new mechanic reaches every role, not just Support). The Hero card class is
         // never a flat term.
         private static float RoleFitCore(IntendedRole role, MaterializationPlan plan, CapabilityInventory inv,
-            bool recce, bool hero, IReadOnlyList<string> projected, WorldSnapshot snap, float versatility,
+            bool recce, bool hero, IReadOnlyList<string> projected, EffectEvaluationContext ectx, float versatility,
             float equipmentUpgrade, AxisDemand demand, int referenceMoveMax, bool hasCompetingHeroDemand,
             int projectedLegalFillers,
             out MaterializationQualityBreakdown qbd, out string heroCmdDetail)
@@ -544,7 +544,7 @@ namespace Game.Ai.V2
                 case IntendedRole.AntiArmor:
                 case IntendedRole.AntiAir:
                     return SurplusCombatReadinessUtility(plan)
-                        + HeroLeadershipFit(plan, hero, snap, projectedLegalFillers, out heroCmdDetail);
+                        + HeroLeadershipFit(plan, hero, ectx, projectedLegalFillers, out heroCmdDetail);
                 case IntendedRole.Hold:
                     return 0f;
                 default:
@@ -645,11 +645,7 @@ namespace Game.Ai.V2
                 ? GenerationExpectedValueDiscount(bd, Mathf.Clamp01(generation.SuccessChance))
                 : 0f;
             bd.Total = SumTotal(bd);
-            // review-r4 P2 — a GENERATED non-combat card is not yet in hand: declining the chain
-            // preserves the generator option, not a physical card, so it carries NO physical-card
-            // hold value (same fix already made for generated Unit/Hero in HoldValue).
-            bd.HoldValue = generation != null ? 0f
-                : (hand != null && !hand.HasFreeSlot ? 0f : AiConfigV2.holdLostTempoPenalty * 0.5f);
+            bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
             return new StrategicCardUseCandidate
             {
@@ -736,49 +732,78 @@ namespace Game.Ai.V2
             return marginal * scale * AiConfigV2.forceGrowthValueWeight;
         }
 
-        // P1.7 — binary "the AI lacks this capability class", NOT scaled by Need (Need is already
-        // priced once, in ForceGrowthValue).
+        // P0 — how much of THIS role's own established RoleFitCore ceiling this specific card
+        // actually reaches, in [0..1]. Reuses the SAME scale RoleFit already established per role
+        // (SurplusCombatReadinessUtility's own [0..2] clamp for combat roles, scoutBaseRoleFit for
+        // Scout) instead of inventing a second quality metric — so a weak body closing a coverage
+        // gap earns less credit than a strong one, and a flat "gap exists" toggle never fires on its
+        // own. Support/EquipmentUpgrade/Hold/etc. have no ability-independent RoleFitCore to scale
+        // by (it's 0 by design, P1.5) — CapabilityGapValue is 0 for those, deliberately: Support's
+        // real demand gate lives in the Development axis (Phase A), not a flat Phase-B nudge.
+        private static float GapQualityFraction(IntendedRole role, float roleFitCore)
+        {
+            switch (role)
+            {
+                case IntendedRole.Scout:
+                    return Mathf.Clamp01(roleFitCore / Mathf.Max(0.01f, AiConfigV2.scoutBaseRoleFit));
+                case IntendedRole.CombatBody:
+                case IntendedRole.ForceGrowth:
+                case IntendedRole.MobileCombat:
+                case IntendedRole.AntiArmor:
+                case IntendedRole.AntiAir:
+                    return Mathf.Clamp01(roleFitCore / 2f);   // SurplusCombatReadinessUtility's own [0..2] ceiling
+                default:
+                    return 0f;
+            }
+        }
+
+        // P1.7 — "the AI lacks this capability class", scaled by GapQualityFraction (was a flat
+        // binary toggle, not scaled by Need — Need is already priced once, in ForceGrowthValue).
         private static float CapabilityGapValue(CapabilityKind cap, CapabilityInventory inv,
-            BaselineForceReadiness baseline)
+            BaselineForceReadiness baseline, IntendedRole role, float roleFitCore)
         {
             if (inv == null) return 0f;
+            float q = GapQualityFraction(role, roleFitCore);
             switch (cap)
             {
                 case CapabilityKind.ScoutCapability:
-                    return inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue : 0f;
+                    return inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue * q : 0f;
                 case CapabilityKind.Hero:
-                    return (inv.AvailableHeroes + inv.CommittedHeroes) <= 0 ? AiConfigV2.capabilityGapValue : 0f;
+                    return (inv.AvailableHeroes + inv.CommittedHeroes) <= 0 ? AiConfigV2.capabilityGapValue * q : 0f;
                 case CapabilityKind.FieldCombatPower:
-                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue;
+                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue * q;
                 default:
                     return 0f;
             }
         }
 
         // P1.7 review-r3 — uses the dynamically-derived coverage vector. A card closing a hole the
-        // AI's deployed force + hand genuinely lack scores the gap bonus; an AA/AT gap only counts
-        // when the matching enemy threat is actually present.
+        // AI's deployed force + hand genuinely lack scores the gap bonus (scaled by GapQualityFraction);
+        // an AA/AT gap only counts when the matching enemy threat is actually present.
         private static float SurplusCapabilityGap(IntendedRole role, CapabilityInventory inv,
-            BaselineForceReadiness baseline, WorldSnapshot snap)
+            BaselineForceReadiness baseline, WorldSnapshot snap, float roleFitCore)
         {
+            float q = GapQualityFraction(role, roleFitCore);
             switch (role)
             {
                 case IntendedRole.Scout:
-                    return inv != null && inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue : 0f;
+                    return inv != null && inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue * q : 0f;
                 case IntendedRole.AntiAir:
                     return !baseline.HasAntiAir && EnemyThreatModel.ThreatPresent(IntendedRole.AntiAir, snap)
-                        ? AiConfigV2.capabilityGapValue : 0f;
+                        ? AiConfigV2.capabilityGapValue * q : 0f;
                 case IntendedRole.AntiArmor:
                     return !baseline.HasAntiArmor && EnemyThreatModel.ThreatPresent(IntendedRole.AntiArmor, snap)
-                        ? AiConfigV2.capabilityGapValue : 0f;
+                        ? AiConfigV2.capabilityGapValue * q : 0f;
                 case IntendedRole.Support:
-                    return baseline.HasSupport ? 0f : AiConfigV2.capabilityGapValue * 0.5f;
+                    // No ability-independent RoleFitCore to scale by (it's 0 for Support, P1.5) —
+                    // Support's real demand gate lives in the Development axis (Phase A).
+                    return 0f;
                 case IntendedRole.MobileCombat:
-                    if (!baseline.HasFieldBody) return AiConfigV2.capabilityGapValue;
-                    return baseline.HasMobile ? 0f : AiConfigV2.capabilityGapValue * 0.5f;
+                    if (!baseline.HasFieldBody) return AiConfigV2.capabilityGapValue * q;
+                    return baseline.HasMobile ? 0f : AiConfigV2.capabilityGapValue * q * 0.5f;
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
-                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue;
+                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue * q;
                 default:
                     return 0f;
             }
@@ -807,102 +832,6 @@ namespace Game.Ai.V2
             if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0)
                 v += AiConfigV2.stratTraitMatchBonus * 0.5f;
             return v;
-        }
-
-        // review-r3 — the ONE card-level HoldValue used by BOTH phases: the strongest reason to
-        // hold the card across ALL of its viable roles (NearTermExpectedDemand is role-specific, so
-        // a card whose best play is CombatBody but which is also a rare AntiAir counter still gets
-        // that hold value). Hold is priced only here / in NetScore, never as a play role.
-        internal static float CardHoldValue(MaterializationPlan plan, IReadOnlyList<IntendedRole> roles,
-            CapabilityInventory inv, WorldSnapshot snap, BaselineForceReadiness baseline, bool surplus)
-        {
-            if (plan == null)
-                return 0f;
-            float best = 0f;
-            if (roles != null)
-                foreach (IntendedRole r in roles)
-                    best = Mathf.Max(best, HoldValue(plan, r, inv, snap, baseline, surplus));
-            // Also evaluate the card's base combat role even if it was not derived (covers a
-            // plain body with no special abilities).
-            best = Mathf.Max(best, HoldValue(plan, IntendedRole.CombatBody, inv, snap, baseline, surplus));
-            return best;
-        }
-
-        // Spec §3 — HoldValue = UniqueFutureRole + NearTermExpectedDemand + ScarcityValue
-        //                       - HandPressure - LostTempo   (per-role component)
-        private static float HoldValue(MaterializationPlan plan, IntendedRole role, CapabilityInventory inv,
-            WorldSnapshot snap, BaselineForceReadiness baseline, bool surplus)
-        {
-            if (plan == null)
-                return 0f;
-            // review-r4 finding 7 — a GENERATED deployable is not yet a card in hand. Declining the
-            // chain preserves the GENERATOR option + its resources + this turn's generation attempt,
-            // NOT a scarce physical card, and the play score already carries the generation step
-            // penalty + success-chance discount. It has no physical-card hold value. (A dedicated
-            // generator-option value is a later refinement; 0 is the conservative floor.)
-            if (plan.GeneratedBaseDef != null && plan.BaseCardInHand == null)
-                return 0f;
-            CardDefinition def = PlanBaseDef(plan);
-
-            float uniqueFutureRole = 0f;
-            if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0
-                && inv != null && inv.StealthScouts <= AiConfigV2.stratChainStealthScarceAt)
-                uniqueFutureRole += AiConfigV2.holdUniqueRoleValue;
-            if (def != null && def.cardType == CardType.Hero && PlanHeroIsSupport(plan)
-                && inv != null && inv.AvailableHeroes + inv.CommittedHeroes > 0)
-                uniqueFutureRole += AiConfigV2.holdUniqueRoleValue;
-
-            // P1.6 — real NearTermExpectedDemand: a specialist counter whose triggering threat is
-            // already visible (enemy air for an AntiAir body) is worth keeping ready; a plain body
-            // when standing-force need is low is NOT (you would rather deploy it, so 0).
-            float nearTermDemand = 0f;
-            if ((role == IntendedRole.AntiAir || role == IntendedRole.AntiArmor
-                 || role == IntendedRole.CapabilitySpecialist)
-                && EnemyThreatModel.ThreatPresent(role, snap))
-                nearTermDemand += AiConfigV2.holdNearTermDemandValue;
-
-            bool recce = AbilityParams.AbilitiesHaveAnyRecce(plan.ProjectedAbilities ?? def?.grantedAbilities);
-            float scarcityValue = inv != null
-                && SurplusScarcity(inv, recce, def != null && def.cardType == CardType.Hero)
-                   >= AiConfigV2.surplusScarcityMed
-                ? AiConfigV2.holdScarcityValue : 0f;
-
-            // review-r4 finding 6 — the two spec §3 Hold terms the impl still lacked.
-            //  ComboPreservation: a still-unattached Equipment card in hand that legally fits this
-            //  body — playing it bare NOW forecloses the stronger AttachDeploy combination (that
-            //  combined chain is scored on its own; this only lifts the BARE variant's hold value).
-            float comboPreservation =
-                surplus && plan.Kind == MaterializationChainKind.Direct && def != null
-                && (def.cardType == CardType.Unit || def.cardType == CardType.Hero)
-                && HandHasEquipmentPartnerFor(def, snap)
-                    ? AiConfigV2.holdComboPreservationValue : 0f;
-            //  ResourcePressure: a SECURE economy (ample stockpile / strong income → resources at
-            //  risk of capping or cheaply replenished) lowers the value of hoarding by holding the
-            //  card; a fragile economy raises it. No per-resource cap signal on the snapshot yet —
-            //  EconomicSecurity is the proxy.
-            float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
-            float resourcePressure = eco * AiConfigV2.holdResourcePressurePenalty;
-
-            float handPressure = snap?.Self != null && !snap.Self.HasFreeHandSlot
-                ? AiConfigV2.holdHandPressurePenalty : 0f;
-            float lostTempo = surplus ? AiConfigV2.holdLostTempoPenalty : 0f;
-
-            return Mathf.Max(0f,
-                uniqueFutureRole + nearTermDemand + scarcityValue + comboPreservation
-                - handPressure - resourcePressure - lostTempo);
-        }
-
-        // review-r4 finding 6 — any still-unattached Equipment card in hand whose grant would
-        // legally accept this body as a host.
-        private static bool HandHasEquipmentPartnerFor(CardDefinition hostDef, WorldSnapshot snap)
-        {
-            IReadOnlyList<CardData> hand = snap?.Self?.Hand;
-            if (hand == null || hostDef == null)
-                return false;
-            foreach (CardData c in hand)
-                if (EquipmentSystem.FitsHost(c?.Definition, hostDef, out _))
-                    return true;
-            return false;
         }
 
         // =======================================================================================
@@ -942,7 +871,7 @@ namespace Game.Ai.V2
                 roles.Add(IntendedRole.EquipmentUpgrade);
             // review-r3 — Hold is NOT a play role: it never goes through ScoreSurplusRole (which
             // would give it ImmediateTempo / NewArmy NextTurnPotential / etc. for an army that is
-            // never created). It is a separate no-op scored by CardHoldValue.
+            // never created).
             if (roles.Count == 0)
                 roles.Add(IntendedRole.CombatBody); // a card with no derived role still has a generic use
             return roles.Distinct().ToList();
@@ -971,29 +900,12 @@ namespace Game.Ai.V2
         // =======================================================================================
         //  HERO FITNESS  — real characteristics only, no flat class bonus/penalty (P1.5)
         // =======================================================================================
-        // Classification-only heuristic.
-        // Never contributes directly to strategic card utility.
-        // Command utility itself is evaluated exclusively through
-        // HeroCommandMarginalValue().
-        private static float HeroRoleClassificationScore(CardDefinition def)
-        {
-            if (def == null || def.cardType != CardType.Hero)
-                return 0f;
-            return def.commandRating * AiConfigV2.heroRoleCommandWeight
-                 + AiPower.ToPowerUnit(def).BasePower * AiConfigV2.heroRoleCombatContributionWeight;
-        }
-
-        private static bool HeroHasSupportVocation(CardDefinition def) =>
-            def != null && def.cardType == CardType.Hero && def.grantedAbilities != null
-            && (def.grantedAbilities.Contains(UnitAbilities.Researcher)
-                || def.grantedAbilities.Contains(UnitAbilities.Assembler));
-
         // AI-MGR §11 — CommandRating is no longer an unconditional absolute bonus. The command part
         // of a hero's leadership fit is the MARGINAL usable capacity it unlocks: how many extra
         // battle slots its Command opens (canonical CardPlayExecutor.ProjectedCapacityAfterDeploy
         // over the projected deployment destination) that the AI actually has bodies to fill. The
         // combat-contribution part is unchanged. `detail` is the AiDebug decomposition (§15).
-        private static float HeroLeadershipFit(MaterializationPlan plan, bool hero, WorldSnapshot snap,
+        private static float HeroLeadershipFit(MaterializationPlan plan, bool hero, EffectEvaluationContext ectx,
             int projectedLegalFillers, out string detail)
         {
             detail = null;
@@ -1002,7 +914,7 @@ namespace Game.Ai.V2
             if (def == null) return 0f;
 
             float combatPart = AiPower.ToPowerUnit(def).BasePower * AiConfigV2.heroRoleCombatContributionWeight;
-            float commandPart = HeroCommandMarginalValue(def, plan, snap, projectedLegalFillers, out detail);
+            float commandPart = HeroCommandMarginalValue(def, ectx, projectedLegalFillers, out detail);
 
             return Mathf.Clamp(
                 (combatPart + commandPart) / Mathf.Max(1f, AiConfigV2.heroLeadershipFitNorm),
@@ -1020,17 +932,20 @@ namespace Game.Ai.V2
         // portfolio solver — AP / H-E-M-T / generation / physical / recipient capacity), so a slot
         // the hero's Command unlocks is only "usable" if there is really a body to put in it. 0 for
         // any call with no candidate set keeps the conservative "hero itself only" behaviour.
-        private static float HeroCommandMarginalValue(CardDefinition def, MaterializationPlan plan,
-            WorldSnapshot snap, int projectedLegalFillers, out string detail)
+        private static float HeroCommandMarginalValue(CardDefinition def, EffectEvaluationContext ectx,
+            int projectedLegalFillers, out string detail)
         {
             detail = null;
             if (def == null || def.cardType != CardType.Hero)
                 return 0f;
 
-            int nominalCap = DestinationNominalCapacity(plan, snap, out bool destHasHero);
-            int projectedCap = CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCap, destHasHero, def);
+            // ectx.DestNominalCapacity/DestOccupiedSlots/DestHasHero come from the SAME
+            // StrategicEffectRegistry.ResolveDestination walk that already resolved FreeBattleSlots
+            // for this exact plan (single destination-army lookup, not a second one just for Command).
+            int nominalCap = ectx.DestNominalCapacity;
+            int projectedCap = CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCap, ectx.DestHasHero, def);
 
-            int occupiedBefore = DestinationOccupiedSlots(plan, snap);
+            int occupiedBefore = ectx.DestOccupiedSlots;
             // The hero itself consumes one battle slot; plus the bodies that could jointly-legally
             // fill the slots its Command opens this turn.
             int requiredCapacity = occupiedBefore + 1 + Mathf.Max(0, projectedLegalFillers);
@@ -1046,83 +961,6 @@ namespace Game.Ai.V2
                    + $"requiredCapacity={requiredCapacity} "
                    + $"usableExtraSlots={usableExtraSlots} commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
             return value;
-        }
-
-        // Battle-slot occupancy of the plan's projected deployment DESTINATION army only — a pure
-        // snapshot read, NOT a second capacity rule (CardPlayExecutor.ProjectedCapacityAfterDeploy
-        // stays the single authoritative capacity calculator). A NewArmy destination is empty.
-        private static int DestinationOccupiedSlots(MaterializationPlan plan, WorldSnapshot snap)
-        {
-            if (plan == null)
-                return 0;
-
-            switch (plan.Deploy.Kind)
-            {
-                case DeploymentKind.ExistingArmy:
-                case DeploymentKind.Garrison:
-                case DeploymentKind.ReusableShell:
-                {
-                    int armyId = plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
-                    if (snap?.Self?.Armies != null)
-                        foreach (ArmySnapshot a in snap.Self.Armies)
-                            if (a != null && a.ArmyId == armyId)
-                                return a.OccupiedBattleSlots;
-                    return 0;
-                }
-
-                case DeploymentKind.NewArmy:
-                default:
-                    return 0;
-            }
-        }
-
-        // Nominal (heroless) battle-slot capacity of a plan's projected deployment destination —
-        // mirrors StrategicEffectRegistry.ResolveDestination so planning and this valuation cannot
-        // drift. `destHasHero` true => the destination already has a commander, so an incoming hero
-        // does NOT raise capacity (no auto TryReorderCommander).
-        private static int DestinationNominalCapacity(MaterializationPlan plan, WorldSnapshot snap,
-            out bool destHasHero)
-        {
-            destHasHero = false;
-            int heroless = ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), isGarrison: false);
-            if (plan == null)
-                return heroless;
-
-            switch (plan.Deploy.Kind)
-            {
-                case DeploymentKind.ExistingArmy:
-                case DeploymentKind.Garrison:
-                {
-                    int wantId = plan.Deploy.Army != null ? plan.Deploy.Army.Id : -1;
-                    if (snap?.Self?.Armies != null)
-                        foreach (ArmySnapshot a in snap.Self.Armies)
-                            if (a != null && a.ArmyId == wantId)
-                            {
-                                destHasHero = a.HasHero;
-                                return a.Capacity;
-                            }
-                    return heroless;
-                }
-                case DeploymentKind.ReusableShell:
-                {
-                    if (plan.Deploy.Army != null && snap?.Self?.Armies != null)
-                        foreach (ArmySnapshot a in snap.Self.Armies)
-                            if (a != null && a.ArmyId == plan.Deploy.Army.Id)
-                                return a.Capacity;
-                    return heroless;
-                }
-                default: // NewArmy
-                    return heroless;
-            }
-        }
-
-        // AI-MGR §11 — classification is separate from utility. This helper is used only for the
-        // "support hero" hold heuristic, never added directly to score.
-        private static bool PlanHeroIsSupport(MaterializationPlan plan)
-        {
-            CardDefinition def = PlanBaseDef(plan);
-            return HeroHasSupportVocation(def)
-                && HeroRoleClassificationScore(def) < AiConfigV2.heroRoleFlexibleCombatFloor;
         }
 
         // =======================================================================================

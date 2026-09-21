@@ -290,6 +290,16 @@ namespace Game.Ai.V2
         public readonly AiPower.ProjectedStrategicLine ProjectedLine;
         public readonly IReadOnlyList<WorthIt.DefenderProfile> DestArmyMembers;
         public readonly int FreeBattleSlots;
+        // AI-MGR — the destination army's capacity/occupancy INPUTS behind FreeBattleSlots, exposed
+        // so a caller needing the marginal effect of ITS OWN primary body's Command (StrategicCardEvaluator's
+        // HeroCommandMarginalValue) can price it off THIS SAME ResolveDestination walk instead of
+        // re-resolving the destination army from snap.Self.Armies a second time. DestNominalCapacity
+        // is the destination's capacity BEFORE the plan's primary body is applied; DestHasHero is
+        // whether it already has a commander (a heroless synthetic destination reports capacity from
+        // ArmyData.ComputeCapacity and DestHasHero=false).
+        public readonly int DestNominalCapacity;
+        public readonly int DestOccupiedSlots;
+        public readonly bool DestHasHero;
         // final closure §3.3 (army -> candidate direction) — the value the DEST ARMY's already-
         // present auras add specifically to THIS incoming candidate's projected profile. The
         // candidate does not carry the aura ability itself, so this cannot come from Resolve(card);
@@ -369,7 +379,7 @@ namespace Game.Ai.V2
                     1f, AiConfigV2.effectCombatRoundsMax);
 
             ResolveDestination(snap, plan, out FreeBattleSlots, out DestArmyMembers,
-                out ArmySnapshot destArmy);
+                out ArmySnapshot destArmy, out DestNominalCapacity, out DestOccupiedSlots, out DestHasHero);
 
             IncomingAuraSynergy = ComputeIncomingAuraSynergy(
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);
@@ -522,13 +532,21 @@ namespace Game.Ai.V2
         // from the captured ArmySnapshot by id; for a synthetic NewArmy / ReusableShell the capacity
         // is projected from the deployment rules (hero primary -> its CommandRating, else the field/
         // garrison base). Always minus 1 for the plan's own primary body.
+        //
+        // `nominalCapacity`/`occupiedSlots`/`destHasHero` are the PRE-primary-body inputs behind
+        // `freeSlots` — the single resolved destination-army read, exposed so a caller pricing the
+        // marginal effect of the primary body's OWN Command (a Hero's HeroCommandMarginalValue) does
+        // not have to re-resolve the same destination army a second time.
         private static void ResolveDestination(WorldSnapshot snap, MaterializationPlan plan,
             out int freeSlots, out IReadOnlyList<WorthIt.DefenderProfile> members,
-            out ArmySnapshot destArmy)
+            out ArmySnapshot destArmy, out int nominalCapacity, out int occupiedSlots, out bool destHasHero)
         {
             members = System.Array.Empty<WorthIt.DefenderProfile>();
             freeSlots = -1;
             destArmy = null;
+            nominalCapacity = ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), isGarrison: false);
+            occupiedSlots = 0;
+            destHasHero = false;
             if (plan == null)
                 return;
 
@@ -548,37 +566,41 @@ namespace Game.Ai.V2
                         foreach (ArmySnapshot s in snap.Self.Armies)
                             if (s != null && s.ArmyId == wantId) { a = s; break; }
                     if (a == null)
-                        return;                       // stale plan — leave -1
+                        return;                       // stale plan — leave -1 / heroless defaults
                     destArmy = a;
                     // §3.3 P2 — an aura's EligiblePredicate must be able to see hero allies too.
                     members = a.MembersWithHeroes != null && a.MembersWithHeroes.Count > 0
                         ? a.MembersWithHeroes
                         : (a.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)members);
+                    nominalCapacity = a.Capacity;
+                    occupiedSlots = a.OccupiedBattleSlots;
+                    destHasHero = a.HasHero;
                     // Mirror CardPlayExecutor / ArmyActions: a hero rewrites capacity to its
                     // CommandRating ONLY as the FIRST hero — a second hero is appended after the
                     // existing commander and does NOT raise capacity (no auto TryReorderCommander).
                     int cap = CardPlayExecutor.ProjectedCapacityAfterDeploy(
-                        a.Capacity, a.HasHero, primary);
-                    freeSlots = System.Math.Max(0, cap - a.OccupiedBattleSlots - primaryBodySlots);
+                        nominalCapacity, destHasHero, primary);
+                    freeSlots = System.Math.Max(0, cap - occupiedSlots - primaryBodySlots);
                     return;
                 }
                 case DeploymentKind.NewArmy:
                 case DeploymentKind.ReusableShell:
                 {
                     // Nominal capacity of the (heroless, empty) destination base: a ReusableShell's
-                    // own snapshot capacity when present, else the freshly-created field-army value.
-                    int nominalCap = ArmyData.ComputeCapacity(
-                        System.Array.Empty<UnitData>(), isGarrison: false); // heroless field base
+                    // own snapshot capacity when present, else the freshly-created field-army value
+                    // (already the default `nominalCapacity` set above). occupiedSlots/destHasHero
+                    // stay at their defaults — a reusable shell is definitionally empty and heroless
+                    // (ReusableArmySelector.IsReusableShell requires Members.Count == 0).
                     if (plan.Deploy.Kind == DeploymentKind.ReusableShell && plan.Deploy.Army != null
                         && snap?.Self?.Armies != null)
                         foreach (ArmySnapshot s in snap.Self.Armies)
-                            if (s != null && s.ArmyId == plan.Deploy.Army.Id) { nominalCap = s.Capacity; break; }
+                            if (s != null && s.ArmyId == plan.Deploy.Army.Id) { nominalCapacity = s.Capacity; break; }
 
                     // Same canonical rule as a real recipient: a hero primary sets capacity to its
                     // CommandRating (first hero into an empty base), a non-hero keeps nominalCap —
                     // NOT Math.Max(heroCr, nominalCap), which is where phantom slots came from.
                     int cap = CardPlayExecutor.ProjectedCapacityAfterDeploy(
-                        nominalCap, targetHasHero: false, primary);
+                        nominalCapacity, targetHasHero: false, primary);
                     freeSlots = System.Math.Max(0, cap - primaryBodySlots);
                     return;
                 }
