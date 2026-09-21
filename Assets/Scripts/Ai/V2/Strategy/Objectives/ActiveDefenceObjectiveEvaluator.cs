@@ -49,8 +49,19 @@ namespace Game.Ai.V2
             IEnumerable<AssetThreatSnapshot> threats = snap?.Threat?.Threats
                 ?? Array.Empty<AssetThreatSnapshot>();
 
+            // Analysis includes historical AiReconMemory contacts in Threat. They are honest
+            // observations, but are not necessarily present in AiMapMemory's canonical enemy
+            // sightings. ActiveDefenceProvisioner requires that canonical sighting to resolve
+            // an actual intercept. Filter at objective admission, BEFORE AP allocation; retain
+            // historical threats in Analysis for strategic pressure and Recon information needs.
+            // AiReconMemory.Historical excludes IDs already in Known.EnemySightings, so an ID
+            // membership check identifies precisely the source contract the provisioner uses.
+            var interceptableIds = new HashSet<int>(snap?.Known?.EnemySightings?
+                .Select(s => s.ArmyId) ?? Enumerable.Empty<int>());
+
             foreach (IGrouping<int, AssetThreatSnapshot> group in threats
-                .Where(IsHonestPositionedHostile)
+                .Where(t => IsHonestPositionedHostile(t)
+                    && interceptableIds.Contains(t.Contact.Army.ArmyId))
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
                 AssetThreatSnapshot chosen = group
