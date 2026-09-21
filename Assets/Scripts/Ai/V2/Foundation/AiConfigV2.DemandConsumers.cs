@@ -23,9 +23,13 @@ namespace Game.Ai.V2
         // defencePerBodyPowerEstimate: it was never a Defence-axis number.
         public const float combatPowerPerBodyEstimate = 6f;
 
-        public const int economyMaxInfrastructureDemandsPerTurn = 1;
+        // Plain on/off switch for Base origination (0 disables it), not a count — DemandLayer.Economy
+        // no longer caps how many extraction/collector/Base demands it emits per turn; that arbitration
+        // belongs to MissionAdmissionPolicy.Capacity (already int.MaxValue for Economy) and the real
+        // downstream owners (AxisBudgetLedger, MaterializationReservation, ResourceAllocator). The old
+        // per-family `.Take(1)` here duplicated that admission one layer too early and silently dropped
+        // legal candidates the allocator would have funded (2026-09-21 fix).
         public const int economyMaxExpansionBaseDemandsPerTurn = 1;
-        public const int economyMaxCollectorDemandsPerTurn = 1;
 
         // StrategicMaintenancePolicy's repair candidate (restored V1 RepairUnit task) — see its
         // own comment. Calibrated 2026-09-21 against AiDebug.log: at 1.5, minor damage (1 HP)

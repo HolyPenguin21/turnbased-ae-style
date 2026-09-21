@@ -180,17 +180,21 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(x => x.TargetHex?.R ?? int.MaxValue);
 
-            // Select a Base challenger BEFORE the cap of one. That cap governs executable
-            // demands, not the number of sites permitted into the hysteresis comparison.
-            // Only a candidate that can reuse the incumbent's EXACT card and actor may
-            // replace a live commitment; changing actors requires separate provisioning.
-            AxisDemand selectedBase = SelectBaseDemandForCurrentCommitment(
-                baseRanked.ToList(), activeIntents);
-            List<AxisDemand> selected = extractionRanked
-                .Take(Mathf.Max(0, AiConfigV2.economyMaxInfrastructureDemandsPerTurn))
-                .Concat(selectedBase != null
-                    && AiConfigV2.economyMaxExpansionBaseDemandsPerTurn > 0
-                        ? new[] { selectedBase } : System.Array.Empty<AxisDemand>())
+            // economyMaxExpansionBaseDemandsPerTurn is a plain on/off switch for Base origination,
+            // not a count — SelectBaseDemandsForCurrentCommitment already returns at most one demand
+            // per DISTINCT (card, builder) pair, each a genuinely independent project; the hex/actor/
+            // card dedup right below still allows only one of them to actually win a shared resource.
+            List<AxisDemand> selectedBases = AiConfigV2.economyMaxExpansionBaseDemandsPerTurn > 0
+                ? SelectBaseDemandsForCurrentCommitment(baseRanked.ToList(), activeIntents)
+                : new List<AxisDemand>();
+            // No local count cap: MissionAdmissionPolicy.Capacity(ExecutionLane.Economy) is already
+            // int.MaxValue downstream, and AxisBudgetLedger/MaterializationReservation/ResourceAllocator
+            // are the real, single owners of how many of these candidates can actually execute this
+            // turn. A `.Take(N)` here duplicated that arbitration one layer too early and silently
+            // discarded candidates the real allocator would have happily funded (see rejected=1/2 on
+            // "selected=EconomicInfrastructure" in AiDebug.log even with no Base in hand yet).
+            List<AxisDemand> selected = extractionRanked.ToList()
+                .Concat(selectedBases)
                 .ToList();
 
             var selectedHexes = new HashSet<HexCoord>();
@@ -345,9 +349,11 @@ namespace Game.Ai.V2
                 });
             }
 
-            foreach (AxisDemand demand in candidates
-                .OrderByDescending(d => d.Value)
-                .Take(Mathf.Max(0, AiConfigV2.economyMaxCollectorDemandsPerTurn)))
+            // No local count cap — see the matching comment on extractionRanked in EconomyDemands.
+            // The physical EconomyBuildCard each candidate names is the real, single-spend
+            // constraint, already enforced downstream by MaterializationReservation's
+            // ClaimedEconomyBuildCards, not a count taken before the allocator ever sees the rest.
+            foreach (AxisDemand demand in candidates.OrderByDescending(d => d.Value))
             {
                 AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=CollectorCapability "
                     + $"resource={demand.EconomyResourceType} "
@@ -881,6 +887,8 @@ namespace Game.Ai.V2
             int considered = 0;
             int kept = 0;
             AxisDemand best = null;
+            (float Value, HexCoord Hex, string Card, float Economic, float Payback,
+                float Global, float Expansion)? bestRejected = null;
             MissionIntentState intentState = MissionIntentRegistry.GetOrCreate(player);
             var meaningfulDemands = new List<AxisDemand>();
 
@@ -977,6 +985,15 @@ namespace Game.Ai.V2
                     if (!meaningful)
                     {
                         strategicValueRejected++;
+                        // Diagnostics-only: hasEconomyPurpose is an OR of four epsilon-floored terms,
+                        // so every rejected site has all four near zero by construction — ranking
+                        // rejects by "how close" to that floor is meaningless. What IS worth surfacing
+                        // is the single best-placed rejected site's full siteOnlyScore.Value: it shows
+                        // how much placement value is being correctly withheld for genuinely having no
+                        // economic reason yet, the one number a whole-session "kept=0" cannot answer.
+                        if (bestRejected == null || siteOnlyScore.Value > bestRejected.Value.Value)
+                            bestRejected = (siteOnlyScore.Value, site.Hex, card.Definition.displayName,
+                                economic, payback, global, expansion);
                         continue;
                     }
 
@@ -1071,19 +1088,65 @@ namespace Game.Ai.V2
 
                 output.Add(demand);
                 kept++;
+                AiDebugLog.Write($"[AI][V2][Economy][BaseCandidate] kept {demand.Explain}");
                 if (best == null || demand.Value > best.Value)
                     best = demand;
             }
 
-            return best == null
-                ? $"considered={considered} kept={kept} best=none"
-                : $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
+            if (best != null)
+                return $"considered={considered} kept={kept} best={best.EconomyBuildCard.Definition.displayName} "
                     + $"target=({best.TargetHex?.Q},{best.TargetHex?.R}) value={best.Value:0.##}";
+            return bestRejected == null
+                ? $"considered={considered} kept={kept} best=none"
+                : $"considered={considered} kept={kept} best=none closestMiss="
+                    + $"{bestRejected.Value.Card}@({bestRejected.Value.Hex.Q},{bestRejected.Value.Hex.R}) "
+                    + $"fullValueIfAdmitted={bestRejected.Value.Value:0.##} "
+                    + $"economic={bestRejected.Value.Economic:0.##} payback={bestRejected.Value.Payback:0.##} "
+                    + $"global={bestRejected.Value.Global:0.##} expansion={bestRejected.Value.Expansion:0.##} "
+                    + "reason=no_economy_purpose_yet";
         }
 
-        // One Base selection decision owner. The incumbent's current fully delivered score
-        // wins over its captured score when a same-card/same-actor candidate is still present.
-        // Never compare the challenger's full Value against Economy.BuildValue (site only).
+        // One demand per DISTINCT (card, builder) pair — each is a genuinely independent Base
+        // project (separate card, separate actor, no shared resource yet). Collapsing all of them
+        // down to one global "best" (the old behaviour) meant the AI could only ever entertain a
+        // single Base candidate per turn even holding two Base cards with two free builders; the
+        // hex/actor/card dedup in EconomyDemands' caller still resolves the case where two
+        // candidates would in fact compete for the same hex, mover or card. Only the ONE group
+        // matching the live incumbent's exact (card, actor) goes through the hysteresis owner below —
+        // every other group is a brand-new project with no incumbent to protect, so its own top-ranked
+        // site is offered directly.
+        internal static List<AxisDemand> SelectBaseDemandsForCurrentCommitment(
+            IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var result = new List<AxisDemand>();
+            if (ranked == null || ranked.Count == 0)
+                return result;
+
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
+                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
+                && i.Economy?.Kind == EconomyTaskKind.FoundBase
+                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+
+            foreach (var group in ranked.GroupBy(d => (d.EconomyBuildCard, d.EconomyPreferredBuilderArmyId)))
+            {
+                bool isIncumbentGroup = incumbent != null
+                    && group.Key.EconomyBuildCard == incumbent.Economy.BuildCard
+                    && group.Key.EconomyPreferredBuilderArmyId == incumbent.PreferredMoverArmyId;
+                AxisDemand chosen = isIncumbentGroup
+                    ? SelectBaseDemandForCurrentCommitment(group.ToList(), activeIntents)
+                    : group.FirstOrDefault();
+                if (chosen != null)
+                    result.Add(chosen);
+            }
+            return result;
+        }
+
+        // One Base selection decision owner for a SINGLE (card, builder) group — the incumbent's
+        // current fully delivered score wins over its captured score when a same-card/same-actor
+        // candidate is still present. Never compare the challenger's full Value against
+        // Economy.BuildValue (site only). Called once per matching group by the plural selector
+        // above; callers with no live incumbent commitment may call it directly (unchanged single-
+        // candidate contract preserved for existing tests).
         internal static AxisDemand SelectBaseDemandForCurrentCommitment(
             IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
         {
@@ -1142,40 +1205,26 @@ namespace Game.Ai.V2
             && rival.Value > rival.EconomySwitchIncumbentValue.Value
                 + AiConfigV2.economyBaseSwitchHysteresisThreshold;
 
-        // Economy admission predicate for a NEW Base project. The axis may originate a Base
-        // only from economy-native value: useful local income/payback, a PlayerGlobal effect
+        // Economy admission predicate for a NEW Base project. The axis only needs to prove WHY a
+        // Base is worth having at all: useful local income/payback, a PlayerGlobal effect
         // explicitly evaluated for IntendedRole.Economy by StrategicCardEvaluator, or a structural
         // network-expansion fact (EconomicExpansionValue — this site reaches a resource cluster no
-        // owned base already reaches, independent of whether that income is useful YET). Airfield,
-        // front/corridor and terrain-defense terms remain in the FULL TaskScore so they can choose
-        // WHERE an already-justified Base should go; they are deliberately absent from this
-        // admission value and therefore cannot rescue a net-negative economy project.
-        //
-        // Costs that belong to executing the economy project stay in the admission value. This
-        // preserves the causal chain "Economy need -> Base project; strategic placement -> site"
-        // instead of allowing a forward/corridor bonus to pay for an otherwise unjustified Base.
-        // Committed deliveries bypass this predicate at the call sites so Continuity is not
-        // abandoned merely because marginal economics changed after the project started.
-        internal static float EconomyBaseAdmissionValue(TaskScore score) =>
-              score.EconomicHexBenefit
-            + score.Payback
-            + score.GlobalCardEffect
-            + score.EconomicExpansionValue
-            - score.CardPrice
-            - score.Delivery
-            - score.MoverOpportunityCost
-            - score.HexThreatRisk;
-
-        internal static bool HasMeaningfulBaseBenefit(TaskScore score)
-        {
-            bool hasEconomyPurpose =
-                score.EconomicHexBenefit > AiConfigV2.allocatorSliceEpsilon
-                || score.Payback > AiConfigV2.allocatorSliceEpsilon
-                || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon
-                || score.EconomicExpansionValue > AiConfigV2.allocatorSliceEpsilon;
-            return hasEconomyPurpose
-                && EconomyBaseAdmissionValue(score) > AiConfigV2.allocatorSliceEpsilon;
-        }
+        // owned base already reaches, independent of whether that income is useful YET). Whether the
+        // WHOLE project (this reason plus price, delivery, threat, AND placement — airfield,
+        // front/corridor, proximity, terrain-defense) is worth funding is then decided exactly once,
+        // by the same full TaskScore.Value every other axis competes on (see ARCHITECTURE.md "one
+        // struct, one fold"). A second, narrower partial-sum here (the former EconomyBaseAdmissionValue)
+        // duplicated that fold over a hand-picked subset of slots and rejected sites whose real
+        // TaskScore.Value was already positive once placement was counted — the exact "post-fold
+        // score adjustment" ARCHITECTURE.md calls out as a bug, not a precedent. Placement still
+        // cannot manufacture a reason on its own: hasEconomyPurpose guards that with zero cost terms
+        // involved. Committed deliveries bypass this predicate at the call sites so Continuity is
+        // not abandoned merely because marginal economics changed after the project started.
+        internal static bool HasMeaningfulBaseBenefit(TaskScore score) =>
+            score.EconomicHexBenefit > AiConfigV2.allocatorSliceEpsilon
+            || score.Payback > AiConfigV2.allocatorSliceEpsilon
+            || score.GlobalCardEffect > AiConfigV2.allocatorSliceEpsilon
+            || score.EconomicExpansionValue > AiConfigV2.allocatorSliceEpsilon;
 
         private static bool HasActiveEconomyIntentAtHexOfKind(IReadOnlyList<MissionIntent> intents,
             HexCoord? target, EconomyTaskKind kind)

@@ -96,10 +96,20 @@ namespace Game.EditorTests
                 "GlobalCardEffect here is evaluated explicitly for IntendedRole.Economy");
         }
 
+        // 2026-09-21 — HasMeaningfulBaseBenefit no longer re-folds a narrower economy-only subset
+        // (the old EconomyBaseAdmissionValue, now removed): a real, non-zero economy-native reason
+        // is still required (hasEconomyPurpose), but whether the WHOLE project — reason, price,
+        // AND placement — is worth funding is decided exactly once by the same full TaskScore.Value
+        // every other axis competes on, never by a second bespoke partial-sum. This test used to
+        // assert the opposite (placement could never help pay for CardPrice even with a genuine
+        // economy reason already present); that was the arithmetic root cause of Base never being
+        // admitted in AiDebug.log — the old admission subset topped out at 12 (GlobalCardEffect 6 +
+        // EconomicExpansionValue 6) against a real Base card's CardPrice of 16, so a pure-expansion
+        // Base could never clear it regardless of site quality.
         [Test]
-        public void EconomyBaseAdmission_StrategicPlacementCannotRescueNegativeEconomics()
+        public void EconomyBaseAdmission_PlacementCanHelpPayForAnAlreadyPurposefulProject()
         {
-            var strategicallyExcellentButEconomicallyNegative = new TaskScore(
+            var smallEconomyReasonStrongPlacement = new TaskScore(
                 economicHexBenefit: 1f,
                 airfield: 8f,
                 frontProgress: 8f,
@@ -107,13 +117,11 @@ namespace Game.EditorTests
                 terrainDefense: 8f,
                 cardPrice: 2f);
 
-            Assert.That(strategicallyExcellentButEconomicallyNegative.Value, Is.GreaterThan(0f),
+            Assert.That(smallEconomyReasonStrongPlacement.Value, Is.GreaterThan(0f),
                 "sanity: the full placement score is intentionally attractive");
-            Assert.That(DemandLayer.EconomyBaseAdmissionValue(
-                strategicallyExcellentButEconomicallyNegative), Is.LessThan(0f));
-            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(
-                strategicallyExcellentButEconomicallyNegative), Is.False,
-                "placement quality may rank admitted sites, but it cannot pay for the Economy project itself");
+            Assert.That(DemandLayer.HasMeaningfulBaseBenefit(smallEconomyReasonStrongPlacement), Is.True,
+                "a genuine (even small) economy reason is present, so placement may legitimately help "
+                    + "the whole project clear its price — only a ZERO economy reason must be rejected");
         }
 
         [Test]
