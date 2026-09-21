@@ -156,6 +156,14 @@ namespace Game.Ai.V2
                     break;
                 }
             }
+            else if (demand?.Capability == CapabilityKind.CollectorCapability)
+            {
+                // CapabilityInventory intentionally only models military/Recon supply; it has no
+                // collector counter. Measure this resource-specific delivery by the SAME freshly
+                // deployed army identities and policy predicate as the capability lease. A second
+                // global collector counter would duplicate Economy's collection model.
+                delivered = leased.Count > 0 ? 1f : 0f;
+            }
             else
                 delivered = DeliveredCapabilityAmount(demand, before, after);
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
@@ -183,8 +191,10 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            // Economy already has one Continuity owner; a generic lease would add a second one.
-            // Other capabilities still need the turn-local barrier until their normal handoff.
+            // Economy build-delivery already has one Continuity owner; a generic lease would add
+            // a second one. Collector delivery is different: its mobile collection mission will
+            // be discovered by Analysis and admitted by EconomyMissionPlanner from the refreshed
+            // snapshot. Until then the turn-local lease prevents Housekeeping repackaging it.
             if (!MaterializationDeliveryPolicy.IsEconomyHeroDemand(demand))
                 StrategicCapabilityLeaseRegistry.Mark(
                     player, ctx.TurnNumber, demand.Capability, leased);
