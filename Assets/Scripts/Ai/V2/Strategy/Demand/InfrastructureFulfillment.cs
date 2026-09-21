@@ -436,12 +436,15 @@ namespace Game.Ai.V2
                 int route = actor.Hex.Equals(build.TargetHex) ? 0
                     : ctx.Map == null ? int.MaxValue
                     : SafeStepPathing.FindSafePathCost(ctx.Map, actor, build.TargetHex);
-                float freeApWithOwnHold = StrategicResourceReservationLedger.SpendableExcludingOwner(
-                    player, turn, StrategicReservedResource.ActionPoints, root.ActionPoints, owner);
+                // Actual turn AP determines whether this concrete owner CAN still execute.
+                // Another owner's legitimate hold is not evidence that our already-provisioned
+                // completion became physically impossible; otherwise iteration order would
+                // downgrade one of two individually executable independent projects.
+                float liveAp = root.ActionPoints;
                 float activationAp = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
                 bool completionThisTurn = intent.Status == IntentStatus.Active
                     && route != int.MaxValue && route <= actor.CurrentMovement
-                    && freeApWithOwnHold + AiConfigV2.allocatorSliceEpsilon
+                    && liveAp + AiConfigV2.allocatorSliceEpsilon
                         >= build.BuildApCost + (route > 0 ? activationAp : 0f)
                     && (build.BuildResourceCost == null || build.BuildResourceCost.CanAfford(root));
                 ReconcileEconomyCompletionOwner(player, turn, owner, intent, true,
