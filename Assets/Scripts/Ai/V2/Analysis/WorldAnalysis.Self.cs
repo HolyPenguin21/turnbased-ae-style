@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Core;
+using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -231,6 +232,8 @@ namespace Game.Ai.V2
                 EffectiveArmyPower = AiPower.EffectiveArmyPower(a.Members),
                 CompositionQuality = AiPower.CompositionQualityOf(a.Members),
                 MaxMovement = a.MaxMovement,
+                SafeUnlandedEndsRemaining = a.IsAirArmy
+                    ? AviationRange.SafeUnlandedEndsRemaining(a) : 0,
                 Capacity = a.Capacity,
                 OccupiedBattleSlots = a.Members.Count,
                 Members = nonHero.Select(WorthIt.FromLiveUnit).ToList(),

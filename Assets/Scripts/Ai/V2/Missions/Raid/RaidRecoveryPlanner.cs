@@ -199,18 +199,49 @@ namespace Game.Ai.V2
 
                 int distance = HexGridMath.Distance(wing.Hex, raid.LastKnownHex);
                 int eta = CeilTurns(wing, distance);
+
+                // A wing with real endurance (helicopter-class TurnsWithoutRefuel) that reaches
+                // THIS turn can hold position unlanded overnight and strike again next turn before
+                // heading home, instead of every sortie being forced into a same-turn round trip
+                // (project owner's own 2026-09-21 call). Second strike is priced by simply
+                // extending eta by one turn — PlanScore's own DeliveryFromEta already charges
+                // exactly one extra recurring activation for that, the same real per-turn
+                // reactivation fee any other multi-turn move already pays.
+                float finalAfter = after;
+                int finalEta = eta;
+                if (eta <= 1 && wing.SafeUnlandedEndsRemaining >= 1)
+                {
+                    AviationCombatEstimator.AirStrikeEstimate second =
+                        AviationCombatEstimator.EstimateAirStrike(attacks,
+                            estimate.ExpectedDefenseAfter, estimate.ExpectedAttackAfter,
+                            estimate.ExpectedDefendersAfter,
+                            AirStrikePolicy.RaidSupport(raid.Target.ArmyId));
+                    if (second.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon
+                        && second.ExpectedDefendersAfter.Count >= 1)
+                    {
+                        float after2 = Win(CombatRoster(primary),
+                            second.ExpectedDefendersAfter, out _);
+                        if (after2 > finalAfter + AiConfigV2.allocatorSliceEpsilon)
+                        {
+                            finalAfter = after2;
+                            finalEta = eta + 1;
+                        }
+                    }
+                }
+
                 float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
                 float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
                 ResourceVector resources = new ResourceVector(0f, 0f, energy, 0f, 0f);
-                TaskScore score = PlanScore(after, 0f, ap, resources, eta,
+                TaskScore score = PlanScore(finalAfter, 0f, ap, resources, finalEta,
                     wing.ActivationApCost, 2);
                 HexCoord landing = bases
                     .OrderBy(x => HexGridMath.Distance(x, raid.LastKnownHex))
                     .ThenBy(x => x.Q).ThenBy(x => x.R).First();
                 var option = new RaidRecoveryProjection(true,
                     RaidMissionPhase.AirSupport, null, null, wing.ArmyId, landing,
-                    eta, ap, resources, 2, currentWin, after, score, default,
-                    $"air support #{wing.ArmyId} reaches {after:0.00} "
+                    finalEta, ap, resources, 2, currentWin, finalAfter, score, default,
+                    $"air support #{wing.ArmyId} reaches {finalAfter:0.00} "
+                    + $"({(finalEta > eta ? "two strikes" : "one strike")}) "
                     + $"with canonical score {score.Value:0.00}");
                 if (!best.Viable || Compare(option, best) < 0)
                     best = option;

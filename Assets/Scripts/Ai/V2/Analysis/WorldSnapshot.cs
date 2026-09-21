@@ -230,6 +230,14 @@ namespace Game.Ai.V2
         public float EffectiveArmyPower;    // AiPower — composition-adjusted ranking scalar
         public float CompositionQuality;    // [0..1] the multiplier's driver, kept for the "why" log
         public int MaxMovement;             // per-turn move budget, for rough ETA
+        // How many MORE turns this air army could end away from an owned airfield right now
+        // without taking fuel damage (Game.Aviation.AviationRange.SafeUnlandedEndsRemaining, the
+        // same live helicopter/TurnsWithoutRefuel fact the multi-turn Recon sortie planner already
+        // reads) — 0 for a plane (TurnsWithoutRefuel==0) and for every non-air army. Lets a
+        // planner (e.g. RaidRecoveryPlanner's AirSupport) know whether a wing can strike, hold
+        // position overnight, then strike again before flying home, instead of every sortie being
+        // a same-turn round trip.
+        public int SafeUnlandedEndsRemaining;
 
         // ---- BATTLE-SLOT capacity (review-r4 P1 ARCH) — frozen from ArmyData so strategic effect
         //      scoring reads occupancy from the SAME snapshot as everything else, never live state.
