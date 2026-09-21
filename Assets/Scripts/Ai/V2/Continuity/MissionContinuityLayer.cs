@@ -108,16 +108,59 @@ namespace Game.Ai.V2
                 objective.TargetHex.Q, objective.TargetHex.R);
 
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            foreach (MissionIntent stale in state.All.Where(i => i != null
-                         && i.Kind == MissionKind.Economy
-                         && (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder
-                             // The same actor cannot hold both a recovery walk and this fresh
-                             // delivery handoff — the new assignment supersedes its own recovery.
-                             // A ReturnBuilder belonging to a DIFFERENT actor is untouched.
-                             ? i.PreferredMoverArmyId == builderArmyId
-                             : (!i.IntentKey.Equals(intent.IntentKey)
-                                 || i.PreferredMoverArmyId != builderArmyId))).ToList())
+            // Re-entry: the SAME objective already owned by the SAME actor is not a new mission.
+            // Refresh its cost/value payload in place and keep CreatedTurn / TurnsActive /
+            // StepsMovedTotal / CumulativeApSpent / its own reservation, so a repeated handoff in
+            // the same or a later pass is idempotent instead of resetting the commitment's history.
+            if (state.TryGet(intent.IntentKey, out MissionIntent reentered)
+                && reentered?.Economy != null
+                && reentered.PreferredMoverArmyId == builderArmyId)
             {
+                EconomyIntent live = reentered.Economy;
+                live.ResourceType = objective.ResourceType;
+                live.BuilderArmyId = builderArmyId;
+                live.BuildCard = objective.BuildCard;
+                live.BuildResourceCost = objective.BuildResourceCost;
+                live.BuildApCost = objective.BuildApCost;
+                live.IntrinsicValue = objective.IntrinsicValue;
+                live.BuildValue = objective.BuildValue;
+                live.MinimumFollowupAp = objective.MinimumFollowupAp;
+                live.ProjectedActivationApCost = objective.ProjectedActivationApCost;
+                live.ProjectedMaxMovement = objective.ProjectedMaxMovement;
+                if (reentered.Status == IntentStatus.Suspended
+                    && reentered.Suspended != SuspendReason.EconomyLoan)
+                {
+                    reentered.Status = IntentStatus.Active;
+                    reentered.Suspended = SuspendReason.None;
+                }
+                AiDebugLog.Write($"[AI][V2][Economy] materialization handoff (re-entry) "
+                    + $"{reentered.IntentKey} actor=#{builderArmyId}");
+                return reentered;
+            }
+            // 2026-09-21 Block A — this is the ONE place Economy ownership is granted, so it is the
+            // one place that resolves ownership CONFLICTS. A pre-existing Economy intent is
+            // superseded only when it actually collides with the new grant:
+            //   · same objective identity (IntentKey) — two missions cannot build the same thing;
+            //   · same actor (PreferredMoverArmyId) — one army cannot hold two assignments, and a
+            //     fresh delivery supersedes that same actor's own ReturnBuilder recovery walk;
+            //   · same physical build card — one card cannot fund two sites.
+            // An unrelated build (different site, different builder, different card) is NOT a
+            // conflict and is left exactly as it was. The previous predicate was the inverse of
+            // this test and therefore erased every other Economy intent on every handoff.
+            bool ConflictsWithGrant(MissionIntent i)
+            {
+                if (i == null || i.Kind != MissionKind.Economy) return false;
+                if (i.PreferredMoverArmyId == builderArmyId) return true;
+                if (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder) return false;
+                if (i.IntentKey.Equals(intent.IntentKey)) return true;
+                return objective.BuildCard != null && i.Economy?.BuildCard == objective.BuildCard;
+            }
+            foreach (MissionIntent stale in state.All.Where(ConflictsWithGrant).ToList())
+            {
+                if (object.ReferenceEquals(stale, intent)) continue;
+                // A superseded obligation must not keep holding the shared pool.
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn,
+                    EconomyMissionPlanner.OwnerKey(stale.LastAttemptKey));
                 if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
                     && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
                     ResumeEconomyLender(staleLender);
@@ -191,8 +234,17 @@ namespace Game.Ai.V2
             if (player == null || snap == null || completedDemand?.TargetHex == null)
                 return;
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            MissionIntent economy = state.All.FirstOrDefault(i => i != null
-                && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId == builderArmyId);
+            // 2026-09-21 Block A — with several builds legally active at once, "the first Economy
+            // intent holding this actor" must resolve to the CONCRETE mission that just completed.
+            // Prefer the intent whose own target matches the completed demand; only then fall back
+            // to the actor match, and make that fallback deterministic instead of dictionary-order.
+            List<MissionIntent> actorOwned = state.All.Where(i => i != null
+                && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId == builderArmyId).ToList();
+            MissionIntent economy = actorOwned
+                .OrderByDescending(i => i.Economy != null && completedDemand.TargetHex.HasValue
+                    && i.Economy.TargetHex.Equals(completedDemand.TargetHex.Value) ? 1 : 0)
+                .ThenBy(i => i.IntentKey)
+                .FirstOrDefault();
             MissionIntent lender = null;
             if (economy?.Economy?.Loaned == true)
                 state.TryGet(economy.Economy.LoanSource, out lender);
@@ -301,15 +353,12 @@ namespace Game.Ai.V2
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
             var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
-            MissionIntent primaryEconomyBuild = state.All
-                .Where(i => i?.Kind == MissionKind.Economy && i.Economy != null
-                    && (i.Economy.Kind == EconomyTaskKind.BuildExtraction
-                        || i.Economy.Kind == EconomyTaskKind.FoundBase))
-                .OrderByDescending(i => i.StepsMovedTotal)
-                .ThenByDescending(i => i.CumulativeApSpent)
-                .ThenBy(i => i.CreatedTurn)
-                .ThenBy(i => i.IntentKey)
-                .FirstOrDefault();
+            // 2026-09-21 Block A — there is deliberately NO global "primary" build selection here
+            // any more. ResolveActive validates each build intent on its OWN facts (objective
+            // completed / target still legal / actor still alive / route still usable). Progress on
+            // one site is not evidence that another site's obligation became illegal; real ownership
+            // conflicts (same actor, same objective identity, same physical card) are resolved where
+            // ownership is actually granted — BeginEconomyDelivery — not by retiring bystanders here.
             var liveLoanSources = new HashSet<MissionIntentKey>(state.All
                 .Where(i => i?.Kind == MissionKind.Economy && i.Economy?.Loaned == true)
                 .Select(i => i.Economy.LoanSource));
@@ -377,23 +426,6 @@ namespace Game.Ai.V2
                 if (intent.Kind == MissionKind.Economy)
                 {
                     EconomyIntent ei = intent.Economy;
-                    bool infrastructure = ei?.Kind == EconomyTaskKind.BuildExtraction
-                        || ei?.Kind == EconomyTaskKind.FoundBase;
-                    if (infrastructure
-                        && !object.ReferenceEquals(intent, primaryEconomyBuild))
-                    {
-                        MissionIntent duplicateLender = null;
-                        if (ei?.Loaned == true)
-                            state.TryGet(ei.LoanSource, out duplicateLender);
-                        ResumeEconomyLender(duplicateLender);
-                        StrategicResourceReservationLedger.ReleaseByOwner(player,
-                            snap?.TurnNumber ?? 0,
-                            EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
-                        dead.Add(intent.IntentKey);
-                        AiDebugLog.Write($"[AI][V2][Economy] retire alternative {intent.IntentKey} "
-                            + $"committed={primaryEconomyBuild?.IntentKey}");
-                        continue;
-                    }
                     bool collectorMission = ei?.Kind == EconomyTaskKind.MobileCollection
                         || ei?.Kind == EconomyTaskKind.ReturnCollector;
                     ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
