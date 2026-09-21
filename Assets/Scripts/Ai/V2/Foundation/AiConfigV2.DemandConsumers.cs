@@ -28,8 +28,11 @@ namespace Game.Ai.V2
         public const int economyMaxCollectorDemandsPerTurn = 1;
 
         // StrategicMaintenancePolicy's repair candidate (restored V1 RepairUnit task) — see its
-        // own comment. First-cut weight, not yet calibrated against a played log.
-        public const float repairPowerValueWeight = 1.5f;
+        // own comment. Calibrated 2026-09-21 against AiDebug.log: at 1.5, minor damage (1 HP)
+        // already outranked strong hero PlayMat picks, and severe damage beat every other tempo
+        // candidate in the log by ~5x. Lowered to keep "repair beats replaying a badly damaged
+        // unit" while minor repairs stay competitive rather than automatically dominant.
+        public const float repairPowerValueWeight = 1.0f;
         public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
 
     }
