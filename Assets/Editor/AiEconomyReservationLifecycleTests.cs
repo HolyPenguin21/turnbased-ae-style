@@ -59,8 +59,16 @@ namespace Game.EditorTests
                 "deferred matching treats future completion AP as non-reservable by definition");
         }
 
+        // 2026-09-21 Block B — contract change. This case used to assert that ANY later deferred
+        // request downgrades the owner's completion envelope. That made "is this build protected"
+        // depend on which pass asked last, and (through the global HasReason test it relied on)
+        // let one owner's completion decide another owner's protection. A provisioned completion
+        // envelope is now the stronger stage of the SAME build and survives a repeated deferred
+        // request; it is released by its own owner through the existing Execution/retirement
+        // release path (TaskExecutor.ReleaseEconomyReservation / ReleaseByOwner), not as a side
+        // effect of another pass re-stating the deferred obligation.
         [Test]
-        public void TessekT9_LostSameTurnCompletionDowngradesWithoutLosingMissionResources()
+        public void TessekT9_ProvisionedCompletionSurvivesARepeatedDeferredRequest()
         {
             var player = new PlayerSetupData();
             const int turn = 9;
@@ -70,9 +78,9 @@ namespace Game.EditorTests
                 builderArmyId: 19, target: new HexCoord(3, 2), cost: cost, buildAp: 4f);
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
 
-            // Earlier in the same turn the concrete actor was able to finish, so Provisioning
-            // legitimately protected completion AP. Movement/world state then changed and Phase A
-            // re-admitted the still-durable delivery as deferred work.
+            // Earlier in the same turn the concrete actor was proved able to finish, so
+            // Provisioning legitimately protected completion AP. A re-entrant Phase A pass in the
+            // same turn then re-states the durable delivery's deferred obligation.
             InfrastructureFulfillment.ReserveEconomyCost(
                 player, turn, owner, cost, 4f,
                 StrategicReservationReason.EconomyBuildCompletion);
@@ -83,14 +91,18 @@ namespace Game.EditorTests
                 player, turn, intent);
 
             Assert.That(StrategicResourceReservationLedger.HasOwnerReason(
-                player, turn, owner, StrategicReservationReason.EconomyBuildCompletion), Is.False,
-                "same-owner completion hold must be released immediately when completion is no longer current-turn executable");
+                player, turn, owner, StrategicReservationReason.EconomyBuildCompletion), Is.True,
+                "a provisioned completion envelope is the stronger stage of the same build");
             Assert.That(StrategicResourceReservationLedger.Active(
-                player, turn, StrategicReservedResource.ActionPoints), Is.Zero);
-            Assert.That(StrategicResourceReservationLedger.OwnerReasonMatches(
-                player, turn, owner, StrategicReservationReason.EconomyDeferredBuild,
-                cost, 0f), Is.True,
-                "the durable H/E/M/T obligation survives the AP downgrade");
+                player, turn, StrategicReservedResource.ActionPoints), Is.EqualTo(4f),
+                "the AP the provisioned builder is about to spend must not be dropped");
+            Assert.That(StrategicResourceReservationLedger.HasOwnerReason(
+                player, turn, owner, StrategicReservationReason.EconomyDeferredBuild), Is.False,
+                "and the two stages never double-reserve the same build");
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, turn, StrategicReservedResource.Energy), Is.EqualTo(2f));
+            Assert.That(StrategicResourceReservationLedger.Active(
+                player, turn, StrategicReservedResource.Materials), Is.EqualTo(2f));
         }
 
         [Test]

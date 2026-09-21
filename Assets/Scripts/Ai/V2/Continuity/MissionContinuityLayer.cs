@@ -123,25 +123,30 @@ namespace Game.Ai.V2
                 return existing;
             }
 
-            foreach (MissionIntent stale in state.All.Where(i => i != null
-                         && i.Kind == MissionKind.Economy
-                         && (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder
-                             // The same actor cannot hold both a recovery walk and this fresh
-                             // delivery handoff — the new assignment supersedes its own recovery.
-                             // A ReturnBuilder belonging to a DIFFERENT actor is untouched.
-                             ? i.PreferredMoverArmyId == builderArmyId
-                             // Only two real conflicts remain once the reentry case above has
-                             // already returned: something else already claims this EXACT
-                             // objective (a takeover by a different actor), or this SAME actor
-                             // is being redirected away from a different objective it currently
-                             // owns. Any OTHER active Economy intent — a different target run by
-                             // a different actor — is an independent delivery and must survive
-                             // this handoff untouched (see P0-3, AI V2 economy audit 2026-09-21:
-                             // the old `!i.IntentKey.Equals(...) || i.PreferredMoverArmyId != ...`
-                             // condition was true for almost every unrelated intent, so creating
-                             // any one new delivery silently deleted every other one in flight).
-                             : (i.IntentKey.Equals(intent.IntentKey)
-                                 || i.PreferredMoverArmyId == builderArmyId))).ToList())
+            // P0-3 (AI V2 economy audit 2026-09-21) + 2026-09-21 Block A — this is the ONE place
+            // Economy ownership is granted, so it is the one place that resolves ownership
+            // CONFLICTS. Once the reentry case above has returned, a pre-existing Economy intent is
+            // superseded only when it actually collides with the new grant:
+            //   · same actor (PreferredMoverArmyId) — one army cannot hold two assignments, and a
+            //     fresh delivery supersedes that same actor's own ReturnBuilder recovery walk (a
+            //     ReturnBuilder belonging to a DIFFERENT actor is untouched);
+            //   · same objective identity (IntentKey) — a takeover of this exact objective;
+            //   · same physical build card — one card cannot fund two sites at once.
+            // Any OTHER active Economy intent — a different target run by a different actor with a
+            // different card — is an independent delivery and survives this handoff untouched. The
+            // original predicate here was the logical INVERSE of this test
+            // (`!i.IntentKey.Equals(...) || i.PreferredMoverArmyId != ...`), so it was true for
+            // almost every unrelated intent and creating any one new delivery silently deleted
+            // every other one in flight.
+            bool ConflictsWithGrant(MissionIntent i)
+            {
+                if (i == null || i.Kind != MissionKind.Economy) return false;
+                if (i.PreferredMoverArmyId == builderArmyId) return true;
+                if (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder) return false;
+                if (i.IntentKey.Equals(intent.IntentKey)) return true;
+                return objective.BuildCard != null && i.Economy?.BuildCard == objective.BuildCard;
+            }
+            foreach (MissionIntent stale in state.All.Where(ConflictsWithGrant).ToList())
             {
                 if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
                     && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
@@ -222,8 +227,17 @@ namespace Game.Ai.V2
             if (player == null || snap == null || completedDemand?.TargetHex == null)
                 return;
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            MissionIntent economy = state.All.FirstOrDefault(i => i != null
-                && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId == builderArmyId);
+            // 2026-09-21 Block A — with several builds legally active at once, "the first Economy
+            // intent holding this actor" must resolve to the CONCRETE mission that just completed.
+            // Prefer the intent whose own target matches the completed demand; only then fall back
+            // to the actor match, and make that fallback deterministic instead of dictionary-order.
+            List<MissionIntent> actorOwned = state.All.Where(i => i != null
+                && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId == builderArmyId).ToList();
+            MissionIntent economy = actorOwned
+                .OrderByDescending(i => i.Economy != null && completedDemand.TargetHex.HasValue
+                    && i.Economy.TargetHex.Equals(completedDemand.TargetHex.Value) ? 1 : 0)
+                .ThenBy(i => i.IntentKey)
+                .FirstOrDefault();
             MissionIntent lender = null;
             if (economy?.Economy?.Loaned == true)
                 state.TryGet(economy.Economy.LoanSource, out lender);
@@ -332,15 +346,12 @@ namespace Game.Ai.V2
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
             var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
-            MissionIntent primaryEconomyBuild = state.All
-                .Where(i => i?.Kind == MissionKind.Economy && i.Economy != null
-                    && (i.Economy.Kind == EconomyTaskKind.BuildExtraction
-                        || i.Economy.Kind == EconomyTaskKind.FoundBase))
-                .OrderByDescending(i => i.StepsMovedTotal)
-                .ThenByDescending(i => i.CumulativeApSpent)
-                .ThenBy(i => i.CreatedTurn)
-                .ThenBy(i => i.IntentKey)
-                .FirstOrDefault();
+            // 2026-09-21 Block A — there is deliberately NO global "primary" build selection here
+            // any more. ResolveActive validates each build intent on its OWN facts (objective
+            // completed / target still legal / actor still alive / route still usable). Progress on
+            // one site is not evidence that another site's obligation became illegal; real ownership
+            // conflicts (same actor, same objective identity, same physical card) are resolved where
+            // ownership is actually granted — BeginEconomyDelivery — not by retiring bystanders here.
             var liveLoanSources = new HashSet<MissionIntentKey>(state.All
                 .Where(i => i?.Kind == MissionKind.Economy && i.Economy?.Loaned == true)
                 .Select(i => i.Economy.LoanSource));
@@ -351,6 +362,28 @@ namespace Game.Ai.V2
                 orphanedDonor.Status = IntentStatus.Active;
                 orphanedDonor.Suspended = SuspendReason.None;
                 AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
+            }
+
+            // 2026-09-21 Block C5 — the same orphan repair for the Raid an ActiveDefence borrowed.
+            // Every ordinary ActiveDefence exit resumes its lender explicitly, but if the defending
+            // intent is gone without one of those exits having run (retired on another path, or its
+            // record dropped), the Raid would stay ActiveDefencePreemption-suspended forever while
+            // its army is free. Repair reuses the SAME suspend/resume state machine; it never
+            // resumes a Raid that a LIVE defence still borrows, so a raid can never be resumed
+            // twice into an active defence.
+            var liveBorrowedRaids = new HashSet<MissionIntentKey>(state.All
+                .Where(i => i?.Kind == MissionKind.ActiveDefence
+                    && i.ActiveDefence?.SuspendedRaidIntentKey.HasValue == true)
+                .Select(i => i.ActiveDefence.SuspendedRaidIntentKey.Value));
+            foreach (MissionIntent orphanedRaid in state.All.Where(i => i != null
+                && i.Kind == MissionKind.Raid && i.Status == IntentStatus.Suspended
+                && i.Suspended == SuspendReason.ActiveDefencePreemption
+                && !liveBorrowedRaids.Contains(i.IntentKey)))
+            {
+                orphanedRaid.Status = IntentStatus.Active;
+                orphanedRaid.Suspended = SuspendReason.None;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME "
+                    + $"raid={orphanedRaid.IntentKey} reason=orphan_repair");
             }
 
             // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
@@ -408,23 +441,6 @@ namespace Game.Ai.V2
                 if (intent.Kind == MissionKind.Economy)
                 {
                     EconomyIntent ei = intent.Economy;
-                    bool infrastructure = ei?.Kind == EconomyTaskKind.BuildExtraction
-                        || ei?.Kind == EconomyTaskKind.FoundBase;
-                    if (infrastructure
-                        && !object.ReferenceEquals(intent, primaryEconomyBuild))
-                    {
-                        MissionIntent duplicateLender = null;
-                        if (ei?.Loaned == true)
-                            state.TryGet(ei.LoanSource, out duplicateLender);
-                        ResumeEconomyLender(duplicateLender);
-                        StrategicResourceReservationLedger.ReleaseByOwner(player,
-                            snap?.TurnNumber ?? 0,
-                            EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
-                        dead.Add(intent.IntentKey);
-                        AiDebugLog.Write($"[AI][V2][Economy] retire alternative {intent.IntentKey} "
-                            + $"committed={primaryEconomyBuild?.IntentKey}");
-                        continue;
-                    }
                     bool collectorMission = ei?.Kind == EconomyTaskKind.MobileCollection
                         || ei?.Kind == EconomyTaskKind.ReturnCollector;
                     ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
@@ -618,10 +634,13 @@ namespace Game.Ai.V2
                     }
                     if (defence == null || actor == null || ShouldReap(intent))
                     {
+                        // Resume ONLY a raid this defence actually preempted: a raid suspended for
+                        // another reason (Siege, pool exhaustion) is not this mission's to revive.
                         if (defence?.SuspendedRaidIntentKey.HasValue == true
                             && state.TryGet(defence.SuspendedRaidIntentKey.Value,
                                 out MissionIntent suspendedRaid)
-                            && suspendedRaid?.Raid != null)
+                            && suspendedRaid?.Raid != null
+                            && suspendedRaid.Suspended == SuspendReason.ActiveDefencePreemption)
                         {
                             suspendedRaid.Status = IntentStatus.Active;
                             suspendedRaid.Suspended = SuspendReason.None;
@@ -688,7 +707,8 @@ namespace Game.Ai.V2
                         if (defence.SuspendedRaidIntentKey.HasValue
                             && state.TryGet(defence.SuspendedRaidIntentKey.Value,
                                 out MissionIntent suspendedRaid)
-                            && suspendedRaid?.Raid != null)
+                            && suspendedRaid?.Raid != null
+                            && suspendedRaid.Suspended == SuspendReason.ActiveDefencePreemption)
                         {
                             suspendedRaid.Status = IntentStatus.Active;
                             suspendedRaid.Suspended = SuspendReason.None;

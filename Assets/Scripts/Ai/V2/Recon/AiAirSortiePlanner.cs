@@ -817,7 +817,13 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            HexCoord destination;
+            // 2026-09-21 — definite assignment. The Rebase branch below assigns `destination`
+            // either inside the exact-continuation case or inside the `!exactRebaseReady` replan
+            // (both of whose sub-branches assign or return), but the compiler cannot correlate the
+            // two `exactRebaseReady` tests, so the bare declaration left this method unbuildable
+            // (CS0165) after the multi-turn rebase work. Seed it with the task's current target —
+            // every reachable path still overwrites it before use, so behaviour is unchanged.
+            HexCoord destination = task.TargetHex;
             if (task.Outbound)
             {
                 Sortie? sortie = TryPlanSortiePreferForwardLanding(task.Army, task.TargetHex, ctx.Map, player);

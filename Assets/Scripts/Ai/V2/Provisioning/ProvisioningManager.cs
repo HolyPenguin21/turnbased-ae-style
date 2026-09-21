@@ -2525,6 +2525,20 @@ namespace Game.Ai.V2
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders = sighting.Value.Defenders
                 ?? Array.Empty<WorthIt.DefenderProfile>();
+            // 2026-09-21 Block C2 — re-checking an admitted mission must re-apply the SAME
+            // admission threshold it was legitimately admitted under, otherwise Missions accepts a
+            // continuation at ContinuationWinChanceFloor, the allocator funds it, and Provisioning
+            // then rejects the identical facts at FreshStartWinChanceGate every single turn.
+            // GroundCombatAdmissionPolicy stays the sole owner of both numbers; this only selects
+            // between them with the same predicate Missions and GroundCombatAdmissionRegistry use
+            // (`FromDurableIntent`), additionally confirming that the actor actually bound here is
+            // the pinned incumbent — a different actor is a fresh intercept and keeps the fresh gate.
+            MissionIntent interceptIncumbent = MissionIntentRegistry.GetOrCreate(player).All
+                .FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
+                    && i.Kind == MissionKind.ActiveDefence
+                    && i.ActiveDefence?.EnemyArmyId == target.EnemyArmyId);
+            bool continuesPinnedIntercept = mission.FromDurableIntent
+                && interceptIncumbent?.ActiveDefence?.PrimaryArmyId == actorId;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
@@ -2532,7 +2546,9 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = continuesPinnedIntercept
+                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 });
             if (!plan.Feasible)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(

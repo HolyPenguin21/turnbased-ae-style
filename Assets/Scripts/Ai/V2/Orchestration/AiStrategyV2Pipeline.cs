@@ -614,11 +614,15 @@ namespace Game.Ai.V2
             List<AggressionObjective> aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
                 ? AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport)
                 : new List<AggressionObjective>();
-            // 3e. Development opportunities — EV-scored upgrade options from the shared
-            //     snapshot.Development readiness. Consumed by DemandLayer (step 4) + Phase A (step 5).
-            List<DevelopmentOpportunity> devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                ? DevelopmentOpportunityEvaluator.Enumerate(snapshot, player, root, hand, aggressionObjectives)
-                : new List<DevelopmentOpportunity>();
+            // 3e. 2026-09-21 Block D — Development opportunities are NO LONGER enumerated here.
+            //     Enumerate/BestEquipmentOpportunity keeps only ONE recipient per offering, so
+            //     picking that recipient before any demand or durable intent exists silently threw
+            //     away every other legal recipient: DemandLayer.Development then re-checked the
+            //     surviving recipient against the real need, found none, and dropped the whole
+            //     opportunity — although another recipient DID close a real need. Selection now
+            //     happens in DemandLayer.Development, the one place that holds the current
+            //     supported-need context, using the supportsNeed predicate Enumerate already takes.
+            //     (This also removes four hand-rolled copies of that predicate from this file.)
 
             foreach (AggressionObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
@@ -651,7 +655,7 @@ namespace Game.Ai.V2
             var scopedDemandAxes = new HashSet<DesireAxis>(AiStrategyV2Scope.AxesInScope);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                devOpportunities, scopedDemandAxes);
+                null, scopedDemandAxes);
             demands = AiStrategyV2Scope.ApplyDemandScope(demands);
 
             // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
@@ -694,21 +698,11 @@ namespace Game.Ai.V2
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
                 // full Generate call.
-                // activeIntents is fresh above and `demands` still holds the prior pass's list
-                // (reassigned only below) — real, if one-cycle-stale, demand/intent context exists
-                // here, unlike the very first Enumerate call (3e) before any intent is resolved.
-                // Gate recipient selection on the SAME proven-need predicate DemandLayer.Development
-                // re-checks at emission time, so an unsupported-but-stronger recipient cannot beat
-                // an actually-needed one inside Enumerate's own best-of comparison.
-                devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                    ? DevelopmentOpportunityEvaluator.Enumerate(
-                        snapshot, player, root, hand, aggressionObjectives, op =>
-                            op != null && op.ExpectedGain > 0f && DemandLayer
-                                .HasSupportedDevelopmentAxisDemand(op, demands, activeIntents, player, snapshot))
-                    : new List<DevelopmentOpportunity>();
+                // Block D — this call regenerates every axis in scope, so DemandLayer.Development
+                // builds its own opportunities against this pass's complete need context.
                 demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
-                    player, ctx, root, devOpportunities, scopedDemandAxes);
+                    player, ctx, root, null, scopedDemandAxes);
                 demands = AiStrategyV2Scope.ApplyDemandScope(demands);
             }
 
@@ -890,16 +884,16 @@ namespace Game.Ai.V2
                     activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
-                    if (RefreshDevelopmentOpportunities(dirtyAxes)
-                        && AiStrategyV2Scope.AxisInScope(DesireAxis.Development))
-                        devOpportunities = DevelopmentOpportunityEvaluator.Enumerate(
-                            snapshot, player, root, hand, aggressionObjectives, op =>
-                                op != null && op.ExpectedGain > 0f && DemandLayer
-                                    .HasSupportedDevelopmentAxisDemand(op, demands, activeIntents, player, snapshot));
+                    // Block D — a PARTIAL re-evaluation does not regenerate the other axes, but
+                    // their demands from the carrying pass are still valid need evidence. Hand
+                    // them to DemandLayer as carried context so Development's recipient selection
+                    // sees the same facts a full pass would, instead of an empty demand frame.
+                    List<AxisDemand> carriedForDevelopment = demands.Where(d => d != null
+                        && !dirtyAxes.Contains(d.RequestingAxis)).ToList();
                     List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
-                        actorCommitments, player, ctx, root, devOpportunities,
-                        dirtyAxes);
+                        actorCommitments, player, ctx, root, null,
+                        dirtyAxes, carriedForDevelopment);
                     regenerated = AiStrategyV2Scope.ApplyDemandScope(regenerated);
                     List<AxisDemand> dirtyDemands = regenerated;
                     demands = demands.Where(d => d != null
@@ -1513,16 +1507,10 @@ namespace Game.Ai.V2
                     activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
-                    devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                        ? DevelopmentOpportunityEvaluator.Enumerate(
-                            snapshot, player, root, hand, aggressionObjectives, op =>
-                                op != null && op.ExpectedGain > 0f && DemandLayer
-                                    .HasSupportedDevelopmentAxisDemand(op, demands, activeIntents, player, snapshot))
-                        : new List<DevelopmentOpportunity>();
                     List<AxisDemand> coldDemands = AiStrategyV2Scope.ApplyDemandScope(
                         DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
-                            actorCommitments, player, ctx, root, devOpportunities, scopedDemandAxes))
+                            actorCommitments, player, ctx, root, null, scopedDemandAxes))
                         .Where(d => d != null && coldAxes.Contains(d.RequestingAxis)).ToList();
                     if (coldDemands.Count > 0)
                     {
@@ -1563,16 +1551,10 @@ namespace Game.Ai.V2
                             activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                             actorCommitments = ActorCommitments.FromIntents(
                                 activeIntents, snapshot, reconObjectives);
-                            devOpportunities = AiStrategyV2Scope.AxisInScope(DesireAxis.Development)
-                                ? DevelopmentOpportunityEvaluator.Enumerate(
-                                    snapshot, player, root, hand, aggressionObjectives, op =>
-                                        op != null && op.ExpectedGain > 0f && DemandLayer
-                                            .HasSupportedDevelopmentAxisDemand(op, demands, activeIntents, player, snapshot))
-                                : new List<DevelopmentOpportunity>();
                             demands = AiStrategyV2Scope.ApplyDemandScope(DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
                                 aggressionObjectives, activeIntents, actorCommitments,
-                                player, ctx, root, devOpportunities, scopedDemandAxes));
+                                player, ctx, root, null, scopedDemandAxes));
                             ownershipFreshAfterPhaseA = true;
                             yield return RunTypedAdmissions();
                         }

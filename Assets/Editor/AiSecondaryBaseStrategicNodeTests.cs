@@ -144,7 +144,7 @@ namespace Game.EditorTests
             EnemyContactSnapshot honest = Contact(20, 12f);
             honest.PhysicalArmyId = 20;
             EnemyContactSnapshot hidden = Contact(-1, 12f);
-            hidden.Source = ContactSource.CheatRegional;
+            hidden.Source = ContactSource.Cheat;
             hidden.PhysicalArmyId = 20;
 
             float reserve = StrategyLayer.DefensiveReserveForThreats(new[]
@@ -281,7 +281,7 @@ namespace Game.EditorTests
             HashSet<HexCoord> blocked = SafeStepPathing.KnownForeignStructureHexes(owner, known);
 
             Assert.That(blocked, Does.Contain(hostileHex));
-            Assert.That(blocked, Does.Not.Contain(ownHex));
+            Assert.That(blocked, Has.No.Member(ownHex));
             Assert.That(new AiDecision().AllowHostileStructureCapture, Is.False);
         }
 
@@ -598,7 +598,7 @@ namespace Game.EditorTests
 
                 building.Owner = newOwner;
                 Assert.That(WorldAnalysis.OwnedBaseHexes(new[] { building }, oldOwner, null), Is.Empty);
-                Assert.That(AiAirSortiePlanner.OwnedAirfieldHexes(oldOwner), Does.Not.Contain(hex));
+                Assert.That(AiAirSortiePlanner.OwnedAirfieldHexes(oldOwner), Has.No.Member(hex));
                 Assert.That(WorldAnalysis.OwnedBaseHexes(new[] { building }, newOwner, null),
                     Does.Contain(hex));
                 Assert.That(AiAirSortiePlanner.OwnedAirfieldHexes(newOwner), Does.Contain(hex));
