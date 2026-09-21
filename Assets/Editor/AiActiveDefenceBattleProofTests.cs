@@ -48,10 +48,12 @@ namespace Game.EditorTests
             var other = new ArmyData();
             var target = new ArmyData();
             var thirdParty = new ArmyData();
-            var trace = new AiMoveExecutionTrace();
-            trace.RecordResolvedEncounter(mover.Id, mover, other);
-            trace.RecordResolvedEncounter(thirdParty.Id, thirdParty, target);
-            Assert.That(trace.WasDestroyedInOwnBattle(target.Id), Is.False);
+            var ourTrace = new AiMoveExecutionTrace();
+            var otherTrace = new AiMoveExecutionTrace();
+            ourTrace.RecordResolvedEncounter(mover.Id, mover, other);
+            otherTrace.RecordResolvedEncounter(thirdParty.Id, thirdParty, target);
+            Assert.That(otherTrace.WasDestroyedInOwnBattle(target.Id), Is.True);
+            Assert.That(ourTrace.WasDestroyedInOwnBattle(target.Id), Is.False);
         }
 
         [Test]
@@ -78,3 +80,4 @@ namespace Game.EditorTests
         }
     }
 }
+#endif
