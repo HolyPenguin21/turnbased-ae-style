@@ -250,13 +250,10 @@ namespace Game.Ai.V2
                 ? AiConfigV2.scoutStepDeadEndFactor
                 : 1f;
 
-            // §13 / §20 — a foreign undefended Facility/Base directly on this adjacent step is a
-            // local opportunity: add a flat bonus so a scout ALREADY next to it bends on. This is
-            // deliberately only in the immediate step, never in Lookahead, so it can never pull a
-            // scout across the map toward a distant structure.
-            float buildingBonus = ReconReactionPolicy.IsUndefendedForeignStructureAt(player, h)
-                ? AiConfigV2.scoutStepUndefendedBuildingBonus
-                : 0f;
+            // Territorial capture has no Recon owner. Known foreign structures are filtered by
+            // ScoutExecutionSafety; the zero component keeps PurposefulStepScore's existing
+            // canonical shape without granting conquest utility to information work.
+            const float buildingBonus = 0f;
 
             // Spec §4 — soft outward-distance penalty. An Explore step that increases distance from
             // the nearest Citadel/base beyond the local ring is shaved while nearby unexplored
