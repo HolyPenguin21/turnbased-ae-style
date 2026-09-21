@@ -1,0 +1,28 @@
+name: Apply AI V2 completion reservation correction once
+on:
+  push:
+    branches:
+      - fix/ai-v2-post89-correctness
+    paths:
+      - .github/workflows/ai-v2-completion-once.yml
+permissions:
+  contents: write
+jobs:
+  apply-verified-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch current source and validate exact anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/ai-v2-completion-apply-once.py
+          python3 .github/ai-v2-completion-apply-once.py
+          git rm -- .github/ai-v2-completion-apply-once.py .github/workflows/ai-v2-completion-once.yml
+          git add -- Assets/Scripts/Ai/V2/State/StrategicResourceReservation.cs Assets/Scripts/Ai/V2/Strategy/Demand/InfrastructureFulfillment.cs Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs Assets/Editor/AiEconomyReservationLifecycleTests.cs
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): reconcile completion AP per builder after steps and before Phase B'
+          git push origin HEAD:fix/ai-v2-post89-correctness
