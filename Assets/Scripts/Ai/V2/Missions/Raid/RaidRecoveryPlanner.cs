@@ -231,6 +231,12 @@ namespace Game.Ai.V2
 
                 float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
                 float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
+                // The second strike is a SEPARATE turn's activation (ArmyData.ActivationEnergyCost
+                // is charged per activation, same rule as ActivationApCost) — its own fresh launch
+                // energy is real and must be priced too, not just the recurring AP fee Delivery
+                // already covers.
+                if (finalEta > eta)
+                    energy += wing.ActivationEnergyCost;
                 ResourceVector resources = new ResourceVector(0f, 0f, energy, 0f, 0f);
                 TaskScore score = PlanScore(finalAfter, 0f, ap, resources, finalEta,
                     wing.ActivationApCost, 2);
