@@ -69,6 +69,8 @@ namespace Game.Ai.V2
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
         public ResourceVector RaidResourcesSpent;
+        public bool HasActiveDefencePayload;
+        public ActiveDefenceMissionTarget ActiveDefenceTarget;
         public bool HasEconomyPayload;
         public EconomyMissionTarget EconomyTarget;
         public bool HasDevelopmentPayload;
@@ -187,6 +189,23 @@ namespace Game.Ai.V2
                         && ResearchProductionSystem.IsEligible(player,
                             pm.DevelopmentTarget.FacilityHex, pm.DevelopmentTarget.Mode, out _);
                 }
+                else if (pm.Kind == MissionKind.ActiveDefence)
+                {
+                    if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return)
+                    {
+                        ArmyData actor = ArmyRegistry.AllForOwner(player)
+                            .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                        satisfied = actor != null && pm.ActiveDefenceTarget.ReturnHex.HasValue
+                            && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
+                    }
+                    else
+                    {
+                        int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
+                        satisfied = !ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
+                            .Any(a => a != null && a.Id == enemyId && a.Owner != null
+                                && a.Owner != player && !a.Owner.IsNeutral);
+                    }
+                }
                 else if (pm.ScoutKind == ScoutTargetKind.Surveil)
                 {
                     satisfied = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
@@ -243,6 +262,11 @@ namespace Game.Ai.V2
                         o.RaidAirSupportArmyId = r.Provisioned.RaidAirSupportArmyId;
                         o.RaidAirSupportLandingHex = r.Provisioned.RaidAirSupportLandingHex;
                         o.RaidRefitAction = r.Provisioned.RaidRefitAction;
+                    }
+                    else if (r.Provisioned.Kind == MissionKind.ActiveDefence)
+                    {
+                        o.HasActiveDefencePayload = true;
+                        o.ActiveDefenceTarget = r.Provisioned.ActiveDefenceTarget;
                     }
                     else if (r.Provisioned.Kind == MissionKind.Economy)
                     {

@@ -26,7 +26,8 @@ namespace Game.Ai.V2
             switch (mission.Kind)
             {
                 case MissionKind.Scout: return ExecutionLane.Recon;
-                case MissionKind.Raid: return ExecutionLane.Aggression;
+                case MissionKind.Raid:
+                case MissionKind.ActiveDefence: return ExecutionLane.Aggression;
                 case MissionKind.Economy: return ExecutionLane.Economy;
                 case MissionKind.Development: return ExecutionLane.Development;
                 default: return ExecutionLane.None;

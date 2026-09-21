@@ -334,6 +334,19 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            if (pm.Kind == MissionKind.ActiveDefence)
+            {
+                if (singleStepOnly)
+                    yield return RunActiveDefenceStep(player, root, ctx, pm, result, apBefore);
+                else
+                    yield return RunActiveDefence(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
             if (pm.Kind == MissionKind.Economy)
             {
                 yield return RunEconomyStep(player, root, ctx, pm, result, apBefore);
@@ -474,6 +487,174 @@ namespace Game.Ai.V2
             }
 
             FinishRaid(player, root, pm, result, apBefore, stop);
+        }
+
+        private static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            ArmyData initial = Resolve(player, pm.MoverArmyId);
+            int limit = (initial?.CurrentMovement ?? 0) + 1;
+            for (int i = 0; i < limit; ++i)
+            {
+                yield return RunActiveDefenceStepCore(player, ctx, pm, result);
+                if (result.StopReason != ExecutionStopReason.StepCompleted) break;
+            }
+            FinishActiveDefence(player, root, pm, result, apBefore);
+        }
+
+        private static IEnumerator RunActiveDefenceStep(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            yield return RunActiveDefenceStepCore(player, ctx, pm, result);
+            FinishActiveDefence(player, root, pm, result, apBefore);
+        }
+
+        private static IEnumerator RunActiveDefenceStepCore(PlayerSetupData player,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result)
+        {
+            ArmyData army = Resolve(player, pm.MoverArmyId);
+            if (army == null || army.Owner != player)
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            if (ctx?.Map == null || ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
+            {
+                result.StopReason = ctx?.Map == null
+                    ? ExecutionStopReason.TargetInvalidated : ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+
+            if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return)
+            {
+                if (!pm.ActiveDefenceTarget.ReturnHex.HasValue)
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+                HexCoord home = pm.ActiveDefenceTarget.ReturnHex.Value;
+                if (army.Hex.Equals(home))
+                {
+                    result.ReachedGoal = true;
+                    result.StopReason = ExecutionStopReason.ReachedGoal;
+                    yield break;
+                }
+                if (army.CurrentMovement <= 0)
+                {
+                    result.StopReason = ExecutionStopReason.OutOfMovement;
+                    yield break;
+                }
+                HexCoord? returnStep = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
+                if (!returnStep.HasValue)
+                {
+                    result.StopReason = ExecutionStopReason.NoSafeStep;
+                    result.NeedsReplan = true;
+                    yield break;
+                }
+                HexCoord returnBefore = army.Hex;
+                var returnTrace = new AiMoveExecutionTrace();
+                yield return AiTurnController.MoveArmyRoutine(player,
+                    AiDecision.Move(army, returnStep.Value, "V2 active defence — return", 0f),
+                    ctx, returnTrace);
+                army = Resolve(player, pm.MoverArmyId);
+                HexCoord returnAfter = army != null ? army.Hex : returnTrace.EndHex;
+                bool returnMoved = !returnAfter.Equals(returnBefore);
+                if (returnMoved) result.StepsMoved++;
+                result.FinalHex = returnAfter;
+                result.ActualActorArmyId = pm.MoverArmyId;
+                if (army != null && army.Hex.Equals(home))
+                {
+                    result.ReachedGoal = true;
+                    result.StopReason = ExecutionStopReason.ReachedGoal;
+                }
+                else if (returnTrace.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
+                else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
+                else if (!returnMoved) result.StopReason = ExecutionStopReason.MoveRejected;
+                else result.StopReason = army.CurrentMovement > 0
+                    ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
+                yield break;
+            }
+
+            int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
+            ArmyData enemy = ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
+                .FirstOrDefault(a => a != null && a.Id == enemyId && a.Owner != null
+                    && a.Owner != player && !a.Owner.IsNeutral);
+            if (enemy == null)
+            {
+                result.ReachedGoal = true;
+                result.StopReason = ExecutionStopReason.ReachedGoal;
+                yield break;
+            }
+            AiMapMemory.KnownEnemySighting? witness = AiMapMemory.AllKnownEnemySightings(player)
+                .Where(s => s.ArmyId == enemyId && s.Owner != null && s.Owner != player
+                    && !s.Owner.IsNeutral)
+                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            if (!witness.HasValue)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                result.NeedsReplan = true;
+                yield break;
+            }
+            HexCoord targetHex = witness.Value.Hex;
+            pm.ExecutionHex = targetHex;
+            pm.ActiveDefenceTarget.LastKnownHex = targetHex;
+            pm.ActiveDefenceTarget.LastObservedTurn = witness.Value.SeenTurn;
+            if (army.Hex.Equals(targetHex))
+            {
+                result.StopReason = ExecutionStopReason.EnemyDiscovered;
+                yield break;
+            }
+            if (army.CurrentMovement <= 0)
+            {
+                result.StopReason = ExecutionStopReason.OutOfMovement;
+                yield break;
+            }
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex);
+            if (!next.HasValue)
+            {
+                result.StopReason = ExecutionStopReason.NoSafeStep;
+                result.NeedsReplan = true;
+                yield break;
+            }
+
+            HexCoord before = army.Hex;
+            var trace = new AiMoveExecutionTrace();
+            yield return AiTurnController.MoveArmyRoutine(player,
+                AiDecision.Move(army, next.Value,
+                    $"V2 active defence — intercept enemy #{enemyId}", 0f), ctx, trace);
+            army = Resolve(player, pm.MoverArmyId);
+            HexCoord after = army != null ? army.Hex : trace.EndHex;
+            bool moved = !after.Equals(before);
+            if (moved) result.StepsMoved++;
+            result.FinalHex = after;
+            result.ActualActorArmyId = pm.MoverArmyId;
+            result.CombatChanged |= trace.BattleOccurred;
+
+            ArmyData survivingTarget = ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
+                .FirstOrDefault(a => a != null && a.Id == enemyId && a.Owner != null
+                    && a.Owner != player && !a.Owner.IsNeutral);
+            if (survivingTarget == null)
+            {
+                result.ReachedGoal = true;
+                result.StopReason = ExecutionStopReason.ReachedGoal;
+            }
+            else if (trace.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
+            else if (trace.HexEventOccurred) result.StopReason = ExecutionStopReason.HexEventStarted;
+            else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
+            else if (!moved) result.StopReason = ExecutionStopReason.MoveRejected;
+            else result.StopReason = army.CurrentMovement > 0
+                ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
+        }
+
+        private static void FinishActiveDefence(PlayerSetupData player, PlayerRoot root,
+            ProvisionedMission pm, ExecutionResult result, int apBefore)
+        {
+            result.FinalHex = Resolve(player, pm?.MoverArmyId ?? -1)?.Hex ?? result.FinalHex;
+            result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Execution] enemy={pm?.ActiveDefenceTarget.EnemyArmyId} "
+                + $"actor={pm?.MoverArmyId} steps={result.StepsMoved} stop={result.StopReason}");
         }
 
         // One admitted Raid task step. It executes at most one adjacent MoveArmyRoutine command.

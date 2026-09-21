@@ -8,7 +8,7 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    public enum AggressionObjectiveKind { Raid }
+    public enum AggressionObjectiveKind { Raid, ActiveDefence }
 
     public enum RaidMissionPhase
     {

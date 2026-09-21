@@ -57,14 +57,12 @@ namespace Game.Ai.V2
         //   Radii reuse the V1 AiConfig constants at the call site (threatReactionRadius,
         //   makeshiftScoutMinMembers) so the two never silently diverge on the numbers.
 
-        // Severity = confidence * clamp01( wWin*AttackWinChance + wDmg*potentialDamageFrac
-        //                                  + wEta*etaUrgency + wCanDmg*(canDamage?1:0)
-        //                                  - wResp*responseHeadstart ).
+        // Severity is a property of the hostile pressure itself. ResponseEta is diagnostic only:
+        // the nearest arrival is not proof that the arriving roster can actually win the fight.
         public const float severityWinChanceWeight = 0.35f;
         public const float severityDamageWeight = 0.25f;
         public const float severityEtaWeight = 0.25f;
         public const float severityCanDamageWeight = 0.15f;
-        public const float severityResponseHeadstartWeight = 0.25f;
         // Only pairs above this land in ThreatModel.Threats at all — keeps the list to real
         // Enemy->Asset pressure instead of every contact against every asset.
         public const float severityListingCutoff = 0.08f;

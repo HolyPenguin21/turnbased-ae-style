@@ -95,7 +95,8 @@ namespace Game.Ai.V2
             switch (kind)
             {
                 case MissionKind.Scout: return DesireAxis.Recon;
-                case MissionKind.Raid: return DesireAxis.Aggression;
+                case MissionKind.Raid:
+                case MissionKind.ActiveDefence: return DesireAxis.Aggression;
                 case MissionKind.Economy: return DesireAxis.Economy;
                 default: return DesireAxis.Development;
             }

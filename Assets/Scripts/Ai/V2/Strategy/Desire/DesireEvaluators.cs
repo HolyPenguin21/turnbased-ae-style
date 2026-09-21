@@ -78,6 +78,7 @@ namespace Game.Ai.V2
         public float ReconRefreshPressure;
 
         public float AggRaidOpportunity;
+        public float AggActiveDefencePressure;
         public float AggWarPressure;
         public float AggOpportunity;
         public float AggSurplus;
@@ -232,12 +233,23 @@ namespace Game.Ai.V2
 
             bool hasKnownCombatTarget = opp.NeutralOpportunities != null
                 && opp.NeutralOpportunities.Count > 0;
-            float rawAggression = hasKnownCombatTarget
+            float offensivePressure = hasKnownCombatTarget
                 ? Mathf.Clamp01(Mathf.Max(raidOpportunity, warPressure))
                     * (underSiege ? AiConfigV2.aggSiegeDamp : 1f)
                 : 0f;
+            float activeDefencePressure = snapshot.Threat?.Threats?
+                .Where(t => t?.Contact?.Army != null
+                    && t.Contact.Army.ArmyId >= 0
+                    && t.Contact.Source == ContactSource.Honest
+                    && t.Contact.Position.HasValue
+                    && t.Contact.Army.Owner != null
+                    && !t.Contact.Army.Owner.IsNeutral)
+                .Select(t => t.Severity).DefaultIfEmpty(0f).Max() ?? 0f;
+            float rawAggression = Mathf.Clamp01(Mathf.Max(offensivePressure,
+                activeDefencePressure));
 
             breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
+            breakdown.AggActiveDefencePressure = Mathf.Clamp01(activeDefencePressure);
             breakdown.AggWarPressure = Mathf.Clamp01(warPressure);
             breakdown.AggOpportunity = opportunity;
             breakdown.AggSurplus = surplus;
@@ -646,7 +658,8 @@ namespace Game.Ai.V2
                 + $"survRaw {F(b.ReconSurveillance)} refreshP {F(b.ReconRefreshPressure)} "
                 + $"blind {F(b.ReconEnemyBlindness)})");
             AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
-                + $"= max(raid {F(b.AggRaidOpportunity)}, war {F(b.AggWarPressure)}) "
+                + $"= max(offence=max(raid {F(b.AggRaidOpportunity)}, war {F(b.AggWarPressure)})*siegeDamp, "
+                + $"activeDefence {F(b.AggActiveDefencePressure)}) "
                 + $"[opp {F(b.AggOpportunity)} surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)} "
                 + $"sat {F(b.AggPotentialSaturation)} mom {F(b.AggMomentum)}]");
             AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)} "

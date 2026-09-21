@@ -144,6 +144,10 @@ namespace Game.Ai.V2
             }
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
                 return ForRaid(rt);
+            if (m != null && m.Kind == MissionKind.ActiveDefence
+                && m.Target is ActiveDefenceMissionTarget ad)
+                return new StableMissionKey(MissionKind.ActiveDefence, (int)ad.Phase,
+                    ad.EnemyArmyId, 0, 0);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
@@ -185,6 +189,8 @@ namespace Game.Ai.V2
                     ? (SubKind == (int)RaidMissionPhase.Assault
                         ? (TargetKind == RaidTargetKind.EventGuard ? $"Raid(Guard@{Q},{R})" : $"Raid(#{TargetId})")
                         : $"Raid({(RaidMissionPhase)SubKind} #{TargetId} {Q},{R})")
+                    : Kind == MissionKind.ActiveDefence
+                        ? $"ActiveDefence({(ActiveDefencePhase)SubKind} #{TargetId})"
                     : Kind == MissionKind.Economy
                         ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
                         : Kind == MissionKind.Development
@@ -327,6 +333,10 @@ namespace Game.Ai.V2
 
     internal static class ResourceAllocator
     {
+        internal static bool ActiveDefencePreemptsRaid(float activeEffectiveValue,
+            float raidEffectiveValue, float switchingCost, float epsilon) =>
+            activeEffectiveValue > raidEffectiveValue + switchingCost + epsilon;
+
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
             AxisBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
@@ -520,6 +530,34 @@ namespace Game.Ai.V2
             {
                 MissionProposal m = c?.Mission;
                 if (m == null) continue;
+                // Active Defence may interrupt only the exact Raid commitment that owns the same
+                // physical primary. The comparison uses the global EffectiveValue scale plus the
+                // Raid's real switching cost; no family-local bonus leaks into this decision.
+                MissionProposal defencePreemptor = null;
+                if (m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget raid
+                    && raid.PrimaryArmyId.HasValue)
+                {
+                    defencePreemptor = _missions.FirstOrDefault(candidate =>
+                        candidate?.Kind == MissionKind.ActiveDefence
+                        && candidate.Target is ActiveDefenceMissionTarget defence
+                        && defence.PrimaryArmyId == raid.PrimaryArmyId
+                        && !_rejectedThisTurn.Contains(StableMissionKey.For(candidate))
+                        && !_state.OnCooldown(StableMissionKey.For(candidate), turn)
+                        && ResourceAllocator.ActiveDefencePreemptsRaid(candidate.EffectiveValue,
+                            m.EffectiveValue, c.SwitchingCost, eps));
+                }
+                if (defencePreemptor != null)
+                {
+                    alloc.Deferred.Add(new DeferredEntry
+                    {
+                        Mission = m, Reason = DeferReason.MissionConflict,
+                    });
+                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Preemption] decision=PREEMPT "
+                        + $"raid={StableMissionKey.For(m)} active={StableMissionKey.For(defencePreemptor)} "
+                        + $"activeValue={defencePreemptor.EffectiveValue:0.00} "
+                        + $"raidThreshold={(m.EffectiveValue + c.SwitchingCost):0.00}");
+                    continue;
+                }
                 StableMissionKey ckey = StableMissionKey.For(m);
                 if (_lockedClaims.ContainsKey(ckey) || _rejectedThisTurn.Contains(ckey) || _state.OnCooldown(ckey, turn))
                     continue;

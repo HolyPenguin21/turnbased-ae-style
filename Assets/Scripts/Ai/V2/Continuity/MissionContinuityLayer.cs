@@ -570,6 +570,100 @@ namespace Game.Ai.V2
                     if (intent.Status == IntentStatus.Active) active.Add(intent);
                     continue;
                 }
+                if (intent.Kind == MissionKind.ActiveDefence)
+                {
+                    ActiveDefenceIntent defence = intent.ActiveDefence;
+                    ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                        && defence?.PrimaryArmyId == a.ArmyId && a.IsStructuralRaidActor);
+                    ActiveDefenceObjective objective = defence == null ? null
+                        : ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
+                    if (defence == null || actor == null || ShouldReap(intent))
+                    {
+                        if (defence?.SuspendedRaidIntentKey.HasValue == true
+                            && state.TryGet(defence.SuspendedRaidIntentKey.Value,
+                                out MissionIntent suspendedRaid)
+                            && suspendedRaid?.Raid != null)
+                        {
+                            suspendedRaid.Status = IntentStatus.Active;
+                            suspendedRaid.Suspended = SuspendReason.None;
+                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME raid={suspendedRaid.IntentKey} reason=defence_ended");
+                        }
+                        dead.Add(intent.IntentKey);
+                        continue;
+                    }
+                    if (defence.Phase == ActiveDefencePhase.Return)
+                    {
+                        if (!defence.ReturnHex.HasValue || actor.Hex.Equals(defence.ReturnHex.Value))
+                            dead.Add(intent.IntentKey);
+                        else
+                            active.Add(intent);
+                        continue;
+                    }
+                    if (objective == null)
+                    {
+                        EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
+                            c?.Army != null && c.Army.ArmyId == defence.EnemyArmyId
+                            && c.Source == ContactSource.Honest && c.Position.HasValue);
+                        bool movingAway = contact != null
+                            && HexGridMath.Distance(contact.Position.Value, defence.ProtectedAssetHex)
+                                > HexGridMath.Distance(defence.LastKnownHex, defence.ProtectedAssetHex);
+                        bool fullNegative = contact != null
+                            && TaskScoreEvaluator.OwnTerritoryProximity(
+                                TaskScoreEvaluator.NearestOwnedHomeDistance(snap,
+                                    contact.Position.Value))
+                                <= -AiConfigV2.taskScoreProximityMax * 0.5f
+                                    + AiConfigV2.allocatorSliceEpsilon;
+                        if (!ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
+                                hasListedThreat: false, movingAway: movingAway,
+                                homeDistanceAtFullNegative: fullNegative,
+                                activeStillBeatsAlternative: false))
+                        {
+                            active.Add(intent);
+                            continue;
+                        }
+                        if (defence.SuspendedRaidIntentKey.HasValue
+                            && state.TryGet(defence.SuspendedRaidIntentKey.Value,
+                                out MissionIntent suspendedRaid)
+                            && suspendedRaid?.Raid != null)
+                        {
+                            suspendedRaid.Status = IntentStatus.Active;
+                            suspendedRaid.Suspended = SuspendReason.None;
+                            dead.Add(intent.IntentKey);
+                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME raid={suspendedRaid.IntentKey} reason=threat_ended");
+                            continue;
+                        }
+                        HexCoord? home = SelectReturnBase(snap, player, defence.PrimaryArmyId);
+                        if (!home.HasValue || actor.Hex.Equals(home.Value))
+                        {
+                            dead.Add(intent.IntentKey);
+                            continue;
+                        }
+                        defence.Phase = ActiveDefencePhase.Return;
+                        defence.ReturnHex = home;
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
+                        active.Add(intent);
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RETURN actor={actor.ArmyId} home=({home.Value.Q},{home.Value.R})");
+                        continue;
+                    }
+                    ActiveDefenceMissionTarget current = objective.Target;
+                    defence.LastKnownHex = current.LastKnownHex;
+                    defence.LastObservedTurn = current.LastObservedTurn;
+                    defence.Confidence = current.Confidence;
+                    defence.ProtectedAssetHex = current.ProtectedAssetHex;
+                    defence.ProtectedAssetKind = current.ProtectedAssetKind;
+                    defence.ProtectedAssetValue = current.ProtectedAssetValue;
+                    defence.ThreatSeverity = current.ThreatSeverity;
+                    defence.EstimatedEta = current.EstimatedEta;
+                    if (intent.Status == IntentStatus.Suspended
+                        && intent.Suspended != SuspendReason.ActiveDefencePreemption)
+                    {
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
+                    }
+                    if (intent.Status == IntentStatus.Active) active.Add(intent);
+                    continue;
+                }
                 if (intent.Kind == MissionKind.Raid)
                 {
                     RaidIntent ri = intent.Raid;
@@ -1651,7 +1745,8 @@ namespace Game.Ai.V2
                 if (intent.Status == IntentStatus.Suspended
                     && (intent.Suspended == SuspendReason.Siege
                         || intent.Suspended == SuspendReason.CapabilityUnavailable
-                        || intent.Suspended == SuspendReason.EconomyLoan)
+                        || intent.Suspended == SuspendReason.EconomyLoan
+                        || intent.Suspended == SuspendReason.ActiveDefencePreemption)
                     && intent.Kind != MissionKind.Development)
                     continue;
 
@@ -1713,6 +1808,42 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
             {
+                if (o.MissionKind == MissionKind.ActiveDefence && intent?.ActiveDefence != null)
+                {
+                    MissionIntentKey? suspendedRaid = intent.ActiveDefence.SuspendedRaidIntentKey;
+                    if (suspendedRaid.HasValue
+                        && state.TryGet(suspendedRaid.Value, out MissionIntent raid)
+                        && raid?.Raid != null
+                        && raid.Suspended == SuspendReason.ActiveDefencePreemption)
+                    {
+                        raid.Status = IntentStatus.Active;
+                        raid.Suspended = SuspendReason.None;
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME raid={raid.IntentKey}");
+                        state.Remove(intent.IntentKey);
+                        return;
+                    }
+                    if (intent.ActiveDefence.ReturnHex.HasValue
+                        && !o.FinalHex.Equals(intent.ActiveDefence.ReturnHex.Value))
+                    {
+                        intent.ActiveDefence.Phase = ActiveDefencePhase.Return;
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RETURN actor={intent.PreferredMoverArmyId}");
+                        return;
+                    }
+                    state.Remove(intent.IntentKey);
+                    return;
+                }
+                if (o.MissionKind == MissionKind.ActiveDefence && intent == null
+                    && o.HasActiveDefencePayload && o.MoverArmyId.HasValue
+                    && !o.ActiveDefenceTarget.SuspendedRaidIntentKey.HasValue
+                    && o.ActiveDefenceTarget.ReturnHex.HasValue
+                    && !o.FinalHex.Equals(o.ActiveDefenceTarget.ReturnHex.Value))
+                {
+                    o.ActiveDefenceTarget.Phase = ActiveDefencePhase.Return;
+                    CreateActiveDefenceIntent(state, o, turn);
+                    return;
+                }
                 // Raid completion ends only the CURRENT neutral target, not the durable campaign.
                 // Keep (or create, when the first attack completed immediately) the operation so
                 // the next ResolveActive pass can re-orient the same primary onto another neutral
@@ -1905,6 +2036,10 @@ namespace Game.Ai.V2
             else if (o.HasRaidPayload && o.RaidOperationStarted)
             {
                 CreateRaidIntent(state, o, turn);
+            }
+            else if (o.HasActiveDefencePayload && o.MadeProgress)
+            {
+                CreateActiveDefenceIntent(state, o, turn);
             }
             else if (o.HasEconomyPayload && o.MadeProgress)
             {
@@ -2216,6 +2351,37 @@ namespace Game.Ai.V2
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created ({intent.Funding}, "
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
+        }
+
+        private static void CreateActiveDefenceIntent(MissionIntentState state,
+            MissionTurnOutcome o, int turn)
+        {
+            ActiveDefenceMissionTarget t = o.ActiveDefenceTarget;
+            var payload = new ActiveDefenceIntent
+            {
+                Phase = t.Phase, EnemyArmyId = t.EnemyArmyId,
+                LastKnownHex = t.LastKnownHex, LastObservedTurn = t.LastObservedTurn,
+                Confidence = t.Confidence, ProtectedAssetHex = t.ProtectedAssetHex,
+                ProtectedAssetKind = t.ProtectedAssetKind,
+                ProtectedAssetValue = t.ProtectedAssetValue,
+                ThreatSeverity = t.ThreatSeverity,
+                PrimaryArmyId = o.MoverArmyId ?? t.PrimaryArmyId,
+                SuspendedRaidIntentKey = t.SuspendedRaidIntentKey,
+                ReturnHex = t.ReturnHex, ProjectedWinChance = t.ProjectedWinChance,
+                CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
+            };
+            MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
+                CommitmentTier.Hard, payload);
+            state.Put(intent);
+            if (t.SuspendedRaidIntentKey.HasValue
+                && state.TryGet(t.SuspendedRaidIntentKey.Value, out MissionIntent raid)
+                && raid?.Raid != null && raid.PreferredMoverArmyId == payload.PrimaryArmyId)
+            {
+                raid.Status = IntentStatus.Suspended;
+                raid.Suspended = SuspendReason.ActiveDefencePreemption;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=SUSPEND raid={raid.IntentKey} actor={payload.PrimaryArmyId}");
+            }
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
 
         private static void CreateRaidIntent(MissionIntentState state, MissionTurnOutcome o, int turn)

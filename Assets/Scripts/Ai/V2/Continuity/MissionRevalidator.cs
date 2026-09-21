@@ -84,6 +84,18 @@ namespace Game.Ai.V2
                 return MissionValidity.Valid;
             }
 
+            if (pm.Kind == MissionKind.ActiveDefence)
+            {
+                ActiveDefenceMissionTarget target = pm.ActiveDefenceTarget;
+                if (target.Phase == ActiveDefencePhase.Return)
+                    return target.ReturnHex.HasValue && mover.Hex.Equals(target.ReturnHex.Value)
+                        ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
+                bool exists = ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
+                    .Any(a => a != null && a.Id == target.EnemyArmyId
+                        && a.Owner != null && a.Owner != player && !a.Owner.IsNeutral);
+                return exists ? MissionValidity.Valid : MissionValidity.StaleGoalMet;
+            }
+
             if (pm.Kind == MissionKind.Economy)
             {
                 if (pm.Mission?.FromDurableIntent == true

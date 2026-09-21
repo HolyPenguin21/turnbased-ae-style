@@ -198,22 +198,35 @@ namespace Game.Ai
         // floor to the citadel that non-citadel bases already get (kept as its OWN constant, not
         // reused from secureBaseMinNonHeroUnits, so the two can be tuned independently later).
         public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit, bool allowCitadelEmergency = true)
+            => CanSpareGarrisonMembers(player, source,
+                unit == null ? null : new[] { unit }, allowCitadelEmergency);
+
+        // Batch form is the canonical safety check for atomic ground-combat assembly. Checking
+        // candidates one-by-one against the unchanged source could approve several removals that
+        // collectively cross the protected garrison floor.
+        public static bool CanSpareGarrisonMembers(PlayerSetupData player, ArmyData source,
+            IEnumerable<UnitData> units, bool allowCitadelEmergency = true)
         {
-            if (player == null || source == null || unit == null)
+            if (player == null || source == null || units == null)
+                return false;
+
+            List<UnitData> selected = units.Where(u => u != null).Distinct().ToList();
+            if (selected.Count == 0 || selected.Any(u => !source.Members.Contains(u)))
                 return false;
 
             if (!source.IsGarrison)
                 return true;
+
+            if (source.Members.Count - selected.Count < 1)
+                return false;
 
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
             bool isCitadel = source.Hex.Equals(citadelHex);
             if (isCitadel && allowCitadelEmergency)
                 return true;
 
-            if (unit.IsHero)
-                return source.Members.Count > 1;
-
-            int remainingNonHero = source.Members.Count(m => !m.IsHero) - 1;
+            int removedNonHero = selected.Count(u => !u.IsHero);
+            int remainingNonHero = source.Members.Count(m => !m.IsHero) - removedNonHero;
             int floor = isCitadel ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
             return remainingNonHero >= floor;
         }

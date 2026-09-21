@@ -187,7 +187,7 @@ namespace Game.Ai.V2
         {
             if (sightings == null) return;
             foreach (AiMapMemory.KnownEnemySighting sighting in sightings)
-                if (sighting.ArmyId > 0)
+                if (sighting.ArmyId >= 0)
                     result[sighting.ArmyId] = sighting;
         }
 

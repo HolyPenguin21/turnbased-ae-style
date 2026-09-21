@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 51300)
+Total output lines: 3228
+
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -45,6 +48,7 @@ namespace Game.Ai.V2
         // step is the ATOMIC roster handoff (transfer / swap) and must perform no movement.
         public bool RaidHandoffReady;
         public RaidRefitAction RaidRefitAction;
+        public ActiveDefenceMissionTarget ActiveDefenceTarget;
         public EconomyMissionTarget EconomyTarget;
         public DevelopmentMissionTarget DevelopmentTarget;
         public string ReservationOwner;
@@ -315,9 +319,15 @@ namespace Game.Ai.V2
             }
             if (_raidDurableCommitments != null)
                 foreach (int id in _raidDurableCommitments.ClaimedArmyIds)
-                    if (proposal == null || !proposal.FromDurableIntent
-                        || proposal.PreferredMoverArmyId != id)
+                {
+                    bool ownIncumbent = proposal != null && proposal.FromDurableIntent
+                        && proposal.PreferredMoverArmyId == id;
+                    bool exactRaidBorrow = proposal?.Target is ActiveDefenceMissionTarget defence
+                        && defence.SuspendedRaidIntentKey.HasValue
+                        && proposal.PreferredMoverArmyId == id;
+                    if (!ownIncumbent && !exactRaidBorrow)
                         excluded.Add(id);
+                }
             // Batch-assigned Raid hosts/support are also unavailable as donors, even before
             // their mission executes and RegisterSuccess adds them to ClaimedArmyIds.
             StableMissionKey? ownKey = proposal == null
@@ -620,6 +630,13 @@ namespace Game.Ai.V2
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
                 {
+                    if (fe?.Mission?.Target is ActiveDefenceMissionTarget activeReturn
+                        && activeReturn.Phase == ActiveDefencePhase.Return
+                        && activeReturn.PrimaryArmyId.HasValue)
+                    {
+                        pinnedByOtherLegs.Add(activeReturn.PrimaryArmyId.Value);
+                        continue;
+                    }
                     if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
                         || !(fe.Mission.Target is RaidMissionTarget rt)
                         || rt.Phase == RaidMissionPhase.Assault)
@@ -630,7 +647,9 @@ namespace Game.Ai.V2
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
                 {
-                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
+                    if (fe?.Mission == null
+                        || (fe.Mission.Kind != MissionKind.Raid
+                            && fe.Mission.Kind != MissionKind.ActiveDefence)
                         || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue;
                     // Non-Assault legs normally already have their actor pinned by Continuity and
@@ -640,6 +659,9 @@ namespace Game.Ai.V2
                     // must join the same batch solve Assault uses.
                     if (fe.Mission.Target is RaidMissionTarget t && t.Phase != RaidMissionPhase.Assault
                         && !(t.Phase == RaidMissionPhase.Reinforcement && !t.SupportArmyId.HasValue))
+                        continue;
+                    if (fe.Mission.Target is ActiveDefenceMissionTarget ad
+                        && ad.Phase == ActiveDefencePhase.Return)
                         continue;
                     open.Add(fe);
                 }
@@ -767,6 +789,8 @@ namespace Game.Ai.V2
 
             if (m.Kind == MissionKind.Raid)
                 return RaidProvisioner.Provision(player, root, ctx, session, funded);
+            if (m.Kind == MissionKind.ActiveDefence)
+                return ActiveDefenceProvisioner.Provision(player, root, ctx, session, funded);
 
             if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget economy)
                 return ProvisionEconomy(player, root, hand, ctx, session, funded, economy);
@@ -1525,75 +1549,7 @@ namespace Game.Ai.V2
                         bool prepFeasible = false;
                         if (shallowEligible)
                         {
-                            EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
-                                session.Snapshot, standingIntents, key, target, x, a, a.Id,
-                                ecoApEnvelopeRemaining, rawApRemaining);
-                            prepFeasible = prep.Feasible;
-                            prepDetail = prep.Feasible
-                                ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
-                                : $"{prep.Failure.Kind} — {prep.Failure.Detail}";
-                        }
-                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
-                            + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
-                            + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
-                            + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
-                            + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
-                            + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
-                            + $"shallowEligible={shallowEligible} plan=[{prepDetail}] "
-                            + $"=> ELIGIBLE={shallowEligible && prepFeasible}");
-                    }
-                }
-                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
-                    "no free hero can advance toward economy site"));
-            }
-
-            // 2026-09-14 review round 10 (P0) — the direct-army path (hero already a real, live
-            // field army) no longer applies its own composition change inside Provisioning either:
-            // PlanEconomyCompletion (pure) decides, and the SAME Execution apply path the
-            // garrison-extraction candidate already uses (TaskExecutor.ApplyEconomyPreparation)
-            // commits it — no live-army mutation happens inside Provisioning for ANY Economy actor
-            // any more, extracted or not. `identityArmyId = hero.Id` since the hero is already real.
-            EconomyCompletionPlan directPrep = PlanEconomyCompletion(player, root, ctx,
-                session.Snapshot, standingIntents, key, target, builderChoice, hero, hero.Id,
-                funded.Tentative.Ap, root.ActionPoints - session.ApClaimed);
-            if (!directPrep.Feasible)
-                return ProvisioningResult.Fail(directPrep.Failure);
-
-            // Reserve the physical stage cost NOW (same cross-mission-visibility reasoning as the
-            // deferred garrison-extraction branch above) — whether or not composition/donor work is
-            // still pending, this mission has committed to this build.
-            if (directPrep.CompletionThisTurn)
-                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
-                    directPrep.OwnerKey, target.BuildResourceCost, target.BuildApCost);
-            else
-                // AI economy commitment/recovery audit (2026-09-15) — this hero cannot finish the
-                // build this turn, so it is genuinely a multi-turn delivery starting or continuing.
-                // Give Continuity a durable identity for it (mirrors the Hero-materialization path
-                // in CapabilityDeliveryEvaluator) so StrategicPhaseA's protectedActiveEconomyBuild
-                // protects the full H/E/M/T vector every later turn regardless of remaining travel —
-                // without this, InfrastructureFulfillment.ShouldReserveDeferredEconomyResources'
-                // one-turn horizon would have to (and used to) protect unconditionally on every turn
-                // of the walk, freezing resources far earlier than necessary on the very first turn.
-                MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
-                {
-                    RequestingAxis = DesireAxis.Economy,
-                    Capability = target.Kind == EconomyTaskKind.FoundBase
-                        ? CapabilityKind.EconomicExpansionBase : CapabilityKind.EconomicInfrastructure,
-                    TargetHex = target.TargetHex,
-                    EconomyResourceType = target.ResourceType,
-                    EconomyBuildCard = target.BuildCard,
-                    EconomyBuildResourceCost = target.BuildResourceCost,
-                    EconomyBuildApCost = target.BuildApCost,
-                    MinimumFollowupAp = target.MinimumFollowupAp,
-                    EconomySiteValue = target.BuildValue,
-                }, hero.Id, ctx.TurnNumber);
-
-            // "Pending" means Execution still has real work to do before movement: an actual
-            // composition change, OR a donor loan that must be suspended (bookkeeping only, but
-            // still not something Provisioning may do — see PlanEconomyCompletion's own comment on
-            // why it stays read-only). When neither applies the hero's roster is already exactly
-            // right and there is nothing to defer — this mission proceeds straight to movement
-            // exactly as it always has, no extra admission pass spent on a step that would mutate
+                            Economy…1300 tokens truncated…          // exactly as it always has, no extra admission pass spent on a step that would mutate
             // nothing.
             bool preparationPending = directPrep.Donor != null
                 || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0;
@@ -2403,6 +2359,171 @@ namespace Game.Ai.V2
         private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
     }
 
+    internal static class ActiveDefenceProvisioner
+    {
+        internal static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
+        {
+            MissionProposal mission = funded?.Mission;
+            if (mission == null || !(mission.Target is ActiveDefenceMissionTarget target))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "active defence has no typed target"));
+
+            if (target.Phase == ActiveDefencePhase.Return)
+                return ProvisionReturn(player, root, ctx, session, funded, target);
+
+            AiMapMemory.KnownEnemySighting? sighting = AiMapMemory.AllKnownEnemySightings(player)
+                .Where(s => s.ArmyId == target.EnemyArmyId && s.Owner != null
+                    && !s.Owner.IsNeutral && s.Owner != player)
+                .Select(s => (AiMapMemory.KnownEnemySighting?)s).FirstOrDefault();
+            if (!sighting.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    $"active defence enemy #{target.EnemyArmyId} has no honest sighting"));
+            ArmyData enemy = ArmyRegistry.AllAt(sighting.Value.Hex).FirstOrDefault(a =>
+                a != null && a.Id == target.EnemyArmyId && a.Owner != null
+                && a.Owner != player && !a.Owner.IsNeutral);
+            if (enemy == null)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    $"active defence enemy #{target.EnemyArmyId} no longer exists at the honest position"));
+
+            StableMissionKey key = StableMissionKey.For(mission);
+            if (!session.TryGetAssignedRaidActor(key, out int actorId))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"active defence {key} has no actor in shared ground-combat assignment"));
+            HashSet<int> excluded = session.ExcludedForRaid(mission);
+            if (excluded.Contains(actorId))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"active defence actor #{actorId} is owned by another mission"));
+
+            IReadOnlyList<WorthIt.DefenderProfile> defenders = sighting.Value.Defenders
+                ?? Array.Empty<WorthIt.DefenderProfile>();
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
+                new GroundCombatAssemblyRequest
+                {
+                    Defenders = defenders,
+                    PreferredPrimaryArmyId = actorId,
+                    PinToPreferred = true,
+                    ExcludedArmyIds = excluded,
+                    WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                });
+            if (!plan.Feasible)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"active defence actor #{actorId} cannot complete roster: {plan.Reason}"));
+
+            ArmyData host = AiV2Util.ResolveArmy(player, actorId);
+            if (host == null || host.Owner != player || host.Members.Count == 0
+                || host.CurrentMovement <= 0 || session.ClaimedArmyIds.Contains(host.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"active defence actor #{actorId} is no longer available"));
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, host, sighting.Value.Hex) == null)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    $"no safe step toward active defence enemy #{target.EnemyArmyId}"));
+
+            int activationAp = host.HasActivatedThisTurn ? 0 : host.ActivationApCost;
+            if (activationAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
+                    $"active defence actor #{actorId} AP envelope is stale"));
+            if (activationAp > root.ActionPoints - session.ApClaimed
+                + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "turn AP exhausted before active defence"));
+
+            var applied = new List<GroundCombatAssemblyTransfer>();
+            foreach (IGrouping<int, GroundCombatAssemblyTransfer> group in plan.Transfers.GroupBy(t => t.DonorArmyId))
+            {
+                ArmyData donor = AiV2Util.ResolveArmy(player, group.Key);
+                List<UnitData> units = group.Select(t => t.Unit).ToList();
+                if (donor == null || donor.Members.Count - units.Count < 1
+                    || units.Any(u => u == null || u.IsAviation || !donor.Members.Contains(u))
+                    || donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                        $"active-defence donor #{group.Key} cannot spare the complete batch"));
+            }
+            foreach (GroundCombatAssemblyTransfer transfer in plan.Transfers)
+            {
+                ArmyData donor = AiV2Util.ResolveArmy(player, transfer.DonorArmyId);
+                string why = donor == null ? "donor missing" : null;
+                if (donor == null || donor.Members.Count <= 1
+                    || session.ClaimedArmyIds.Contains(donor.Id)
+                    || !ArmyActions.TransferMember(transfer.Unit, donor, host,
+                        ctx.HexSelection, out why))
+                {
+                    bool rollback = Rollback(player, host, applied, ctx);
+                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                        rollback ? $"atomic active-defence assembly rejected: {why}"
+                            : $"active-defence assembly rollback incomplete: {why}"));
+                }
+                applied.Add(transfer);
+                session.ClaimedArmyIds.Add(donor.Id);
+            }
+
+            target.LastKnownHex = sighting.Value.Hex;
+            target.LastObservedTurn = sighting.Value.SeenTurn;
+            target.PrimaryArmyId = host.Id;
+            target.ProjectedWinChance = plan.ProjectedWinChance;
+            target.CoversAllDefenders = plan.CoversAllDefenders;
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Provision] decision=OK enemy={target.EnemyArmyId} "
+                + $"actor={host.Id} transfers={applied.Count} win={plan.ProjectedWinChance:0.00}");
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = mission, Key = key, Kind = MissionKind.ActiveDefence,
+                MoverArmyId = host.Id, FocusHex = target.LastKnownHex,
+                ExecutionHex = target.LastKnownHex, ActiveDefenceTarget = target,
+                ClaimedPhysical = funded.PhysicalDraw, ClaimedAp = activationAp,
+            }, applied.Count);
+        }
+
+        private static ProvisioningResult ProvisionReturn(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            ActiveDefenceMissionTarget target)
+        {
+            if (!target.PrimaryArmyId.HasValue || !target.ReturnHex.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "active defence return has no actor or home"));
+            ArmyData actor = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
+            if (actor == null || actor.Owner != player || actor.Members.Count == 0)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "active defence return actor is gone"));
+            if (actor.Hex.Equals(target.ReturnHex.Value))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
+                    "active defence responder is already home"));
+            if (session.ClaimedArmyIds.Contains(actor.Id))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "active defence return actor is claimed"));
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value) == null)
+                return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                    "active defence responder has no safe return step"));
+            int ap = actor.HasActivatedThisTurn ? 0 : actor.ActivationApCost;
+            if (ap > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(ap,
+                    "active defence return AP envelope is stale"));
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission, Key = StableMissionKey.For(funded.Mission),
+                Kind = MissionKind.ActiveDefence, MoverArmyId = actor.Id,
+                FocusHex = target.ReturnHex.Value, ExecutionHex = target.ReturnHex.Value,
+                ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
+                ClaimedAp = ap,
+            });
+        }
+
+        private static bool Rollback(PlayerSetupData player, ArmyData host,
+            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx)
+        {
+            bool ok = true;
+            for (int i = applied.Count - 1; i >= 0; --i)
+            {
+                GroundCombatAssemblyTransfer t = applied[i];
+                ArmyData donor = AiV2Util.ResolveArmy(player, t.DonorArmyId);
+                string why;
+                if (donor == null || !host.Members.Contains(t.Unit)
+                    || !ArmyActions.TransferMember(t.Unit, host, donor, ctx.HexSelection, out why))
+                    ok = false;
+            }
+            return ok;
+        }
+    }
+
     internal static class RaidProvisioner
     {
         public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -2549,6 +2670,16 @@ namespace Game.Ai.V2
                 }
 
                 List<WorthIt.DefenderProfile> projectedProfiles = projectedUnits.Select(WorthIt.FromLiveUnit).ToList();
+                foreach (IGrouping<int, GroundCombatAssemblyTransfer> group in transfers.GroupBy(t => t.DonorArmyId))
+                {
+                    ArmyData donor = ResolveArmy(player, group.Key);
+                    List<UnitData> units = group.Select(t => t.Unit).ToList();
+                    if (donor == null || donor.Members.Count - units.Count < 1
+                        || donor.IsGarrison
+                            && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"raid donor #{group.Key} cannot spare the complete planned batch"));
+                }
                 if (!GroundCombatFeasibility.Clears(projectedProfiles, defenders, out float projectedWin, out _))
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
                         "planned same-hex roster no longer clears the shared WorthIt estimator"));

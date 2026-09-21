@@ -46,7 +46,7 @@ namespace Game.Ai.V2
 
     // ARCH-02 §29 — the fresh-start vs continuation win-chance gates. Starting a raid and
     // continuing an already-started operation are deliberately different decisions.
-    internal static class RaidAdmissionPolicy
+    internal static class GroundCombatAdmissionPolicy
     {
         // Fresh admission still requires the strict raidMinViableWinChance (0.65 today).
         internal static float FreshStartWinChanceGate => AiConfigV2.raidMinViableWinChance;
@@ -58,6 +58,13 @@ namespace Game.Ai.V2
         // conservative: it fixes the observed 0.78-start -> ~0.41-next-turn discontinuity without
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
         internal const float ContinuationWinChanceFloor = 0.40f;
+    }
+
+    // Compatibility name for existing Raid call sites; the policy itself is target-agnostic.
+    internal static class RaidAdmissionPolicy
+    {
+        internal static float FreshStartWinChanceGate => GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
+        internal const float ContinuationWinChanceFloor = GroundCombatAdmissionPolicy.ContinuationWinChanceFloor;
     }
 
     // AGG-RAID §1 — the generalized ground-combat assembly REQUEST. The kernel below is shared by
@@ -393,28 +400,40 @@ namespace Game.Ai.V2
                     || donor.IsPrison || donor.IsAirfield || donor.IsAirArmy || AiArmyRoles.IsSoloRecce(donor))
                     continue;
 
-                UnitData pick = donor.Members
+                List<UnitData> picks = donor.Members
                     .Where(u => u != null && !u.IsHero && !u.IsAviation
                         && donor.Members.Count > 1
                         && donor.CanLeaveWithoutOvercrowding(u)
-                        && (!donor.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(owner, donor, u))
                         && (!host.HasActivatedThisTurn || u.ActivationApCost <= 0))
                     .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                     .ThenBy(u => u.Name)
-                    .FirstOrDefault();
-                if (pick == null)
-                    continue;
+                    .ToList();
+                var selectedFromDonor = new List<UnitData>();
+                foreach (UnitData pick in picks)
+                {
+                    if (donor.Members.Count - selectedFromDonor.Count <= 1)
+                        break;
+                    selectedFromDonor.Add(pick);
+                    if (donor.IsGarrison
+                        && !AiArmyRoles.CanSpareGarrisonMembers(owner, donor, selectedFromDonor))
+                    {
+                        selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
+                        continue;
+                    }
+                    var withPick = new List<UnitData>(projectedUnits) { pick };
+                    if (ArmyData.ComputeCapacity(withPick, host.IsGarrison) < withPick.Count)
+                    {
+                        selectedFromDonor.RemoveAt(selectedFromDonor.Count - 1);
+                        break;
+                    }
 
-                var withPick = new List<UnitData>(projectedUnits) { pick };
-                if (ArmyData.ComputeCapacity(withPick, host.IsGarrison) < withPick.Count)
-                    continue;
-
-                projectedUnits.Add(pick);
-                projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
-                selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
-
-                if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance, out float win, out bool cover))
-                    return FinishAssembly(host, selected, win, cover);
+                    projectedUnits.Add(pick);
+                    projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
+                    selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
+                    if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance,
+                            out float win, out bool cover))
+                        return FinishAssembly(host, selected, win, cover);
+                }
             }
 
             // The hero alone (no bodies available/needed) may already clear.

@@ -142,7 +142,7 @@ namespace Game.Ai.V2
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,
-                activeIntents, aggressionObjectives));
+                activeIntents, aggressionObjectives, ctx));
             // The reaction round runs the SAME Demand -> Mission -> Allocator -> Provisioning path
             // as the main pass — Scout actor binding happens in Provisioning (ReconAssignmentPlanner)
             // exactly like the main pass, no separate reservation stage needed here either.

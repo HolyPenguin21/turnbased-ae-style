@@ -15,7 +15,7 @@ namespace Game.Ai.V2
     // not a partial class.
     public enum CommitmentTier { None, Soft, Hard }
     public enum IntentStatus { Active, Suspended }
-    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan }
+    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan, ActiveDefencePreemption }
 
     public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
     {
@@ -40,12 +40,19 @@ namespace Game.Ai.V2
                 ? new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, target.ArmyId, 0, 0, RaidTargetKind.NeutralArmy)
                 : new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, 0, target.Hex.Q, target.Hex.R, RaidTargetKind.EventGuard);
 
+        public static MissionIntentKey ForActiveDefence(int enemyArmyId) =>
+            new MissionIntentKey(MissionKind.ActiveDefence,
+                (int)AggressionObjectiveKind.ActiveDefence, enemyArmyId, 0, 0);
+
         public static MissionIntentKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
                 return ForScoutTarget(t);
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
                 return ForRaid(rt.Target);
+            if (m != null && m.Kind == MissionKind.ActiveDefence
+                && m.Target is ActiveDefenceMissionTarget ad)
+                return ForActiveDefence(ad.EnemyArmyId);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new MissionIntentKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
@@ -73,6 +80,9 @@ namespace Game.Ai.V2
             RaidIntent ri = intent?.Raid;
             if (ri != null)
                 return ForRaid(ri.Target);
+            ActiveDefenceIntent ad = intent?.ActiveDefence;
+            if (ad != null)
+                return ForActiveDefence(ad.EnemyArmyId);
             EconomyIntent ei = intent?.Economy;
             if (ei != null)
                 return new MissionIntentKey(MissionKind.Economy, (int)ei.Kind,
@@ -125,6 +135,8 @@ namespace Game.Ai.V2
                 return TargetKind == RaidTargetKind.EventGuard
                     ? $"Intent(Raid Guard@{Q},{R})"
                     : $"Intent(Raid Army#{ObjectiveId})";
+            if (Kind == MissionKind.ActiveDefence)
+                return $"Intent(ActiveDefence Army#{ObjectiveId})";
             if (Kind == MissionKind.Economy)
                 return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
             if (Kind == MissionKind.Development)
@@ -253,6 +265,25 @@ namespace Game.Ai.V2
         public float IntrinsicValue;
     }
 
+    public sealed class ActiveDefenceIntent
+    {
+        public ActiveDefencePhase Phase;
+        public int EnemyArmyId;
+        public HexCoord LastKnownHex;
+        public int LastObservedTurn;
+        public float Confidence;
+        public HexCoord ProtectedAssetHex;
+        public AssetKind ProtectedAssetKind;
+        public float ProtectedAssetValue;
+        public float ThreatSeverity;
+        public int? PrimaryArmyId;
+        public MissionIntentKey? SuspendedRaidIntentKey;
+        public HexCoord? ReturnHex;
+        public float ProjectedWinChance;
+        public bool CoversAllDefenders;
+        public int EstimatedEta;
+    }
+
     public sealed class MissionIntent
     {
         public MissionIntentKey IntentKey;
@@ -282,13 +313,15 @@ namespace Game.Ai.V2
             get
             {
                 RaidIntent r = Raid;
-                if (r == null) return _preferredMoverArmyId;
-                return r.PrimaryArmyId;
+                if (r != null) return r.PrimaryArmyId;
+                ActiveDefenceIntent d = ActiveDefence;
+                return d != null ? d.PrimaryArmyId : _preferredMoverArmyId;
             }
             set
             {
                 RaidIntent r = Raid;
                 if (r != null) r.PrimaryArmyId = value;
+                else if (ActiveDefence != null) ActiveDefence.PrimaryArmyId = value;
                 else _preferredMoverArmyId = value;
             }
         }
@@ -297,5 +330,6 @@ namespace Game.Ai.V2
         public RaidIntent Raid => Objective as RaidIntent;
         public EconomyIntent Economy => Objective as EconomyIntent;
         public DevelopmentIntent Development => Objective as DevelopmentIntent;
+        public ActiveDefenceIntent ActiveDefence => Objective as ActiveDefenceIntent;
     }
 }
