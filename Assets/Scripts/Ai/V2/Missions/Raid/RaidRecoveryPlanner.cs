@@ -156,9 +156,10 @@ namespace Game.Ai.V2
                 .Where(x => x.ArmyId == raid.Target.ArmyId)
                 .Select(x => (AiMapMemory.KnownEnemySighting?)x)
                 .FirstOrDefault();
-            if (!sighting.HasValue || sighting.Value.SeenTurn != snap.TurnNumber)
+            if (!sighting.HasValue || snap.TurnNumber - sighting.Value.SeenTurn
+                    > AiConfigV2.raidAirSupportSightingMaxAgeTurns)
                 return RaidRecoveryProjection.None(currentWin,
-                    "air support requires a fresh exact neutral sighting");
+                    "air support requires a recent neutral sighting");
 
             List<HexCoord> bases = (snap.Self.BaseHexes ?? Array.Empty<HexCoord>())
                 .Distinct().OrderBy(x => x.Q).ThenBy(x => x.R).ToList();

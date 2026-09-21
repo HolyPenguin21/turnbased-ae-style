@@ -6,6 +6,11 @@ namespace Game.Ai.V2
     {
         public const int raidRecoveryMaxWaitTurns = 2;
         public const float raidRepairMinWinChanceGain = 0.001f;
+        // How many turns old a neutral sighting may be and still authorize an air strike (project
+        // owner's own 2026-09-21 call: an exact-this-turn-only requirement made AirSupport fire
+        // almost exclusively on first contact — a small window lets it fire on a routine re-scout
+        // too, at the cost of striking a roster that may be up to this many turns stale).
+        public const int raidAirSupportSightingMaxAgeTurns = 2;
         // ---- Aggression (single axis; two internal drivers, max()'d) -----------------------
         //  raidOpportunity — "there is a profitable target I can take right now" (from the shared
         //                    CombatOpportunityAnalyzer — same estimator MissionLayer/Provisioning
