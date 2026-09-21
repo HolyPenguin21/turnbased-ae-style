@@ -1073,8 +1073,18 @@ namespace Game.Ai.V2
             {
                 bool committed = IsActiveBaseCommitment(
                     activeIntents, demand.TargetHex, demand.EconomyBuildCard);
-                // Do not turn negative net benefit into a new mission through elapsed time.
-                bool admitted = committed || HasMeaningfulBaseBenefit(demand.WorldTaskScore);
+                // HasMeaningfulBaseBenefit only proves a non-zero economy REASON exists (see its
+                // own header comment — hasEconomyPurpose). It was never the whole admission
+                // decision: the canonical TaskScore.Value (reason + price + delivery + placement,
+                // the same fold every other axis competes on) must also clear zero, or a Base with
+                // a real purpose but a net-negative full price (e.g. expansion=3 but price/delivery
+                // outweigh it) is admitted anyway — a fresh project must never originate net-negative.
+                // A live COMMITTED Base is the one deliberate exception: Continuity already owns its
+                // lifecycle/hysteresis (CanReplaceCommittedBase, IntentReapedStall/Idle) and must not
+                // be abandoned here merely because marginal economics dipped after the project started.
+                bool admitted = committed
+                    || (HasMeaningfulBaseBenefit(demand.WorldTaskScore)
+                        && demand.Value > AiConfigV2.allocatorSliceEpsilon);
                 if (!admitted)
                 {
                     if (!demand.EconomyPreferredBuilderArmyId.HasValue)

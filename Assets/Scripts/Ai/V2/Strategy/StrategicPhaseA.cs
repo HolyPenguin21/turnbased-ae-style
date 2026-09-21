@@ -145,6 +145,11 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber, active);
                 if (active.Economy.BuildCard != null)
                     result.Reservation.ClaimedEconomyBuildCards.Add(active.Economy.BuildCard);
+                // This hold IS the intent's real activity this cycle even when nothing is
+                // executable yet (waiting on H/E/M/T to accumulate) — tell Continuity so it does
+                // not silently age through ReconcileAfterTurn's idle-stall path (IntentReapedIdle)
+                // for legitimately waiting on its own reserved resources. See MarkProtectedThisTurn.
+                MissionContinuityLayer.MarkProtectedThisTurn(player, active.IntentKey, ctx.TurnNumber);
                 AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
                     + $"{active.Economy.Kind} "
                     + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");

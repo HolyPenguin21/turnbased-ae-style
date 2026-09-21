@@ -1725,6 +1725,31 @@ namespace Game.Ai.V2
                 AiAllocatorStateRegistry.GetOrCreate(player), outcome, turn);
         }
 
+        // StrategicPhaseA's ProtectActiveEconomyBuild reserves this intent's physical resources
+        // and claims its card every cycle it is still committed — a real per-turn touch of the
+        // intent's lifecycle, just one that has nothing to execute yet (builder already at/near
+        // target, simply waiting for H/E/M/T to accumulate). Without this call that touch is
+        // invisible to Continuity: the intent produces no MissionTurnOutcome this turn, and
+        // ReconcileAfterTurn's "unseen" branch grows StallTurns for it via the SAME raw idle
+        // counter used for an abandoned project — reaping a still-legal, still-funded build that
+        // is doing exactly the right thing (holding, not thrashing) after 2 quiet turns.
+        //
+        // Deliberately stamps LastProtectedTurn, NOT LastReconciledTurn: the unseen branch's own
+        // `LastReconciledTurn == turn` guard skips its ENTIRE per-turn block, ShouldReap included,
+        // so reusing that field here would also switch off the intent's absolute-age reap cap
+        // (commitmentMaxTurns) for as long as it stays protected — trading an over-eager reap for
+        // no reap at all. LastProtectedTurn only ever suppresses that one turn's StallTurns++;
+        // TurnsActive and ShouldReap still run every turn, so a build that never becomes
+        // affordable is still bounded by its ordinary age cap, just not punished for waiting.
+        public static void MarkProtectedThisTurn(PlayerSetupData player, MissionIntentKey key, int turn)
+        {
+            if (player == null)
+                return;
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            if (state.TryGet(key, out MissionIntent intent))
+                intent.LastProtectedTurn = turn;
+        }
+
         public static void ReconcileAfterTurn(PlayerSetupData player, int turn,
             IReadOnlyList<MissionTurnOutcome> outcomes)
         {
@@ -1755,7 +1780,13 @@ namespace Game.Ai.V2
 
                 intent.LastReconciledTurn = turn;
                 intent.TurnsActive++;
-                if (intent.Suspended != SuspendReason.PoolExhausted)
+                // A committed Economy build Phase A is still protecting this very turn (reserving
+                // its resources, holding its card) has real, legitimate activity even though it
+                // produced no MissionTurnOutcome — it simply has nothing executable yet while H/E/
+                // M/T accumulate. That is not the same "nothing happened" as an abandoned/invalid
+                // intent, so it must not spend the same StallTurns budget. See MarkProtectedThisTurn.
+                bool protectedWaitingOnResources = intent.LastProtectedTurn == turn;
+                if (intent.Suspended != SuspendReason.PoolExhausted && !protectedWaitingOnResources)
                     intent.StallTurns++;
 
                 if (ShouldReap(intent))

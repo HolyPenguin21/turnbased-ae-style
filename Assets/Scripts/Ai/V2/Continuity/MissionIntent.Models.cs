@@ -299,6 +299,12 @@ namespace Game.Ai.V2
         // game turn. Age/stall clocks are turn-based and advance at most once for that turn.
         public int LastReconciledTurn = -1;
         public int LastProgressTurn;
+        // Separate from LastReconciledTurn on purpose — that field's own == turn check makes
+        // ReconcileAfterTurn's unseen sweep skip the WHOLE per-turn block, ShouldReap included, so
+        // it cannot double as "don't age StallTurns" without also disabling the intent's absolute-
+        // age reap cap. This one only ever suppresses that one turn's StallTurns++ (see
+        // MissionContinuityLayer.MarkProtectedThisTurn); TurnsActive and ShouldReap still run.
+        public int LastProtectedTurn = -1;
         public int StallTurns;
         public float CumulativeApSpent;
         public int StepsMovedTotal;
