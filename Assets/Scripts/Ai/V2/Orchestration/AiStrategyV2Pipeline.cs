@@ -1246,8 +1246,11 @@ namespace Game.Ai.V2
                             + $"{selectedKey} — FAIL {provisionResult.Failure.Kind} "
                             + $"[{provisionResult.Failure.Disposition}] {provisionResult.Failure.Detail}");
 
+                        // A non-repricing failure rejects this key; repack can consider other missions.
+                        // Count only a retry of the SAME key with a repriced envelope.
                         if (!cycleSession.HasNewFailures || cycleSession.Converged
-                            || ++repriceReallocPass >= AiConfigV2.maxReallocIterations)
+                            || (provisionResult.Failure.Disposition == ProvisionDisposition.RepriceThisTurn
+                                && ++repriceReallocPass >= AiConfigV2.maxReallocIterations))
                         {
                             provisioningSettled = true;
                             break;
