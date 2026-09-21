@@ -225,9 +225,13 @@ namespace Game.Ai.V2
                             usefulGain, priority),
                         // Mobile collection has no capital/resource outlay. Arrival time is
                         // priced once by Delivery; it is not a second, fake payback period.
-                        payback: TaskScoreEvaluator.Payback(0f),
-                        ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(
-                            homeDistance),
+                        // (Payback(0f) would score a 0-turn payback as the BEST possible
+                        // quality, not "no payback" — the raw field must stay literal 0f.)
+                        payback: 0f,
+                        // No facility exists to lose if the target is abandoned — proximity is
+                        // an upside-only nicety here, never a penalty for farming far from home.
+                        ownTerritoryProximity: Mathf.Max(0f,
+                            TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
                         // Army activation is a reactivation fee, not a played-card/action AP cost.
                         cardPrice: activationAp * AiConfigV2.taskScoreReactivationApWeight,
                         delivery: TaskScoreEvaluator.DeliveryFromEta(
