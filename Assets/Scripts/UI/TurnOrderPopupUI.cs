@@ -67,7 +67,8 @@ namespace Game.UI
                 Finish(_pendingOrder);
         }
 
-        public void Show(List<PlayerSetupData> players, Action<List<PlayerSetupData>> onResolved)
+        public void Show(List<PlayerSetupData> players, Action<List<PlayerSetupData>> onResolved,
+            bool watchAiDebug = false)
         {
             // Stops a still-pending auto-Roll/auto-Continue coroutine from a PREVIOUS Show() on
             // this same (reused) popup instance from firing against the fresh turn set up below.
@@ -89,7 +90,7 @@ namespace Game.UI
                 }
             }
 
-            ShowBuyPanel(players);
+            ShowBuyPanel(players, watchAiDebug);
 
             if (panelRoot != null)
                 panelRoot.SetActive(true);
@@ -124,9 +125,12 @@ namespace Game.UI
                 Finish(order);
         }
 
-        // Only the human player buys dice through this panel — AI purchases are already applied
-        // by InitiativeCoordinatorV2 before Show is called.
-        private void ShowBuyPanel(List<PlayerSetupData> players)
+        // Only the human player buys dice interactively through this panel — AI purchases are
+        // already applied by InitiativeCoordinatorV2 before Show is called. With no human in the
+        // match, GameTurnController.debugWatchAiTurns (watchAiDebug here) asks for a read-only
+        // view of one AI's already-applied purchase instead of leaving this panel permanently
+        // empty — see InitiativeBuyPanelUI.ShowAiDebug.
+        private void ShowBuyPanel(List<PlayerSetupData> players, bool watchAiDebug)
         {
             if (buyPanel == null)
                 return;
@@ -135,8 +139,18 @@ namespace Game.UI
             buyPanel.DiceCountChanged += OnBuyPanelDiceCountChanged;
 
             PlayerSetupData human = players.Find(p => p != null && p.IsHuman);
-            PlayerRoot humanRoot = human != null ? PlayerRootRegistry.FindFor(human) : null;
-            buyPanel.Show(human, humanRoot);
+            if (human != null)
+            {
+                buyPanel.Show(human, PlayerRootRegistry.FindFor(human));
+                return;
+            }
+            if (watchAiDebug)
+            {
+                PlayerSetupData ai = players.Find(p => p != null);
+                buyPanel.ShowAiDebug(ai, ai != null ? PlayerRootRegistry.FindFor(ai) : null);
+                return;
+            }
+            buyPanel.Show(null, null);
         }
 
         // The human just bought/refunded a die — resize their row's dice slots to match so

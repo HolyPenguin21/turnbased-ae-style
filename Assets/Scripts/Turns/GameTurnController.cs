@@ -692,7 +692,7 @@ namespace Game.Turns
             Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
                 GameSession.Players, map, startingDeckCatalog, TurnNumber);
 
-            turnOrderPopup.Show(GameSession.Players, OnTurnOrderResolved);
+            turnOrderPopup.Show(GameSession.Players, OnTurnOrderResolved, debugWatchAiTurns);
         }
 
         private static readonly ResourceType[] AllResourceTypes =

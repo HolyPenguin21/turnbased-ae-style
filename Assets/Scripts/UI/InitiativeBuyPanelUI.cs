@@ -62,6 +62,29 @@ namespace Game.UI
             RefreshRows();
         }
 
+        // Debug-only spectator view (GameTurnController.debugWatchAiTurns, no human in the
+        // match): same rows/layout as Show, but permanently locked and never wired to
+        // OnBuy/OnRefund — an AI's purchase already happened via InitiativeCoordinatorV2 before
+        // this popup opens, so this is read-only display of that outcome, never a second way to
+        // spend the AI's resources.
+        public void ShowAiDebug(PlayerSetupData aiPlayer, PlayerRoot aiRoot)
+        {
+            _root = aiRoot;
+            _locked = true;
+
+            bool active = aiPlayer != null && aiRoot != null;
+            if (panelRoot != null)
+                panelRoot.SetActive(active);
+            if (!active)
+                return;
+
+            if (resourceRows != null)
+                for (int i = 0; i < resourceRows.Length && i < RowOrder.Length; i++)
+                    resourceRows[i].Setup(RowOrder[i], null, null);
+
+            RefreshRows();
+        }
+
         private void OnBuy(ResourceType type)
         {
             if (_locked || _root == null || !_root.PurchaseInitiativeDie(type))
