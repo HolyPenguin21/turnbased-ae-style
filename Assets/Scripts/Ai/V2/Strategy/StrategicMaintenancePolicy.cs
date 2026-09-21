@@ -95,22 +95,37 @@ namespace Game.Ai.V2
                     / (float)Mathf.Max(1, unit.HitPointsMax);
                 int apCost = UnitRepair.ApCost(unit);
                 float apOpportunityCost = AiConfigV2.stratCardApCostWeight * apCost;
+                float unitPower = AiPower.UnitPower(unit);
+                float restoredPower = unitPower * hpFraction;
+                float weighted = restoredPower * AiConfigV2.repairPowerValueWeight;
                 // Restored combat power on AiPower's own per-unit scale (AiPower.UnitPower — the
                 // same stat-line-times-ability-multiplier reading ForceGrowth/CombatBody already
                 // use), weighted onto the shared utility scale by repairPowerValueWeight — a
                 // first-cut constant (project owner's own 2026-09-21 call: repair should land
                 // roughly at "half the cost of replaying an equivalent body", not calibrated
                 // against a played log yet, unlike most other weights in this file).
-                float utility = AiPower.UnitPower(unit) * hpFraction
-                    * AiConfigV2.repairPowerValueWeight - apOpportunityCost;
+                float utility = weighted - apOpportunityCost;
+                ResourceCost resCost = UnitRepair.ResourceCost(unit);
+                // Calibration line (2026-09-21, project owner's own request): every repair
+                // candidate considered this turn, not just the one the arbiter picks — so
+                // repairPowerValueWeight can be judged/retuned against real play instead of guessed.
+                AiDebugLog.Write($"[AI][V2][Maintenance][Repair] cand unit={unit.Name}(#{unit.RuntimeId}) "
+                    + $"hex=({hex.Q},{hex.R}) hp={unit.HitPointsCurrent:0.#}/{unit.HitPointsMax:0.#} "
+                    + $"hpFraction={hpFraction:0.00} unitPower={unitPower:0.00} "
+                    + $"restoredPower={restoredPower:0.00} weight={AiConfigV2.repairPowerValueWeight:0.00} "
+                    + $"weighted={weighted:0.00} apCost={apCost} apOpportunityCost={apOpportunityCost:0.00} "
+                    + $"resCost=[H{resCost.human} E{resCost.energy} M{resCost.materials} T{resCost.tech}] "
+                    + $"utility={utility:0.00}");
                 list.Add(new StrategicSpendCandidate(unit, hex)
                 {
                     Label = $"repair {unit.Name} (#{unit.RuntimeId}) at ({hex.Q},{hex.R}): "
-                        + $"{unit.HitPointsCurrent}/{unit.HitPointsMax} HP",
+                        + $"{unit.HitPointsCurrent}/{unit.HitPointsMax} HP "
+                        + $"(power {unitPower:0.0} x hpFrac {hpFraction:0.00} x w{AiConfigV2.repairPowerValueWeight:0.0} "
+                        + $"= {weighted:0.0} - apOpp {apOpportunityCost:0.0})",
                     StableKey = "repair:" + unit.RuntimeId,
                     Utility = utility,
                     ApCost = apCost,
-                    ResCost = UnitRepair.ResourceCost(unit),
+                    ResCost = resCost,
                 });
             }
 
