@@ -298,6 +298,26 @@ namespace Game.Ai.V2
         public const float holdComboPreservationValue = 0.30f;// a still-available combo partner (equipment in hand fitting this body) makes the bare play forfeit a stronger combined play
         public const float holdResourcePressurePenalty = 0.35f;// a secure economy (resources at risk of capping / cheaply replenished) lowers the value of hoarding by holding the card
 
+        // ResourceGain role (PlayerGlobal recurring-resource cards — ApBonus/ProduceHuman/
+        // ProduceMaterials/...). "Earlier is better": a fast, deliberately strong turn-decay down
+        // to a floor — see StrategicCardEvaluator.ResourceGainRoleFit. This weight is deliberately
+        // NOT derived from ec.GlobalRoleFit's own GlobalRecurringValue formula (yield x horizon x
+        // futureOpportunity x apMarginalUtility x persistence x saturation) — that formula discounts
+        // heavily on apMarginalUtility (how AP-starved the AI is THIS turn), which is the wrong lens
+        // for a permanent +N/turn source: the reason to play it early is the SUM over the whole
+        // remaining game, not this turn's momentary AP pressure. It is ALSO deliberately the card's
+        // ONLY source of RoleFit under this role (ImmediateTempo/ScarcityValue/ec.GlobalRoleFit are
+        // all zeroed for ResourceGain — see StrategicCardEvaluator.ScoreSurplusRole) so this one
+        // number has to carry the entire case for playing it. Calibrated 2026-09-21 against 4 real
+        // ApBonus/Produce heroes pulled from a played log (Dorian Kesh T3, Miller Hayes T4, Iri Vane
+        // T5, Tessa Rourke T10, res cost ~-0.18..-0.20 each): the minimum base that beats all 4
+        // CombatBody Totals is 3.4 (tightest case Miller Hayes T4, CombatBody Total 2.67); set with
+        // headroom so ResourceGain reads as a clear early-game pick, not a coin flip.
+        public const float resourceGainRoleFitBase = 3.6f;     // own RoleFitCore weight at turn <= resourceGainEarlyRampLo
+        public const float resourceGainEarlyTurnFloor = 0.35f; // weight retained at turn >= resourceGainEarlyRampHi (never fully worthless — still a recurring source)
+        public const int   resourceGainEarlyRampLo = 1;        // turn at/under which the full base weight applies
+        public const int   resourceGainEarlyRampHi = 15;       // turn at/over which it has decayed to the floor
+
         // --- Review follow-up P1.4/P1.5/P1.6/P0.2 tunables ------------------------------------
         public const float scoutBaseRoleFit = 1.0f;            // Phase-B Scout RoleFit base, before the CapabilityQualityEvaluator multiplier
         public const float roleVersatilityPerExtraRole = 0.12f;// value per real viable role beyond the first (NOT a Hero class bonus)

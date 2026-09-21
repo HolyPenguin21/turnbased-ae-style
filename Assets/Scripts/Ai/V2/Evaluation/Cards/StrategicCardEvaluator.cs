@@ -61,6 +61,13 @@ namespace Game.Ai.V2
         Development,
         EquipmentUpgrade,
         ForceGrowth,
+        // A card whose granted ability is a PlayerGlobal recurring-resource yield (ApBonus/
+        // ProduceHuman/ProduceMaterials/...). Previously this had no role of its own — the
+        // effect's value (ec.GlobalRoleFit) silently rode whatever OTHER role won the card's
+        // internal contest (usually CombatBody), so a pure economy hero logged as role=CombatBody
+        // with no visible reason. This role gives it its own RoleFitCore weight so it can win the
+        // contest and be labelled as itself on a card with a weak/no combat body.
+        ResourceGain,
         Hold,
     }
 
@@ -469,15 +476,27 @@ namespace Game.Ai.V2
 
             // Phase B has no target-fit multiplier, so local + PlayerGlobal (ec.Global*) simply add
             // into the same breakdown axis; the descriptor's EffectField still routes each.
-            bd.RoleFit = roleFitCore + ec.RoleFit + ec.GlobalRoleFit;
+            // ResourceGain excluded from ec.GlobalRoleFit: that dynamic GlobalRecurringValue figure
+            // (yield x horizon x marginalApUtility x saturation) prices the SAME "this card produces
+            // a resource" fact that ResourceGainRoleFit's own weight already exists to express —
+            // adding both double-counts it under this one role's Total. Other roles scoring the SAME
+            // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
+            // before — this exclusion is scoped to the ResourceGain role only, not the ability.
+            bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain ? 0f : ec.RoleFit + ec.GlobalRoleFit);
             // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
             // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
-            bd.ImmediateTempo = traits + SurplusPlacementBonus(plan.Deploy.Kind, role)
+            // ResourceGain excluded: every candidate scored here already passed feasibility as
+            // playable THIS turn, so a deployment-slot-type preference doesn't describe "why is a
+            // permanent recurring-resource source worth playing" — that reason lives entirely in
+            // RoleFit's own weight + ec.GlobalRoleFit, not in which army slot it lands in.
+            bd.ImmediateTempo = role == IntendedRole.ResourceGain ? 0f
+                : traits + SurplusPlacementBonus(plan.Deploy.Kind, role)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
                 : SurplusCapabilityGap(role, inv, baseline, snap, roleFitCore)) + ec.CapabilityGap + ec.GlobalCapabilityGap;
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
+                || role == IntendedRole.ResourceGain
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
@@ -489,7 +508,12 @@ namespace Game.Ai.V2
             // Production support. Currently a no-op — see ScoreForDemand's comment.
             bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
-            bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
+            // ResourceGain excluded: SurplusScarcity is a flat AvailableHeroes/ReadyScouts lookup,
+            // not a measure of THIS card's own uniqueness — it doesn't describe why a recurring-
+            // resource source is worth playing, and stacking it on top double-counts the same
+            // "heroes are scarce" idea the role already gets for free via the exempted
+            // SurplusScarceBodyFloor below.
+            bd.ScarcityValue = role == IntendedRole.Hold || role == IntendedRole.ResourceGain ? 0f : scarcity;
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
             bd.ResourcePressureBenefit = 0f;   // no caller-side surplus correction; NetScore is final
@@ -538,6 +562,8 @@ namespace Game.Ai.V2
                     // P2b — no separate hero-support term: the registry already prices Researcher /
                     // Assembler (for a Unit OR a Hero) exactly once. Core Support fit is 0.
                     return 0f;
+                case IntendedRole.ResourceGain:
+                    return ResourceGainRoleFit(ectx);
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
                 case IntendedRole.MobileCombat:
@@ -550,6 +576,27 @@ namespace Game.Ai.V2
                 default:
                     return versatility;
             }
+        }
+
+        // AI-MGR — ResourceGain's OWN weight. Before this role existed, a PlayerGlobal
+        // recurring-resource card (ApBonus/ProduceHuman/ProduceMaterials/...) only ever won the
+        // internal per-card role contest by accident, riding CombatBody's combat/command score
+        // while the actual reason to play it sat unlabeled inside ec.GlobalRoleFit (added to
+        // EVERY role identically — StrategicEffectRegistry.Contributions treats PlayerGlobal
+        // effects as role-independent by design, and that stays true here too: this term does
+        // NOT duplicate ec.GlobalRoleFit's yield×horizon×marginalUtility×saturation math, it only
+        // gives the ResourceGain role enough of its own RoleFitCore to surface as itself in
+        // role= logging and to win the contest on a card with a weak/no combat body.
+        // "Earlier is better": expressed directly and strongly here — a fast turn-decay down to a
+        // floor — rather than relying on EffectEvaluationContext.RecurringFutureOpportunity's
+        // existing turn factor, which is deliberately WEAK (one of four blended inputs, ramped
+        // over turns 6-40) because it also has to serve cards with no early-game urgency story.
+        private static float ResourceGainRoleFit(EffectEvaluationContext ectx)
+        {
+            float earlyBias = Mathf.Lerp(1f, AiConfigV2.resourceGainEarlyTurnFloor,
+                Curves.Ramp(ectx.TurnNumber,
+                    AiConfigV2.resourceGainEarlyRampLo, AiConfigV2.resourceGainEarlyRampHi));
+            return AiConfigV2.resourceGainRoleFitBase * earlyBias;
         }
 
         // Effective moveMax of the plan's END RESULT (base + already-attached + planned equipment)
@@ -863,6 +910,10 @@ namespace Game.Ai.V2
             if (abilities != null && (abilities.Contains(UnitAbilities.Researcher)
                                       || abilities.Contains(UnitAbilities.Assembler)))
                 roles.Add(IntendedRole.Development);
+            // A PlayerGlobal recurring-resource carrier (ApBonus/ProduceHuman/ProduceMaterials/...)
+            // gets its own contestable role — see ResourceGainRoleFit.
+            if (abilities != null && StrategicEffectRegistry.HasGlobalRecurringEffect(abilities))
+                roles.Add(IntendedRole.ResourceGain);
             // P1 ARCH — every ability/stat-derived role (AntiAir / AntiArmor / Support / MobileCombat
             // today) comes from the registry, off the SAME effective moveMax role-fit / readiness use
             // (a +MoveMax trinket that crosses the mobile threshold is now seen here too).
@@ -1194,7 +1245,10 @@ namespace Game.Ai.V2
             CapabilityInventory inv, bool hero)
         {
             float cost = 0f;
+            // ResourceGain is a specialist use like Support/Scout — a rare hero playing its
+            // recurring-resource specialty is not the "off-role misuse" this floor guards against.
             if (hero && role != IntendedRole.Support && role != IntendedRole.Scout
+                && role != IntendedRole.ResourceGain
                 && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
                 cost += AiConfigV2.stratChainHeroScarcityPenalty;
             if (role != IntendedRole.Scout
