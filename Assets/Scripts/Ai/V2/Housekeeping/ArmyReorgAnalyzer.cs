@@ -301,6 +301,14 @@ namespace Game.Ai.V2
             if (AiArmyRoles.IsSoloRecce(army)
                 && ReconPatrolStateRegistry.TryGet(player, army.Id, out _))
                 return ReorgPhysicalRole.SoloRecce;
+            // A solo collector belongs to itself, same call as SoloRecce above — it is never
+            // folded into another army by zero-AP reorg. Unlike SoloRecce there is no separate
+            // "still has work" registry to gate on: once it is this shape at all, housekeeping
+            // leaves it alone (its own MobileCollection MissionIntent claim already protects it
+            // via ProtectedMissionArmy while actively travelling/assigned; this covers the gap
+            // once it is parked and passively earning, when that claim may no longer be live).
+            if (AiArmyRoles.IsSoloCollector(army))
+                return ReorgPhysicalRole.SoloCollector;
             if (army.Members.Count == 0)
                 return ReorgPhysicalRole.EmptyReusableArmy;
             return ReorgPhysicalRole.NormalFieldArmy;

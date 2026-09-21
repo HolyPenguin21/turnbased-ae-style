@@ -1,5 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
+using Game.Economy;
 
 namespace Game.Ai.V2
 {
@@ -26,6 +28,7 @@ namespace Game.Ai.V2
                 // final effective abilities still decide whether a Scout/Combat chain qualifies.
                 case CapabilityKind.ScoutCapability:
                 case CapabilityKind.FieldCombatPower:
+                case CapabilityKind.CollectorCapability:
                     return d.cardType == CardType.Unit || d.cardType == CardType.Hero;
                 // Preserve the original Phase-A separation of a native Recce hero from the
                 // generic Hero demand. Phase B may still assign that same hero to a body army:
@@ -36,7 +39,11 @@ namespace Game.Ai.V2
             }
         }
 
-        internal static bool AbilitiesSatisfyCapability(IReadOnlyList<string> abilities, CardType type, CapabilityKind kind)
+        // requiredResourceType is only consulted for CollectorCapability (the ONE resource type
+        // the demand's known hex actually needs — see DemandLayer.Economy's collector block);
+        // every other case ignores it, matching every existing call site that omits it.
+        internal static bool AbilitiesSatisfyCapability(IReadOnlyList<string> abilities, CardType type,
+            CapabilityKind kind, ResourceType? requiredResourceType = null)
         {
             bool recce = AbilityParams.AbilitiesHaveAnyRecce(abilities);
             switch (kind)
@@ -47,6 +54,9 @@ namespace Game.Ai.V2
                 case CapabilityKind.Hero: return type == CardType.Hero;
                 case CapabilityKind.FieldCombatPower:
                     return !recce && (type == CardType.Unit || type == CardType.Hero);
+                case CapabilityKind.CollectorCapability:
+                    return requiredResourceType.HasValue && abilities != null
+                        && abilities.Contains(UnitAbilities.CollectAbilityFor(requiredResourceType.Value));
                 default: return false;
             }
         }

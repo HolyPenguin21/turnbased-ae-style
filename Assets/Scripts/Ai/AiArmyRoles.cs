@@ -46,6 +46,25 @@ namespace Game.Ai
             return !army.Members[0].IsAviation && AbilityParams.UnitHasAnyRecce(army.Members[0]);
         }
 
+        // A lone resource-collector carrier — the same "belongs solo" shape as IsSoloRecce, for the
+        // same reason (project owner's own 2026-09-21 call: a bigger army costs more AP to move for
+        // no extra collection benefit, and a solo collector should be free to go anywhere a known
+        // resource hex needs it without dragging combat units along). One member, non-hero,
+        // non-aviation, carrying ANY CollectX ability (see UnitAbilities.CollectAbilities) —
+        // resource-type match against the specific site is the caller's job, not this shape check's.
+        public static bool IsSoloCollector(ArmyData army)
+        {
+            if (army == null || army.IsGarrison || army.IsPrison || army.Members.Count != 1)
+                return false;
+            UnitData member = army.Members[0];
+            if (member.IsHero || member.IsAviation)
+                return false;
+            foreach (string collectAbility in UnitAbilities.CollectAbilities)
+                if (member.HasAbility(collectAbility))
+                    return true;
+            return false;
+        }
+
         // Whether `army` has a real roster slot at all — not the garrison (nothing there is a
         // deployable "army" a card joins) and not a Prison, whose "room" is captured enemy
         // heroes' own Command Rating headroom (see ArmyData.ComputeCapacity), not a slot the AI

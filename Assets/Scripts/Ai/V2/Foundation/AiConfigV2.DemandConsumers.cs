@@ -25,6 +25,7 @@ namespace Game.Ai.V2
 
         public const int economyMaxInfrastructureDemandsPerTurn = 1;
         public const int economyMaxExpansionBaseDemandsPerTurn = 1;
+        public const int economyMaxCollectorDemandsPerTurn = 1;
         public const int developmentMaxDemandsPerTurn = 1;     // one development-infrastructure demand at a time
 
     }

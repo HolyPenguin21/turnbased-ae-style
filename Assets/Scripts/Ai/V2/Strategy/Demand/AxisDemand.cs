@@ -30,6 +30,10 @@ namespace Game.Ai.V2
         DevelopmentInfrastructure,
         DevelopmentOperator,
         CardUpgrade,
+        // A mobile resource collector, deployed SOLO (mirrors ScoutCapability's own-army rule —
+        // see MaterializationChainEnumerator.EnumerateForDemand) for one specific known resource
+        // hex (AxisDemand.EconomyResourceType). No facility is built; the card itself is the unit.
+        CollectorCapability,
     }
 
     // AGG-RAID §6 — HOW a capability must be delivered, orthogonal to WHICH capability it is.

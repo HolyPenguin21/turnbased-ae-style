@@ -146,6 +146,10 @@ namespace Game.Ai.V2
                 });
             }
 
+            foreach (AxisDemand collectorDemand in CollectorCapabilityDemands(
+                s, standings, player, activeIntents))
+                yield return collectorDemand;
+
             string baseSummary = AddBaseCandidates(
                 s, candidates, player, ctx, activeIntents, commitments,
                 out int baseNoBuilder, out int baseStrategicValue,
@@ -239,6 +243,112 @@ namespace Game.Ai.V2
             if (selected.Count == 0)
                 AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
                     + "reason=no_legal_valuable_site_or_base");
+        }
+
+        // A mobile collector card, materialized SOLO (see MaterializationChainEnumerator's
+        // CollectorCapability soloOnly rule) straight onto a known, currently-uncovered resource
+        // hex. Deliberately separate from the ExtractionOpportunity/facility loop above: this is
+        // never a facility (no EconomicInfrastructure/EconomicExpansionBase card, no site-slot
+        // rule), it is a cheap disposable field unit — same "own army, own decision" shape as a
+        // Scout card, just for a resource hex instead of the fog. A site already covered by an
+        // existing free army (s.Economy.MobileCollectionOpportunities) never needs a card spent on
+        // it — that opportunistic path stays strictly cheaper and takes priority by construction.
+        internal static IEnumerable<AxisDemand> CollectorCapabilityDemands(WorldSnapshot s,
+            Dictionary<ResourceType, EconomyResourceStanding> standings, PlayerSetupData player,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            List<CardData> collectorCards = (s.Self?.Hand ?? System.Array.Empty<CardData>())
+                .Where(c => c?.Definition != null && !c.Definition.isAviation
+                    && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Hero))
+                .ToList();
+            if (collectorCards.Count == 0 || s.Economy?.ExtractionOpportunities == null)
+                yield break;
+
+            var existingMobileCoverage = new HashSet<(HexCoord, ResourceType)>(
+                (s.Economy.MobileCollectionOpportunities ?? System.Array.Empty<MobileCollectionOpportunity>())
+                    .Select(o => (o.TargetHex, o.ResourceType)));
+
+            var candidates = new List<AxisDemand>();
+            foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities)
+            {
+                if (existingMobileCoverage.Contains((site.Hex, site.ResourceType))
+                    || !standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs)
+                    || HasActiveEconomyIntentAtHexOfKind(activeIntents, site.Hex, EconomyTaskKind.MobileCollection))
+                    continue;
+
+                float gain = Mathf.Max(0f, site.MarginalIncomeGain);
+                float usefulGain = gain <= AiConfigV2.allocatorSliceEpsilon
+                    ? 0f : rs.UsefulMarginalIncomeGain(gain);
+                if (usefulGain <= AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+
+                string requiredAbility = UnitAbilities.CollectAbilityFor(site.ResourceType);
+                CardData card = collectorCards
+                    .Where(c => MaterializationChainMatching
+                        .EffectiveAbilities(c.Definition, c.Equipment).Contains(requiredAbility))
+                    .OrderBy(c => c.Definition.apCost)
+                    .ThenBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
+                    .FirstOrDefault();
+                if (card == null)
+                    continue;
+
+                float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
+                float priority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
+                float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
+                int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
+                int moveMax = Mathf.Max(1, card.Definition.moveMax);
+                int etaTurns = Mathf.Max(1, Mathf.CeilToInt(homeDistance / (float)moveMax));
+                float resourceCost = StrategicCardEvaluator.ResourceCostSum(card.Definition.resourceCost);
+
+                var score = new TaskScore(
+                    economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, priority),
+                    // No facility outlay, and arrival is priced once by Delivery — not a second,
+                    // fake payback period (same call as WorldAnalysis.Economy's existing-army path).
+                    payback: 0f,
+                    // No facility to lose if the target is abandoned — proximity stays upside-only,
+                    // never a penalty for placing a collector far from home.
+                    ownTerritoryProximity: Mathf.Max(0f,
+                        TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
+                    cardPrice: TaskScoreEvaluator.CardPrice(card.Definition.apCost, resourceCost),
+                    delivery: TaskScoreEvaluator.DeliveryFromEta(card.Definition.activationApCost,
+                        etaTurns, AiConfigV2.taskScoreReactivationApWeight),
+                    hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+                if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
+                    continue;
+
+                candidates.Add(new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = CapabilityKind.CollectorCapability,
+                    DesiredAmount = 1f,
+                    TargetHex = site.Hex,
+                    EconomyResourceType = site.ResourceType,
+                    EconomyBuildCard = card,
+                    EconomyBuildResourceCost = card.Definition.resourceCost,
+                    EconomyBuildApCost = card.Definition.apCost,
+                    MinimumFollowupAp = card.Definition.apCost,
+                    EconomyExpectedIncomeGain = gain,
+                    EconomySiteValue = score.Value,
+                    EconomyTravelCost = homeDistance,
+                    EconomyThreatExposure = exposure,
+                    EconomyPaybackTurns = 0f,
+                    WorldTaskScore = score,
+                    Value = score.Value,
+                    Explain = $"Collector {site.ResourceType} task={score.Value:0.##} priority={priority:0.##} "
+                        + $"gain={gain:0.##} usefulGain={usefulGain:0.##} homeDist={homeDistance} "
+                        + $"eta={etaTurns} exposure={exposure:0.##} card={card.Definition.displayName}",
+                });
+            }
+
+            foreach (AxisDemand demand in candidates
+                .OrderByDescending(d => d.Value)
+                .Take(Mathf.Max(0, AiConfigV2.economyMaxCollectorDemandsPerTurn)))
+            {
+                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=CollectorCapability "
+                    + $"resource={demand.EconomyResourceType} "
+                    + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) value={demand.Value:0.##}");
+                yield return demand;
+            }
         }
 
         internal static AxisDemand EconomyHeroPrerequisite(AxisDemand source) => new AxisDemand

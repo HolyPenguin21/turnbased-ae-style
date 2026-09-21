@@ -23,6 +23,7 @@ namespace Game.Ai.V2
         Garrison,
         ProtectedMissionArmy,
         SoloRecce,
+        SoloCollector,
         Aviation,
         NormalFieldArmy,
         EmptyReusableArmy,

@@ -25,7 +25,12 @@ namespace Game.Ai.V2
             System.Collections.Generic.ISet<CardData> excludeCards = null,
             System.Collections.Generic.ISet<string> excludeGenKeys = null)
         {
-            bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability;
+            // A Collector card is deployed SOLO for the exact same reason a Recce card is —
+            // it founds/keeps its own cheap, disposable single-unit army rather than diluting
+            // into an existing one (see AxisDemand.CapabilityKind.CollectorCapability).
+            bool soloOnly = demand.Capability == CapabilityKind.ScoutCapability
+                || demand.Capability == CapabilityKind.CollectorCapability;
+            Game.Economy.ResourceType? requiredResourceType = demand.EconomyResourceType;
             bool Excluded(CardData c) => c != null
                 && ((excludeCards != null && excludeCards.Contains(c))
                     || (reservation?.ClaimsDevelopmentOperatorCard(c) ?? false));
@@ -48,7 +53,7 @@ namespace Game.Ai.V2
                     continue;
 
                 IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
-                if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability)
+                if (MaterializationChainMatching.AbilitiesSatisfyCapability(baseAbilities, def.cardType, demand.Capability, requiredResourceType)
                     && MaterializationChainMatching.MeetsRequiredTraits(baseAbilities, demand.RequiredTraits))
                 {
                     foreach (PlacementOption opt in PlacementSelector.BuildOptions(snap, player, def, commitments, soloOnly))
@@ -67,7 +72,7 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, def))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(baseAbilities, eqDef.equipment);
-                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability)
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, def.cardType, demand.Capability, requiredResourceType)
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
@@ -94,7 +99,7 @@ namespace Game.Ai.V2
                             continue;
                         IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
                         List<string> projected = EquipmentSystem.EffectiveAbilities(hostAbilities, gd.equipment);
-                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability)
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, hd.cardType, demand.Capability, requiredResourceType)
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
 
@@ -113,7 +118,7 @@ namespace Game.Ai.V2
                     List<PlacementOption> genOpts = PlacementSelector.BuildOptions(snap, player, gd, commitments, soloOnly);
                     if (genOpts.Count == 0) continue;
 
-                    if (MaterializationChainMatching.AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability)
+                    if (MaterializationChainMatching.AbilitiesSatisfyCapability(genAbilities, gd.cardType, demand.Capability, requiredResourceType)
                         && MaterializationChainMatching.MeetsRequiredTraits(genAbilities, demand.RequiredTraits))
                     {
                         foreach (PlacementOption opt in genOpts)
@@ -130,7 +135,7 @@ namespace Game.Ai.V2
                             || !MaterializationChainMatching.EquipmentDefFitsHostDef(eqDef, gd))
                             continue;
                         List<string> projected = EquipmentSystem.EffectiveAbilities(genAbilities, eqDef.equipment);
-                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, gd.cardType, demand.Capability)
+                        if (!MaterializationChainMatching.AbilitiesSatisfyCapability(projected, gd.cardType, demand.Capability, requiredResourceType)
                             || !MaterializationChainMatching.MeetsRequiredTraits(projected, demand.RequiredTraits))
                             continue;
                         foreach (PlacementOption opt in genOpts)
