@@ -96,6 +96,9 @@ namespace Game.Ai.V2
         public float ResourcePressureBenefit; // stranded AP / near-cap resource makes spending now better
         public float HandPressureBenefit;     // a full hand makes materialising now better
         public float ProductionSupportAdjustment; // economy-backed amplifier/drag for Production-generated value
+        // Canonical world-task value directly enabled by this exact non-combat placement. Only the
+        // shared scorer may fold it into global card arbitration; callers never post-adjust Total.
+        public float OperationalTaskValue;
 
         public float Total;
 
@@ -112,7 +115,8 @@ namespace Game.Ai.V2
                  + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(GenerationRiskDiscount)} "
                  + $"redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
                  + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} "
-                 + $"prod {F(ProductionSupportAdjustment)} hold {F(HoldValue)} "
+                 + $"prod {F(ProductionSupportAdjustment)} task {F(OperationalTaskValue)} "
+                 + $"hold {F(HoldValue)} "
                  + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}"
                  + (string.IsNullOrEmpty(EffectDetail) ? "" : $"  || {EffectDetail}");
         }
@@ -667,7 +671,8 @@ namespace Game.Ai.V2
             WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade,
             GenerationStep generation = null, float? witnessedUsefulApDemand = null,
             float? actualApCost = null, ResourceCost actualResourceCost = null,
-            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
+            System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null,
+            TaskScore? operationalTask = null)
         {
             var bd = new StrategicUseScoreBreakdown();
             CardDefinition def = card?.Definition;
@@ -754,6 +759,7 @@ namespace Game.Ai.V2
             // Other optional Production-generated non-combat assets are amplifiers; currently a
             // no-op either way — see ScoreForDemand's comment.
             bd.ProductionSupportAdjustment = 0f;
+            bd.OperationalTaskValue = operationalTask?.Value ?? 0f;
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             // Aviation sortie-upkeep penalty (user call, 2026-09-21) — a new wing does not just cost
@@ -808,7 +814,8 @@ namespace Game.Ai.V2
             b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.ThreatCounterValue
             + b.ForceGrowthValue + b.ResourceEfficiency + b.SynergyValue
             + b.GenerationRiskDiscount + b.RedundancyPenalty + b.AlternativeUseValue
-            + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment;
+            + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment
+            + b.OperationalTaskValue;
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
@@ -833,7 +840,7 @@ namespace Game.Ai.V2
                 + b.ThreatCounterValue + b.ForceGrowthValue
                 + b.SynergyValue + b.RedundancyPenalty
                 + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit
-                + b.ProductionSupportAdjustment;
+                + b.ProductionSupportAdjustment + b.OperationalTaskValue;
             return -(1f - Mathf.Clamp01(chance)) * Mathf.Max(0f, contingent);
         }
 

@@ -32,6 +32,7 @@ namespace Game.Ai.V2
                 contacts.Add(new EnemyContactSnapshot
                 {
                     Army = SightingToArmySnapshot(s),
+                    PhysicalArmyId = s.ArmyId,
                     Knowledge = visibleNow ? ContactKnowledge.Exact : ContactKnowledge.LastKnown,
                     Source = ContactSource.Honest,
                     Position = s.Hex,
@@ -47,6 +48,7 @@ namespace Game.Ai.V2
                 contacts.Add(new EnemyContactSnapshot
                 {
                     Army = ObservationToArmySnapshot(obs),
+                    PhysicalArmyId = obs.ArmyId,
                     Knowledge = ContactKnowledge.LastKnown,
                     Source = ContactSource.Honest,
                     Position = obs.LastObservedHex,
@@ -207,6 +209,7 @@ namespace Game.Ai.V2
         {
             return new EnemyContactSnapshot
             {
+                PhysicalArmyId = source.ArmyId,
                 Army = new ArmySnapshot
                 {
                     ArmyId = -1,

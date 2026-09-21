@@ -32,13 +32,17 @@ namespace Game.Ai.V2
                 .Where(a => a != null && !a.IsPrison)
                 .ToList();
 
-            BuildingData citadelBuilding = BuildingRegistry.AllBuildings()
-                .FirstOrDefault(b => b != null && b.Owner == player && b.IsStartingCitadel);
-            HexCoord? canonicalCitadel = player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
+            List<BuildingData> buildings = BuildingRegistry.AllBuildings()
+                .Where(b => b != null).ToList();
+            HexCoord? configuredCitadel = player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
                 ? new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value)
-                : citadelBuilding != null ? (HexCoord?)citadelBuilding.Hex : null;
-            List<HexCoord> baseHexes = OwnedBaseHexes(
-                BuildingRegistry.AllBuildings(), player, canonicalCitadel);
+                : (HexCoord?)null;
+            BuildingData citadelBuilding = buildings.FirstOrDefault(b => b.Owner == player
+                && (b.IsStartingCitadel
+                    || configuredCitadel.HasValue && b.Hex.Equals(configuredCitadel.Value)));
+            HexCoord? canonicalCitadel = citadelBuilding != null
+                ? (HexCoord?)citadelBuilding.Hex : null;
+            List<HexCoord> baseHexes = OwnedBaseHexes(buildings, player, configuredCitadel);
             HexCoord citadel = canonicalCitadel
                 ?? baseHexes.Select(h => (HexCoord?)h).FirstOrDefault()
                 ?? default;
@@ -131,16 +135,22 @@ namespace Game.Ai.V2
         internal static List<HexCoord> OwnedBaseHexes(IEnumerable<BuildingData> buildings,
             PlayerSetupData player, HexCoord? citadel)
         {
-            var result = (buildings ?? System.Array.Empty<BuildingData>())
+            List<BuildingData> source = (buildings ?? System.Array.Empty<BuildingData>())
+                .Where(b => b != null).ToList();
+            var result = source
                 .Where(b => b != null && b.Owner == player && b.IsBase)
                 .Select(b => b.Hex)
                 .Distinct()
                 .OrderBy(h => h.Q).ThenBy(h => h.R)
                 .ToList();
-            // Starting citadels are Bases by the domain contract, but retain this defensive
-            // fallback for old saves/test fixtures whose IsBase bit predates the invariant.
-            if (citadel.HasValue && !result.Contains(citadel.Value))
+            // Old saves may predate the IsBase bit, but the fallback still requires a LIVE owned
+            // starting-citadel building. Raw PlayerSetupData coordinates survive capture/destruction
+            // and must never resurrect a phantom Base anchor.
+            if (citadel.HasValue && !result.Contains(citadel.Value)
+                && source.Any(b => b.Owner == player && b.IsStartingCitadel
+                    && b.Hex.Equals(citadel.Value)))
                 result.Add(citadel.Value);
+            result.Sort((a, b) => a.Q != b.Q ? a.Q.CompareTo(b.Q) : a.R.CompareTo(b.R));
             return result;
         }
 

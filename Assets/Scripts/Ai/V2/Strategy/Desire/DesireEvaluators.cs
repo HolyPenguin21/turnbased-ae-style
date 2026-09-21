@@ -558,8 +558,10 @@ namespace Game.Ai.V2
                 // Honest physical armies have a stable id. Region-only cheat alerts deliberately
                 // carry -1/no identity, so keep each contact object independent rather than
                 // either dropping them or incorrectly merging every hidden regional alert.
-                .GroupBy(t => t.Contact.Army.ArmyId >= 0
-                    ? (object)t.Contact.Army.ArmyId : t.Contact))
+                .GroupBy(t => t.Contact.PhysicalArmyId.HasValue
+                    ? (object)t.Contact.PhysicalArmyId.Value
+                    : t.Contact.Army.ArmyId >= 0
+                        ? (object)t.Contact.Army.ArmyId : t.Contact))
             {
                 AssetThreatSnapshot best = group
                     .OrderByDescending(t => t.Severity)

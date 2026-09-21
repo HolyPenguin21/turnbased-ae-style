@@ -10,20 +10,23 @@ namespace Game.Ai.V2
     {
         Strike,
         Recon,
+        // Execution bookkeeping for a generic owned-airfield relocation. Strategic admission
+        // still comes from current Recon objectives, not a new desire axis or mission category.
+        Rebase,
     }
 
     // Minimal per-air-army execution record: one aircraft group is currently flying a sortie,
     // committed to landing at LandingHex, heading Outbound to TargetHex or back. Pure runtime
-    // bookkeeping for aviation execution — landing-slot accounting reads it, the recon-air
+    // bookkeeping for aviation execution — landing-slot accounting reads it and the owning
     // executor advances it. It is NOT the old strategic task vocabulary (no category, no
-    // 20-value kind, no lifecycle fields): a sortie is Strike or Recon and nothing more.
+    // 20-value kind, no lifecycle fields): Strike/Recon/Rebase are physical flight modes only.
     public sealed class AirSortie
     {
         public ArmyData Army;
         public AirSortieKind Kind;
         public HexCoord TargetHex;   // current travel destination: the action hex while Outbound, the landing hex after
         public HexCoord LandingHex;  // owned airfield this sortie is committed to landing at
-        public bool Outbound = true;
+        public bool Outbound = true; // false from launch for Rebase: destination is its landing
         public bool IsMultiTurn;
     }
 

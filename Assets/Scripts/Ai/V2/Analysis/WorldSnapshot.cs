@@ -868,6 +868,10 @@ namespace Game.Ai.V2
     public sealed class EnemyContactSnapshot
     {
         public ArmySnapshot Army;
+        // Stable physical identity for analyses that may legally correlate the same hidden force
+        // across several regional cheat contacts. It never supplies a position and therefore does
+        // not weaken the honest-contact boundary; ActiveDefence still admits Honest contacts only.
+        public int? PhysicalArmyId;
         public ContactKnowledge Knowledge;
         public ContactSource Source;
 

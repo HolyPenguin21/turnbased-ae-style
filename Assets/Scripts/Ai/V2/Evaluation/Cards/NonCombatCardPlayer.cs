@@ -62,13 +62,15 @@ namespace Game.Ai.V2
         private static StrategicCardUseCandidate Evaluate(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
             float apCost, ResourceCost resCost, GenerationStep generation = null,
-            float? witnessedUsefulApDemand = null, bool logDynamicEffect = true)
+            float? witnessedUsefulApDemand = null, bool logDynamicEffect = true,
+            TaskScore? operationalTask = null)
         {
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreNonCombat(
                 RoleOf(k), card, snap, inv, hand, bestEquipmentUpgrade, generation,
                 witnessedUsefulApDemand, apCost, resCost,
-                type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);
+                type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player,
+                operationalTask);
             // AI-MGR §15 — surface the dynamic-effect decomposition (PlayerGlobal ApBonus value on a
             // Base / Facility, priced by the SAME model as a Hero) so the non-combat lane is testable.
             if (logDynamicEffect && !string.IsNullOrEmpty(cand.Breakdown?.EffectDetail))
@@ -81,9 +83,11 @@ namespace Game.Ai.V2
         private static float Score(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, PlayKind k, CardData card, AiHandData hand, float bestEquipmentUpgrade,
             float apCost, ResourceCost resCost, GenerationStep generation = null,
-            float? witnessedUsefulApDemand = null, bool logDynamicEffect = true) =>
+            float? witnessedUsefulApDemand = null, bool logDynamicEffect = true,
+            TaskScore? operationalTask = null) =>
             Evaluate(snap, player, root, ctx, k, card, hand, bestEquipmentUpgrade,
-                apCost, resCost, generation, witnessedUsefulApDemand, logDynamicEffect).NetScore;
+                apCost, resCost, generation, witnessedUsefulApDemand, logDynamicEffect,
+                operationalTask).NetScore;
 
         // Capacity-upgrade look-ahead must value the exact Facility it would unlock through the
         // same scorer as an ordinary legal Facility play. Keeping this thin adapter here prevents
@@ -392,8 +396,6 @@ namespace Game.Ai.V2
             string sourceKey = generation != null
                 ? "gen:" + generation.CardKey
                 : $"hand:{handOrdinal}:{def.authoredKey ?? "?"}";
-            float cardScore = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
-                totalAp, totalRes, generation, witnessedUsefulApDemand);
             List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap)
                 .Where(o => o != null).ToList();
 
@@ -402,7 +404,9 @@ namespace Game.Ai.V2
                 TaskScore service = BestAirfieldServiceTaskScore(
                     snap, player, ctx, def, airfield, objectives,
                     out int coverage, out string witness);
-                float score = cardScore + service.Value;
+                float score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
+                    totalAp, totalRes, generation, witnessedUsefulApDemand,
+                    logDynamicEffect: true, operationalTask: service);
                 int free = AiAirSortiePlanner.FreeLandingCapacity(airfield, player);
                 AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
                     + $"airfield=({airfield.Q},{airfield.R}) capacity={free} "
@@ -451,6 +455,23 @@ namespace Game.Ai.V2
                     TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
                 },
             };
+            return BestAirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
+                objectives, out coverage, out witness);
+        }
+
+        // Live-aircraft overload used by the generic Rebase operation. Deployment and later
+        // reassignment deliberately share this one service projection; there is no second local
+        // "forward base" score after the aircraft exists.
+        internal static TaskScore BestAirfieldServiceTaskScore(WorldSnapshot snap,
+            PlayerSetupData player, AiTurnContext ctx, IReadOnlyList<UnitData> projected,
+            HexCoord airfield, IReadOnlyList<ReconObjective> objectives,
+            out int coverage, out string witness)
+        {
+            coverage = 0;
+            witness = null;
+            if (ctx?.Map == null || projected == null || projected.Count == 0
+                || projected.Any(u => u == null || !u.IsAviation))
+                return default;
             float airfieldThreat = snap?.Threat?.Threats?
                 .Where(t => t?.Asset != null && t.Asset.Hex.Equals(airfield)
                     && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base))
@@ -469,21 +490,33 @@ namespace Game.Ai.V2
                     continue;
                 coverage++;
                 int eta = sameTurn.HasValue ? 1 : Mathf.Max(1, multiTurn.Value.RequiredTurns);
+                int routeCost = sameTurn.HasValue
+                    ? sameTurn.Value.TotalCost : multiTurn.Value.TotalRouteCost;
+                int moveMax = projected.Select(AviationRules.EffectiveMoveMax)
+                    .DefaultIfEmpty(1).Min();
+                int activationAp = projected.Sum(u => Mathf.Max(0, u.ActivationApCost));
                 TaskScore candidate = CopyReconScoreWithAirDelivery(objective.TaskScore,
-                    eta, def.activationApCost,
+                    eta, routeCost, moveMax, activationAp,
                     TaskScoreEvaluator.HexThreatRisk(airfieldThreat));
                 if (candidate.Value > bestValue)
                 {
                     bestValue = candidate.Value;
                     best = candidate;
-                    witness = $"{objective.Kind}@({objective.FocusHex.Q},{objective.FocusHex.R})/eta={eta}";
+                    witness = $"{objective.Kind}@({objective.FocusHex.Q},{objective.FocusHex.R})"
+                        + $"/eta={eta}/route={routeCost}";
                 }
             }
             return coverage > 0 ? best : default;
         }
 
         private static TaskScore CopyReconScoreWithAirDelivery(TaskScore s, int eta,
-            int activationAp, float airfieldThreatRisk) => new TaskScore(
+            int routeCost, int moveMax, int activationAp, float airfieldThreatRisk)
+        {
+            float movementShare = Mathf.Clamp01(Mathf.Max(0, routeCost)
+                / (float)Mathf.Max(1, moveMax * Mathf.Max(1, eta)));
+            float routeOpportunity = movementShare * Mathf.Max(0, activationAp)
+                * AiConfigV2.taskScoreReactivationApWeight;
+            return new TaskScore(
             economicHexBenefit: s.EconomicHexBenefit, payback: s.Payback,
             airfield: s.Airfield, globalCardEffect: s.GlobalCardEffect,
             infoGain: s.InfoGain, staleness: s.Staleness,
@@ -495,11 +528,12 @@ namespace Game.Ai.V2
             cardPrice: s.CardPrice,
             delivery: TaskScoreEvaluator.DeliveryFromEta(
                 Mathf.Max(0, activationAp), eta, AiConfigV2.taskScoreReactivationApWeight),
-            moverOpportunityCost: s.MoverOpportunityCost,
+            moverOpportunityCost: routeOpportunity,
             hexThreatRisk: s.HexThreatRisk + airfieldThreatRisk,
             detectionRisk: s.DetectionRisk,
             economicExpansionValue: s.EconomicExpansionValue,
             supportedNeedValue: s.SupportedNeedValue);
+        }
 
         // AI-MGR-01 review-r4 P1 — a structured result. A generated non-combat play is NOT atomic
         // (mint then deploy), so a partial failure — Challenge lost after resources were spent /
