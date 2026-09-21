@@ -1,0 +1,50 @@
+name: One-shot AI V2 admission correction
+on:
+  push:
+    branches:
+      - ai-v2/reprice-admission-fix
+    paths:
+      - .github/workflows/ai-v2-admission-once.yml
+permissions:
+  contents: write
+jobs:
+  apply-exact-edit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+      - name: Apply exact verified substitution and remove this workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess
+          baseline = 'f59e3bd74910e177929778a9f6998ec5f38465e1'
+          parent = subprocess.check_output(['git', 'rev-parse', 'HEAD^'], text=True).strip()
+          assert parent == baseline, f'Unexpected baseline: {parent}'
+          path = Path('Assets/Scripts/Ai/V2/Orchestration/AiStrategyV2Pipeline.cs')
+          original = path.read_text(encoding='utf-8')
+          old = ('                        if (!cycleSession.HasNewFailures || cycleSession.Converged\n'
+                 '                            || ++repriceReallocPass >= AiConfigV2.maxReallocIterations)')
+          new = ('                        // A non-repricing failure rejects this key; repack can consider other missions.\n'
+                 '                        // Count only a retry of the SAME key with a repriced envelope.\n'
+                 '                        if (!cycleSession.HasNewFailures || cycleSession.Converged\n'
+                 '                            || (provisionResult.Failure.Disposition == ProvisionDisposition.RepriceThisTurn\n'
+                 '                                && ++repriceReallocPass >= AiConfigV2.maxReallocIterations))')
+          assert original.count(old) == 1, 'Source anchor changed or duplicated; aborting'
+          path.write_text(original.replace(old, new, 1), encoding='utf-8')
+          Path('.github/workflows/ai-v2-admission-once.yml').unlink()
+          changes = set(subprocess.check_output(['git', 'diff', '--name-only'], text=True).splitlines())
+          expected = {str(path), '.github/workflows/ai-v2-admission-once.yml'}
+          assert changes == expected, f'Unexpected modified paths: {changes}'
+          assert path.stat().st_size > 120000, 'Unexpectedly truncated source'
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -u
+          git commit -m 'fix(ai): continue admissions after rejected non-reprice missions'
+          git push origin HEAD:refs/heads/ai-v2/reprice-admission-fix
