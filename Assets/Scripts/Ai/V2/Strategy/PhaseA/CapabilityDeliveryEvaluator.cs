@@ -138,7 +138,11 @@ namespace Game.Ai.V2
                     demand.EconomyProjectedActivationApCost = choice.ProjectedActivationApCost;
                     demand.EconomyProjectedMaxMovement = choice.ProjectedMaxMovement;
                     demand.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
-                    MissionContinuityLayer.BeginEconomyDelivery(player, demand, builderId, ctx.TurnNumber);
+                    // A physically deployed Hero is not a fulfilled Economy build demand
+                    // unless Continuity successfully owns its destination lease.
+                    if (MissionContinuityLayer.BeginEconomyDelivery(
+                            player, demand, builderId, ctx.TurnNumber) == null)
+                        continue;
                     InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
                         InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
                         {
