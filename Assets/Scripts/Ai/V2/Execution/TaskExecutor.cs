@@ -578,15 +578,12 @@ namespace Game.Ai.V2
             }
 
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
-            ArmyData enemy = ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
-                .FirstOrDefault(a => a != null && a.Id == enemyId && a.Owner != null
-                    && a.Owner != player && !a.Owner.IsNeutral);
-            if (enemy == null)
-            {
-                result.ReachedGoal = true;
-                result.StopReason = ExecutionStopReason.ReachedGoal;
-                yield break;
-            }
+            // 2026-09-21 Block C1 — the canonical sighting store below is the ONLY admissible
+            // source of strategic knowledge about this enemy. A global ArmyRegistry sweep used to
+            // stand here and declared ReachedGoal whenever the army was absent from the WORLD, so
+            // an enemy destroyed somewhere the player has never observed silently "completed" the
+            // interception. Absence of honest knowledge is TargetInvalidated (a lifecycle question
+            // Continuity answers), never a confirmed objective.
             AiMapMemory.KnownEnemySighting? witness = AiMapMemory.AllKnownEnemySightings(player)
                 .Where(s => s.ArmyId == enemyId && s.Owner != null && s.Owner != player
                     && !s.Owner.IsNeutral)
@@ -632,10 +629,17 @@ namespace Game.Ai.V2
             result.ActualActorArmyId = pm.MoverArmyId;
             result.CombatChanged |= trace.BattleOccurred;
 
-            ArmyData survivingTarget = ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
-                .FirstOrDefault(a => a != null && a.Id == enemyId && a.Owner != null
-                    && a.Owner != player && !a.Owner.IsNeutral);
-            if (survivingTarget == null)
+            // 2026-09-21 Block C1 — objective completion may only be read from the outcome of the
+            // canonical gameplay operation this step just performed. Consulting the physical
+            // registry is legitimate HERE and only here: our own army actually fought, so whether
+            // the target survived that battle is a confirmed result of our own action, not hidden
+            // knowledge. With no battle, this step proves nothing about the enemy's existence —
+            // it just moved — and the honest sighting store keeps owning what we know.
+            bool destroyedInOurBattle = trace.BattleOccurred
+                && !ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
+                    .Any(a => a != null && a.Id == enemyId && a.Owner != null
+                        && a.Owner != player && !a.Owner.IsNeutral);
+            if (destroyedInOurBattle)
             {
                 result.ReachedGoal = true;
                 result.StopReason = ExecutionStopReason.ReachedGoal;

@@ -2444,13 +2444,15 @@ namespace Game.Ai.V2
             if (!sighting.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence enemy #{target.EnemyArmyId} has no honest sighting"));
-            ArmyData enemy = ArmyRegistry.AllAt(sighting.Value.Hex).FirstOrDefault(a =>
-                a != null && a.Id == target.EnemyArmyId && a.Owner != null
-                && a.Owner != player && !a.Owner.IsNeutral);
-            if (enemy == null)
-                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                    $"active defence enemy #{target.EnemyArmyId} no longer exists at the honest position"));
-
+            // 2026-09-21 Block C1 — an honest sighting IS the admissible fact; do not then ask the
+            // physical registry whether the army is still standing on that remembered hex. A hex
+            // the player can currently see is reconciled by AiMapMemory.OnVisibilityChanged itself
+            // (the stale sighting is removed, and the `!sighting.HasValue` branch above ends the
+            // mission). So this extra registry probe could only ever fire for a hex the player
+            // CANNOT see — i.e. it turned "the enemy walked out of our vision" into
+            // TargetSatisfied, the very inference the information boundary forbids. The intercept
+            // is provisioned against the last known position; contact is re-established, or
+            // corrected, by actually going there.
             StableMissionKey key = StableMissionKey.For(mission);
             if (!session.TryGetAssignedRaidActor(key, out int actorId))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -2462,6 +2464,20 @@ namespace Game.Ai.V2
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders = sighting.Value.Defenders
                 ?? Array.Empty<WorthIt.DefenderProfile>();
+            // 2026-09-21 Block C2 — re-checking an admitted mission must re-apply the SAME
+            // admission threshold it was legitimately admitted under, otherwise Missions accepts a
+            // continuation at ContinuationWinChanceFloor, the allocator funds it, and Provisioning
+            // then rejects the identical facts at FreshStartWinChanceGate every single turn.
+            // GroundCombatAdmissionPolicy stays the sole owner of both numbers; this only selects
+            // between them with the same predicate Missions and GroundCombatAdmissionRegistry use
+            // (`FromDurableIntent`), additionally confirming that the actor actually bound here is
+            // the pinned incumbent — a different actor is a fresh intercept and keeps the fresh gate.
+            MissionIntent interceptIncumbent = MissionIntentRegistry.GetOrCreate(player).All
+                .FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
+                    && i.Kind == MissionKind.ActiveDefence
+                    && i.ActiveDefence?.EnemyArmyId == target.EnemyArmyId);
+            bool continuesPinnedIntercept = mission.FromDurableIntent
+                && interceptIncumbent?.ActiveDefence?.PrimaryArmyId == actorId;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
@@ -2469,7 +2485,9 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = continuesPinnedIntercept
+                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 });
             if (!plan.Feasible)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(

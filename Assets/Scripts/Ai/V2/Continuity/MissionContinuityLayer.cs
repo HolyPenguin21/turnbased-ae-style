@@ -371,6 +371,28 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
             }
 
+            // 2026-09-21 Block C5 — the same orphan repair for the Raid an ActiveDefence borrowed.
+            // Every ordinary ActiveDefence exit resumes its lender explicitly, but if the defending
+            // intent is gone without one of those exits having run (retired on another path, or its
+            // record dropped), the Raid would stay ActiveDefencePreemption-suspended forever while
+            // its army is free. Repair reuses the SAME suspend/resume state machine; it never
+            // resumes a Raid that a LIVE defence still borrows, so a raid can never be resumed
+            // twice into an active defence.
+            var liveBorrowedRaids = new HashSet<MissionIntentKey>(state.All
+                .Where(i => i?.Kind == MissionKind.ActiveDefence
+                    && i.ActiveDefence?.SuspendedRaidIntentKey.HasValue == true)
+                .Select(i => i.ActiveDefence.SuspendedRaidIntentKey.Value));
+            foreach (MissionIntent orphanedRaid in state.All.Where(i => i != null
+                && i.Kind == MissionKind.Raid && i.Status == IntentStatus.Suspended
+                && i.Suspended == SuspendReason.ActiveDefencePreemption
+                && !liveBorrowedRaids.Contains(i.IntentKey)))
+            {
+                orphanedRaid.Status = IntentStatus.Active;
+                orphanedRaid.Suspended = SuspendReason.None;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME "
+                    + $"raid={orphanedRaid.IntentKey} reason=orphan_repair");
+            }
+
             // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
             // durable intents on the same waypoint. Mutated as intents are re-pointed below.
             var scoutFoci = new HashSet<HexCoord>();
@@ -611,10 +633,13 @@ namespace Game.Ai.V2
                         : ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
                     if (defence == null || actor == null || ShouldReap(intent))
                     {
+                        // Resume ONLY a raid this defence actually preempted: a raid suspended for
+                        // another reason (Siege, pool exhaustion) is not this mission's to revive.
                         if (defence?.SuspendedRaidIntentKey.HasValue == true
                             && state.TryGet(defence.SuspendedRaidIntentKey.Value,
                                 out MissionIntent suspendedRaid)
-                            && suspendedRaid?.Raid != null)
+                            && suspendedRaid?.Raid != null
+                            && suspendedRaid.Suspended == SuspendReason.ActiveDefencePreemption)
                         {
                             suspendedRaid.Status = IntentStatus.Active;
                             suspendedRaid.Suspended = SuspendReason.None;
@@ -656,7 +681,8 @@ namespace Game.Ai.V2
                         if (defence.SuspendedRaidIntentKey.HasValue
                             && state.TryGet(defence.SuspendedRaidIntentKey.Value,
                                 out MissionIntent suspendedRaid)
-                            && suspendedRaid?.Raid != null)
+                            && suspendedRaid?.Raid != null
+                            && suspendedRaid.Suspended == SuspendReason.ActiveDefencePreemption)
                         {
                             suspendedRaid.Status = IntentStatus.Active;
                             suspendedRaid.Suspended = SuspendReason.None;
