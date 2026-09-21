@@ -37,13 +37,23 @@ Everything stays in namespace `Game.Ai.V2` (flat). Folders express ownership onl
 ## Mission axes (`MissionKind`)
 
 Four axes compete for the same turn's AP/resources, all through the same
-`MissionProposal` shape and the same allocator. No fifth axis exists (Defence
-is reactive-only today, via `Reaction/`, not a proactive mission axis).
+`MissionProposal` shape and the same allocator. **There is still no Defence axis.**
+`MissionKind` has five members because Aggression produces two mission shapes —
+`Raid` and `ActiveDefence` — from the same `Missions/AggressionMissionPlanner`,
+scored by the same `TaskScore`, admitted by the same `GroundCombatAdmissionPolicy`
+thresholds and funded from the same Aggression slice. ActiveDefence is a durable
+threat-interception mission (`Intercept → Return`) owned by Aggression, **not** a
+fifth axis and no longer the "reactive-only via `Reaction/`" stub older revisions of
+this document described: `Reaction/` remains the end-of-turn interrupt safety net
+only. Its win-chance gate selection (fresh start vs. pinned continuation) is the
+same `GroundCombatAdmissionPolicy` pair Raid uses, applied identically in Missions,
+`State/GroundCombatAdmissionRegistry` and `Provisioning`.
 
 | Axis | Produced by | Task shape |
 |---|---|---|
-| `Economy` | `Missions/EconomyMissionPlanner` | `EconomyTaskKind`: BuildExtraction, FoundBase, MobileCollection, ReturnCollector, ReturnBuilder |
+| `Economy` | `Missions/EconomyMissionPlanner` | `EconomyTaskKind`: BuildExtraction, FoundBase, MobileCollection, ReturnCollector, ReturnBuilder. Several build obligations may be active at once: Continuity keeps each one on its own facts (`Continuity/MissionContinuityLayer.ResolveActive`), real ownership conflicts (same actor / same objective / same physical card) are resolved where ownership is granted (`BeginEconomyDelivery`), and each obligation holds its own owner-scoped rows in `StrategicResourceReservationLedger`. Keeping an obligation and funding it are separate decisions — the allocator still owns the budget. |
 | `Raid` | `Missions/AggressionMissionPlanner` | One durable multi-turn mission moving through `RaidMissionPhase`: Assault → Reinforcement/SupportReturn/Return → AirSupport / RecoveryReturn → Refit. Not five competing tasks — five phases of one committed raid. |
+| `ActiveDefence` (Aggression) | `Missions/AggressionMissionPlanner` (`AppendActiveDefence`) | `ActiveDefencePhase`: Intercept → Return. May borrow an Assault-phase Raid's army (`SuspendReason.ActiveDefencePreemption` + `ActiveDefenceIntent.SuspendedRaidIntentKey`); Continuity resumes that Raid exactly once, and repairs it if no live defence still borrows it. |
 | `Scout` (Recon) | `Missions/ReconMissionPlanner` | `ScoutTargetKind`: Explore, Surveil, Refresh — crossed with `ScoutExecutorKind` (Ground / AirExisting / AirLaunch) at Assignment time. Air can never take Explore or any `StealthRequirement.Required`/positive-`DetectionRisk` target (Surveil is always `Required` → ground-only in practice); only a low-risk Refresh is air-eligible. |
 | `Development` | `Missions/DevelopmentMissionPlanner` | Place an existing hero as operator on a Research or Production facility (`ResearchProductionMode`). |
 
@@ -157,6 +167,8 @@ still exists for isolated diagnostics/focus-testing (e.g. `ReconOnly`), not as a
 | Persistent-resource hold policy | `Strategy/PhaseB/HoldEvaluator` |
 | Raid actor eligibility | `IsStructuralRaidActor` field on the army snapshot in `WorldSnapshot`, computed by `Analysis/WorldAnalysis.Self.cs` (no separate `RaidActorEligibility` type any more — no "Ready" alias) |
 | Raid win-chance gates (start vs continue) | `RaidAdmissionPolicy` (internal class inside `Missions/GroundCombat/GroundCombatAssemblyPlanner.cs`, not `Missions/Raid/`) |
+| Ground-combat (ActiveDefence) win-chance gates | `GroundCombatAdmissionPolicy` — one owner of `FreshStartWinChanceGate` / `ContinuationWinChanceFloor`. Missions, `GroundCombatAdmissionRegistry` and `ProvisioningManager` only *select* between them, all on the same predicate (the proposal continues a durable intent whose pinned actor is the actor being bound). A re-check must never apply a stricter gate than the admission it is re-checking. |
+| Strategic knowledge of an enemy army | `Analysis/AiMapMemory` sightings. Objectives, Missions, Provisioning and Execution read enemy existence/position only from there. A global `ArmyRegistry` sweep may confirm the outcome of a canonical operation the AI itself just performed (e.g. did the target survive the battle our army fought) — it may never stand in for knowledge of a hidden army, and "absent from the world" is never objective completion. |
 | Reaction feasibility evidence | `ReactionWitness` (struct in `Reaction/StrategicReactionPass.cs`) + `Reaction/ReactionOpportunityProbe` |
 | Reaction witness arbitration (§28) | `Reaction/ReactionWitnessSelector` |
 
