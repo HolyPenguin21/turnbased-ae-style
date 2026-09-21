@@ -349,6 +349,20 @@ namespace Game.Ai.V2
                 ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
                     && a.ArmyId == plan.BaseArmyId);
                 if (actor == null) continue;
+                AiMapMemory.KnownBuilding? interceptBuilding = snap.Known?.Buildings?
+                    .Where(b => b.Hex.Equals(objective.Target.LastKnownHex))
+                    .Select(b => (AiMapMemory.KnownBuilding?)b)
+                    .FirstOrDefault();
+                if (interceptBuilding.HasValue
+                    && interceptBuilding.Value.Owner != null
+                    && interceptBuilding.Value.Owner != actor.Owner)
+                {
+                    AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId.ToString(),
+                        $"[AI][V2][ActiveDefence][Admission] decision=DEFER "
+                        + $"enemy={objective.Target.EnemyArmyId} reason=enemy_on_known_foreign_structure "
+                        + "attack_owner_required");
+                    continue;
+                }
                 int distance = HexGridMath.Distance(actor.Hex, objective.Target.LastKnownHex);
                 int eta = AiV2Util.CeilDiv(distance,
                     UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, actor.MaxMovement));

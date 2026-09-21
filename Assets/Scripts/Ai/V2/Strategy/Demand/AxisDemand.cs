@@ -110,6 +110,10 @@ namespace Game.Ai.V2
         // and so a second identical support convoy is never requested for the same operation.
         public CapabilityDeliveryShape DeliveryShape = CapabilityDeliveryShape.Any;
         public MissionIntentKey? ConsumerIntentKey;
+        // Optional durable consumer family. ConsumerIntentKey supplies stable identity; this field
+        // prevents family-specific delivery finalization (Raid support handoff) from claiming a
+        // different operation that happens to request the same capability shape.
+        public MissionKind? ConsumerMissionKind;
 
         public override string ToString() =>
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
