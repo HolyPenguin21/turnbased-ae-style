@@ -1027,7 +1027,7 @@ namespace Game.Ai.V2
                     // ReenterStrategicAxes replaces dirty families after a factual invalidation.
 
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
-                        reconObjectives, aggressionObjectives, radar, demands, trace,
+                        reconObjectives, aggressionObjectives, radar, demands, trace, ctx,
                         aggressionPressureAlreadyRefreshed: true);
                     if (retryNextTurnThisPass.Count > 0)
                         missions = missions.Where(m => m == null
@@ -1553,7 +1553,7 @@ namespace Game.Ai.V2
                 // 4. Planners -> mission proposals. Mission construction/stamping/logging has one
                 //    owner shared by the legacy batch and the optional mid-turn re-admission loop.
                 missions = BuildMissionSet(snapshot, assessment.Breakdown,
-                    activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace);
+                    activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace, ctx);
     
                 // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
                 //     proposal. In ReconOnly activeIntents was already stripped of non-Recon durability.
@@ -1817,7 +1817,7 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> reconObjectives,
             IReadOnlyList<AggressionObjective> aggressionObjectives, Radar radar,
             IReadOnlyList<AxisDemand> demands, V2TraceScope trace,
-            bool aggressionPressureAlreadyRefreshed = false)
+            AiTurnContext ctx, bool aggressionPressureAlreadyRefreshed = false)
         {
             // Orchestration owns mid-turn sequencing: refresh only the Recon lane pressures from
             // the current snapshot right before Missions consumes them, so a frontier completion
