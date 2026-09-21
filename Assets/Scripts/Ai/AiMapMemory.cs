@@ -618,13 +618,15 @@ namespace Game.Ai
             }
 
             // Route-relevant changes only ever touch `sightings` (KnownResourceHexes/
-            // KnownBuildings/KnownEventGuards never feed SafeRouteBlocker) — RouteMemoryVersion
-            // only bumps once, at the end, if this call actually wrote or removed a sighting.
+            // KnownEventGuards never feed SafeRouteBlocker. KnownBuildings now do: known foreign
+            // structures are blocked for every non-Attack AI movement, so owner/existence changes
+            // participate in RouteMemoryVersion alongside hostile sightings.
             // Bumping unconditionally here (this runs on EVERY vision recompute, of which a
             // single AI turn with several moving armies can trigger many) forced SafeStepPathing's
             // per-owner blocker snapshot to rebuild — an O(map size) scan — on nearly every
             // pathing call, even when nothing about known hostiles/danger zones had changed.
             bool sightingsChanged = false;
+            bool buildingsChanged = false;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
                 ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
@@ -754,6 +756,8 @@ namespace Game.Ai
                 if (building != null)
                 {
                     bool wasKnown = buildings.TryGetValue(hex, out BuildingSighting previousBuilding);
+                    if (!wasKnown || previousBuilding.Owner != building.Owner)
+                        buildingsChanged = true;
                     if (!wasKnown)
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — building \"{building.Name}\" "
                             + $"(owner={(building.Owner != null ? building.Owner.Nickname : "none")}) remembered at ({hex.Q},{hex.R}).");
@@ -783,7 +787,10 @@ namespace Game.Ai
                 else
                 {
                     if (buildings.ContainsKey(hex))
+                    {
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — building at ({hex.Q},{hex.R}) corrected (gone on re-observation).");
+                        buildingsChanged = true;
+                    }
                     buildings.Remove(hex);
                 }
             }
@@ -794,7 +801,7 @@ namespace Game.Ai
             // bump unconditionally here too, which forced an O(map size) blocker rebuild on
             // nearly every pathing call regardless of whether hostiles/danger zones changed.
             BumpKnowledgeVersion(player);
-            if (sightingsChanged)
+            if (sightingsChanged || buildingsChanged)
                 _routeMemoryVersion++;
         }
 

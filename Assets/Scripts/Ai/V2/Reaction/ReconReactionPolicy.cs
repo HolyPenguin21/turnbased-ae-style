@@ -22,7 +22,6 @@ namespace Game.Ai.V2
         Flee,
         EvadeDetector,
         AttackOpportunity,
-        CaptureOpportunity,
         StopAndReplan,
     }
 
@@ -81,13 +80,6 @@ namespace Game.Ai.V2
                     return Log(army, assignment, new ReconReactionDecision(
                         ReconReactionAction.EvadeDetector, evade, null, 0f,
                         "known detector envelope; lower-risk adjacent step exists"));
-            }
-
-            if (inStealth && IsSafeCaptureOpportunity(player, army))
-            {
-                return Log(army, assignment, new ReconReactionDecision(
-                    ReconReactionAction.CaptureOpportunity, army.Hex, null, 0f,
-                    "hidden entry confirmed an undefended hostile structure"));
             }
 
             ReconReactionDecision? attack = FindWeakScoutOpportunity(player, map, army);
@@ -239,26 +231,6 @@ namespace Game.Ai.V2
                     return true;
             }
             return false;
-        }
-
-        private static bool IsSafeCaptureOpportunity(PlayerSetupData player, ArmyData army) =>
-            IsUndefendedForeignStructureAt(player, army.Hex);
-
-        // Shared "a foreign-owned structure sits here with no engageable defender" test (spec §13 /
-        // §20). Used both by the live capture reaction above and by ReconGroundStepPlanner to add a
-        // local utility bonus so a scout that is ALREADY adjacent bends onto it — never as a reason
-        // to path across the map.
-        internal static bool IsUndefendedForeignStructureAt(PlayerSetupData player, HexCoord hex)
-        {
-            if (!VisionSystem.IsVisible(player, hex))
-                return false;
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner == null || building.Owner == player)
-                return false;
-            foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
-                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident, player))
-                    return false;
-            return true;
         }
 
         private static HexCoord? PickLowerDetectorRiskStep(PlayerSetupData player, HexMap map,

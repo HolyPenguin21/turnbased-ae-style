@@ -26,6 +26,17 @@ namespace Game.Ai.V2
                 AiDebugLog.Write(line);
             foreach (AxisDemand d in eval.Demands)
                 yield return d;
+
+            IReadOnlyList<ActiveDefenceObjective> defenceObjectives =
+                ActiveDefenceObjectiveEvaluator.Enumerate(snap);
+            IReadOnlyList<AxisDemand> defenceDemands =
+                AggressionDemandEvaluator.BuildActiveDefenceDemands(
+                    snap, defenceObjectives, activeIntents, commitments, player,
+                    out IReadOnlyList<string> defenceDiagnostics);
+            foreach (string line in defenceDiagnostics)
+                AiDebugLog.Write(line);
+            foreach (AxisDemand d in defenceDemands)
+                yield return d;
         }
     }
 }

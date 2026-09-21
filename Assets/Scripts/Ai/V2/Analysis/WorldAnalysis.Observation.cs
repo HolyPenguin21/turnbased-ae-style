@@ -336,7 +336,8 @@ namespace Game.Ai.V2
         {
             IEnumerable<string> known = (snapshot?.Known?.Buildings
                     ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
-                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:"
+                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:{x.IsBase}:"
+                    + $"owner={x.Owner?.ColorIndex}:{x.Owner?.Nickname}:"
                     + string.Join(",", (x.FacilityAbilities ?? System.Array.Empty<string>())
                         .OrderBy(v => v)));
             IEnumerable<string> development = (snapshot?.Development?.Facilities

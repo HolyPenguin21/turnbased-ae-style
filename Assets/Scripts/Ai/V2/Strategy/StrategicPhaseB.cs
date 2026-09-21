@@ -117,7 +117,8 @@ namespace Game.Ai.V2
                 int previousKnowledgeVersion = snap?.KnowledgeVersion ?? -1;
                 snap = WorldAnalysis.RefreshStrategicKnowledge(
                     snap, player, root, hand, ctx);
-                if (snap.KnowledgeVersion != previousKnowledgeVersion)
+                if (reconObjectives == null
+                    || snap.KnowledgeVersion != previousKnowledgeVersion)
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snap);
                 float spendableAp = StrategicResourceReservationLedger.SpendableAp(
                     player, ctx.TurnNumber, root.ActionPoints);
@@ -214,6 +215,15 @@ namespace Game.Ai.V2
                         yield return StrategicPressureAdvance.Execute(player, root, ctx, best.Pressure, v => pc = v);
                         exec.Succeeded = exec.StateChanged = exec.Progressed = pc;
                         if (!pc) exec.FailReason = "no advance step taken";
+                        break;
+                    }
+                    case TempoKind.AviationRebase:
+                    {
+                        bool moved = false;
+                        yield return AviationRebasePlanner.Execute(
+                            player, root, ctx, best.Rebase, v => moved = v);
+                        exec.Succeeded = exec.StateChanged = exec.Progressed = moved;
+                        if (!moved) exec.FailReason = "aviation rebase took no safe step";
                         break;
                     }
                 }

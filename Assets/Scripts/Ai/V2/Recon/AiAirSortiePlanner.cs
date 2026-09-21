@@ -24,6 +24,23 @@ namespace Game.Ai.V2
     // map knowledge, AiConfig radii and resource reservations make it AI planning, not domain.
     public static class AiAirSortiePlanner
     {
+        public readonly struct RebaseRoute
+        {
+            public readonly HexCoord LandingHex;
+            public readonly HexCoord CurrentTurnDestination;
+            public readonly int TotalCost;
+            public readonly int RequiredTurns;
+
+            public RebaseRoute(HexCoord landingHex, HexCoord currentTurnDestination,
+                int totalCost, int requiredTurns)
+            {
+                LandingHex = landingHex;
+                CurrentTurnDestination = currentTurnDestination;
+                TotalCost = totalCost;
+                RequiredTurns = requiredTurns;
+            }
+        }
+
         // Every one of this player's own owned, airfield-CAPABLE hexes (citadel + every later
         // Base) — selected from the building registry by the shared AirfieldCapacity rule, not
         // indirectly through Barracks/garrison presence. "Any owned airfield with free capacity"
@@ -102,7 +119,7 @@ namespace Game.Ai.V2
         }
 
         // How many of `hex`'s own free slots are already spoken for by OTHER active AirStrike/
-        // AirRecon sorties committed to land there but not physically there yet (still outbound,
+        // AirRecon/Rebase flights committed to land there but not physically there yet (still outbound,
         // or inbound but not yet arrived — see AiTask.LandingHex's own comment). Landed aircraft
         // are deliberately NOT counted again here — FreeLandingCapacity's own ArmyRegistry loop
         // above already counts anything physically sitting on `hex` right now, landed or not;
@@ -211,6 +228,66 @@ namespace Game.Ai.V2
             return PlanSortieCore(airfieldHex, null, _ => movement, path => path.Hexes.Count - 1,
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
+
+        // Exact owned-airfield-to-owned-airfield relocation. Unlike an ordinary sortie, the
+        // requested destination is not re-ranked to a different landing field: the strategic
+        // caller has already proved that this exact Base serves current objectives better. The
+        // route still uses the canonical capacity, known-AA and fuel simulation gates.
+        public static RebaseRoute? TryPlanRebaseFromStorage(HexCoord sourceHex,
+            IReadOnlyList<UnitData> aircraft, HexCoord destinationHex, HexMap map,
+            PlayerSetupData owner)
+        {
+            if (aircraft == null || aircraft.Count == 0 || sourceHex.Equals(destinationHex))
+                return null;
+            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            return PlanExactRebase(sourceHex, null, aircraft, movement, aircraft.Count,
+                destinationHex, map, owner, allowExistingExposure: false);
+        }
+
+        private static RebaseRoute? TryContinueExactRebase(ArmyData airArmy,
+            HexCoord destinationHex, HexMap map, PlayerSetupData owner)
+        {
+            if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
+                return null;
+            return PlanExactRebase(airArmy.Hex, airArmy, airArmy.Members,
+                airArmy.CurrentMovement, airArmy.Members.Count, destinationHex, map, owner,
+                allowExistingExposure: true);
+        }
+
+        private static RebaseRoute? PlanExactRebase(HexCoord startHex, ArmyData excluding,
+            IReadOnlyList<UnitData> aircraft, int firstTurnMovement, int requiredSlots,
+            HexCoord destinationHex, HexMap map, PlayerSetupData owner, bool allowExistingExposure)
+        {
+            if (map == null || owner == null || aircraft == null || aircraft.Count == 0
+                || !AviationRules.IsOwnedAirfieldAt(destinationHex, owner)
+                || FreeLandingCapacity(destinationHex, owner, excluding) < requiredSlots)
+                return null;
+            HexPath path = HexPathfinder.FindPath(map, startHex, destinationHex, flatCost: true);
+            if (path == null)
+                return null;
+            int exposure = KnownAaExposure(owner, path);
+            if (allowExistingExposure)
+                exposure = Mathf.Max(0, exposure - KnownAaExposureAt(owner, startHex));
+            if (!IsVoluntaryRebaseRouteSafe(exposure))
+                return null;
+
+            int cost = excluding != null
+                ? AviationRules.PathMoveCost(excluding, path)
+                : path.Hexes.Count - 1;
+            if (cost <= firstTurnMovement)
+                return new RebaseRoute(destinationHex, destinationHex, cost, 1);
+
+            int safeRemaining = AviationRange.SafeUnlandedEndsRemaining(aircraft);
+            if (safeRemaining <= 0
+                || !AviationRange.TrySimulateHexSequence(path.Hexes, path.Hexes.Count - 1,
+                    firstTurnMovement, aircraft, safeRemaining, owner, out int turns, out _,
+                    out HexCoord firstDestination, out _, out _))
+                return null;
+            return new RebaseRoute(destinationHex, firstDestination, cost, turns);
+        }
+
+        internal static bool IsVoluntaryRebaseRouteSafe(int knownAaExposure) =>
+            knownAaExposure <= 0;
 
         // requiredSlots: how many aircraft need a free landing slot together — the WHOLE group
         // lands as one stack, so a landing hex with fewer free slots than that must be rejected
@@ -794,28 +871,53 @@ namespace Game.Ai.V2
             }
             else
             {
-                HexCoord? confirmedLanding = TryReplan(task.Army, ctx.Map, player);
-                if (confirmedLanding != null)
+                bool exactRebaseReady = false;
+                if (task.Kind == AirSortieKind.Rebase)
                 {
-                    task.LandingHex = confirmedLanding.Value;
-                    task.TargetHex = confirmedLanding.Value;
-                    task.IsMultiTurn = false;
-                    destination = confirmedLanding.Value;
-                }
-                else
-                {
-                    MultiTurnSortie? multiReturn = TryReplanMultiTurnReturn(task.Army, ctx.Map, player);
-                    if (!multiReturn.HasValue)
+                    RebaseRoute? exact = TryContinueExactRebase(
+                        task.Army, task.LandingHex, ctx.Map, player);
+                    if (exact.HasValue)
                     {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} has no reachable owned "
-                            + "airfield this turn, holding position.");
-                        return null;
+                        task.TargetHex = task.LandingHex;
+                        task.IsMultiTurn = exact.Value.RequiredTurns > 1;
+                        destination = task.LandingHex;
+                        exactRebaseReady = true;
                     }
-                    task.LandingHex = multiReturn.Value.LandingHex;
-                    task.TargetHex = multiReturn.Value.LandingHex;
-                    task.IsMultiTurn = true;
-                    destination = multiReturn.Value.LandingHex;
-                    LogMultiTurnContinuation(player, task, logLabel, multiReturn.Value, arrivingHome: true);
+
+                    else
+                    {
+                        // The selected Base ceased to be a safe/capacious destination after
+                        // launch. Recovery remains mandatory: fall through to the ordinary live
+                        // emergency landing search instead of pressing a stale rebase order.
+                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — AviationRebase "
+                            + "destination invalidated; replanning nearest safe owned airfield.");
+                    }
+                }
+                if (!exactRebaseReady)
+                {
+                    HexCoord? confirmedLanding = TryReplan(task.Army, ctx.Map, player);
+                    if (confirmedLanding != null)
+                    {
+                        task.LandingHex = confirmedLanding.Value;
+                        task.TargetHex = confirmedLanding.Value;
+                        task.IsMultiTurn = false;
+                        destination = confirmedLanding.Value;
+                    }
+                    else
+                    {
+                        MultiTurnSortie? multiReturn = TryReplanMultiTurnReturn(task.Army, ctx.Map, player);
+                        if (!multiReturn.HasValue)
+                        {
+                            AiDebugLog.Write($"[AI] {player.Nickname}: \"{task.Army.Name}\" — {logLabel} has no reachable owned "
+                                + "airfield this turn, holding position.");
+                            return null;
+                        }
+                        task.LandingHex = multiReturn.Value.LandingHex;
+                        task.TargetHex = multiReturn.Value.LandingHex;
+                        task.IsMultiTurn = true;
+                        destination = multiReturn.Value.LandingHex;
+                        LogMultiTurnContinuation(player, task, logLabel, multiReturn.Value, arrivingHome: true);
+                    }
                 }
             }
 
@@ -909,7 +1011,10 @@ namespace Game.Ai.V2
 
             var task = new AirSortie
             {
-                Kind = taskKind, Army = airArmy, TargetHex = decision.AirActionHex, LandingHex = decision.AirLandingHex, Outbound = true,
+                Kind = taskKind, Army = airArmy,
+                TargetHex = taskKind == AirSortieKind.Rebase ? decision.AirLandingHex : decision.AirActionHex,
+                LandingHex = decision.AirLandingHex,
+                Outbound = taskKind != AirSortieKind.Rebase,
             };
             AirSortieRegistry.Add(player, task);
 
@@ -940,9 +1045,13 @@ namespace Game.Ai.V2
             // CanIssueMoveNow's own reservationOwner param — closes that gap: by the time this
             // coroutine yields back to RunTurn's own step loop, the army has either taken its
             // first real step for real, or never left storage at all.
-            string logLabel = taskKind == AirSortieKind.Strike ? "AirStrike" : "AirRecon";
+            string logLabel = taskKind == AirSortieKind.Strike ? "AirStrike"
+                : taskKind == AirSortieKind.Rebase ? "AviationRebase" : "AirRecon";
             string outboundReason = taskKind == AirSortieKind.Strike
-                ? "presses on toward the strike target" : "flies on toward the recon target";
+                ? "presses on toward the strike target"
+                : taskKind == AirSortieKind.Rebase
+                    ? "relocates to the selected forward airfield"
+                    : "flies on toward the recon target";
             AiDecision firstMove = ContinueSortie(player, root, ctx, task, logLabel, outboundReason,
                 AiConfig.airStrikeContinuationScore);
             if (firstMove == null)

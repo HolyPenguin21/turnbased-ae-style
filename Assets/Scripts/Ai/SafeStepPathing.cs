@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -12,7 +13,8 @@ namespace Game.Ai
     // below are used only where Economy needs a minimum cost, never a route/threat witness.
     public static class SafeStepPathing
     {
-        public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex)
+        public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex,
+            bool allowHostileStructureCapture = false)
         {
             if (map == null || army == null)
                 return null;
@@ -20,32 +22,39 @@ namespace Game.Ai
             // Execution still searches live with CurrentMovement and its own air/ground rule;
             // only the equivalent remembered blocker membership is shared with planning.
             return AiTurnController.FindAffordableStep(map, army, targetHex,
-                SafeRouteBlocker(null, cache.BlockedHexes, targetHex, null));
+                SafeRouteBlocker(null, cache.BlockedHexes, cache.HostileStructureHexes,
+                    targetHex, null, allowHostileStructureCapture));
         }
 
-        public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex)
+        public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex,
+            bool allowHostileStructureCapture = false)
         {
             if (map == null || army == null)
                 return int.MaxValue;
-            return FindSafePathCost(map, army.Owner, army.Hex, targetHex, army.MaxMovement);
+            return FindSafePathCost(map, army.Owner, army.Hex, targetHex, army.MaxMovement,
+                allowHostileStructureCapture);
         }
 
         // Projected legs (including Economy's return journeys) use the same blocker and
         // maxMovement policy as executed ground movement.
         public static int FindSafePathCost(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement = null)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null,
+            bool allowHostileStructureCapture = false)
         {
             if (map == null || owner == null)
                 return int.MaxValue;
-            return GetRoute(map, owner, from, targetHex, maxMovement)?.TotalCost ?? int.MaxValue;
+            return GetRoute(map, owner, from, targetHex, maxMovement,
+                allowHostileStructureCapture)?.TotalCost ?? int.MaxValue;
         }
 
         public static HexPath FindSafePath(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement = null)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null,
+            bool allowHostileStructureCapture = false)
         {
             if (map == null || owner == null)
                 return null;
-            HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement);
+            HexPath cached = GetRoute(map, owner, from, targetHex, maxMovement,
+                allowHostileStructureCapture);
             // HexPath.Hexes is mutable. Never expose the cached witness to a caller that may
             // edit it and silently change subsequent paths and cost-only reads.
             return cached == null ? null : new HexPath(new List<HexCoord>(cached.Hexes), cached.TotalCost);
@@ -70,7 +79,8 @@ namespace Game.Ai
                     if (cache.BaseCostFields.Count >= MaxCostFields)
                         cache.BaseCostFields.Clear();
                     field = HexPathfinder.FindCosts(map, new[] { home },
-                        hex => cache.BlockedHexes.Contains(hex));
+                        hex => cache.BlockedHexes.Contains(hex)
+                            || cache.HostileStructureHexes.Contains(hex));
                     cache.BaseCostFields[home] = field;
                 }
                 if (field.TryGetValue(target, out int cost) && cost < minimum)
@@ -99,7 +109,8 @@ namespace Game.Ai
                 {
                     Bases = new HashSet<HexCoord>(baseHexes),
                     Costs = HexPathfinder.FindCosts(map, baseHexes,
-                        hex => cache.BlockedHexes.Contains(hex), maxMovement, reverse: true)
+                        hex => cache.BlockedHexes.Contains(hex)
+                            || cache.HostileStructureHexes.Contains(hex), maxMovement, reverse: true)
                 };
                 cache.ReturnCostFields[maxMovement] = field;
             }
@@ -114,13 +125,14 @@ namespace Game.Ai
         // revision remains a cheap dirty signal; only the selected owner's blockers are compared.
         private sealed class PlayerRouteCache
         {
-            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement), HexPath>
-                Routes = new Dictionary<(HexCoord, HexCoord, int?), HexPath>();
+            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement, bool allowCapture), HexPath>
+                Routes = new Dictionary<(HexCoord, HexCoord, int?, bool), HexPath>();
             public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields =
                 new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
             public readonly Dictionary<int, ReturnCostField> ReturnCostFields =
                 new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
+            public HashSet<HexCoord> HostileStructureHexes;
             public int MemoryVersion;
 
             public void ClearPathsAndFields()
@@ -161,6 +173,12 @@ namespace Game.Ai
             return blocked;
         }
 
+        internal static HashSet<HexCoord> KnownForeignStructureHexes(
+            PlayerSetupData owner, IEnumerable<AiMapMemory.KnownBuilding> buildings) =>
+            new HashSet<HexCoord>((buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .Where(b => b.Owner != null && b.Owner != owner)
+                .Select(b => b.Hex));
+
         private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
             // Map identity and terrain revisions affect every owner's routes, unlike a single
@@ -178,6 +196,8 @@ namespace Game.Ai
                 cache = new PlayerRouteCache
                 {
                     BlockedHexes = CaptureMemoryBlockers(map, owner),
+                    HostileStructureHexes = KnownForeignStructureHexes(
+                        owner, AiMapMemory.AllKnownBuildings(owner)),
                     MemoryVersion = memoryVersion
                 };
                 _playerCaches[owner] = cache;
@@ -185,36 +205,49 @@ namespace Game.Ai
             else if (memoryVersion != cache.MemoryVersion)
             {
                 HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
-                if (!cache.BlockedHexes.SetEquals(current))
+                HashSet<HexCoord> hostileStructures = KnownForeignStructureHexes(
+                    owner, AiMapMemory.AllKnownBuildings(owner));
+                if (!cache.BlockedHexes.SetEquals(current)
+                    || !cache.HostileStructureHexes.SetEquals(hostileStructures))
                     cache.ClearPathsAndFields();
                 cache.BlockedHexes = current;
+                cache.HostileStructureHexes = hostileStructures;
                 cache.MemoryVersion = memoryVersion;
             }
             return cache;
         }
 
         private static HexPath GetRoute(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement)
+            HexCoord from, HexCoord targetHex, int? maxMovement,
+            bool allowHostileStructureCapture)
         {
             PlayerRouteCache cache = EnsureCacheState(map, owner);
-            var key = (from, targetHex, maxMovement);
+            var key = (from, targetHex, maxMovement, allowHostileStructureCapture);
             if (cache.Routes.TryGetValue(key, out HexPath cached))
                 return cached;
             if (cache.Routes.Count >= MaxCachedRoutes)
                 cache.Routes.Clear();
             HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
-                blockHex: SafeRouteBlocker(map, cache.BlockedHexes, targetHex, maxMovement));
+                blockHex: SafeRouteBlocker(map, cache.BlockedHexes,
+                    cache.HostileStructureHexes, targetHex, maxMovement,
+                    allowHostileStructureCapture));
             cache.Routes[key] = computed;
             return computed;
         }
 
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
-            HexMap map, HashSet<HexCoord> blocked, HexCoord targetHex, int? maxMovement)
+            HexMap map, HashSet<HexCoord> blocked, HashSet<HexCoord> hostileStructures,
+            HexCoord targetHex, int? maxMovement, bool allowHostileStructureCapture)
         {
             // Capture this owner's set, not a mutable global active-owner reference. Each
             // expanded hex is one O(1) lookup instead of a scan of sightings/danger zones.
             return hex =>
             {
+                // Unlike a remembered army blocker, a known hostile structure remains blocked
+                // even when it is the requested destination: entering it changes ownership.
+                if (!allowHostileStructureCapture
+                    && hostileStructures != null && hostileStructures.Contains(hex))
+                    return true;
                 if (!hex.Equals(targetHex) && blocked.Contains(hex))
                     return true;
                 if (maxMovement.HasValue && map != null

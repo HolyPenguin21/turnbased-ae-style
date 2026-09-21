@@ -113,7 +113,7 @@ namespace Game.Ai.V2
             return tw;
         }
 
-        private static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
+        internal static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
         {
             var abilities = new HashSet<string>();
             foreach (FacilityData f in b.FacilitySlots)
@@ -124,7 +124,9 @@ namespace Game.Ai.V2
                 Hex = b.Hex,
                 Owner = b.Owner,
                 IsStartingCitadel = b.IsStartingCitadel,
+                IsBase = b.IsBase,
                 Defense = b.Defense,
+                BuildingAbilities = new HashSet<string>(b.Abilities),
                 FacilityAbilities = abilities,
             };
         }
@@ -269,4 +271,3 @@ namespace Game.Ai.V2
 
     }
 }
-

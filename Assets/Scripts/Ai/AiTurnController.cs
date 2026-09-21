@@ -246,6 +246,22 @@ namespace Game.Ai
             ArmyData army = decision.ExistingArmy;
             if (army?.Controller == null)
                 yield break;
+            BuildingData liveDestinationBuilding = BuildingRegistry.FindAt(decision.TargetHex);
+            AiMapMemory.KnownBuilding? knownDestination =
+                AiMapMemory.KnownBuildingAt(player, decision.TargetHex);
+            if (!decision.AllowHostileStructureCapture
+                && ((liveDestinationBuilding != null
+                        && liveDestinationBuilding.Owner != null
+                        && liveDestinationBuilding.Owner != player)
+                    || (knownDestination.HasValue
+                        && knownDestination.Value.Owner != null
+                        && knownDestination.Value.Owner != player)))
+            {
+                AiDebugLog.Write($"[AI][Movement][CaptureGate] actor=#{army.Id} "
+                    + $"destination=({decision.TargetHex.Q},{decision.TargetHex.R}) decision=BLOCK "
+                    + "reason=known_foreign_structure_without_attack_owner");
+                yield break;
+            }
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" (movement={army.CurrentMovement}/{army.MaxMovement}) "
                 + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
 

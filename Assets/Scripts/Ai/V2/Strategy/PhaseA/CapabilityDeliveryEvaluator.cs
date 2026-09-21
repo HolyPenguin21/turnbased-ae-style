@@ -192,7 +192,8 @@ namespace Game.Ai.V2
                 && demand.RequestingAxis == DesireAxis.Aggression
                 && demand.Capability == CapabilityKind.FieldCombatPower
                 && demand.DeliveryShape == CapabilityDeliveryShape.IndependentFieldArmy
-                && demand.ConsumerIntentKey.HasValue;
+                && demand.ConsumerIntentKey.HasValue
+                && demand.ConsumerMissionKind == MissionKind.Raid;
 
         // AGG-RAID §7 — bind an IndependentFieldArmy delivery to the exact RaidIntent that asked
         // for it. Returns true when the support actor was handed to Continuity.
@@ -268,4 +269,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

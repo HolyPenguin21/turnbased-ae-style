@@ -282,6 +282,10 @@ namespace Game.Ai.V2
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public int EstimatedEta;
+        // Set only by a completed intercept outcome. ResolveActive then either releases the actor
+        // in place for Housekeeping to stabilize an under-garrisoned Base, or sends it through the
+        // existing Return phase once local security is already sufficient.
+        public bool ObjectiveCompleted;
     }
 
     public sealed class MissionIntent

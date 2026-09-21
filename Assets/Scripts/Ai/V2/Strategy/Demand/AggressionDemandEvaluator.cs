@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Players;
+using UnityEngine;
 
 using Game.Combat;
 
@@ -210,6 +211,7 @@ namespace Game.Ai.V2
                         Capability = CapabilityKind.FieldCombatPower,
                         DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
                         ConsumerIntentKey = i.IntentKey,
+                        ConsumerMissionKind = MissionKind.Raid,
                         DesiredAmount = deficit,
                         RequiredCapabilityPower = deficit,
                         RequiredTraits = TraitPreference.None,
@@ -368,6 +370,138 @@ namespace Game.Ai.V2
             eval.Outcome = demands.Count > 0 ? AggressionDemandOutcome.Demand : AggressionDemandOutcome.None;
             eval.Reason = demands.Count > 0 ? "shortage" : "no_demand_emitted";
             return eval;
+        }
+
+        // ActiveDefence shares Aggression's one capability-demand owner. The mission happy path
+        // remains in AggressionMissionPlanner; this method only translates a proven STRUCTURAL
+        // response shortage into the same FieldCombatPower contract Phase A already materializes.
+        // A force hidden merely by commitments, a spent/AP-exhausted actor, or enough physical
+        // power split across incompatible same-hex packages is deliberately DEFER, not production.
+        internal static IReadOnlyList<AxisDemand> BuildActiveDefenceDemands(WorldSnapshot snap,
+            IReadOnlyList<ActiveDefenceObjective> objectives,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
+            PlayerSetupData player, out IReadOnlyList<string> diagnostics)
+        {
+            var demands = new List<AxisDemand>();
+            var diag = new List<string>();
+            diagnostics = diag;
+            if (snap?.Self?.Armies == null)
+                return demands;
+
+            objectives ??= ActiveDefenceObjectiveEvaluator.Enumerate(snap);
+            foreach (ActiveDefenceObjective objective in objectives
+                .Where(o => o != null)
+                .OrderByDescending(o => o.BaseValue)
+                .ThenBy(o => o.Target.EnemyArmyId))
+            {
+                EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c =>
+                    c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
+                    && c.Source == ContactSource.Honest && c.Position.HasValue);
+                if (contact?.Army == null)
+                    continue;
+                AiMapMemory.KnownBuilding? interceptBuilding = snap.Known?.Buildings?
+                    .Where(b => b.Hex.Equals(objective.Target.LastKnownHex))
+                    .Select(b => (AiMapMemory.KnownBuilding?)b)
+                    .FirstOrDefault();
+                if (interceptBuilding.HasValue
+                    && interceptBuilding.Value.Owner != null
+                    && interceptBuilding.Value.Owner != player)
+                {
+                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
+                        + "decision=DEFER reason=enemy_on_known_foreign_structure_attack_owner_required");
+                    continue;
+                }
+
+                MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
+                    && i.Status == IntentStatus.Active && i.Kind == MissionKind.ActiveDefence
+                    && i.ActiveDefence?.EnemyArmyId == objective.Target.EnemyArmyId);
+                int? pinnedActor = incumbent?.ActiveDefence?.PrimaryArmyId;
+                var excluded = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
+                if (pinnedActor.HasValue)
+                    excluded.Remove(pinnedActor.Value);
+
+                var request = new GroundCombatAssemblyRequest
+                {
+                    Defenders = contact.Army.Members
+                        ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                    WinChanceGate = pinnedActor.HasValue
+                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    PreferredPrimaryArmyId = pinnedActor,
+                    PinToPreferred = pinnedActor.HasValue,
+                    ExcludedArmyIds = excluded,
+                };
+                GroundCombatAssemblyPlan ready = GroundCombatAssemblyPlanner.Plan(snap, request);
+                if (ready.Feasible)
+                {
+                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
+                        + $"asset={objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
+                        + $"{objective.Target.ProtectedAssetHex.R}) decision=SATISFIED actor=#{ready.BaseArmyId} "
+                        + $"win={ready.ProjectedWinChance:0.00}");
+                    continue;
+                }
+
+                // If the same physical force is sufficient when contention is ignored, the gap is
+                // temporary ownership/assembly scheduling. Buying another army would be phantom.
+                var unclaimedRequest = new GroundCombatAssemblyRequest
+                {
+                    Defenders = request.Defenders,
+                    WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    ExcludedArmyIds = new HashSet<int>(),
+                };
+                GroundCombatAssemblyPlan physical = GroundCombatAssemblyPlanner.Plan(
+                    snap, unclaimedRequest);
+                if (physical.Feasible)
+                {
+                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
+                        + "decision=DEFER reason=mover_contended_or_temporarily_owned "
+                        + $"physicalActor=#{physical.BaseArmyId}");
+                    continue;
+                }
+
+                float enemyPower = Mathf.Max(0f, contact.Army.EffectiveArmyPower);
+                float required = Mathf.Max(1f,
+                    enemyPower * AiConfigV2.raidCombatPowerMargin);
+                float physicalPower = snap.Self.Armies
+                    .Where(a => a != null && a.IsStructuralRaidActor)
+                    .Sum(a => Mathf.Max(0f, a.EffectiveArmyPower));
+                if (physicalPower + AiConfigV2.allocatorSliceEpsilon >= required)
+                {
+                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
+                        + $"decision=DEFER reason=assembly_gap required={required:0.#} "
+                        + $"physical={physicalPower:0.#} detail=\"{ready.Reason}\"");
+                    continue;
+                }
+
+                float deficit = Mathf.Max(1f, required - physicalPower);
+                MissionIntentKey consumer = MissionIntentKey.ForActiveDefence(
+                    objective.Target.EnemyArmyId);
+                diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
+                    + $"asset={objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
+                    + $"{objective.Target.ProtectedAssetHex.R}) decision=CREATE "
+                    + $"capability=FieldCombatPower required={required:0.#} available={physicalPower:0.#} "
+                    + "reason=no_feasible_response_force");
+                demands.Add(new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Aggression,
+                    Capability = CapabilityKind.FieldCombatPower,
+                    DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
+                    ConsumerIntentKey = consumer,
+                    ConsumerMissionKind = MissionKind.ActiveDefence,
+                    DesiredAmount = deficit,
+                    RequiredCapabilityPower = deficit,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = objective.Target.ProtectedAssetHex,
+                    WorldTaskScore = objective.TaskScore,
+                    Value = objective.TaskScore.Value,
+                    Explain = $"ActiveDefence enemy #{objective.Target.EnemyArmyId} threatening "
+                        + $"{objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
+                        + $"{objective.Target.ProtectedAssetHex.R}) needs ~{deficit:0.#} field power "
+                        + $"({physicalPower:0.#}/{required:0.#}); consumer={consumer}",
+                });
+            }
+            return demands;
         }
 
         // §6 — "is there, in principle, a way to physically field a SEPARATE support army": a free

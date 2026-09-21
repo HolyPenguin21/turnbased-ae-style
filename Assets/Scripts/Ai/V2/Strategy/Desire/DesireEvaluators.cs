@@ -535,26 +535,54 @@ namespace Game.Ai.V2
 
         private static void ComputeSurplus(WorldSnapshot snap, out float requiredReserve, out float freePower)
         {
-            var perAsset = new Dictionary<HexCoord, float>();
-            IReadOnlyList<AssetThreatSnapshot> threats = snap.Threat?.Threats;
-            if (threats != null)
-            {
-                foreach (AssetThreatSnapshot t in threats)
-                {
-                    if (t.Asset == null) continue;
-                    if (t.Asset.Kind != AssetKind.Citadel && t.Asset.Kind != AssetKind.Base
-                        && t.Asset.Kind != AssetKind.Facility)
-                        continue;
-                    float need = (t.Contact?.Army?.EffectiveArmyPower ?? 0f) * AiConfigV2.aggDefenceConfidenceMargin;
-                    if (!perAsset.TryGetValue(t.Asset.Hex, out float cur) || need > cur)
-                        perAsset[t.Asset.Hex] = need;
-                }
-            }
-
-            float reserve = perAsset.Values.Sum();
+            float reserve = DefensiveReserveForThreats(snap.Threat?.Threats, log: true);
             reserve = Mathf.Max(reserve, AiConfigV2.aggHomeGuardFloor);
             requiredReserve = reserve;
             freePower = Mathf.Max(0f, snap.Self.TotalPower - reserve);
+        }
+
+        // One physical hostile force contributes once. The protected asset selects relevance and
+        // diagnostics, exactly like ActiveDefenceObjectiveEvaluator; it must not clone the same
+        // enemy power for every Citadel/Base/Facility lying inside its threat envelope.
+        internal static float DefensiveReserveForThreats(
+            IReadOnlyList<AssetThreatSnapshot> threats, bool log = false)
+        {
+            if (threats == null)
+                return 0f;
+            float reserve = 0f;
+            foreach (IGrouping<object, AssetThreatSnapshot> group in threats
+                .Where(t => t?.Contact?.Army != null
+                    && t.Asset != null
+                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base
+                        || t.Asset.Kind == AssetKind.Facility))
+                // Honest physical armies have a stable id. Region-only cheat alerts deliberately
+                // carry -1/no identity, so keep each contact object independent rather than
+                // either dropping them or incorrectly merging every hidden regional alert.
+                .GroupBy(t => t.Contact.PhysicalArmyId.HasValue
+                    ? (object)t.Contact.PhysicalArmyId.Value
+                    : t.Contact.Army.ArmyId >= 0
+                        ? (object)t.Contact.Army.ArmyId : t.Contact))
+            {
+                AssetThreatSnapshot best = group
+                    .OrderByDescending(t => t.Severity)
+                    .ThenByDescending(t => t.Asset.Value)
+                    .ThenBy(t => t.EnemyEta ?? int.MaxValue)
+                    .First();
+                float contribution = Mathf.Max(0f,
+                    best.Contact.Army.EffectiveArmyPower
+                    * AiConfigV2.aggDefenceConfidenceMargin);
+                reserve += contribution;
+                if (log)
+                {
+                    int enemyId = best.Contact.Army.ArmyId;
+                    string enemyLabel = enemyId >= 0 ? $"#{enemyId}" : "regional_contact";
+                    AiDebugLog.WriteDeduped($"reserve:{enemyLabel}:{best.Asset.Hex.Q}:{best.Asset.Hex.R}",
+                        $"[AI][V2][Defence][Reserve] enemy={enemyLabel} contributes={contribution:0.##} "
+                        + $"asset={best.Asset.Kind}@({best.Asset.Hex.Q},{best.Asset.Hex.R}) "
+                        + $"severity={best.Severity:0.00} pairCount={group.Count()}");
+                }
+            }
+            return reserve;
         }
 
         private static float MilitaryThreat(WorldSnapshot snap, bool underSiege)

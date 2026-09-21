@@ -3,6 +3,8 @@ using Game.Cards;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using System.Collections.Generic;
+using System.Linq;
 
 using Game.Ai;
 
@@ -47,25 +49,43 @@ namespace Game.Ai.V2
             PlayerRoot root, CardData card, out HexCoord target, out string reason,
             bool requireCurrentAp = true)
         {
-            target = default;
+            List<HexCoord> options = EnumerateAviationPlacements(snapshot, player, root, card,
+                out reason, requireCurrentAp);
+            target = options.Count > 0 ? options[0] : default;
+            return options.Count > 0;
+        }
+
+        // Pure feasibility owner: enumerate every legal owned airfield slot. Ordering is stable
+        // only; it is not a strategic preference. NonCombatCardPlayer compares these placements
+        // through the canonical current-objective TaskScore.
+        public static List<HexCoord> EnumerateAviationPlacements(WorldSnapshot snapshot,
+            PlayerSetupData player, PlayerRoot root, CardData card, out string reason,
+            bool requireCurrentAp = true)
+        {
             reason = null;
             if (player == null || root == null || card?.Definition == null)
-            { reason = "missing args"; return false; }
+            { reason = "missing args"; return new List<HexCoord>(); }
 
             int deployApCost = CardCostRules.PlayAp(card);
-            // Only immediate execution needs AP *this turn*. A future investment witness
-            // still checks a real owned airfield and all physical capacity in this owner.
             if (requireCurrentAp && !root.CanSpendActionPoints(deployApCost))
-            { reason = "unaffordable(ap)"; return false; }
+            { reason = "unaffordable(ap)"; return new List<HexCoord>(); }
             if (!AiResourceReservation.CanAffordCardPlay(root, player, card))
-            { reason = "unaffordable(resources)"; return false; }
+            { reason = "unaffordable(resources)"; return new List<HexCoord>(); }
 
-            foreach (HexCoord hex in AiAirSortiePlanner.OwnedAirfieldHexes(player))
-                if (AviationRules.FreeAirfieldCapacity(hex, player) > 0)
-                { target = hex; return true; }
-
-            reason = "noAirfieldSlot";
-            return false;
+            List<HexCoord> options = FeasibleAviationAirfields(
+                AiAirSortiePlanner.OwnedAirfieldHexes(player),
+                hex => AviationRules.FreeAirfieldCapacity(hex, player));
+            if (options.Count == 0)
+                reason = "noAirfieldSlot";
+            return options;
         }
+
+        internal static List<HexCoord> FeasibleAviationAirfields(
+            IEnumerable<HexCoord> ownedAirfields,
+            System.Func<HexCoord, int> freeCapacity) =>
+            (ownedAirfields ?? System.Array.Empty<HexCoord>())
+                .Where(hex => freeCapacity != null && freeCapacity(hex) > 0)
+                .OrderBy(hex => hex.Q).ThenBy(hex => hex.R)
+                .ToList();
     }
 }

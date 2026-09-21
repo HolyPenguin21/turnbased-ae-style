@@ -577,6 +577,14 @@ namespace Game.Ai.V2
                         && defence?.PrimaryArmyId == a.ArmyId && a.IsStructuralRaidActor);
                     ActiveDefenceObjective objective = defence == null ? null
                         : ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
+                    if (defence != null && defence.Phase == ActiveDefencePhase.Intercept
+                        && objective == null && ProtectedBaseWasLost(snap, defence))
+                    {
+                        // Ownership is authoritative on the fresh Self snapshot. Treat a lost Base
+                        // like a completed/invalidated protection objective so the actor returns or
+                        // is released; never keep pursuing on behalf of foreign infrastructure.
+                        defence.ObjectiveCompleted = true;
+                    }
                     if (defence == null || actor == null || ShouldReap(intent))
                     {
                         if (defence?.SuspendedRaidIntentKey.HasValue == true
@@ -601,6 +609,31 @@ namespace Game.Ai.V2
                     }
                     if (objective == null)
                     {
+                        if (defence.ObjectiveCompleted)
+                        {
+                            if (RequiresLocalBaseStabilization(snap, defence, actor))
+                            {
+                                // Releasing the mission claim is the hand-off to the existing
+                                // same-hex Housekeeping owner. It may package eligible members into
+                                // the garrison; Continuity never mutates rosters itself.
+                                dead.Add(intent.IntentKey);
+                                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=STABILIZE_RELEASE "
+                                    + $"actor={actor.ArmyId} base=({actor.Hex.Q},{actor.Hex.R})");
+                                continue;
+                            }
+                            defence.ObjectiveCompleted = false;
+                            HexCoord? completedHome = SelectReturnBase(
+                                snap, player, defence.PrimaryArmyId);
+                            if (!completedHome.HasValue || actor.Hex.Equals(completedHome.Value))
+                            {
+                                dead.Add(intent.IntentKey);
+                                continue;
+                            }
+                            defence.Phase = ActiveDefencePhase.Return;
+                            defence.ReturnHex = completedHome;
+                            active.Add(intent);
+                            continue;
+                        }
                         EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                             c?.Army != null && c.Army.ArmyId == defence.EnemyArmyId
                             && c.Source == ContactSource.Honest && c.Position.HasValue);
@@ -1643,6 +1676,31 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
         }
 
+        // Snapshot-pure hand-off gate between ActiveDefence and the existing Housekeeping owner.
+        // Only a defender already standing on the protected, still-owned secondary Base is held
+        // locally; Continuity never drags a remote army there and never edits a garrison roster.
+        internal static bool RequiresLocalBaseStabilization(WorldSnapshot snap,
+            ActiveDefenceIntent defence, ArmySnapshot actor)
+        {
+            if (snap?.Self == null || defence == null || actor == null
+                || defence.ProtectedAssetKind != AssetKind.Base
+                || !actor.Hex.Equals(defence.ProtectedAssetHex)
+                || snap.Self.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(defence.ProtectedAssetHex))
+                return false;
+            int garrisonNonHeroes = snap.Self.Armies?
+                .Where(a => a != null && a.IsGarrison
+                    && a.Hex.Equals(defence.ProtectedAssetHex))
+                .Sum(a => a.Members?.Count ?? 0) ?? 0;
+            return garrisonNonHeroes < AiConfig.secureBaseMinNonHeroUnits
+                && (actor.Members?.Count ?? 0) > 0;
+        }
+
+        internal static bool ProtectedBaseWasLost(WorldSnapshot snap, ActiveDefenceIntent defence) =>
+            defence != null && defence.ProtectedAssetKind == AssetKind.Base
+            && (snap?.Self?.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(defence.ProtectedAssetHex));
+
         private static float BaseCollectedAmount(WorldSnapshot snap, HexCoord hex)
         {
             float total = 0f;
@@ -1853,26 +1911,21 @@ namespace Game.Ai.V2
                         state.Remove(intent.IntentKey);
                         return;
                     }
-                    if (intent.ActiveDefence.ReturnHex.HasValue
-                        && !o.FinalHex.Equals(intent.ActiveDefence.ReturnHex.Value))
-                    {
-                        intent.ActiveDefence.Phase = ActiveDefencePhase.Return;
-                        intent.Status = IntentStatus.Active;
-                        intent.Suspended = SuspendReason.None;
-                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RETURN actor={intent.PreferredMoverArmyId}");
-                        return;
-                    }
-                    state.Remove(intent.IntentKey);
+                    intent.ActiveDefence.ObjectiveCompleted = true;
+                    intent.Status = IntentStatus.Active;
+                    intent.Suspended = SuspendReason.None;
+                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=REANALYZE_STABILIZATION actor={intent.PreferredMoverArmyId}");
                     return;
                 }
                 if (o.MissionKind == MissionKind.ActiveDefence && intent == null
                     && o.HasActiveDefencePayload && o.MoverArmyId.HasValue
-                    && !o.ActiveDefenceTarget.SuspendedRaidIntentKey.HasValue
-                    && o.ActiveDefenceTarget.ReturnHex.HasValue
-                    && !o.FinalHex.Equals(o.ActiveDefenceTarget.ReturnHex.Value))
+                    && !o.ActiveDefenceTarget.SuspendedRaidIntentKey.HasValue)
                 {
-                    o.ActiveDefenceTarget.Phase = ActiveDefencePhase.Return;
                     CreateActiveDefenceIntent(state, o, turn);
+                    if (state.TryGet(MissionIntentKey.ForActiveDefence(
+                            o.ActiveDefenceTarget.EnemyArmyId), out MissionIntent created)
+                        && created?.ActiveDefence != null)
+                        created.ActiveDefence.ObjectiveCompleted = true;
                     return;
                 }
                 // Raid completion ends only the CURRENT neutral target, not the durable campaign.
