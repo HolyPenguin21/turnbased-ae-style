@@ -1,0 +1,28 @@
+name: Apply AI V2 build-site ownership correction once
+on:
+  push:
+    branches:
+      - fix/ai-v2-post89-correctness
+    paths:
+      - .github/workflows/ai-v2-buildsite-once.yml
+permissions:
+  contents: write
+jobs:
+  apply-verified-patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify anchors and patch current source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/ai-v2-buildsite-apply-once.py
+          python3 .github/ai-v2-buildsite-apply-once.py
+          git rm -- .github/ai-v2-buildsite-apply-once.py .github/workflows/ai-v2-buildsite-once.yml
+          git add -- Assets/Scripts/Ai/V2/Continuity/MissionContinuityLayer.cs Assets/Scripts/Ai/V2/Provisioning/ProvisioningManager.cs Assets/Scripts/Ai/V2/Strategy/PhaseA/CapabilityDeliveryEvaluator.cs Assets/Editor/AiEconomyBuildSiteOwnershipTests.cs Assets/Editor/AiEconomyBuildSiteOwnershipTests.cs.meta
+          git diff --cached --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(ai-v2): enforce durable build-site leases at continuity grant and retarget'
+          git push origin HEAD:fix/ai-v2-post89-correctness
