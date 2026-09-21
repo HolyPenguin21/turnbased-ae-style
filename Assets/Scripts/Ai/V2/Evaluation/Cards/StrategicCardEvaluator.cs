@@ -358,16 +358,11 @@ namespace Game.Ai.V2
             bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
 
             // Production amplifies a concrete mission need; it does not manufacture its own reason
-            // to spend. Equipment CardUpgrade was already economy-gated by its authoritative
-            // DevelopmentOpportunityEvaluator and must not be damped a second time here.
-            float productionDemandFloor = demand.Capability == CapabilityKind.CardUpgrade
-                ? 0f
-                : Mathf.Lerp(AiConfigV2.productionSupportMin,
-                    AiConfigV2.productionSupportEmergencyFloor,
-                    DemandUrgencyPolicy.Normalized(demand));
-            bd.ProductionSupportAdjustment = demand.Capability == CapabilityKind.CardUpgrade
-                ? 0f
-                : ProductionSupportAdjustment(bd, plan, snap, productionDemandFloor);
+            // to spend. Currently a no-op everywhere: ResourceCost(plan) / ScoreNonCombat's own
+            // resource pricing already prices the exact chain, so a second weakest-resource
+            // multiplier here would double-charge. See bd.ProductionSupportAdjustment's other
+            // assignments (ScoreSurplusRole, ScoreNonCombat) for the same reasoning.
+            bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
 
             // AGG-RAID Defence cleanup — GarrisonSaturationPenalty only ever applied to a
@@ -491,8 +486,8 @@ namespace Game.Ai.V2
                 + (role == IntendedRole.EquipmentUpgrade ? 0f : equipmentUpgrade)
                 + ec.Synergy + ec.GlobalSynergy;
             // Phase B is optional surplus work: no mission urgency may lift the economy-derived
-            // Production support. Direct cards from hand have no Generation step and remain neutral.
-            bd.ProductionSupportAdjustment = ProductionSupportAdjustment(bd, plan, snap, 0f);
+            // Production support. Currently a no-op — see ScoreForDemand's comment.
+            bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
             bd.ScarcityValue = role == IntendedRole.Hold ? 0f : scarcity;
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
@@ -637,10 +632,9 @@ namespace Game.Ai.V2
             bd.EffectDetail = ncEffDetail;
 
             // A generated Base is Economy itself and must remain able to create future runway.
-            // Other optional Production-generated non-combat assets are amplifiers and use the
-            // same support adjustment as generated Unit/Hero plans.
-            bd.ProductionSupportAdjustment = kind == NonCombatRole.Base
-                ? 0f : ProductionSupportAdjustment(bd, generation, snap, 0f);
+            // Other optional Production-generated non-combat assets are amplifiers; currently a
+            // no-op either way — see ScoreForDemand's comment.
+            bd.ProductionSupportAdjustment = 0f;
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
             bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * apCost
@@ -683,20 +677,6 @@ namespace Game.Ai.V2
             + b.ForceGrowthValue + b.ThreatResponseValue + b.ResourceEfficiency + b.SynergyValue
             + b.Deployability + b.ScarcityValue + b.RedundancyPenalty + b.AlternativeUseValue
             + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment;
-
-        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
-            MaterializationPlan plan, WorldSnapshot snap, float demandFloor) =>
-            ProductionSupportAdjustment(b, plan?.Generation, snap, demandFloor);
-
-        private static float ProductionSupportAdjustment(StrategicUseScoreBreakdown b,
-            GenerationStep generation, WorldSnapshot snap, float demandFloor)
-        {
-            // ResourceCost(plan) / ScoreNonCombat(actualResourceCost) already price
-            // the exact chain with StrategicResourceCostValue; StrategicSpendability
-            // gates spendable resources. A global weakest-resource multiplier
-            // double-charges irrelevant resource shortages on minted cards.
-            return 0f;
-        }
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
         private static float ResourceCost(MaterializationPlan plan, WorldSnapshot snap,
