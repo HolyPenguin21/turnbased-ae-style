@@ -6,6 +6,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Units;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -160,6 +161,10 @@ namespace Game.Ai.V2
                         || (System.Math.Abs(p.Score - best.Score) <= 0.0001f
                             && string.CompareOrdinal(p.StableKey, best.StableKey) < 0)))
                     best = p;
+            if (best?.Kind == PlayKind.Aviation)
+                AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={best.Card.Definition.displayName} "
+                    + $"airfield=({best.TargetHex.Q},{best.TargetHex.R}) decision=SELECT "
+                    + $"score={best.Score:0.00} detail=\"{best.Explain}\"");
             return best;
         }
 
@@ -194,6 +199,13 @@ namespace Game.Ai.V2
                     && (def.cardType == CardType.Unit || def.cardType == CardType.Hero
                         || AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities)))
                     continue;
+                if (def.isAviation)
+                {
+                    foreach (NonCombatPlay aviation in BuildAviationPlays(card, null, snap,
+                        player, root, hand, ctx, blocked, witnessedUsefulApDemand))
+                        yield return aviation;
+                    continue;
+                }
                 NonCombatPlay p = BuildPlayFor(card, generation: null, snap, player, root, hand, ctx,
                     ownBaseHexes, blocked, witnessedUsefulApDemand);
                 if (p != null)
@@ -216,6 +228,16 @@ namespace Game.Ai.V2
                     if (!(gd.isAviation || gd.cardType == CardType.Base || gd.cardType == CardType.Facility))
                         continue;
                     var stand = new CardData(gd) { ResearchProductionCreated = true };
+                    if (gd.isAviation)
+                    {
+                        foreach (NonCombatPlay aviation in BuildAviationPlays(stand, g, snap,
+                            player, root, hand, ctx, blocked, witnessedUsefulApDemand))
+                        {
+                            aviation.Explain = $"generate:{gd.displayName} -> " + aviation.Explain;
+                            yield return aviation;
+                        }
+                        continue;
+                    }
                     NonCombatPlay p = BuildPlayFor(stand, g, snap, player, root, hand, ctx,
                         ownBaseHexes, blocked, witnessedUsefulApDemand);
                     if (p == null)
@@ -250,23 +272,11 @@ namespace Game.Ai.V2
 
             if (def.isAviation)
             {
-                // §1 final closure — V2-owned feasibility query, no V1 AiManagementPlanner.
-                if (!PlacementRules.TryFindAviationPlacement(snap, player, root, card,
-                        out HexCoord hx, out string why,
-                        requireCurrentAp: !investmentPreview))
-                {
-                    blocked.Add($"{def.displayName}:aviation({why ?? "noAirfieldSlot"})");
-                    return null;
-                }
-                return new NonCombatPlay
-                {
-                    Card = card, Kind = PlayKind.Aviation, TargetHex = hx, Generation = generation,
-                    ApCost = totalAp, ResCost = totalRes,
-                    Score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
-                        totalAp, totalRes, generation, witnessedUsefulApDemand),
-                    StableKey = $"{sourceKey}:aviation:{hx.Q},{hx.R}",
-                    Explain = $"{def.displayName} -> airfield ({hx.Q},{hx.R})",
-                };
+                return BuildAviationPlays(card, generation, snap, player, root, hand, ctx,
+                        blocked, witnessedUsefulApDemand, investmentPreview)
+                    .OrderByDescending(p => p.Score)
+                    .ThenBy(p => p.StableKey, System.StringComparer.Ordinal)
+                    .FirstOrDefault();
             }
 
             if (def.cardType == CardType.Facility)
@@ -354,6 +364,142 @@ namespace Game.Ai.V2
             blocked.Add($"{def.displayName}:{def.cardType}(noNonCombatPlayPath)");
             return null;
         }
+
+        private static List<NonCombatPlay> BuildAviationPlays(CardData card,
+            GenerationStep generation, WorldSnapshot snap, PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, List<string> blocked,
+            float? witnessedUsefulApDemand = null, bool investmentPreview = false)
+        {
+            var result = new List<NonCombatPlay>();
+            CardDefinition def = card?.Definition;
+            if (def == null)
+                return result;
+            List<HexCoord> airfields = PlacementRules.EnumerateAviationPlacements(
+                snap, player, root, card, out string why,
+                requireCurrentAp: !investmentPreview);
+            if (airfields.Count == 0)
+            {
+                blocked?.Add($"{def.displayName}:aviation({why ?? "noAirfieldSlot"})");
+                return result;
+            }
+
+            float playAp = CardCostRules.PlayAp(card);
+            float totalAp = playAp + (generation != null
+                ? ResearchProductionSystem.AttemptApCost(generation.CardDef) : 0f);
+            ResourceCost totalRes = CombinedCost(card.EffectivePlayResourceCost,
+                generation?.CardDef?.resourceCost);
+            int handOrdinal = hand.Hand.IndexOf(card);
+            string sourceKey = generation != null
+                ? "gen:" + generation.CardKey
+                : $"hand:{handOrdinal}:{def.authoredKey ?? "?"}";
+            float cardScore = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
+                totalAp, totalRes, generation, witnessedUsefulApDemand);
+            List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap)
+                .Where(o => o != null).ToList();
+
+            foreach (HexCoord airfield in airfields)
+            {
+                TaskScore service = BestAirfieldServiceTaskScore(
+                    snap, player, ctx, def, airfield, objectives,
+                    out int coverage, out string witness);
+                float score = cardScore + service.Value;
+                int free = AiAirSortiePlanner.FreeLandingCapacity(airfield, player);
+                AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
+                    + $"airfield=({airfield.Q},{airfield.R}) capacity={free} "
+                    + $"objectiveCoverage={coverage} task={service.Value:0.00} "
+                    + $"decision=CANDIDATE witness={witness ?? "none"}");
+                result.Add(new NonCombatPlay
+                {
+                    Card = card,
+                    Kind = PlayKind.Aviation,
+                    TargetHex = airfield,
+                    Generation = generation,
+                    ApCost = totalAp,
+                    ResCost = totalRes,
+                    Score = score,
+                    StableKey = $"{sourceKey}:aviation:{airfield.Q},{airfield.R}",
+                    Explain = $"{def.displayName} -> airfield ({airfield.Q},{airfield.R}); "
+                        + $"runnableAirObjectives={coverage}, serviceTask={service.Value:0.00}, "
+                        + $"witness={witness ?? "none"}",
+                });
+            }
+            return result;
+        }
+
+        // Placement refinement remains on the canonical TaskScore scale. Each candidate must
+        // prove an actual safe sortie (capacity + range + known-AA filtering are owned by
+        // AiAirSortiePlanner); the best currently runnable Recon objective supplies every positive
+        // value component. Airfield threat is folded through TaskScore.HexThreatRisk, not a
+        // forward-base multiplier.
+        internal static TaskScore BestAirfieldServiceTaskScore(WorldSnapshot snap,
+            PlayerSetupData player, AiTurnContext ctx, CardDefinition def, HexCoord airfield,
+            IReadOnlyList<ReconObjective> objectives, out int coverage, out string witness)
+        {
+            coverage = 0;
+            witness = null;
+            if (ctx?.Map == null || def == null || !def.isAviation)
+                return default;
+            var projected = new List<UnitData>
+            {
+                new UnitData
+                {
+                    Owner = player, IsAviation = true,
+                    MoveMax = Mathf.Max(1, def.moveMax),
+                    MoveCurrent = Mathf.Max(1, def.moveMax),
+                    ActivationApCost = Mathf.Max(0, def.activationApCost),
+                    LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
+                    TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
+                },
+            };
+            float airfieldThreat = snap?.Threat?.Threats?
+                .Where(t => t?.Asset != null && t.Asset.Hex.Equals(airfield)
+                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base))
+                .Select(t => t.Severity).DefaultIfEmpty(0f).Max() ?? 0f;
+
+            TaskScore best = default;
+            float bestValue = float.NegativeInfinity;
+            foreach (ReconObjective objective in objectives ?? System.Array.Empty<ReconObjective>())
+            {
+                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortieFromStorage(
+                    airfield, projected, objective.FocusHex, ctx.Map, player);
+                MultiTurnSortie? multiTurn = sameTurn.HasValue ? null
+                    : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
+                        airfield, projected, objective.FocusHex, ctx.Map, player);
+                if (!sameTurn.HasValue && !multiTurn.HasValue)
+                    continue;
+                coverage++;
+                int eta = sameTurn.HasValue ? 1 : Mathf.Max(1, multiTurn.Value.RequiredTurns);
+                TaskScore candidate = CopyReconScoreWithAirDelivery(objective.TaskScore,
+                    eta, def.activationApCost,
+                    TaskScoreEvaluator.HexThreatRisk(airfieldThreat));
+                if (candidate.Value > bestValue)
+                {
+                    bestValue = candidate.Value;
+                    best = candidate;
+                    witness = $"{objective.Kind}@({objective.FocusHex.Q},{objective.FocusHex.R})/eta={eta}";
+                }
+            }
+            return coverage > 0 ? best : default;
+        }
+
+        private static TaskScore CopyReconScoreWithAirDelivery(TaskScore s, int eta,
+            int activationAp, float airfieldThreatRisk) => new TaskScore(
+            economicHexBenefit: s.EconomicHexBenefit, payback: s.Payback,
+            airfield: s.Airfield, globalCardEffect: s.GlobalCardEffect,
+            infoGain: s.InfoGain, staleness: s.Staleness,
+            strategicRelevance: s.StrategicRelevance, threatDirection: s.ThreatDirection,
+            contactRelevance: s.ContactRelevance, frontProgress: s.FrontProgress,
+            corridorAlignment: s.CorridorAlignment,
+            ownTerritoryProximity: s.OwnTerritoryProximity, terrainDefense: s.TerrainDefense,
+            militaryTargetRelevance: s.MilitaryTargetRelevance, winChance: s.WinChance,
+            cardPrice: s.CardPrice,
+            delivery: TaskScoreEvaluator.DeliveryFromEta(
+                Mathf.Max(0, activationAp), eta, AiConfigV2.taskScoreReactivationApWeight),
+            moverOpportunityCost: s.MoverOpportunityCost,
+            hexThreatRisk: s.HexThreatRisk + airfieldThreatRisk,
+            detectionRisk: s.DetectionRisk,
+            economicExpansionValue: s.EconomicExpansionValue,
+            supportedNeedValue: s.SupportedNeedValue);
 
         // AI-MGR-01 review-r4 P1 — a structured result. A generated non-combat play is NOT atomic
         // (mint then deploy), so a partial failure — Challenge lost after resources were spent /
