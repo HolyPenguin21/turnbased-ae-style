@@ -674,11 +674,9 @@ namespace Game.Ai.V2
             //     Radar remains fixed while operational Aggression facts refresh below.
             if (phaseA.StateChanged)
             {
-                int knowledgeVersionBeforePhaseA = snapshot.KnowledgeVersion;
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
-                if (snapshot.KnowledgeVersion != knowledgeVersionBeforePhaseA)
-                    reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                 if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                     StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                 aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
@@ -924,11 +922,9 @@ namespace Game.Ai.V2
                     phaseA.Accumulate(followup);
                     if (followup.StateChanged)
                     {
-                        int knowledgeVersionBeforeFollowup = snapshot.KnowledgeVersion;
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
-                        if (snapshot.KnowledgeVersion != knowledgeVersionBeforeFollowup)
-                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                        reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                         if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                             StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                         aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
@@ -1046,11 +1042,57 @@ namespace Game.Ai.V2
                         if (fe?.Mission != null)
                             fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
 
+                    // A multi-turn rebase is already airborne and committed to landing. Resume
+                    // one such obligation before discretionary mission progress; its activation
+                    // resources were protected by StrategicSpendability during the earlier
+                    // strategic phases. Route safety and destination validity are live-rechecked
+                    // inside ExecuteContinuation rather than trusting last turn's projection.
+                    List<ArmyData> rebaseContinuations =
+                        AviationRebasePlanner.FindMandatoryContinuations(player);
+                    List<ArmyData> recoveries =
+                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
+                    bool rebaseFirst = rebaseContinuations.Count > 0
+                        && (recoveries.Count == 0
+                            || rebaseContinuations[0].Id <= recoveries[0].Id);
+                    if (rebaseFirst)
+                    {
+                        ArmyData rebaseWing = rebaseContinuations[0];
+                        WorldAnalysis.StepObservationStamp beforeRebase =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        bool rebaseMoved = false;
+                        yield return AviationRebasePlanner.ExecuteContinuation(
+                            player, root, ctx, rebaseWing, v => rebaseMoved = v);
+                        if (rebaseMoved)
+                            V2StateVersion.Bump();
+                        snapshot = WorldAnalysis.RefreshStrategicKnowledge(
+                            snapshot, player, root, hand, ctx);
+                        WorldAnalysis.StepObservationStamp afterRebase =
+                            WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                        WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
+                            beforeRebase, afterRebase, null);
+                        settledSteps++;
+                        TakeTypedTriggers(out StrategicInvalidationReason rebaseOperationalReasons,
+                            out StrategicInvalidationReason rebaseStrategicReasons,
+                            out HashSet<DesireAxis> rebaseDirtyAxes);
+                        bool rebaseStrategicChanged = ReenterStrategicAxes(
+                            rebaseStrategicReasons, rebaseDirtyAxes);
+                        bool rebaseProgress = rebaseMoved || rebaseStrategicChanged;
+                        noProgressCycles = rebaseProgress ? 0 : noProgressCycles + 1;
+                        AiDebugLog.Write($"[AI][V2][Loop] step={settledSteps} aviation-rebase "
+                            + $"actor=#{rebaseWing.Id} progress={(rebaseProgress ? 1 : 0)} "
+                            + $"operationalTriggers={rebaseOperationalReasons} "
+                            + $"strategicTriggers={rebaseStrategicReasons}");
+                        if (!rebaseProgress)
+                        {
+                            AiDebugLog.Write("[AI][V2][Loop] stop — aviation rebase could not take a safe step");
+                            break;
+                        }
+                        continue;
+                    }
+
                     // Lifecycle safety is admitted before strategic progress, but its must-return
                     // predicate remains owned by ReconAirExecutor. Exactly one airborne action is
                     // settled, observed and then re-admitted like every other step.
-                    List<ArmyData> recoveries =
-                        ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
                     if (recoveries.Count > 0)
                     {
                         ArmyData recovery = recoveries[0];
@@ -1503,15 +1545,13 @@ namespace Game.Ai.V2
                             + $"spent={coldPass.CardsPlayed} changed={(coldPass.StateChanged ? 1 : 0)}");
                         if (coldPass.StateChanged)
                         {
-                            int knowledgeVersionBeforeCold = snapshot.KnowledgeVersion;
                             snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                                 snapshot, player, root, hand, ctx);
                             WorldAnalysis.StepObservationStamp afterCold =
                                 WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
-                            if (snapshot.KnowledgeVersion != knowledgeVersionBeforeCold)
-                                reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
+                            reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                             if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
                                 StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
                             aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)

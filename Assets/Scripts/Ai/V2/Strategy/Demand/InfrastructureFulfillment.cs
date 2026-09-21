@@ -156,10 +156,8 @@ namespace Game.Ai.V2
 
             // --- live gameplay affordability (the executor re-checks; this keeps the demand open
             //     cleanly rather than letting a doomed transaction run) ---
-            float spendableAp = economyOwner == null
-                ? StrategicResourceReservationLedger.SpendableAp(player, ctx.TurnNumber, root.ActionPoints)
-                : StrategicResourceReservationLedger.SpendableExcludingOwner(player, ctx.TurnNumber,
-                    StrategicReservedResource.ActionPoints, root.ActionPoints, economyOwner);
+            float spendableAp = StrategicSpendability.SpendableAp(
+                player, root, ctx, economyOwner);
             if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
                 || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
                 || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
@@ -705,4 +703,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

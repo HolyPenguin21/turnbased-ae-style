@@ -34,12 +34,42 @@ namespace Game.Ai.V2
     internal static class AviationRebasePlanner
     {
         internal static TaskScore ScoreImprovement(TaskScore sourceService,
-            TaskScore destinationService, int activationAp, int energyCost)
+            TaskScore destinationService, int activationAp, int energyCost,
+            int requiredTurns = 1)
         {
-            float improvement = destinationService.Value - sourceService.Value;
-            return new TaskScore(
-                supportedNeedValue: Mathf.Max(0f, improvement),
-                cardPrice: TaskScoreEvaluator.CardPrice(activationAp, energyCost));
+            int futureActivations = Mathf.Max(0, requiredTurns - 1);
+            float price = TaskScoreEvaluator.CardPrice(
+                activationAp, energyCost * (1 + futureActivations));
+            float delivery = TaskScoreEvaluator.DeliveryFromEta(
+                activationAp, requiredTurns, AiConfigV2.taskScoreReactivationApWeight);
+            return TaskScoreEvaluator.NetChange(
+                sourceService, destinationService, price, delivery);
+        }
+
+        // A launched multi-turn rebase is a physical landing obligation, not a fresh strategic
+        // choice. It survives turn boundaries in AirSortieRegistry and is resumed before optional
+        // spending; the exact route, capacity, ownership, AA and fuel proof are still re-derived by
+        // ContinueSortie on every step.
+        internal static List<ArmyData> FindMandatoryContinuations(PlayerSetupData player)
+        {
+            var result = new List<ArmyData>();
+            foreach (AirSortie sortie in AirSortieRegistry.For(player).ToList())
+            {
+                if (sortie == null || sortie.Kind != AirSortieKind.Rebase)
+                    continue;
+                ArmyData army = sortie.Army;
+                bool live = army != null && army.Owner == player
+                    && ArmyRegistry.AllForOwner(player).Contains(army)
+                    && AviationRules.IsValidAirArmy(army) && army.Controller != null;
+                if (!live || army.Hex.Equals(sortie.LandingHex))
+                {
+                    AirSortieRegistry.Remove(player, sortie);
+                    continue;
+                }
+                if (army.CurrentMovement > 0)
+                    result.Add(army);
+            }
+            return result.Distinct().OrderBy(a => a.Id).ToList();
         }
 
         internal static AviationRebasePlan BuildPlan(WorldSnapshot snap, PlayerSetupData player,
@@ -77,16 +107,14 @@ namespace Game.Ai.V2
                         AiAirSortiePlanner.RebaseRoute? route =
                             AiAirSortiePlanner.TryPlanRebaseFromStorage(
                                 source.Hex, group, destination, ctx.Map, player);
-                        // LaunchRoutine advances one hex at a time. Rebase execution below drains
-                        // the remaining same-turn route atomically; multi-turn relocation would
-                        // require a durable strategic entitlement and is therefore not admitted.
-                        if (!route.HasValue || route.Value.RequiredTurns != 1)
+                        if (!route.HasValue)
                             continue;
 
                         int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
                         int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
                         TaskScore score = ScoreImprovement(
-                            sourceService, destinationService, ap, energy);
+                            sourceService, destinationService, ap, energy,
+                            route.Value.RequiredTurns);
                         if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
                             continue;
                         var candidate = new AviationRebasePlan
@@ -170,6 +198,46 @@ namespace Game.Ai.V2
                 + $"destination=({plan.DestinationHex.Q},{plan.DestinationHex.R}) "
                 + $"score={plan.Score.Value:0.00} changed={(changed ? 1 : 0)} "
                 + $"witness={plan.DestinationWitness ?? "none"}");
+        }
+
+        internal static IEnumerator ExecuteContinuation(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ArmyData wing, System.Action<bool> setChanged)
+        {
+            if (player == null || root == null || ctx?.Map == null || wing == null)
+                yield break;
+            AirSortie task = AirSortieRegistry.ForArmy(player, wing);
+            if (task == null || task.Kind != AirSortieKind.Rebase)
+                yield break;
+
+            bool changed = false;
+            var trace = new AiMoveExecutionTrace();
+            int guard = Mathf.Max(1, wing.CurrentMovement + 1);
+            while (wing != null && wing.CurrentMovement > 0 && guard-- > 0)
+            {
+                AiDecision move = AiAirSortiePlanner.ContinueSortie(
+                    player, root, ctx, task, "AviationRebase",
+                    "relocates to the selected forward airfield", AiConfig.airStrikeContinuationScore);
+                if (move == null)
+                    break;
+                HexCoord prior = wing.Hex;
+                yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
+                wing = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == wing.Id);
+                if (wing == null || wing.Hex.Equals(prior))
+                    break;
+                changed = true;
+                if (wing.Hex.Equals(task.LandingHex))
+                {
+                    AirSortieRegistry.Remove(player, task);
+                    break;
+                }
+            }
+
+            // If the requested destination disappeared while the aircraft was already safely on
+            // another owned airfield, there is no recovery obligation left to retain forever.
+            if (!changed && wing != null && AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+                && !AviationRules.IsOwnedAirfieldAt(task.LandingHex, player))
+                AirSortieRegistry.Remove(player, task);
+            setChanged?.Invoke(changed);
         }
     }
 }

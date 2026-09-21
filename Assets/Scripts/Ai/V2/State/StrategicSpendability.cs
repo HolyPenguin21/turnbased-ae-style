@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
@@ -17,13 +19,14 @@ namespace Game.Ai.V2
     // owner-aware ledger was not authoritative for materialization feasibility.
     public static class StrategicSpendability
     {
-        // An already-airborne wing whose canonical lifecycle projection demands Return is safety
-        // work, not another discretionary Recon sortie. Phase A runs before operational admission,
-        // so the typed loop's mandatory-return step alone cannot protect its first activation from
-        // earlier card spending. Read the SAME recovery predicate ReconAirExecutor executes, and
-        // the wing's actual unpaid activation costs. Do not reserve a fixed amount per aircraft,
-        // future-turn AP, or the cost of already activated wings. Re-evaluate against live actors:
-        // landing, activation, loss and lifecycle transitions release the protection immediately.
+        // An already-airborne wing whose canonical lifecycle projection demands Return, or whose
+        // live Rebase record still commits it to landing, is safety work rather than a new
+        // discretionary sortie. Phase A runs before operational admission, so the typed loop's
+        // continuation step alone cannot protect its first activation from earlier card spending.
+        // Read the SAME owner predicates the executors use and the wing's actual unpaid activation
+        // costs. Do not reserve a fixed amount per aircraft, future-turn AP, or already-paid costs.
+        // Re-evaluate against live actors: landing, activation, loss and lifecycle transitions
+        // release the protection immediately.
         // The executor visits actors in ID order and stops when its recovery step cannot progress;
         // protect only the prefix whose unpaid costs fit today's physical AP/Energy. An already
         // unaffordable recovery must not freeze otherwise usable resources for the rest of the turn.
@@ -34,7 +37,11 @@ namespace Game.Ai.V2
                 return (0f, 0);
             float ap = 0f;
             int energy = 0;
-            foreach (ArmyData wing in ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx))
+            IEnumerable<ArmyData> obligations =
+                ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx)
+                    .Concat(AviationRebasePlanner.FindMandatoryContinuations(player))
+                    .GroupBy(a => a.Id).Select(g => g.First()).OrderBy(a => a.Id);
+            foreach (ArmyData wing in obligations)
             {
                 float activationAp = wing.HasActivatedThisTurn ? 0f
                     : Mathf.Max(0, wing.ActivationApCost);
@@ -63,6 +70,22 @@ namespace Game.Ai.V2
             float legacySpendable, float unpaidRecoveryCost) =>
             Mathf.Min(Mathf.Max(0f, ownerAwareSpendable - Mathf.Max(0f, unpaidRecoveryCost)),
                 Mathf.Max(0f, legacySpendable));
+
+        internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, string excludeOwner = null)
+        {
+            if (root == null)
+                return 0f;
+            if (player == null || ctx == null)
+                return Mathf.Max(0f, root.ActionPoints);
+            float strategic = excludeOwner == null
+                ? StrategicResourceReservationLedger.SpendableAp(
+                    player, ctx.TurnNumber, root.ActionPoints)
+                : StrategicResourceReservationLedger.SpendableExcludingOwner(
+                    player, ctx.TurnNumber, StrategicReservedResource.ActionPoints,
+                    root.ActionPoints, excludeOwner);
+            return Mathf.Max(0f, strategic - OutstandingRecoveryActivation(player, root, ctx).Ap);
+        }
 
         // The canonical primitive: how much of resource `t` may actually be spent this turn.
         internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -113,9 +136,7 @@ namespace Game.Ai.V2
             if (root == null || plan == null)
                 return false;
             float availableAp = player != null && ctx != null
-                ? StrategicResourceReservationLedger.SpendableAp(
-                    player, ctx.TurnNumber, root.ActionPoints)
-                    - OutstandingRecoveryActivation(player, root, ctx).Ap
+                ? SpendableAp(player, root, ctx)
                 : root.ActionPoints;
             if (availableAp - plan.ApCost < 0f)
                 return false;

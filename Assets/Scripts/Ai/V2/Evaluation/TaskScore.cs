@@ -129,6 +129,37 @@ namespace Game.Ai.V2
             - score.HexThreatRisk
             - score.DetectionRisk;
 
+        // Component-wise change between two canonical world-task projections. Keeping every fact
+        // in its original slot matters even when callers only consume Value: diagnostics and
+        // future tuning must still be able to say whether a relocation improved InfoGain,
+        // StrategicRelevance, risk, etc. `additionalCardPrice` / `additionalDelivery` are the
+        // physical price of making the change, not a synthetic benefit slot.
+        internal static TaskScore NetChange(TaskScore from, TaskScore to,
+            float additionalCardPrice = 0f, float additionalDelivery = 0f) =>
+            new TaskScore(
+                economicHexBenefit: to.EconomicHexBenefit - from.EconomicHexBenefit,
+                payback: to.Payback - from.Payback,
+                airfield: to.Airfield - from.Airfield,
+                globalCardEffect: to.GlobalCardEffect - from.GlobalCardEffect,
+                infoGain: to.InfoGain - from.InfoGain,
+                staleness: to.Staleness - from.Staleness,
+                strategicRelevance: to.StrategicRelevance - from.StrategicRelevance,
+                threatDirection: to.ThreatDirection - from.ThreatDirection,
+                contactRelevance: to.ContactRelevance - from.ContactRelevance,
+                frontProgress: to.FrontProgress - from.FrontProgress,
+                corridorAlignment: to.CorridorAlignment - from.CorridorAlignment,
+                ownTerritoryProximity: to.OwnTerritoryProximity - from.OwnTerritoryProximity,
+                terrainDefense: to.TerrainDefense - from.TerrainDefense,
+                militaryTargetRelevance: to.MilitaryTargetRelevance - from.MilitaryTargetRelevance,
+                winChance: to.WinChance - from.WinChance,
+                cardPrice: to.CardPrice - from.CardPrice + Mathf.Max(0f, additionalCardPrice),
+                delivery: to.Delivery - from.Delivery + Mathf.Max(0f, additionalDelivery),
+                moverOpportunityCost: to.MoverOpportunityCost - from.MoverOpportunityCost,
+                hexThreatRisk: to.HexThreatRisk - from.HexThreatRisk,
+                detectionRisk: to.DetectionRisk - from.DetectionRisk,
+                economicExpansionValue: to.EconomicExpansionValue - from.EconomicExpansionValue,
+                supportedNeedValue: to.SupportedNeedValue - from.SupportedNeedValue);
+
         internal static float ResourcePriority(EconomyResourceStanding standing,
             float externalStarvationPressure = 0f)
         {
