@@ -67,7 +67,10 @@ namespace Game.EditorTests
                     MobileCollectionOpportunities = new[]
                     {
                         new MobileCollectionOpportunity(target, ResourceType.Materials,
-                            2, 0, 2, 1, 0f, 3.5f, new HexCoord(0, 0)),
+                            2, 0, 2, 1, 0f,
+                            new TaskScore(economicHexBenefit: 6f, payback: 2f,
+                                cardPrice: 1.5f, delivery: 3f),
+                            new HexCoord(0, 0)),
                     },
                 },
             };
@@ -81,6 +84,8 @@ namespace Game.EditorTests
             Assert.That(payload.CollectorArmyId, Is.EqualTo(0), "army id zero is valid");
             Assert.That(mission.Requirements.RequiresHero, Is.False);
             Assert.That(mission.BaseValue, Is.EqualTo(3.5f));
+            Assert.That(mission.LocalAdmissionScore, Is.EqualTo(3.5f),
+                "the proposal must transport the canonical TaskScore fold unchanged");
         }
 
         [Test]
@@ -99,9 +104,19 @@ namespace Game.EditorTests
                 AviationCombatEstimator.EstimateAirStrike(aircraft, 0f, 0f, defenders,
                     AirStrikePolicy.RaidSupport(42));
 
+            AviationCombatEstimator.AirStrikeEstimate snapshotSupport =
+                AviationCombatEstimator.EstimateAirStrike(
+                    aircraft.Select(x => x.Attack).ToList(), 0f, 0f, defenders,
+                    AirStrikePolicy.RaidSupport(42));
+
             Assert.That(support.WipeProbability, Is.Zero);
             Assert.That(support.ExpectedDefendersAfter.Count, Is.GreaterThanOrEqualTo(1));
             Assert.That(support.ExpectedKillCount, Is.LessThanOrEqualTo(2f));
+            Assert.That(snapshotSupport.ExpectedDamage,
+                Is.EqualTo(support.ExpectedDamage).Within(0.0001f),
+                "planning and live provisioning must share one air-strike estimator");
+            Assert.That(snapshotSupport.ExpectedKillCount,
+                Is.EqualTo(support.ExpectedKillCount).Within(0.0001f));
         }
 
         [Test]

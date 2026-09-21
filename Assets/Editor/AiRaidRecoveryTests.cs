@@ -42,6 +42,41 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void BaseRecovery_ScoreIsCanonicalTaskScoreFold()
+        {
+            var player = new PlayerSetupData { Nickname = "Canonical score" };
+            HexCoord home = new HexCoord(0, 0);
+            WorthIt.DefenderProfile wounded = Profile(20, 0, 1, 10, 1);
+            WorthIt.DefenderProfile healthy = Profile(20, 0, 10, 10, 1);
+            WorthIt.DefenderProfile defender = Profile(4, 0, 5, 5, 10);
+            ArmySnapshot primary = Army(3, player, home, 1,
+                Member(111, 0, wounded, healthy, repairable: true,
+                    repairCost: new ResourceVector(0, 1, 0, 0, 0)));
+            primary.ActivationApCost = 2;
+            WorldSnapshot snap = Snapshot(primary, human: 3);
+            var raid = Raid(primary.ArmyId, new HexCoord(2, 0));
+            float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
+
+            RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
+                primary, new[] { defender }, new HashSet<int>(), before, home);
+
+            var expected = new TaskScore(
+                winChance: TaskScoreEvaluator.WinChance(plan.ProjectedWinChance),
+                cardPrice: TaskScoreEvaluator.CardPrice(plan.ApCost,
+                    plan.ResourceCost.Human + plan.ResourceCost.Energy
+                    + plan.ResourceCost.Materials + plan.ResourceCost.Tech)
+                    + primary.ActivationApCost
+                        * AiConfigV2.taskScoreReactivationApWeight,
+                delivery: 0f,
+                moverOpportunityCost: System.Math.Max(0, plan.BlockedActors - 1));
+            Assert.That(plan.Score.Delivery, Is.Zero,
+                "atomic refit AP is CardPrice, not a fabricated extra travel turn");
+            Assert.That(plan.Score.CardPrice, Is.EqualTo(expected.CardPrice).Within(0.0001f),
+                "repair AP and the first army activation use their shared canonical rates");
+            Assert.That(plan.Score.Value, Is.EqualTo(expected.Value).Within(0.0001f));
+        }
+
+        [Test]
         public void BaseRecovery_FullRosterChoosesSwapWhenRepairCannotHelp()
         {
             var player = new PlayerSetupData { Nickname = "Swap" };

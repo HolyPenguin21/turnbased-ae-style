@@ -91,12 +91,23 @@ namespace Game.Combat
 
         public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<UnitData> aircraft,
             float knownDefense, float knownAttack,
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy) =>
+            EstimateAirStrike(
+                aircraft?.Where(x => x != null).Select(x => x.Attack).ToList(),
+                knownDefense, knownAttack, knownDefenders, policy);
+
+        // Snapshot-safe overload for strategic planning. The live UnitData overload above and
+        // planning both enter this same estimator; only the immutable attack facts differ.
+        public static AirStrikeEstimate EstimateAirStrike(IReadOnlyList<float> aircraftAttack,
+            float knownDefense, float knownAttack,
             IReadOnlyList<WorthIt.DefenderProfile> knownDefenders, AirStrikePolicy policy)
         {
-            if (aircraft == null || aircraft.Count == 0 || knownDefenders == null || knownDefenders.Count == 0)
-                return new AirStrikeEstimate(knownDefense, knownAttack, knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>(), 0f);
+            if (aircraftAttack == null || aircraftAttack.Count == 0
+                || knownDefenders == null || knownDefenders.Count == 0)
+                return new AirStrikeEstimate(knownDefense, knownAttack,
+                    knownDefenders ?? System.Array.Empty<WorthIt.DefenderProfile>(), 0f);
 
-            var rng = new System.Random(BuildSeed(aircraft, knownDefenders));
+            var rng = new System.Random(BuildSeed(aircraftAttack, knownDefenders));
             int n = knownDefenders.Count;
             var hpSum = new float[n];
             float totalDamageSum = 0f;
@@ -114,12 +125,12 @@ namespace Game.Combat
                 for (int i = 0; i < n; i++)
                     alive.Add(i);
 
-                foreach (UnitData plane in aircraft)
+                foreach (float attack in aircraftAttack)
                 {
                     if (alive.Count <= policy.MinimumSurvivors)
                         break; // nothing left standing this trial either — matches RunAirStrike's own early-out
                     int idx = alive[rng.Next(alive.Count)];
-                    int atk = WorthIt.RollSuccesses(plane.Attack, rng);
+                    int atk = WorthIt.RollSuccesses(attack, rng);
                     int def = WorthIt.RollSuccesses(knownDefenders[idx].Defense, rng);
                     int damage = Mathf.Max(0, atk - def);
                     if (knownDefenders[idx].HasCeramicArmor)
@@ -166,13 +177,14 @@ namespace Game.Combat
         // only from the raw numeric stats describing the matchup (never GetHashCode() of a string/
         // object), so the same aircraft roster against the same known defenders always plays out
         // the same Trials strikes.
-        private static int BuildSeed(IReadOnlyList<UnitData> aircraft, IReadOnlyList<WorthIt.DefenderProfile> defenders)
+        private static int BuildSeed(IReadOnlyList<float> aircraftAttack,
+            IReadOnlyList<WorthIt.DefenderProfile> defenders)
         {
             unchecked
             {
                 int hash = 17;
-                foreach (UnitData plane in aircraft)
-                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(plane.Attack);
+                foreach (float attack in aircraftAttack)
+                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(attack);
                 hash = hash * 31 + 7919; // separates the aircraft roster from the defender roster below
                 foreach (WorthIt.DefenderProfile defender in defenders)
                 {
