@@ -212,6 +212,10 @@ namespace Game.Ai.V2
             && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Any(r => r.Owner == owner && r.Reason == reason);
 
+        // 2026-09-21 Block B — deliberately UNUSED by policy code. "Does anybody hold this reason"
+        // is not a valid question for a per-owner obligation: asking it is what let one Economy
+        // build's completion suppress another build's protection. Kept only as a ledger-inspection
+        // primitive (diagnostics/tests); every lifecycle decision must use HasOwnerReason.
         public static bool HasReason(PlayerSetupData player, int turn,
             StrategicReservationReason reason) => player != null
             && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
