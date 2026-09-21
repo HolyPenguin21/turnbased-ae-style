@@ -21,7 +21,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
             PlayerRoot root = null, IReadOnlyList<DevelopmentOpportunity> devOpportunities = null,
-            ISet<DesireAxis> dirtyAxes = null)
+            ISet<DesireAxis> dirtyAxes = null, IReadOnlyList<AxisDemand> carriedDemands = null)
         {
             var demands = new List<AxisDemand>();
             bool GenerateAxis(DesireAxis axis) => dirtyAxes == null || dirtyAxes.Contains(axis);
@@ -44,8 +44,20 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
             }
             if (GenerateAxis(DesireAxis.Development))
+            {
+                // 2026-09-21 Block D — Development is generated LAST precisely so the other axes'
+                // needs already exist in `demands`. On a partial re-evaluation (dirtyAxes excludes
+                // Recon/Economy/Aggression) those axes are not regenerated here, but their demands
+                // from the carrying pass are still valid: the orchestrator hands them in so the
+                // need context is the same on a first and on a repeat pass. Only demands of axes
+                // this call did NOT regenerate are taken, so nothing is ever counted twice.
+                var needContext = new List<AxisDemand>(demands);
+                if (carriedDemands != null)
+                    needContext.AddRange(carriedDemands.Where(d => d != null
+                        && !GenerateAxis(d.RequestingAxis)));
                 demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities,
-                    demands, activeIntents, player, ctx, root));
+                    needContext, activeIntents, player, ctx, root));
+            }
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
             // ToString from here — into Phase A and every [CHECK] line raised for the demand.

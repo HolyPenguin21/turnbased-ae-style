@@ -261,11 +261,19 @@ namespace Game.Ai.V2
             Dictionary<ResourceType, EconomyResourceStanding> standings, PlayerSetupData player,
             IReadOnlyList<MissionIntent> activeIntents)
         {
+            // 2026-09-21 Block E — Demand answers ONLY "is an additional collector on this site
+            // worth having". It no longer requires a ready collector card in hand and no longer
+            // picks the physical card: MaterializationChainEnumerator owns Direct / AttachDeploy /
+            // GenerateDeploy / GenerateAttachDeploy for exactly this capability, so pre-selecting
+            // one hand card here both hid the generated and equipment-borne sources entirely
+            // (no eligible standalone card => no demand at all) and priced the demand off an
+            // arbitrary "cheapest printed AP" card. Cost is charged once, downstream, by
+            // StrategicCardEvaluator.ResourceCost over the concrete chain.
             List<CardData> collectorCards = (s.Self?.Hand ?? System.Array.Empty<CardData>())
                 .Where(c => c?.Definition != null && !c.Definition.isAviation
                     && (c.Definition.cardType == CardType.Unit || c.Definition.cardType == CardType.Hero))
                 .ToList();
-            if (collectorCards.Count == 0 || s.Economy?.ExtractionOpportunities == null)
+            if (s.Economy?.ExtractionOpportunities == null)
                 yield break;
 
             var existingMobileCoverage = new HashSet<(HexCoord, ResourceType)>(
@@ -287,38 +295,41 @@ namespace Game.Ai.V2
                     continue;
 
                 string requiredAbility = UnitAbilities.CollectAbilityFor(site.ResourceType);
-                CardData card = collectorCards
+                // A ready standalone card, when one exists, is still recorded on the demand so
+                // Phase-B tempo cannot burn the very card this demand is waiting to materialize
+                // (MaterializationReservation.ClaimsEconomyBuildCard). It is a CLAIM, not a choice
+                // and not a price: the enumerator still compares every legal chain, including the
+                // equipment-borne and generated ones this lookup cannot see.
+                CardData claimedCard = collectorCards
                     .Where(c => MaterializationChainMatching
                         .EffectiveAbilities(c.Definition, c.Equipment).Contains(requiredAbility))
                     .OrderBy(c => c.Definition.apCost)
                     .ThenBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
                     .FirstOrDefault();
-                if (card == null)
-                    continue;
 
                 float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
                 float priority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
                 float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
-                int moveMax = Mathf.Max(1, card.Definition.moveMax);
-                int etaTurns = Mathf.Max(1, Mathf.CeilToInt(homeDistance / (float)moveMax));
-                float resourceCost = StrategicCardEvaluator.ResourceCostSum(card.Definition.resourceCost);
-                // Same honest ROI-speed formula the facility path uses (EconomyPaybackTurns) — a
-                // Scrapper spends real resources too, so its payback deserves the same fair
-                // comparison, not an artificial zero that would only ever handicap it against a
-                // facility candidate for the exact same site (project owner's own 2026-09-21 call,
-                // after comparing the two paths numerically).
-                float paybackTurns = EconomyPaybackTurns(usefulGain, resourceCost, card.Definition.apCost);
+                // Chain-independent ETA baseline — the same canonical fallback move budget every
+                // other axis uses when the concrete mover is not chosen yet. Using the pre-picked
+                // card's moveMax here was part of the same premature physical choice.
+                int etaTurns = Mathf.Max(1, Mathf.CeilToInt(
+                    homeDistance / (float)Mathf.Max(1, AiConfigV2.etaFallbackMoveBudget)));
 
+                // Site economics only. CardPrice/Payback are deliberately NOT folded in here any
+                // more: StrategicCardEvaluator.ResourceCost is "the ONLY place a chain is charged
+                // for cost" and already prices AP, resources, the extra chain step and the
+                // generation success discount for whichever chain actually delivers this
+                // capability. Pricing a guessed card here as well was a straight double count, and
+                // it is what made a generated or equipment-borne collector uncomparable.
                 var score = new TaskScore(
                     economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, priority),
-                    payback: TaskScoreEvaluator.Payback(paybackTurns),
                     // No facility to lose if the target is abandoned — proximity stays upside-only,
                     // never a penalty for placing a collector far from home.
                     ownTerritoryProximity: Mathf.Max(0f,
                         TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                    cardPrice: TaskScoreEvaluator.CardPrice(card.Definition.apCost, resourceCost),
-                    delivery: TaskScoreEvaluator.DeliveryFromEta(card.Definition.activationApCost,
+                    delivery: TaskScoreEvaluator.DeliveryFromEta(0f,
                         etaTurns, AiConfigV2.taskScoreReactivationApWeight),
                     hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
                 if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
@@ -331,21 +342,17 @@ namespace Game.Ai.V2
                     DesiredAmount = 1f,
                     TargetHex = site.Hex,
                     EconomyResourceType = site.ResourceType,
-                    EconomyBuildCard = card,
-                    EconomyBuildResourceCost = card.Definition.resourceCost,
-                    EconomyBuildApCost = card.Definition.apCost,
-                    MinimumFollowupAp = card.Definition.apCost,
+                    EconomyBuildCard = claimedCard,
                     EconomyExpectedIncomeGain = gain,
                     EconomySiteValue = score.Value,
                     EconomyTravelCost = homeDistance,
                     EconomyThreatExposure = exposure,
-                    EconomyPaybackTurns = paybackTurns,
                     WorldTaskScore = score,
                     Value = score.Value,
                     Explain = $"Collector {site.ResourceType} task={score.Value:0.##} priority={priority:0.##} "
-                        + $"gain={gain:0.##} usefulGain={usefulGain:0.##} payback={paybackTurns:0.##} "
+                        + $"gain={gain:0.##} usefulGain={usefulGain:0.##} "
                         + $"homeDist={homeDistance} eta={etaTurns} exposure={exposure:0.##} "
-                        + $"card={card.Definition.displayName}",
+                        + $"handCard={(claimedCard != null ? claimedCard.Definition.displayName : "none")}",
                 });
             }
 
