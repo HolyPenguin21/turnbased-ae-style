@@ -1,6 +1,3 @@
-Warning: truncated output (original token count: 51300)
-Total output lines: 3228
-
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -1549,7 +1546,75 @@ namespace Game.Ai.V2
                         bool prepFeasible = false;
                         if (shallowEligible)
                         {
-                            Economy…1300 tokens truncated…          // exactly as it always has, no extra admission pass spent on a step that would mutate
+                            EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
+                                session.Snapshot, standingIntents, key, target, x, a, a.Id,
+                                ecoApEnvelopeRemaining, rawApRemaining);
+                            prepFeasible = prep.Feasible;
+                            prepDetail = prep.Feasible
+                                ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
+                                : $"{prep.Failure.Kind} — {prep.Failure.Detail}";
+                        }
+                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
+                            + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
+                            + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
+                            + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
+                            + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
+                            + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
+                            + $"shallowEligible={shallowEligible} plan=[{prepDetail}] "
+                            + $"=> ELIGIBLE={shallowEligible && prepFeasible}");
+                    }
+                }
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    "no free hero can advance toward economy site"));
+            }
+
+            // 2026-09-14 review round 10 (P0) — the direct-army path (hero already a real, live
+            // field army) no longer applies its own composition change inside Provisioning either:
+            // PlanEconomyCompletion (pure) decides, and the SAME Execution apply path the
+            // garrison-extraction candidate already uses (TaskExecutor.ApplyEconomyPreparation)
+            // commits it — no live-army mutation happens inside Provisioning for ANY Economy actor
+            // any more, extracted or not. `identityArmyId = hero.Id` since the hero is already real.
+            EconomyCompletionPlan directPrep = PlanEconomyCompletion(player, root, ctx,
+                session.Snapshot, standingIntents, key, target, builderChoice, hero, hero.Id,
+                funded.Tentative.Ap, root.ActionPoints - session.ApClaimed);
+            if (!directPrep.Feasible)
+                return ProvisioningResult.Fail(directPrep.Failure);
+
+            // Reserve the physical stage cost NOW (same cross-mission-visibility reasoning as the
+            // deferred garrison-extraction branch above) — whether or not composition/donor work is
+            // still pending, this mission has committed to this build.
+            if (directPrep.CompletionThisTurn)
+                InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
+                    directPrep.OwnerKey, target.BuildResourceCost, target.BuildApCost);
+            else
+                // AI economy commitment/recovery audit (2026-09-15) — this hero cannot finish the
+                // build this turn, so it is genuinely a multi-turn delivery starting or continuing.
+                // Give Continuity a durable identity for it (mirrors the Hero-materialization path
+                // in CapabilityDeliveryEvaluator) so StrategicPhaseA's protectedActiveEconomyBuild
+                // protects the full H/E/M/T vector every later turn regardless of remaining travel —
+                // without this, InfrastructureFulfillment.ShouldReserveDeferredEconomyResources'
+                // one-turn horizon would have to (and used to) protect unconditionally on every turn
+                // of the walk, freezing resources far earlier than necessary on the very first turn.
+                MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = target.Kind == EconomyTaskKind.FoundBase
+                        ? CapabilityKind.EconomicExpansionBase : CapabilityKind.EconomicInfrastructure,
+                    TargetHex = target.TargetHex,
+                    EconomyResourceType = target.ResourceType,
+                    EconomyBuildCard = target.BuildCard,
+                    EconomyBuildResourceCost = target.BuildResourceCost,
+                    EconomyBuildApCost = target.BuildApCost,
+                    MinimumFollowupAp = target.MinimumFollowupAp,
+                    EconomySiteValue = target.BuildValue,
+                }, hero.Id, ctx.TurnNumber);
+
+            // "Pending" means Execution still has real work to do before movement: an actual
+            // composition change, OR a donor loan that must be suspended (bookkeeping only, but
+            // still not something Provisioning may do — see PlanEconomyCompletion's own comment on
+            // why it stays read-only). When neither applies the hero's roster is already exactly
+            // right and there is nothing to defer — this mission proceeds straight to movement
+            // exactly as it always has, no extra admission pass spent on a step that would mutate
             // nothing.
             bool preparationPending = directPrep.Donor != null
                 || directPrep.Unload.Count > 0 || directPrep.Reinforcement.Count > 0;
