@@ -107,8 +107,8 @@ namespace Game.Ai.V2
                 bool hasBuilding = knownBuildings.TryGetValue(site.Hex,
                     out AiMapMemory.KnownBuilding building);
                 // Real income consumes the building's portion FIRST, even if its owner is
-                // another player. A Facility needs our building and a free matching slot;
-                // a field Collector is independent of building ownership and slot capacity.
+                // another player. An extraction Facility can found a NEW resource site;
+                // only EXISTING hosts require our ownership/free slots. A field Collector is independent.
                 int currentCollection = hasBuilding ? building.CollectedAmount(resourceType) : 0;
                 int ownArmyCollectors = Mathf.RoundToInt((snap.Self.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
@@ -132,13 +132,12 @@ namespace Game.Ai.V2
                         BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>(),
                     });
 
-                // BuildingPlayExecutor.CanPlaceFacilityAt and the live building's
-                // HasFacilityWithAbility require an OWNED building, available Facility slot,
-                // and no existing facility with the same collection ability. In particular,
+                // HexSelectionController.TryBuildExtractionFacility may found a NEW resource site;
+                // only EXISTING buildings require our ownership, free Facility slots,
+                // and no duplicate collection facility. In particular,
                 // none of those rules may filter the independent mobile collector list.
-                if (!hasBuilding || building.Owner != player || building.FreeFacilitySlots <= 0
-                    || building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(resourceType))
-                    || facilityGain <= 0)
+                if (facilityGain <= 0 || !IsExtractionHostStructurallyLegal(
+                        hasBuilding, building, player, resourceType))
                     continue;
                 extraction.Add(new EconomyExtractionOpportunity
                 {
@@ -388,6 +387,15 @@ namespace Game.Ai.V2
 
             return eco;
         }
+
+        // Mirrors the HOST constraints in the live TryBuildExtractionFacility primitive.
+        // An empty resource hex can FOUND a site; only a pre-existing building
+        // needs matching owner, one free slot, and no duplicate collection.
+        internal static bool IsExtractionHostStructurallyLegal(
+            bool hasBuilding, AiMapMemory.KnownBuilding building,
+            PlayerSetupData player, ResourceType type) =>
+            !hasBuilding || (building.Owner == player && building.FreeFacilitySlots > 0
+                && !building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type)));
 
         // The only Analysis-level projection of the TWO different additions at a site.
         // IncomeProjection owns all resource physics; this preserves a Facility's net

@@ -1358,6 +1358,28 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ExtractionHost_BareResourceHexCanFoundSite_ButExistingSlotsStillConstrain()
+        {
+            var owner = new Game.Players.PlayerSetupData();
+            var rival = new Game.Players.PlayerSetupData();
+            var hex = new HexCoord(2, 0);
+            var emptySlots = new Game.Ai.AiMapMemory.KnownBuilding(
+                hex, owner, false, null, freeFacilitySlots: 0);
+            var foreign = new Game.Ai.AiMapMemory.KnownBuilding(
+                hex, rival, false, null, freeFacilitySlots: 4);
+            var available = new Game.Ai.AiMapMemory.KnownBuilding(
+                hex, owner, false, null, freeFacilitySlots: 1);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                false, default, owner, ResourceType.Materials), Is.True);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                true, emptySlots, owner, ResourceType.Materials), Is.False);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                true, foreign, owner, ResourceType.Materials), Is.False);
+            Assert.That(WorldAnalysis.IsExtractionHostStructurallyLegal(
+                true, available, owner, ResourceType.Materials), Is.True);
+        }
+
+        [Test]
         public void CollectorDemand_SiteWithoutFacilityOpportunityStillGetsOwnDemand()
         {
             WorldSnapshot snap = SnapshotWithDeficits(0.8f, 0.8f, actionable: true);
