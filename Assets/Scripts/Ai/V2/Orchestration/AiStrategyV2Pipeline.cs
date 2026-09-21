@@ -1355,6 +1355,10 @@ namespace Game.Ai.V2
                                  .Where(o => o != null && attemptedKeys.Contains(o.AttemptKey)))
                         MissionContinuityLayer.ReconcileStep(
                             player, snapshot.TurnNumber, outcome);
+                    // A single atomic move may consume the last MP after Provisioning had
+                    // legitimately reserved this owner's completion AP. Settle its stage now.
+                    InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                        player, root, hand, ctx);
 
                     settledSteps++;
                     bool progressed = stepResults.Any(er =>
@@ -1403,6 +1407,10 @@ namespace Game.Ai.V2
                 }
 
                 yield return RunTypedAdmissions();
+                // Also reconcile on bounded/no-progress exits where no additional typed
+                // admission occurs: Phase B must see AP that no actor can spend on a build.
+                InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                    player, root, hand, ctx);
 
                 // Management/Development is another bounded task family, not the owner of the
                 // operational loop. Phase B settles until it either exhausts its candidates or
@@ -1421,6 +1429,10 @@ namespace Game.Ai.V2
 
                     WorldAnalysis.StepObservationStamp beforeManagement =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
+                    // A prior Phase B action may have spent AP or removed a build card.
+                    // Revalidate each owner's stronger completion claim before the next pass.
+                    InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
+                        player, root, hand, ctx);
                     var phaseBRound = new StrategicPhaseResult();
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                         postCommitments, phaseB.Reservation ?? phaseA.Reservation,

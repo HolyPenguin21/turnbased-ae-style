@@ -630,15 +630,13 @@ namespace Game.Ai.V2
             result.CombatChanged |= trace.BattleOccurred;
 
             // 2026-09-21 Block C1 — objective completion may only be read from the outcome of the
-            // canonical gameplay operation this step just performed. Consulting the physical
-            // registry is legitimate HERE and only here: our own army actually fought, so whether
-            // the target survived that battle is a confirmed result of our own action, not hidden
-            // knowledge. With no battle, this step proves nothing about the enemy's existence —
+            // canonical gameplay operation this step just performed. The encounter-resolved
+            // trace supplies BOTH the specific participant identity and its terminal fate;
+            // a global registry sweep cannot prove either one, even if some battle occurred.
+            // With no battle, this step proves nothing about the enemy's existence —
             // it just moved — and the honest sighting store keeps owning what we know.
             bool destroyedInOurBattle = trace.BattleOccurred
-                && !ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
-                    .Any(a => a != null && a.Id == enemyId && a.Owner != null
-                        && a.Owner != player && !a.Owner.IsNeutral);
+                && trace.WasDestroyedInOwnBattle(enemyId);
             if (destroyedInOurBattle)
             {
                 result.ReachedGoal = true;

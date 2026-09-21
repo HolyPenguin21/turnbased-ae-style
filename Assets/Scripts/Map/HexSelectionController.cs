@@ -94,6 +94,9 @@ namespace Game.Map
         // the AI's own debug visualization instead of the battle it's actually meant to wait for
         // (the project owner's own report, 2026-08-16: other AI armies kept acting while a fight
         // was still playing out on screen).
+        // Shared combat presentation already owned by this controller; expose its
+        // encounter-completion signal to the existing AI move-operation trace.
+        public BattleScreenUI BattleScreen => battleScreen;
         public bool IsBattleActive =>
             (battleScreen != null && battleScreen.IsShowing) ||
             (battleContactPopup != null && battleContactPopup.IsShowing);

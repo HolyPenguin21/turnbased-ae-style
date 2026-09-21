@@ -50,6 +50,32 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Continuity is the sole owner of durable build-site leases. Physical placement may
+        // allow a completed extraction site to become a Base later; two unfinished owners of
+        // the SAME site are nevertheless incompatible. Recovery/collection is not construction.
+        internal static bool HoldsEconomyBuildSite(MissionIntent intent, HexCoord hex)
+        {
+            return intent != null && intent.Kind == MissionKind.Economy
+                && (intent.Status == IntentStatus.Active || intent.Status == IntentStatus.Suspended)
+                && intent.Economy != null
+                && (intent.Economy.Kind == EconomyTaskKind.FoundBase
+                    || intent.Economy.Kind == EconomyTaskKind.BuildExtraction)
+                && intent.Economy.TargetHex.Equals(hex);
+        }
+
+        // Same actor, same objective and same physical card use existing takeover ownership
+        // policy. An independent actor/card/objective cannot acquire an already-leased site.
+        internal static bool CanGrantEconomyBuildSite(PlayerSetupData player, HexCoord hex,
+            MissionIntentKey candidateKey, int builderArmyId, CardData card)
+        {
+            if (player == null) return false;
+            return !MissionIntentRegistry.GetOrCreate(player).All.Any(intent =>
+                HoldsEconomyBuildSite(intent, hex)
+                && intent.PreferredMoverArmyId != builderArmyId
+                && !intent.IntentKey.Equals(candidateKey)
+                && (card == null || intent.Economy.BuildCard != card));
+        }
+
         // Materialization has delivered the Hero for one concrete Economy prerequisite (Capability.
         // Hero), OR Provisioning has just bound an ALREADY-EXISTING mobile builder to a multi-turn
         // delivery (Capability.EconomicInfrastructure/EconomicExpansionBase — see the direct-army
@@ -123,6 +149,12 @@ namespace Game.Ai.V2
                 return existing;
             }
 
+            // Reject independent spatial contenders BEFORE retiring any existing intent or
+            // touching its per-owner reserves. Demand-level dedup is not a durable ownership gate.
+            if (!CanGrantEconomyBuildSite(player, objective.TargetHex, intent.IntentKey,
+                    builderArmyId, objective.BuildCard))
+                return null;
+
             // P0-3 (AI V2 economy audit 2026-09-21) + 2026-09-21 Block A — this is the ONE place
             // Economy ownership is granted, so it is the one place that resolves ownership
             // CONFLICTS. Once the reentry case above has returned, a pre-existing Economy intent is
@@ -185,6 +217,12 @@ namespace Game.Ai.V2
                 (int)EconomyTaskKind.FoundBase, 0, target.Q, target.R);
             if (state.TryGet(newKey, out MissionIntent occupied)
                 && !object.ReferenceEquals(occupied, incumbent))
+                return false;
+
+            // Retarget has no displacement transaction for a third-party site lease.
+            // Validate BEFORE releasing the original owner or rewriting its objective.
+            if (state.All.Any(i => !object.ReferenceEquals(i, incumbent)
+                    && HoldsEconomyBuildSite(i, target)))
                 return false;
 
             string oldOwner = EconomyMissionPlanner.OwnerKey(incumbent.LastAttemptKey);

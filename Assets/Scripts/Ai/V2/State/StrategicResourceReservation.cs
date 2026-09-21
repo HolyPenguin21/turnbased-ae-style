@@ -205,6 +205,17 @@ namespace Game.Ai.V2
                     + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
         }
 
+        // Read-only enumeration of real completion owners, never a second reservation ledger.
+        // Snapshot the keys before the lifecycle owner modifies its own rows.
+        internal static IReadOnlyList<string> CompletionOwners(PlayerSetupData player, int turn)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return System.Array.Empty<string>();
+            return e.Reservations.Where(r => r.Reason == StrategicReservationReason.EconomyBuildCompletion)
+                .Select(r => r.Owner).Where(owner => !string.IsNullOrEmpty(owner))
+                .Distinct().OrderBy(owner => owner).ToList();
+        }
+
         public static bool HasOwnerReason(PlayerSetupData player, int turn, string owner,
             StrategicReservationReason reason) =>
             player != null && !string.IsNullOrEmpty(owner)
