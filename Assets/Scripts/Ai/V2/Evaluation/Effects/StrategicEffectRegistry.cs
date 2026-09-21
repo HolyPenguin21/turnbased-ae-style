@@ -946,7 +946,7 @@ namespace Game.Ai.V2
         //              x saturationFactor                (base + existing + candidate vs usable  §8)
         //
         //  Generation risk (will the carrier card ever materialise?) is NOT owned here — it lives
-        //  once in StrategicCardEvaluator.Deployability. This registry answers "how good is the
+        //  once in StrategicCardEvaluator.GenerationRiskDiscount. This registry answers "how good is the
         //  effect IF the card is materialised".
         //
         //  Carrier-agnostic: identical on Hero / Unit / Base / Facility / generated card. ONE

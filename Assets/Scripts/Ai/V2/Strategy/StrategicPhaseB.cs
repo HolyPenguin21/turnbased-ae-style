@@ -129,7 +129,7 @@ namespace Game.Ai.V2
 
                 // §P0 (round 4) — ONE comparable space, but HoldResources is NOT a global stop gate.
                 //   · PlayCard (mat / non-combat): utility = StrategicCardEvaluator NetScore VERBATIM
-                //     (the evaluator already owns HoldValue / ScarcityValue / ResourcePressureBenefit).
+                //     (the evaluator already owns HoldValue / ResourcePressureBenefit).
                 //   · AP-only actions (Draw, AP-only Pressure): utility verbatim — keeping H/E/M/T is
                 //     COMPATIBLE with spending AP, so the persistent-hold policy never blocks them.
                 //   · Non-card spend (capacity upgrade): effective = utility − marginalResCost,

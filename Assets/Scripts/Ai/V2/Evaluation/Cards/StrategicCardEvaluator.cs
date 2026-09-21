@@ -76,15 +76,20 @@ namespace Game.Ai.V2
     public sealed class StrategicUseScoreBreakdown
     {
         public float RoleFit;                 // how well the card's real characteristics fit this role
-        public float ImmediateTempo;          // placement fit + trait match + recurring-AP income realised this turn
-        public float NextTurnPotential;       // what the card practically opens next turn
-        public float CapabilityGapValue;      // closes a Recon / AA / AT / air / combat-body deficit
-        public float ForceGrowthValue;        // contribution to standing force (radar-independent, scaled by BaselineForceReadiness.Need)
-        public float ThreatResponseValue;     // strategic enemy-composition bias (AntiAir today; AntiArmor pending composition data)
+        public float ImmediateTempo;          // Phase A only now — placement fit + trait match (Phase B stopped assigning this, see ScoreSurplusRole/ScoreNonCombat)
+        public float NextTurnPotential;       // Phase A only now — what the card practically opens next turn (Phase B stopped assigning this)
+        // Renamed from CapabilityGapValue (user call, 2026-09-21): Phase B narrowed this down to
+        // ONLY the AntiAir/AntiArmor enemy-composition matchup (Scout's own "0 scouts" case moved
+        // into RoleFit; the generic combat-body/mobile "gap" cases were removed as either
+        // non-specific or duplicating an existing RoleFit signal), so it is a threat-counter value
+        // now, not a capability gap. CAUTION — Phase A (ScoreForDemand) still writes its OLDER,
+        // broader "closes a Recon/Hero/combat-body capability the AI has ZERO of" meaning into this
+        // SAME field (that side was intentionally left untouched); the name fits Phase B only.
+        public float ThreatCounterValue;
+        public float ForceGrowthValue;        // contribution to standing force (radar-independent, scaled by BaselineForceReadiness.Need); zeroed for hero cards in both phases — a hero's own body already prices into HeroLeadershipFit
         public float ResourceEfficiency;      // negative — AP + resource cost + extra-chain-step penalty (the ONLY place these are charged)
         public float SynergyValue;            // equipment upgrade on a carrier, kept-combo value
-        public float Deployability;           // negative — probabilistic deploy (generation success chance)
-        public float ScarcityValue;           // this card carries a rare capability worth something
+        public float GenerationRiskDiscount;  // negative — probabilistic deploy (generation success chance); was named Deployability
         public float RedundancyPenalty;       // negative — the capability is already saturated
         public float AlternativeUseValue;     // negative — opportunity cost of using this card HERE vs its best other role / Hold
         public float HoldValue;               // value of deliberately NOT playing it now (separate; NetScore subtracts it)
@@ -103,9 +108,9 @@ namespace Game.Ai.V2
         {
             string F(float v) => v.ToString("+0.00;-0.00;0.00", CultureInfo.InvariantCulture);
             return $"role {F(RoleFit)} tempo {F(ImmediateTempo)} next {F(NextTurnPotential)} "
-                 + $"gap {F(CapabilityGapValue)} grow {F(ForceGrowthValue)} threat {F(ThreatResponseValue)} "
-                 + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(Deployability)} "
-                 + $"scarce {F(ScarcityValue)} redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
+                 + $"threat {F(ThreatCounterValue)} grow {F(ForceGrowthValue)} "
+                 + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(GenerationRiskDiscount)} "
+                 + $"redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
                  + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} "
                  + $"prod {F(ProductionSupportAdjustment)} hold {F(HoldValue)} "
                  + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}"
@@ -113,7 +118,8 @@ namespace Game.Ai.V2
         }
     }
 
-    public enum NonCombatRole { Aviation, Base, Facility, Equipment }
+    // Base removed (user call, 2026-09-21) — founding a Base is dead code here, see ScoreNonCombat.
+    public enum NonCombatRole { Aviation, Facility, Equipment }
 
     public sealed class StrategicCardUseCandidate
     {
@@ -366,11 +372,16 @@ namespace Game.Ai.V2
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
             bd.SynergyValue = SynergyValue(plan, snap, inv) + ec.Synergy + ec.GlobalSynergy;
-            bd.ForceGrowthValue = ForceGrowthValue(plan, demand.Capability, baseline)
+            // Zeroed for a hero card (both phases now) — a hero's own body already prices into
+            // HeroLeadershipFit's combatPart; ForceGrowthValue's SurplusCombatReadinessUtility-based
+            // marginal power would double-count the same Attack/Defense/HP line a second time.
+            bd.ForceGrowthValue = (heroCard ? 0f : ForceGrowthValue(plan, demand.Capability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
-            bd.CapabilityGapValue = CapabilityGapValue(demand.Capability, inv, baseline, role, roleFitCore)
-                + ec.CapabilityGap + ec.GlobalCapabilityGap;
-            bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
+            // ThreatResponseValue folded in here (user call, 2026-09-21, same as Phase B) — the field
+            // was deleted; the AntiAir/AntiArmor ec.ThreatResponse contribution moves into this axis
+            // instead of being dropped.
+            bd.ThreatCounterValue = CapabilityGapValue(demand.Capability, inv, baseline, role, roleFitCore)
+                + ec.CapabilityGap + ec.GlobalCapabilityGap + ec.ThreatResponse + ec.GlobalThreatResponse;
 
             // Production amplifies a concrete mission need; it does not manufacture its own reason
             // to spend. Currently a no-op everywhere: ResourceCost(plan) / ScoreNonCombat's own
@@ -387,10 +398,9 @@ namespace Game.Ai.V2
             // exact card body (a scarce hero on a non-hero demand, a unique stealth item on a
             // non-stealth demand) — the general "best other role" cost applies in Phase B.
             bd.AlternativeUseValue = -ScarcityOpportunityCost(plan, demand, inv);
-            bd.ScarcityValue = 0f;               // closing an explicit demand — scarcity is a Hold concern
             bd.ResourcePressureBenefit = 0f;     // spends a ledger entitlement, not stranded AP
             bd.HandPressureBenefit = 0f;
-            bd.Deployability = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
+            bd.GenerationRiskDiscount = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.Total = SumTotal(bd);
             bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
@@ -455,7 +465,6 @@ namespace Game.Ai.V2
             System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
         {
             var bd = new StrategicUseScoreBreakdown();
-            float scarcity = SurplusScarcity(inv, recce, hero);
             float traits = projected != null && AbilityParams.AbilitiesHaveAnyStealth(projected)
                 ? AiConfigV2.stratTraitMatchBonus : 0f;
             // final closure §4 — the recurring-AP immediate-tempo value is NO LONGER a special-case
@@ -483,27 +492,51 @@ namespace Game.Ai.V2
             // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
             // before — this exclusion is scoped to the ResourceGain role only, not the ability.
             bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain ? 0f : ec.RoleFit + ec.GlobalRoleFit);
-            // P1.4 — placement counted once, here; the Phase-B garrison-surplus correction that used
-            // to live in MaterializationPlan.Score is folded in via SurplusPlacementBonus.
-            // ResourceGain excluded: every candidate scored here already passed feasibility as
-            // playable THIS turn, so a deployment-slot-type preference doesn't describe "why is a
-            // permanent recurring-resource source worth playing" — that reason lives entirely in
-            // RoleFit's own weight + ec.GlobalRoleFit, not in which army slot it lands in.
-            bd.ImmediateTempo = role == IntendedRole.ResourceGain ? 0f
-                : traits + SurplusPlacementBonus(plan.Deploy.Kind, role)
-                + ec.ImmediateTempo + ec.GlobalImmediateTempo;
-            bd.NextTurnPotential = NextTurnPotential(plan, role);
-            bd.CapabilityGapValue = (role == IntendedRole.Hold ? 0f
-                : SurplusCapabilityGap(role, inv, baseline, snap, roleFitCore)) + ec.CapabilityGap + ec.GlobalCapabilityGap;
-            // Support excluded for the same reason CapabilityGapValue already is (P1.5): RoleFitCore
-            // is deliberately 0 for Support, and ForceGrowthValue's own SurplusCombatReadinessUtility
-            // call ignores role — without this exclusion a support hero's raw combat stats would
-            // earn standing-force credit the role's own RoleFitCore says it shouldn't compete on.
+            // User call (2026-09-21) — Support and its Development facility are the same real thing
+            // (a Researcher/Assembler hero needs a Lab/Factory to man, on the SAME hex; one without
+            // the other does nothing), so Support's RoleFit is replaced with the SAME formula
+            // ScoreNonCombat uses for a Facility, instead of the old flat heroSupportFitValue: full
+            // value when a facility to operate actually exists (snap.Self.HasDevFacility), zero when
+            // it doesn't — a Support hero with no facility on the map is not a real play.
+            if (role == IntendedRole.Support)
+            {
+                float supportEco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
+                bool supportHasFacility = snap?.Self?.HasDevFacility == true;
+                bd.RoleFit = supportHasFacility
+                    ? AiConfigV2.nonCombatFacilityValue + (1f - supportEco) * AiConfigV2.nonCombatEconomyRunwayBonus
+                    : 0f;
+                bd.EffectDetail = JoinDetail(bd.EffectDetail,
+                    $"support facilityGate hasFacility={supportHasFacility} "
+                    + $"eco={supportEco.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"roleFit={bd.RoleFit.ToString("0.00", CultureInfo.InvariantCulture)}");
+            }
+            // ImmediateTempo/NextTurnPotential removed from Phase B (user call, 2026-09-21): every
+            // Phase-B candidate is already immediately playable, so a "now vs later" axis and a flat
+            // "opens next turn" bonus added nothing that isn't better expressed as a type-specific
+            // attribute (RoleFit/ThreatCounterValue already carry that). Left at their class default
+            // (0) here; still live in Phase A's ScoreForDemand.
+            // ThreatCounterValue (was CapabilityGapValue): AntiAir/AntiArmor only now — Scout's own
+            // "0 scouts" case moved into RoleFitCore, and the generic combat-body/mobile "gap" cases
+            // were removed entirely (user call, 2026-09-21). ec.ThreatResponse folded in here rather
+            // than kept as a separate ThreatResponseValue field (deleted) — it fired on the exact
+            // same ThreatPresent condition as SurplusCapabilityGap's own AntiAir/AntiArmor case, a
+            // real double-count, not just a naming overlap. Unit-only: AntiAir/Hyperkinetic are unit
+            // abilities in practice; excluding hero makes that explicit instead of relying on no hero
+            // ever carrying the tag.
+            bd.ThreatCounterValue = (role == IntendedRole.Hold ? 0f
+                : SurplusThreatCounter(role, inv, baseline, snap, roleFitCore)) + ec.CapabilityGap + ec.GlobalCapabilityGap
+                + (hero ? 0f : ec.ThreatResponse + ec.GlobalThreatResponse);
+            // Zeroed for Scout/Hold/ResourceGain/Support: RoleFitCore is deliberately 0 or role-
+            // specific for those roles (P1.5), and ForceGrowthValue's own SurplusCombatReadinessUtility
+            // call ignores role — without this exclusion those roles would earn standing-force credit
+            // their own RoleFitCore says they shouldn't compete on. Additionally zeroed for ANY hero
+            // card regardless of role (user call, 2026-09-21): a hero's own Attack/Defense/HP line
+            // already prices into HeroLeadershipFit.combatPart inside RoleFitCore, so ForceGrowthValue
+            // would double-count the same stat line a second time.
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
-                || role == IntendedRole.ResourceGain || role == IntendedRole.Support
+                || role == IntendedRole.ResourceGain || role == IntendedRole.Support || hero
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
-            bd.ThreatResponseValue = ec.ThreatResponse + ec.GlobalThreatResponse;
             // EquipmentUpgrade already prices this exact delta in RoleFitCore.
             bd.SynergyValue = traits * 0.5f
                 + (role == IntendedRole.EquipmentUpgrade ? 0f : equipmentUpgrade)
@@ -512,17 +545,12 @@ namespace Game.Ai.V2
             // Production support. Currently a no-op — see ScoreForDemand's comment.
             bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
-            // ResourceGain excluded: SurplusScarcity is a flat AvailableHeroes/ReadyScouts lookup,
-            // not a measure of THIS card's own uniqueness — it doesn't describe why a recurring-
-            // resource source is worth playing, and stacking it on top double-counts the same
-            // "heroes are scarce" idea the role already gets for free via the exempted
-            // SurplusScarceBodyFloor below.
-            bd.ScarcityValue = role == IntendedRole.Hold || role == IntendedRole.ResourceGain ? 0f : scarcity;
+            // ScarcityValue removed from Phase B (user call, 2026-09-21) — SurplusScarcity() deleted.
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
             bd.ResourcePressureBenefit = 0f;   // no caller-side surplus correction; NetScore is final
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
-            bd.Deployability = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
+            bd.GenerationRiskDiscount = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
             bd.Total = SumTotal(bd);
             bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
@@ -558,7 +586,17 @@ namespace Game.Ai.V2
                         : new AxisDemand { Capability = CapabilityKind.ScoutCapability };
                     float mult = CapabilityQualityEvaluator.QualityMultiplier(
                         plan, d, inv, referenceMoveMax, hasCompetingHeroDemand, out qbd);
-                    return AiConfigV2.scoutBaseRoleFit * mult;
+                    float fit = AiConfigV2.scoutBaseRoleFit * mult;
+                    // Phase B only (demand == null — Phase A always passes a real AxisDemand). The
+                    // "AI currently has zero scouts at all" signal used to be a separate
+                    // SurplusCapabilityGap bonus in Phase B; folded directly into RoleFit here (user
+                    // call, 2026-09-21) since — unlike MobileCombat's case — it never duplicated an
+                    // existing signal. Phase A keeps its own separate CapabilityGapValue
+                    // (ScoutCapability) term unchanged. Same q-scaling as before: a weak scout
+                    // candidate gets proportionally less credit for closing the gap than a strong one.
+                    if (demand == null && inv != null && inv.TotalScouts <= 0)
+                        fit += AiConfigV2.capabilityGapValue * Mathf.Clamp01(mult);
+                    return fit;
                 }
                 case IntendedRole.EquipmentUpgrade:
                     return equipmentUpgrade;
@@ -567,7 +605,15 @@ namespace Game.Ai.V2
                     // Assembler (for a Unit OR a Hero) exactly once. Core Support fit is 0.
                     return 0f;
                 case IntendedRole.ResourceGain:
-                    return ResourceGainRoleFit(ectx);
+                    // User call (2026-09-21) — a ResourceGain hero's Command (extra battle slots it
+                    // unlocks elsewhere) is orthogonal to its recurring-resource specialty, so it is
+                    // still credited here. Only the COMMAND part, never combatPart: this role
+                    // deliberately does not compete on the hero's own body strength (see
+                    // ResourceGainRoleFit's comment — ForceGrowthValue/ScarcityValue/etc. are all
+                    // zeroed for the same reason).
+                    return ResourceGainRoleFit(ectx)
+                        + (hero ? HeroCommandMarginalValue(PlanBaseDef(plan), ectx, projectedLegalFillers,
+                            out heroCmdDetail) : 0f);
                 case IntendedRole.CombatBody:
                 case IntendedRole.ForceGrowth:
                 case IntendedRole.MobileCombat:
@@ -634,33 +680,51 @@ namespace Game.Ai.V2
                 pricedResources = AddResourceCosts(pricedResources, generation.CardDef.resourceCost);
 
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
-            int ownBases = snap?.Self?.BaseHexes != null ? snap.Self.BaseHexes.Count : 1;
             bool hasAirCapacity = snap?.Self != null
                 && (snap.Self.AirborneReconWings + snap.Self.SpareAirObservationSorties) > 0;
+            // Calibration detail for the two gates added 2026-09-21 (Equipment devPipeline floor,
+            // Aviation upkeep penalty) — merged into bd.EffectDetail below so both are visible on the
+            // SAME strat.nonCombat AiDebug line as everything else, for tuning against a real game.
+            string calibrationDetail = null;
 
             switch (kind)
             {
                 case NonCombatRole.Aviation:
                     role = IntendedRole.Aviation;
-                    bd.RoleFit = AiConfigV2.nonCombatAviationBaseValue;
-                    bd.CapabilityGapValue = hasAirCapacity ? 0f : AiConfigV2.nonCombatAviationNoAirGap;
-                    bd.NextTurnPotential = AiConfigV2.nextTurnActorPotential;
+                    // "No air observation capacity at all" folded directly into RoleFit (user call,
+                    // 2026-09-21) — ThreatCounterValue (renamed from CapabilityGapValue) is now
+                    // AntiAir/AntiArmor-only; this was never that kind of enemy-composition matchup,
+                    // it is a real coverage gap like Scout's "0 scouts" case, which got the same
+                    // treatment.
+                    bd.RoleFit = AiConfigV2.nonCombatAviationBaseValue
+                                 + (hasAirCapacity ? 0f : AiConfigV2.nonCombatAviationNoAirGap);
                     break;
-                case NonCombatRole.Base:
-                    role = IntendedRole.Economy;
-                    bd.RoleFit = AiConfigV2.nonCombatBaseValue
-                                 + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
-                    bd.CapabilityGapValue = ownBases <= 1 ? AiConfigV2.nonCombatFewBasesGap : 0f;
-                    bd.NextTurnPotential = AiConfigV2.nextTurnActorPotential;
-                    break;
+                // NonCombatRole.Base removed (user call, 2026-09-21) — it was dead code. Founding a
+                // Base is blocked earlier, in NonCombatCardPlayer's enumeration
+                // ("requires_economy_expansion_demand"): a CardType.Base card never reaches Score()
+                // with PlayKind.Base, so this branch was unreachable through the real call path.
                 case NonCombatRole.Facility:
                     role = FacilityRole(def);
                     bd.RoleFit = AiConfigV2.nonCombatFacilityValue
                                  + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
                     break;
                 default:
+                    // User call (2026-09-21) — Equipment's stat-delta value only shows through when
+                    // the Development pipeline that actually produces/sustains equipment (Assembler
+                    // facility MANNED by an operator hero, the same HasDevFacility/HasDevOperator
+                    // pair Support and the Development axis already gate on) is live; without it, a
+                    // found/one-off item is capped at the floor regardless of how strong its stat
+                    // delta looks, since there is no supporting infrastructure behind it.
                     role = IntendedRole.EquipmentUpgrade;
-                    bd.RoleFit = Mathf.Max(AiConfigV2.nonCombatEquipmentValueFloor, bestEquipmentUpgrade);
+                    bool devPipelineLive = snap?.Self != null
+                        && snap.Self.HasDevFacility && snap.Self.HasDevOperator;
+                    bd.RoleFit = devPipelineLive
+                        ? Mathf.Max(AiConfigV2.nonCombatEquipmentValueFloor, bestEquipmentUpgrade)
+                        : AiConfigV2.nonCombatEquipmentValueFloor;
+                    calibrationDetail = $"equip devPipeline={devPipelineLive} "
+                        + $"(facility={snap?.Self?.HasDevFacility == true} operator={snap?.Self?.HasDevOperator == true}) "
+                        + $"rawDelta={bestEquipmentUpgrade.ToString("0.00", CultureInfo.InvariantCulture)} "
+                        + $"roleFit={bd.RoleFit.ToString("0.00", CultureInfo.InvariantCulture)}";
                     break;
             }
 
@@ -674,13 +738,17 @@ namespace Game.Ai.V2
                 role, ncAbilities, def != null ? def.moveMax : 0, ncCtx, out string ncEffDetail);
             // No target-fit multiplier in the non-combat lane — local and PlayerGlobal (ncEc.Global*)
             // add into the same axis, each routed by its descriptor's EffectField.
-            bd.RoleFit += ncEc.RoleFit + ncEc.GlobalRoleFit;
-            bd.ImmediateTempo += ncEc.ImmediateTempo + ncEc.GlobalImmediateTempo;
-            bd.CapabilityGapValue += ncEc.CapabilityGap + ncEc.GlobalCapabilityGap;
+            // ImmediateTempo removed from Phase B (user call, 2026-09-21) — see ScoreSurplusRole.
+            // ThreatCounterValue no longer used in the non-combat lane at all (user call): Aviation/
+            // Facility/Equipment are never AntiAir/AntiArmor counters, so ncEc.CapabilityGap/
+            // ncEc.ThreatResponse (both always 0 today — no registry row targets them for a
+            // non-combat card) fold into RoleFit instead, the same as everything else here.
+            bd.RoleFit += ncEc.RoleFit + ncEc.GlobalRoleFit
+                + ncEc.CapabilityGap + ncEc.GlobalCapabilityGap
+                + ncEc.ThreatResponse + ncEc.GlobalThreatResponse;
             bd.ForceGrowthValue += ncEc.ForceGrowth + ncEc.GlobalForceGrowth;
-            bd.ThreatResponseValue += ncEc.ThreatResponse + ncEc.GlobalThreatResponse;
             bd.SynergyValue += ncEc.Synergy + ncEc.GlobalSynergy;
-            bd.EffectDetail = ncEffDetail;
+            bd.EffectDetail = JoinDetail(ncEffDetail, calibrationDetail);
 
             // A generated Base is Economy itself and must remain able to create future runway.
             // Other optional Production-generated non-combat assets are amplifiers; currently a
@@ -688,11 +756,28 @@ namespace Game.Ai.V2
             bd.ProductionSupportAdjustment = 0f;
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
+            // Aviation sortie-upkeep penalty (user call, 2026-09-21) — a new wing does not just cost
+            // its own AP/resources to deploy, it keeps drawing apAirSortieApProxy AP/turn to actually
+            // fly afterwards. Dynamic, not flat: scaled by ncCtx.EffectiveMarginalApUtility (the SAME
+            // [0..1] "is AP already the binding constraint right now" ramp every other dynamic effect
+            // in this file uses, from real ApEconomy state) and by effectRecurringHorizonTurns (the
+            // SAME bounded pay-back horizon the ApBonus/Produce recurring model uses) since the
+            // upkeep, like a recurring income, recurs every future turn, not once. At full AP
+            // pressure this can fully offset nonCombatAviationNoAirGap — a wing you cannot afford to
+            // fly is not a real capability gain.
+            float aviationUpkeepPenalty = kind == NonCombatRole.Aviation
+                ? AiConfigV2.apAirSortieApProxy * AiConfigV2.effectRecurringHorizonTurns
+                  * AiConfigV2.stratCardApCostWeight * ncCtx.EffectiveMarginalApUtility
+                : 0f;
+            if (kind == NonCombatRole.Aviation)
+                bd.EffectDetail = JoinDetail(bd.EffectDetail,
+                    $"aviation upkeep marginalApUtil={ncCtx.EffectiveMarginalApUtility.ToString("0.00", CultureInfo.InvariantCulture)} "
+                    + $"penalty={(-aviationUpkeepPenalty).ToString("0.00", CultureInfo.InvariantCulture)}");
             bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * apCost
                                       + StrategicResourceCostValue(pricedResources, snap, spendableResource, player)
-                                      + genStepPenalty);
+                                      + genStepPenalty + aviationUpkeepPenalty);
             // Challenge cost is certain; every benefit of the minted card is success-contingent.
-            bd.Deployability = generation != null
+            bd.GenerationRiskDiscount = generation != null
                 ? GenerationExpectedValueDiscount(bd, Mathf.Clamp01(generation.SuccessChance))
                 : 0f;
             bd.Total = SumTotal(bd);
@@ -720,9 +805,9 @@ namespace Game.Ai.V2
         //  SINGLE-COUNT PRIMITIVES  (P1.4 — each factor priced exactly once)
         // =======================================================================================
         private static float SumTotal(StrategicUseScoreBreakdown b) =>
-            b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.CapabilityGapValue
-            + b.ForceGrowthValue + b.ThreatResponseValue + b.ResourceEfficiency + b.SynergyValue
-            + b.Deployability + b.ScarcityValue + b.RedundancyPenalty + b.AlternativeUseValue
+            b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.ThreatCounterValue
+            + b.ForceGrowthValue + b.ResourceEfficiency + b.SynergyValue
+            + b.GenerationRiskDiscount + b.RedundancyPenalty + b.AlternativeUseValue
             + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment;
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
@@ -745,8 +830,8 @@ namespace Game.Ai.V2
             if (b == null || chance >= 1f)
                 return 0f;
             float contingent = b.RoleFit + b.ImmediateTempo + b.NextTurnPotential
-                + b.CapabilityGapValue + b.ForceGrowthValue + b.ThreatResponseValue
-                + b.SynergyValue + b.ScarcityValue + b.RedundancyPenalty
+                + b.ThreatCounterValue + b.ForceGrowthValue
+                + b.SynergyValue + b.RedundancyPenalty
                 + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit
                 + b.ProductionSupportAdjustment;
             return -(1f - Mathf.Clamp01(chance)) * Mathf.Max(0f, contingent);
@@ -828,17 +913,16 @@ namespace Game.Ai.V2
             }
         }
 
-        // P1.7 review-r3 — uses the dynamically-derived coverage vector. A card closing a hole the
-        // AI's deployed force + hand genuinely lack scores the gap bonus (scaled by GapQualityFraction);
-        // an AA/AT gap only counts when the matching enemy threat is actually present.
-        private static float SurplusCapabilityGap(IntendedRole role, CapabilityInventory inv,
+        // P1.7 review-r3 — an AA/AT counter only counts when the matching enemy threat is actually
+        // present (scaled by GapQualityFraction). Renamed from SurplusCapabilityGap (user call,
+        // 2026-09-21) — Scout's own "0 scouts" case moved to RoleFitCore (see ResourceGainRoleFit's
+        // neighbour, the Scout case), so this is AntiAir/AntiArmor only now.
+        private static float SurplusThreatCounter(IntendedRole role, CapabilityInventory inv,
             BaselineForceReadiness baseline, WorldSnapshot snap, float roleFitCore)
         {
             float q = GapQualityFraction(role, roleFitCore);
             switch (role)
             {
-                case IntendedRole.Scout:
-                    return inv != null && inv.TotalScouts <= 0 ? AiConfigV2.capabilityGapValue * q : 0f;
                 case IntendedRole.AntiAir:
                     return !baseline.HasAntiAir && EnemyThreatModel.ThreatPresent(IntendedRole.AntiAir, snap)
                         ? AiConfigV2.capabilityGapValue * q : 0f;
@@ -849,12 +933,11 @@ namespace Game.Ai.V2
                     // No ability-independent RoleFitCore to scale by (it's 0 for Support, P1.5) —
                     // Support's real demand gate lives in the Development axis (Phase A).
                     return 0f;
-                case IntendedRole.MobileCombat:
-                    if (!baseline.HasFieldBody) return AiConfigV2.capabilityGapValue * q;
-                    return baseline.HasMobile ? 0f : AiConfigV2.capabilityGapValue * q * 0.5f;
-                case IntendedRole.CombatBody:
-                case IntendedRole.ForceGrowth:
-                    return baseline.HasFieldBody ? 0f : AiConfigV2.capabilityGapValue * q;
+                // MobileCombat's case removed entirely (user call, 2026-09-21): mobility already has
+                // its own RoleFit signal — StrategicEffectRegistry.Roles adds effectMobileBaseFit
+                // (0.20) to RoleFit for any fast (moveMax>=5) non-Recce body, unconditionally. A
+                // second "the AI has none yet" gap bonus on top was a pure duplicate of that existing
+                // signal, same problem as the removed CombatBody/ForceGrowth "!HasFieldBody" case.
                 default:
                     return 0f;
             }
@@ -941,16 +1024,6 @@ namespace Game.Ai.V2
                 0f, AiConfigV2.roleVersatilityCap);
         }
 
-        // Phase-B placement, garrison-surplus correction folded in (P1.4 — was in Plan.Score getter).
-        private static float SurplusPlacementBonus(DeploymentKind k, IntendedRole role)
-        {
-            bool combat = role == IntendedRole.CombatBody || role == IntendedRole.ForceGrowth
-                || role == IntendedRole.MobileCombat || role == IntendedRole.AntiArmor
-                || role == IntendedRole.AntiAir;
-            if (combat && k == DeploymentKind.Garrison)
-                return -AiConfigV2.stratPlacementReusableShellBonus; // proactive field readiness prefers the field
-            return PlacementBonus(k);
-        }
 
         // =======================================================================================
         //  HERO FITNESS  — real characteristics only, no flat class bonus/penalty (P1.5)
@@ -1205,19 +1278,6 @@ namespace Game.Ai.V2
             return delta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
         }
 
-        internal static float SurplusScarcity(CapabilityInventory inv, bool recce, bool hero)
-        {
-            if (inv == null) return AiConfigV2.surplusScarcityLow;
-            if (recce)
-            {
-                if (inv.TotalScouts <= 0) return AiConfigV2.surplusScarcityHigh;
-                if (inv.ReadyScouts + inv.ReserveScouts <= 1) return AiConfigV2.surplusScarcityMed;
-                return AiConfigV2.surplusScarcityLow;
-            }
-            if (hero) return inv.AvailableHeroes <= 0 ? AiConfigV2.surplusScarcityMed : AiConfigV2.surplusScarcityLow;
-            return AiConfigV2.surplusScarcityLow;
-        }
-
         // Phase-A opportunity cost of spending this exact card body off its best use.
         internal static float ScarcityOpportunityCost(MaterializationPlan p, AxisDemand demand, CapabilityInventory inv)
         {
@@ -1243,16 +1303,18 @@ namespace Game.Ai.V2
             return cost;
         }
 
-        // Phase-B floor under AlternativeUseValue: a scarce hero committed to a plain body, or a
+        // Phase-B floor under AlternativeUseValue: a scarce hero committed to Support, or a
         // unique stealth item burned into a non-scout role, always costs at least this.
         private static float SurplusScarceBodyFloor(MaterializationPlan p, IntendedRole role,
             CapabilityInventory inv, bool hero)
         {
             float cost = 0f;
-            // ResourceGain is a specialist use like Support/Scout — a rare hero playing its
-            // recurring-resource specialty is not the "off-role misuse" this floor guards against.
-            if (hero && role != IntendedRole.Support && role != IntendedRole.Scout
-                && role != IntendedRole.ResourceGain
+            // User call (2026-09-21): CombatBody/ForceGrowth/MobileCombat/AntiArmor/AntiAir/Scout/
+            // ResourceGain are a hero's UNIVERSAL uses — a scarce hero playing any of them is not
+            // "misuse". Support is the one genuinely NARROW specialisation, so it is the only role
+            // that pays the scarce-hero floor (was the inverse before this call: only Support/Scout/
+            // ResourceGain were EXEMPT and every combat role paid it).
+            if (hero && role == IntendedRole.Support
                 && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
                 cost += AiConfigV2.stratChainHeroScarcityPenalty;
             if (role != IntendedRole.Scout

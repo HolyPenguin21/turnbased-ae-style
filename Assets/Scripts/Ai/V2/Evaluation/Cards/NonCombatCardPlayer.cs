@@ -49,9 +49,10 @@ namespace Game.Ai.V2
         // AI-MGR-01 P0.1 — every non-combat card is scored through the shared StrategicCardEvaluator
         // (same breakdown / NetScore band as a Unit/Hero chain), so Phase B can compare the two
         // lanes directly instead of the old incomparable 55/45/40/24 fixed scale.
+        // PlayKind.Base has no arm — CardType.Base is blocked earlier in enumeration
+        // (requires_economy_expansion_demand, see below) and never reaches this call.
         private static NonCombatRole RoleOf(PlayKind k) => k switch
         {
-            PlayKind.Base => NonCombatRole.Base,
             PlayKind.Facility => NonCombatRole.Facility,
             PlayKind.Aviation => NonCombatRole.Aviation,
             _ => NonCombatRole.Equipment,

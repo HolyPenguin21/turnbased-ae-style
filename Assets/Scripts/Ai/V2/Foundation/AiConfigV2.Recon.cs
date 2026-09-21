@@ -386,9 +386,8 @@ namespace Game.Ai.V2
         // effectRecurring* / apMarginalUtil*). Kept only so any stale reference still compiles.
         public const float surplusRecurringApIncomeBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
-        public const float surplusScarcityHigh = 1.0f;
-        public const float surplusScarcityMed = 0.5f;
-        public const float surplusScarcityLow = 0.15f;
+        // surplusScarcityHigh/Med/Low removed 2026-09-21 — ScarcityValue/SurplusScarcity() deleted
+        // from Phase B (user call: a generic scarcity tier wasn't a real composition need).
         public const int surplusScoutOversupplyAt = 3;       // ReadyScouts >= this -> another Recce is oversupply
         public const float surplusOversupplyPenalty = 0.8f;
 
