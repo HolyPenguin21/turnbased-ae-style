@@ -108,6 +108,21 @@ namespace Game.Ai.V2
                 objective.TargetHex.Q, objective.TargetHex.R);
 
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+
+            // Reentry: this exact (target/resource/kind, actor) delivery is already the active
+            // intent — return the SAME object so its CreatedTurn/TurnsActive/StepsMovedTotal/
+            // Funding/LoanSource history survives, instead of deleting and rebuilding it fresh
+            // every time Provisioning re-confirms the same ongoing multi-turn walk.
+            if (state.TryGet(intent.IntentKey, out MissionIntent existing)
+                && existing.Status == IntentStatus.Active
+                && existing.PreferredMoverArmyId == builderArmyId)
+            {
+                AiDebugLog.Write($"[ECO][Continuity] intent={existing.IntentKey} "
+                    + $"actor=#{builderArmyId} decision=REUSE createdTurn={existing.CreatedTurn} "
+                    + $"progress={existing.StepsMovedTotal} funding={existing.Funding}");
+                return existing;
+            }
+
             foreach (MissionIntent stale in state.All.Where(i => i != null
                          && i.Kind == MissionKind.Economy
                          && (i.Economy?.Kind == EconomyTaskKind.ReturnBuilder
@@ -115,12 +130,28 @@ namespace Game.Ai.V2
                              // delivery handoff — the new assignment supersedes its own recovery.
                              // A ReturnBuilder belonging to a DIFFERENT actor is untouched.
                              ? i.PreferredMoverArmyId == builderArmyId
-                             : (!i.IntentKey.Equals(intent.IntentKey)
-                                 || i.PreferredMoverArmyId != builderArmyId))).ToList())
+                             // Only two real conflicts remain once the reentry case above has
+                             // already returned: something else already claims this EXACT
+                             // objective (a takeover by a different actor), or this SAME actor
+                             // is being redirected away from a different objective it currently
+                             // owns. Any OTHER active Economy intent — a different target run by
+                             // a different actor — is an independent delivery and must survive
+                             // this handoff untouched (see P0-3, AI V2 economy audit 2026-09-21:
+                             // the old `!i.IntentKey.Equals(...) || i.PreferredMoverArmyId != ...`
+                             // condition was true for almost every unrelated intent, so creating
+                             // any one new delivery silently deleted every other one in flight).
+                             : (i.IntentKey.Equals(intent.IntentKey)
+                                 || i.PreferredMoverArmyId == builderArmyId))).ToList())
             {
                 if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
                     && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
                     ResumeEconomyLender(staleLender);
+                // P0-3 follow-up — a takeover/redirect conflict releases the DISPLACED intent's own
+                // reservation the same way its normal retirement path does (see Continuity's retire
+                // branch in ReconcileAfterTurn), so a forced handoff cannot leave this turn's H/E/M/T
+                // hold reserved for an owner key nothing will ever complete or release again.
+                StrategicResourceReservationLedger.ReleaseByOwner(player, turn,
+                    EconomyMissionPlanner.OwnerKey(stale.LastAttemptKey));
                 state.Remove(stale.IntentKey);
             }
             state.Put(intent);

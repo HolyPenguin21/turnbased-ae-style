@@ -127,7 +127,15 @@ namespace Game.Ai.V2
             // protected while any extraction was also walking — an artifact of the two kinds never
             // being comparable on raw BuildValue, not an intended priority. Base now gets its own
             // dedicated protection; it no longer competes with Extraction for one shared slot.
-            MissionIntent PickProtectedActiveBuild(EconomyTaskKind kind) => activeIntents?
+            // P0-4, AI V2 economy audit 2026-09-21 — every ACTIVE Economy intent of a kind is a real,
+            // independent obligation (Continuity already supports several concurrent BuildExtraction/
+            // FoundBase deliveries, each keyed by its own target hex — see MissionIntentKey.For and
+            // MissionContinuityLayer.BeginEconomyDelivery's own reentry/handoff handling). A single
+            // FirstOrDefault here used to protect only the highest-ranked one and silently leave
+            // every other already-accepted delivery's resources unreserved and its idle clock
+            // running, even though StrategicResourceReservationLedger is per-owner and already
+            // supports holding several rows for the same reason at once.
+            List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.Economy && i.Economy != null
                     && i.Economy.Kind == kind)
@@ -135,9 +143,15 @@ namespace Game.Ai.V2
                 .ThenByDescending(i => i.Economy.BuildValue)
                 .ThenBy(i => i.CreatedTurn)
                 .ThenBy(i => i.IntentKey)
-                .FirstOrDefault();
-            MissionIntent protectedActiveExtraction = PickProtectedActiveBuild(EconomyTaskKind.BuildExtraction);
-            MissionIntent protectedActiveBase = PickProtectedActiveBuild(EconomyTaskKind.FoundBase);
+                ?? Enumerable.Empty<MissionIntent>()).ToList();
+            List<MissionIntent> protectedActiveExtractions = ProtectedActiveBuilds(EconomyTaskKind.BuildExtraction);
+            List<MissionIntent> protectedActiveBases = ProtectedActiveBuilds(EconomyTaskKind.FoundBase);
+            // The FoundBase retarget/hysteresis switch below still evaluates against exactly one
+            // (the highest-ranked) active Base commitment — deliberately unchanged scope: retargeting
+            // several concurrent Base builds against each other's hysteresis margin is a separate,
+            // unconfirmed need. Any OTHER concurrently active Base still gets its own resources
+            // protected further below, just without retarget eligibility this turn.
+            MissionIntent protectedActiveBase = protectedActiveBases.FirstOrDefault();
 
             void ProtectActiveEconomyBuild(MissionIntent active)
             {
@@ -155,8 +169,8 @@ namespace Game.Ai.V2
                     + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");
             }
 
-            if (protectedActiveExtraction != null)
-                ProtectActiveEconomyBuild(protectedActiveExtraction);
+            foreach (MissionIntent extraction in protectedActiveExtractions)
+                ProtectActiveEconomyBuild(extraction);
 
             if (protectedActiveBase != null)
             {
@@ -198,8 +212,12 @@ namespace Game.Ai.V2
                     ProtectActiveEconomyBuild(protectedActiveBase);
                 }
             }
+            // Any OTHER concurrently active Base commitment beyond the one retarget-eligible slot
+            // above still owns real reserved resources and must not be left unprotected (P0-4).
+            foreach (MissionIntent otherBase in protectedActiveBases.Skip(1))
+                ProtectActiveEconomyBuild(otherBase);
             bool anyProtectedActiveEconomyBuild =
-                protectedActiveExtraction != null || protectedActiveBase != null;
+                protectedActiveExtractions.Count > 0 || protectedActiveBases.Count > 0;
 
             foreach (AxisDemand economyDemand in demands.Where(d => d != null
                          && d.RequestingAxis == DesireAxis.Economy

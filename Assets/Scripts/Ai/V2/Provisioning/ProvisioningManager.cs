@@ -389,7 +389,13 @@ namespace Game.Ai.V2
             public readonly GarrisonExtractionTier Tier;
             public readonly UnitData Hero;         // the EXACT UnitData that would be extracted
             public readonly ArmyData Container;    // existing shell/host; null for Create (nothing exists yet)
-            public readonly float ApCost;          // Shell/Host: TransferMember's activation charge, if any. Create: CreateArmyApCost.
+            // Shell/Host: TransferMember's activation charge, if any. Create: CreateArmyApCost.
+            // P0-2, AI V2 economy audit 2026-09-21 — for Tier == None this is now the cheapest
+            // structurally-legal tier's AP cost when one exists but exceeded the envelope (0f only
+            // when truly nothing exists, e.g. no sparable hero at all). Callers that only cared
+            // about Tier are unaffected; a caller that wants the real shortfall reads this instead
+            // of falling back to a generic NoMoverExists with no price.
+            public readonly float ApCost;
             public readonly string Reason;          // set only when Tier == None
 
             private GarrisonExtractionCandidate(GarrisonExtractionTier tier, UnitData hero,
@@ -398,8 +404,8 @@ namespace Game.Ai.V2
                 Tier = tier; Hero = hero; Container = container; ApCost = apCost; Reason = reason;
             }
 
-            public static GarrisonExtractionCandidate No(string reason) =>
-                new GarrisonExtractionCandidate(GarrisonExtractionTier.None, null, null, 0f, reason);
+            public static GarrisonExtractionCandidate No(string reason, float requiredAp = 0f) =>
+                new GarrisonExtractionCandidate(GarrisonExtractionTier.None, null, null, requiredAp, reason);
             public static GarrisonExtractionCandidate Yes(GarrisonExtractionTier tier, UnitData hero,
                 ArmyData container, float apCost) =>
                 new GarrisonExtractionCandidate(tier, hero, container, apCost, null);
@@ -433,6 +439,16 @@ namespace Game.Ai.V2
                 apCost <= ecoApEnvelopeRemaining + AiConfigV2.allocatorSliceEpsilon
                 && (root == null || root.CanSpendActionPoints(Mathf.CeilToInt(apCost)));
 
+            // P0-2, AI V2 economy audit 2026-09-21 — track the cheapest structurally-legal tier's
+            // cost even when it is rejected for being unaffordable THIS turn, so a caller with the
+            // real envelope can report EnvelopeTooSmall(requiredAp) instead of a generic NoMoverExists
+            // whenever a container genuinely exists and only the budget was too small. The Shell ->
+            // Host -> Create try-in-order and every existing eligibility/CanTransferMembers gate are
+            // unchanged; this only adds bookkeeping on the already-rejected path.
+            float? cheapestUnaffordable = null;
+            void TrackUnaffordable(float apCost) => cheapestUnaffordable =
+                cheapestUnaffordable.HasValue ? Mathf.Min(cheapestUnaffordable.Value, apCost) : apCost;
+
             ArmyData shell = ReusableArmySelector.FindReusableAt(player, garrison.Hex, commitments);
             if (shell != null && (session == null || !session.ClaimedArmyIds.Contains(shell.Id))
                 && ArmyActions.CanTransferMembers(
@@ -441,6 +457,7 @@ namespace Game.Ai.V2
                 float apCost = shell.RequiresActivationCharge(sparable) ? sparable.ActivationApCost : 0f;
                 if (Affordable(apCost))
                     return GarrisonExtractionCandidate.Yes(GarrisonExtractionTier.Shell, sparable, shell, apCost);
+                TrackUnaffordable(apCost);
             }
 
             foreach (ArmyData host in EconomyHostCandidates(player, garrison, commitments, session))
@@ -450,6 +467,7 @@ namespace Game.Ai.V2
                 float apCost = host.RequiresActivationCharge(sparable) ? sparable.ActivationApCost : 0f;
                 if (Affordable(apCost))
                     return GarrisonExtractionCandidate.Yes(GarrisonExtractionTier.Host, sparable, host, apCost);
+                TrackUnaffordable(apCost);
             }
 
             // A fresh empty army always has room for the first member (CardPlayExecutor.Preflight
@@ -458,9 +476,11 @@ namespace Game.Ai.V2
             if (Affordable(ArmyActions.CreateArmyApCost))
                 return GarrisonExtractionCandidate.Yes(
                     GarrisonExtractionTier.Create, sparable, null, ArmyActions.CreateArmyApCost);
+            TrackUnaffordable(ArmyActions.CreateArmyApCost);
 
             return GarrisonExtractionCandidate.No(
-                "no free shell, no eligible host army, and no ECO-axis room left to create one");
+                "no free shell, no eligible host army, and no ECO-axis room left to create one",
+                cheapestUnaffordable ?? ArmyActions.CreateArmyApCost);
         }
 
         // 2026-09-14 review round 8 (P0) — builds a READ-ONLY preview of what the deferred
@@ -1310,6 +1330,15 @@ namespace Game.Ai.V2
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
             float rawApRemaining = root.ActionPoints - session.ApClaimed;
             float eps = AiConfigV2.allocatorSliceEpsilon;
+            // P0-2, AI V2 economy audit 2026-09-21 — the cheapest garrison-extraction cost seen
+            // across every candidate that was structurally legal but rejected only for exceeding
+            // the AP envelope/pool. If the loop ends with no builder AND this is set, the real
+            // failure is a funding shortfall, not "no legal way to get a builder" — the caller
+            // below reports EnvelopeTooSmall(requiredAp) instead of a generic NoMoverExists.
+            float? economyBuilderShortfallAp = null;
+            void TrackEconomyShortfall(float requiredAp) => economyBuilderShortfallAp =
+                economyBuilderShortfallAp.HasValue
+                    ? Mathf.Min(economyBuilderShortfallAp.Value, requiredAp) : requiredAp;
             foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
                 .Where(IsCandidateEligible))
@@ -1323,7 +1352,14 @@ namespace Game.Ai.V2
                         player, candidateGarrison, actorCommitments, session,
                         root, ecoApEnvelopeRemaining);
                     if (plan.Tier == GarrisonExtractionTier.None)
+                    {
+                        // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
+                        // positive value here is the cheapest tier's real cost, rejected purely for
+                        // exceeding ecoApEnvelopeRemaining (see ResolveGarrisonExtractionCandidate).
+                        if (plan.ApCost > 0f)
+                            TrackEconomyShortfall(plan.ApCost);
                         continue;
+                    }
                     // 2026-09-14 review round 10 (P1) — cheap pre-check before paying for a full
                     // composition search: ONLY the one cost that is unconditionally real regardless
                     // of hex/turn specifics (creating the container, or the hero's own late-join
@@ -1335,7 +1371,14 @@ namespace Game.Ai.V2
                     float roughEstimate = plan.ApCost;
                     if (roughEstimate > ecoApEnvelopeRemaining + eps
                         || roughEstimate > rawApRemaining + eps)
+                    {
+                        // Passed ResolveGarrisonExtractionCandidate's own envelope check but not the
+                        // rawApRemaining one (session.ApClaimed by other missions this same pass,
+                        // which the resolver cannot see) — still a real funding shortfall, not a
+                        // structural impossibility.
+                        TrackEconomyShortfall(roughEstimate);
                         continue;
+                    }
 
                     // 2026-09-14 review round 8 (P0) — compute and PIN the FULL preparation plan
                     // (composition, donor, authoritative AP, resource stage cost) here, against a
@@ -1564,6 +1607,16 @@ namespace Game.Ai.V2
                             + $"=> ELIGIBLE={shallowEligible && prepFeasible}");
                     }
                 }
+                // P0-2 — a structurally legal container existed (Shell/Host/Create) for at least one
+                // candidate this pass and was rejected only for exceeding the AP envelope/pool: that
+                // is a repriceable funding shortfall, not a genuine absence of any way to get a
+                // builder. RepriceThisTurn lets the allocator fund it properly instead of the
+                // candidate quietly retrying next turn under RetryNextTurn with no larger envelope.
+                if (economyBuilderShortfallAp.HasValue)
+                    return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
+                        economyBuilderShortfallAp.Value,
+                        $"garrison-extraction builder needs {economyBuilderShortfallAp.Value:0.##} AP, "
+                        + "envelope/pool too small"));
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     "no free hero can advance toward economy site"));
             }
@@ -2444,12 +2497,22 @@ namespace Game.Ai.V2
             if (!sighting.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence enemy #{target.EnemyArmyId} has no honest sighting"));
-            ArmyData enemy = ArmyRegistry.AllAt(sighting.Value.Hex).FirstOrDefault(a =>
-                a != null && a.Id == target.EnemyArmyId && a.Owner != null
-                && a.Owner != player && !a.Owner.IsNeutral);
-            if (enemy == null)
-                return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                    $"active defence enemy #{target.EnemyArmyId} no longer exists at the honest position"));
+            // P0-5, AI V2 economy/aggression audit 2026-09-21 — AiMapMemory.OnVisibilityChanged is
+            // already the single canonical, fog-honest writer for EnemySightings: it removes a
+            // stale entry the instant its hex is genuinely re-observed and found empty ("corrected
+            // (gone on re-observation)"), and otherwise leaves a last-known sighting untouched while
+            // that hex stays fogged. `sighting.HasValue` above is therefore already the complete,
+            // correct answer to "is this enemy still a live threat, per what we honestly know" — a
+            // second true-world ArmyRegistry.AllAt(sighting.Value.Hex) read here used to re-derive
+            // the same fact from ground truth instead of memory, and disagreed with it exactly when
+            // the sighting was stale-but-unobserved (enemy moved off an unwatched hex): that false
+            // "gone" produced TargetSatisfied → the objective was re-created and immediately
+            // re-satisfied every subsequent pass with no new information (18x on #13, T9-T10).
+            bool hexVisibleNow = VisionSystem.IsVisible(player, sighting.Value.Hex);
+            AiDebugLog.Write($"[AGG][ActiveDefence] enemy=#{target.EnemyArmyId} "
+                + $"contact={(hexVisibleNow ? "LIVE" : "LAST_KNOWN")} "
+                + $"hexVisible={hexVisibleNow.ToString().ToLowerInvariant()} "
+                + "decision=APPROACH_LAST_KNOWN");
 
             StableMissionKey key = StableMissionKey.For(mission);
             if (!session.TryGetAssignedRaidActor(key, out int actorId))
