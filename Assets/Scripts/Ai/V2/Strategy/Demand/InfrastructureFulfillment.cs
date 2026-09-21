@@ -297,15 +297,17 @@ namespace Game.Ai.V2
                 return;
 
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
-            // 2026-09-15 round 18 — FoundBase only. Observed in the wild: the deferred-resource hold
-            // above protected H/E/M/T for a committed Base build turn after turn, but reserved no AP
-            // at all, so StrategicPhaseB's tempo/card spend was always free to spend the pool down
-            // first — the committed builder then failed EnvelopeTooSmall/InsufficientBudget by
-            // exactly the 1 AP tempo had just taken, turn after turn, with no card played to show for
-            // it either. A rarer, already-in-flight Base build's own completion AP now holds the same
-            // way its resources already did. BuildExtraction is deliberately left alone — it wasn't
-            // observed starving this way, and it is common enough that reserving its AP every turn
-            // would visibly shrink Phase B's normal tempo budget for no observed benefit.
+            // 2026-09-21 Block B — ACTUAL CONTRACT. An earlier (2026-09-15 round 18) comment here
+            // claimed this reserves a committed FoundBase's follow-up AP. It does not, and has not
+            // since the deferred stage was defined: StrategicResourceReservationLedger.Upsert
+            // clamps any EconomyDeferredBuild ActionPoints write to zero, and OwnerReasonMatches
+            // expects zero for the same reason. AP is turn-local execution capacity and has no
+            // legal deferred state; a build's AP is reserved only at EconomyBuildCompletion, after
+            // Provisioning has proved this concrete actor can finish the build THIS turn
+            // (ProvisioningManager → ReserveEconomyCost). The value below is therefore the build's
+            // declared follow-up envelope carried for idempotence comparison only, not a hold, and
+            // it is left computed FoundBase-only exactly as before so this comment repair changes
+            // no behaviour. Changing that policy needs its own reproduced defect.
             float followupAp = economy.Kind == EconomyTaskKind.FoundBase
                 ? UnityEngine.Mathf.Max(economy.BuildApCost, economy.MinimumFollowupAp)
                 : 0f;
@@ -345,6 +347,19 @@ namespace Game.Ai.V2
         private static void ReserveDeferredEconomyResourcesCore(
             PlayerSetupData player, int turn, string owner, AxisDemand demand, float buildAp = 0f)
         {
+            // 2026-09-21 Block B — every test here is OWNER-specific, and the completion test must
+            // run BEFORE the deferred replacement, not after it.
+            //   · This owner already holds a provisioned EconomyBuildCompletion envelope: that is
+            //     the stronger stage of the very same build (same H/E/M/T plus its completion AP).
+            //     Keep it; downgrading it here would drop the AP a provisioned builder is about to
+            //     spend. The old code asked the GLOBAL HasReason instead, so ANOTHER owner's
+            //     completion suppressed this owner's deferred hold entirely — the second build's
+            //     resources were left free for Phase B to spend.
+            //   · Asking after ReplaceReasonOwner(..., replaceOwnerRows: true) could not work
+            //     either: that call is exactly what deletes this owner's completion rows.
+            if (StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
+                    StrategicReservationReason.EconomyBuildCompletion))
+                return;
             if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                     StrategicReservationReason.EconomyDeferredBuild,
                     demand.EconomyBuildResourceCost, buildAp))
@@ -352,9 +367,6 @@ namespace Game.Ai.V2
             StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner,
                 replaceOwnerRows: true);
-            if (StrategicResourceReservationLedger.HasReason(player, turn,
-                    StrategicReservationReason.EconomyBuildCompletion))
-                return;
             ReserveEconomyCost(player, turn, owner, demand.EconomyBuildResourceCost, buildAp,
                 StrategicReservationReason.EconomyDeferredBuild);
         }
@@ -374,8 +386,13 @@ namespace Game.Ai.V2
                 return;
             if (reason == StrategicReservationReason.EconomyBuildCompletion)
             {
+                // Deferred → Completion is THIS owner's transition. Clearing the deferred reason
+                // globally (as this did) released every other active build's protected H/E/M/T the
+                // moment any one build became completable, so the survivors' resources could be
+                // spent out from under them. Only this owner's deferred rows are superseded.
                 StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
-                    StrategicReservationReason.EconomyDeferredBuild, null);
+                    StrategicReservationReason.EconomyDeferredBuild, owner,
+                    replaceOwnerRows: true);
                 if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,
                         reason, cost, buildAp))
                     return;

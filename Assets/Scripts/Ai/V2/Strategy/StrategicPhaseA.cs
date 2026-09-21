@@ -127,7 +127,14 @@ namespace Game.Ai.V2
             // protected while any extraction was also walking — an artifact of the two kinds never
             // being comparable on raw BuildValue, not an intended priority. Base now gets its own
             // dedicated protection; it no longer competes with Extraction for one shared slot.
-            MissionIntent PickProtectedActiveBuild(EconomyTaskKind kind) => activeIntents?
+            // 2026-09-21 Block A/B — Continuity may now legally keep SEVERAL independent build
+            // obligations alive at once, so protection is no longer a single slot per kind: every
+            // active build protects its OWN owner-scoped reservation (the ledger keeps those rows
+            // strictly per owner). This reserves nothing that is not a real, Continuity-owned
+            // obligation, and it never grants phantom budget — reservations only shrink the
+            // spendable pool, each build spends through SpendableExcludingOwner for its own rows,
+            // and live gameplay affordability is still rechecked before any mutation.
+            List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => activeIntents?
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.Economy && i.Economy != null
                     && i.Economy.Kind == kind)
@@ -135,9 +142,13 @@ namespace Game.Ai.V2
                 .ThenByDescending(i => i.Economy.BuildValue)
                 .ThenBy(i => i.CreatedTurn)
                 .ThenBy(i => i.IntentKey)
-                .FirstOrDefault();
-            MissionIntent protectedActiveExtraction = PickProtectedActiveBuild(EconomyTaskKind.BuildExtraction);
-            MissionIntent protectedActiveBase = PickProtectedActiveBuild(EconomyTaskKind.FoundBase);
+                .ToList() ?? new List<MissionIntent>();
+            List<MissionIntent> protectedActiveExtractions =
+                ProtectedActiveBuilds(EconomyTaskKind.BuildExtraction);
+            // The Base retarget exception below is a single-project switch by construction (one
+            // founding card in hand), so it still operates on the highest-ranked Base obligation.
+            List<MissionIntent> protectedActiveBases = ProtectedActiveBuilds(EconomyTaskKind.FoundBase);
+            MissionIntent protectedActiveBase = protectedActiveBases.FirstOrDefault();
 
             void ProtectActiveEconomyBuild(MissionIntent active)
             {
@@ -155,8 +166,8 @@ namespace Game.Ai.V2
                     + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");
             }
 
-            if (protectedActiveExtraction != null)
-                ProtectActiveEconomyBuild(protectedActiveExtraction);
+            foreach (MissionIntent activeExtraction in protectedActiveExtractions)
+                ProtectActiveEconomyBuild(activeExtraction);
 
             if (protectedActiveBase != null)
             {
@@ -197,9 +208,11 @@ namespace Game.Ai.V2
                             .ToList(); // failed transition cannot leak a rival executable demand
                     ProtectActiveEconomyBuild(protectedActiveBase);
                 }
+                foreach (MissionIntent otherBase in protectedActiveBases.Skip(1))
+                    ProtectActiveEconomyBuild(otherBase);
             }
             bool anyProtectedActiveEconomyBuild =
-                protectedActiveExtraction != null || protectedActiveBase != null;
+                protectedActiveExtractions.Count > 0 || protectedActiveBase != null;
 
             foreach (AxisDemand economyDemand in demands.Where(d => d != null
                          && d.RequestingAxis == DesireAxis.Economy
