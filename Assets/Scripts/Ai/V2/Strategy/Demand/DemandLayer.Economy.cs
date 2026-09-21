@@ -299,12 +299,16 @@ namespace Game.Ai.V2
                 int moveMax = Mathf.Max(1, card.Definition.moveMax);
                 int etaTurns = Mathf.Max(1, Mathf.CeilToInt(homeDistance / (float)moveMax));
                 float resourceCost = StrategicCardEvaluator.ResourceCostSum(card.Definition.resourceCost);
+                // Same honest ROI-speed formula the facility path uses (EconomyPaybackTurns) — a
+                // Scrapper spends real resources too, so its payback deserves the same fair
+                // comparison, not an artificial zero that would only ever handicap it against a
+                // facility candidate for the exact same site (project owner's own 2026-09-21 call,
+                // after comparing the two paths numerically).
+                float paybackTurns = EconomyPaybackTurns(usefulGain, resourceCost, card.Definition.apCost);
 
                 var score = new TaskScore(
                     economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, priority),
-                    // No facility outlay, and arrival is priced once by Delivery — not a second,
-                    // fake payback period (same call as WorldAnalysis.Economy's existing-army path).
-                    payback: 0f,
+                    payback: TaskScoreEvaluator.Payback(paybackTurns),
                     // No facility to lose if the target is abandoned — proximity stays upside-only,
                     // never a penalty for placing a collector far from home.
                     ownTerritoryProximity: Mathf.Max(0f,
@@ -331,12 +335,13 @@ namespace Game.Ai.V2
                     EconomySiteValue = score.Value,
                     EconomyTravelCost = homeDistance,
                     EconomyThreatExposure = exposure,
-                    EconomyPaybackTurns = 0f,
+                    EconomyPaybackTurns = paybackTurns,
                     WorldTaskScore = score,
                     Value = score.Value,
                     Explain = $"Collector {site.ResourceType} task={score.Value:0.##} priority={priority:0.##} "
-                        + $"gain={gain:0.##} usefulGain={usefulGain:0.##} homeDist={homeDistance} "
-                        + $"eta={etaTurns} exposure={exposure:0.##} card={card.Definition.displayName}",
+                        + $"gain={gain:0.##} usefulGain={usefulGain:0.##} payback={paybackTurns:0.##} "
+                        + $"homeDist={homeDistance} eta={etaTurns} exposure={exposure:0.##} "
+                        + $"card={card.Definition.displayName}",
                 });
             }
 
