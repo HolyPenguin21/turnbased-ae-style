@@ -200,10 +200,11 @@ namespace Game.Ai.V2
                     }
                     else
                     {
-                        int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
-                        satisfied = !ArmyRegistry.AllOccupiedHexes().SelectMany(ArmyRegistry.AllAt)
-                            .Any(a => a != null && a.Id == enemyId && a.Owner != null
-                                && a.Owner != player && !a.Owner.IsNeutral);
+                        // FIX-01 — same fog-of-war seam as MissionRevalidator: the post-execution
+                        // pass may not learn from a global ArmyRegistry sweep what observation
+                        // never told this player. One owner for the question, one answer.
+                        satisfied = ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(
+                            player, pm.ActiveDefenceTarget.EnemyArmyId);
                     }
                 }
                 else if (pm.ScoutKind == ScoutTargetKind.Surveil)

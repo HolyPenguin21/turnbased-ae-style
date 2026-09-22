@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Linq;
 using Game.Combat;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -98,6 +99,45 @@ namespace Game.Ai.V2
 
         public static ActiveDefenceObjective ForTrackedEnemy(WorldSnapshot snap, int enemyArmyId) =>
             Enumerate(snap).FirstOrDefault(o => o.Target.EnemyArmyId == enemyArmyId);
+
+        // ---- LIVE (revalidation / post-execution ledger pass) --------------------------------
+
+        // FIX-01 (2026-09-22) — the ONE honest completion check for an Intercept objective, and
+        // the live counterpart of Enumerate above. Why it exists at all: MissionRevalidator and
+        // MissionOutcomeLedger each used to answer "is this enemy still there" with a global
+        // `ArmyRegistry.AllOccupiedHexes().SelectMany(AllAt)` sweep — authoritative WORLD state.
+        // That let an intercept retire as StaleGoalMet because the army had genuinely moved/died
+        // somewhere we cannot see, while Enumerate (honest sightings) and ActiveDefenceProvisioner
+        // (AiMapMemory.AllKnownEnemySightings) still considered the very same enemy a live target —
+        // three stages of one mission applying contradictory knowledge rules, and a mission that
+        // could be recreated and instantly "completed" every pass with no new information.
+        // ARCH-02 canonical seams: strategic knowledge of an enemy army is AiMapMemory's, and
+        // "absent from the world" is never objective completion. Mirrors the shape
+        // RaidObjectiveEvaluator.IsObjectiveSatisfiedLive already uses for the Raid lane:
+        //  1) the tracked id is fielded by US now — positive confirmation of the outcome of an
+        //     action we ourselves completed (the one ArmyRegistry read the seam allows);
+        //  2) honest memory still tracks it as a hostile, non-neutral army — NOT satisfied. It is
+        //     exactly as real as our last observation says, fog included;
+        //  3) honest memory now tracks it as a NEUTRAL army — this hostile-threat objective is
+        //     over (Raid, not ActiveDefence, owns neutrals);
+        //  4) honest memory no longer tracks it at all — either the hex was genuinely re-observed
+        //     empty (AiMapMemory's own "corrected (gone on re-observation)" write) or a
+        //     player-owned sighting aged out under the existing enemySightingMemoryTurns
+        //     uncertainty policy. Both are "gone as far as we may honestly know"; neither invents
+        //     a new lost-contact state, and Enumerate cannot re-admit an objective for an id that
+        //     is no longer in Known.EnemySightings, so this can never oscillate.
+        public static bool IsObjectiveSatisfiedLive(PlayerSetupData player, int enemyArmyId)
+        {
+            if (player == null)
+                return false;
+            if (ArmyRegistry.AllForOwner(player)
+                .Any(a => a != null && a.Id == enemyArmyId && a.Members.Count > 0))
+                return true;
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
+                if (s.ArmyId == enemyArmyId)
+                    return false;
+            return true;
+        }
 
         internal static bool ShouldStopPursuit(bool hasListedThreat, bool movingAway,
             bool homeDistanceAtFullNegative, bool activeStillBeatsAlternative) =>
