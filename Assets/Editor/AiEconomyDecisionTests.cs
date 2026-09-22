@@ -3516,10 +3516,10 @@ namespace Game.EditorTests
         public void ReconStepScore_QualityCannotCreateWorkWithoutPurpose()
         {
             float directionAndEfficiencyOnly = ReconGroundStepPlanner.PurposefulStepScore(
-                information: 0f, anchorProgress: 0f, buildingBonus: 0f,
+                information: 0f, anchorProgress: 0f,
                 heading: 1f, movementEfficiency: 1f);
             float purposefulTransit = ReconGroundStepPlanner.PurposefulStepScore(
-                information: 0f, anchorProgress: 1f, buildingBonus: 0f,
+                information: 0f, anchorProgress: 1f,
                 heading: 1f, movementEfficiency: 1f);
 
             Assert.That(directionAndEfficiencyOnly, Is.Zero);

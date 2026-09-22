@@ -264,25 +264,13 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void NonAttackRouting_BlocksKnownForeignStructuresButNotOwnBase()
+        public void GroundMovement_HasNoMissionSpecificCapturePermission()
         {
-            var owner = new PlayerSetupData();
-            var enemy = new PlayerSetupData();
-            var hostileHex = new HexCoord(2, 0);
-            var ownHex = new HexCoord(0, 0);
-            var known = new[]
-            {
-                new AiMapMemory.KnownBuilding(hostileHex, enemy, false,
-                    System.Array.Empty<string>(), isBase: true),
-                new AiMapMemory.KnownBuilding(ownHex, owner, true,
-                    System.Array.Empty<string>(), isBase: true),
-            };
-
-            HashSet<HexCoord> blocked = SafeStepPathing.KnownForeignStructureHexes(owner, known);
-
-            Assert.That(blocked, Does.Contain(hostileHex));
-            Assert.That(blocked, Has.No.Member(ownHex));
-            Assert.That(new AiDecision().AllowHostileStructureCapture, Is.False);
+            Assert.That(typeof(AiDecision).GetField("AllowHostileStructureCapture"), Is.Null);
+            Assert.That(typeof(SafeStepPathing).GetMethod("KnownForeignStructureHexes",
+                System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic), Is.Null);
         }
 
         [Test]

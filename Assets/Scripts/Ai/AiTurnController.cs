@@ -262,22 +262,8 @@ namespace Game.Ai
             ArmyData army = decision.ExistingArmy;
             if (army?.Controller == null)
                 yield break;
-            BuildingData liveDestinationBuilding = BuildingRegistry.FindAt(decision.TargetHex);
-            AiMapMemory.KnownBuilding? knownDestination =
-                AiMapMemory.KnownBuildingAt(player, decision.TargetHex);
-            if (!decision.AllowHostileStructureCapture
-                && ((liveDestinationBuilding != null
-                        && liveDestinationBuilding.Owner != null
-                        && liveDestinationBuilding.Owner != player)
-                    || (knownDestination.HasValue
-                        && knownDestination.Value.Owner != null
-                        && knownDestination.Value.Owner != player)))
-            {
-                AiDebugLog.Write($"[AI][Movement][CaptureGate] actor=#{army.Id} "
-                    + $"destination=({decision.TargetHex.Q},{decision.TargetHex.R}) decision=BLOCK "
-                    + "reason=known_foreign_structure_without_attack_owner");
-                yield break;
-            }
+            // Foreign buildings are not an AI permission boundary. IssueMoveOrder resolves
+            // contact, events and capture/destruction after actual ground arrival.
             // Subscribe only after this move passes its legality gate. Unsubscribe on
             // normal completion, early coroutine disposal and exception alike. The
             // gameplay BattleScreenUI is the only authority for participant outcomes.

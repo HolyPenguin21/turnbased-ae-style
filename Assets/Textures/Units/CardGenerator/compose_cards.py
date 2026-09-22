@@ -23,18 +23,20 @@ OUTPUT_DIR = ROOT / "Output"
 
 STATS_BASE_NAME = "Card_Base.png"
 CLEAR_BASE_NAME = "Card_Base_Clear.png"
+OUTPUT_SIZE = (768, 1120)
 
 # Shared composition settings.
 ART_CENTER_X = 0.50
 ART_CENTER_Y = 0.48
 
-# Feather only the transferred artwork.
+# Feather only the transferred artwork on left/right/top edges.
 SIDE_FEATHER_PX = 52
 TOP_FEATHER_PX = 36
 
-# Vertical fade of the artwork, as fractions of card height.
-BOTTOM_FADE_START = 0.50
-BOTTOM_FADE_END = 0.62
+# Stats-card only: keep the artwork visible lower than before and let it
+# softly overlap the stat area before fading to zero.
+STATS_BOTTOM_FADE_START = 0.58
+STATS_BOTTOM_FADE_END = 0.82
 
 
 def ensure_directories() -> None:
@@ -69,7 +71,11 @@ def load_bases() -> tuple[Image.Image, Image.Image]:
     return stats_base, clear_base
 
 
-def make_edge_mask(size: tuple[int, int]) -> Image.Image:
+def make_edge_mask(
+    size: tuple[int, int],
+    bottom_fade_start: float | None = None,
+    bottom_fade_end: float | None = None,
+) -> Image.Image:
     width, height = size
 
     radius = max(SIDE_FEATHER_PX, TOP_FEATHER_PX)
@@ -85,13 +91,22 @@ def make_edge_mask(size: tuple[int, int]) -> Image.Image:
     edge_mask.paste(interior, (SIDE_FEATHER_PX, TOP_FEATHER_PX))
     edge_mask = edge_mask.filter(ImageFilter.GaussianBlur(radius=radius / 2))
 
-    fade_start = int(height * BOTTOM_FADE_START)
-    fade_end = int(height * BOTTOM_FADE_END)
+    if bottom_fade_start is None and bottom_fade_end is None:
+        return edge_mask
+
+    if bottom_fade_start is None or bottom_fade_end is None:
+        raise RuntimeError(
+            "Both bottom_fade_start and bottom_fade_end must be set together."
+        )
+
+    fade_start = int(height * bottom_fade_start)
+    fade_end = int(height * bottom_fade_end)
     if fade_end <= fade_start:
-        raise RuntimeError("BOTTOM_FADE_END must be greater than BOTTOM_FADE_START.")
+        raise RuntimeError("bottom_fade_end must be greater than bottom_fade_start.")
 
     vertical = Image.new("L", (1, height), 255)
     values: list[int] = []
+
     for y in range(height):
         if y <= fade_start:
             value = 255
@@ -109,30 +124,26 @@ def make_edge_mask(size: tuple[int, int]) -> Image.Image:
     return ImageChops.multiply(edge_mask, vertical)
 
 
-def prepare_art(art_path: Path, card_size: tuple[int, int]) -> Image.Image:
+def fit_art(art_path: Path, card_size: tuple[int, int]) -> Image.Image:
     art = Image.open(art_path).convert("RGBA")
 
-    fitted = ImageOps.fit(
+    return ImageOps.fit(
         art,
         card_size,
         method=Image.Resampling.LANCZOS,
         centering=(ART_CENTER_X, ART_CENTER_Y),
     )
 
-    feather = make_edge_mask(card_size)
-    fitted.putalpha(
-        ImageChops.multiply(fitted.getchannel("A"), feather)
+
+def apply_mask(art: Image.Image, mask: Image.Image) -> Image.Image:
+    prepared = art.copy()
+    prepared.putalpha(
+        ImageChops.multiply(prepared.getchannel("A"), mask)
     )
-    return fitted
+    return prepared
 
 
 def apply_base_alpha(result: Image.Image, base: Image.Image) -> Image.Image:
-    """
-    Keep the base transparency as the final card silhouette.
-
-    This means transparent/rounded corners from the base remain transparent
-    even when the source artwork is fully opaque.
-    """
     result = result.copy()
     result.putalpha(
         ImageChops.multiply(
@@ -148,18 +159,34 @@ def compose_on_base(art: Image.Image, base: Image.Image) -> Image.Image:
     return apply_base_alpha(result, base)
 
 
+def resize_output(image: Image.Image) -> Image.Image:
+    return image.resize(OUTPUT_SIZE, Image.Resampling.LANCZOS)
+
+
 def compose_one(
     art_path: Path,
     stats_base: Image.Image,
     clear_base: Image.Image,
 ) -> tuple[Path, Path]:
-    art = prepare_art(art_path, stats_base.size)
+    fitted_art = fit_art(art_path, stats_base.size)
 
-    # The exact same prepared art layer is used for both variants.
-    stats_result = compose_on_base(art, stats_base)
-    full_result = compose_on_base(art, clear_base)
+    stats_mask = make_edge_mask(
+        stats_base.size,
+        STATS_BOTTOM_FADE_START,
+        STATS_BOTTOM_FADE_END,
+    )
+    stats_art = apply_mask(fitted_art, stats_mask)
 
-    # Input Foo.png -> Output Foo.png + Foo_Full.png
+    full_mask = make_edge_mask(clear_base.size)
+    full_art = apply_mask(fitted_art, full_mask)
+
+    stats_result = compose_on_base(stats_art, stats_base)
+    full_result = compose_on_base(full_art, clear_base)
+
+    # Final exported card size is always exactly 768x1120.
+    stats_result = resize_output(stats_result)
+    full_result = resize_output(full_result)
+
     stats_out = OUTPUT_DIR / f"{art_path.stem}.png"
     full_out = OUTPUT_DIR / f"{art_path.stem}_Full.png"
 
@@ -192,6 +219,7 @@ def main() -> int:
 
     print(f"Stats base : {STATS_BASE_NAME}")
     print(f"Clear base : {CLEAR_BASE_NAME}")
+    print(f"Output size: {OUTPUT_SIZE[0]}x{OUTPUT_SIZE[1]}")
     print(f"Units      : {len(art_paths)}")
     print()
 

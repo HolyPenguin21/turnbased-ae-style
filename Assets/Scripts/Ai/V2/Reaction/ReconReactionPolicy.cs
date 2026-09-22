@@ -159,12 +159,11 @@ namespace Game.Ai.V2
                     + AiConfigV2.scoutFleeFutureReconWeight * futureRecon
                     - AiConfigV2.scoutFleeDetectorWeight * detector
                     - AiConfigV2.scoutFleeBacktrackWeight * backtrack;
-                // The executor asks for a noncapturing SafeStepPathing step for Flee. Its target
-                // evaluator must ask that SAME owner before selecting this candidate, or a
-                // high-scoring known foreign building/unreachable hex wins here and execution
-                // reports NoSafeStep while a lower-scoring legal escape was available. Probe only
-                // candidates capable of beating the current best; this is an emergency reaction,
-                // not a full-map per-step routing sweep.
+                // The executor asks the shared SafeStepPathing owner for Flee's first step. Its
+                // target evaluator must ask that SAME owner before selecting this candidate, or
+                // an unreachable hex wins here and execution reports NoSafeStep while a lower-
+                // scoring legal escape was available. Probe only candidates capable of beating
+                // the current best; this is an emergency reaction, not a full-map routing sweep.
                 if (score > bestScore
                     && SafeStepPathing.FindNextSafeStep(map, army, h) != null)
                 {

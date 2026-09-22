@@ -75,9 +75,6 @@ namespace Game.Ai
         // automatic preparation unless they explicitly opt out.
         public bool AllowAutomaticStealth = true;
 
-        // Territorial capture is opt-in. Recon/Economy/Return/ActiveDefence all keep the default;
-        // a future explicit Attack/Capture mission must set this on the exact move it owns.
-        public bool AllowHostileStructureCapture;
 
         public static AiDecision Move(ArmyData army, HexCoord hex, string reason, float score) => new AiDecision
         {

@@ -18,16 +18,13 @@ namespace Game.Ai.V2
     //    * a currently-known NON-NEUTRAL force standing on it. A STALE last-known enemy position is
     //      NOT a block — deliberately closing on one is what Surveil is for; it only raises risk.
     //    * any known NEUTRAL army on it — a scout never fights.
-    //    * a known FOREIGN-OWNED building unless this is a non-stealth step onto a currently
-    //      VISIBLE structure which AiMapMemory confirms is undefended. Remembered emptiness under
-    //      fog is insufficient to authorize a fresh capture: the live step planner and executor
-    //      both require visibility and must agree with this gate before issuing a command.
+    // Buildings are deliberately absent: lawful entry and any capture/destruction consequence
+    // belong to IssueMoveOrder and BuildingRegistry after actual movement, not Recon safety.
     // ===========================================================================================
     public static class ScoutExecutionSafety
     {
-        // LIVE check — ProvisioningManager / TaskExecutor. `requiresStealth` must reflect the SAME
-        // fact the executor gates the actual capture permission on (ProvisionedMission.
-        // RequiresStealth for Explore/Refresh; Surveil is always stealth-required).
+        // LIVE check — ProvisioningManager / TaskExecutor. The requiresStealth argument remains
+        // part of the shared caller contract but does not turn a building into a route blocker.
         public static bool VantageBlockedNow(PlayerSetupData player, HexCoord hex, int currentTurn,
             bool requiresStealth)
         {
@@ -39,12 +36,6 @@ namespace Game.Ai.V2
                 if (neutral || current)
                     return true;
             }
-
-            AiMapMemory.KnownBuilding? b = AiMapMemory.KnownBuildingAt(player, hex);
-            if (b.HasValue && b.Value.Owner != null && b.Value.Owner != player
-                && (requiresStealth || !VisionSystem.IsVisible(player, hex)
-                    || !AiMapMemory.KnownUndefendedForeignStructureAt(player, hex)))
-                return true;
 
             return false;
         }

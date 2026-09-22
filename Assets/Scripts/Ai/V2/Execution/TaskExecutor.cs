@@ -489,26 +489,6 @@ namespace Game.Ai.V2
             FinishRaid(player, root, pm, result, apBefore, stop);
         }
 
-        // FIX-07 — the combat lanes' (Raid / ActiveDefence) step decision, with the one
-        // permitted side effect of an ALREADY planned move attached. If knowledge says the hex
-        // this step lands on carries a foreign structure nobody is holding, the army simply
-        // occupies it and the authoritative gameplay rule
-        // (BuildingRegistry.CaptureOrDestroyIfUndefended) captures a Base / razes a bare
-        // extraction facility. This is not a strategic choice and never competes for budget:
-        // there is no score, no TaskScore slot, no detour and no pathfinding preference for
-        // structures — an unknown or defended one is still refused, both here and by
-        // SafeStepPathing's blocker. Economy movement deliberately does NOT go through this
-        // helper (RunGroundTransportStep keeps the plain AiDecision.Move), so a builder or
-        // collector can never "cut through" a foreign structure on its way to a resource.
-        private static AiDecision CombatLaneMove(PlayerSetupData player, ArmyData army,
-            HexCoord step, string reason)
-        {
-            AiDecision decision = AiDecision.Move(army, step, reason, 0f);
-            decision.AllowHostileStructureCapture =
-                AiMapMemory.KnownUndefendedForeignStructureAt(player, step);
-            return decision;
-        }
-
         private static IEnumerator RunActiveDefence(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
@@ -566,8 +546,7 @@ namespace Game.Ai.V2
                     result.StopReason = ExecutionStopReason.OutOfMovement;
                     yield break;
                 }
-                HexCoord? returnStep = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home,
-                    allowHostileStructureCapture: true);
+                HexCoord? returnStep = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
                 if (!returnStep.HasValue)
                 {
                     result.StopReason = ExecutionStopReason.NoSafeStep;
@@ -577,8 +556,8 @@ namespace Game.Ai.V2
                 HexCoord returnBefore = army.Hex;
                 var returnTrace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player,
-                    CombatLaneMove(player, army, returnStep.Value,
-                        "V2 active defence — return"),
+                    AiDecision.Move(army, returnStep.Value,
+                        "V2 active defence — return", 0f),
                     ctx, returnTrace);
                 army = Resolve(player, pm.MoverArmyId);
                 HexCoord returnAfter = army != null ? army.Hex : returnTrace.EndHex;
@@ -630,8 +609,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.OutOfMovement;
                 yield break;
             }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex,
-                allowHostileStructureCapture: true);
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex);
             if (!next.HasValue)
             {
                 result.StopReason = ExecutionStopReason.NoSafeStep;
@@ -642,8 +620,8 @@ namespace Game.Ai.V2
             HexCoord before = army.Hex;
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player,
-                CombatLaneMove(player, army, next.Value,
-                    $"V2 active defence — intercept enemy #{enemyId}"), ctx, trace);
+                AiDecision.Move(army, next.Value,
+                    $"V2 active defence — intercept enemy #{enemyId}", 0f), ctx, trace);
             army = Resolve(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             bool moved = !after.Equals(before);
@@ -805,8 +783,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex,
-                allowHostileStructureCapture: true);
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex);
             if (!next.HasValue)
             {
                 result.StopReason = ExecutionStopReason.NoSafeStep;
@@ -815,8 +792,8 @@ namespace Game.Ai.V2
             }
 
             HexCoord before = army.Hex;
-            var decision = CombatLaneMove(player, army, next.Value,
-                $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})");
+            var decision = AiDecision.Move(army, next.Value,
+                $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -997,8 +974,7 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.OutOfMovement;
                 yield break;
             }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home,
-                allowHostileStructureCapture: true);
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
             if (!next.HasValue)
             {
                 // Temporarily blocked first step is a retry-next-turn, not a reason to drop the leg.
@@ -1008,8 +984,8 @@ namespace Game.Ai.V2
             }
 
             HexCoord before = army.Hex;
-            var decision = CombatLaneMove(player, army, next.Value,
-                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})");
+            var decision = AiDecision.Move(army, next.Value,
+                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})", 0f);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -1069,8 +1045,7 @@ namespace Game.Ai.V2
                     result.StopReason = ExecutionStopReason.OutOfMovement;
                     yield break;
                 }
-                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous,
-                    allowHostileStructureCapture: true);
+                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous);
                 if (!next.HasValue)
                 {
                     result.StopReason = ExecutionStopReason.NoSafeStep;
@@ -1078,8 +1053,8 @@ namespace Game.Ai.V2
                     yield break;
                 }
                 HexCoord before = support.Hex;
-                var decision = CombatLaneMove(player, support, next.Value,
-                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})");
+                var decision = AiDecision.Move(support, next.Value,
+                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})", 0f);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
