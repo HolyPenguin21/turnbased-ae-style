@@ -240,12 +240,12 @@ namespace Game.Ai.V2
             {
                 case ReconReactionAction.Flee:
                     if (reaction.TargetHex.HasValue)
-                        next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
+                        next = reaction.TargetHex.Value;
                     actionWhy = "Flee";
                     break;
                 case ReconReactionAction.EvadeDetector:
                     if (reaction.TargetHex.HasValue)
-                        next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, reaction.TargetHex.Value);
+                        next = reaction.TargetHex.Value;
                     actionWhy = "EvadeDetector";
                     break;
                 case ReconReactionAction.AttackOpportunity:
@@ -264,6 +264,15 @@ namespace Game.Ai.V2
                     break;
             }
 
+            if (!next.HasValue)
+            {
+                control.StopReason = ExecutionStopReason.NoSafeStep;
+                yield break;
+            }
+
+            // Tactical policies choose the desired destination; the shared ground-routing
+            // owner decides the executable first step for every Recon action shape.
+            next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, next.Value);
             if (!next.HasValue)
             {
                 control.StopReason = ExecutionStopReason.NoSafeStep;
