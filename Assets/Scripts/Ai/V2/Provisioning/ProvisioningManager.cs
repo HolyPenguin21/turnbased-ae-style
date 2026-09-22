@@ -2497,6 +2497,10 @@ namespace Game.Ai.V2
 
     internal static class ActiveDefenceProvisioner
     {
+        // Same invariant AP formatting RaidProvisioner logs with — the two lanes' provisioning
+        // lines are read side by side.
+        private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
+
         internal static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
         {
@@ -2577,6 +2581,69 @@ namespace Game.Ai.V2
                 || host.CurrentMovement <= 0 || session.ClaimedArmyIds.Contains(host.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"active defence actor #{actorId} is no longer available"));
+            // FIX-03 — the assembly is ONE transaction with explicit stages, the same shape the
+            // Raid lane already has: PREPARE / VALIDATE ALL TRANSFERS (every legality question
+            // asked before any mutation) -> APPLY -> RECONCILE -> COMMIT CLAIMS. Previously a
+            // donor was written into session.ClaimedArmyIds immediately after EACH successful
+            // transfer, so a later failure rolled the world back but left those donors claimed for
+            // the rest of the pass (a claim leak that silently starved Raid/Economy of actors),
+            // and the refusal always reported StateChanged=false — even when the rollback itself
+            // had been incomplete and the world really HAD changed.
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+            var transfers = new List<GroundCombatAssemblyTransfer>();
+            var claimedDonors = new HashSet<int>();
+            var projectedUnits = new List<UnitData>(host.Members);
+            if (plan.NeedsAssembly)
+            {
+                int heroTransfers = 0;
+                foreach (GroundCombatAssemblyTransfer t in plan.Transfers)
+                {
+                    if (t?.Unit == null)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            "active-defence assembly contains a null unit"));
+                    ArmyData donor = AiV2Util.ResolveArmy(player, t.DonorArmyId);
+                    if (donor == null || donor.Members.Count <= 1 || !donor.Hex.Equals(host.Hex))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"active-defence donor #{t.DonorArmyId} is gone, moved, or would be emptied"));
+                    if (session.ClaimedArmyIds.Contains(donor.Id))
+                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                            $"active-defence donor #{donor.Id} was claimed by an earlier mission this cycle"));
+                    if (t.Unit.IsHero
+                        && (++heroTransfers > 1 || projectedUnits.Any(u => u != null && u.IsHero)))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"active-defence host #{host.Id} may take at most one hero and only when heroless"));
+                    if (donor.IsPrison || donor.IsAirfield || AviationRules.IsAirArmy(donor)
+                        || AiArmyRoles.IsSoloRecce(donor) || !donor.Members.Contains(t.Unit)
+                        || t.Unit.IsAviation)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"active-defence donor #{donor.Id} / unit {t.Unit.Name} is no longer legal"));
+                    if (!donor.CanLeaveWithoutOvercrowding(t.Unit)
+                        || (donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMember(player, donor, t.Unit)))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"active-defence donor #{donor.Id} can no longer spare {t.Unit.Name}"));
+                    if (host.HasActivatedThisTurn && t.Unit.ActivationApCost > 0)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"adding {t.Unit.Name} to an activated active-defence host would spend unbudgeted AP"));
+                    var withUnit = new List<UnitData>(projectedUnits) { t.Unit };
+                    if (ArmyData.ComputeCapacity(withUnit, host.IsGarrison) < withUnit.Count)
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"active-defence host #{host.Id} no longer has capacity for planned assembly"));
+                    projectedUnits.Add(t.Unit);
+                    transfers.Add(t);
+                    claimedDonors.Add(donor.Id);
+                }
+                foreach (IGrouping<int, GroundCombatAssemblyTransfer> group in transfers.GroupBy(t => t.DonorArmyId))
+                {
+                    ArmyData donor = AiV2Util.ResolveArmy(player, group.Key);
+                    List<UnitData> units = group.Select(t => t.Unit).ToList();
+                    if (donor == null || donor.Members.Count - units.Count < 1
+                        || donor.IsGarrison
+                            && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
+                        return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
+                            $"active-defence donor #{group.Key} cannot spare the complete batch"));
+                }
+            }
+
             // FIX-02 — every physical-executability check below is asked about `projectedUnits`,
             // the roster this plan will actually march, and all of them still run BEFORE the first
             // ArmyActions.TransferMember. The old code asked the UNTOUCHED host whether it could
@@ -2585,7 +2652,6 @@ namespace Game.Ai.V2
             // to cost more AP than was ever funded only after the world had been mutated.
             // Reachability too: a recruit slower than the host lowers the whole formation's shared
             // movement, so the first step is re-asked for the projected roster.
-            List<UnitData> projectedUnits = GroundCombatAssemblyPlanner.ProjectedRoster(host, plan);
             if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, sighting.Value.Hex,
                     projectedUnits) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
@@ -2593,42 +2659,63 @@ namespace Game.Ai.V2
                     + (plan.NeedsAssembly ? " for the projected assembled roster" : "")));
 
             int activationAp = host.ProjectedActivationApCost(projectedUnits);
-            if (activationAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
+            float envelope = funded.Tentative.Ap;
+            if (activationAp > envelope + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
-                    $"active defence actor #{actorId} AP envelope is stale"));
-            if (activationAp > root.ActionPoints - session.ApClaimed
-                + AiConfigV2.allocatorSliceEpsilon)
+                    $"active defence actor #{actorId} needs {N(activationAp)} AP for its projected "
+                    + $"{projectedUnits.Count}-body roster, envelope is {N(envelope)}"));
+            if (activationAp > root.ActionPoints - session.ApClaimed + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "turn AP exhausted before active defence"));
 
+            // APPLY. Nothing above this line has mutated the world, so every refusal so far is a
+            // clean Complete rollback by construction: no transfer, no claim, StateChanged=false.
             var applied = new List<GroundCombatAssemblyTransfer>();
-            foreach (IGrouping<int, GroundCombatAssemblyTransfer> group in plan.Transfers.GroupBy(t => t.DonorArmyId))
-            {
-                ArmyData donor = AiV2Util.ResolveArmy(player, group.Key);
-                List<UnitData> units = group.Select(t => t.Unit).ToList();
-                if (donor == null || donor.Members.Count - units.Count < 1
-                    || units.Any(u => u == null || u.IsAviation || !donor.Members.Contains(u))
-                    || donor.IsGarrison && !AiArmyRoles.CanSpareGarrisonMembers(player, donor, units))
-                    return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                        $"active-defence donor #{group.Key} cannot spare the complete batch"));
-            }
-            foreach (GroundCombatAssemblyTransfer transfer in plan.Transfers)
+            foreach (GroundCombatAssemblyTransfer transfer in transfers)
             {
                 ArmyData donor = AiV2Util.ResolveArmy(player, transfer.DonorArmyId);
                 string why = donor == null ? "donor missing" : null;
-                if (donor == null || donor.Members.Count <= 1
-                    || session.ClaimedArmyIds.Contains(donor.Id)
-                    || !ArmyActions.TransferMember(transfer.Unit, donor, host,
+                if (donor == null || !ArmyActions.TransferMember(transfer.Unit, donor, host,
                         ctx.HexSelection, out why))
                 {
-                    bool rollback = Rollback(player, host, applied, ctx);
+                    bool rollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host,
+                        applied, ctx, "active-defence");
+                    int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Provision] decision=ROLLBACK "
+                        + $"enemy={target.EnemyArmyId} actor={host.Id} unit={transfer.Unit?.Name} "
+                        + $"donor=#{transfer.DonorArmyId}: {why}; "
+                        + $"rollback={(rollbackOk ? "OK" : "FAILED")}; remainingTransfers={stillApplied}");
+                    // An incomplete rollback is an honest partial mutation: report StateChanged so
+                    // the version is bumped and no later stage keeps planning on the old world.
                     return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible(
-                        rollback ? $"atomic active-defence assembly rejected: {why}"
-                            : $"active-defence assembly rollback incomplete: {why}"));
+                            rollbackOk ? $"atomic active-defence assembly rejected: {why}"
+                                : $"active-defence assembly rollback incomplete: {why}"),
+                        stillApplied > 0, stillApplied);
                 }
                 applied.Add(transfer);
-                session.ClaimedArmyIds.Add(donor.Id);
             }
+
+            // RECONCILE — the assembled force must cost exactly what was projected and funded.
+            // Any divergence rolls the whole transaction back rather than succeeding partially.
+            int actualAp = host.ProjectedActivationApCost(host.Members);
+            if (actualAp != activationAp || actualAp > envelope + eps)
+            {
+                bool reconcileRollbackOk = GroundCombatAssemblyTransaction.Rollback(player, host,
+                    applied, ctx, "active-defence");
+                int stillApplied = GroundCombatAssemblyTransaction.RemainingApplied(host, applied);
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Provision] decision=RECONCILE_FAIL "
+                    + $"enemy={target.EnemyArmyId} actor={host.Id} actual={N(actualAp)} "
+                    + $"projected={N(activationAp)} envelope={N(envelope)}; "
+                    + $"rollback={(reconcileRollbackOk ? "OK" : "FAILED")}; remainingTransfers={stillApplied}");
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(actualAp,
+                        $"active-defence host #{host.Id} reconciled activation {N(actualAp)} AP "
+                        + $"diverges from the projected {N(activationAp)} AP"),
+                    stillApplied > 0, stillApplied);
+            }
+
+            // COMMIT CLAIMS — only now, against a confirmed complete assembly.
+            foreach (int donorId in claimedDonors)
+                session.ClaimedArmyIds.Add(donorId);
 
             target.LastKnownHex = sighting.Value.Hex;
             target.LastObservedTurn = sighting.Value.SeenTurn;
@@ -2642,7 +2729,11 @@ namespace Game.Ai.V2
                 Mission = mission, Key = key, Kind = MissionKind.ActiveDefence,
                 MoverArmyId = host.Id, FocusHex = target.LastKnownHex,
                 ExecutionHex = target.LastKnownHex, ActiveDefenceTarget = target,
-                ClaimedPhysical = funded.PhysicalDraw, ClaimedAp = activationAp,
+                ClaimedPhysical = funded.PhysicalDraw,
+                // The reconciled cost of the force that actually exists now — asserted equal to
+                // the projected/funded figure above, so allocator, revalidator and executor all
+                // debit this one number exactly once.
+                ClaimedAp = actualAp,
             }, applied.Count);
         }
 
@@ -2680,20 +2771,54 @@ namespace Game.Ai.V2
             });
         }
 
-        private static bool Rollback(PlayerSetupData player, ArmyData host,
-            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx)
+    }
+
+    // FIX-03 — the one same-hex ground-combat assembly rollback/accounting primitive. Raid and
+    // ActiveDefence ran two byte-similar private copies of this; a transaction that has to report
+    // honestly whether the world was left mutated must measure that the same way in both lanes.
+    // No state of its own: it is the undo half of the Provisioning-tier transaction, nothing more.
+    internal static class GroundCombatAssemblyTransaction
+    {
+        // Undo every applied transfer, newest first. Returns false if ANY body could not be put
+        // back — the caller must then report the mutation honestly instead of claiming a clean
+        // rejection.
+        internal static bool Rollback(PlayerSetupData player, ArmyData host,
+            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx, string lane)
         {
             bool ok = true;
+            if (host == null || applied == null)
+                return false;
             for (int i = applied.Count - 1; i >= 0; --i)
             {
                 GroundCombatAssemblyTransfer t = applied[i];
-                ArmyData donor = AiV2Util.ResolveArmy(player, t.DonorArmyId);
-                string why;
-                if (donor == null || !host.Members.Contains(t.Unit)
+                ArmyData donor = AiV2Util.ResolveArmy(player, t?.DonorArmyId ?? -1);
+                string why = donor == null ? "donor missing"
+                    : t?.Unit == null || !host.Members.Contains(t.Unit) ? "unit no longer in host"
+                    : null;
+                if (donor == null || t?.Unit == null || !host.Members.Contains(t.Unit)
                     || !ArmyActions.TransferMember(t.Unit, host, donor, ctx.HexSelection, out why))
+                {
                     ok = false;
+                    AiDebugLog.Write($"[AI][V2]   {lane} assembly rollback — FAILED {t?.Unit?.Name} "
+                        + $"host #{host.Id}->donor #{t?.DonorArmyId}: {why}");
+                }
             }
             return ok;
+        }
+
+        // How many of the applied transfers are STILL sitting in the host after a rollback attempt
+        // — i.e. how much of the world this transaction really changed. Zero means a Complete
+        // rollback (no mutation to report); anything else is an Incomplete one.
+        internal static int RemainingApplied(ArmyData host,
+            List<GroundCombatAssemblyTransfer> applied)
+        {
+            if (host == null || applied == null)
+                return 0;
+            int count = 0;
+            foreach (GroundCombatAssemblyTransfer t in applied)
+                if (t?.Unit != null && host.Members.Contains(t.Unit))
+                    count++;
+            return count;
         }
     }
 
@@ -3327,25 +3452,12 @@ namespace Game.Ai.V2
             return list;
         }
 
+        // FIX-03 — was a private copy of what ActiveDefence also ran; both lanes now share the one
+        // GroundCombatAssemblyTransaction primitive so "did the world really change" is measured
+        // identically. Same behaviour, same log line shape.
         private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
-            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx)
-        {
-            bool ok = true;
-            for (int i = applied.Count - 1; i >= 0; i--)
-            {
-                GroundCombatAssemblyTransfer t = applied[i];
-                ArmyData donor = ResolveArmy(player, t.DonorArmyId);
-                string why = donor == null ? "donor missing" : !host.Members.Contains(t.Unit) ? "unit no longer in host" : null;
-                if (donor == null || !host.Members.Contains(t.Unit)
-                    || !ArmyActions.TransferMember(t.Unit, host, donor, ctx.HexSelection, out why))
-                {
-                    ok = false;
-                    AiDebugLog.Write($"[AI][V2]   raid assembly rollback — FAILED {t.Unit?.Name} "
-                        + $"host #{host.Id}->donor #{t.DonorArmyId}: {why}");
-                }
-            }
-            return ok;
-        }
+            List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx) =>
+            GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "raid");
 
         // Was a duplicate of GroundCombatFeasibility.Clears — with a stale hardcoded win-chance
         // threshold and no `cover` output — now calls that shared, parameterized implementation
