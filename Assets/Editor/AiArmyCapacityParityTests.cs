@@ -102,16 +102,22 @@ namespace Game.EditorTests
                 var hand = new AiHandData(null, player.Faction, 0);
                 hand.AddCard(card);
                 var plan = CardPlayPlan.NewArmyAt(card, hex);
+                var ctx = new AiTurnContext();
 
-                Assert.That(CardPlayExecutor.Preflight(player, root, hand, new AiTurnContext(),
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
                     plan, out string failure), Is.False);
                 Assert.That(failure, Does.Contain("first card would not fit"));
+                CardPlayResult rejected = CardPlayExecutor.Play(player, root, hand, ctx, plan);
+                Assert.That(rejected.Deployed, Is.False);
+                Assert.That(rejected.ArmyCreated, Is.False,
+                    "No empty shell may be created after a known-invalid first-card preflight.");
+                Assert.That(rejected.ApSpent, Is.EqualTo(0));
                 Assert.That(root.ActionPoints, Is.EqualTo(10),
                     "A rejected first Hero must not spend the 2 AP for CreateArmy.");
                 Assert.That(hand.Hand, Does.Contain(card));
 
                 definition.commandRating = 1;
-                Assert.That(CardPlayExecutor.Preflight(player, root, hand, new AiTurnContext(),
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
                     plan, out string validReason), Is.True, validReason);
                 Assert.That(root.ActionPoints, Is.EqualTo(10));
             }
