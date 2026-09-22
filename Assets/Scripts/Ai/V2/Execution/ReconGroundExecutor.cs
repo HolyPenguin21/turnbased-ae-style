@@ -309,11 +309,14 @@ namespace Game.Ai.V2
             // the hex it lands on carries a foreign structure nobody is holding, occupying it is
             // a permitted side effect of that same move (the authoritative
             // BuildingRegistry.CaptureOrDestroyIfUndefended then captures a Base / razes a bare
-            // facility). Nothing here makes a structure attractive: no score, no detour, and a
-            // fully hidden scout still decloaks first through the shared mover's existing rule,
-            // because a hidden army cannot take anything.
-            move.AllowHostileStructureCapture =
-                AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value);
+            // facility). Nothing here makes a structure attractive: no score, no detour.
+            // Excluded when pm.RequiresStealth: the shared mover's existing rule (below FIX-07 in
+            // MoveArmyRoutine) would decloak an already-hidden member immediately before the
+            // takeover, which would break this mission's own stealth precondition mid-step for a
+            // hex the step planner never chose for capture reasons. A stealth-required mission
+            // just walks onto/through the hex without taking it, same as before this fix.
+            move.AllowHostileStructureCapture = !pm.RequiresStealth
+                && AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value);
             var trace = new AiMoveExecutionTrace();
             control.CommandAttempted = true;
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);

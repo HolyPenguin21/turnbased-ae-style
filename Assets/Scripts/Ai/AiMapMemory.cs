@@ -1020,7 +1020,10 @@ namespace Game.Ai
             if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
                 bonus += terrain.defenseModifier;
 
-            if (actor != null && VisionSystem.IsVisible(actor, hex))
+            if (actor == null)
+                return bonus;
+
+            if (VisionSystem.IsVisible(actor, hex))
             {
                 BuildingData live = BuildingRegistry.FindAt(hex);
                 if (live != null && live.IsBase)
