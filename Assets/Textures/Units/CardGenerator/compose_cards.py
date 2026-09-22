@@ -21,20 +21,18 @@ BASES_DIR = ROOT / "Bases"
 INPUT_DIR = ROOT / "Input"
 OUTPUT_DIR = ROOT / "Output"
 
+STATS_BASE_NAME = "Card_Base.png"
+CLEAR_BASE_NAME = "Card_Base_Clear.png"
+
 # Shared composition settings.
-# Keep them fixed for the whole card set to guarantee consistent placement,
-# brightness and fade behavior across all unit cards.
 ART_CENTER_X = 0.50
 ART_CENTER_Y = 0.48
 
-# Feather only the transferred unit artwork. The card bases are never resized,
-# repainted or regenerated.
+# Feather only the transferred artwork.
 SIDE_FEATHER_PX = 52
 TOP_FEATHER_PX = 36
 
-# Vertical fade of the unit art, as fractions of card height.
-# The art is fully visible above START, then smoothly reaches zero at END.
-# With the current bases this clears the stat row and leaves room for text.
+# Vertical fade of the artwork, as fractions of card height.
 BOTTOM_FADE_START = 0.50
 BOTTOM_FADE_END = 0.62
 
@@ -52,43 +50,28 @@ def list_pngs(directory: Path) -> list[Path]:
     )
 
 
-def load_bases() -> tuple[Path, Path, Image.Image, Image.Image]:
-    base_paths = list_pngs(BASES_DIR)
-    if len(base_paths) != 2:
-        raise RuntimeError(
-            f"Expected exactly 2 PNG files in '{BASES_DIR}'. "
-            f"Found {len(base_paths)}."
-        )
+def load_base(path: Path) -> Image.Image:
+    if not path.is_file():
+        raise RuntimeError(f"Missing required base: {path.name}")
+    return Image.open(path).convert("RGBA")
 
-    clear_candidates = [
-        path for path in base_paths if "clear" in path.stem.lower()
-    ]
-    if len(clear_candidates) != 1:
-        raise RuntimeError(
-            "One of the two base PNG files must contain 'Clear' in its filename "
-            "(for example: Card_Base_01_Clear.png)."
-        )
 
-    clear_path = clear_candidates[0]
-    stats_path = next(path for path in base_paths if path != clear_path)
+def load_bases() -> tuple[Image.Image, Image.Image]:
+    stats_base = load_base(BASES_DIR / STATS_BASE_NAME)
+    clear_base = load_base(BASES_DIR / CLEAR_BASE_NAME)
 
-    clear_base = Image.open(clear_path).convert("RGBA")
-    stats_base = Image.open(stats_path).convert("RGBA")
-
-    if clear_base.size != stats_base.size:
+    if stats_base.size != clear_base.size:
         raise RuntimeError(
             "The two card bases must have exactly the same pixel dimensions. "
-            f"Clear={clear_base.size}, Stats={stats_base.size}"
+            f"Stats={stats_base.size}, Clear={clear_base.size}"
         )
 
-    return clear_path, stats_path, clear_base, stats_base
+    return stats_base, clear_base
 
 
 def make_edge_mask(size: tuple[int, int]) -> Image.Image:
     width, height = size
 
-    # White interior on black background, extended below the canvas so this
-    # mask only feathers left/right/top. Bottom fading is handled separately.
     radius = max(SIDE_FEATHER_PX, TOP_FEATHER_PX)
     edge_mask = Image.new("L", size, 0)
     interior = Image.new(
@@ -107,7 +90,6 @@ def make_edge_mask(size: tuple[int, int]) -> Image.Image:
     if fade_end <= fade_start:
         raise RuntimeError("BOTTOM_FADE_END must be greater than BOTTOM_FADE_START.")
 
-    # 1-pixel-wide vertical gradient, then expanded across the card.
     vertical = Image.new("L", (1, height), 255)
     values: list[int] = []
     for y in range(height):
@@ -117,7 +99,6 @@ def make_edge_mask(size: tuple[int, int]) -> Image.Image:
             value = 0
         else:
             t = (y - fade_start) / (fade_end - fade_start)
-            # Smoothstep avoids a visible linear band.
             smooth = t * t * (3.0 - 2.0 * t)
             value = round(255 * (1.0 - smooth))
         values.append(value)
@@ -131,8 +112,6 @@ def make_edge_mask(size: tuple[int, int]) -> Image.Image:
 def prepare_art(art_path: Path, card_size: tuple[int, int]) -> Image.Image:
     art = Image.open(art_path).convert("RGBA")
 
-    # Crop-to-cover puts every generated unit into the exact same coordinate
-    # system even when source dimensions differ slightly.
     fitted = ImageOps.fit(
         art,
         card_size,
@@ -147,37 +126,60 @@ def prepare_art(art_path: Path, card_size: tuple[int, int]) -> Image.Image:
     return fitted
 
 
+def apply_base_alpha(result: Image.Image, base: Image.Image) -> Image.Image:
+    """
+    Keep the base transparency as the final card silhouette.
+
+    This means transparent/rounded corners from the base remain transparent
+    even when the source artwork is fully opaque.
+    """
+    result = result.copy()
+    result.putalpha(
+        ImageChops.multiply(
+            result.getchannel("A"),
+            base.getchannel("A"),
+        )
+    )
+    return result
+
+
+def compose_on_base(art: Image.Image, base: Image.Image) -> Image.Image:
+    result = Image.alpha_composite(base.copy(), art)
+    return apply_base_alpha(result, base)
+
+
 def compose_one(
     art_path: Path,
-    clear_base: Image.Image,
     stats_base: Image.Image,
+    clear_base: Image.Image,
 ) -> tuple[Path, Path]:
-    art = prepare_art(art_path, clear_base.size)
+    art = prepare_art(art_path, stats_base.size)
 
-    # The exact same prepared art layer is composited normally (100% color,
-    # no Multiply/Overlay blending) over both immutable bases. This guarantees
-    # identical unit scale, position, brightness and fade in both variants.
-    clear_result = Image.alpha_composite(clear_base.copy(), art)
-    stats_result = Image.alpha_composite(stats_base.copy(), art)
+    # The exact same prepared art layer is used for both variants.
+    stats_result = compose_on_base(art, stats_base)
+    full_result = compose_on_base(art, clear_base)
 
-    clear_out = OUTPUT_DIR / f"{art_path.stem}_Clear.png"
-    stats_out = OUTPUT_DIR / f"{art_path.stem}_Stats.png"
+    # Input Foo.png -> Output Foo.png + Foo_Full.png
+    stats_out = OUTPUT_DIR / f"{art_path.stem}.png"
+    full_out = OUTPUT_DIR / f"{art_path.stem}_Full.png"
 
-    clear_result.save(clear_out, "PNG")
     stats_result.save(stats_out, "PNG")
-    return clear_out, stats_out
+    full_result.save(full_out, "PNG")
+
+    return stats_out, full_out
 
 
 def main() -> int:
     ensure_directories()
 
     try:
-        clear_path, stats_path, clear_base, stats_base = load_bases()
+        stats_base, clear_base = load_bases()
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         print(
-            f"\nPut exactly two card bases into:\n  {BASES_DIR}\n"
-            "One filename must contain 'Clear'.",
+            f"\nRequired files in {BASES_DIR}:\n"
+            f"  {STATS_BASE_NAME}\n"
+            f"  {CLEAR_BASE_NAME}",
             file=sys.stderr,
         )
         return 1
@@ -188,20 +190,20 @@ def main() -> int:
         print("Add generated unit images there and run the script again.")
         return 0
 
-    print(f"Clear base : {clear_path.name}")
-    print(f"Stats base : {stats_path.name}")
+    print(f"Stats base : {STATS_BASE_NAME}")
+    print(f"Clear base : {CLEAR_BASE_NAME}")
     print(f"Units      : {len(art_paths)}")
     print()
 
     for art_path in art_paths:
-        clear_out, stats_out = compose_one(
+        stats_out, full_out = compose_one(
             art_path,
-            clear_base,
             stats_base,
+            clear_base,
         )
         print(f"[OK] {art_path.name}")
-        print(f"     -> {clear_out.name}")
         print(f"     -> {stats_out.name}")
+        print(f"     -> {full_out.name}")
 
     print(f"\nDone. Results are in:\n  {OUTPUT_DIR}")
     return 0
