@@ -305,6 +305,15 @@ namespace Game.Ai.V2
             // Re-entering stealth in the shared mover would cancel the intended combat and could
             // also spend AP that Recon deliberately reserved for other missions.
             move.AllowAutomaticStealth = false;
+            // FIX-07 — this step was already chosen for information reasons. If knowledge says
+            // the hex it lands on carries a foreign structure nobody is holding, occupying it is
+            // a permitted side effect of that same move (the authoritative
+            // BuildingRegistry.CaptureOrDestroyIfUndefended then captures a Base / razes a bare
+            // facility). Nothing here makes a structure attractive: no score, no detour, and a
+            // fully hidden scout still decloaks first through the shared mover's existing rule,
+            // because a hidden army cannot take anything.
+            move.AllowHostileStructureCapture =
+                AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value);
             var trace = new AiMoveExecutionTrace();
             control.CommandAttempted = true;
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);

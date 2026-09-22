@@ -931,9 +931,14 @@ namespace Game.Ai.V2
             // (the exact same coordinate-based primitive BuildCandidates already used to admit this
             // candidate — see ReconAssignmentPlanner.BuildCandidates' garrison-extraction branch).
             HexCoord fromHex = exec.RequiresGarrisonExtraction ? garrisonArmy.Hex : army.Hex;
+            // FIX-07 — ScoutExecutionSafety now admits a vantage on a foreign structure that
+            // knowledge says nobody is holding, so this preflight must ask the same question or
+            // it would strand exactly the vantage the selector just approved.
             bool hasSafeApproach = exec.RequiresGarrisonExtraction
-                ? SafeStepPathing.FindSafePath(ctx.Map, player, fromHex, executionHex, plannedExtractUnit.MoveMax) != null
-                : SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex) != null;
+                ? SafeStepPathing.FindSafePath(ctx.Map, player, fromHex, executionHex,
+                    plannedExtractUnit.MoveMax, allowHostileStructureCapture: true) != null
+                : SafeStepPathing.FindNextSafeStep(ctx.Map, army, executionHex,
+                    allowHostileStructureCapture: true) != null;
             if (!hasSafeApproach)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({fromHex.Q},{fromHex.R}) toward ({executionHex.Q},{executionHex.R})"));
@@ -2653,7 +2658,7 @@ namespace Game.Ai.V2
             // Reachability too: a recruit slower than the host lowers the whole formation's shared
             // movement, so the first step is re-asked for the projected roster.
             if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, sighting.Value.Hex,
-                    projectedUnits) == null)
+                    projectedUnits, allowHostileStructureCapture: true) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe step toward active defence enemy #{target.EnemyArmyId}"
                     + (plan.NeedsAssembly ? " for the projected assembled roster" : "")));
@@ -2754,7 +2759,8 @@ namespace Game.Ai.V2
             if (session.ClaimedArmyIds.Contains(actor.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     "active defence return actor is claimed"));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value) == null)
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, actor, target.ReturnHex.Value,
+                    allowHostileStructureCapture: true) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     "active defence responder has no safe return step"));
             int ap = actor.HasActivatedThisTurn ? 0 : actor.ActivationApCost;
@@ -2993,7 +2999,8 @@ namespace Game.Ai.V2
             // Reachability too: a recruit slower than the host lowers the whole army's shared
             // movement (ArmyData.ComputeCurrentMovement), so the first step must be re-asked with
             // the projected movement rather than the host's own.
-            if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, targetHex, projectedUnits) == null)
+            if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, targetHex, projectedUnits,
+                    allowHostileStructureCapture: true) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward raid target ({targetHex.Q},{targetHex.R})"
                     + (plan.NeedsAssembly ? " for the projected assembled roster" : "")));
@@ -3258,7 +3265,8 @@ namespace Game.Ai.V2
             if (mover.CurrentMovement <= 0)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                     $"raid {roleLabel} return mover #{mover.Id} has no movement left"));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, mover, home) == null)
+            if (SafeStepPathing.FindNextSafeStep(ctx.Map, mover, home,
+                    allowHostileStructureCapture: true) == null)
             {
                 // AGG-RAID P1#3 — defensive re-check only; the frozen Analysis reachability fact
                 // (ReturnBaseStillValid) already retargets a genuinely unreachable base at turn-start
@@ -3371,7 +3379,8 @@ namespace Game.Ai.V2
                 if (support.CurrentMovement <= 0)
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"raid reinforcement support #{support.Id} has no movement left"));
-                if (SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous) == null)
+                if (SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous,
+                        allowHostileStructureCapture: true) == null)
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"no safe first step from ({support.Hex.Q},{support.Hex.R}) toward rendezvous ({rendezvous.Q},{rendezvous.R})"));
             }

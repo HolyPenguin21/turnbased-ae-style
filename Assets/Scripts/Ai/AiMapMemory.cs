@@ -1034,6 +1034,51 @@ namespace Game.Ai
             return bonus;
         }
 
+        // FIX-07 (2026-09-22) — is the building on `hex` KNOWN to be foreign and KNOWN to be
+        // standing there with nobody to defend it? This is the one knowledge-side mirror of the
+        // authoritative gameplay rule (BuildingRegistry.CaptureOrDestroyIfUndefended: a foreign
+        // building with no engageable resident of its own owner changes hands / is destroyed the
+        // moment someone else arrives). It exists so an army that is ALREADY walking onto such a
+        // hex as part of an accepted Recon/Raid/ActiveDefence plan is not blocked from simply
+        // occupying it — never so anything goes looking for structures.
+        //
+        // "Known" is the whole point, so the two cases are kept apart honestly:
+        //   * hex VISIBLE now — we are looking at it, so the live building and the live residents
+        //     ARE the observation;
+        //   * hex FOGGED — a remembered building is required (a building only ever enters this
+        //     memory from a hex this player genuinely saw, and the same observation reconciled
+        //     that hex's army sightings), and we must remember NO army standing there. Unknown
+        //     defence is never treated as "undefended": no remembered building, or a remembered
+        //     enemy/neutral sighting on the hex, or a known guarded Hex Event on it, all answer
+        //     false, so nobody is ever waved into a blind walk-in.
+        public static bool KnownUndefendedForeignStructureAt(PlayerSetupData actor, HexCoord hex)
+        {
+            if (actor == null)
+                return false;
+            // A known active guarded event on the hex is a fight waiting to happen, not an empty
+            // structure — and its guard is not an army this memory records as a sighting.
+            if (KnownEventGuardStrengthAt(actor, hex).HasValue)
+                return false;
+
+            if (VisionSystem.IsVisible(actor, hex))
+            {
+                BuildingData live = BuildingRegistry.FindAt(hex);
+                if (live == null || live.Owner == null || live.Owner == actor)
+                    return false;
+                foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
+                    if (resident != null && resident.Owner == live.Owner
+                        && BattleInitiator.IsEngageable(resident, actor))
+                        return false;
+                return true;
+            }
+
+            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
+            if (!remembered.HasValue || remembered.Value.Owner == null
+                || remembered.Value.Owner == actor)
+                return false;
+            return !KnownEnemySightingAt(actor, hex).HasValue;
+        }
+
         // Every building this player has ever observed anywhere on the map, as last seen —
         // RaidWeakerArmyTask's own FindTarget/HasAnythingToRaid/FindCaptureStepDestination replace
         // their old live BuildingRegistry.AllBuildings() scan with this (2026-08-24 fix, section
