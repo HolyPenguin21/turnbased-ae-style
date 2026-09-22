@@ -22,10 +22,11 @@ namespace Game.Ai.V2
     // transaction.
     //
     // MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine.
-    // Preflight checks the whole sequence, including capacity of the first member, BEFORE
-    // CreateArmy charges AP. Play() reports the REAL AP/resource delta measured on PlayerRoot
-    // so the ledger and refresh trigger remain honest even on an unexpected partial failure.
-    // A fresh empty ArmyData left by CreateArmy after a failed deploy remains reusable.
+    // This existing method owns all V2 preconditions: card, target/roster, AP/resources,
+    // deployment-mode identity and required domain dependencies. It must reject an invalid
+    // sequence BEFORE CreateArmy charges AP, never rely on a refund or a second AI validator.
+    // Play() reports the REAL AP/resource delta measured on PlayerRoot even on unexpected
+    // partial failure. A fresh empty ArmyData left after such a failure remains reusable.
     // ===========================================================================================
     public enum DeploymentKind
     {
