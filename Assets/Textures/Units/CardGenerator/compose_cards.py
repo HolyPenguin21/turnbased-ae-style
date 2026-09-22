@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 try:
-    from PIL import Image, ImageChops, ImageFilter, ImageOps
+    from PIL import Image, ImageChops, ImageOps
 except ImportError:
     print(
         "Pillow is required.\n"
@@ -29,15 +29,15 @@ OUTPUT_SIZE = (768, 1120)
 ART_CENTER_X = 0.50
 ART_CENTER_Y = 0.48
 
-# Feather only the transferred artwork on left/right/top edges.
-SIDE_FEATHER_PX = 38
-TOP_FEATHER_PX = 27
-
 # Keep the original base border above the artwork so the art can never
 # visually cover/eat the frame. Use the same overlay width on every side.
 BORDER_OVERLAY_TOP_PX = 12
 BORDER_OVERLAY_SIDE_PX = 12
 BORDER_OVERLAY_BOTTOM_PX = 12
+
+# Immediately inside the 12 px base overlay, fade the artwork from alpha 0
+# to full opacity over 5 px on all four sides.
+IMAGE_EDGE_FEATHER_PX = 5
 
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.
@@ -115,24 +115,56 @@ def make_edge_mask(
     bottom_fade_start_y: int | None = None,
     bottom_fade_end_y: int | None = None,
 ) -> Image.Image:
+    """
+    Build the artwork alpha mask.
+
+    On every outer side:
+      - first 12 px: artwork alpha is 0 (base/overlay only)
+      - next 5 px: artwork fades smoothly from 0 to 255
+      - remaining interior: artwork is fully opaque
+
+    Horizontal and vertical masks are multiplied, which also softens the
+    transition in the four corners instead of creating a hard 90-degree join.
+
+    An optional additional bottom fade is multiplied on top for Stats/Full
+    card-specific composition.
+    """
     width, height = size
 
-    # Feather only left/right/top. Extend the white interior below the canvas
-    # so Full output remains opaque all the way to the bottom.
-    radius = max(SIDE_FEATHER_PX, TOP_FEATHER_PX)
-    edge_mask = Image.new("L", size, 0)
-    interior = Image.new(
-        "L",
-        (
-            max(1, width - SIDE_FEATHER_PX * 2),
-            height + radius * 2,
-        ),
-        255,
-    )
-    edge_mask.paste(interior, (SIDE_FEATHER_PX, TOP_FEATHER_PX))
-    edge_mask = edge_mask.filter(ImageFilter.GaussianBlur(radius=radius / 2))
+    def side_alpha(distance: int, overlay_px: int) -> int:
+        if distance < overlay_px:
+            return 0
 
-    # Full cards have no bottom fade.
+        fade_end = overlay_px + IMAGE_EDGE_FEATHER_PX
+        if distance >= fade_end:
+            return 255
+
+        t = (distance - overlay_px) / IMAGE_EDGE_FEATHER_PX
+        smooth = t * t * (3.0 - 2.0 * t)
+        return round(255 * smooth)
+
+    horizontal_values: list[int] = []
+    for x in range(width):
+        left = side_alpha(x, BORDER_OVERLAY_SIDE_PX)
+        right = side_alpha(width - 1 - x, BORDER_OVERLAY_SIDE_PX)
+        horizontal_values.append(round(left * right / 255))
+
+    vertical_values: list[int] = []
+    for y in range(height):
+        top = side_alpha(y, BORDER_OVERLAY_TOP_PX)
+        bottom = side_alpha(height - 1 - y, BORDER_OVERLAY_BOTTOM_PX)
+        vertical_values.append(round(top * bottom / 255))
+
+    horizontal = Image.new("L", (width, 1), 0)
+    horizontal.putdata(horizontal_values)
+    horizontal = horizontal.resize(size, Image.Resampling.NEAREST)
+
+    vertical_edges = Image.new("L", (1, height), 0)
+    vertical_edges.putdata(vertical_values)
+    vertical_edges = vertical_edges.resize(size, Image.Resampling.NEAREST)
+
+    edge_mask = ImageChops.multiply(horizontal, vertical_edges)
+
     if bottom_fade_start_y is None and bottom_fade_end_y is None:
         return edge_mask
 
@@ -146,9 +178,7 @@ def make_edge_mask(
     if fade_end <= fade_start:
         raise RuntimeError("bottom fade end must be greater than start.")
 
-    vertical = Image.new("L", (1, height), 255)
-    values: list[int] = []
-
+    bottom_values: list[int] = []
     for y in range(height):
         if y <= fade_start:
             value = 255
@@ -156,15 +186,15 @@ def make_edge_mask(
             value = 0
         else:
             t = (y - fade_start) / (fade_end - fade_start)
-            # Smoothstep gives a gradual alpha falloff without a visible band.
             smooth = t * t * (3.0 - 2.0 * t)
             value = round(255 * (1.0 - smooth))
-        values.append(value)
+        bottom_values.append(value)
 
-    vertical.putdata(values)
-    vertical = vertical.resize(size, Image.Resampling.BILINEAR)
+    bottom_fade = Image.new("L", (1, height), 255)
+    bottom_fade.putdata(bottom_values)
+    bottom_fade = bottom_fade.resize(size, Image.Resampling.NEAREST)
 
-    return ImageChops.multiply(edge_mask, vertical)
+    return ImageChops.multiply(edge_mask, bottom_fade)
 
 
 def fit_art(art_path: Path) -> Image.Image:
@@ -307,6 +337,7 @@ def main() -> int:
         f"side={BORDER_OVERLAY_SIDE_PX}px, "
         f"bottom={BORDER_OVERLAY_BOTTOM_PX}px"
     )
+    print(f"Image edge : alpha 0 -> 255 over {IMAGE_EDGE_FEATHER_PX}px")
     print(f"Units      : {len(art_paths)}")
     print()
 
