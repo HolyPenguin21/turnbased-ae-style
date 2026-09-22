@@ -41,9 +41,7 @@ namespace Game.Ai.V2
             }
 
             AiMapMemory.KnownBuilding? b = AiMapMemory.KnownBuildingAt(player, hex);
-            if (b.HasValue && b.Value.Owner != null && b.Value.Owner != player
-                && (requiresStealth || !VisionSystem.IsVisible(player, hex)
-                    || !AiMapMemory.KnownUndefendedForeignStructureAt(player, hex)))
+            if (requiresStealth && b.HasValue && b.Value.Owner != null && b.Value.Owner != player)
                 return true;
 
             return false;
