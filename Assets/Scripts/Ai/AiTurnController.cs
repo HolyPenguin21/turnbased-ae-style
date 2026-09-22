@@ -168,6 +168,22 @@ namespace Game.Ai
         public bool ReachedDestination;      // the mover ended on decision.TargetHex
         public HexCoord EndHex;              // where the mover PHYSICALLY stopped — captured before any battle, survives the mover's death
         public bool EnteredStealthThisStep;  // a solo Recce slipped into stealth before this move (V2 step-7 "made progress" signal)
+        private readonly HashSet<int> _destroyedInOwnBattle = new HashSet<int>();
+
+        // Capture the terminal result of this precise encounter. No ArmyRegistry lookup:
+        // neither a third-party kill elsewhere nor an unrelated chained battle can
+        // manufacture proof that a particular opponent died in OUR battle.
+        public void RecordResolvedEncounter(int movingArmyId, ArmyData attacker, ArmyData defender)
+        {
+            if (attacker == null || defender == null) return;
+            if (attacker.Id == movingArmyId && defender.Members.Count == 0)
+                _destroyedInOwnBattle.Add(defender.Id);
+            if (defender.Id == movingArmyId && attacker.Members.Count == 0)
+                _destroyedInOwnBattle.Add(attacker.Id);
+        }
+
+        public bool WasDestroyedInOwnBattle(int enemyArmyId) =>
+            _destroyedInOwnBattle.Contains(enemyArmyId);
     }
 
     // Post-ARCH-01: the AI turn entry point plus the shared execution primitives Strategy V2
@@ -262,6 +278,19 @@ namespace Game.Ai
                     + "reason=known_foreign_structure_without_attack_owner");
                 yield break;
             }
+            // Subscribe only after this move passes its legality gate. Unsubscribe on
+            // normal completion, early coroutine disposal and exception alike. The
+            // gameplay BattleScreenUI is the only authority for participant outcomes.
+            BattleScreenUI battleScreenForTrace = trace != null ? ctx.HexSelection?.BattleScreen : null;
+            Action<ArmyData, ArmyData> observeEncounter = null;
+            if (battleScreenForTrace != null)
+            {
+                observeEncounter = (attacker, defender) =>
+                    trace.RecordResolvedEncounter(army.Id, attacker, defender);
+                battleScreenForTrace.EncounterResolved += observeEncounter;
+            }
+            try
+            {
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" (movement={army.CurrentMovement}/{army.MaxMovement}) "
                 + $"from ({army.Hex.Q},{army.Hex.R}) heads to ({decision.TargetHex.Q},{decision.TargetHex.R}) — {decision.Reason}.");
 
@@ -431,6 +460,12 @@ namespace Game.Ai
                 Game.Ai.V2.ScoutTrailRegistry.RecordStep(player, army.Id, before, army.Hex);
 
             yield return WaitStep(ctx);
+            }
+            finally
+            {
+                if (observeEncounter != null)
+                    battleScreenForTrace.EncounterResolved -= observeEncounter;
+            }
         }
 
         // Internal, not private — every Level-1 category planner needs the garrison hex/army as

@@ -8,7 +8,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // ARCH-02 §16/§47 — the ONE owner of "can this materialization / army operationally satisfy a
-    // capability demand" for FieldCombatPower / Hero / ScoutCapability.
+    // capability demand" for FieldCombatPower / Hero / ScoutCapability / CollectorCapability.
     // Before ARCH-02 the same switch lived three times: MaterializationCandidateBuilder
     // (CanDeliverDemandOperationally, plan-level, unclassified => deliverable), StrategicManager
     // (CanDeliverResidualOperationally, plan-level, unclassified => NOT deliverable) and
@@ -77,6 +77,45 @@ namespace Game.Ai.V2
             {
                 case CapabilityKind.ScoutCapability:
                     return DeliveryAssessment.Ok;
+                case CapabilityKind.CollectorCapability:
+                {
+                    // A collector is a separate solo field army. Reuse the SAME SafeStepPathing
+                    // oracle and fog-honest threat witness as Economy's real mobile-collection
+                    // admission BEFORE paying for a new army. Its later task/actor selection still
+                    // belongs exclusively to WorldAnalysis.Economy + EconomyMissionPlanner.
+                    if (!demand.EconomyResourceType.HasValue || !demand.TargetHex.HasValue)
+                        return DeliveryAssessment.No(DeliveryFailureReason.MissingTarget);
+                    if (p.Deploy.Kind != DeploymentKind.NewArmy
+                        && p.Deploy.Kind != DeploymentKind.ReusableShell)
+                        return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                            p.Deploy.Kind.ToString());
+                    if (snapshot?.Self?.BaseHexes == null
+                        || snapshot.Self.BaseHexes.Count == 0 || player == null || ctx?.Map == null)
+                        return DeliveryAssessment.No(DeliveryFailureReason.MissingWorldContext);
+                    if (WorldAnalysis.KnownHostileAtHex(snapshot, demand.TargetHex.Value))
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_target_occupied");
+                    int moveMax = CapabilityQualityEvaluator.ProjectedMoveMax(p);
+                    if (moveMax <= 0)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_cannot_move");
+                    var route = SafeStepPathing.FindSafePath(ctx.Map, player,
+                        p.Deploy.Hex, demand.TargetHex.Value, moveMax);
+                    if (route == null)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_outbound");
+                    float exposure = WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                        snapshot, route.Hexes).Count > 0 ? 1f : 0f;
+                    if (exposure > AiConfigV2.mobileCollectionMaxThreatExposure)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_route_threat");
+                    if (SafeStepPathing.FindNearestBaseReturnCost(ctx.Map, player,
+                            demand.TargetHex.Value, snapshot.Self.BaseHexes, moveMax)
+                        == int.MaxValue)
+                        return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
+                            "collector_no_safe_return");
+                    return DeliveryAssessment.Ok;
+                }
                 case CapabilityKind.Hero:
                     // Economy does not need a combat-ready hero stack: its canonical builder shape
                     // is AiArmyRoles.IsHeroLed, so a legal field placement may create a solo hero.
@@ -195,6 +234,18 @@ namespace Game.Ai.V2
         {
             if (army == null || demand == null)
                 return false;
+            if (demand.Capability == CapabilityKind.CollectorCapability)
+            {
+                // Collection ability is resource-specific. Reuse Analysis's frozen, effective
+                // CollectionCapacity instead of reading card definitions/abilities a second time.
+                // Target distance is NOT an actor-shape gate: collectors deploy at our Base and
+                // EconomyMissionPlanner owns the subsequent travel and target admission.
+                return demand.RequestingAxis == DesireAxis.Economy
+                    && demand.EconomyResourceType.HasValue
+                    && !army.IsPrison && !army.IsGarrison && !army.IsAir && !army.IsAirfield
+                    && army.MemberCount == 1
+                    && army.CollectionCapacity.Get(demand.EconomyResourceType.Value) > 0f;
+            }
             return IsEconomyHeroDemand(demand)
                 ? army.IsMobileEconomyBuilder
                 : IsArmyOperationalForCapability(army, demand.Capability, demand.RequiredTraits);
@@ -248,4 +299,3 @@ namespace Game.Ai.V2
         }
     }
 }
-

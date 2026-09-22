@@ -1412,6 +1412,14 @@ namespace Game.Ai.V2
 
             if (deferredGarrison != null)
             {
+                // Preflight the canonical Continuity site lease before spending a builder
+                // extraction AP or reserving completion resources for an incompatible project.
+                int candidateBuilder = deferredPlan.Container?.Id ?? -1;
+                if (!MissionContinuityLayer.CanGrantEconomyBuildSite(player, target.TargetHex,
+                        currentIntentKey, candidateBuilder, target.BuildCard))
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        "economy build site already leased by another active project"));
+
                 // 2026-09-14 review round 10 (P1) — reserve the physical build-stage resources NOW,
                 // at the moment this mission commits to being deferred, not only after it
                 // materializes in Execution. Until this round `ClaimedPhysical`/`ReservationOwner`
@@ -1633,6 +1641,11 @@ namespace Game.Ai.V2
             if (!directPrep.Feasible)
                 return ProvisioningResult.Fail(directPrep.Failure);
 
+            if (!MissionContinuityLayer.CanGrantEconomyBuildSite(player, target.TargetHex,
+                    currentIntentKey, hero.Id, target.BuildCard))
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    "economy build site already leased by another active project"));
+
             // Reserve the physical stage cost NOW (same cross-mission-visibility reasoning as the
             // deferred garrison-extraction branch above) — whether or not composition/donor work is
             // still pending, this mission has committed to this build.
@@ -1640,6 +1653,7 @@ namespace Game.Ai.V2
                 InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
                     directPrep.OwnerKey, target.BuildResourceCost, target.BuildApCost);
             else
+            {
                 // AI economy commitment/recovery audit (2026-09-15) — this hero cannot finish the
                 // build this turn, so it is genuinely a multi-turn delivery starting or continuing.
                 // Give Continuity a durable identity for it (mirrors the Hero-materialization path
@@ -1648,7 +1662,7 @@ namespace Game.Ai.V2
                 // without this, InfrastructureFulfillment.ShouldReserveDeferredEconomyResources'
                 // one-turn horizon would have to (and used to) protect unconditionally on every turn
                 // of the walk, freezing resources far earlier than necessary on the very first turn.
-                MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
+                MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,
                     Capability = target.Kind == EconomyTaskKind.FoundBase
@@ -1661,6 +1675,10 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = target.MinimumFollowupAp,
                     EconomySiteValue = target.BuildValue,
                 }, hero.Id, ctx.TurnNumber);
+                if (delivery == null)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        "economy build site lease changed during provisioning"));
+            }
 
             // "Pending" means Execution still has real work to do before movement: an actual
             // composition change, OR a donor loan that must be suspended (bookkeeping only, but

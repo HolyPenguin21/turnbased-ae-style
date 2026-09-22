@@ -95,31 +95,21 @@ namespace Game.Ai.V2
                 return routes;
             }
             var extraction = new List<EconomyExtractionOpportunity>();
+            var collectorSites = new List<EconomyExtractionOpportunity>();
             foreach ((HexCoord Hex, ResourceType Type, int Yield) site
                      in KnownExtractionYields(snap))
             {
                 ResourceType resourceType = site.Type;
                 int effectiveYield = site.Yield;
-
                 if (KnownHostileAtHex(snap, site.Hex))
                     continue;
 
-                int currentCollection = 0;
-                if (knownBuildings.TryGetValue(site.Hex, out AiMapMemory.KnownBuilding building))
-                {
-                    // BuildingPlayExecutor can only add a Facility to our own building, and only
-                    // while an unlocked slot was last observed free. A slot being free does not
-                    // mean this resource type is still buildable there: HexSelectionController.
-                    // Factory.TryBuildExtractionFacility separately refuses a second Facility
-                    // with the same collect ability on one building — mirror that same check here
-                    // (KnownBuilding.HasFacilityWithAbility, same method the live building uses)
-                    // so this candidate list never proposes a site the executor will only reject.
-                    if (building.Owner != player || building.FreeFacilitySlots <= 0
-                        || building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(resourceType)))
-                        continue;
-                    currentCollection = building.CollectedAmount(resourceType);
-                }
-
+                bool hasBuilding = knownBuildings.TryGetValue(site.Hex,
+                    out AiMapMemory.KnownBuilding building);
+                // Real income consumes the building's portion FIRST, even if its owner is
+                // another player. An extraction Facility can found a NEW resource site;
+                // only EXISTING hosts require our ownership/free slots. A field Collector is independent.
+                int currentCollection = hasBuilding ? building.CollectedAmount(resourceType) : 0;
                 int ownArmyCollectors = Mathf.RoundToInt((snap.Self.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
                     .Where(a => a != null && a.Hex.Equals(site.Hex))
@@ -127,10 +117,27 @@ namespace Game.Ai.V2
                 bool armiesCanCollect = !(snap.Known?.EnemySightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                     .Any(enemy => enemy.Hex.Equals(site.Hex));
-                int marginal = IncomeProjection.MarginalOwnerCollectionAtHex(
-                    effectiveYield, currentCollection, 1,
-                    ownArmyCollectors, armiesCanCollect);
-                if (marginal <= 0)
+                (int facilityGain, int collectorGain) = MarginalSiteCollectionGains(
+                    effectiveYield, currentCollection, ownArmyCollectors, armiesCanCollect);
+
+                if (collectorGain > 0)
+                    collectorSites.Add(new EconomyExtractionOpportunity
+                    {
+                        Hex = site.Hex,
+                        ResourceType = resourceType,
+                        EffectiveYield = effectiveYield,
+                        CurrentBuildingCollection = currentCollection,
+                        MarginalIncomeGain = collectorGain,
+                        BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
+                        BuilderRoutes = System.Array.Empty<EconomyBuilderRouteSnapshot>(),
+                    });
+
+                // HexSelectionController.TryBuildExtractionFacility may found a NEW resource site;
+                // only EXISTING buildings require our ownership, free Facility slots,
+                // and no duplicate collection facility. In particular,
+                // none of those rules may filter the independent mobile collector list.
+                if (facilityGain <= 0 || !IsExtractionHostStructurallyLegal(
+                        hasBuilding, building, player, resourceType))
                     continue;
                 extraction.Add(new EconomyExtractionOpportunity
                 {
@@ -138,11 +145,12 @@ namespace Game.Ai.V2
                     ResourceType = resourceType,
                     EffectiveYield = effectiveYield,
                     CurrentBuildingCollection = currentCollection,
-                    MarginalIncomeGain = marginal,
+                    MarginalIncomeGain = facilityGain,
                     BaseNetworkSynergy = EconomyBaseNetworkSynergy(snap, site.Hex),
                     BuilderRoutes = BuilderRoutesFor(site.Hex),
                 });
             }
+            eco.CollectorSites = collectorSites;
             eco.ExtractionOpportunities = extraction;
 
             var mobileCollection = new List<MobileCollectionOpportunity>();
@@ -150,31 +158,27 @@ namespace Game.Ai.V2
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.PreferredMoverArmyId.HasValue)
                 .Select(i => i.PreferredMoverArmyId.Value));
-            foreach ((HexCoord Hex, ResourceType Type, int Yield) site in KnownExtractionYields(snap))
+            foreach (EconomyExtractionOpportunity site in collectorSites)
             {
-                if (!eco.IsIncomeDeficient(snap.Self, site.Type)
-                    || KnownHostileAtHex(snap, site.Hex))
-                    continue;
-
-                int buildingCollection = 0;
-                if (knownBuildings.TryGetValue(site.Hex, out AiMapMemory.KnownBuilding known)
-                    && known.Owner == player)
-                    buildingCollection = known.CollectedAmount(site.Type);
+                // Demand admits a new collector for USEFUL income, not strictly for a
+                // rate below IncomeTarget. Apply that same UsefulMarginalIncomeGain test
+                // below to existing free actors, so a newly delivered collector gets work.
+                int buildingCollection = site.CurrentBuildingCollection;
                 int armiesAlreadyThere = Mathf.RoundToInt((snap.Self.Armies
                         ?? System.Array.Empty<ArmySnapshot>())
                     .Where(a => a != null && a.Hex.Equals(site.Hex))
-                    .Sum(a => a.CollectionCapacity.Get(site.Type)));
+                    .Sum(a => a.CollectionCapacity.Get(site.ResourceType)));
 
-                EconomyResourceStanding standing = standings[site.Type];
+                EconomyResourceStanding standing = standings[site.ResourceType];
                 float priority = TaskScoreEvaluator.ResourcePriority(standing,
-                    ResourceStarvationRegistry.Pressure(player, site.Type));
+                    ResourceStarvationRegistry.Pressure(player, site.ResourceType));
                 MobileCollectionOpportunity? best = null;
                 foreach (ArmySnapshot collector in (snap.Self.Armies
                              ?? System.Array.Empty<ArmySnapshot>()).Where(a => a != null
                              && !a.IsAir && !a.IsAirfield && !a.IsGarrison && !a.IsPrison
                              && !committedCollectors.Contains(a.ArmyId)
                              && !a.Hex.Equals(site.Hex)
-                             && a.CollectionCapacity.Get(site.Type) > 0f)
+                             && a.CollectionCapacity.Get(site.ResourceType) > 0f)
                          .OrderBy(a => a.ArmyId))
                 {
                     HexPath route = SafeStepPathing.FindSafePath(ctx.Map, player,
@@ -203,9 +207,12 @@ namespace Game.Ai.V2
                     if (!safeReturn.HasValue || returnCost == int.MaxValue)
                         continue;
 
-                    int capacity = Mathf.RoundToInt(collector.CollectionCapacity.Get(site.Type));
-                    int marginal = IncomeProjection.MarginalOwnerCollectionAtHex(
-                        site.Yield, buildingCollection, capacity, armiesAlreadyThere, true);
+                    int capacity = Mathf.RoundToInt(collector.CollectionCapacity.Get(site.ResourceType));
+                    int marginal = Mathf.Max(0,
+                        IncomeProjection.OwnerCollectionAtHex(site.EffectiveYield,
+                            buildingCollection, armiesAlreadyThere + capacity, true)
+                        - IncomeProjection.OwnerCollectionAtHex(site.EffectiveYield,
+                            buildingCollection, armiesAlreadyThere, true));
                     if (marginal < AiConfigV2.mobileCollectionMinMarginalYield)
                         continue;
                     float usefulGain = standing.UsefulMarginalIncomeGain(marginal);
@@ -244,7 +251,7 @@ namespace Game.Ai.V2
                     float score = taskScore.Value;
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
-                    var candidate = new MobileCollectionOpportunity(site.Hex, site.Type,
+                    var candidate = new MobileCollectionOpportunity(site.Hex, site.ResourceType,
                         marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
                         taskScore, safeReturn.Value);
                     if (!best.HasValue
@@ -370,10 +377,42 @@ namespace Game.Ai.V2
             bool baseActionable = baseOpportunities.Count > 0 && baseCards.Count > 0;
             bool extractionActionable = extraction.Any(site =>
                 site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon);
+            // This is the same structural-opportunity interpretation as extractionActionable:
+            // Phase A/Materialization remain the sole owners of physical card and route admission.
+            bool collectorActionable = collectorSites.Any(site =>
+                standings[site.ResourceType].UsefulMarginalIncomeGain(site.MarginalIncomeGain)
+                    > AiConfigV2.allocatorSliceEpsilon);
             eco.HasActionableOpportunity = extractionActionable || baseActionable
-                || mobileCollection.Count > 0;
+                || collectorActionable || mobileCollection.Count > 0;
 
             return eco;
+        }
+
+        // Mirrors the HOST constraints in the live TryBuildExtractionFacility primitive.
+        // An empty resource hex can FOUND a site; only a pre-existing building
+        // needs matching owner, one free slot, and no duplicate collection.
+        internal static bool IsExtractionHostStructurallyLegal(
+            bool hasBuilding, AiMapMemory.KnownBuilding building,
+            PlayerSetupData player, ResourceType type) =>
+            !hasBuilding || (building.Owner == player && building.FreeFacilitySlots > 0
+                && !building.HasFacilityWithAbility(UnitAbilities.CollectAbilityFor(type)));
+
+        // The only Analysis-level projection of the TWO different additions at a site.
+        // IncomeProjection owns all resource physics; this preserves a Facility's net
+        // owner gain when an army would merely lose the same slice, independently of
+        // the gain from deploying an additional mobile collector onto the remainder.
+        internal static (int FacilityGain, int CollectorGain) MarginalSiteCollectionGains(
+            int effectiveYield, int buildingCollection, int ownArmyCollectors,
+            bool armiesCanCollect)
+        {
+            int before = IncomeProjection.OwnerCollectionAtHex(effectiveYield,
+                buildingCollection, ownArmyCollectors, armiesCanCollect);
+            int facility = IncomeProjection.MarginalOwnerCollectionAtHex(effectiveYield,
+                buildingCollection, 1, ownArmyCollectors, armiesCanCollect);
+            int collector = Mathf.Max(0, IncomeProjection.OwnerCollectionAtHex(
+                effectiveYield, buildingCollection, ownArmyCollectors + 1,
+                armiesCanCollect) - before);
+            return (facility, collector);
         }
 
         // AiMapMemory owns the complete last-observed resource line. Economy enumerates that
