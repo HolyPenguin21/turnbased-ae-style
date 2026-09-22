@@ -132,13 +132,17 @@ namespace Game.Ai.V2
             int apStart = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
-            void StampResources()
+            // A standalone CardPlayExecutor.Play already stamps a deployment (including a partial
+            // failed deploy that changed AP/resources or created an army). An enclosing chain must
+            // stamp only when no child has done so, while still stamping generate/attach-only
+            // partial failures. Both execution paths report the same current version.
+            void StampResources(bool childAlreadyStamped = false)
             {
                 int dh = h0 - root.GetResource(ResourceType.Human), de = e0 - root.GetResource(ResourceType.Energy),
                     dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
                 res.ResourcesSpent = (dh | de | dm | dt) == 0
                     ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
-                if (res.StateChanged) V2StateVersion.Bump();
+                if (res.StateChanged && !childAlreadyStamped) V2StateVersion.Bump();
                 res.StateVersionAfter = V2StateVersion.Current;
             }
 
@@ -219,10 +223,9 @@ namespace Game.Ai.V2
             res.ApSpent = apStart - root.ActionPoints;
             if (play.StateChanged)
                 res.StateChanged = true;
-            // Stamp only after the deploy outcome has contributed to StateChanged. The old order
-            // missed the V2 state-version bump for a successful direct deploy with no preceding
-            // generation or attachment.
-            StampResources();
+            // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
+            // twice for the same chain; generation/attachment-only failures still bump above.
+            StampResources(childAlreadyStamped: play.StateChanged);
             res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)
