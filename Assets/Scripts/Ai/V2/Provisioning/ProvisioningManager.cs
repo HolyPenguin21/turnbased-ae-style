@@ -2577,11 +2577,22 @@ namespace Game.Ai.V2
                 || host.CurrentMovement <= 0 || session.ClaimedArmyIds.Contains(host.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"active defence actor #{actorId} is no longer available"));
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, host, sighting.Value.Hex) == null)
+            // FIX-02 — every physical-executability check below is asked about `projectedUnits`,
+            // the roster this plan will actually march, and all of them still run BEFORE the first
+            // ArmyActions.TransferMember. The old code asked the UNTOUCHED host whether it could
+            // afford the activation and reach the target, then transferred bodies in — the exact
+            // shape AI-01 already removed from the Raid lane, where the assembled force turned out
+            // to cost more AP than was ever funded only after the world had been mutated.
+            // Reachability too: a recruit slower than the host lowers the whole formation's shared
+            // movement, so the first step is re-asked for the projected roster.
+            List<UnitData> projectedUnits = GroundCombatAssemblyPlanner.ProjectedRoster(host, plan);
+            if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, sighting.Value.Hex,
+                    projectedUnits) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    $"no safe step toward active defence enemy #{target.EnemyArmyId}"));
+                    $"no safe step toward active defence enemy #{target.EnemyArmyId}"
+                    + (plan.NeedsAssembly ? " for the projected assembled roster" : "")));
 
-            int activationAp = host.HasActivatedThisTurn ? 0 : host.ActivationApCost;
+            int activationAp = host.ProjectedActivationApCost(projectedUnits);
             if (activationAp > funded.Tentative.Ap + AiConfigV2.allocatorSliceEpsilon)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
                     $"active defence actor #{actorId} AP envelope is stale"));

@@ -371,10 +371,20 @@ namespace Game.Ai.V2
                     continue;
                 }
                 int distance = HexGridMath.Distance(actor.Hex, objective.Target.LastKnownHex);
+                // FIX-02 — price and time the force this plan will ACTUALLY field, exactly as the
+                // Raid lane already does (AI-01). ActiveDefence shares GroundCombatAssemblyPlanner
+                // with Raid, so its plan may recruit same-hex bodies too; costing the untouched
+                // host systematically underprices the intercept (the AP the allocator then funds)
+                // and over-states its speed (a slower recruit drags the whole formation down).
+                // Null means the projection does not resolve live — fall back to the snapshot
+                // figure rather than invent a second cost model.
+                int projectedMove = GroundCombatAssemblyPlanner.ProjectedMaxMovement(snap, plan)
+                    ?? actor.MaxMovement;
                 int eta = AiV2Util.CeilDiv(distance,
-                    UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, actor.MaxMovement));
+                    UnityEngine.Mathf.Max(AiConfigV2.etaFallbackMoveBudget, projectedMove));
                 TaskScore actorScore = ActiveDefenceObjectiveEvaluator.WithResponse(objective,
-                    actor, plan.ProjectedWinChance, eta, moverOpportunityCost);
+                    actor, plan.ProjectedWinChance, eta, moverOpportunityCost,
+                    GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan));
                 ActiveDefenceMissionTarget target = objective.Target;
                 target.PrimaryArmyId = actor.ArmyId;
                 target.ProjectedWinChance = plan.ProjectedWinChance;
@@ -388,7 +398,9 @@ namespace Game.Ai.V2
                     ?? snap.Self.BaseHexes.OrderBy(h => HexGridMath.Distance(actor.Hex, h))
                         .ThenBy(h => h.Q).ThenBy(h => h.R)
                         .Select(h => (HexCoord?)h).FirstOrDefault();
-                float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+                float ap = actor.HasActivatedThisTurn ? 0f
+                    : GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan)
+                        ?? actor.ActivationApCost;
                 var proposal = new MissionProposal
                 {
                     Kind = MissionKind.ActiveDefence,
