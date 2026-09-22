@@ -34,11 +34,10 @@ SIDE_FEATHER_PX = 38
 TOP_FEATHER_PX = 27
 
 # Keep the original base border above the artwork so the art can never
-# visually cover/eat the frame. The lower decorative edge is substantially
-# taller than the top/sides, so it needs a thicker protective overlay.
+# visually cover/eat the frame. Use the same overlay width on every side.
 BORDER_OVERLAY_TOP_PX = 12
 BORDER_OVERLAY_SIDE_PX = 12
-BORDER_OVERLAY_BOTTOM_PX = 42
+BORDER_OVERLAY_BOTTOM_PX = 12
 
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.
@@ -191,10 +190,8 @@ def make_border_overlay(base: Image.Image) -> Image.Image:
     """
     Extract a protective decorative frame overlay from the base.
 
-    The bottom overlay is intentionally thicker than the top/sides because
-    the lower base decoration extends farther into the card. Re-applying that
-    full decorative band above the artwork prevents the bottom edge from
-    looking visually eaten.
+    Re-apply the same 12 px decorative frame band on every side so the
+    artwork cannot cover the original card border.
     """
     width, height = base.size
     mask = Image.new("L", (width, height), 0)
