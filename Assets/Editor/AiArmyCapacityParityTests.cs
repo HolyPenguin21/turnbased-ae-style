@@ -1,11 +1,15 @@
 #if UNITY_INCLUDE_TESTS
 using System;
 using System.Reflection;
+using Game.Ai;
 using Game.Ai.V2;
 using Game.Cards;
+using Game.HexGrid;
 using Game.Map;
+using Game.Players;
 using Game.Units;
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Game.EditorTests
 {
@@ -74,6 +78,48 @@ namespace Game.EditorTests
                 "Planner must reject the hero that the live ArmyActions deployment cannot fit.");
             Assert.That((bool)canAdd.Invoke(state, new object[] { one }), Is.True,
                 "Valid one-body hero deployments must remain admissible.");
+        }
+
+        [Test]
+        public void FreshArmyPreflightRejectsZeroCommandBeforeCreateArmyCanSpendAp()
+        {
+            var player = new PlayerSetupData();
+            var hex = new HexCoord(82, -14);
+            var root = PlayerRoot.Create(player, "capacity preflight test");
+            try
+            {
+                root.ActionPoints = 10;
+                var building = new BuildingData { Owner = player, Hex = hex };
+                building.Abilities.Add(UnitAbilities.Barracks);
+                BuildingRegistry.Register(hex, building);
+                var definition = new CardDefinition
+                {
+                    cardType = CardType.Hero,
+                    commandRating = 0,
+                    requiredBuildingAbility = UnitAbilities.Barracks,
+                };
+                var card = new CardData(definition);
+                var hand = new AiHandData(null, player.Faction, 0);
+                hand.AddCard(card);
+                var plan = CardPlayPlan.NewArmyAt(card, hex);
+
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, new AiTurnContext(),
+                    plan, out string failure), Is.False);
+                Assert.That(failure, Does.Contain("first card would not fit"));
+                Assert.That(root.ActionPoints, Is.EqualTo(10),
+                    "A rejected first Hero must not spend the 2 AP for CreateArmy.");
+                Assert.That(hand.Hand, Does.Contain(card));
+
+                definition.commandRating = 1;
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, new AiTurnContext(),
+                    plan, out string validReason), Is.True, validReason);
+                Assert.That(root.ActionPoints, Is.EqualTo(10));
+            }
+            finally
+            {
+                BuildingRegistry.Clear();
+                UnityEngine.Object.DestroyImmediate(root.gameObject);
+            }
         }
     }
 }
