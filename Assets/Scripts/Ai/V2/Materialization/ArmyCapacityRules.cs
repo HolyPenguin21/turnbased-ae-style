@@ -8,7 +8,7 @@ namespace Game.Ai.V2
     //   · an EXISTING hero governs capacity — its CommandRating is already baked into
     //     `nominalCapacity` (the recipient's live/frozen ArmyData.Capacity);
     //   · otherwise the FIRST hero being ADDED governs — capacity becomes its CommandRating,
-    //     a REPLACEMENT of the nominal value, never nominal + 1 and never Math.Max;
+    //     even if that rating is zero; it is a replacement, never a fallback or Math.Max;
     //   · otherwise the nominal value (garrison 4 / field 2, encoded in nominalCapacity).
     internal static class ArmyCapacityRules
     {
@@ -17,7 +17,7 @@ namespace Game.Ai.V2
         {
             if (hasExistingHero || addedHeroCount <= 0)
                 return nominalCapacity;
-            return firstAddedHeroCommandRating > 0 ? firstAddedHeroCommandRating : nominalCapacity;
+            return firstAddedHeroCommandRating;
         }
 
         internal static bool RosterFits(int nominalCapacity, bool hasExistingHero,
