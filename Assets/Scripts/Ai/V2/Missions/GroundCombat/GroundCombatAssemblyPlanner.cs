@@ -165,6 +165,44 @@ namespace Game.Ai.V2
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
         }
 
+        // AI-01 — the roster this plan would ACTUALLY produce: the live host's own members plus
+        // every body the plan promises to transfer in. This is the one place that answers
+        // "what will the assembled force look like", so cost/movement/AP pricing in Missions and
+        // the pre-mutation re-check in Provisioning cannot drift apart into two projections.
+        public static List<UnitData> ProjectedRoster(ArmyData host, GroundCombatAssemblyPlan plan)
+        {
+            var roster = new List<UnitData>();
+            if (host != null)
+                roster.AddRange(host.Members);
+            if (plan != null && plan.NeedsAssembly)
+                foreach (GroundCombatAssemblyTransfer t in plan.Transfers)
+                    if (t?.Unit != null && !roster.Contains(t.Unit))
+                        roster.Add(t.Unit);
+            return roster;
+        }
+
+        // The FULL activation AP of the roster this plan would produce, priced by the canonical
+        // game rule (ArmyData.ComputeActivationApCost). Deliberately NOT zeroed for an
+        // already-activated host: whether this turn's charge is waived stays RaidCostModel's
+        // current-turn-vs-recurring decision, which already owns that split. Null when the plan is
+        // infeasible or its host no longer resolves live — callers then fall back to their
+        // existing snapshot-based figure rather than inventing a second cost model.
+        public static int? ProjectedActivationApCost(WorldSnapshot snap, GroundCombatAssemblyPlan plan)
+        {
+            if (snap?.Self?.Armies == null || plan == null || !plan.Feasible)
+                return null;
+            ArmySnapshot hostSnap = snap.Self.Armies.FirstOrDefault(
+                a => a != null && a.ArmyId == plan.BaseArmyId);
+            PlayerSetupData owner = hostSnap?.Owner;
+            if (owner == null)
+                return null;
+            ArmyData host = ArmyRegistry.AllForOwner(owner)
+                .FirstOrDefault(a => a != null && a.Id == plan.BaseArmyId);
+            if (host == null || host.Members.Count == 0)
+                return null;
+            return ArmyData.ComputeActivationApCost(ProjectedRoster(host, plan));
+        }
+
         // AGG-RAID P0#1 — reinforcement support-actor candidates. An EXISTING free ground-combat
         // army (already on the map, needing no card play / materialization) qualifies as a
         // Reinforcement support actor when merging its roster into the primary's would improve the

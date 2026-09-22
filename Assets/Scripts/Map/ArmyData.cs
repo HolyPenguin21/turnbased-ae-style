@@ -152,7 +152,31 @@ namespace Game.Map
         // How much AP it costs to activate this army for its first move order of the turn —
         // the sum of every member's own ActivationApCost (a bigger army costs more to get
         // moving as a whole, not just as much as its single heaviest member).
-        public int ActivationApCost => Members.Count > 0 ? Members.Sum(m => m.ActivationApCost) : 0;
+        public int ActivationApCost => ComputeActivationApCost(Members);
+
+        // The SAME game rule as ActivationApCost, expressed as a pure function of a (candidate)
+        // roster rather than always reading this instance's own Members — exactly the shape
+        // ComputeCapacity already has, and for the same reason: AI planning has to price the
+        // roster an assembly WOULD produce (host members + every body about to be transferred in)
+        // before actually committing to the transfers. Pricing the untouched host instead
+        // systematically underprices an assembled force (AI-01: a raid funded 1 AP that really
+        // cost 4 once three bodies had joined the host).
+        public static int ComputeActivationApCost(IEnumerable<UnitData> members)
+        {
+            if (members == null) return 0;
+            int total = 0;
+            foreach (UnitData member in members)
+                if (member != null) total += member.ActivationApCost;
+            return total;
+        }
+
+        // What THIS army would really be charged for its first move order of the turn if its
+        // roster were `projectedMembers`. Activation semantics for an already-activated host are
+        // unchanged: the lump payment was already made, so its first-move charge stays zero and a
+        // transfer's own per-unit activation share (see RequiresActivationCharge) is a separate
+        // cost this deliberately does not fold in.
+        public int ProjectedActivationApCost(IEnumerable<UnitData> projectedMembers)
+            => HasActivatedThisTurn ? 0 : ComputeActivationApCost(projectedMembers);
 
         // Energy is part of activation only for a real airborne stack. Keeping it on ArmyData
         // makes the move preview, move order and future AI use the same amount.
@@ -164,12 +188,31 @@ namespace Game.Map
         // least left (see ArmyController.MoveRoutine); Max is the same rule applied to MoveMax,
         // i.e. the army's per-turn movement budget before anything's been spent. Both 0 for an
         // empty army rather than throwing on Members[0].
-        public int CurrentMovement => Members.Count > 0
-            ? Members.Min(AviationRules.EffectiveMoveCurrent) : 0;
+        public int CurrentMovement => ComputeCurrentMovement(Members);
         // The fuel penalty reduces this turn's remaining MP only. Keep the printed maximum
         // unmodified so UI correctly reads, for example, 5/10 rather than 5/5.
-        public int MaxMovement => Members.Count > 0
-            ? Members.Min(unit => unit.MoveMax) : 0;
+        public int MaxMovement => ComputeMaxMovement(Members);
+
+        // Same slowest-member rule as the two properties above, as a pure function of a candidate
+        // roster — a planner that projects a transfer has to know that recruiting a slower body
+        // lowers the WHOLE army's movement before it promises a first step (AI-01).
+        public static int ComputeCurrentMovement(IReadOnlyList<UnitData> members)
+        {
+            if (members == null || members.Count == 0) return 0;
+            int min = int.MaxValue;
+            foreach (UnitData member in members)
+                if (member != null) min = System.Math.Min(min, AviationRules.EffectiveMoveCurrent(member));
+            return min == int.MaxValue ? 0 : min;
+        }
+
+        public static int ComputeMaxMovement(IReadOnlyList<UnitData> members)
+        {
+            if (members == null || members.Count == 0) return 0;
+            int min = int.MaxValue;
+            foreach (UnitData member in members)
+                if (member != null) min = System.Math.Min(min, member.MoveMax);
+            return min == int.MaxValue ? 0 : min;
+        }
 
         // Canon capacity rule, computed fresh (never cached) so it's always correct as members
         // come and go: no hero -> 2; garrison without a hero -> a higher default since it's

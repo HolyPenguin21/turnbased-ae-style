@@ -21,10 +21,16 @@ namespace Game.Ai.V2
             // One actor identity supplies the combat projection, price and travel distance.
             // Provisioning remains the authority on whether that actor can execute this turn.
             public readonly int? CostedMover;
+            // AI-01 — the full activation AP of the roster the Assault assembly plan would really
+            // produce (host + planned transfers), carried from ToCandidate's assembly projection
+            // to BuildProposal so the proposal's envelope is priced off the SAME projection the
+            // score was folded from, instead of re-deriving a host-only cost a second time.
+            public readonly int? ProjectedActivationAp;
 
             public RaidCandidate(RaidMissionTarget target, float baseValue, float localAdmissionScore,
                 string explain, bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None,
-                int? preferredMover = null, int? costedMover = null)
+                int? preferredMover = null, int? costedMover = null,
+                int? projectedActivationAp = null)
             {
                 Target = target;
                 BaseValue = baseValue;
@@ -34,6 +40,7 @@ namespace Game.Ai.V2
                 Tier = tier;
                 PreferredMover = preferredMover;
                 CostedMover = costedMover;
+                ProjectedActivationAp = projectedActivationAp;
             }
 
             public RaidCandidate AsIncumbent(CommitmentTier tier, int? preferredMover)
@@ -43,7 +50,7 @@ namespace Game.Ai.V2
                 // cheap army's score but funded the durable primary's more expensive route.
                 return new RaidCandidate(Target, BaseValue, LocalAdmissionScore,
                     Explain + $" [incumbent {tier}; funding protected separately]",
-                    true, tier, preferredMover, CostedMover);
+                    true, tier, preferredMover, CostedMover, ProjectedActivationAp);
             }
         }
 
@@ -628,7 +635,17 @@ namespace Game.Ai.V2
                 target.CanCoverAllDefenders = live.CoversAllDefenders;
             }
 
-            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, target, costedMover);
+            // AI-01 — price the roster the assembly will actually field. Only when the projection's
+            // host IS the actor being costed; otherwise the AP of one army would be attached to
+            // another army's route, the exact confusion RaidCostModel already guards against.
+            int? projectedActivationAp =
+                target.Phase == RaidMissionPhase.Assault && live.Feasible
+                && costedMover.HasValue && live.BaseArmyId == costedMover.Value
+                    ? GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, live)
+                    : null;
+
+            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, target, costedMover,
+                projectedActivationAp);
             MissionRequirements req = estimate.Requirements;
             float currentActivationAp = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
             float recurringActivationAp = UnityEngine.Mathf.Max(0f, estimate.RecurringActivationAp);
@@ -650,7 +667,8 @@ namespace Game.Ai.V2
                 + $"aggRaidPolicy {F(bd.AggRaidOpportunity)} gate {(o.GatePassed ? 1 : 0)}"
                 + $"{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}{(o.NeedsHero ? " NEEDS-HERO" : "")}";
             return new RaidCandidate(target, score.Value, las, explain,
-                costedMover: estimate.PlannedMoverArmyId ?? costedMover);
+                costedMover: estimate.PlannedMoverArmyId ?? costedMover,
+                projectedActivationAp: projectedActivationAp);
         }
 
         private static MissionProposal BuildProposal(WorldSnapshot snap, RaidCandidate c,
@@ -661,7 +679,15 @@ namespace Game.Ai.V2
             if (c.IsIncumbent && c.PreferredMover.HasValue)
                 excluded.Remove(c.PreferredMover.Value);
             int? pricedMover = c.PreferredMover ?? c.CostedMover;
-            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, c.Target, pricedMover);
+            // AI-01 — reuse ToCandidate's assembly projection instead of re-deriving a host-only
+            // cost here; the proposal's envelope and the folded score must describe the same force.
+            // Only valid while the mover priced here is still the one that projection was built on.
+            int? projectedActivationAp = c.ProjectedActivationAp.HasValue
+                && pricedMover.HasValue && c.CostedMover.HasValue
+                && pricedMover.Value == c.CostedMover.Value
+                    ? c.ProjectedActivationAp : null;
+            RaidCostEstimate estimate = RaidCostModel.Estimate(snap, c.Target, pricedMover,
+                projectedActivationAp);
             MissionRequirements req = estimate.Requirements;
             if (c.Target.Phase == RaidMissionPhase.AirSupport)
             {

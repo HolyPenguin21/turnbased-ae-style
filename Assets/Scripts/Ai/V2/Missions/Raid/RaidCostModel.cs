@@ -31,17 +31,25 @@ namespace Game.Ai.V2
     {
         // Compatibility projection for callers that only need the current-turn allocator envelope.
         public static MissionRequirements Build(WorldSnapshot snap, RaidMissionTarget target,
-            int? selectedMoverArmyId = null) =>
-            Estimate(snap, target, selectedMoverArmyId).Requirements;
+            int? selectedMoverArmyId = null, int? projectedRosterActivationAp = null) =>
+            Estimate(snap, target, selectedMoverArmyId, projectedRosterActivationAp).Requirements;
 
+        // `projectedRosterActivationAp` (AI-01) — the full activation AP of the roster
+        // GroundCombatAssemblyPlanner will ACTUALLY produce for an Assault (host members plus every
+        // planned transfer), from the single owner of that projection
+        // (GroundCombatAssemblyPlanner.ProjectedActivationApCost). Without it the estimate priced
+        // the untouched host, so a raid that assembled three extra bodies was funded 1 AP and then
+        // rejected by MissionRevalidator at its real 4 AP. Null keeps the host-only pricing used by
+        // every non-Assault phase, whose cost contracts are unchanged.
         public static RaidCostEstimate Estimate(WorldSnapshot snap, RaidMissionTarget target,
-            int? selectedMoverArmyId = null)
+            int? selectedMoverArmyId = null, int? projectedRosterActivationAp = null)
         {
             float currentTurnActivationAp = AiConfigV2.raidNotionalActivationAp;
             float recurringActivationAp = AiConfigV2.raidNotionalActivationAp;
             bool moverKnown = false;
             int? plannedMoverArmyId = selectedMoverArmyId;
             int eta = Mathf.Max(1, target.EstimatedEta);
+            bool isAssault = target.Phase == RaidMissionPhase.Assault;
             HexCoord destination = target.Phase == RaidMissionPhase.Assault
                 ? target.LastKnownHex : target.DestinationHex;
             // No actor means there is no actor-specific route yet. Keep the physical unit honest:
@@ -78,7 +86,13 @@ namespace Game.Ai.V2
                     plannedMoverArmyId = mover.ArmyId;
                     // The current turn can legitimately be free when this army was already activated.
                     // Future route turns are not free: a fresh turn requires the normal activation AP.
-                    recurringActivationAp = Mathf.Max(0f, mover.ActivationApCost);
+                    // Assault may reinforce the mover before it marches; every body joining it
+                    // carries its own ActivationApCost, so the projected roster — not the host as
+                    // it stands right now — is the honest price of getting this force moving, this
+                    // turn and on every later turn of the route.
+                    bool useProjected = isAssault && projectedRosterActivationAp.HasValue;
+                    recurringActivationAp = Mathf.Max(0f, useProjected
+                        ? projectedRosterActivationAp.Value : mover.ActivationApCost);
                     currentTurnActivationAp = mover.HasActivatedThisTurn ? 0f : recurringActivationAp;
                     distance = HexGridMath.Distance(mover.Hex, destination);
                     // Movement spent earlier THIS turn cannot be spent again. The old full-speed
@@ -91,7 +105,14 @@ namespace Game.Ai.V2
                 }
             }
 
-            float admissionAp = currentTurnActivationAp <= 0f ? 0f : Mathf.Min(currentTurnActivationAp, 1f);
+            // AI-01 — an Assault's minimum is the WHOLE activation charge the executor will be
+            // asked for. The old min(cost, 1) admission floor let a raid be funded 1 AP and only
+            // discover its real 4 AP after the assembly transfers had already happened; the
+            // allocator has to see the true floor before it commits. Non-Assault phases keep the
+            // historical admission floor: their cost contracts are deliberately untouched here.
+            float admissionAp = currentTurnActivationAp <= 0f ? 0f
+                : isAssault ? currentTurnActivationAp
+                : Mathf.Min(currentTurnActivationAp, 1f);
             float combatMin = Mathf.Max(0f, target.TargetPower);
             float combatDesired = combatMin * AiConfigV2.raidCombatPowerMargin;
 
@@ -100,7 +121,10 @@ namespace Game.Ai.V2
                 MoverKnown = moverKnown,
                 ApMinimum = admissionAp,
                 ApDesired = currentTurnActivationAp,
-                ApMaximum = Mathf.Max(currentTurnActivationAp, AiConfigV2.raidActivationApMax),
+                // Never below the minimum: a projected activation dearer than raidActivationApMax
+                // must still present a coherent [min..max] envelope to the allocator.
+                ApMaximum = Mathf.Max(admissionAp,
+                    Mathf.Max(currentTurnActivationAp, AiConfigV2.raidActivationApMax)),
                 RequiresArmy = true,
                 // Hero is a possible way to satisfy a combat-capability shortage, never a Raid
                 // prerequisite. GroundCombatAssemblyPlanner/WorthIt owns whether the concrete roster

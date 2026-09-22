@@ -2848,15 +2848,26 @@ namespace Game.Ai.V2
                 plan.ProjectedWinChance = projectedWin;
             }
 
-            if (SafeStepPathing.FindNextSafeStep(ctx.Map, host, targetHex) == null)
+            // AI-01 — every check below is priced against `projectedUnits`, the roster that will
+            // actually march, and every one of them runs BEFORE the first ArmyActions.TransferMember
+            // call. The old code asked the untouched host whether it could afford the step and the
+            // activation, then transferred bodies in, and only MissionRevalidator later discovered
+            // the assembled force cost more AP than was ever funded — by which point the world had
+            // already been mutated.
+            // Reachability too: a recruit slower than the host lowers the whole army's shared
+            // movement (ArmyData.ComputeCurrentMovement), so the first step must be re-asked with
+            // the projected movement rather than the host's own.
+            if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, targetHex, projectedUnits) == null)
                 return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                    $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward raid target ({targetHex.Q},{targetHex.R})"));
+                    $"no safe first step from ({host.Hex.Q},{host.Hex.R}) toward raid target ({targetHex.Q},{targetHex.R})"
+                    + (plan.NeedsAssembly ? " for the projected assembled roster" : "")));
 
-            int activationAp = host.HasActivatedThisTurn ? 0 : host.ActivationApCost;
+            int activationAp = host.ProjectedActivationApCost(projectedUnits);
             float envelope = funded.Tentative.Ap;
             if (activationAp > envelope + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(activationAp,
-                    $"raid host #{host.Id} needs {N(activationAp)} AP, envelope is {N(envelope)}"));
+                    $"raid host #{host.Id} needs {N(activationAp)} AP for its projected "
+                    + $"{projectedUnits.Count}-body roster, envelope is {N(envelope)}"));
             float turnApLeft = root.ActionPoints - session.ApClaimed;
             if (activationAp > turnApLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
@@ -2882,13 +2893,32 @@ namespace Game.Ai.V2
                 applied.Add(t);
             }
 
+            // AI-01 — the assembled force must cost exactly what was projected and funded. Any
+            // divergence (a transfer that landed differently than planned, a roster the host
+            // reshaped) is a failure, never a partial success: roll the transaction back and let
+            // the existing repack/reprice loop re-decide with honest numbers.
+            int actualAp = host.ProjectedActivationApCost(host.Members);
+            if (actualAp != activationAp || actualAp > envelope + eps)
+            {
+                bool reconcileRollbackOk = RollbackAssembly(player, host, applied, ctx);
+                int stillApplied = applied.Count(x => x?.Unit != null && host.Members.Contains(x.Unit));
+                AiDebugLog.Write($"[AI][V2]   raid provision [{m.AttemptId}] {key} — assembled host #{host.Id} "
+                    + $"costs {N(actualAp)} AP but {N(activationAp)} was projected/funded "
+                    + $"(envelope {N(envelope)}); rollback={(reconcileRollbackOk ? "OK" : "FAILED")}; "
+                    + $"remainingTransfers={stillApplied}");
+                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(actualAp,
+                        $"raid host #{host.Id} reconciled activation {N(actualAp)} AP diverges from the "
+                        + $"projected {N(activationAp)} AP"),
+                    stillApplied > 0, stillApplied);
+            }
+
             foreach (int d in claimedDonors)
                 session.ClaimedArmyIds.Add(d);
 
             AiDebugLog.Write($"[AI][V2]   raid provision [{m.AttemptId}] {key} — OK host #{host.Id} "
                 + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}" 
                 + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
-                + $"ap {N(activationAp)} -> ({targetHex.Q},{targetHex.R})");
+                + $"ap {N(actualAp)} (projected {N(activationAp)}) -> ({targetHex.Q},{targetHex.R})");
 
             return ProvisioningResult.Ok(new ProvisionedMission
             {
@@ -2902,7 +2932,10 @@ namespace Game.Ai.V2
                 RaidLastKnownHex = targetHex,
                 RaidTargetIsNeutral = targetIsNeutral,
                 ClaimedPhysical = funded.PhysicalDraw,
-                ClaimedAp = activationAp,
+                // The reconciled cost of the force that actually exists now — asserted equal to
+                // the projected/funded figure above, so allocator, revalidator and executor all
+                // debit this one number exactly once.
+                ClaimedAp = actualAp,
                 StealthApReserved = false,
             }, applied.Count);
         }

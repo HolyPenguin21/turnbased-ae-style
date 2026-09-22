@@ -4,6 +4,7 @@ using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using Game.Terrain;
+using Game.Units;
 using UnityEngine;
 
 namespace Game.Ai
@@ -13,8 +14,15 @@ namespace Game.Ai
     // below are used only where Economy needs a minimum cost, never a route/threat witness.
     public static class SafeStepPathing
     {
+        // `projectedCurrentMovement`/`projectedMaxMovement` — ask the SAME question about a
+        // hypothetical version of this army whose shared movement differs from the live one:
+        // AI-01's raid assembly (a recruit slower than the host drags the whole formation down,
+        // see ArmyData.ComputeCurrentMovement) and AI-03's equipment admission ("does this grant
+        // unblock a step the mission's route actually needs"). Null — every pre-existing call
+        // site — keeps the army's own live movement figures and behaviour unchanged.
         public static HexCoord? FindNextSafeStep(HexMap map, ArmyData army, HexCoord targetHex,
-            bool allowHostileStructureCapture = false)
+            bool allowHostileStructureCapture = false,
+            int? projectedCurrentMovement = null, int? projectedMaxMovement = null)
         {
             if (map == null || army == null)
                 return null;
@@ -23,8 +31,17 @@ namespace Game.Ai
             // only the equivalent remembered blocker membership is shared with planning.
             return AiTurnController.FindAffordableStep(map, army, targetHex,
                 SafeRouteBlocker(null, cache.BlockedHexes, cache.HostileStructureHexes,
-                    targetHex, null, allowHostileStructureCapture));
+                    targetHex, null, allowHostileStructureCapture),
+                projectedCurrentMovement, projectedMaxMovement);
         }
+
+        // Convenience for the common AI-01 shape: "the roster this assembly will produce".
+        public static HexCoord? FindNextSafeStepForRoster(HexMap map, ArmyData army,
+            HexCoord targetHex, IReadOnlyList<UnitData> projectedRoster,
+            bool allowHostileStructureCapture = false) =>
+            FindNextSafeStep(map, army, targetHex, allowHostileStructureCapture,
+                projectedRoster == null ? (int?)null : ArmyData.ComputeCurrentMovement(projectedRoster),
+                projectedRoster == null ? (int?)null : ArmyData.ComputeMaxMovement(projectedRoster));
 
         public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex,
             bool allowHostileStructureCapture = false)
