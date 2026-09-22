@@ -29,19 +29,14 @@ OUTPUT_SIZE = (768, 1120)
 ART_CENTER_X = 0.50
 ART_CENTER_Y = 0.48
 
-# Feathering is calculated directly in final 768x1120 coordinates.
+# Feather only the transferred artwork on left/right/top edges.
 SIDE_FEATHER_PX = 38
 TOP_FEATHER_PX = 27
 
-# Stats card:
-# the art must already be fully transparent when the top edge of the stat
-# slots begins. The slot top is detected automatically by comparing the two
-# bases, and the fade starts this many pixels above it.
-STATS_FADE_HEIGHT_PX = 190
-
-# Ignore tiny compression/color differences while detecting the stat UI.
-STATS_DIFF_THRESHOLD = 8
-STATS_MIN_CHANGED_ROW_RATIO = 0.03
+# Fixed stats fade in final 768x1120 coordinates.
+# Artwork is fully transparent from the top edge of the stat slots downward.
+STATS_FADE_START_Y = 510
+STATS_FADE_END_Y = 690
 
 
 def ensure_directories() -> None:
@@ -63,13 +58,28 @@ def load_base(path: Path) -> Image.Image:
     return Image.open(path).convert("RGBA")
 
 
-def resize_base_to_output(base: Image.Image) -> Image.Image:
-    # Resize the base itself before any compositing. This keeps the whole
-    # pipeline in one coordinate system and prevents the finished frame from
-    # being resampled/cropped after composition.
+def fit_base_to_output(base: Image.Image) -> Image.Image:
+    """
+    Preserve the whole card base when fitting it to 768x1120.
+
+    ImageOps.contain() prevents any edge cropping. The resized base is centered
+    on a transparent 768x1120 canvas so the decorative border, including the
+    bottom edge, is never cut off.
+    """
     if base.size == OUTPUT_SIZE:
         return base.copy()
-    return base.resize(OUTPUT_SIZE, Image.Resampling.LANCZOS)
+
+    contained = ImageOps.contain(
+        base,
+        OUTPUT_SIZE,
+        method=Image.Resampling.LANCZOS,
+    )
+
+    canvas = Image.new("RGBA", OUTPUT_SIZE, (0, 0, 0, 0))
+    x = (OUTPUT_SIZE[0] - contained.width) // 2
+    y = (OUTPUT_SIZE[1] - contained.height) // 2
+    canvas.paste(contained, (x, y), contained)
+    return canvas
 
 
 def load_bases() -> tuple[Image.Image, Image.Image]:
@@ -83,53 +93,8 @@ def load_bases() -> tuple[Image.Image, Image.Image]:
         )
 
     return (
-        resize_base_to_output(stats_base),
-        resize_base_to_output(clear_base),
-    )
-
-
-def detect_stats_top_y(
-    stats_base: Image.Image,
-    clear_base: Image.Image,
-) -> int:
-    """
-    Detect the top of the stat-slot row by comparing Card_Base.png with
-    Card_Base_Clear.png.
-
-    We require a meaningful number of changed pixels in the same row, so tiny
-    paper/noise differences do not move the fade boundary.
-    """
-    stats_rgb = stats_base.convert("RGB")
-    clear_rgb = clear_base.convert("RGB")
-    diff = ImageChops.difference(stats_rgb, clear_rgb)
-
-    r, g, b = diff.split()
-    strongest = ImageChops.lighter(ImageChops.lighter(r, g), b)
-    changed = strongest.point(
-        lambda value: 255 if value >= STATS_DIFF_THRESHOLD else 0
-    )
-
-    width, height = changed.size
-    min_changed = max(8, int(width * STATS_MIN_CHANGED_ROW_RATIO))
-    pixels = changed.load()
-
-    # UI slots are expected in the middle/lower part of the card. Ignoring the
-    # extreme top/bottom also protects against unrelated base-edge differences.
-    search_start = int(height * 0.25)
-    search_end = int(height * 0.85)
-
-    for y in range(search_start, search_end):
-        count = 0
-        for x in range(width):
-            if pixels[x, y]:
-                count += 1
-                if count >= min_changed:
-                    return y
-
-    raise RuntimeError(
-        "Could not detect the stat-slot row by comparing Card_Base.png and "
-        "Card_Base_Clear.png. Make sure the two bases are identical except "
-        "for the stat UI."
+        fit_base_to_output(stats_base),
+        fit_base_to_output(clear_base),
     )
 
 
@@ -140,8 +105,8 @@ def make_edge_mask(
 ) -> Image.Image:
     width, height = size
 
-    # Feather only left/right/top. The interior intentionally extends below
-    # the canvas so the Full version remains fully opaque at the bottom.
+    # Feather only left/right/top. Extend the white interior below the canvas
+    # so Full output remains opaque all the way to the bottom.
     radius = max(SIDE_FEATHER_PX, TOP_FEATHER_PX)
     edge_mask = Image.new("L", size, 0)
     interior = Image.new(
@@ -179,7 +144,7 @@ def make_edge_mask(
             value = 0
         else:
             t = (y - fade_start) / (fade_end - fade_start)
-            # Smoothstep: continuous, soft alpha falloff.
+            # Smoothstep gives a gradual alpha falloff without a visible band.
             smooth = t * t * (3.0 - 2.0 * t)
             value = round(255 * (1.0 - smooth))
         values.append(value)
@@ -193,8 +158,6 @@ def make_edge_mask(
 def fit_art(art_path: Path) -> Image.Image:
     art = Image.open(art_path).convert("RGBA")
 
-    # Fit directly into the final 768x1120 canvas. No resizing is performed
-    # after the card has been composed.
     return ImageOps.fit(
         art,
         OUTPUT_SIZE,
@@ -231,21 +194,20 @@ def compose_one(
     art_path: Path,
     stats_base: Image.Image,
     clear_base: Image.Image,
-    stats_top_y: int,
 ) -> tuple[Path, Path]:
     fitted_art = fit_art(art_path)
 
-    # Stats version: fade reaches alpha=0 exactly where the slot row begins.
-    stats_fade_start_y = max(0, stats_top_y - STATS_FADE_HEIGHT_PX)
+    # Stats version: fade is deterministic. Artwork reaches alpha=0 exactly
+    # at y=STATS_FADE_END_Y and stays fully transparent below that point.
     stats_mask = make_edge_mask(
         OUTPUT_SIZE,
-        stats_fade_start_y,
-        stats_top_y,
+        STATS_FADE_START_Y,
+        STATS_FADE_END_Y,
     )
     stats_art = apply_mask(fitted_art, stats_mask)
 
-    # Full version: no bottom fade at all. Art continues to the bottom edge;
-    # the final silhouette is controlled only by Card_Base_Clear.png alpha.
+    # Full version: no bottom fade; artwork reaches the bottom of the clear
+    # base and is clipped only by the base alpha silhouette.
     full_mask = make_edge_mask(OUTPUT_SIZE)
     full_art = apply_mask(fitted_art, full_mask)
 
@@ -266,7 +228,6 @@ def main() -> int:
 
     try:
         stats_base, clear_base = load_bases()
-        stats_top_y = detect_stats_top_y(stats_base, clear_base)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         print(
@@ -286,8 +247,7 @@ def main() -> int:
     print(f"Stats base : {STATS_BASE_NAME}")
     print(f"Clear base : {CLEAR_BASE_NAME}")
     print(f"Output size: {OUTPUT_SIZE[0]}x{OUTPUT_SIZE[1]}")
-    print(f"Stats top  : y={stats_top_y}px")
-    print(f"Stats fade : y={max(0, stats_top_y - STATS_FADE_HEIGHT_PX)}..{stats_top_y}px")
+    print(f"Stats fade : y={STATS_FADE_START_Y}..{STATS_FADE_END_Y}px")
     print(f"Units      : {len(art_paths)}")
     print()
 
@@ -296,7 +256,6 @@ def main() -> int:
             art_path,
             stats_base,
             clear_base,
-            stats_top_y,
         )
         print(f"[OK] {art_path.name}")
         print(f"     -> {stats_out.name}")
