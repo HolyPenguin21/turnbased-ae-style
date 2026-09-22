@@ -25,9 +25,13 @@ namespace Game.Ai.V2
             public readonly float TrailFactor;
             public readonly float DetectorRisk;
             public readonly string Reason;
+            // A single already-visible adjacent capture, explicitly chosen in the tactical
+            // step ranking. Execution revalidates this fact and authorizes only this exact move.
+            public readonly bool CaptureOpportunity;
 
             public StepChoice(HexCoord hex, float score, int freshNeighbors, int moveCost,
-                int intelAge, float trailFactor, float detectorRisk, string reason)
+                int intelAge, float trailFactor, float detectorRisk, string reason,
+                bool captureOpportunity = false)
             {
                 Hex = hex;
                 Score = score;
@@ -37,6 +41,7 @@ namespace Game.Ai.V2
                 TrailFactor = trailFactor;
                 DetectorRisk = detectorRisk;
                 Reason = reason;
+                CaptureOpportunity = captureOpportunity;
             }
         }
 
@@ -85,7 +90,8 @@ namespace Game.Ai.V2
                     continue;
                 choices.Add(new StepChoice(baseChoice.Hex, score, baseChoice.FreshNeighbors,
                     baseChoice.MoveCost, baseChoice.IntelAge, baseChoice.TrailFactor,
-                    baseChoice.DetectorRisk, baseChoice.Reason + $" lookahead={lookahead:0.00}"));
+                    baseChoice.DetectorRisk, baseChoice.Reason + $" lookahead={lookahead:0.00}",
+                    baseChoice.CaptureOpportunity));
             }
 
             if (choices.Count == 0)
@@ -110,7 +116,7 @@ namespace Game.Ai.V2
 
         // Spec §4 — a soft, per-step "prefer to complete local Citadel/base coverage before racing
         // outward" preference. Never a hard leash: the penalty is bounded and fades to nothing once
-        // the local ring is well covered (localGap→0) or the scout is already outside it.
+        // the local ring is well covered or the scout is already outside it.
         internal readonly struct HomePressure
         {
             public readonly bool Active;
@@ -252,10 +258,16 @@ namespace Game.Ai.V2
                 ? AiConfigV2.scoutStepDeadEndFactor
                 : 1f;
 
-            // Territorial capture has no Recon owner. Known foreign structures are filtered by
-            // ScoutExecutionSafety; the zero component keeps PurposefulStepScore's existing
-            // canonical shape without granting conquest utility to information work.
-            const float buildingBonus = 0f;
+            // Only an ALREADY ADJACENT, currently VISIBLE and known-undefended foreign building
+            // is a local capture opportunity. Its existing configured bonus participates in the
+            // one tactical step score; lookahead never scores buildings, so no distant pursuit.
+            // Required-stealth missions never capture; the live executor rechecks before authorizing.
+            bool captureOpportunity = !requiresStealth
+                && HexGridMath.Distance(army.Hex, h) == 1
+                && VisionSystem.IsVisible(player, h)
+                && AiMapMemory.KnownUndefendedForeignStructureAt(player, h);
+            float buildingBonus = captureOpportunity
+                ? AiConfigV2.scoutStepUndefendedBuildingBonus : 0f;
 
             // Spec §4 — soft outward-distance penalty. An Explore step that increases distance from
             // the nearest Citadel/base beyond the local ring is shaved while nearby unexplored
@@ -286,7 +298,8 @@ namespace Game.Ai.V2
                 + $"deadEnd={deadEndFactor:0.00} "
                 + $"homeDist={homeDist} homeDelta={homeDelta:+0;-0;0} localGap={home.LocalGap:0.00} "
                 + $"homeFactor={homeFactor:0.00}";
-            choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk, reason);
+            choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk,
+                reason, captureOpportunity);
             return true;
         }
 
