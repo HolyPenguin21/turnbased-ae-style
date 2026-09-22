@@ -236,7 +236,6 @@ namespace Game.Ai.V2
             HexCoord? next = null;
             string actionWhy = null;
             bool forceDecloakForAttack = false;
-            bool captureIntent = false;
             switch (reaction.Action)
             {
                 case ReconReactionAction.Flee:
@@ -260,31 +259,14 @@ namespace Game.Ai.V2
                     ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
                         player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot, pm.RequiresStealth);
                     if (choice.HasValue)
-                    {
                         next = choice.Value.Hex;
-                        captureIntent = choice.Value.CaptureOpportunity;
-                    }
-                    actionWhy = captureIntent ? "LocalCapture" : assignment.Mode.ToString();
+                    actionWhy = assignment.Mode.ToString();
                     break;
             }
 
             if (!next.HasValue)
             {
                 control.StopReason = ExecutionStopReason.NoSafeStep;
-                yield break;
-            }
-
-            // A capture is permitted only when the existing tactical planner explicitly chose
-            // this adjacent visible opportunity, not as a side effect of Flee/Evade/ordinary
-            // information travel. Re-check immediately before any optional stealth expenditure
-            // or world mutation; an updated owner, guard or defender cancels the step.
-            if (captureIntent && (pm.RequiresStealth
-                || HexGridMath.Distance(army.Hex, next.Value) != 1
-                || !VisionSystem.IsVisible(player, next.Value)
-                || ScoutExecutionSafety.VantageBlockedNow(player, next.Value, ctx.TurnNumber, false)
-                || !AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value)))
-            {
-                control.StopReason = ExecutionStopReason.TargetInvalidated;
                 yield break;
             }
 
@@ -303,7 +285,7 @@ namespace Game.Ai.V2
             }
 
             if (!runtime.OptionalStealthChecked && !pm.StealthApReserved
-                && !result.EnteredStealth && !forceDecloakForAttack && !captureIntent)
+                && !result.EnteredStealth && !forceDecloakForAttack)
             {
                 runtime.OptionalStealthChecked = true;
                 float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
@@ -323,10 +305,6 @@ namespace Game.Ai.V2
             // Re-entering stealth in the shared mover would cancel the intended combat and could
             // also spend AP that Recon deliberately reserved for other missions.
             move.AllowAutomaticStealth = false;
-            // Only the selected and revalidated LocalCapture decision may change a structure.
-            // The canonical MoveArmyRoutine / BuildingRegistry owns stealth exit and physical
-            // capture or destruction. Other Recon steps, including Flee/Evade, cannot opt in.
-            move.AllowHostileStructureCapture = captureIntent;
             var trace = new AiMoveExecutionTrace();
             control.CommandAttempted = true;
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);

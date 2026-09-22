@@ -25,13 +25,9 @@ namespace Game.Ai.V2
             public readonly float TrailFactor;
             public readonly float DetectorRisk;
             public readonly string Reason;
-            // A single already-visible adjacent capture, explicitly chosen in the tactical
-            // step ranking. Execution revalidates this fact and authorizes only this exact move.
-            public readonly bool CaptureOpportunity;
 
             public StepChoice(HexCoord hex, float score, int freshNeighbors, int moveCost,
-                int intelAge, float trailFactor, float detectorRisk, string reason,
-                bool captureOpportunity = false)
+                int intelAge, float trailFactor, float detectorRisk, string reason)
             {
                 Hex = hex;
                 Score = score;
@@ -41,16 +37,13 @@ namespace Game.Ai.V2
                 TrailFactor = trailFactor;
                 DetectorRisk = detectorRisk;
                 Reason = reason;
-                CaptureOpportunity = captureOpportunity;
             }
         }
 
         internal static float PurposefulStepScore(float information, float anchorProgress,
-            float buildingBonus, float heading, float movementEfficiency)
+            float heading, float movementEfficiency)
         {
-            float purpose = Mathf.Max(0f, information)
-                + Mathf.Max(0f, anchorProgress)
-                + Mathf.Max(0f, buildingBonus);
+            float purpose = Mathf.Max(0f, information) + Mathf.Max(0f, anchorProgress);
             float quality = Mathf.Max(0f, 1f + heading + movementEfficiency);
             return purpose * quality;
         }
@@ -90,8 +83,7 @@ namespace Game.Ai.V2
                     continue;
                 choices.Add(new StepChoice(baseChoice.Hex, score, baseChoice.FreshNeighbors,
                     baseChoice.MoveCost, baseChoice.IntelAge, baseChoice.TrailFactor,
-                    baseChoice.DetectorRisk, baseChoice.Reason + $" lookahead={lookahead:0.00}",
-                    baseChoice.CaptureOpportunity));
+                    baseChoice.DetectorRisk, baseChoice.Reason + $" lookahead={lookahead:0.00}"));
             }
 
             if (choices.Count == 0)
@@ -258,17 +250,6 @@ namespace Game.Ai.V2
                 ? AiConfigV2.scoutStepDeadEndFactor
                 : 1f;
 
-            // Only an ALREADY ADJACENT, currently VISIBLE and known-undefended foreign building
-            // is a local capture opportunity. Its existing configured bonus participates in the
-            // one tactical step score; lookahead never scores buildings, so no distant pursuit.
-            // Required-stealth missions never capture; the live executor rechecks before authorizing.
-            bool captureOpportunity = !requiresStealth
-                && HexGridMath.Distance(army.Hex, h) == 1
-                && VisionSystem.IsVisible(player, h)
-                && AiMapMemory.KnownUndefendedForeignStructureAt(player, h);
-            float buildingBonus = captureOpportunity
-                ? AiConfigV2.scoutStepUndefendedBuildingBonus : 0f;
-
             // Spec §4 — soft outward-distance penalty. An Explore step that increases distance from
             // the nearest Citadel/base beyond the local ring is shaved while nearby unexplored
             // territory remains (scaled by localGap); a step that closes home distance gets a small
@@ -287,19 +268,19 @@ namespace Game.Ai.V2
                 homeFactor = Mathf.Clamp(homeFactor, 0.30f, 1.15f);
             }
 
-            float purpose = information + anchorProgress + buildingBonus;
+            float purpose = information + anchorProgress;
             float score = PurposefulStepScore(
-                    information, anchorProgress, buildingBonus, heading, movementEfficiency)
+                    information, anchorProgress, heading, movementEfficiency)
                 * trailFactor * safetyFactor * coverageFactor * deadEndFactor * homeFactor;
             string reason = $"purpose={purpose:0.00} info={information:0.00} "
                 + $"anchorProgress={anchorProgress:0.00} heading={heading:0.00} "
-                + $"mpEff={movementEfficiency:0.00} building={buildingBonus:0.00} "
+                + $"mpEff={movementEfficiency:0.00} "
                 + $"coverage={coverageFactor:0.00}(sectorClaims={sectorClaims},near={nearbyClaims}) "
                 + $"deadEnd={deadEndFactor:0.00} "
                 + $"homeDist={homeDist} homeDelta={homeDelta:+0;-0;0} localGap={home.LocalGap:0.00} "
                 + $"homeFactor={homeFactor:0.00}";
             choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk,
-                reason, captureOpportunity);
+                reason);
             return true;
         }
 
