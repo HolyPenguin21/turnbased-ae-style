@@ -130,7 +130,8 @@ namespace Game.Ai.V2
                 if (ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId,
                         pm.BaselineObservedTurn))
                     return MissionValidity.StaleGoalMet;
-                if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex, ctx.TurnNumber))
+                if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
+                        ctx.TurnNumber, requiresStealth: true))
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;
             }

@@ -26,11 +26,23 @@ namespace Game.Ai.V2
     //      structure has nobody holding it — arriving there then resolves through the existing
     //      authoritative BuildingRegistry.CaptureOrDestroyIfUndefended as a side effect of that
     //      move. A defended structure, and one whose defence we do not know, stay blocked.
+    //      EXCEPT when `requiresStealth` — the executor (ReconGroundExecutor, review fix be521ef6)
+    //      never lets a stealth-required mission actually take a structure over (that would force
+    //      an unplanned decloak), so this rule must not unblock the hex for the planner either:
+    //      doing so would let a stealth-required step pick a destination the executor is
+    //      guaranteed to then reject outright, wasting the whole step (the exact class of bug this
+    //      file exists to prevent — see the header comment above). The undefended-structure
+    //      carve-out therefore only fires when stealth is not required, matching what the executor
+    //      will actually permit rather than merely resembling it.
     // ===========================================================================================
     public static class ScoutExecutionSafety
     {
-        // LIVE check — ProvisioningManager / TaskExecutor.
-        public static bool VantageBlockedNow(PlayerSetupData player, HexCoord hex, int currentTurn)
+        // LIVE check — ProvisioningManager / TaskExecutor. `requiresStealth` must reflect the SAME
+        // fact the executor gates the actual capture permission on (ProvisionedMission.
+        // RequiresStealth for Explore/Refresh; always true for a Surveil call site — Surveil is
+        // always StealthRequirement.Required, see ARCHITECTURE.md's Scout row).
+        public static bool VantageBlockedNow(PlayerSetupData player, HexCoord hex, int currentTurn,
+            bool requiresStealth = false)
         {
             AiMapMemory.KnownEnemySighting? s = AiMapMemory.KnownEnemySightingAt(player, hex);
             if (s.HasValue)
@@ -43,7 +55,7 @@ namespace Game.Ai.V2
 
             AiMapMemory.KnownBuilding? b = AiMapMemory.KnownBuildingAt(player, hex);
             if (b.HasValue && b.Value.Owner != null && b.Value.Owner != player
-                && !AiMapMemory.KnownUndefendedForeignStructureAt(player, hex))
+                && (requiresStealth || !AiMapMemory.KnownUndefendedForeignStructureAt(player, hex)))
                 return true;
 
             return false;

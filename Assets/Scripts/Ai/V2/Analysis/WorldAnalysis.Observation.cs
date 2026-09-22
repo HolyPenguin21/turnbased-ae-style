@@ -356,6 +356,15 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:{x.IsBase}:"
                     + $"owner={x.Owner?.ColorIndex}:{x.Owner?.Nickname}:"
+                    // FIX-05 review gap — Defense (the observed structural bonus DemandLayer.
+                    // Development.ImprovesEconomicProtection now reads via KnownHexDefenseBonus)
+                    // was not part of this key, so a re-observed building whose Defense changed
+                    // (only) never reached InfrastructureChanged, even though Development's own
+                    // fingerprint (knownbases=) could already tell the two observations apart.
+                    // The owner of "did infrastructure change" is this comparison; it must cover
+                    // every field a downstream consumer's fingerprint depends on, not just the
+                    // ones that changed first.
+                    + $"defense={x.Defense.ToString("R", CultureInfo.InvariantCulture)}:"
                     + string.Join(",", (x.FacilityAbilities ?? System.Array.Empty<string>())
                         .OrderBy(v => v)));
             IEnumerable<string> development = (snapshot?.Development?.Facilities

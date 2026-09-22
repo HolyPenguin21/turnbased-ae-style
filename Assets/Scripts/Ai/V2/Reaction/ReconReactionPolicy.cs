@@ -58,7 +58,7 @@ namespace Game.Ai.V2
         private const float StrongEnemyFleeWinChance = AiConfigV2.scoutReactionFleeWinChance;
 
         public static ReconReactionDecision Evaluate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn)
+            ReconPatrolState assignment, int turn, bool requiresStealth = false)
         {
             if (player == null || map == null || army == null || assignment == null)
                 return new ReconReactionDecision(ReconReactionAction.StopAndReplan, null, null, 0f,
@@ -75,7 +75,7 @@ namespace Game.Ai.V2
 
             if (inStealth && CurrentDetectorRisk(player, army.Hex) > 0f)
             {
-                HexCoord? evade = PickLowerDetectorRiskStep(player, map, army, turn);
+                HexCoord? evade = PickLowerDetectorRiskStep(player, map, army, turn, requiresStealth);
                 if (evade.HasValue)
                     return Log(army, assignment, new ReconReactionDecision(
                         ReconReactionAction.EvadeDetector, evade, null, 0f,
@@ -234,7 +234,7 @@ namespace Game.Ai.V2
         }
 
         private static HexCoord? PickLowerDetectorRiskStep(PlayerSetupData player, HexMap map,
-            ArmyData army, int turn)
+            ArmyData army, int turn, bool requiresStealth)
         {
             float current = CurrentDetectorRisk(player, army.Hex);
             HexCoord? bestHex = null;
@@ -248,7 +248,7 @@ namespace Game.Ai.V2
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > army.CurrentMovement
                     || AiMapMemory.IsScoutDangerous(player, h)
-                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
+                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn, requiresStealth))
                     continue;
                 if (AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
                     continue;

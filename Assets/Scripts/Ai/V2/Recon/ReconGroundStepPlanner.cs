@@ -51,7 +51,8 @@ namespace Game.Ai.V2
         }
 
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn, WorldSnapshot snapshot = null)
+            ReconPatrolState assignment, int turn, WorldSnapshot snapshot = null,
+            bool requiresStealth = false)
         {
             if (player == null || map == null || army == null || assignment == null
                 || army.CurrentMovement <= 0)
@@ -64,7 +65,8 @@ namespace Game.Ai.V2
             var choices = new List<StepChoice>();
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
-                if (!TryScoreImmediate(player, map, army, assignment, turn, h, home, out StepChoice baseChoice))
+                if (!TryScoreImmediate(player, map, army, assignment, turn, h, home,
+                        requiresStealth, out StepChoice baseChoice))
                     continue;
 
                 // Small bounded forecast: value unique useful continuation, but return only h.
@@ -72,7 +74,7 @@ namespace Game.Ai.V2
                 // transition this whole score is discarded and Pick() is called on LIVE state.
                 var seen = new HashSet<HexCoord> { army.Hex, h };
                 float lookahead = Lookahead(player, map, army, assignment, turn, h,
-                    depth - 1, army.CurrentMovement - baseChoice.MoveCost, seen);
+                    depth - 1, army.CurrentMovement - baseChoice.MoveCost, seen, requiresStealth);
                 float headingQuality = ReconDirectionModel.Sector(army.Hex, h)
                     == assignment.StrategicSector ? 1f : 0f;
                 float movementQuality = 1f / Mathf.Max(1, baseChoice.MoveCost);
@@ -167,7 +169,8 @@ namespace Game.Ai.V2
         }
 
         private static bool TryScoreImmediate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn, HexCoord h, HomePressure home, out StepChoice choice)
+            ReconPatrolState assignment, int turn, HexCoord h, HomePressure home,
+            bool requiresStealth, out StepChoice choice)
         {
             choice = default;
             if (!map.TryGetTerrainAt(h, out var terrain))
@@ -177,7 +180,7 @@ namespace Game.Ai.V2
             if (moveCost > army.CurrentMovement)
                 return false;
             if (AiMapMemory.IsScoutDangerous(player, h)
-                || ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
+                || ScoutExecutionSafety.VantageBlockedNow(player, h, turn, requiresStealth))
                 return false;
 
             // Owner-facing stealth state. We deliberately do not ask whether some enemy has
@@ -290,7 +293,7 @@ namespace Game.Ai.V2
 
         private static float Lookahead(PlayerSetupData player, HexMap map, ArmyData army,
             ReconPatrolState assignment, int turn, HexCoord from, int depth, int movementLeft,
-            HashSet<HexCoord> seen)
+            HashSet<HexCoord> seen, bool requiresStealth)
         {
             if (depth <= 0 || movementLeft <= 0)
                 return 0f;
@@ -304,7 +307,7 @@ namespace Game.Ai.V2
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > movementLeft
                     || AiMapMemory.IsScoutDangerous(player, h)
-                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn))
+                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn, requiresStealth))
                     continue;
                 if (!hidden && AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
                     continue;
@@ -331,7 +334,7 @@ namespace Game.Ai.V2
 
                 seen.Add(h);
                 float continuation = Lookahead(player, map, army, assignment, turn, h,
-                    depth - 1, movementLeft - cost, seen);
+                    depth - 1, movementLeft - cost, seen, requiresStealth);
                 seen.Remove(h);
 
                 // Each future layer is deliberately discounted by its depth through division;

@@ -220,7 +220,7 @@ namespace Game.Ai.V2
                 prepared.ExploreScore, prepared.RefreshScore);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
-                player, ctx.Map, army, assignment, ctx.TurnNumber);
+                player, ctx.Map, army, assignment, ctx.TurnNumber, pm.RequiresStealth);
             if (reaction.Action == ReconReactionAction.StopAndReplan)
             {
                 control.StopReason = ExecutionStopReason.TargetInvalidated;
@@ -257,7 +257,7 @@ namespace Game.Ai.V2
                 case ReconReactionAction.Continue:
                 default:
                     ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
-                        player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot);
+                        player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot, pm.RequiresStealth);
                     if (choice.HasValue)
                         next = choice.Value.Hex;
                     actionWhy = assignment.Mode.ToString();

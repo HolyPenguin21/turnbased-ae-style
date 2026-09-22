@@ -901,7 +901,8 @@ namespace Game.Ai.V2
                 if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
-                if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber))
+                if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
+                        requiresStealth: true))
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
             }
