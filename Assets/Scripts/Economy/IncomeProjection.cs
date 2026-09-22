@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -12,24 +13,15 @@ using UnityEngine;
 
 namespace Game.Economy
 {
-    // Physical rule: what a player's per-turn resource income actually is, computed read-only
-    // from the live map/buildings/armies. AI-neutral — it answers "how much does this hex layout
-    // produce for this player", never "should the AI care". Extracted from the former
-    // Game.Ai.AiGoalScorer (ARCH-01) so both the AI and any gameplay code share one algorithm.
-    //
-    // IncomeFor mirrors GameTurnController.CollectResourceIncome/
-    // CollectArmyIncomeAt's own per-hex allocation for a single player:
-    //   1. hexYield = HexResourceCalculator.GetEffectiveYield(terrain, hex bonus) — real yield.
-    //   2. a building with a registered owner root takes the first cut, capped at both its own
-    //      CollectedAmount(type) and whatever the hex actually yields.
-    //   3. the remainder goes to armies with a matching CollectX unit, grouped by owner,
-    //      but ONLY an owner with a registered root and no engageable enemy on the hex.
-    // A missing PlayerRoot NEVER consumes yield: gameplay skips that grant and leaves the
-    // resource for the next collector. Both paths must honor this even in incomplete setups.
-    // `map` is GameSession's own single shared HexMap (terrain lookup); the same instance works
-    // for computing any player's income.
+    // Single physical resource-income owner. The turn processor consumes the grants from
+    // ForEachHexCollectionGrant; IncomeFor observes those SAME grants without mutating roots.
+    // Economy's strategic weighting and observer-specific enemy knowledge belong to Analysis,
+    // not here. Building-first, finite yield and army-owner order are decided exactly once.
     public static class IncomeProjection
     {
+        private static readonly ResourceType[] AllResourceTypes =
+            { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
+
         // Canonical per-building slice used by both the real income projection and every
         // pre-build marginal-value check. Keeping the cap here prevents AI/UI legality from
         // drifting away from the turn processor's finite per-hex resource pool.
@@ -72,96 +64,125 @@ namespace Game.Economy
             return Mathf.Max(0, after - before);
         }
 
-        public static int IncomeFor(PlayerSetupData player, ResourceType type, HexMap map)
+        // The ONE allocator for real grants and read-only projection. Pass an optional resource
+        // filter when querying one type, but never implement the allocation a second time.
+        // `credit` gets the exact registered PlayerRoot that was checked while allocating;
+        // no recipient without an account can consume a slice of the finite resource pool.
+        // Order is the gameplay order: occupied hexes, resource type, building, then armies
+        // grouped by their owner in ArmyRegistry's enumeration order. No world state is
+        // mutated here; the real turn's callback is the only place that credits resources.
+        public static void ForEachHexCollectionGrant(HexMap map,
+            Action<PlayerRoot, ResourceType, int> credit, ResourceType? onlyType = null)
         {
-            // The real turn controller cannot credit collection OR Produce abilities to a
-            // player without PlayerRoot, even if its buildings/armies are still registered.
-            if (player == null || map == null || PlayerRootRegistry.FindFor(player) == null)
-                return 0;
+            if (map == null || credit == null)
+                return;
 
-            string ability = UnitAbilities.CollectAbilityFor(type);
             var hexes = new HashSet<HexCoord>();
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
                 hexes.Add(building.Hex);
             foreach (HexCoord hex in ArmyRegistry.AllOccupiedHexes())
                 hexes.Add(hex);
 
-            int total = 0;
             foreach (HexCoord hex in hexes)
             {
                 if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry entry))
                     continue;
-
-                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(hex));
-                int hexAmount = hexYield.Get(type);
-                if (hexAmount <= 0)
+                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(
+                    entry, HexResourceBonusRegistry.GetBonus(hex));
+                if (!hexYield.HasAnyYield)
                     continue;
 
-                int remaining = hexAmount;
-                BuildingData onHex = BuildingRegistry.FindAt(hex);
-                // In CollectResourceIncome a missing buildingRoot skips the entire building
-                // grant, including the subtraction. Do not make a ghost building exhaust the
-                // finite hex supply for the following army collectors.
-                if (onHex != null && onHex.Owner != null
-                    && PlayerRootRegistry.FindFor(onHex.Owner) != null)
+                BuildingData building = BuildingRegistry.FindAt(hex);
+                PlayerRoot buildingRoot = building?.Owner != null
+                    ? PlayerRootRegistry.FindFor(building.Owner) : null;
+                foreach (ResourceType type in AllResourceTypes)
                 {
-                    int buildingCollected = BuildingCollection(
-                        hexAmount, onHex.CollectedAmount(type));
-                    if (buildingCollected > 0)
+                    if (onlyType.HasValue && type != onlyType.Value)
+                        continue;
+                    int hexAmount = hexYield.Get(type);
+                    if (hexAmount <= 0)
+                        continue;
+                    int remaining = hexAmount;
+                    if (buildingRoot != null)
                     {
-                        if (onHex.Owner == player)
-                            total += buildingCollected;
-                        remaining -= buildingCollected;
+                        int buildingCollected = BuildingCollection(hexAmount,
+                            building.CollectedAmount(type));
+                        if (buildingCollected > 0)
+                        {
+                            credit(buildingRoot, type, buildingCollected);
+                            remaining -= buildingCollected;
+                        }
+                    }
+                    if (remaining <= 0)
+                        continue;
+
+                    string ability = UnitAbilities.CollectAbilityFor(type);
+                    foreach (IGrouping<PlayerSetupData, ArmyData> ownerArmies in
+                             ArmyRegistry.AllAt(hex).GroupBy(a => a.Owner))
+                    {
+                        if (remaining <= 0)
+                            break;
+                        PlayerSetupData owner = ownerArmies.Key;
+                        if (owner == null || BattleInitiator.FindEnemyAt(hex, owner) != null)
+                            continue;
+                        int unitCount = ownerArmies.Sum(a =>
+                            a.Members.Count(u => u.HasAbility(ability)));
+                        if (unitCount <= 0)
+                            continue;
+                        PlayerRoot ownerRoot = PlayerRootRegistry.FindFor(owner);
+                        if (ownerRoot == null)
+                            continue;
+                        int granted = Mathf.Min(unitCount, remaining);
+                        credit(ownerRoot, type, granted);
+                        remaining -= granted;
                     }
                 }
-                if (remaining <= 0)
-                    continue;
-
-                foreach (IGrouping<PlayerSetupData, ArmyData> ownerArmies in ArmyRegistry.AllAt(hex).GroupBy(a => a.Owner))
-                {
-                    if (remaining <= 0)
-                        break;
-                    PlayerSetupData owner = ownerArmies.Key;
-                    if (owner == null)
-                        continue;
-                    if (BattleInitiator.FindEnemyAt(hex, owner) != null)
-                        continue; // contested — the real turn processor grants nothing here either
-                    int unitCount = ownerArmies.Sum(a => a.Members.Count(u => u.HasAbility(ability)));
-                    if (unitCount <= 0)
-                        continue;
-                    // GameTurnController.CollectArmyIncomeAt skips missing roots without
-                    // reducing remaining; preserve that order and exact allocation behavior.
-                    if (PlayerRootRegistry.FindFor(owner) == null)
-                        continue;
-                    int granted = Mathf.Min(unitCount, remaining);
-                    if (owner == player)
-                        total += granted;
-                    remaining -= granted;
-                }
             }
+        }
 
-            // UnitAbilities.Produce* — flat +1 per in-play carrier (non-Prison army member, owned
-            // Base, or Facility), a mirror of GameTurnController.GrantProduceResourceIncome. Kept
-            // separate from the hex-yield collection above, exactly as that grant is separate from
-            // CollectResourceIncome, so this projection still matches the real per-turn number.
-            string produceAbility = UnitAbilities.ProduceAbilityFor(type);
+        // One carrier count for Produce (turn grants and IncomeFor), not a parallel enumeration.
+        // ApBonus retains its separately labelled UI breakdown, but cannot define Produce rules.
+        public static int CountInPlayAbilitySources(PlayerSetupData player, string ability)
+        {
+            if (player == null || string.IsNullOrEmpty(ability))
+                return 0;
+            int sources = 0;
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
                 if (army.IsPrison)
                     continue;
-                total += army.Members.Count(u => u.HasAbility(produceAbility));
+                foreach (UnitData unit in army.Members)
+                    if (unit.HasAbility(ability))
+                        sources++;
             }
             foreach (BuildingData building in BuildingRegistry.AllBuildings())
             {
                 if (building.Owner != player)
                     continue;
-                if (building.HasAbility(produceAbility))
-                    total++;
+                if (building.HasAbility(ability))
+                    sources++;
                 foreach (FacilityData facility in building.FacilitySlots)
-                    if (facility != null && facility.HasAbility(produceAbility))
-                        total++;
+                    if (facility != null && facility.HasAbility(ability))
+                        sources++;
             }
-            return total;
+            return sources;
+        }
+
+        public static int IncomeFor(PlayerSetupData player, ResourceType type, HexMap map)
+        {
+            // The actual turn never credits a player without a registered account. Projection
+            // observes the allocator's output but must not mutate a single PlayerRoot.
+            PlayerRoot root = player != null ? PlayerRootRegistry.FindFor(player) : null;
+            if (root == null || map == null)
+                return 0;
+
+            int total = 0;
+            ForEachHexCollectionGrant(map, (recipient, grantType, amount) =>
+            {
+                if (object.ReferenceEquals(recipient, root) && grantType == type)
+                    total += amount;
+            }, onlyType: type);
+            return total + CountInPlayAbilitySources(player, UnitAbilities.ProduceAbilityFor(type));
         }
     }
 }
