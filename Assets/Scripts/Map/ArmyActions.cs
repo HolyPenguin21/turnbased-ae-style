@@ -118,8 +118,11 @@ namespace Game.Map
             // UI and AI preflight may predict legality, but cannot authorize deployment into
             // another player's army or charge a different player's AP/resources. Check before
             // any payment; a card instance must refer to the definition being deployed.
+            // CreateArmy and every other shared army payment use the registered root; a second
+            // PlayerRoot with the same Setup is NOT the same resource account.
             if ((definition.cardType != CardType.Unit && definition.cardType != CardType.Hero)
                 || targetArmy.Owner != owner || targetArmy.IsPrison || root.Setup != owner
+                || !object.ReferenceEquals(root, PlayerRootRegistry.FindFor(owner))
                 || (sourceCard != null && !object.ReferenceEquals(sourceCard.Definition, definition)))
             {
                 failReason = "Card, owner, target army or resource owner is invalid for deployment.";
