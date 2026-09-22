@@ -17,14 +17,15 @@ namespace Game.Economy
     // produce for this player", never "should the AI care". Extracted from the former
     // Game.Ai.AiGoalScorer (ARCH-01) so both the AI and any gameplay code share one algorithm.
     //
-    // IncomeFor is an exact mirror of GameTurnController.CollectResourceIncome/
-    // CollectArmyIncomeAt's own per-hex algorithm, filtered to a single player's share:
+    // IncomeFor mirrors GameTurnController.CollectResourceIncome/
+    // CollectArmyIncomeAt's own per-hex allocation for a single player:
     //   1. hexYield = HexResourceCalculator.GetEffectiveYield(terrain, hex bonus) — real yield.
-    //   2. the hex's own building (if any) takes the first cut, capped at both its own
+    //   2. a building with a registered owner root takes the first cut, capped at both its own
     //      CollectedAmount(type) and whatever the hex actually yields.
-    //   3. whatever's left goes to armies on the hex with a matching CollectX unit, grouped by
-    //      owner, but ONLY an owner with no engageable enemy also on the hex (BattleInitiator.
-    //      FindEnemyAt) — same "no stealth yet" contest rule the real turn processor enforces.
+    //   3. the remainder goes to armies with a matching CollectX unit, grouped by owner,
+    //      but ONLY an owner with a registered root and no engageable enemy on the hex.
+    // A missing PlayerRoot NEVER consumes yield: gameplay skips that grant and leaves the
+    // resource for the next collector. Both paths must honor this even in incomplete setups.
     // `map` is GameSession's own single shared HexMap (terrain lookup); the same instance works
     // for computing any player's income.
     public static class IncomeProjection
@@ -73,7 +74,9 @@ namespace Game.Economy
 
         public static int IncomeFor(PlayerSetupData player, ResourceType type, HexMap map)
         {
-            if (player == null || map == null)
+            // The real turn controller cannot credit collection OR Produce abilities to a
+            // player without PlayerRoot, even if its buildings/armies are still registered.
+            if (player == null || map == null || PlayerRootRegistry.FindFor(player) == null)
                 return 0;
 
             string ability = UnitAbilities.CollectAbilityFor(type);
@@ -96,7 +99,11 @@ namespace Game.Economy
 
                 int remaining = hexAmount;
                 BuildingData onHex = BuildingRegistry.FindAt(hex);
-                if (onHex != null && onHex.Owner != null)
+                // In CollectResourceIncome a missing buildingRoot skips the entire building
+                // grant, including the subtraction. Do not make a ghost building exhaust the
+                // finite hex supply for the following army collectors.
+                if (onHex != null && onHex.Owner != null
+                    && PlayerRootRegistry.FindFor(onHex.Owner) != null)
                 {
                     int buildingCollected = BuildingCollection(
                         hexAmount, onHex.CollectedAmount(type));
@@ -121,6 +128,10 @@ namespace Game.Economy
                         continue; // contested — the real turn processor grants nothing here either
                     int unitCount = ownerArmies.Sum(a => a.Members.Count(u => u.HasAbility(ability)));
                     if (unitCount <= 0)
+                        continue;
+                    // GameTurnController.CollectArmyIncomeAt skips missing roots without
+                    // reducing remaining; preserve that order and exact allocation behavior.
+                    if (PlayerRootRegistry.FindFor(owner) == null)
                         continue;
                     int granted = Mathf.Min(unitCount, remaining);
                     if (owner == player)
