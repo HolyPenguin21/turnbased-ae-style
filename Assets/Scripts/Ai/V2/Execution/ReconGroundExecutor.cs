@@ -14,14 +14,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  CONTINUOUS GROUND RECON EXECUTION
     // ===========================================================================================
-    //  One provisioned Scout mission still owns AP/accounting for this turn, but a single focus
-    //  hex no longer owns the actor's tactical movement. The provisioned objective seeds/refreshes
-    //  a durable ReconPatrolState; every actual move is ONE adjacent step selected from live state.
+    // One provisioned Scout mission still owns AP/accounting for this turn, but a single focus
+    // hex no longer owns the actor's tactical movement. The provisioned objective seeds/refreshes
+    // a durable ReconPatrolState; every actual move is ONE adjacent step selected from live state.
     //
-    //  After each authoritative MoveArmyRoutine returns, vision/contact/stealth/event state has
-    //  settled. We record discovery, mark assignment progress, then start the next iteration by
-    //  running ReconReactionPolicy and ReconGroundStepPlanner again. No cached multi-hex route is
-    //  followed after new information appears.
+    // After each authoritative MoveArmyRoutine returns, vision/contact/stealth/event state has
+    // settled. We record discovery, mark assignment progress, then start the next iteration by
+    // running ReconReactionPolicy and ReconGroundStepPlanner again. No cached multi-hex route is
+    // followed after new information appears.
     // ===========================================================================================
     internal static class ReconGroundExecutor
     {
@@ -236,6 +236,7 @@ namespace Game.Ai.V2
             HexCoord? next = null;
             string actionWhy = null;
             bool forceDecloakForAttack = false;
+            bool captureIntent = false;
             switch (reaction.Action)
             {
                 case ReconReactionAction.Flee:
@@ -259,14 +260,31 @@ namespace Game.Ai.V2
                     ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
                         player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot, pm.RequiresStealth);
                     if (choice.HasValue)
+                    {
                         next = choice.Value.Hex;
-                    actionWhy = assignment.Mode.ToString();
+                        captureIntent = choice.Value.CaptureOpportunity;
+                    }
+                    actionWhy = captureIntent ? "LocalCapture" : assignment.Mode.ToString();
                     break;
             }
 
             if (!next.HasValue)
             {
                 control.StopReason = ExecutionStopReason.NoSafeStep;
+                yield break;
+            }
+
+            // A capture is permitted only when the existing tactical planner explicitly chose
+            // this adjacent visible opportunity, not as a side effect of Flee/Evade/ordinary
+            // information travel. Re-check immediately before any optional stealth expenditure
+            // or world mutation; an updated owner, guard or defender cancels the step.
+            if (captureIntent && (pm.RequiresStealth
+                || HexGridMath.Distance(army.Hex, next.Value) != 1
+                || !VisionSystem.IsVisible(player, next.Value)
+                || ScoutExecutionSafety.VantageBlockedNow(player, next.Value, ctx.TurnNumber, false)
+                || !AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value)))
+            {
+                control.StopReason = ExecutionStopReason.TargetInvalidated;
                 yield break;
             }
 
@@ -285,7 +303,7 @@ namespace Game.Ai.V2
             }
 
             if (!runtime.OptionalStealthChecked && !pm.StealthApReserved
-                && !result.EnteredStealth && !forceDecloakForAttack)
+                && !result.EnteredStealth && !forceDecloakForAttack && !captureIntent)
             {
                 runtime.OptionalStealthChecked = true;
                 float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
@@ -305,18 +323,10 @@ namespace Game.Ai.V2
             // Re-entering stealth in the shared mover would cancel the intended combat and could
             // also spend AP that Recon deliberately reserved for other missions.
             move.AllowAutomaticStealth = false;
-            // FIX-07 — this step was already chosen for information reasons. If knowledge says
-            // the hex it lands on carries a foreign structure nobody is holding, occupying it is
-            // a permitted side effect of that same move (the authoritative
-            // BuildingRegistry.CaptureOrDestroyIfUndefended then captures a Base / razes a bare
-            // facility). Nothing here makes a structure attractive: no score, no detour.
-            // Excluded when pm.RequiresStealth: the shared mover's existing rule (below FIX-07 in
-            // MoveArmyRoutine) would decloak an already-hidden member immediately before the
-            // takeover, which would break this mission's own stealth precondition mid-step for a
-            // hex the step planner never chose for capture reasons. A stealth-required mission
-            // just walks onto/through the hex without taking it, same as before this fix.
-            move.AllowHostileStructureCapture = !pm.RequiresStealth
-                && AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value);
+            // Only the selected and revalidated LocalCapture decision may change a structure.
+            // The canonical MoveArmyRoutine / BuildingRegistry owns stealth exit and physical
+            // capture or destruction. Other Recon steps, including Flee/Evade, cannot opt in.
+            move.AllowHostileStructureCapture = captureIntent;
             var trace = new AiMoveExecutionTrace();
             control.CommandAttempted = true;
             yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
