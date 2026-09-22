@@ -181,6 +181,17 @@ namespace Game.Ai.V2
                     break;
             }
 
+            // The domain deployment requires HexSelectionController for SpawnUnit. Without it,
+            // CreateArmy itself can still consume 2 AP and register an empty shell before the
+            // subsequent deployment rejects the null controller. This is a required executable
+            // dependency, not just a UI rendering concern; guard the entire chain here.
+            if (ctx.HexSelection == null)
+            { reason = "missing deployment controller"; return false; }
+            // CreateArmy additionally needs the faction catalog. Guard it here instead of
+            // offering a plan that can only fail at the next transaction boundary.
+            if (plan.RequiresCreateArmy && ctx.StartingDeckCatalog?.GetCatalog(player.Faction) == null)
+            { reason = "missing faction army catalog"; return false; }
+
             return true;
         }
 
