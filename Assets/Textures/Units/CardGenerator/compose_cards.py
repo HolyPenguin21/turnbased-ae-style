@@ -31,13 +31,13 @@ ART_CENTER_Y = 0.48
 
 # Keep the original base border above the artwork so the art can never
 # visually cover/eat the frame. Use the same overlay width on every side.
-BORDER_OVERLAY_TOP_PX = 24
-BORDER_OVERLAY_SIDE_PX = 24
-BORDER_OVERLAY_BOTTOM_PX = 24
+BORDER_OVERLAY_TOP_PX = 48
+BORDER_OVERLAY_SIDE_PX = 48
+BORDER_OVERLAY_BOTTOM_PX = 48
 
 # Immediately inside the 12 px base overlay, fade the artwork from alpha 0
 # to full opacity over 5 px on all four sides.
-IMAGE_EDGE_FEATHER_PX = 5
+IMAGE_EDGE_FEATHER_PX = 24
 
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.
