@@ -33,6 +33,10 @@ ART_CENTER_Y = 0.48
 SIDE_FEATHER_PX = 38
 TOP_FEATHER_PX = 27
 
+# Keep the original base border above the artwork so the art can never
+# visually cover/eat the frame.
+BORDER_OVERLAY_PX = 12
+
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.
 STATS_FADE_START_Y = 510
@@ -174,6 +178,33 @@ def apply_mask(art: Image.Image, mask: Image.Image) -> Image.Image:
     return prepared
 
 
+def make_border_overlay(base: Image.Image) -> Image.Image:
+    """
+    Extract a thin frame overlay from the base.
+
+    The overlay is composited after the artwork, which guarantees that the
+    decorative frame remains visible on all four sides, including the bottom.
+    """
+    width, height = base.size
+    mask = Image.new("L", (width, height), 0)
+
+    border = max(1, min(BORDER_OVERLAY_PX, width // 2, height // 2))
+
+    mask.paste(255, (0, 0, width, border))
+    mask.paste(255, (0, height - border, width, height))
+    mask.paste(255, (0, 0, border, height))
+    mask.paste(255, (width - border, 0, width, height))
+
+    overlay = base.copy()
+    overlay.putalpha(
+        ImageChops.multiply(
+            overlay.getchannel("A"),
+            mask,
+        )
+    )
+    return overlay
+
+
 def apply_base_alpha(result: Image.Image, base: Image.Image) -> Image.Image:
     result = result.copy()
     result.putalpha(
@@ -185,8 +216,13 @@ def apply_base_alpha(result: Image.Image, base: Image.Image) -> Image.Image:
     return result
 
 
-def compose_on_base(art: Image.Image, base: Image.Image) -> Image.Image:
+def compose_on_base(
+    art: Image.Image,
+    base: Image.Image,
+    border_overlay: Image.Image,
+) -> Image.Image:
     result = Image.alpha_composite(base.copy(), art)
+    result = Image.alpha_composite(result, border_overlay)
     return apply_base_alpha(result, base)
 
 
@@ -211,8 +247,11 @@ def compose_one(
     full_mask = make_edge_mask(OUTPUT_SIZE)
     full_art = apply_mask(fitted_art, full_mask)
 
-    stats_result = compose_on_base(stats_art, stats_base)
-    full_result = compose_on_base(full_art, clear_base)
+    stats_border = make_border_overlay(stats_base)
+    full_border = make_border_overlay(clear_base)
+
+    stats_result = compose_on_base(stats_art, stats_base, stats_border)
+    full_result = compose_on_base(full_art, clear_base, full_border)
 
     stats_out = OUTPUT_DIR / f"{art_path.stem}.png"
     full_out = OUTPUT_DIR / f"{art_path.stem}_Full.png"
@@ -248,6 +287,7 @@ def main() -> int:
     print(f"Clear base : {CLEAR_BASE_NAME}")
     print(f"Output size: {OUTPUT_SIZE[0]}x{OUTPUT_SIZE[1]}")
     print(f"Stats fade : y={STATS_FADE_START_Y}..{STATS_FADE_END_Y}px")
+    print(f"Border top : {BORDER_OVERLAY_PX}px")
     print(f"Units      : {len(art_paths)}")
     print()
 
