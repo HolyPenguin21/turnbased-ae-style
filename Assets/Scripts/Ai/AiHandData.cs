@@ -29,11 +29,10 @@ namespace Game.Ai
         // Shared hand capacity (spec P0 §10) — set from CardHandUI.MaxHandSize via AiTurnContext
         // (AiHandRegistry can't reach the scene, so the value is pushed in on construction — see
         // AiHandRegistry.GetOrCreate / AiTurnController.RunTurn). Defaults to CardHandUI's own
-        // default of 10 so a hand created before that push still caps somewhere sane. This is a
-        // real draw invariant now: DrawOne itself physically refuses to overflow it. Produced
-        // Research/Production cards are the intentional exception and enter through AddCard, so
-        // Hand.Count may remain above Capacity until enough cards are played. Private setter — pushed in only via the constructor or
-        // SetCapacity, never assigned field-style from outside.
+        // default of 10 so a hand created before that push still caps somewhere sane. Draws and
+        // ordinary grants obey the cap at AddCard; only prepaid Research/Production output may
+        // overflow it. Private setter — pushed in only via the constructor or SetCapacity,
+        // never assigned field-style from outside.
         public int Capacity { get; private set; } = 10;
 
         public bool HasFreeSlot => Hand.Count < Capacity;
@@ -86,6 +85,14 @@ namespace Game.Ai
         // GrantCard) call these instead of touching the list directly, so HandChanged always fires.
         public void AddCard(CardData card)
         {
+            // CardHandUI.AddCardToHand rejects ordinary event rewards and returned aircraft
+            // when full. Previously this AI boundary admitted them without limit, even though
+            // DrawOne was capped. The card-instance prepayment flag is the ONLY exception:
+            // Research/Production deliberately mints over capacity, and must remain playable.
+            // Rejected grants are no-ops: no false hand-change event or mutation-version bump.
+            if (card?.Definition == null || (!card.ResearchProductionCreated && !HasFreeSlot))
+                return;
+
             Hand.Add(card);
             MutationVersion++;
             HandChanged?.Invoke();
@@ -110,8 +117,8 @@ namespace Game.Ai
         {
             // Checked BEFORE pulling anything off the deck — a full hand must not consume a
             // one-time-use deck card it then has nowhere to put (spec P1 §"Execution rechecks
-            // invariant"). This is the layer that actually makes Hand.Count > Capacity unreachable;
-            // the planner-side HasFreeSlot checks only keep a doomed candidate from being proposed.
+            // invariant"). This is the layer that actually makes Hand.Count > Capacity unreachable
+            // for ordinary cards; prepaid Research/Production cards can legitimately overflow.
             if (_remainingDeck.Count == 0 || !HasFreeSlot)
                 return null;
 
