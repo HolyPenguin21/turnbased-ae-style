@@ -12,9 +12,9 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  LIVE GROUND RECON REACTIONS
     // ===========================================================================================
-    //  Called only after authoritative movement/vision/stealth state has settled. It never reads
-    //  TrueWorld and never emits a multi-step plan. One decision is valid for one immediate action;
-    //  after that action the executor must call this policy again on the new live state.
+    // Called only after authoritative movement/vision/stealth state has settled. It never reads
+    // TrueWorld and never emits a multi-step plan. One decision is valid for one immediate action;
+    // after that action the executor must call this policy again on the new live state.
     // ===========================================================================================
     public enum ReconReactionAction
     {
@@ -159,7 +159,14 @@ namespace Game.Ai.V2
                     + AiConfigV2.scoutFleeFutureReconWeight * futureRecon
                     - AiConfigV2.scoutFleeDetectorWeight * detector
                     - AiConfigV2.scoutFleeBacktrackWeight * backtrack;
-                if (score > bestScore)
+                // The executor asks for a noncapturing SafeStepPathing step for Flee. Its target
+                // evaluator must ask that SAME owner before selecting this candidate, or a
+                // high-scoring known foreign building/unreachable hex wins here and execution
+                // reports NoSafeStep while a lower-scoring legal escape was available. Probe only
+                // candidates capable of beating the current best; this is an emergency reaction,
+                // not a full-map per-step routing sweep.
+                if (score > bestScore
+                    && SafeStepPathing.FindNextSafeStep(map, army, h) != null)
                 {
                     bestScore = score;
                     best = h;
@@ -257,6 +264,12 @@ namespace Game.Ai.V2
 
                 float risk = CurrentDetectorRisk(player, h);
                 if (risk > bestRisk + 0.0001f)
+                    continue;
+                // EvadeDetector does not own capture: the same default noncapturing safe-route
+                // rule must witness the direct adjacent step before it becomes a reaction.
+                // Otherwise VantageBlockedNow can admit an undefended visible foreign building
+                // for a non-required-stealth mission, only for execution to reject the move.
+                if (SafeStepPathing.FindNextSafeStep(map, army, h) == null)
                     continue;
                 if (risk < bestRisk - 0.0001f || cost < bestCost
                     || (Math.Abs(risk - bestRisk) < 0.0001f && cost == bestCost

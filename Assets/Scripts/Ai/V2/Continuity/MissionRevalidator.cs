@@ -76,6 +76,27 @@ namespace Game.Ai.V2
                 && root.ActionPoints < mover.ActivationApCost)
                 return MissionValidity.StaleUnaffordable;
 
+            // Return is a noncapturing obligation, not a substitute Assault/LocalCapture.
+            // Validate its pinned destination using only THIS player's observed ownership;
+            // a foreign building learned about since Provisioning must hand the intent back
+            // to Continuity, never become an incidental capture or a completed return.
+            bool raidReturn = pm.Kind == MissionKind.Raid
+                && (pm.RaidPhase == RaidMissionPhase.Return
+                    || pm.RaidPhase == RaidMissionPhase.SupportReturn
+                    || pm.RaidPhase == RaidMissionPhase.RecoveryReturn);
+            bool defenceReturn = pm.Kind == MissionKind.ActiveDefence
+                && pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return;
+            if (raidReturn || defenceReturn)
+            {
+                Game.HexGrid.HexCoord? home = raidReturn
+                    ? pm.RaidDestinationHex : pm.ActiveDefenceTarget.ReturnHex;
+                if (!home.HasValue)
+                    return MissionValidity.StaleTargetInvalidated;
+                AiMapMemory.KnownBuilding? remembered = AiMapMemory.KnownBuildingAt(player, home.Value);
+                if (remembered.HasValue && remembered.Value.Owner != player)
+                    return MissionValidity.StaleTargetInvalidated;
+            }
+
             if (pm.Kind == MissionKind.Raid)
             {
                 if (pm.RaidPhase == RaidMissionPhase.Assault

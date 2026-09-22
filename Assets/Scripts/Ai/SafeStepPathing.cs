@@ -150,14 +150,15 @@ namespace Game.Ai
                 new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
             public HashSet<HexCoord> HostileStructureHexes;
-            // FIX-07 — the subset of HostileStructureHexes this player KNOWS is standing
-            // undefended (AiMapMemory.KnownUndefendedForeignStructureAt). Only these may be
-            // entered by a mover whose accepted plan permits taking a structure it walks onto;
-            // a defended one, or one whose defence we do not know, stays blocked for everyone.
-            // Kept in the same cache, invalidated by the same AiMapMemory.RouteMemoryVersion
-            // (which already bumps on both sighting and building changes) — no new store.
+            // FIX-07 — the subset of HostileStructureHexes this player currently sees standing
+            // undefended (AiMapMemory.KnownUndefendedForeignStructureAt). A fogged building can
+            // remain a remembered objective but cannot authorize a capture move: old enemy
+            // sightings can expire without re-observation, so absence of a sighting is not proof
+            // the building is empty now. Visibility changes bump this owner's KnowledgeVersion.
+            // Guarded-event knowledge also affects this set and must invalidate capture routes.
             public HashSet<HexCoord> CapturableStructureHexes;
             public int MemoryVersion;
+            public int KnowledgeVersion;
 
             public void ClearPathsAndFields()
             {
@@ -203,13 +204,14 @@ namespace Game.Ai
                 .Where(b => b.Owner != null && b.Owner != owner)
                 .Select(b => b.Hex));
 
-        // FIX-07 — same set, narrowed to the ones knowledge says nobody is holding. The rule
-        // itself lives in AiMapMemory; this only materialises it once per memory revision so the
-        // blocker below stays an O(1) lookup.
+        // Only a CURRENTLY VISIBLE foreign building can be offered as a capturable destination.
+        // Keep remembered fogged buildings in HostileStructureHexes as blockers until seen again;
+        // never turn a timed-out enemy-army sighting into permission to change ownership.
         internal static HashSet<HexCoord> CapturableForeignStructureHexes(
             PlayerSetupData owner, IEnumerable<AiMapMemory.KnownBuilding> buildings) =>
             new HashSet<HexCoord>((buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Where(b => b.Owner != null && b.Owner != owner
+                    && VisionSystem.IsVisible(owner, b.Hex)
                     && AiMapMemory.KnownUndefendedForeignStructureAt(owner, b.Hex))
                 .Select(b => b.Hex));
 
@@ -225,6 +227,7 @@ namespace Game.Ai
             }
 
             int memoryVersion = AiMapMemory.RouteMemoryVersion;
+            int knowledgeVersion = AiMapMemory.KnowledgeVersionFor(owner);
             if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
             {
                 cache = new PlayerRouteCache
@@ -234,15 +237,24 @@ namespace Game.Ai
                         owner, AiMapMemory.AllKnownBuildings(owner)),
                     CapturableStructureHexes = CapturableForeignStructureHexes(
                         owner, AiMapMemory.AllKnownBuildings(owner)),
-                    MemoryVersion = memoryVersion
+                    MemoryVersion = memoryVersion,
+                    KnowledgeVersion = knowledgeVersion
                 };
                 _playerCaches[owner] = cache;
             }
-            else if (memoryVersion != cache.MemoryVersion)
+            else if (memoryVersion != cache.MemoryVersion
+                || knowledgeVersion != cache.KnowledgeVersion)
             {
-                HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
-                HashSet<HexCoord> hostileStructures = KnownForeignStructureHexes(
-                    owner, AiMapMemory.AllKnownBuildings(owner));
+                // A guard appeared/disappeared during an ordinary visible-hex observation:
+                // KnownUndefendedForeignStructureAt changed even if armies and buildings did not.
+                // Only capturability depends on that broader fact. Avoid rebuilding the expensive
+                // enemy/danger blocker set on every unrelated resource-only observation.
+                bool routeFactsChanged = memoryVersion != cache.MemoryVersion;
+                HashSet<HexCoord> current = routeFactsChanged
+                    ? CaptureMemoryBlockers(map, owner) : cache.BlockedHexes;
+                HashSet<HexCoord> hostileStructures = routeFactsChanged
+                    ? KnownForeignStructureHexes(owner, AiMapMemory.AllKnownBuildings(owner))
+                    : cache.HostileStructureHexes;
                 HashSet<HexCoord> capturableStructures = CapturableForeignStructureHexes(
                     owner, AiMapMemory.AllKnownBuildings(owner));
                 if (!cache.BlockedHexes.SetEquals(current)
@@ -254,6 +266,7 @@ namespace Game.Ai
                 cache.HostileStructureHexes = hostileStructures;
                 cache.CapturableStructureHexes = capturableStructures;
                 cache.MemoryVersion = memoryVersion;
+                cache.KnowledgeVersion = knowledgeVersion;
             }
             return cache;
         }
@@ -285,15 +298,13 @@ namespace Game.Ai
             // expanded hex is one O(1) lookup instead of a scan of sightings/danger zones.
             return hex =>
             {
-                // Unlike a remembered army blocker, a known hostile structure remains blocked
-                // even when it is the requested destination: entering it changes ownership.
-                // FIX-07 — a mover whose accepted plan permits taking a structure it walks onto
-                // passes through/into ONLY the ones knowledge says are undefended. The permission
-                // is never a blanket pass over every foreign structure: a defended one, and one
-                // whose defence we simply do not know, stay blocked exactly as before.
+                // Only an explicitly requested destination may be entered under a capture
+                // permission. A foreign structure along the route is never free transit: taking
+                // it would be an unrelated state-changing action, even when known undefended.
+                // Unknown/defended structures remain blocked, including at the destination.
                 if (hostileStructures != null && hostileStructures.Contains(hex)
-                    && (!allowHostileStructureCapture || capturableStructures == null
-                        || !capturableStructures.Contains(hex)))
+                    && (!allowHostileStructureCapture || !hex.Equals(targetHex)
+                        || capturableStructures == null || !capturableStructures.Contains(hex)))
                     return true;
                 if (!hex.Equals(targetHex) && blocked.Contains(hex))
                     return true;
