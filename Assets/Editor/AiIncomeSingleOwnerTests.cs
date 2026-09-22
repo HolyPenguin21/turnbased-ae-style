@@ -140,6 +140,50 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ContestedArmyCollectsNothingButOwnBuildingStillCollectsBeforeAndAfterContact()
+        {
+            var opponent = new PlayerSetupData();
+            var opponentRoot = PlayerRoot.Create(opponent, "contesting owner account");
+            PlayerRootRegistry.Register(opponent, opponentRoot);
+            try
+            {
+                var building = new BuildingData { Hex = Site, Owner = _player };
+                building.Abilities.Add(UnitAbilities.CollectAbilityFor(ResourceType.Materials));
+                BuildingRegistry.Register(Site, building);
+
+                var ownArmy = new ArmyData { Owner = _player, Hex = Site };
+                var foreignArmy = new ArmyData { Owner = opponent, Hex = Site };
+                for (int i = 0; i < 2; i++)
+                {
+                    var ownCollector = new UnitData { Owner = _player };
+                    ownCollector.Abilities.Add(UnitAbilities.CollectAbilityFor(ResourceType.Materials));
+                    ownArmy.Members.Add(ownCollector);
+                    var foreignCollector = new UnitData { Owner = opponent };
+                    foreignCollector.Abilities.Add(UnitAbilities.CollectAbilityFor(ResourceType.Materials));
+                    foreignArmy.Members.Add(foreignCollector);
+                }
+                ArmyRegistry.Register(ownArmy);
+                ArmyRegistry.Register(foreignArmy);
+
+                Assert.That(IncomeProjection.IncomeFor(_player, ResourceType.Materials, _map), Is.EqualTo(1));
+                Assert.That(IncomeProjection.IncomeFor(opponent, ResourceType.Materials, _map), Is.Zero);
+                CollectPhysical();
+                Assert.That(_root.GetResource(ResourceType.Materials), Is.EqualTo(1));
+                Assert.That(opponentRoot.GetResource(ResourceType.Materials), Is.Zero);
+
+                ArmyRegistry.Unregister(foreignArmy);
+                Assert.That(IncomeProjection.IncomeFor(_player, ResourceType.Materials, _map), Is.EqualTo(3));
+                CollectPhysical();
+                Assert.That(_root.GetResource(ResourceType.Materials), Is.EqualTo(4));
+                Assert.That(opponentRoot.GetResource(ResourceType.Materials), Is.Zero);
+            }
+            finally
+            {
+                Object.DestroyImmediate(opponentRoot.gameObject);
+            }
+        }
+
+        [Test]
         public void ProduceProjectionMatchesRoundGrantAndExcludesPrisoners()
         {
             var building = new BuildingData { Owner = _player, Hex = Site };
