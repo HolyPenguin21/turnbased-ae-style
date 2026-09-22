@@ -565,8 +565,16 @@ namespace Game.Ai
         // this step, retry next step/turn", never "walk as far as the path allows" (that fallback
         // already lives at the IssueMoveOrder layer, for a full-target move like Задача 2's own
         // ResourcesScrap — this helper is only for callers that need the SINGLE next hex).
+        // `projectedCurrentMovement`/`projectedMaxMovement` (AI-01) — price the FIRST step against
+        // the roster an assembly is about to produce rather than the host's untouched one. A
+        // recruit slower than every current member lowers the whole army's shared movement (see
+        // ArmyData.ComputeCurrentMovement), so a step that looks affordable for the lone host can
+        // be impossible for the assembled force. Null keeps the army's own live figures — the
+        // existing behaviour for every pre-existing caller. Same rules, same pathfinder, only the
+        // movement budget the caller is asking about changes.
         internal static HexCoord? FindAffordableStep(HexMap map, ArmyData army, HexCoord destination,
-            System.Func<HexCoord, bool> blockHex = null)
+            System.Func<HexCoord, bool> blockHex = null,
+            int? projectedCurrentMovement = null, int? projectedMaxMovement = null)
         {
             if (map == null || army == null || destination.Equals(army.Hex))
                 return null;
@@ -589,7 +597,7 @@ namespace Game.Ai
             System.Func<HexCoord, bool> effectiveBlock = blockHex;
             if (!isAirArmy)
             {
-                int maxMovement = army.MaxMovement;
+                int maxMovement = projectedMaxMovement ?? army.MaxMovement;
                 effectiveBlock = hex => (blockHex != null && blockHex(hex))
                     || (map.TryGetTerrainAt(hex, out TerrainTypeEntry stepEntry)
                         && Mathf.Max(1, stepEntry.moveCost) > maxMovement);
@@ -601,7 +609,7 @@ namespace Game.Ai
             map.TryGetTerrainAt(step, out TerrainTypeEntry entry);
             int terrainCost = entry != null ? entry.moveCost : 1;
             int cost = AviationRules.MovementCost(army, terrainCost);
-            return army.CurrentMovement >= cost ? step : (HexCoord?)null;
+            return (projectedCurrentMovement ?? army.CurrentMovement) >= cost ? step : (HexCoord?)null;
         }
 
         // Shared MoveArmy candidate-feasibility gate (2026-08-23, project owner's own report):
