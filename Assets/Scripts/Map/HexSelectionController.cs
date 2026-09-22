@@ -693,6 +693,15 @@ namespace Game.Map
                 bool isOwnBase = isOwn && (buildingHere.IsBase || !buildingHere.HasTieredUnlock);
                 BuildingData baseForButton = isOwnBase ? buildingHere : null;
                 infoPanel.SetBaseButtonVisible(baseForButton != null, () => ShowBaseModal(baseForButton));
+
+                // Same idea, for Research/Production — used to be separate entries on
+                // resourceActionRow (RefreshResourceActionRow below), now their own fixed
+                // buttons on this nav row. Eligibility itself is unchanged: ResearchProductionSystem.IsEligible.
+                bool researchEligible = ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Research, out _);
+                infoPanel.SetResearchButtonVisible(researchEligible, () => OnResearchActionClicked(coord));
+
+                bool productionEligible = ResearchProductionSystem.IsEligible(turnController?.CurrentPlayer, coord, ResearchProductionMode.Production, out _);
+                infoPanel.SetProductionButtonVisible(productionEligible, () => OnProductionActionClicked(coord));
             }
 
             RefreshResourceActionRow(coord, buildingHere, effectiveYields);
@@ -745,8 +754,7 @@ namespace Game.Map
             ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // The selected hex's contextual first-level actions, in display order: Research /
-        // Production (see AddResearchProductionActions) first, then up to 4 "build an extraction
+        // The selected hex's contextual first-level actions: up to 4 "build an extraction
         // Facility" buttons — one per resource type `coord` actually yields that ISN'T ALREADY
         // FULLY COLLECTED (building's own baked-in ability + whatever Facilities are already
         // placed, see BuildingData.CollectedAmount — e.g. a citadel alone already fully covers a
@@ -757,7 +765,9 @@ namespace Game.Map
         // armies stands here. Independent of who owns whatever building already sits on the hex
         // being shown elsewhere — TryBuildExtractionFacility itself rejects a foreign building
         // silently, same as any other irrelevant target. Every entry shown is a genuinely
-        // available action; there is no paging — the row is sized for all 6 at once.
+        // available action; there is no paging — the row is sized for all 4 at once. Research/
+        // Production moved out of this row into their own fixed buttons on HexInfoPanelUI's nav
+        // row (see SelectHex) — this row is extraction-only now.
         private void RefreshResourceActionRow(HexCoord coord, BuildingData buildingHere, ResourceYields effectiveYields)
         {
             if (resourceActionRow == null)
@@ -765,8 +775,6 @@ namespace Game.Map
 
             PlayerSetupData human = turnController?.CurrentPlayer;
             var actions = new List<HexActionDescriptor>();
-
-            AddResearchProductionActions(actions, coord, buildingHere, human);
 
             // No building here — regardless of who it belongs to — can be worked while a
             // combat-capable enemy army stands on the hex (see Game.Combat.BattleInitiator).
@@ -807,33 +815,15 @@ namespace Game.Map
                 resourceActionRow.Hide();
         }
 
-        // Research and Production are independent first-level hex actions (no cost source yet —
-        // the click handlers are stubs until the next milestone wires up their modals). Each is
-        // shown only when, on the human's own turn, an OWN building on `coord` holds a Facility
-        // granting the capability (UnitAbilities.Research / Production — never a Lab/Factory name
-        // or card id), no combat-capable enemy stands on the hex, and one of this player's own
-        // eligible Heroes with the matching role ability (Researcher / Assembler) is present in
-        // an army on this exact hex — garrison included. The two are fully symmetric and can
-        // appear together; a single Hero carrying both role abilities, or two different own
-        // armies each carrying one, satisfies both.
-        private void AddResearchProductionActions(List<HexActionDescriptor> actions, HexCoord coord,
-            BuildingData buildingHere, PlayerSetupData human)
-        {
-            if (human == null || !human.IsHuman || buildingHere == null || buildingHere.Owner != human)
-                return;
-            if (BattleInitiator.FindEnemyAt(coord, human) != null)
-                return;
-
-            // Eligibility is the shared rule now (ResearchProductionSystem.IsEligible) — same
-            // Facility-ability / no-enemy / own-qualifying-Hero check the AI's Development planner
-            // runs, instead of this class re-spelling it.
-            if (ResearchProductionSystem.IsEligible(human, coord, ResearchProductionMode.Research, out _))
-                actions.Add(new HexActionDescriptor("Research", () => OnResearchActionClicked(coord)));
-
-            if (ResearchProductionSystem.IsEligible(human, coord, ResearchProductionMode.Production, out _))
-                actions.Add(new HexActionDescriptor("Production", () => OnProductionActionClicked(coord)));
-        }
-
+        // Eligibility (ResearchProductionSystem.IsEligible: on the human's own turn, an OWN
+        // building on `coord` holds a Facility granting the capability — UnitAbilities.Research /
+        // Production, never a Lab/Factory name or card id — no combat-capable enemy stands on the
+        // hex, and one of this player's own eligible Heroes with the matching role ability
+        // (Researcher / Assembler) is present in an army on this exact hex, garrison included) is
+        // checked directly in SelectHex now, same spot as the Garrison/Base buttons. The two are
+        // fully symmetric and can appear together; a single Hero carrying both role abilities, or
+        // two different own armies each carrying one, satisfies both.
+        //
         // Eligibility is re-checked here rather than trusted from the button's mere existence —
         // the hex contents could have changed between render and click. On success, the shared
         // ResearchProductionModalUI opens in the matching mode with the qualifying Hero; the

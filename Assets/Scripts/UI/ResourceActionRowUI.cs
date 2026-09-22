@@ -6,11 +6,9 @@ using UnityEngine;
 
 namespace Game.UI
 {
-    // One entry in HexInfoPanelUI's hex-action row (see ResourceActionRowUI). Deliberately
-    // minimal so the row can carry more than resource extraction: a visible label, a click
-    // callback, and — only for actions that actually cost something — the CardDefinition the
-    // button reads AP/resource badges off for its hover preview. Research/Production have no
-    // cost source at this stage and pass null, which puts the button in its label-only mode.
+    // One entry in HexInfoPanelUI's extraction-Facility hex-action row (see
+    // ResourceActionRowUI): a visible label, a click callback, and the CardDefinition the button
+    // reads AP/resource badges off for its hover preview.
     public sealed class HexActionDescriptor
     {
         public string Label;
@@ -27,13 +25,13 @@ namespace Game.UI
         }
     }
 
-    // The contextual hex-action buttons next to Garrison/Base on HexInfoPanelUI — originally
-    // just up to 4 "build an extraction Facility" buttons, now a generic list of whatever
-    // actions the selected hex currently offers (Research/Production first, then extraction —
-    // see HexSelectionController.RefreshResourceActionRow). Same instantiate-per-item +
-    // tracked-list-cleared-before-every-render pattern as ArmyButtonRowUI, without that one's
-    // scroll/paging machinery — the row is sized for all 6 possible entries at once (2
-    // contextual + 4 extraction), so it always fits without scrolling.
+    // The contextual "build an extraction Facility" buttons next to Garrison/Base/Research/
+    // Production on HexInfoPanelUI — up to 4 entries, one per resource type (see
+    // HexSelectionController.RefreshResourceActionRow). Research/Production used to also live
+    // here but now have their own fixed buttons on HexInfoPanelUI's nav row instead. Same
+    // instantiate-per-item + tracked-list-cleared-before-every-render pattern as ArmyButtonRowUI,
+    // without that one's scroll/paging machinery — the row is sized for all 4 possible entries at
+    // once, so it always fits without scrolling.
     public class ResourceActionRowUI : MonoBehaviour
     {
         [SerializeField] private Transform buttonContainer;

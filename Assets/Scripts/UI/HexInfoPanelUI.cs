@@ -16,6 +16,8 @@ namespace Game.UI
         [SerializeField] private GameObject panelRoot;
         [SerializeField] private Button garrisonButton;
         [SerializeField] private Button baseButton;
+        [SerializeField] private Button researchButton;
+        [SerializeField] private Button productionButton;
 
         public void ShowHex()
         {
@@ -31,6 +33,10 @@ namespace Game.UI
                 garrisonButton.gameObject.SetActive(false);
             if (baseButton != null)
                 baseButton.gameObject.SetActive(false);
+            if (researchButton != null)
+                researchButton.gameObject.SetActive(false);
+            if (productionButton != null)
+                productionButton.gameObject.SetActive(false);
         }
 
         // Independent of ShowHex — a direct way to reach the garrison's modal regardless of
@@ -61,6 +67,35 @@ namespace Game.UI
             {
                 baseButton.onClick.RemoveAllListeners();
                 baseButton.onClick.AddListener(() => onClick?.Invoke());
+            }
+        }
+
+        // Same idea as SetGarrisonButtonVisible/SetBaseButtonVisible — Research now lives in
+        // this fixed nav row instead of the variable-length ResourceActionRowUI (see
+        // HexSelectionController.SelectHex), so it stays put next to Garrison/Base/Production
+        // rather than shifting around with however many extraction-Facility buttons show.
+        public void SetResearchButtonVisible(bool visible, Action onClick)
+        {
+            if (researchButton == null)
+                return;
+            researchButton.gameObject.SetActive(visible);
+            if (visible)
+            {
+                researchButton.onClick.RemoveAllListeners();
+                researchButton.onClick.AddListener(() => onClick?.Invoke());
+            }
+        }
+
+        // Same idea, for Production.
+        public void SetProductionButtonVisible(bool visible, Action onClick)
+        {
+            if (productionButton == null)
+                return;
+            productionButton.gameObject.SetActive(visible);
+            if (visible)
+            {
+                productionButton.onClick.RemoveAllListeners();
+                productionButton.onClick.AddListener(() => onClick?.Invoke());
             }
         }
     }

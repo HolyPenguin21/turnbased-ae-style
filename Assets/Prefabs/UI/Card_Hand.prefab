@@ -1080,10 +1080,10 @@ RectTransform:
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 7770000000000000021}
+  - {fileID: 3223033984230442304}
   - {fileID: 4201985032522970349}
   - {fileID: 7770000000000000013}
   - {fileID: 7770000000000000017}
-  - {fileID: 3223033984230442304}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -1405,7 +1405,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Stealth:X Hyperkinetic:+2 Double_Attack
+  m_text: 'Stealth:X Hyperkinetic:+2 Double_Attack '
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}
   m_sharedMaterial: {fileID: 2542230976815431383, guid: ad07a000d5ebaa040804813fca1c55e8, type: 2}

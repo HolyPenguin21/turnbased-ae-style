@@ -7,14 +7,14 @@ using UnityEngine.UI;
 
 namespace Game.UI
 {
-    // One button on HexInfoPanelUI's hex-action row (see ResourceActionRowUI) — mirrors
-    // ArmyButtonUI's Setup/click pattern. Two modes, chosen by HexActionDescriptor.CostSource:
-    //   - Cost action (extraction Facilities): CostSource set. On hover, swaps the label for
-    //     the definition's cost badges (AP + non-zero resources) — same "icon + number" row
-    //     convention as ResourceBarUI/BaseSlotCardUI's own upgrade-cost preview.
-    //   - Simple action (Research / Production): CostSource null. Label stays visible, no
-    //     hover preview — these carry no AP/resource cost at this stage.
-    // Icon appearance comes straight from the prefab, not tinted per-action at runtime.
+    // One button on HexInfoPanelUI's extraction-Facility hex-action row (see
+    // ResourceActionRowUI) — mirrors ArmyButtonUI's Setup/click pattern. HexActionDescriptor.
+    // CostSource is set for every entry on this row now (Research/Production moved to their own
+    // fixed buttons elsewhere on HexInfoPanelUI); a null CostSource still leaves the button in
+    // label-only mode with no hover preview, kept as the general fallback rather than dead code.
+    // On hover, swaps the label for the definition's cost badges (AP + non-zero resources) —
+    // same "icon + number" row convention as ResourceBarUI/BaseSlotCardUI's own upgrade-cost
+    // preview. Icon appearance comes straight from the prefab, not tinted per-action at runtime.
     public class ResourceActionButtonUI : MonoBehaviour
     {
         [SerializeField] private Image icon;
