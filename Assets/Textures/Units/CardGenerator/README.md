@@ -1,34 +1,44 @@
 # CardGenerator
 
-Small deterministic compositor for unit cards.
+Deterministic compositor for unit cards.
 
 ## Folder layout
 
 ```text
 CardGenerator/
-  Bases/   # exactly 2 card bases
-  Input/   # generated unit PNG files
-  Output/  # generated card variants
+  Bases/
+    Card_Base.png
+    Card_Base_Clear.png
+  Input/
+  Output/
 ```
 
-The script expects exactly two PNG files in `Bases/`.
-One of them must contain `Clear` in the filename, for example:
+- `Card_Base.png` — card base with stat slots.
+- `Card_Base_Clear.png` — clear card base without stat slots.
+- `Input/` — generated unit PNG files.
+- `Output/` — final card PNG files.
+
+For an input file:
 
 ```text
-Card_Base_01.png
-Card_Base_01_Clear.png
+LightInfantry.png
 ```
 
-For every PNG placed in `Input/`, the script generates two files in `Output/`:
+the script generates:
 
 ```text
-<UnitName>_Stats.png
-<UnitName>_Clear.png
+LightInfantry.png
+LightInfantry_Full.png
 ```
 
-The same prepared art layer is used for both variants, so unit scale, position,
-brightness and fade remain consistent. The card bases themselves are never
-resized or regenerated.
+- `LightInfantry.png` uses `Card_Base.png`.
+- `LightInfantry_Full.png` uses `Card_Base_Clear.png`.
+
+The exact same prepared art layer is used for both outputs, so scale, position,
+brightness and fade stay identical.
+
+The alpha channel of each base is applied to the final result. Transparent and
+rounded card corners therefore remain transparent automatically.
 
 ## First-time setup
 
@@ -47,11 +57,13 @@ py .\compose_cards.py
 
 ## Current behavior
 
+- fixed base filenames;
 - normal 100% alpha compositing, no Multiply/Overlay blending;
-- identical unit placement on both bases;
+- identical unit placement and brightness on both card variants;
 - soft feathering on left/right/top edges;
-- deterministic vertical fade before the stat/description zone;
-- stat-slot positions come only from the original base PNG, so they cannot drift.
+- deterministic vertical fade before the stats/description area;
+- final card silhouette is clipped by the alpha channel of the selected base;
+- stat-slot positions always come directly from `Card_Base.png`, so they cannot drift.
 
 The shared composition constants are at the top of `compose_cards.py` and can
 be tuned once for the whole card set.
