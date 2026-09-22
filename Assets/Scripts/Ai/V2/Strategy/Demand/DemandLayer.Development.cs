@@ -42,7 +42,7 @@ namespace Game.Ai.V2
             // this only gates WHETHER an opportunity is allowed to compete at all.
             // One best prerequisite per pass; the next settled pass sees the completed stage.
             bool SupportsNeed(DevelopmentOpportunity op) => op != null && op.ExpectedGain > 0f
-                && HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player, s);
+                && HasSupportedDevelopmentAxisDemand(op, formedDemands, activeIntents, player, s, ctx);
             DevelopmentOpportunity preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
                 s, player, root, hand, ctx, SupportsNeed,
                 activeIntents).FirstOrDefault();
@@ -118,7 +118,7 @@ namespace Game.Ai.V2
         // their existing primary: only a separate deployable army can close those.
         internal static bool HasSupportedDevelopmentAxisDemand(DevelopmentOpportunity op,
             IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
-            PlayerSetupData player, WorldSnapshot snap = null)
+            PlayerSetupData player, WorldSnapshot snap = null, AiTurnContext ctx = null)
         {
             if (op == null)
                 return false;
@@ -136,19 +136,18 @@ namespace Game.Ai.V2
             if (army == null)
                 return false;
 
-            bool economyWitness = formedDemands?.Any(d => d != null
-                    && d.RequestingAxis == DesireAxis.Economy
-                    && d.EconomyPreferredBuilderArmyId == army.Id) == true
-                || activeIntents?.Any(i => i != null && i.Status == IntentStatus.Active
-                    && i.Kind == MissionKind.Economy
-                    // A builder already walking home (ReturnBuilder) has no outstanding build
-                    // obligation left — it cannot justify a fresh Production/CardUpgrade demand.
-                    && (i.Economy?.Kind == EconomyTaskKind.BuildExtraction
-                        || i.Economy?.Kind == EconomyTaskKind.FoundBase)
-                    && (i.PreferredMoverArmyId == army.Id
-                        || i.Economy?.BuilderArmyId == army.Id)) == true;
-            if (economyWitness)
-                return true;
+            // AI-03 — membership in an economic task is NECESSARY but NOT SUFFICIENT. Previously
+            // this returned true the moment the recipient's army was the designated builder or
+            // carried a live BuildExtraction/FoundBase intent, so ANY equipment with a positive
+            // generic ExpectedGain was admitted as "production supports a need" without ever
+            // asking whether it helps THAT economic project. The witness now only names the
+            // specific obligation; the admission itself demands a concrete before/after proof on
+            // the real executor (EquipmentSystem.Predict + the existing income/pathing/WorthIt
+            // mechanisms). This stays a boolean gate — no new score, no new coefficient.
+            foreach (EconomicObligation obligation in
+                     EconomicObligationsOf(army, formedDemands, activeIntents))
+                if (ImprovesEconomicObligation(op, army, obligation, player, snap, ctx))
+                    return true;
 
             bool reconWitness = activeIntents?.Any(i => i != null
                 && i.Status == IntentStatus.Active && i.Kind == MissionKind.Scout
@@ -181,6 +180,261 @@ namespace Game.Ai.V2
                 float hexBonus = WorthIt.HexDefenseBonus(raid.LastKnownHex, null);
                 if (ImprovesRaidCombatOutcome(op.RecipientUnit, army.Members,
                     op.Card.equipment, defenders, hexBonus))
+                    return true;
+            }
+            return false;
+        }
+
+        // =====================================================================================
+        //  AI-03 — the ONE specific economic obligation an equipment recipient's army is bound to,
+        //  and the proof that a specific grant actually improves it.
+        // =====================================================================================
+
+        // Identity of the live economic project the recipient's army is committed to. Carries only
+        // facts the existing layers already own (Economy demand / EconomyIntent); nothing here is
+        // recomputed or invented.
+        private readonly struct EconomicObligation
+        {
+            public readonly EconomyTaskKind Kind;
+            public readonly HexCoord TargetHex;
+            public readonly ResourceType? Resource;
+            // A Return leg is a still-necessary journey, never an outstanding build/extraction
+            // obligation: only delivery and protection of that leg may justify equipment on it,
+            // so a completed economy mission can never mint a fresh production need on its way home.
+            public readonly bool IsReturnLegOnly;
+
+            public EconomicObligation(EconomyTaskKind kind, HexCoord targetHex,
+                ResourceType? resource, bool isReturnLegOnly)
+            {
+                Kind = kind;
+                TargetHex = targetHex;
+                Resource = resource;
+                IsReturnLegOnly = isReturnLegOnly;
+            }
+        }
+
+        // The old `economyWitness` boolean, now yielding WHICH obligations it witnessed. An army
+        // may legitimately hold more than one (a committed intent plus a fresh demand), and a grant
+        // that helps any ONE of them supports a real need, so every one is offered to the proof —
+        // the gate must not depend on which happened to be found first. Live intents come first:
+        // they are the committed projects. The demand path keeps the existing
+        // EconomyPreferredBuilderArmyId contract.
+        private static IEnumerable<EconomicObligation> EconomicObligationsOf(ArmyData army,
+            IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (army == null)
+                yield break;
+
+            foreach (MissionIntent i in activeIntents
+                         ?? (IReadOnlyList<MissionIntent>)System.Array.Empty<MissionIntent>())
+            {
+                EconomyIntent e = i?.Economy;
+                if (i == null || i.Status != IntentStatus.Active
+                    || i.Kind != MissionKind.Economy || e == null)
+                    continue;
+                bool bound = i.PreferredMoverArmyId == army.Id
+                    || e.BuilderArmyId == army.Id || e.CollectorArmyId == army.Id;
+                if (!bound)
+                    continue;
+                bool returnLeg = e.Kind == EconomyTaskKind.ReturnBuilder
+                    || e.Kind == EconomyTaskKind.ReturnCollector;
+                HexCoord destination = returnLeg && e.SafeReturnHex.HasValue
+                    ? e.SafeReturnHex.Value : e.TargetHex;
+                yield return new EconomicObligation(e.Kind, destination, e.ResourceType, returnLeg);
+            }
+
+            foreach (AxisDemand d in formedDemands
+                         ?? (IReadOnlyList<AxisDemand>)System.Array.Empty<AxisDemand>())
+            {
+                if (d == null || d.RequestingAxis != DesireAxis.Economy
+                    || d.EconomyPreferredBuilderArmyId != army.Id || !d.TargetHex.HasValue)
+                    continue;
+                // A demand is always an outstanding build/collect project; a return leg only
+                // ever exists as an intent.
+                yield return new EconomicObligation(
+                    d.EconomyResourceType.HasValue
+                        ? EconomyTaskKind.BuildExtraction : EconomyTaskKind.FoundBase,
+                    d.TargetHex.Value, d.EconomyResourceType, false);
+            }
+        }
+
+        // Does THIS grant concretely improve THIS economic obligation? Exactly one of the four
+        // admissible proofs must hold. Every one of them is a real before/after comparison on the
+        // real executor through a system that already owns that rule — EquipmentSystem.Predict for
+        // the stat/ability delta, ArmyData's own slowest-member/sum rules for the army-level
+        // effect, SafeStepPathing for reachability, IncomeProjection for income and WorthIt for
+        // combat. Nothing here scores; a true answer only lets the existing EV/TaskScore pipeline
+        // proceed unchanged.
+        private static bool ImprovesEconomicObligation(DevelopmentOpportunity op, ArmyData army,
+            in EconomicObligation obligation, PlayerSetupData player, WorldSnapshot snap,
+            AiTurnContext ctx)
+        {
+            EquipmentGrant grant = op?.Card?.equipment;
+            UnitData recipient = op?.RecipientUnit;
+            if (grant == null || recipient == null || army?.Members == null
+                || !army.Members.Contains(recipient))
+                return false;
+
+            // Normalized before/after of the recipient. Predict(null, ...) is the BEFORE state so a
+            // capability the host already effectively has (RapidReaction already zeroing activation
+            // AP, a Collect ability already present) can never be credited to this grant.
+            var stats = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.MoveMax] = recipient.MoveMax,
+                [EquipmentStat.ActivationApCost] = recipient.ActivationApCost,
+            };
+            PredictedEquipmentState before = EquipmentSystem.Predict(null, stats, recipient.Abilities);
+            PredictedEquipmentState after = EquipmentSystem.Predict(grant, stats, recipient.Abilities);
+            int beforeMove = before.Stats.TryGetValue(EquipmentStat.MoveMax, out int bMove)
+                ? bMove : recipient.MoveMax;
+            int afterMove = after.Stats.TryGetValue(EquipmentStat.MoveMax, out int aMove)
+                ? aMove : beforeMove;
+            int beforeActivation = before.Stats.TryGetValue(
+                EquipmentStat.ActivationApCost, out int bAp) ? bAp : recipient.ActivationApCost;
+            int afterActivation = after.Stats.TryGetValue(
+                EquipmentStat.ActivationApCost, out int aAp) ? aAp : beforeActivation;
+
+            if (ImprovesEconomicDelivery(army, recipient, obligation, ctx,
+                    beforeMove, afterMove, beforeActivation, afterActivation))
+                return true;
+
+            // A return leg has no build/extraction obligation left to improve.
+            if (!obligation.IsReturnLegOnly
+                && ImprovesEconomicExtraction(obligation, army, recipient, snap,
+                    before.Abilities, after.Abilities))
+                return true;
+
+            return ImprovesEconomicProtection(op, army, recipient, grant, obligation, player, snap, ctx);
+        }
+
+        // Delivery: the mission's actual journey gets cheaper, faster or newly possible.
+        // "Faster" is the ARMY's shared movement (ArmyData's slowest-member rule), never the
+        // recipient's own MoveMax — raising a fast unit's ceiling while a slower member still gates
+        // the formation changes nothing about delivery and must not admit the grant.
+        // "Cheaper" is the army's summed activation AP (ArmyData.ComputeActivationApCost), which is
+        // also the AP this project's build action competes with out of the same pool.
+        private static bool ImprovesEconomicDelivery(ArmyData army, UnitData recipient,
+            in EconomicObligation obligation, AiTurnContext ctx,
+            int beforeMove, int afterMove, int beforeActivation, int afterActivation)
+        {
+            if (army.Hex.Equals(obligation.TargetHex))
+                return false;   // already there — nothing left to deliver
+
+            int armyMoveBefore = int.MaxValue, armyMoveAfter = int.MaxValue;
+            int armyApBefore = 0, armyApAfter = 0;
+            foreach (UnitData u in army.Members)
+            {
+                if (u == null) continue;
+                bool isRecipient = object.ReferenceEquals(u, recipient);
+                armyMoveBefore = Mathf.Min(armyMoveBefore, isRecipient ? beforeMove : u.MoveMax);
+                armyMoveAfter = Mathf.Min(armyMoveAfter, isRecipient ? afterMove : u.MoveMax);
+                armyApBefore += isRecipient ? beforeActivation : u.ActivationApCost;
+                armyApAfter += isRecipient ? afterActivation : u.ActivationApCost;
+            }
+            if (armyMoveBefore == int.MaxValue)
+                return false;
+
+            if (armyApAfter < armyApBefore)
+                return true;                       // strictly cheaper reactivation for this route
+            if (armyMoveAfter <= armyMoveBefore)
+                return false;                      // bottleneck unchanged — no delivery effect
+
+            // A raised bottleneck is only a real improvement if it shortens or unblocks THIS
+            // mission's route. Same pathing rules, same blockers, same fog: only the movement
+            // budget the question is asked with changes.
+            if (ctx?.Map == null)
+                return false;
+            int costBefore = SafeStepPathing.FindSafePathCost(ctx.Map, army.Owner, army.Hex,
+                obligation.TargetHex, armyMoveBefore);
+            int costAfter = SafeStepPathing.FindSafePathCost(ctx.Map, army.Owner, army.Hex,
+                obligation.TargetHex, armyMoveAfter);
+            if (costAfter < costBefore)
+                return true;                       // includes "was unreachable, now reachable"
+            // Fewer turns on the same route is a genuine timeline improvement.
+            if (costAfter != int.MaxValue
+                && AiV2Util.CeilDiv(costAfter, Mathf.Max(1, armyMoveAfter))
+                    < AiV2Util.CeilDiv(costBefore, Mathf.Max(1, armyMoveBefore)))
+                return true;
+            // Last resort: a planned step that was impossible for the current bottleneck (an
+            // expensive-terrain hex costing more than MaxMovement) becomes possible.
+            bool stepBefore = SafeStepPathing.FindNextSafeStep(ctx.Map, army, obligation.TargetHex,
+                false, army.CurrentMovement, armyMoveBefore).HasValue;
+            bool stepAfter = SafeStepPathing.FindNextSafeStep(ctx.Map, army, obligation.TargetHex,
+                false, army.CurrentMovement, armyMoveAfter).HasValue;
+            return stepAfter && !stepBefore;
+        }
+
+        // Extraction: a genuine MARGINAL income increase at this project's own hex, through the
+        // canonical resource physics (IncomeProjection) applied to the snapshot's own frozen site
+        // facts. An army collects a resource by carrying a unit with that resource's Collect
+        // ability (WorldAnalysis.Self.CollectionCapacityOf), so the only way equipment can raise
+        // extraction is by granting one the army does not already have — and even then, a hex whose
+        // yield is already fully taken returns zero marginal gain and is rejected.
+        private static bool ImprovesEconomicExtraction(in EconomicObligation obligation,
+            ArmyData army, UnitData recipient, WorldSnapshot snap,
+            IReadOnlyList<string> beforeAbilities, IReadOnlyList<string> afterAbilities)
+        {
+            if (!obligation.Resource.HasValue || snap?.Self?.Armies == null)
+                return false;
+            ResourceType type = obligation.Resource.Value;
+            string collect = UnitAbilities.CollectAbilityFor(type);
+            bool had = beforeAbilities != null && beforeAbilities.Contains(collect);
+            bool has = afterAbilities != null && afterAbilities.Contains(collect);
+            if (had || !has)
+                return false;   // already had it, or the grant does not provide it
+
+            EconomyExtractionOpportunity? site = null;
+            foreach (EconomyExtractionOpportunity s in snap.Economy?.CollectorSites
+                         ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                if (s.Hex.Equals(obligation.TargetHex) && s.ResourceType == type)
+                { site = s; break; }
+            if (site == null)
+                return false;
+
+            // Own collectors that will be standing on the target hex once this mission arrives,
+            // exactly as WorldAnalysis sizes mobile collection: everyone ELSE already there, plus
+            // this army's own existing capacity (which travels with it). Counting the army's other
+            // collectors matters — if they already saturate the hex's remaining yield, the
+            // recipient's new ability adds nothing and must be rejected. Own force only; no enemy
+            // or hidden information is read here.
+            int othersThere = 0;
+            foreach (ArmySnapshot a in snap.Self.Armies)
+                if (a != null && a.ArmyId != army.Id && a.Hex.Equals(obligation.TargetHex))
+                    othersThere += Mathf.RoundToInt(a.CollectionCapacity.Get(type));
+            int ownCapacity = 0;
+            foreach (UnitData u in army.Members)
+                if (u != null && u.HasAbility(collect)) ownCapacity++;
+            int baseline = othersThere + ownCapacity;
+            int marginal = IncomeProjection.OwnerCollectionAtHex(site.Value.EffectiveYield,
+                    site.Value.CurrentBuildingCollection, baseline + 1, true)
+                - IncomeProjection.OwnerCollectionAtHex(site.Value.EffectiveYield,
+                    site.Value.CurrentBuildingCollection, baseline, true);
+            return marginal > 0;
+        }
+
+        // Protection: a concrete threat the AI actually REMEMBERS (snapshot sightings only — never
+        // an ArmyRegistry sweep for hidden enemies) standing on or beside this mission's own route,
+        // whose outcome the grant demonstrably changes. WorthIt owns the outcome; this is the same
+        // roster-level before/after comparison the Raid branch already uses.
+        private static bool ImprovesEconomicProtection(DevelopmentOpportunity op, ArmyData army,
+            UnitData recipient, EquipmentGrant grant, in EconomicObligation obligation,
+            PlayerSetupData player, WorldSnapshot snap, AiTurnContext ctx)
+        {
+            if (snap == null || ctx?.Map == null || recipient.IsHero)
+                return false;
+            HexPath route = SafeStepPathing.FindSafePath(ctx.Map, player, army.Hex,
+                obligation.TargetHex, army.MaxMovement);
+            if (route == null || route.Hexes == null || route.Hexes.Count == 0)
+                return false;
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
+                WorldAnalysis.KnownThreatsAffectingEconomyRoute(snap, route.Hexes);
+            foreach (AiMapMemory.KnownEnemySighting threat in threats)
+            {
+                IReadOnlyList<WorthIt.DefenderProfile> defenders = threat.Defenders;
+                if (defenders == null || defenders.Count == 0)
+                    continue;
+                float hexBonus = WorthIt.HexDefenseBonus(threat.Hex, null);
+                if (ImprovesRaidCombatOutcome(recipient, army.Members, grant, defenders, hexBonus))
                     return true;
             }
             return false;
