@@ -41,7 +41,7 @@ namespace Game.Ai.V2
         }
 
         internal static float PurposefulStepScore(float information, float anchorProgress,
-            float buildingBonus, float heading, float movementEfficiency)
+            float heading, float movementEfficiency)
         {
             float purpose = Mathf.Max(0f, information) + Mathf.Max(0f, anchorProgress);
             float quality = Mathf.Max(0f, 1f + heading + movementEfficiency);
@@ -270,7 +270,7 @@ namespace Game.Ai.V2
 
             float purpose = information + anchorProgress;
             float score = PurposefulStepScore(
-                    information, anchorProgress, buildingBonus, heading, movementEfficiency)
+                    information, anchorProgress, heading, movementEfficiency)
                 * trailFactor * safetyFactor * coverageFactor * deadEndFactor * homeFactor;
             string reason = $"purpose={purpose:0.00} info={information:0.00} "
                 + $"anchorProgress={anchorProgress:0.00} heading={heading:0.00} "
@@ -279,7 +279,7 @@ namespace Game.Ai.V2
                 + $"deadEnd={deadEndFactor:0.00} "
                 + $"homeDist={homeDist} homeDelta={homeDelta:+0;-0;0} localGap={home.LocalGap:0.00} "
                 + $"homeFactor={homeFactor:0.00}";
-            choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk
+            choice = new StepChoice(h, score, fresh, moveCost, intelAge, trailFactor, detectorRisk,
                 reason);
             return true;
         }
