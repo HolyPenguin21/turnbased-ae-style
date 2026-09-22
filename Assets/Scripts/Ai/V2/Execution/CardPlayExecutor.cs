@@ -131,6 +131,13 @@ namespace Game.Ai.V2
             if (def.isAviation) { reason = "aviation card not handled by StrategicManager"; return false; }
             if (def.cardType != CardType.Unit && def.cardType != CardType.Hero)
             { reason = $"card type {def.cardType} not a Unit/Hero deploy"; return false; }
+            if (root.Setup != player)
+            { reason = "resource owner does not match card owner"; return false; }
+            // This is the same physical prerequisite as human CardHandUI.IsValidDropTarget and
+            // ArmyActions.DeployUnitFromCard, for ALL placement kinds. Check before CreateArmy
+            // charges its 2 AP, including when requiredBuildingAbility is empty.
+            if (!PlacementRules.HasRequiredBuilding(player, plan.DeploymentHex, def))
+            { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             int totalAp = plan.TotalApCost;
             if (!root.CanSpendActionPoints(totalAp))
@@ -143,29 +150,28 @@ namespace Game.Ai.V2
                 case DeploymentKind.NewArmy:
                     break; // a fresh army always has room for the first member
                 case DeploymentKind.ReusableShell:
-                    if (plan.TargetArmy == null || plan.TargetArmy.Members.Count != 0
+                    if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
+                        || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count != 0
                         || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "shell is no longer a valid empty army at the deployment hex"; return false; }
+                    { reason = "shell is no longer a valid owned empty army at the deployment hex"; return false; }
                     break;
                 case DeploymentKind.Garrison:
-                    if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                    if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
+                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || !plan.TargetArmy.IsGarrison
                         || !PlacementRules.CanDepositIntoGarrison(plan.TargetArmy)
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "garrison no longer a valid deposit target (reserved slots/capacity)"; return false; }
+                    { reason = "garrison no longer a valid owned deposit target (reserved slots/capacity)"; return false; }
                     break;
                 default: // ExistingArmy
-                    if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                    if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
+                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count == 0
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "target army no longer valid / projected roster has no room"; return false; }
+                    { reason = "target army no longer owned/valid / projected roster has no room"; return false; }
                     break;
             }
-
-            if (!string.IsNullOrEmpty(def.requiredBuildingAbility)
-                && !PlacementRules.HasRequiredBuilding(player, plan.DeploymentHex, def))
-            { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             return true;
         }
