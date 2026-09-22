@@ -154,10 +154,11 @@ namespace Game.Ai
             // undefended (AiMapMemory.KnownUndefendedForeignStructureAt). Only these may be
             // entered by a mover whose accepted plan permits taking a structure it walks onto;
             // a defended one, or one whose defence we do not know, stays blocked for everyone.
-            // Kept in the same cache, invalidated by the same AiMapMemory.RouteMemoryVersion
-            // (which already bumps on both sighting and building changes) — no new store.
+            // Guarded-event knowledge also affects this set: its changes need not bump the
+            // narrower RouteMemoryVersion, so observe the owner's existing KnowledgeVersion too.
             public HashSet<HexCoord> CapturableStructureHexes;
             public int MemoryVersion;
+            public int KnowledgeVersion;
 
             public void ClearPathsAndFields()
             {
@@ -225,6 +226,7 @@ namespace Game.Ai
             }
 
             int memoryVersion = AiMapMemory.RouteMemoryVersion;
+            int knowledgeVersion = AiMapMemory.KnowledgeVersionFor(owner);
             if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
             {
                 cache = new PlayerRouteCache
@@ -234,15 +236,24 @@ namespace Game.Ai
                         owner, AiMapMemory.AllKnownBuildings(owner)),
                     CapturableStructureHexes = CapturableForeignStructureHexes(
                         owner, AiMapMemory.AllKnownBuildings(owner)),
-                    MemoryVersion = memoryVersion
+                    MemoryVersion = memoryVersion,
+                    KnowledgeVersion = knowledgeVersion
                 };
                 _playerCaches[owner] = cache;
             }
-            else if (memoryVersion != cache.MemoryVersion)
+            else if (memoryVersion != cache.MemoryVersion
+                || knowledgeVersion != cache.KnowledgeVersion)
             {
-                HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
-                HashSet<HexCoord> hostileStructures = KnownForeignStructureHexes(
-                    owner, AiMapMemory.AllKnownBuildings(owner));
+                // A guard appeared/disappeared during an ordinary visible-hex observation:
+                // KnownUndefendedForeignStructureAt changed even if armies and buildings did not.
+                // Only capturability depends on that broader fact. Avoid rebuilding the expensive
+                // enemy/danger blocker set on every unrelated resource-only observation.
+                bool routeFactsChanged = memoryVersion != cache.MemoryVersion;
+                HashSet<HexCoord> current = routeFactsChanged
+                    ? CaptureMemoryBlockers(map, owner) : cache.BlockedHexes;
+                HashSet<HexCoord> hostileStructures = routeFactsChanged
+                    ? KnownForeignStructureHexes(owner, AiMapMemory.AllKnownBuildings(owner))
+                    : cache.HostileStructureHexes;
                 HashSet<HexCoord> capturableStructures = CapturableForeignStructureHexes(
                     owner, AiMapMemory.AllKnownBuildings(owner));
                 if (!cache.BlockedHexes.SetEquals(current)
@@ -254,6 +265,7 @@ namespace Game.Ai
                 cache.HostileStructureHexes = hostileStructures;
                 cache.CapturableStructureHexes = capturableStructures;
                 cache.MemoryVersion = memoryVersion;
+                cache.KnowledgeVersion = knowledgeVersion;
             }
             return cache;
         }
