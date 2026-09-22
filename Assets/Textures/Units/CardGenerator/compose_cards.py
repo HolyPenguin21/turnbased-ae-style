@@ -34,8 +34,11 @@ SIDE_FEATHER_PX = 38
 TOP_FEATHER_PX = 27
 
 # Keep the original base border above the artwork so the art can never
-# visually cover/eat the frame.
-BORDER_OVERLAY_PX = 12
+# visually cover/eat the frame. The lower decorative edge is substantially
+# taller than the top/sides, so it needs a thicker protective overlay.
+BORDER_OVERLAY_TOP_PX = 12
+BORDER_OVERLAY_SIDE_PX = 12
+BORDER_OVERLAY_BOTTOM_PX = 42
 
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.
@@ -186,20 +189,24 @@ def apply_mask(art: Image.Image, mask: Image.Image) -> Image.Image:
 
 def make_border_overlay(base: Image.Image) -> Image.Image:
     """
-    Extract a thin frame overlay from the base.
+    Extract a protective decorative frame overlay from the base.
 
-    The overlay is composited after the artwork, which guarantees that the
-    decorative frame remains visible on all four sides, including the bottom.
+    The bottom overlay is intentionally thicker than the top/sides because
+    the lower base decoration extends farther into the card. Re-applying that
+    full decorative band above the artwork prevents the bottom edge from
+    looking visually eaten.
     """
     width, height = base.size
     mask = Image.new("L", (width, height), 0)
 
-    border = max(1, min(BORDER_OVERLAY_PX, width // 2, height // 2))
+    top = max(1, min(BORDER_OVERLAY_TOP_PX, height // 2))
+    side = max(1, min(BORDER_OVERLAY_SIDE_PX, width // 2))
+    bottom = max(1, min(BORDER_OVERLAY_BOTTOM_PX, height // 2))
 
-    mask.paste(255, (0, 0, width, border))
-    mask.paste(255, (0, height - border, width, height))
-    mask.paste(255, (0, 0, border, height))
-    mask.paste(255, (width - border, 0, width, height))
+    mask.paste(255, (0, 0, width, top))
+    mask.paste(255, (0, height - bottom, width, height))
+    mask.paste(255, (0, 0, side, height))
+    mask.paste(255, (width - side, 0, width, height))
 
     overlay = base.copy()
     overlay.putalpha(
@@ -298,7 +305,11 @@ def main() -> int:
     print(f"Output size: {OUTPUT_SIZE[0]}x{OUTPUT_SIZE[1]}")
     print(f"Stats fade : y={STATS_FADE_START_Y}..{STATS_FADE_END_Y}px")
     print(f"Full fade  : y={FULL_FADE_START_Y}..{FULL_FADE_END_Y}px")
-    print(f"Border top : {BORDER_OVERLAY_PX}px")
+    print(
+        f"Border ovl : top={BORDER_OVERLAY_TOP_PX}px, "
+        f"side={BORDER_OVERLAY_SIDE_PX}px, "
+        f"bottom={BORDER_OVERLAY_BOTTOM_PX}px"
+    )
     print(f"Units      : {len(art_paths)}")
     print()
 
