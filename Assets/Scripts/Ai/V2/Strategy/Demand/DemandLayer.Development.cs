@@ -177,7 +177,11 @@ namespace Game.Ai.V2
                 // The same defender-side base bonus enters both immutable projections.
                 // Terrain is not present in the snapshot, so this is a marginal signal,
                 // never a substitute for Raid's final live WorthIt admission.
-                float hexBonus = WorthIt.HexDefenseBonus(raid.LastKnownHex, null);
+                // FIX-05 — the raid target's own hex may well be fogged (that is the normal
+                // case for a last-known position). WorthIt.HexDefenseBonus would read the live
+                // BuildingRegistry there and leak a structure we have not observed; AiMapMemory
+                // answers the same question from what this player actually knows.
+                float hexBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx?.Map, raid.LastKnownHex);
                 if (ImprovesRaidCombatOutcome(op.RecipientUnit, army.Members,
                     op.Card.equipment, defenders, hexBonus))
                     return true;
@@ -433,7 +437,11 @@ namespace Game.Ai.V2
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = threat.Defenders;
                 if (defenders == null || defenders.Count == 0)
                     continue;
-                float hexBonus = WorthIt.HexDefenseBonus(threat.Hex, null);
+                // FIX-05 — the threats themselves come honestly from
+                // WorldAnalysis.KnownThreatsAffectingEconomyRoute, so reading the hex's defence
+                // from the live BuildingRegistry broke the fog boundary on the second step of the
+                // very same chain. Same knowledge-scoped read as the Raid branch above.
+                float hexBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx.Map, threat.Hex);
                 if (ImprovesRaidCombatOutcome(recipient, army.Members, grant, defenders, hexBonus))
                     return true;
             }

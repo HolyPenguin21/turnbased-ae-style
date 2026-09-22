@@ -70,6 +70,24 @@ namespace Game.Ai.V2
                     | StrategicInvalidationReason.ResourceSite,
                     hexes: resourceHexes);
 
+            // FIX-06 — a NEW known resource hex is only one of the ways economic reality moves.
+            // The usability of an ALREADY known site changes far more often: the enemy blocking
+            // it leaves, its yield or the collection already taken from it changes, its last
+            // possible builder becomes committed elsewhere (or is freed by a Return), a collector
+            // arrives or stops qualifying. None of that produced a new hex, so NewActionable
+            // ResourceSites above stayed silent and Economy was never re-admitted within the turn.
+            // CollectorSites and MobileCollectionOpportunities were not covered by that path at
+            // all. This is a typed delta of the economic facts themselves, not a blanket recompute:
+            // only a site whose canonical opportunity signature actually changed is published, and
+            // the reason stays ResourceSite (the Economy family) rather than also waking Recon.
+            HashSet<HexCoord> changedSites =
+                ChangedEconomicOpportunitySites(before.Snapshot, after.Snapshot);
+            changedSites.ExceptWith(resourceHexes);
+            if (changedSites.Count > 0)
+                StrategicInterruptRegistry.Mark(player, turn,
+                    StrategicInvalidationReason.ResourceSite,
+                    hexes: changedSites);
+
             HashSet<int> actorIds = ChangedActorIds(before.Snapshot, after.Snapshot);
             if (actorIds.Count > 0)
                 StrategicInterruptRegistry.Mark(player, turn,
@@ -374,6 +392,91 @@ namespace Game.Ai.V2
                     && site.MarginalIncomeGain > AiConfigV2.allocatorSliceEpsilon)
                     result.Add(site.Hex);
             return result;
+        }
+
+        // FIX-06 — the canonical signature of ONE facility-shaped economic opportunity: the site's
+        // own income physics plus WHICH actors can serve it and in what state. Deliberately does
+        // NOT include travel costs or turns-to-income: those shift on every step of any candidate
+        // builder and would turn this into the blanket recompute the architecture forbids, while
+        // an actor actually moving already publishes its own Actor invalidation. What IS included
+        // is exactly what can flip a site between actionable and not: yield, collection already
+        // taken, marginal gain, and the candidate set with its commitment/on-target/extraction
+        // state (a site leased to a committed builder vs. one whose builder was released).
+        internal static string EconomyOpportunitySignature(EconomyExtractionOpportunity site)
+        {
+            string actors = string.Join(",", (site.BuilderRoutes
+                    ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                .Select(r => $"{r.ArmyId}"
+                    + $"{(r.HasActiveEconomyCommitment ? "c" : "")}"
+                    + $"{(r.IsOnTarget ? "t" : "")}"
+                    + $"{(r.RequiresGarrisonExtraction ? "g" : "")}")
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+            return $"{(int)site.ResourceType}:{site.EffectiveYield}:"
+                + $"{site.CurrentBuildingCollection}:{site.MarginalIncomeGain}:[{actors}]";
+        }
+
+        // The mobile-collection counterpart. Facility and MobileCollection stay separate lists
+        // with separate physics (see EconomyStanding's own comment) — this only mirrors the shape,
+        // it never merges them. Travel/ETA excluded for the same reason as above.
+        internal static string MobileCollectionSignature(MobileCollectionOpportunity op) =>
+            $"{(int)op.ResourceType}:{op.EffectiveRemainingYield}:{op.CollectorArmyId}";
+
+        // Every economic opportunity row this snapshot carries, keyed so a row appearing,
+        // disappearing or changing is all one comparison. One producer for both the typed
+        // invalidation below and the Economy admission fingerprint, so an event can never be
+        // published against facts the fingerprint does not also carry (which would raise the
+        // trigger and then suppress the re-admission on an unchanged key).
+        internal static Dictionary<string, string> EconomyOpportunityRows(WorldSnapshot snapshot)
+        {
+            var rows = new Dictionary<string, string>();
+            EconomyStanding eco = snapshot?.Economy;
+            if (eco == null)
+                return rows;
+            foreach (EconomyExtractionOpportunity x in eco.ExtractionOpportunities
+                         ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                rows[$"ext|{x.Hex.Q},{x.Hex.R}|{(int)x.ResourceType}"] = EconomyOpportunitySignature(x);
+            foreach (EconomyExtractionOpportunity x in eco.CollectorSites
+                         ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                rows[$"col|{x.Hex.Q},{x.Hex.R}|{(int)x.ResourceType}"] = EconomyOpportunitySignature(x);
+            foreach (MobileCollectionOpportunity x in eco.MobileCollectionOpportunities
+                         ?? System.Array.Empty<MobileCollectionOpportunity>())
+                rows[$"mob|{x.TargetHex.Q},{x.TargetHex.R}|{(int)x.ResourceType}|{x.CollectorArmyId}"] =
+                    MobileCollectionSignature(x);
+            return rows;
+        }
+
+        // The hexes whose economic opportunity genuinely changed between two observations —
+        // appeared, disappeared, or changed signature.
+        private static HashSet<HexCoord> ChangedEconomicOpportunitySites(
+            WorldSnapshot before, WorldSnapshot after)
+        {
+            var result = new HashSet<HexCoord>();
+            Dictionary<string, string> old = EconomyOpportunityRows(before);
+            Dictionary<string, string> current = EconomyOpportunityRows(after);
+            foreach (KeyValuePair<string, string> kv in current)
+                if (!old.TryGetValue(kv.Key, out string prior) || !string.Equals(prior, kv.Value,
+                        System.StringComparison.Ordinal))
+                    AddRowHex(result, kv.Key);
+            foreach (string key in old.Keys)
+                if (!current.ContainsKey(key))
+                    AddRowHex(result, key);
+            return result;
+        }
+
+        // "<tag>|<q>,<r>|..." — the hex is always the second segment.
+        private static void AddRowHex(HashSet<HexCoord> into, string rowKey)
+        {
+            string[] parts = rowKey.Split('|');
+            if (parts.Length < 2)
+                return;
+            string[] qr = parts[1].Split(',');
+            if (qr.Length != 2
+                || !int.TryParse(qr[0], System.Globalization.NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out int q)
+                || !int.TryParse(qr[1], System.Globalization.NumberStyles.Integer,
+                    CultureInfo.InvariantCulture, out int r))
+                return;
+            into.Add(new HexCoord(q, r));
         }
 
         private static bool ResourceStockChanged(

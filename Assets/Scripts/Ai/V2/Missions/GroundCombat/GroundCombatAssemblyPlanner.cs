@@ -189,6 +189,26 @@ namespace Game.Ai.V2
         // existing snapshot-based figure rather than inventing a second cost model.
         public static int? ProjectedActivationApCost(WorldSnapshot snap, GroundCombatAssemblyPlan plan)
         {
+            List<UnitData> roster = ProjectedRosterOrNull(snap, plan);
+            return roster == null ? (int?)null : ArmyData.ComputeActivationApCost(roster);
+        }
+
+        // FIX-02 — the travel speed of the roster this plan would produce. A recruit slower than
+        // the host lowers the WHOLE formation's shared movement (ArmyData.ComputeMaxMovement), so
+        // an ETA derived from the untouched host is optimistic exactly when the plan needs
+        // assembly. Same owner, same projection, same null-means-fall-back-to-your-existing-figure
+        // contract as ProjectedActivationApCost above — never a second cost/ETA model.
+        public static int? ProjectedMaxMovement(WorldSnapshot snap, GroundCombatAssemblyPlan plan)
+        {
+            List<UnitData> roster = ProjectedRosterOrNull(snap, plan);
+            return roster == null ? (int?)null : ArmyData.ComputeMaxMovement(roster);
+        }
+
+        // The live roster a feasible plan would produce, or null when the plan is infeasible or
+        // its host no longer resolves live. One resolution path for every projection above.
+        private static List<UnitData> ProjectedRosterOrNull(WorldSnapshot snap,
+            GroundCombatAssemblyPlan plan)
+        {
             if (snap?.Self?.Armies == null || plan == null || !plan.Feasible)
                 return null;
             ArmySnapshot hostSnap = snap.Self.Armies.FirstOrDefault(
@@ -200,7 +220,7 @@ namespace Game.Ai.V2
                 .FirstOrDefault(a => a != null && a.Id == plan.BaseArmyId);
             if (host == null || host.Members.Count == 0)
                 return null;
-            return ArmyData.ComputeActivationApCost(ProjectedRoster(host, plan));
+            return ProjectedRoster(host, plan);
         }
 
         // AGG-RAID P0#1 — reinforcement support-actor candidates. An EXISTING free ground-combat

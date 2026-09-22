@@ -31,7 +31,7 @@ namespace Game.Ai
             // only the equivalent remembered blocker membership is shared with planning.
             return AiTurnController.FindAffordableStep(map, army, targetHex,
                 SafeRouteBlocker(null, cache.BlockedHexes, cache.HostileStructureHexes,
-                    targetHex, null, allowHostileStructureCapture),
+                    cache.CapturableStructureHexes, targetHex, null, allowHostileStructureCapture),
                 projectedCurrentMovement, projectedMaxMovement);
         }
 
@@ -150,6 +150,13 @@ namespace Game.Ai
                 new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
             public HashSet<HexCoord> HostileStructureHexes;
+            // FIX-07 — the subset of HostileStructureHexes this player KNOWS is standing
+            // undefended (AiMapMemory.KnownUndefendedForeignStructureAt). Only these may be
+            // entered by a mover whose accepted plan permits taking a structure it walks onto;
+            // a defended one, or one whose defence we do not know, stays blocked for everyone.
+            // Kept in the same cache, invalidated by the same AiMapMemory.RouteMemoryVersion
+            // (which already bumps on both sighting and building changes) — no new store.
+            public HashSet<HexCoord> CapturableStructureHexes;
             public int MemoryVersion;
 
             public void ClearPathsAndFields()
@@ -196,6 +203,16 @@ namespace Game.Ai
                 .Where(b => b.Owner != null && b.Owner != owner)
                 .Select(b => b.Hex));
 
+        // FIX-07 — same set, narrowed to the ones knowledge says nobody is holding. The rule
+        // itself lives in AiMapMemory; this only materialises it once per memory revision so the
+        // blocker below stays an O(1) lookup.
+        internal static HashSet<HexCoord> CapturableForeignStructureHexes(
+            PlayerSetupData owner, IEnumerable<AiMapMemory.KnownBuilding> buildings) =>
+            new HashSet<HexCoord>((buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                .Where(b => b.Owner != null && b.Owner != owner
+                    && AiMapMemory.KnownUndefendedForeignStructureAt(owner, b.Hex))
+                .Select(b => b.Hex));
+
         private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
             // Map identity and terrain revisions affect every owner's routes, unlike a single
@@ -215,6 +232,8 @@ namespace Game.Ai
                     BlockedHexes = CaptureMemoryBlockers(map, owner),
                     HostileStructureHexes = KnownForeignStructureHexes(
                         owner, AiMapMemory.AllKnownBuildings(owner)),
+                    CapturableStructureHexes = CapturableForeignStructureHexes(
+                        owner, AiMapMemory.AllKnownBuildings(owner)),
                     MemoryVersion = memoryVersion
                 };
                 _playerCaches[owner] = cache;
@@ -224,11 +243,16 @@ namespace Game.Ai
                 HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
                 HashSet<HexCoord> hostileStructures = KnownForeignStructureHexes(
                     owner, AiMapMemory.AllKnownBuildings(owner));
+                HashSet<HexCoord> capturableStructures = CapturableForeignStructureHexes(
+                    owner, AiMapMemory.AllKnownBuildings(owner));
                 if (!cache.BlockedHexes.SetEquals(current)
-                    || !cache.HostileStructureHexes.SetEquals(hostileStructures))
+                    || !cache.HostileStructureHexes.SetEquals(hostileStructures)
+                    || cache.CapturableStructureHexes == null
+                    || !cache.CapturableStructureHexes.SetEquals(capturableStructures))
                     cache.ClearPathsAndFields();
                 cache.BlockedHexes = current;
                 cache.HostileStructureHexes = hostileStructures;
+                cache.CapturableStructureHexes = capturableStructures;
                 cache.MemoryVersion = memoryVersion;
             }
             return cache;
@@ -246,14 +270,15 @@ namespace Game.Ai
                 cache.Routes.Clear();
             HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
                 blockHex: SafeRouteBlocker(map, cache.BlockedHexes,
-                    cache.HostileStructureHexes, targetHex, maxMovement,
-                    allowHostileStructureCapture));
+                    cache.HostileStructureHexes, cache.CapturableStructureHexes,
+                    targetHex, maxMovement, allowHostileStructureCapture));
             cache.Routes[key] = computed;
             return computed;
         }
 
         private static System.Func<HexCoord, bool> SafeRouteBlocker(
             HexMap map, HashSet<HexCoord> blocked, HashSet<HexCoord> hostileStructures,
+            HashSet<HexCoord> capturableStructures,
             HexCoord targetHex, int? maxMovement, bool allowHostileStructureCapture)
         {
             // Capture this owner's set, not a mutable global active-owner reference. Each
@@ -262,8 +287,13 @@ namespace Game.Ai
             {
                 // Unlike a remembered army blocker, a known hostile structure remains blocked
                 // even when it is the requested destination: entering it changes ownership.
-                if (!allowHostileStructureCapture
-                    && hostileStructures != null && hostileStructures.Contains(hex))
+                // FIX-07 — a mover whose accepted plan permits taking a structure it walks onto
+                // passes through/into ONLY the ones knowledge says are undefended. The permission
+                // is never a blanket pass over every foreign structure: a defended one, and one
+                // whose defence we simply do not know, stay blocked exactly as before.
+                if (hostileStructures != null && hostileStructures.Contains(hex)
+                    && (!allowHostileStructureCapture || capturableStructures == null
+                        || !capturableStructures.Contains(hex)))
                     return true;
                 if (!hex.Equals(targetHex) && blocked.Contains(hex))
                     return true;

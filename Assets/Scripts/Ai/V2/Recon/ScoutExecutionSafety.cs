@@ -18,8 +18,14 @@ namespace Game.Ai.V2
     //    * a currently-known NON-NEUTRAL force standing on it. A STALE last-known enemy position is
     //      NOT a block — deliberately closing on one is what Surveil is for; it only raises risk.
     //    * any known NEUTRAL army on it — a scout never fights.
-    //    * any known FOREIGN-OWNED building. Recon owns information, not territorial capture; an
-    //      explicit future Attack/Capture mission must opt into entering such a hex.
+    //    * a known FOREIGN-OWNED building that is NOT known to be standing undefended. Recon
+    //      still owns information, not territorial capture: nothing here makes a structure
+    //      attractive (ReconGroundStepPlanner's building bonus stays 0, so no scout ever bends
+    //      off its route toward one). FIX-07 only stops this rule from FORBIDDING a hex a scout
+    //      would already be stepping onto for information reasons, when knowledge says the
+    //      structure has nobody holding it — arriving there then resolves through the existing
+    //      authoritative BuildingRegistry.CaptureOrDestroyIfUndefended as a side effect of that
+    //      move. A defended structure, and one whose defence we do not know, stay blocked.
     // ===========================================================================================
     public static class ScoutExecutionSafety
     {
@@ -36,7 +42,8 @@ namespace Game.Ai.V2
             }
 
             AiMapMemory.KnownBuilding? b = AiMapMemory.KnownBuildingAt(player, hex);
-            if (b.HasValue && b.Value.Owner != null && b.Value.Owner != player)
+            if (b.HasValue && b.Value.Owner != null && b.Value.Owner != player
+                && !AiMapMemory.KnownUndefendedForeignStructureAt(player, hex))
                 return true;
 
             return false;
