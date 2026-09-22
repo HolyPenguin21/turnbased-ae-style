@@ -238,6 +238,10 @@ namespace Game.Ai.V2
         public RoleCoverage With(IntendedRole r) => new RoleCoverage(_bits | (1 << (int)r));
         public RoleCoverage Union(RoleCoverage other) => new RoleCoverage(_bits | other._bits);
         public bool Any => _bits != 0;
+        // The lossless bit pattern itself. Exposed (FIX-04) so a long-lived invalidation key can
+        // carry the exact coverage set instead of resting on GetHashCode(), which is a hash by
+        // contract even where an implementation happens to be injective today.
+        public int Bits => _bits;
 
         public static bool operator ==(RoleCoverage a, RoleCoverage b) => a._bits == b._bits;
         public static bool operator !=(RoleCoverage a, RoleCoverage b) => a._bits != b._bits;

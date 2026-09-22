@@ -586,12 +586,24 @@ namespace Game.Ai.V2
                     bool wantsComposition = wantsPosition || raidRelevantArmyIds.Contains(a.ArmyId);
                     if (!wantsComposition && !wantsPosition)
                         return a.ArmyId.ToString(CultureInfo.InvariantCulture);
+                    // FIX-04 — the ATTACKING side of the same proof needs the same precision as
+                    // the defending side: ImprovesRaidCombatOutcome builds `before`/`after` from
+                    // this army's individual non-hero members (WorthIt.FromLiveUnit each) and
+                    // replaces exactly one of them with the equipped projection. Aggregates alone
+                    // (MemberCount/AttackSum/DefenseSum/power/quality) cannot distinguish two
+                    // rosters whose per-unit coverage, abilities or initiative order differ, so a
+                    // relevant recipient-side change could go unnoticed. `a.Members` is already the
+                    // non-hero profile list this proof iterates — the same canonical serialization
+                    // as the defender side, no second representation.
+                    // StrategicCoverage now contributes its lossless bitmask instead of
+                    // GetHashCode(): a long-lived key must never rest on a hash.
                     string composition = wantsComposition
                         ? $":{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
                           + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
                           + $"{a.EffectiveArmyPower:0.###}:{a.CompositionQuality:0.###}:"
-                          + $"{a.Capacity}:{a.OccupiedBattleSlots}:{a.StrategicCoverage.GetHashCode()}:"
-                          + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}"
+                          + $"{a.Capacity}:{a.OccupiedBattleSlots}:{a.StrategicCoverage.Bits}:"
+                          + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}:"
+                          + $"roster={DefenderFingerprint(a.Members)}"
                         : string.Empty;
                     // Position/movement/activation are part of the recipient facts now: AI-03's
                     // delivery proof compares this army's route and shared movement bottleneck
@@ -783,19 +795,40 @@ namespace Game.Ai.V2
             return ids;
         }
 
-        // Compact, order-stable digest of a defender roster — enough for "did the fight this
-        // equipment is judged against change", without embedding the whole profile list.
+        // FIX-04 — EXACT, order-stable digest of a combat roster. It used to be Count plus four
+        // SUMS (Attack/Defense/HP/Initiative), which is strictly weaker than what the cached
+        // decision actually depends on: DemandLayer.Development.ImprovesRaidCombatOutcome runs
+        // WorthIt.CanDamageAll and WorthIt.Estimate, and those read each profile INDIVIDUALLY —
+        // per-defender Defense, CeramicArmor, ability list, unit type tags, current AND max HP, and
+        // Initiative (which sets the turn order, not a sum). Two genuinely different rosters can
+        // therefore share every aggregate while giving different WorthIt answers (the canonical
+        // example: one defender carrying CeramicArmor instead of none — identical sums, different
+        // coverage verdict), so the fingerprint failed to invalidate a decision that had changed.
+        //
+        // Every field WorthIt reads is emitted verbatim; nothing is hashed (a long-lived key must
+        // not be built on GetHashCode) and no new cache is introduced — this is the SAME key the
+        // pipeline already kept, simply made complete. Per-profile rows are sorted ordinally so a
+        // pure REORDERING of the same roster keeps the same key: WorthIt orders combat by
+        // Initiative, never by list position, so order carries no information here.
         private static string DefenderFingerprint(IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> defenders)
         {
             if (defenders == null || defenders.Count == 0)
                 return "0";
-            float attack = 0f, defense = 0f, hp = 0f, init = 0f;
+            var rows = new List<string>(defenders.Count);
             foreach (Game.Combat.WorthIt.DefenderProfile d in defenders)
             {
-                attack += d.Attack; defense += d.Defense;
-                hp += d.HitPoints; init += d.Initiative;
+                string tags = d.TypeTags == null ? string.Empty
+                    : string.Join(",", d.TypeTags.Select(t => ((int)t).ToString(CultureInfo.InvariantCulture))
+                        .OrderBy(t => t, System.StringComparer.Ordinal));
+                string abilities = d.Abilities == null ? string.Empty
+                    : string.Join(",", d.Abilities.Where(x => x != null)
+                        .OrderBy(x => x, System.StringComparer.Ordinal));
+                rows.Add($"{d.Attack:0.###}/{d.Defense:0.###}/{d.HitPoints:0.###}/"
+                    + $"{d.MaxHitPoints:0.###}/{d.Initiative}/{(d.HasCeramicArmor ? 1 : 0)}/"
+                    + $"[{tags}]/[{abilities}]");
             }
-            return $"{defenders.Count}:{attack:0.###},{defense:0.###},{hp:0.###},{init:0.###}";
+            rows.Sort(System.StringComparer.Ordinal);
+            return $"{defenders.Count}:" + string.Join("|", rows);
         }
 
         public static IEnumerator RunTurn(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
