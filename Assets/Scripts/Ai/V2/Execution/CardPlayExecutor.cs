@@ -172,13 +172,19 @@ namespace Game.Ai.V2
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
                     { reason = "garrison no longer a valid owned deposit target (reserved slots/capacity)"; return false; }
                     break;
-                default: // ExistingArmy
+                case DeploymentKind.ExistingArmy:
                     if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
                         || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count == 0
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
                     { reason = "target army no longer owned/valid / projected roster has no room"; return false; }
                     break;
+                default:
+                    // A corrupt/stale enum value must not be treated as an ExistingArmy plan.
+                    // Never allow a new placement mode to inherit existing-army permissions by
+                    // accident without an explicit validation branch in this one preflight.
+                    reason = "unknown deployment kind";
+                    return false;
             }
 
             // The domain deployment requires HexSelectionController for SpawnUnit. Without it,
