@@ -1030,12 +1030,17 @@ namespace Game.Ai.V2
                         .Where(a => a != null).OrderBy(a => a.ArmyId)
                         .Select(a => $"{a.ArmyId}:{a.Hex.Q},{a.Hex.R}:{a.MemberCount}:"
                             + $"{a.CurrentMovement}:{a.ActivationApCost}:{(a.HasHero ? 1 : 0)}"));
+                    // FIX-06 — the fingerprint's site facts are now produced by the SAME
+                    // WorldAnalysis.EconomyOpportunityRows the typed invalidation is derived
+                    // from. Previously it carried only ExtractionOpportunities' MarginalIncomeGain
+                    // — no CollectorSites, no MobileCollectionOpportunities, no actor-availability
+                    // — so a genuine "this known site became usable" event could be published and
+                    // then immediately suppressed here on an unchanged key. One producer, so the
+                    // trigger and the admission gate can no longer describe different worlds.
                     string economyFacts = axis == DesireAxis.Economy
-                        ? "|sites=" + string.Join(";", (snapshot?.Economy?.ExtractionOpportunities
-                                ?? System.Array.Empty<EconomyExtractionOpportunity>())
-                            .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
-                            .ThenBy(x => (int)x.ResourceType)
-                            .Select(x => $"{x.Hex.Q},{x.Hex.R}:{(int)x.ResourceType}:{x.MarginalIncomeGain}"))
+                        ? "|sites=" + string.Join(";", WorldAnalysis.EconomyOpportunityRows(snapshot)
+                            .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
+                            .Select(kv => $"{kv.Key}={kv.Value}"))
                           + "|bases=" + string.Join(";", (snapshot?.Economy?.BaseOpportunities
                                 ?? System.Array.Empty<EconomyBaseOpportunity>())
                             .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
