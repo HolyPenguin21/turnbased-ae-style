@@ -150,12 +150,12 @@ namespace Game.Ai
                 new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
             public HashSet<HexCoord> HostileStructureHexes;
-            // FIX-07 — the subset of HostileStructureHexes this player KNOWS is standing
-            // undefended (AiMapMemory.KnownUndefendedForeignStructureAt). Only these may be
-            // entered by a mover whose accepted plan permits taking a structure it walks onto;
-            // a defended one, or one whose defence we do not know, stays blocked for everyone.
-            // Guarded-event knowledge also affects this set: its changes need not bump the
-            // narrower RouteMemoryVersion, so observe the owner's existing KnowledgeVersion too.
+            // FIX-07 — the subset of HostileStructureHexes this player currently sees standing
+            // undefended (AiMapMemory.KnownUndefendedForeignStructureAt). A fogged building can
+            // remain a remembered objective but cannot authorize a capture move: old enemy
+            // sightings can expire without re-observation, so absence of a sighting is not proof
+            // the building is empty now. Visibility changes bump this owner's KnowledgeVersion.
+            // Guarded-event knowledge also affects this set and must invalidate capture routes.
             public HashSet<HexCoord> CapturableStructureHexes;
             public int MemoryVersion;
             public int KnowledgeVersion;
@@ -204,13 +204,14 @@ namespace Game.Ai
                 .Where(b => b.Owner != null && b.Owner != owner)
                 .Select(b => b.Hex));
 
-        // FIX-07 — same set, narrowed to the ones knowledge says nobody is holding. The rule
-        // itself lives in AiMapMemory; this only materialises it once per memory revision so the
-        // blocker below stays an O(1) lookup.
+        // Only a CURRENTLY VISIBLE foreign building can be offered as a capturable destination.
+        // Keep remembered fogged buildings in HostileStructureHexes as blockers until seen again;
+        // never turn a timed-out enemy-army sighting into permission to change ownership.
         internal static HashSet<HexCoord> CapturableForeignStructureHexes(
             PlayerSetupData owner, IEnumerable<AiMapMemory.KnownBuilding> buildings) =>
             new HashSet<HexCoord>((buildings ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Where(b => b.Owner != null && b.Owner != owner
+                    && VisionSystem.IsVisible(owner, b.Hex)
                     && AiMapMemory.KnownUndefendedForeignStructureAt(owner, b.Hex))
                 .Select(b => b.Hex));
 
