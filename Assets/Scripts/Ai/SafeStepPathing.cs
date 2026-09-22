@@ -116,8 +116,7 @@ namespace Game.Ai
                 {
                     Bases = new HashSet<HexCoord>(baseHexes),
                     Costs = HexPathfinder.FindCosts(map, baseHexes,
-                        hex => cache.BlockedHexes.Contains(hex)
-                            || cache.HostileStructureHexes.Contains(hex), maxMovement, reverse: true)
+                        hex => cache.BlockedHexes.Contains(hex), maxMovement, reverse: true)
                 };
                 cache.ReturnCostFields[maxMovement] = field;
             }
