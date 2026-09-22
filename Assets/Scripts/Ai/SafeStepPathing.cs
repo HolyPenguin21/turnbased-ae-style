@@ -142,6 +142,14 @@ namespace Game.Ai
             var blocked = new HashSet<HexCoord>();
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(owner)) blocked.Add(sighting.Hex);
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner)) blocked.Add(sighting.Hex);
+            // A known foreign building is a capture/destroy contact even without a defending
+            // army. Returning builders, collectors and scouts must not path THROUGH one and
+            // accidentally capture it. Read only this observer's last-seen memory, never live
+            // BuildingRegistry: a hidden ownership change cannot silently alter route policy.
+            // The route's explicit destination remains separately exempt in SafeRouteBlocker;
+            // the mission's permission to capture THAT endpoint is an independent check.
+            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(owner))
+                if (building.Owner != owner) blocked.Add(building.Hex);
             foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
                 foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius)) blocked.Add(hex);
             return blocked;
