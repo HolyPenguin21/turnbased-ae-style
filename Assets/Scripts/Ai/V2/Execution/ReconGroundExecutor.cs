@@ -153,6 +153,25 @@ namespace Game.Ai.V2
                 return false;
             }
 
+            // Admission must precede BOTH durable patrol creation and required-stealth AP spend.
+            // RunPreparedStep repeats these same domain checks after each awaited movement: a
+            // valid scout can still be lost/recomposed or a battle can start between steps.
+            if (!AiArmyRoles.IsSoloRecce(army))
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.ApSpent = 0f;
+                ReconPatrolStateRegistry.Retire(player, army.Id, "actor no longer solo Recce");
+                return false;
+            }
+            if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
+            {
+                result.StopReason = ExecutionStopReason.BattleStarted;
+                result.ApSpent = 0f;
+                if (result.StepsMoved == 0 && !result.EnteredStealth)
+                    result.BlockedBeforeMovement = true;
+                return false;
+            }
+
             prepared = new PreparedStep
             {
                 ExploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f,
