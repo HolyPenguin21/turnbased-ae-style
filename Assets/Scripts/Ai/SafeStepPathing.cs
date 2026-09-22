@@ -297,15 +297,13 @@ namespace Game.Ai
             // expanded hex is one O(1) lookup instead of a scan of sightings/danger zones.
             return hex =>
             {
-                // Unlike a remembered army blocker, a known hostile structure remains blocked
-                // even when it is the requested destination: entering it changes ownership.
-                // FIX-07 — a mover whose accepted plan permits taking a structure it walks onto
-                // passes through/into ONLY the ones knowledge says are undefended. The permission
-                // is never a blanket pass over every foreign structure: a defended one, and one
-                // whose defence we simply do not know, stay blocked exactly as before.
+                // Only an explicitly requested destination may be entered under a capture
+                // permission. A foreign structure along the route is never free transit: taking
+                // it would be an unrelated state-changing action, even when known undefended.
+                // Unknown/defended structures remain blocked, including at the destination.
                 if (hostileStructures != null && hostileStructures.Contains(hex)
-                    && (!allowHostileStructureCapture || capturableStructures == null
-                        || !capturableStructures.Contains(hex)))
+                    && (!allowHostileStructureCapture || !hex.Equals(targetHex)
+                        || capturableStructures == null || !capturableStructures.Contains(hex)))
                     return true;
                 if (!hex.Equals(targetHex) && blocked.Contains(hex))
                     return true;
