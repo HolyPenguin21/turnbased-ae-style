@@ -21,12 +21,11 @@ namespace Game.Ai.V2
     //  Draw / hand cycling is a SEPARATE operation (CardDrawExecutor) — never part of this
     //  transaction.
     //
-    //  MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine, and
-    //  DeployUnitFromCard itself spends AP/resources BEFORE it spawns (a null spawn returns false
-    //  with the cost already gone). Play() preflights the whole sequence, then reports the REAL
-    //  AP/resource delta measured on PlayerRoot — not the nominal card cost — so the ledger and
-    //  the refresh trigger stay honest even on a partial failure. A fresh empty ArmyData left by
-    //  CreateArmy after a failed deploy is KEPT as a reusable asset, never rolled back.
+    //  MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine.
+    //  Preflight checks the whole sequence, including capacity of the first member, BEFORE
+    //  CreateArmy charges AP. Play() reports the REAL AP/resource delta measured on PlayerRoot
+    //  so the ledger and refresh trigger remain honest even on an unexpected partial failure.
+    //  A fresh empty ArmyData left by CreateArmy after a failed deploy remains reusable.
     // ===========================================================================================
     public enum DeploymentKind
     {
@@ -148,7 +147,14 @@ namespace Game.Ai.V2
             switch (plan.Kind)
             {
                 case DeploymentKind.NewArmy:
-                    break; // a fresh army always has room for the first member
+                    // A first Hero replaces the field army's default capacity even when its
+                    // CommandRating is zero. Reuse the existing projection rule before the
+                    // separate CreateArmy transaction can spend 2 AP on an unusable shell.
+                    if (ProjectedCapacityAfterDeploy(
+                            ArmyData.ComputeCapacity(System.Array.Empty<Game.Units.UnitData>(), false),
+                            false, def) < 1)
+                    { reason = "first card would not fit in a fresh army"; return false; }
+                    break;
                 case DeploymentKind.ReusableShell:
                     if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
                         || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count != 0
