@@ -19,6 +19,7 @@ namespace Game.EditorTests
             var owner = new PlayerSetupData();
             var hex = new HexCoord(83, -14);
             PlayerRoot root = PlayerRoot.Create(owner, "ground container parity");
+            GameObject controllerObject = null;
             try
             {
                 root.ActionPoints = 10;
@@ -34,7 +35,15 @@ namespace Game.EditorTests
                 var card = new CardData(def);
                 var hand = new AiHandData(null, owner.Faction, 0);
                 hand.AddCard(card);
-                var ctx = new AiTurnContext();
+                // The physical DeployUnitFromCard boundary requires a controller even for
+                // existing recipients. Keep the positive test realistic while remaining
+                // headless: an inactive component never needs scene dependencies or SpawnUnit.
+                controllerObject = new GameObject("inactive ground deployment controller");
+                controllerObject.SetActive(false);
+                var ctx = new AiTurnContext
+                {
+                    HexSelection = controllerObject.AddComponent<HexSelectionController>(),
+                };
 
                 var airfield = new ArmyData { Hex = hex, Owner = owner, IsAirfield = true };
                 CardPlayPlan airfieldPlan = CardPlayPlan.Into(card, hex, DeploymentKind.ReusableShell, airfield);
@@ -63,6 +72,7 @@ namespace Game.EditorTests
             finally
             {
                 BuildingRegistry.Clear();
+                if (controllerObject != null) Object.DestroyImmediate(controllerObject);
                 Object.DestroyImmediate(root.gameObject);
             }
         }
