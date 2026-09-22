@@ -47,7 +47,12 @@ namespace Game.Ai.V2
             foreach (ResourceType t in ResourceBundle.All)
             {
                 float own = snap.Self.PerTurnIncome.Get(t);
-                var otherIncomes = others.Select(p => (float)IncomeProjection.IncomeFor(p, t, ctx.Map)).ToList();
+                // Do not ask IncomeProjection for another player's LIVE map income: doing so
+                // changes Economy and Production desires after events hidden from this observer.
+                // Known buildings and resource yields provide only a last-observed LOWER BOUND:
+                // unseen collectors and Produce sources cannot be reconstructed from memory.
+                // Unknown opponents contribute zero rather than a fabricated income estimate.
+                var otherIncomes = others.Select(p => ObservedOpponentIncomeFloor(snap, p, t)).ToList();
                 float median = Median(otherIncomes);
                 float reserved = StrategicResourceReservationLedger.Active(
                     player, ctx.TurnNumber, StrategicResourceReservationLedger.Map(t));
@@ -386,6 +391,19 @@ namespace Game.Ai.V2
                 || collectorActionable || mobileCollection.Count > 0;
 
             return eco;
+        }
+
+        // An observed building's collection is a lower bound on opponent income, not its
+        // complete income. Clamp to the last-observed yield and never read live registries,
+        // unobserved collector units or Produce sources at the Economy knowledge boundary.
+        internal static float ObservedOpponentIncomeFloor(WorldSnapshot snap,
+            PlayerSetupData opponent, ResourceType type)
+        {
+            if (opponent == null || snap?.Known?.Buildings == null)
+                return 0f;
+            return snap.Known.Buildings.Where(b => b.Owner == opponent)
+                .Sum(b => Mathf.Min(b.CollectedAmount(type),
+                    Mathf.Max(0f, EconomyKnownHexYield(snap, b.Hex).Get(type))));
         }
 
         // Mirrors the HOST constraints in the live TryBuildExtractionFacility primitive.
