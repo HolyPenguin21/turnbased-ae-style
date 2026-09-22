@@ -22,8 +22,12 @@ namespace Game.Ai.V2
     {
         public static bool HasRequiredBuilding(PlayerSetupData player, HexCoord hex, CardDefinition def)
         {
-            if (def == null || string.IsNullOrEmpty(def.requiredBuildingAbility))
-                return true; // no building requirement -> any owned hex is fine
+            // For ground Unit/Hero cards, an empty ability is NOT a wildcard. Human
+            // CardHandUI.IsValidDropTarget rejects it; the previous AI-only exemption admitted
+            // a card the live human path would never allow. Aviation uses its independent owned
+            // airfield placement rule and is intentionally not routed through this predicate.
+            if (player == null || def == null || string.IsNullOrEmpty(def.requiredBuildingAbility))
+                return false;
             BuildingData b = BuildingRegistry.FindAt(hex);
             return b != null && b.Owner == player && b.HasAbility(def.requiredBuildingAbility);
         }
