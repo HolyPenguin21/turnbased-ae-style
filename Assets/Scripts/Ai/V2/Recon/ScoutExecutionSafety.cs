@@ -40,10 +40,6 @@ namespace Game.Ai.V2
                     return true;
             }
 
-            AiMapMemory.KnownBuilding? b = AiMapMemory.KnownBuildingAt(player, hex);
-            if (requiresStealth && b.HasValue && b.Value.Owner != null && b.Value.Owner != player)
-                return true;
-
             return false;
         }
     }
