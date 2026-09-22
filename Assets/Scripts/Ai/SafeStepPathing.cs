@@ -35,14 +35,12 @@ namespace Game.Ai
 
         // Convenience for the common AI-01 shape: "the roster this assembly will produce".
         public static HexCoord? FindNextSafeStepForRoster(HexMap map, ArmyData army,
-            HexCoord targetHex, IReadOnlyList<UnitData> projectedRoster,
-            ) =>
+            HexCoord targetHex, IReadOnlyList<UnitData> projectedRoster) =>
             FindNextSafeStep(map, army, targetHex,
                 projectedRoster == null ? (int?)null : ArmyData.ComputeCurrentMovement(projectedRoster),
                 projectedRoster == null ? (int?)null : ArmyData.ComputeMaxMovement(projectedRoster));
 
-        public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex,
-            )
+        public static int FindSafePathCost(HexMap map, ArmyData army, HexCoord targetHex)
         {
             if (map == null || army == null)
                 return int.MaxValue;
@@ -60,8 +58,7 @@ namespace Game.Ai
         }
 
         public static HexPath FindSafePath(HexMap map, PlayerSetupData owner,
-            HexCoord from, HexCoord targetHex, int? maxMovement = null,
-            bool allowHostileStructureCapture = false)
+            HexCoord from, HexCoord targetHex, int? maxMovement = null)
         {
             if (map == null || owner == null)
                 return null;
@@ -90,8 +87,7 @@ namespace Game.Ai
                     if (cache.BaseCostFields.Count >= MaxCostFields)
                         cache.BaseCostFields.Clear();
                     field = HexPathfinder.FindCosts(map, new[] { home },
-                        hex => cache.BlockedHexes.Contains(hex)
-                            || cache.HostileStructureHexes.Contains(hex));
+                        hex => cache.BlockedHexes.Contains(hex));
                     cache.BaseCostFields[home] = field;
                 }
                 if (field.TryGetValue(target, out int cost) && cost < minimum)
@@ -130,30 +126,17 @@ namespace Game.Ai
 
         private const int MaxCachedRoutes = 512;
         private const int MaxCostFields = 32;
-
-        // A player switch must not discard the other AI's stationary-base fields. Every owner
-        // keeps its own bounded route/cost caches and last-observed blockers. The global memory
-        // revision remains a cheap dirty signal; only the selected owner's blockers are compared.
-        private const int MaxCachedRoutes = 512;
-        private const int MaxCostFields = 32;
-
-        // Per-owner cache: foreign buildings are intentionally absent. A legal ground entry is a
-        // gameplay transition, not an AI routing permission.
         private sealed class PlayerRouteCache
         {
-            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement), HexPath>
-                Routes = new Dictionary<(HexCoord, HexCoord, int?), HexPath>();
-            public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields =
-                new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
-            public readonly Dictionary<int, ReturnCostField> ReturnCostFields =
-                new Dictionary<int, ReturnCostField>();
+            public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement), HexPath> Routes = new Dictionary<(HexCoord, HexCoord, int?), HexPath>();
+            public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields = new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
+            public readonly Dictionary<int, ReturnCostField> ReturnCostFields = new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
             public int MemoryVersion;
             public void ClearPathsAndFields() { Routes.Clear(); BaseCostFields.Clear(); ReturnCostFields.Clear(); }
         }
         private sealed class ReturnCostField { public HashSet<HexCoord> Bases; public Dictionary<HexCoord, int> Costs; }
-        private static readonly Dictionary<PlayerSetupData, PlayerRouteCache> _playerCaches =
-            new Dictionary<PlayerSetupData, PlayerRouteCache>();
+        private static readonly Dictionary<PlayerSetupData, PlayerRouteCache> _playerCaches = new Dictionary<PlayerSetupData, PlayerRouteCache>();
         private static HexMap _cacheMap;
         private static int _cacheMapVersion = -1;
         private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner)
@@ -167,8 +150,7 @@ namespace Game.Ai
         }
         private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
-            if (map != _cacheMap || map.PathingVersion != _cacheMapVersion)
-            { _playerCaches.Clear(); _cacheMap = map; _cacheMapVersion = map.PathingVersion; }
+            if (map != _cacheMap || map.PathingVersion != _cacheMapVersion) { _playerCaches.Clear(); _cacheMap = map; _cacheMapVersion = map.PathingVersion; }
             int memoryVersion = AiMapMemory.RouteMemoryVersion;
             if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
             {
@@ -179,7 +161,8 @@ namespace Game.Ai
             {
                 HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
                 if (!cache.BlockedHexes.SetEquals(current)) cache.ClearPathsAndFields();
-                cache.BlockedHexes = current; cache.MemoryVersion = memoryVersion;
+                cache.BlockedHexes = current;
+                cache.MemoryVersion = memoryVersion;
             }
             return cache;
         }
@@ -189,17 +172,16 @@ namespace Game.Ai
             var key = (from, targetHex, maxMovement);
             if (cache.Routes.TryGetValue(key, out HexPath cached)) return cached;
             if (cache.Routes.Count >= MaxCachedRoutes) cache.Routes.Clear();
-            HexPath computed = HexPathfinder.FindPath(map, from, targetHex,
-                blockHex: SafeRouteBlocker(map, cache.BlockedHexes, targetHex, maxMovement));
-            cache.Routes[key] = computed; return computed;
+            HexPath computed = HexPathfinder.FindPath(map, from, targetHex, blockHex: SafeRouteBlocker(map, cache.BlockedHexes, targetHex, maxMovement));
+            cache.Routes[key] = computed;
+            return computed;
         }
         private static System.Func<HexCoord, bool> SafeRouteBlocker(HexMap map, HashSet<HexCoord> blocked, HexCoord targetHex, int? maxMovement)
         {
             return hex =>
             {
                 if (!hex.Equals(targetHex) && blocked.Contains(hex)) return true;
-                if (maxMovement.HasValue && map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry entry)
-                    && Mathf.Max(1, entry.moveCost) > maxMovement.Value) return true;
+                if (maxMovement.HasValue && map != null && map.TryGetTerrainAt(hex, out TerrainTypeEntry entry) && Mathf.Max(1, entry.moveCost) > maxMovement.Value) return true;
                 return false;
             };
         }
