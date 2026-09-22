@@ -70,16 +70,10 @@ namespace Game.Ai.V2
                     | StrategicInvalidationReason.ResourceSite,
                     hexes: resourceHexes);
 
-            // FIX-06 — a NEW known resource hex is only one of the ways economic reality moves.
-            // The usability of an ALREADY known site changes far more often: the enemy blocking
-            // it leaves, its yield or the collection already taken from it changes, its last
-            // possible builder becomes committed elsewhere (or is freed by a Return), a collector
-            // arrives or stops qualifying. None of that produced a new hex, so NewActionable
-            // ResourceSites above stayed silent and Economy was never re-admitted within the turn.
-            // CollectorSites and MobileCollectionOpportunities were not covered by that path at
-            // all. This is a typed delta of the economic facts themselves, not a blanket recompute:
-            // only a site whose canonical opportunity signature actually changed is published, and
-            // the reason stays ResourceSite (the Economy family) rather than also waking Recon.
+            // FIX-06 — compare actual opportunity facts, not just newly discovered resource hexes.
+            // FoundBase is included in the same canonical producer as extraction and collection.
+            // An empty newly scouted base site can now wake Economy without waking it merely
+            // because an unrelated scout moved: only a genuine opportunity delta publishes.
             HashSet<HexCoord> changedSites =
                 ChangedEconomicOpportunitySites(before.Snapshot, after.Snapshot);
             changedSites.ExceptWith(resourceHexes);
@@ -430,6 +424,28 @@ namespace Game.Ai.V2
         internal static string MobileCollectionSignature(MobileCollectionOpportunity op) =>
             $"{(int)op.ResourceType}:{op.EffectiveRemainingYield}:{op.CollectorArmyId}";
 
+        // Base uses the same stable candidate/actor facts as extraction. No per-step travel cost:
+        // a travelling builder already produces Actor invalidation; moving an unrelated scout
+        // must not change the signature of every eligible base site.
+        private static string BaseOpportunitySignature(EconomyBaseOpportunity site)
+        {
+            string actors = string.Join(",", (site.BuilderRoutes
+                    ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                .Select(r => $"{r.ArmyId}"
+                    + $"{(r.HasActiveEconomyCommitment ? "c" : "")}"
+                    + $"{(r.IsOnTarget ? "t" : "")}"
+                    + $"{(r.RequiresGarrisonExtraction ? "g" : "")}")
+                .OrderBy(x => x, System.StringComparer.Ordinal));
+            return $"{site.HexYield.Human.ToString("R", CultureInfo.InvariantCulture)}:"
+                + $"{site.HexYield.Energy.ToString("R", CultureInfo.InvariantCulture)}:"
+                + $"{site.HexYield.Materials.ToString("R", CultureInfo.InvariantCulture)}:"
+                + $"{site.HexYield.Tech.ToString("R", CultureInfo.InvariantCulture)}:"
+                + $"{site.NewResourceClusterHexes}:{site.ConvertsOwnedExtractionSite}:"
+                + $"{site.ForwardProgressValue.ToString("R", CultureInfo.InvariantCulture)}:"
+                + $"{site.CorridorAlignmentValue.ToString("R", CultureInfo.InvariantCulture)}:"
+                + $"{site.DefenseBonusValue.ToString("R", CultureInfo.InvariantCulture)}:[{actors}]";
+        }
+
         // Every economic opportunity row this snapshot carries, keyed so a row appearing,
         // disappearing or changing is all one comparison. One producer for both the typed
         // invalidation below and the Economy admission fingerprint, so an event can never be
@@ -451,6 +467,17 @@ namespace Game.Ai.V2
                          ?? System.Array.Empty<MobileCollectionOpportunity>())
                 rows[$"mob|{x.TargetHex.Q},{x.TargetHex.R}|{(int)x.ResourceType}|{x.CollectorArmyId}"] =
                     MobileCollectionSignature(x);
+
+            // Base sites are structural facts even without a card, but they are not actionable
+            // until a real Base card is in hand (BuildEconomy.HasActionableOpportunity). If no
+            // Base card exists, a hand mutation will re-admit Economy when one arrives; emitting
+            // ResourceSite on every newly visited empty hex before then would waste rescans.
+            bool baseCardInHand = snapshot?.Self?.Hand?.Any(c =>
+                c?.Definition?.cardType == CardType.Base) == true;
+            if (baseCardInHand)
+                foreach (EconomyBaseOpportunity x in eco.BaseOpportunities
+                             ?? System.Array.Empty<EconomyBaseOpportunity>())
+                    rows[$"base|{x.Hex.Q},{x.Hex.R}"] = BaseOpportunitySignature(x);
             return rows;
         }
 
