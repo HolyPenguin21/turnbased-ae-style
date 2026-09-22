@@ -114,6 +114,40 @@ namespace Game.Map
                 failReason = "Invalid deploy request.";
                 return false;
             }
+            // This is the authoritative mutation boundary for human, V1, V2 and aviation.
+            // UI and AI preflight may predict legality, but cannot authorize deployment into
+            // another player's army or charge a different player's AP/resources. Check before
+            // any payment; a card instance must refer to the definition being deployed.
+            if ((definition.cardType != CardType.Unit && definition.cardType != CardType.Hero)
+                || targetArmy.Owner != owner || targetArmy.IsPrison || root.Setup != owner
+                || (sourceCard != null && !object.ReferenceEquals(sourceCard.Definition, definition)))
+            {
+                failReason = "Card, owner, target army or resource owner is invalid for deployment.";
+                return false;
+            }
+            // Ground deployment always requires an OWN building with the card's declared
+            // ability. Empty requiredBuildingAbility is invalid, as in CardHandUI's actual
+            // drag-drop. Aviation is a separate operation: it requires an OWN airfield, not a
+            // ground Barracks requirement. Neither path can bypass these rules via an AI call.
+            if (definition.isAviation)
+            {
+                if (!targetArmy.IsAirfield || !AviationRules.IsOwnedAirfieldAt(targetArmy.Hex, owner))
+                {
+                    failReason = "Aircraft must be deployed into an owned airfield first.";
+                    return false;
+                }
+            }
+            else
+            {
+                BuildingData building = BuildingRegistry.FindAt(targetArmy.Hex);
+                if (string.IsNullOrEmpty(definition.requiredBuildingAbility)
+                    || building == null || building.Owner != owner
+                    || !building.HasAbility(definition.requiredBuildingAbility))
+                {
+                    failReason = $"{definition.displayName} requires your building with '{definition.requiredBuildingAbility}' at this hex.";
+                    return false;
+                }
+            }
             if (!AviationRules.CanContain(targetArmy, new UnitData { IsAviation = definition.isAviation }))
             {
                 failReason = definition.isAviation
@@ -150,14 +184,14 @@ namespace Game.Map
                 failReason = $"Not enough action points to deploy {definition.displayName}.";
                 return false;
             }
-            if (!alreadyPaidResources && !definition.resourceCost.CanAfford(root))
+            if (!alreadyPaidResources && definition.resourceCost != null && !definition.resourceCost.CanAfford(root))
             {
                 failReason = $"Not enough resources to deploy {definition.displayName}.";
                 return false;
             }
 
             root.SpendActionPoints(apCost);
-            if (!alreadyPaidResources)
+            if (!alreadyPaidResources && definition.resourceCost != null)
                 definition.resourceCost.PayFrom(root);
             bool isHero = definition.cardType == CardType.Hero;
             var spawned = hexSelectionController.SpawnUnit(definition.displayName, owner, definition.moveMax,
