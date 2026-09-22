@@ -23,6 +23,7 @@ namespace Game.EditorTests
             try
             {
                 root.ActionPoints = 10;
+                PlayerRootRegistry.Register(owner, root);
                 var building = new BuildingData { Hex = hex, Owner = owner };
                 building.Abilities.Add(UnitAbilities.Barracks);
                 BuildingRegistry.Register(hex, building);
@@ -82,6 +83,7 @@ namespace Game.EditorTests
             finally
             {
                 BuildingRegistry.Clear();
+                PlayerRootRegistry.Clear();
                 if (controllerObject != null) Object.DestroyImmediate(controllerObject);
                 Object.DestroyImmediate(root.gameObject);
             }
