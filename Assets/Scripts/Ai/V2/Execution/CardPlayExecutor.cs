@@ -12,20 +12,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  CARD PLAY EXECUTOR  (Strategy V2 — Strategic Manager)
     // ===========================================================================================
-    //  The SINGLE authoritative V2 path for strategic card deployment. V2 code never scatters
-    //  hand mutation across StrategicManager / axis planners — card removal from hand happens
-    //  HERE, exactly once, only after a successful ArmyActions.DeployUnitFromCard. V1's own
-    //  card-play path (AiTurnController.PlayCardRoutine) is untouched, and hand ownership is NOT
-    //  moved into ArmyActions.DeployUnitFromCard globally.
+    // The SINGLE authoritative V2 path for strategic card deployment. V2 code never scatters
+    // hand mutation across StrategicManager / axis planners — card removal from hand happens
+    // HERE, exactly once, only after a successful ArmyActions.DeployUnitFromCard. V1's own
+    // card-play path (AiTurnController.PlayCardRoutine) is untouched, and hand ownership is NOT
+    // moved into ArmyActions.DeployUnitFromCard globally.
     //
-    //  Draw / hand cycling is a SEPARATE operation (CardDrawExecutor) — never part of this
-    //  transaction.
+    // Draw / hand cycling is a SEPARATE operation (CardDrawExecutor) — never part of this
+    // transaction.
     //
-    //  MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine.
-    //  Preflight checks the whole sequence, including capacity of the first member, BEFORE
-    //  CreateArmy charges AP. Play() reports the REAL AP/resource delta measured on PlayerRoot
-    //  so the ledger and refresh trigger remain honest even on an unexpected partial failure.
-    //  A fresh empty ArmyData left by CreateArmy after a failed deploy remains reusable.
+    // MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine.
+    // Preflight checks the whole sequence, including capacity of the first member, BEFORE
+    // CreateArmy charges AP. Play() reports the REAL AP/resource delta measured on PlayerRoot
+    // so the ledger and refresh trigger remain honest even on an unexpected partial failure.
+    // A fresh empty ArmyData left by CreateArmy after a failed deploy remains reusable.
     // ===========================================================================================
     public enum DeploymentKind
     {
@@ -101,15 +101,17 @@ namespace Game.Ai.V2
                 incomingHero ? 1 : 0, incomingHero ? incoming.commandRating : 0);
         }
 
-        // Shared V2 projected-capacity predicate. Mirrors ArmyActions.DeployUnitFromCard: capacity
-        // is evaluated after the incoming card joins, so a first hero may raise a full 2/2 army to
-        // (for example) 3/5 instead of being rejected by the old pre-join HasRoom value.
+        // Shared V2 projected-capacity predicate. The physical gameplay boundary is
+        // ArmyActions.DeployUnitFromCard: ground units may never join an airfield, an aviation
+        // roster or a prison, regardless of how many nominal slots those containers report.
+        // Previously the airfield branch returned true unconditionally, so a V2 placement
+        // could admit a plan that its own authoritative executor would always reject.
         internal static bool CanFitAfterDeploy(ArmyData target, CardDefinition def)
         {
-            if (target == null || def == null)
+            if (target == null || def == null || def.isAviation
+                || target.IsPrison || target.IsAirfield
+                || target.Members.Any(m => m.IsAviation))
                 return false;
-            if (target.IsAirfield)
-                return true; // V2 rejects aviation cards earlier; airfield capacity is handled elsewhere.
             int projectedCapacity = ProjectedCapacityAfterDeploy(
                 target.Capacity, target.Members.Any(m => m.IsHero), def);
             return projectedCapacity >= target.Members.Count + 1;
