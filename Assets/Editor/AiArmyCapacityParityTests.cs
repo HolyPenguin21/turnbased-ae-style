@@ -86,6 +86,9 @@ namespace Game.EditorTests
             var player = new PlayerSetupData();
             var hex = new HexCoord(82, -14);
             var root = PlayerRoot.Create(player, "capacity preflight test");
+            GameObject selectorObject = null;
+            StartingDeckCatalog deckCatalog = null;
+            FactionCardCatalog factionCatalog = null;
             try
             {
                 root.ActionPoints = 10;
@@ -118,12 +121,38 @@ namespace Game.EditorTests
 
                 definition.commandRating = 1;
                 Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
+                    plan, out string noController), Is.False);
+                Assert.That(noController, Does.Contain("deployment controller"));
+                CardPlayResult missingController = CardPlayExecutor.Play(player, root, hand, ctx, plan);
+                Assert.That(missingController.ArmyCreated, Is.False,
+                    "CreateArmy must never charge AP before discovering a missing SpawnUnit controller.");
+                Assert.That(missingController.ApSpent, Is.Zero);
+                Assert.That(root.ActionPoints, Is.EqualTo(10));
+                Assert.That(hand.Hand, Does.Contain(card));
+
+                selectorObject = new GameObject("inactive deployment controller test stub");
+                selectorObject.SetActive(false); // No scene wiring is needed for a pure preflight.
+                ctx.HexSelection = selectorObject.AddComponent<HexSelectionController>();
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
+                    plan, out string noCatalog), Is.False);
+                Assert.That(noCatalog, Does.Contain("faction army catalog"));
+                Assert.That(root.ActionPoints, Is.EqualTo(10));
+
+                deckCatalog = ScriptableObject.CreateInstance<StartingDeckCatalog>();
+                factionCatalog = ScriptableObject.CreateInstance<FactionCardCatalog>();
+                factionCatalog.faction = player.Faction;
+                deckCatalog.catalogs.Add(factionCatalog);
+                ctx.StartingDeckCatalog = deckCatalog;
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
                     plan, out string validReason), Is.True, validReason);
                 Assert.That(root.ActionPoints, Is.EqualTo(10));
             }
             finally
             {
                 BuildingRegistry.Clear();
+                if (selectorObject != null) UnityEngine.Object.DestroyImmediate(selectorObject);
+                if (deckCatalog != null) UnityEngine.Object.DestroyImmediate(deckCatalog);
+                if (factionCatalog != null) UnityEngine.Object.DestroyImmediate(factionCatalog);
                 UnityEngine.Object.DestroyImmediate(root.gameObject);
             }
         }
