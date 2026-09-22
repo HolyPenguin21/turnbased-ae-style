@@ -92,6 +92,8 @@ namespace Game.EditorTests
             try
             {
                 root.ActionPoints = 10;
+                // CreateArmy debits the REGISTRY root, not an arbitrary supplied PlayerRoot.
+                PlayerRootRegistry.Register(player, root);
                 var building = new BuildingData { Owner = player, Hex = hex };
                 building.Abilities.Add(UnitAbilities.Barracks);
                 BuildingRegistry.Register(hex, building);
@@ -146,10 +148,35 @@ namespace Game.EditorTests
                 Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
                     plan, out string validReason), Is.True, validReason);
                 Assert.That(root.ActionPoints, Is.EqualTo(10));
+
+                // Both roots claim the SAME PlayerSetupData, but CreateArmy would charge the
+                // registered one while DeployUnitFromCard and V2 bookkeeping use the argument.
+                var staleRoot = PlayerRoot.Create(player, "stale same-owner root");
+                try
+                {
+                    staleRoot.ActionPoints = 10;
+                    Assert.That(CardPlayExecutor.Preflight(player, staleRoot, hand, ctx,
+                        plan, out string staleReason), Is.False);
+                    Assert.That(staleReason, Does.Contain("registered player root"));
+                    CardPlayResult staleResult = CardPlayExecutor.Play(player, staleRoot, hand, ctx, plan);
+                    Assert.That(staleResult.Deployed, Is.False);
+                    Assert.That(staleResult.ArmyCreated, Is.False);
+                    Assert.That(staleResult.ApSpent, Is.Zero);
+                    Assert.That(root.ActionPoints, Is.EqualTo(10));
+                    Assert.That(staleRoot.ActionPoints, Is.EqualTo(10));
+                    Assert.That(hand.Hand, Does.Contain(card));
+                }
+                finally
+                {
+                    UnityEngine.Object.DestroyImmediate(staleRoot.gameObject);
+                }
+                Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
+                    plan, out string stillValid), Is.True, stillValid);
             }
             finally
             {
                 BuildingRegistry.Clear();
+                PlayerRootRegistry.Clear();
                 if (selectorObject != null) UnityEngine.Object.DestroyImmediate(selectorObject);
                 if (deckCatalog != null) UnityEngine.Object.DestroyImmediate(deckCatalog);
                 if (factionCatalog != null) UnityEngine.Object.DestroyImmediate(factionCatalog);
