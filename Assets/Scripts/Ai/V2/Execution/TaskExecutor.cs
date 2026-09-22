@@ -557,7 +557,7 @@ namespace Game.Ai.V2
                 var returnTrace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player,
                     AiDecision.Move(army, returnStep.Value,
-                        "V2 active defence — return"),
+                        "V2 active defence — return", 0f),
                     ctx, returnTrace);
                 army = Resolve(player, pm.MoverArmyId);
                 HexCoord returnAfter = army != null ? army.Hex : returnTrace.EndHex;
