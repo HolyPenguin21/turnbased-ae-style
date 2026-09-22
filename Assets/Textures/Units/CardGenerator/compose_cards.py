@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -35,9 +36,14 @@ BORDER_OVERLAY_TOP_PX = 48
 BORDER_OVERLAY_SIDE_PX = 48
 BORDER_OVERLAY_BOTTOM_PX = 48
 
-# Immediately inside the 12 px base overlay, fade the artwork from alpha 0
-# to full opacity over 5 px on all four sides.
-IMAGE_EDGE_FEATHER_PX = 24
+# Immediately inside the ragged 48 px base overlay, fade the artwork from
+# alpha 0 to full opacity over 48 px on all four sides.
+IMAGE_EDGE_FEATHER_PX = 48
+
+# Deterministic irregularity of the inner overlay boundary. The same ragged
+# profile is reused by the overlay and artwork mask so there are no gaps or
+# mismatched seams between the two layers.
+BORDER_RAGGEDNESS_PX = 10
 
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.
@@ -110,6 +116,52 @@ def load_bases() -> tuple[Image.Image, Image.Image]:
     )
 
 
+def _edge_jitter(index: int, phase_a: float, phase_b: float) -> int:
+    """
+    Deterministic low-frequency edge variation.
+
+    Combining several sine waves avoids random output between runs while
+    keeping the inner frame edge visibly irregular instead of mechanically
+    straight.
+    """
+    value = (
+        math.sin(index * 0.043 + phase_a) * 0.55
+        + math.sin(index * 0.117 + phase_b) * 0.30
+        + math.sin(index * 0.251 + phase_a + phase_b) * 0.15
+    )
+    return round(value * BORDER_RAGGEDNESS_PX)
+
+
+def make_ragged_edge_profiles(
+    size: tuple[int, int],
+) -> tuple[list[int], list[int], list[int], list[int]]:
+    """
+    Return local overlay thickness for top, bottom, left and right edges.
+
+    Top/bottom are indexed by X. Left/right are indexed by Y.
+    """
+    width, height = size
+
+    top = [
+        max(1, BORDER_OVERLAY_TOP_PX + _edge_jitter(x, 0.0, 1.3))
+        for x in range(width)
+    ]
+    bottom = [
+        max(1, BORDER_OVERLAY_BOTTOM_PX + _edge_jitter(x, 2.1, 0.7))
+        for x in range(width)
+    ]
+    left = [
+        max(1, BORDER_OVERLAY_SIDE_PX + _edge_jitter(y, 0.9, 2.7))
+        for y in range(height)
+    ]
+    right = [
+        max(1, BORDER_OVERLAY_SIDE_PX + _edge_jitter(y, 1.8, 0.4))
+        for y in range(height)
+    ]
+
+    return top, bottom, left, right
+
+
 def make_edge_mask(
     size: tuple[int, int],
     bottom_fade_start_y: int | None = None,
@@ -118,18 +170,22 @@ def make_edge_mask(
     """
     Build the artwork alpha mask.
 
-    On every outer side:
-      - first 12 px: artwork alpha is 0 (base/overlay only)
-      - next 5 px: artwork fades smoothly from 0 to 255
-      - remaining interior: artwork is fully opaque
+    On every side, the image stays at alpha 0 through the local ragged overlay
+    thickness, then fades from 0 to 255 over IMAGE_EDGE_FEATHER_PX.
 
-    Horizontal and vertical masks are multiplied, which also softens the
-    transition in the four corners instead of creating a hard 90-degree join.
+    The artwork mask and the border overlay use the exact same ragged edge
+    profiles. This keeps the layer order consistent everywhere:
+
+        base edge -> ragged overlay -> alpha buffer -> full artwork
+
+    The four side fades are multiplied together, so corners remain soft and
+    organic instead of forming hard 90-degree joins.
 
     An optional additional bottom fade is multiplied on top for Stats/Full
     card-specific composition.
     """
     width, height = size
+    top_edge, bottom_edge, left_edge, right_edge = make_ragged_edge_profiles(size)
 
     def side_alpha(distance: int, overlay_px: int) -> int:
         if distance < overlay_px:
@@ -143,27 +199,24 @@ def make_edge_mask(
         smooth = t * t * (3.0 - 2.0 * t)
         return round(255 * smooth)
 
-    horizontal_values: list[int] = []
-    for x in range(width):
-        left = side_alpha(x, BORDER_OVERLAY_SIDE_PX)
-        right = side_alpha(width - 1 - x, BORDER_OVERLAY_SIDE_PX)
-        horizontal_values.append(round(left * right / 255))
+    edge_mask = Image.new("L", size, 0)
+    pixels = edge_mask.load()
 
-    vertical_values: list[int] = []
     for y in range(height):
-        top = side_alpha(y, BORDER_OVERLAY_TOP_PX)
-        bottom = side_alpha(height - 1 - y, BORDER_OVERLAY_BOTTOM_PX)
-        vertical_values.append(round(top * bottom / 255))
+        left_overlay = left_edge[y]
+        right_overlay = right_edge[y]
 
-    horizontal = Image.new("L", (width, 1), 0)
-    horizontal.putdata(horizontal_values)
-    horizontal = horizontal.resize(size, Image.Resampling.NEAREST)
+        for x in range(width):
+            left_alpha = side_alpha(x, left_overlay)
+            right_alpha = side_alpha(width - 1 - x, right_overlay)
+            top_alpha = side_alpha(y, top_edge[x])
+            bottom_alpha = side_alpha(height - 1 - y, bottom_edge[x])
 
-    vertical_edges = Image.new("L", (1, height), 0)
-    vertical_edges.putdata(vertical_values)
-    vertical_edges = vertical_edges.resize(size, Image.Resampling.NEAREST)
-
-    edge_mask = ImageChops.multiply(horizontal, vertical_edges)
+            value = left_alpha
+            value = round(value * right_alpha / 255)
+            value = round(value * top_alpha / 255)
+            value = round(value * bottom_alpha / 255)
+            pixels[x, y] = value
 
     if bottom_fade_start_y is None and bottom_fade_end_y is None:
         return edge_mask
@@ -218,22 +271,30 @@ def apply_mask(art: Image.Image, mask: Image.Image) -> Image.Image:
 
 def make_border_overlay(base: Image.Image) -> Image.Image:
     """
-    Extract a protective decorative frame overlay from the base.
+    Extract the protective decorative frame overlay from the base.
 
-    Re-apply the same 12 px decorative frame band on every side so the
-    artwork cannot cover the original card border.
+    The inner boundary is intentionally ragged. It uses the same deterministic
+    edge profiles as make_edge_mask(), so the overlay ends exactly where the
+    artwork's 48 px alpha buffer begins.
     """
     width, height = base.size
-    mask = Image.new("L", (width, height), 0)
+    top_edge, bottom_edge, left_edge, right_edge = make_ragged_edge_profiles(base.size)
 
-    top = max(1, min(BORDER_OVERLAY_TOP_PX, height // 2))
-    side = max(1, min(BORDER_OVERLAY_SIDE_PX, width // 2))
-    bottom = max(1, min(BORDER_OVERLAY_BOTTOM_PX, height // 2))
+    mask = Image.new("L", base.size, 0)
+    pixels = mask.load()
 
-    mask.paste(255, (0, 0, width, top))
-    mask.paste(255, (0, height - bottom, width, height))
-    mask.paste(255, (0, 0, side, height))
-    mask.paste(255, (width - side, 0, width, height))
+    for y in range(height):
+        left_overlay = left_edge[y]
+        right_overlay = right_edge[y]
+
+        for x in range(width):
+            visible = (
+                y < top_edge[x]
+                or y >= height - bottom_edge[x]
+                or x < left_overlay
+                or x >= width - right_overlay
+            )
+            pixels[x, y] = 255 if visible else 0
 
     overlay = base.copy()
     overlay.putalpha(
@@ -338,6 +399,7 @@ def main() -> int:
         f"bottom={BORDER_OVERLAY_BOTTOM_PX}px"
     )
     print(f"Image edge : alpha 0 -> 255 over {IMAGE_EDGE_FEATHER_PX}px")
+    print(f"Raggedness : +/-{BORDER_RAGGEDNESS_PX}px")
     print(f"Units      : {len(art_paths)}")
     print()
 
