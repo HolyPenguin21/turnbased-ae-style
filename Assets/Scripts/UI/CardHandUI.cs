@@ -192,19 +192,24 @@ namespace Game.UI
             if (armyViewerModal != null)
                 armyViewerModal.SetCardHand(this);
 
-            if (startingDeckCatalog != null)
+            // Debug-only spectator mode (GameTurnController.debugWatchAiTurns) can run with no
+            // human in the match at all — FindHumanPlayer() returns null. Dealing a starting
+            // deck/hand to nobody there just creates a phantom hand that ShowAiHandDebug has to
+            // fight to keep hidden, so skip dealing entirely rather than falling back to a
+            // faction no one plays.
+            PlayerSetupData human = FindHumanPlayer();
+            if (human != null)
             {
-                PlayerSetupData human = FindHumanPlayer();
-                Faction faction = human != null ? human.Faction : Faction.IronConcord;
-                _remainingDeck.AddRange(startingDeckCatalog.BuildDeckPool(faction));
-            }
+                if (startingDeckCatalog != null)
+                    _remainingDeck.AddRange(startingDeckCatalog.BuildDeckPool(human.Faction));
 
-            for (int i = 0; i < startingHandSize; i++)
-            {
-                CardDefinition card = PopRandomCard();
-                if (card == null)
-                    break;
-                AddCard(new CardData(card));
+                for (int i = 0; i < startingHandSize; i++)
+                {
+                    CardDefinition card = PopRandomCard();
+                    if (card == null)
+                        break;
+                    AddCard(new CardData(card));
+                }
             }
         }
 
@@ -370,7 +375,9 @@ namespace Game.UI
         // the count only moves when a card enters or leaves the hand.
         private void RefreshHandCountText()
         {
-            if (handCountText == null || _cards.Count == _lastDisplayedHandCount)
+            // Don't let the real/phantom hand's count clobber the AI debug hand's counter —
+            // RenderDebugHand/OnDebugHandChanged own the counter while a debug hand is showing.
+            if (handCountText == null || _showingDebugHand || _cards.Count == _lastDisplayedHandCount)
                 return;
             SetHandCountText(_cards.Count, maxHandSize);
         }
@@ -1186,7 +1193,12 @@ namespace Game.UI
             for (int i = 0; i < _cards.Count; i++)
             {
                 int visibleIndex = i - _scrollOffset;
-                bool isVisible = visibleIndex >= 0 && visibleIndex < MaxVisible;
+                // While a debug AI hand is showing, the real (or phantom, spectator-mode) hand
+                // must stay hidden no matter what triggers Relayout — ShowAiHandDebug's own
+                // SetActive(false) sweep is a one-shot action, not an invariant, and AddCard/
+                // drag/scroll all funnel back through here and would otherwise resurrect these
+                // cards mixed in next to the AI's own (the project owner's reported symptom).
+                bool isVisible = !_showingDebugHand && visibleIndex >= 0 && visibleIndex < MaxVisible;
                 if (_cards[i].gameObject.activeSelf != isVisible)
                     _cards[i].gameObject.SetActive(isVisible);
                 if (isVisible)

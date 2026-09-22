@@ -892,6 +892,7 @@ namespace Game.Map
             // ShowArmyModal / ShowBaseModal.
             if (armyViewerModal != null) armyViewerModal.Hide();
             if (baseViewerModal != null) baseViewerModal.Hide();
+            armyButtonRow?.Hide();
             researchProductionModal?.Show(mode, human, hero);
         }
 
@@ -987,6 +988,7 @@ namespace Game.Map
                 baseViewerModal.Hide();
             if (researchProductionModal != null)
                 researchProductionModal.Hide();
+            armyButtonRow?.Hide();
             armyViewerModal?.Show(army);
         }
 
@@ -996,6 +998,7 @@ namespace Game.Map
                 armyViewerModal.Hide();
             if (researchProductionModal != null)
                 researchProductionModal.Hide();
+            armyButtonRow?.Hide();
             baseViewerModal?.Show(building);
         }
 
