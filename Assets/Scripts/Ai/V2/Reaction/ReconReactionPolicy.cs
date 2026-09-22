@@ -286,24 +286,14 @@ namespace Game.Ai.V2
             return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
         }
 
-        private static float HonestHexDefenseBonus(PlayerSetupData player, HexMap map, HexCoord hex)
-        {
-            float bonus = 0f;
-            if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
-                bonus += terrain.defenseModifier;
-
-            if (VisionSystem.IsVisible(player, hex))
-            {
-                BuildingData live = BuildingRegistry.FindAt(hex);
-                if (live != null && live.IsBase)
-                    bonus += live.Defense;
-            }
-            // If not visible, deliberately keep only terrain. AiMapMemory remembers building
-            // identity/owner but not its numeric Defense value, so inventing the current live value
-            // here would violate the memory contract. Conservative strategic building treatment can
-            // be added later by storing the observed defense in KnownBuilding itself.
-            return bonus;
-        }
+        // FIX-05 — this was the original (and, until now, only) fog-honest variant of
+        // WorthIt.HexDefenseBonus, and its own comment named the missing piece: "Conservative
+        // strategic building treatment can be added later by storing the observed defense in
+        // KnownBuilding itself." AiMapMemory now does exactly that and owns this question for the
+        // whole AI, so this is the same rule with the fogged case no longer discarded — a
+        // remembered Base's last-observed Defense is used instead of silently dropping to terrain.
+        private static float HonestHexDefenseBonus(PlayerSetupData player, HexMap map, HexCoord hex) =>
+            AiMapMemory.KnownHexDefenseBonus(player, map, hex);
 
         private static bool IsArmyInStealth(ArmyData army) =>
             army != null && army.Members.Count > 0 && army.Members.All(m => m.IsHidden);

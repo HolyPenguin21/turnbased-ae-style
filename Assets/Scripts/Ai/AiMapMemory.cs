@@ -248,6 +248,16 @@ namespace Game.Ai
             // Last-observed unlocked empty slot count. Unlike TotalFacilitySlots this is the
             // authoritative answer to whether another Facility could actually be placed now.
             public int FreeFacilitySlots;
+            // FIX-05 (2026-09-22) — the building's own last-observed Defense stat. Only a Base
+            // actually contributes it to a fight (see WorthIt.HexDefenseBonus and
+            // BattleScreenUI.Combat.cs's own gate), but it is stored unconditionally: what was
+            // observed is what is remembered, and the "is it a Base" question is IsBase's.
+            // Exists because AI code asking "how well defended is that hex" used to call
+            // WorthIt.HexDefenseBonus, which reads BuildingRegistry LIVE — so a base upgraded,
+            // captured or razed deep in the fog changed an AI estimate with no observation behind
+            // it. Same honesty rule as every other field here: written only for a hex this player
+            // can genuinely see right now, then frozen until that same hex is re-observed.
+            public float Defense;
         }
 
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, BuildingSighting>> KnownBuildings =
@@ -262,12 +272,15 @@ namespace Game.Ai
             public readonly IReadOnlyCollection<string> FacilityAbilities;
             public readonly IReadOnlyList<int> CollectedAmounts;
             public readonly int FreeFacilitySlots;
+            // FIX-05 — last-observed Defense stat (see BuildingSighting.Defense).
+            public readonly float Defense;
 
             public KnownBuilding(HexCoord hex, PlayerSetupData owner, bool isStartingCitadel,
                 IReadOnlyCollection<string> facilityAbilities,
                 IReadOnlyList<int> collectedAmounts = null, int freeFacilitySlots = int.MaxValue,
-                bool isBase = false)
+                bool isBase = false, float defense = 0f)
             {
+                Defense = defense;
                 Hex = hex;
                 Owner = owner;
                 IsStartingCitadel = isStartingCitadel;
@@ -782,6 +795,9 @@ namespace Game.Ai
                         CollectedAmounts = collectedAmounts,
                         FreeFacilitySlots = Enumerable.Range(0, building.UnlockedFacilitySlots)
                             .Count(i => building.FacilitySlots[i] == null),
+                        // FIX-05 — the hex is genuinely visible in this loop, so its structural
+                        // defence is exactly as honest an observation as its owner or facilities.
+                        Defense = building.Defense,
                     };
                 }
                 else
@@ -979,7 +995,43 @@ namespace Game.Ai
                 return null;
             return new KnownBuilding(sighting.Hex, sighting.Owner,
                 sighting.IsStartingCitadel, sighting.FacilityAbilities,
-                sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase);
+                sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
+                sighting.Defense);
+        }
+
+        // FIX-05 (2026-09-22) — the ONE fog-honest answer to "what structural/terrain defence
+        // would a defender standing on `hex` actually get", for every AI caller.
+        // Game.Combat.WorthIt.HexDefenseBonus stays exactly as it is — it is correct whenever it
+        // is called with an honest context (a real fight, a currently-visible hex, the player's
+        // own hex) — but it reads BuildingRegistry LIVE, so calling it about a fogged hex let a
+        // base built, upgraded, captured or razed out of sight change an AI estimate with no
+        // observation behind it. This wraps the same rule in the knowledge boundary:
+        //   * terrain is immutable public map data and is always included (the same call
+        //     ReconReactionPolicy.HonestHexDefenseBonus has been making since it was written);
+        //   * a CURRENTLY VISIBLE hex reads the live building, because looking at it is the
+        //     observation - and that is also what keeps a just-captured/just-razed base correct
+        //     without waiting for a vision recompute;
+        //   * a fogged hex contributes the last OBSERVED Defense of the building remembered
+        //     there, and nothing at all where no building was ever seen.
+        // Two players' answers are independent because KnownBuildings is per-player.
+        public static float KnownHexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex)
+        {
+            float bonus = 0f;
+            if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
+                bonus += terrain.defenseModifier;
+
+            if (actor != null && VisionSystem.IsVisible(actor, hex))
+            {
+                BuildingData live = BuildingRegistry.FindAt(hex);
+                if (live != null && live.IsBase)
+                    bonus += live.Defense;
+                return bonus;
+            }
+
+            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
+            if (remembered.HasValue && remembered.Value.IsBase)
+                bonus += remembered.Value.Defense;
+            return bonus;
         }
 
         // Every building this player has ever observed anywhere on the map, as last seen —
@@ -994,7 +1046,8 @@ namespace Game.Ai
             foreach (BuildingSighting sighting in buildings.Values)
                 yield return new KnownBuilding(sighting.Hex, sighting.Owner,
                     sighting.IsStartingCitadel, sighting.FacilityAbilities,
-                    sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase);
+                    sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
+                    sighting.Defense);
         }
 
         // How many individual non-hero members, across every currently-known ARMY sighting for

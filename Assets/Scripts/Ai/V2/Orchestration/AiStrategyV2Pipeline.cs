@@ -692,7 +692,17 @@ namespace Game.Ai.V2
                     .Concat(snapshot?.Known?.NeutralSightings
                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                     .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R).ThenBy(x => x.ArmyId)
-                    .Select(x => $"{x.Hex.Q},{x.Hex.R}:{DefenderFingerprint(x.Defenders)}"));
+                    .Select(x => $"{x.Hex.Q},{x.Hex.R}:{DefenderFingerprint(x.Defenders)}"))
+                // FIX-05 — both combat proofs now take their hexBonus from remembered building
+                // defence (AiMapMemory.KnownHexDefenseBonus), so a re-observed Base appearing,
+                // being upgraded, changing owner or being razed genuinely changes the cached
+                // answer and must invalidate it. Knowledge only: these are this player's own
+                // observations, never a live BuildingRegistry sweep.
+                + "|knownbases=" + string.Join(";", (snapshot?.Known?.Buildings
+                        ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
+                    .Where(b => b.IsBase)
+                    .OrderBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
+                    .Select(b => $"{b.Hex.Q},{b.Hex.R}:{b.Defense:0.###}"));
             return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}|owners={owners}{econ}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
