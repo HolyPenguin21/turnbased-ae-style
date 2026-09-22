@@ -42,7 +42,7 @@ namespace Game.Ai.V2
         // RequiresStealth for Explore/Refresh; always true for a Surveil call site — Surveil is
         // always StealthRequirement.Required, see ARCHITECTURE.md's Scout row).
         public static bool VantageBlockedNow(PlayerSetupData player, HexCoord hex, int currentTurn,
-            bool requiresStealth = false)
+            bool requiresStealth)
         {
             AiMapMemory.KnownEnemySighting? s = AiMapMemory.KnownEnemySightingAt(player, hex);
             if (s.HasValue)

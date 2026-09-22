@@ -51,8 +51,7 @@ namespace Game.Ai.V2
         }
 
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn, WorldSnapshot snapshot = null,
-            bool requiresStealth = false)
+            ReconPatrolState assignment, int turn, WorldSnapshot snapshot, bool requiresStealth)
         {
             if (player == null || map == null || army == null || assignment == null
                 || army.CurrentMovement <= 0)

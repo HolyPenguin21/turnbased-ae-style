@@ -902,7 +902,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
                 if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                        requiresStealth: true))
+                        target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f))
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
             }

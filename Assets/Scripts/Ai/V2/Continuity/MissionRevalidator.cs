@@ -131,7 +131,7 @@ namespace Game.Ai.V2
                         pm.BaselineObservedTurn))
                     return MissionValidity.StaleGoalMet;
                 if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
-                        ctx.TurnNumber, requiresStealth: true))
+                        ctx.TurnNumber, pm.RequiresStealth))
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;
             }

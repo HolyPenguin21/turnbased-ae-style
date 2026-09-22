@@ -58,7 +58,7 @@ namespace Game.Ai.V2
         private const float StrongEnemyFleeWinChance = AiConfigV2.scoutReactionFleeWinChance;
 
         public static ReconReactionDecision Evaluate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn, bool requiresStealth = false)
+            ReconPatrolState assignment, int turn, bool requiresStealth)
         {
             if (player == null || map == null || army == null || assignment == null)
                 return new ReconReactionDecision(ReconReactionAction.StopAndReplan, null, null, 0f,
