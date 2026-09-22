@@ -557,7 +557,18 @@ namespace Game.Ai.V2
             // army contributes only its identity, so an unrelated army's stat change no longer
             // forces a full Development re-enumeration. The pre-existing operator-position
             // optimization is preserved verbatim for Research/Production operator armies.
-            var relevantArmyIds = DevelopmentRelevantArmyIds(snapshot, activeIntents);
+            //
+            // Composition and position are tracked SEPARATELY because they answer different proofs:
+            // Economy's delivery proof (AI-03) compares an army's route and shared movement
+            // bottleneck before/after a grant, so an Economy mover's position/movement/activation
+            // has to invalidate Development. Raid's combat proof (WorthIt via
+            // ImprovesRaidCombatOutcome) reads army.Members composition but never position. Recon's
+            // proof (ImprovesReconCapability) reads only the OFFERED equipment/recipient card's own
+            // static abilities/MoveMax/ActivationApCost — never anything about the scout army
+            // itself — so a Scout-only mover needs neither block: a plain scout patrolling its
+            // waypoint must not force a full re-enumeration on every step.
+            var positionRelevantArmyIds = DevelopmentEconomyRelevantArmyIds(snapshot, activeIntents);
+            var raidRelevantArmyIds = DevelopmentRaidRelevantArmyIds(activeIntents);
             string armies = string.Join(";", (snapshot?.Self?.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null).OrderBy(a => a.ArmyId)
@@ -568,21 +579,30 @@ namespace Game.Ai.V2
                         ? $":operator={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:"
                           + $"{(a.HasActivatedThisTurn ? 1 : 0)}:{(a.IsGarrison ? 1 : 0)}"
                         : string.Empty;
-                    if (!developmentOperator && !relevantArmyIds.Contains(a.ArmyId))
+                    // Operator armies keep exactly the pre-existing full block (composition +
+                    // position) regardless of the narrowed sets below — that optimization is
+                    // untouched by this pass.
+                    bool wantsPosition = developmentOperator || positionRelevantArmyIds.Contains(a.ArmyId);
+                    bool wantsComposition = wantsPosition || raidRelevantArmyIds.Contains(a.ArmyId);
+                    if (!wantsComposition && !wantsPosition)
                         return a.ArmyId.ToString(CultureInfo.InvariantCulture);
+                    string composition = wantsComposition
+                        ? $":{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
+                          + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
+                          + $"{a.EffectiveArmyPower:0.###}:{a.CompositionQuality:0.###}:"
+                          + $"{a.Capacity}:{a.OccupiedBattleSlots}:{a.StrategicCoverage.GetHashCode()}:"
+                          + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}"
+                        : string.Empty;
                     // Position/movement/activation are part of the recipient facts now: AI-03's
                     // delivery proof compares this army's route and shared movement bottleneck
                     // before/after the grant, so they can change the admission answer.
-                    return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
-                        + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
-                        + $"{a.EffectiveArmyPower:0.###}:{a.CompositionQuality:0.###}:"
-                        + $"{a.Capacity}:{a.OccupiedBattleSlots}:{a.StrategicCoverage.GetHashCode()}:"
-                        + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}"
-                        + $":at={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.MaxMovement}:"
-                        + $"{a.ActivationApCost}:{(a.HasActivatedThisTurn ? 1 : 0)}:"
-                        + $"{a.CollectionCapacity.Human:0.###},{a.CollectionCapacity.Energy:0.###},"
-                        + $"{a.CollectionCapacity.Materials:0.###},{a.CollectionCapacity.Tech:0.###}"
-                        + operatorState;
+                    string position = wantsPosition
+                        ? $":at={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.MaxMovement}:"
+                          + $"{a.ActivationApCost}:{(a.HasActivatedThisTurn ? 1 : 0)}:"
+                          + $"{a.CollectionCapacity.Human:0.###},{a.CollectionCapacity.Energy:0.###},"
+                          + $"{a.CollectionCapacity.Materials:0.###},{a.CollectionCapacity.Tech:0.###}"
+                        : string.Empty;
+                    return $"{a.ArmyId}{composition}{position}{operatorState}";
                 }));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
                     ?? System.Array.Empty<Game.HexGrid.HexCoord>())
@@ -696,22 +716,24 @@ namespace Game.Ai.V2
             }
         }
 
-        // Armies that could host a need-supporting equipment recipient this cycle: the movers of
-        // the relevant intents above, plus every army the Economy analysis already advertises as a
-        // possible builder/collector (those become the EconomyPreferredBuilderArmyId witness a
-        // fresh Economy demand carries). Operator armies are handled separately by the caller.
-        internal static HashSet<int> DevelopmentRelevantArmyIds(WorldSnapshot snapshot,
+        // Armies whose POSITION/movement/activation can change a Development decision: only
+        // Economy's delivery proof (AI-03) compares an army's route and shared movement bottleneck
+        // before/after a grant. Includes every army the Economy analysis already advertises as a
+        // possible builder/collector — those become the EconomyPreferredBuilderArmyId witness a
+        // fresh Economy demand carries, and protection/delivery proofs may run against them too.
+        // Operator armies are handled separately by the caller (pre-existing optimization).
+        internal static HashSet<int> DevelopmentEconomyRelevantArmyIds(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents)
         {
             var ids = new HashSet<int>();
             foreach (MissionIntent i in activeIntents ?? new List<MissionIntent>())
             {
-                if (!DevelopmentRelevantIntent(i))
+                if (i == null || i.Status != IntentStatus.Active || i.Kind != MissionKind.Economy
+                    || i.Economy == null)
                     continue;
                 if (i.PreferredMoverArmyId.HasValue) ids.Add(i.PreferredMoverArmyId.Value);
-                if (i.Economy?.BuilderArmyId != null) ids.Add(i.Economy.BuilderArmyId.Value);
-                if (i.Economy?.CollectorArmyId != null) ids.Add(i.Economy.CollectorArmyId.Value);
-                if (i.Raid?.PrimaryArmyId != null) ids.Add(i.Raid.PrimaryArmyId.Value);
+                if (i.Economy.BuilderArmyId != null) ids.Add(i.Economy.BuilderArmyId.Value);
+                if (i.Economy.CollectorArmyId != null) ids.Add(i.Economy.CollectorArmyId.Value);
             }
             EconomyStanding eco = snapshot?.Economy;
             if (eco != null)
@@ -734,6 +756,29 @@ namespace Game.Ai.V2
                 foreach (MobileCollectionOpportunity x in eco.MobileCollectionOpportunities
                              ?? System.Array.Empty<MobileCollectionOpportunity>())
                     ids.Add(x.CollectorArmyId);
+            }
+            return ids;
+        }
+
+        // Armies whose COMPOSITION (beyond Economy's — see DevelopmentEconomyRelevantArmyIds
+        // above, unioned in by the caller) can change a Development decision: only Raid's combat
+        // proof (ImprovesRaidCombatOutcome via WorthIt) reads army.Members. Recon's proof
+        // (ImprovesReconCapability) reads only the offered equipment/recipient card's own static
+        // abilities/MoveMax/ActivationApCost — never anything about the scout army itself — so a
+        // Scout-only mover contributes nothing here, and a plain scout stepping its waypoint no
+        // longer forces a full Development re-enumeration.
+        internal static HashSet<int> DevelopmentRaidRelevantArmyIds(
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var ids = new HashSet<int>();
+            foreach (MissionIntent i in activeIntents ?? new List<MissionIntent>())
+            {
+                if (i == null || i.Status != IntentStatus.Active || i.Kind != MissionKind.Raid
+                    || i.Raid == null
+                    || (i.Raid.Phase != RaidMissionPhase.Assault
+                        && i.Raid.Phase != RaidMissionPhase.Reinforcement))
+                    continue;
+                if (i.Raid.PrimaryArmyId != null) ids.Add(i.Raid.PrimaryArmyId.Value);
             }
             return ids;
         }
