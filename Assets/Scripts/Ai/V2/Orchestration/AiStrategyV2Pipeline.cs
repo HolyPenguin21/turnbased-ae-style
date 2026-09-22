@@ -490,11 +490,43 @@ namespace Game.Ai.V2
         internal static bool RefreshDevelopmentOpportunities(ISet<DesireAxis> dirtyAxes) =>
             dirtyAxes != null && dirtyAxes.Contains(DesireAxis.Development);
 
+        // AI-02 — AP no longer enters this fingerprint as a raw number. Development consults the
+        // AP pool through exactly two affordability predicates, both of the form
+        // `root.CanSpendActionPoints(x)` == `ActionPoints >= x`:
+        //   * per offering: ResearchProductionSystem.AttemptApCost(card) + card.activationApCost
+        //     (DevelopmentOpportunityEvaluator.Enumerate's Challenge+attach gate), and
+        //   * per Unit card in hand: CardData.EffectivePlayApCost
+        //     (BestAffordableHandUnitPower, which feeds AlternativeValue and therefore EV ordering).
+        // Emitting which of those thresholds the current AP clears is therefore EXACTLY as
+        // discriminating as the raw number, and an AP delta that crosses none of them provably
+        // cannot change any Development decision. Resources are deliberately NOT narrowed: they
+        // shift BestAffordableHandUnitPower's displaced-alternative term continuously, so any
+        // resource change can reorder EV — correctness over savings, as required.
         internal static string DevelopmentAdmissionFingerprint(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents, int actionPoints,
-            string resources, int handVersion) =>
-            $"axis={DesireAxis.Development}|ap={actionPoints}|res={resources}"
+            string resources, int handVersion, AiHandData hand = null) =>
+            $"axis={DesireAxis.Development}|apfit={DevelopmentApAffordability(snapshot, hand, actionPoints)}"
+            + $"|res={resources}"
             + $"|hand={handVersion}|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
+
+        // The complete, ordered set of AP thresholds Development can cross (see above).
+        internal static string DevelopmentApAffordability(WorldSnapshot snapshot, AiHandData hand,
+            int actionPoints)
+        {
+            var thresholds = new List<int>();
+            foreach (DevelopmentOffering off in snapshot?.Development?.Offerings
+                         ?? (IReadOnlyList<DevelopmentOffering>)System.Array.Empty<DevelopmentOffering>())
+                if (off.Card != null)
+                    thresholds.Add(ResearchProductionSystem.AttemptApCost(off.Card)
+                        + UnityEngine.Mathf.Max(0, off.Card.activationApCost));
+            foreach (CardData c in hand?.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+                if (c?.Definition != null && c.Definition.cardType == CardType.Unit)
+                    thresholds.Add(c.EffectivePlayApCost);
+            if (thresholds.Count == 0)
+                return $"raw:{actionPoints}";   // nothing enumerable — never guess, keep the raw fact
+            return string.Join("", thresholds.Distinct().OrderBy(x => x)
+                .Select(x => actionPoints >= x ? "1" : "0"));
+        }
 
         // Development's actor dependency is narrower than the operational Actor invalidation.
         // Every army movement must still wake Recon/Aggression, but only a Researcher/Assembler
@@ -520,6 +552,12 @@ namespace Game.Ai.V2
                     + $"{(o.ProducesEquipment ? 1 : 0)}:{o.StakeCost.Human:0.###},"
                     + $"{o.StakeCost.Energy:0.###},{o.StakeCost.Materials:0.###},"
                     + $"{o.StakeCost.Tech:0.###}"));
+            // AI-02 — only an army that can actually HOST a need-supporting equipment recipient
+            // (AI-03's finalized dependency set) contributes composition/combat detail; every other
+            // army contributes only its identity, so an unrelated army's stat change no longer
+            // forces a full Development re-enumeration. The pre-existing operator-position
+            // optimization is preserved verbatim for Research/Production operator armies.
+            var relevantArmyIds = DevelopmentRelevantArmyIds(snapshot, activeIntents);
             string armies = string.Join(";", (snapshot?.Self?.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
                 .Where(a => a != null).OrderBy(a => a.ArmyId)
@@ -530,20 +568,100 @@ namespace Game.Ai.V2
                         ? $":operator={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:"
                           + $"{(a.HasActivatedThisTurn ? 1 : 0)}:{(a.IsGarrison ? 1 : 0)}"
                         : string.Empty;
+                    if (!developmentOperator && !relevantArmyIds.Contains(a.ArmyId))
+                        return a.ArmyId.ToString(CultureInfo.InvariantCulture);
+                    // Position/movement/activation are part of the recipient facts now: AI-03's
+                    // delivery proof compares this army's route and shared movement bottleneck
+                    // before/after the grant, so they can change the admission answer.
                     return $"{a.ArmyId}:{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
                         + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
                         + $"{a.EffectiveArmyPower:0.###}:{a.CompositionQuality:0.###}:"
                         + $"{a.Capacity}:{a.OccupiedBattleSlots}:{a.StrategicCoverage.GetHashCode()}:"
                         + $"{(a.HasResearchOperator ? 1 : 0)}:{(a.HasProductionOperator ? 1 : 0)}"
+                        + $":at={a.Hex.Q},{a.Hex.R}:{a.CurrentMovement}:{a.MaxMovement}:"
+                        + $"{a.ActivationApCost}:{(a.HasActivatedThisTurn ? 1 : 0)}:"
+                        + $"{a.CollectionCapacity.Human:0.###},{a.CollectionCapacity.Energy:0.###},"
+                        + $"{a.CollectionCapacity.Materials:0.###},{a.CollectionCapacity.Tech:0.###}"
                         + operatorState;
                 }));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
                     ?? System.Array.Empty<Game.HexGrid.HexCoord>())
                 .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h => $"{h.Q},{h.R}"));
+            // AI-02 — the old field was `{IntentKey}:{Kind}:{Status}:{PreferredMoverArmyId}` for
+            // EVERY intent, so any unrelated mission retargeting (a new IntentKey for the same
+            // work), retiring or being created rewrote it and forced a full re-enumeration — the
+            // single biggest source of the 571/88 repeated NO-recipient passes. Development reads
+            // intents through exactly two channels, and each now contributes only its own facts:
+            //
+            //  (a) ACTOR OCCUPANCY. DevelopmentOpportunityEvaluator.EnumeratePreparation builds
+            //      ActorCommitments.FromIntents over ALL intents, so every kind still has to be
+            //      represented — but only through the inputs that produce a claim (kind, status
+            //      and the claimed actor ids), never through intent identity. Two different intent
+            //      keys that occupy the same actors are, to Development, the same world.
+            string claims = string.Join(";", (activeIntents ?? new List<MissionIntent>())
+                .Where(i => i != null)
+                .SelectMany(i =>
+                {
+                    var rows = new List<string>();
+                    string k = $"{i.Kind}:{i.Status}";
+                    if (i.PreferredMoverArmyId.HasValue)
+                        rows.Add($"{k}:{i.PreferredMoverArmyId.Value}");
+                    if (i.Raid?.SupportArmyId != null)
+                        rows.Add($"{k}:sup{i.Raid.SupportArmyId.Value}:{(int)i.Raid.Phase}");
+                    if (i.Raid?.AirSupportArmyId != null)
+                        rows.Add($"{k}:air{i.Raid.AirSupportArmyId.Value}:{(int)i.Raid.Phase}");
+                    if (i.Economy?.BuilderArmyId != null)
+                        rows.Add($"{k}:bld{i.Economy.BuilderArmyId.Value}");
+                    if (i.Economy?.CollectorArmyId != null)
+                        rows.Add($"{k}:col{i.Economy.CollectorArmyId.Value}");
+                    if (i.Development?.Hero != null)
+                        rows.Add($"{k}:dev{i.Development.HeroKey}");
+                    if (rows.Count == 0)
+                        rows.Add(k);
+                    return rows;
+                })
+                .Distinct().OrderBy(x => x, System.StringComparer.Ordinal));
+            //  (b) SUPPORTED NEED. Only an Economy obligation, a Scout mover or an
+            //      Assault/Reinforcement Raid primary can witness a need
+            //      (DemandLayer.HasSupportedDevelopmentAxisDemand), and each only through the
+            //      fields the proof actually reads.
             string owners = string.Join(";", (activeIntents ?? new List<MissionIntent>())
-                .Where(i => i != null).OrderBy(i => i.IntentKey)
-                .Select(i => $"{i.IntentKey}:{i.Kind}:{i.Status}:{i.PreferredMoverArmyId}"));
-            return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|owners={owners}"
+                .Where(DevelopmentRelevantIntent)
+                .Select(i =>
+                {
+                    string extra = string.Empty;
+                    if (i.Kind == MissionKind.Economy && i.Economy != null)
+                        // The specific economic obligation AI-03 proves against.
+                        extra = $":{(int)i.Economy.Kind}:{i.Economy.TargetHex.Q},{i.Economy.TargetHex.R}"
+                            + $":{(i.Economy.ResourceType.HasValue ? ((int)i.Economy.ResourceType.Value).ToString(CultureInfo.InvariantCulture) : "-")}"
+                            + $":{i.Economy.BuilderArmyId}:{i.Economy.CollectorArmyId}"
+                            + $":{(i.Economy.SafeReturnHex.HasValue ? $"{i.Economy.SafeReturnHex.Value.Q},{i.Economy.SafeReturnHex.Value.R}" : "-")}";
+                    else if (i.Kind == MissionKind.Raid && i.Raid != null)
+                        // The exact target/combat-viability feed into ImprovesRaidCombatOutcome.
+                        // A Scout intent contributes nothing beyond its mover: ImprovesReconCapability
+                        // reads only the recipient's own abilities, never the scout's target.
+                        extra = $":{(int)i.Raid.Phase}:{i.Raid.PrimaryArmyId}"
+                            + $":{i.Raid.LastKnownHex.Q},{i.Raid.LastKnownHex.R}"
+                            + $":{DefenderFingerprint(AiV2Util.KnownDefenders(snapshot, i.Raid.Target))}";
+                    return $"{i.Kind}:{i.PreferredMoverArmyId}{extra}";
+                })
+                .Distinct().OrderBy(x => x, System.StringComparer.Ordinal));
+            // AI-03's economy admission reads the site's own income physics (extraction proof) and
+            // the remembered sightings on the mission's route (protection proof), so those facts
+            // must invalidate Development too — they did not before, which was a staleness bug in
+            // the other direction. Own-force and remembered-sighting facts only; nothing hidden.
+            string econ = "|sites=" + string.Join(";", (snapshot?.Economy?.CollectorSites
+                    ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R).ThenBy(x => (int)x.ResourceType)
+                .Select(x => $"{x.Hex.Q},{x.Hex.R}:{(int)x.ResourceType}:{x.EffectiveYield}:"
+                    + $"{x.CurrentBuildingCollection}:{x.MarginalIncomeGain}"))
+                + "|threats=" + string.Join(";", (snapshot?.Known?.EnemySightings
+                        ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    .Concat(snapshot?.Known?.NeutralSightings
+                        ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R).ThenBy(x => x.ArmyId)
+                    .Select(x => $"{x.Hex.Q},{x.Hex.R}:{DefenderFingerprint(x.Defenders)}"));
+            return $"fac={facilities}|off={offerings}|bases={bases}|armies={armies}|claims={claims}|owners={owners}{econ}"
                 + $"|ready={(rd?.AnyFacilityWithHero == true ? 1 : 0)}:"
                 + $"{(rd?.AnyOperatorlessFacility == true ? 1 : 0)}:"
                 + $"{(rd?.ResearcherCardInHand == true ? 1 : 0)}:"
@@ -552,6 +670,87 @@ namespace Game.Ai.V2
                 + $"{(rd?.BestSuccessChance ?? 0f):0.###}:"
                 + $"{(rd?.SurplusFraction ?? 0f):0.###}:"
                 + $"{(rd?.ProductionSupport ?? 0f):0.###}";
+        }
+
+        // AI-02/AI-03 — the ONLY intents a Development decision can depend on:
+        // DemandLayer.HasSupportedDevelopmentAxisDemand witnesses a need through an Economy
+        // obligation, a Scout mover, or an Assault/Reinforcement Raid primary. Anything else
+        // (a Return leg of someone else's raid, an ActiveDefence, a Development intent of its own)
+        // cannot change whether an equipment offering is admitted.
+        internal static bool DevelopmentRelevantIntent(MissionIntent i)
+        {
+            if (i == null || i.Status != IntentStatus.Active)
+                return false;
+            switch (i.Kind)
+            {
+                case MissionKind.Economy:
+                    return i.Economy != null;
+                case MissionKind.Scout:
+                    return true;
+                case MissionKind.Raid:
+                    return i.Raid != null
+                        && (i.Raid.Phase == RaidMissionPhase.Assault
+                            || i.Raid.Phase == RaidMissionPhase.Reinforcement);
+                default:
+                    return false;
+            }
+        }
+
+        // Armies that could host a need-supporting equipment recipient this cycle: the movers of
+        // the relevant intents above, plus every army the Economy analysis already advertises as a
+        // possible builder/collector (those become the EconomyPreferredBuilderArmyId witness a
+        // fresh Economy demand carries). Operator armies are handled separately by the caller.
+        internal static HashSet<int> DevelopmentRelevantArmyIds(WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var ids = new HashSet<int>();
+            foreach (MissionIntent i in activeIntents ?? new List<MissionIntent>())
+            {
+                if (!DevelopmentRelevantIntent(i))
+                    continue;
+                if (i.PreferredMoverArmyId.HasValue) ids.Add(i.PreferredMoverArmyId.Value);
+                if (i.Economy?.BuilderArmyId != null) ids.Add(i.Economy.BuilderArmyId.Value);
+                if (i.Economy?.CollectorArmyId != null) ids.Add(i.Economy.CollectorArmyId.Value);
+                if (i.Raid?.PrimaryArmyId != null) ids.Add(i.Raid.PrimaryArmyId.Value);
+            }
+            EconomyStanding eco = snapshot?.Economy;
+            if (eco != null)
+            {
+                void AddRoutes(IReadOnlyList<EconomyBuilderRouteSnapshot> routes)
+                {
+                    foreach (EconomyBuilderRouteSnapshot r in routes
+                                 ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                        ids.Add(r.ArmyId);
+                }
+                foreach (EconomyExtractionOpportunity x in eco.ExtractionOpportunities
+                             ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                    AddRoutes(x.BuilderRoutes);
+                foreach (EconomyExtractionOpportunity x in eco.CollectorSites
+                             ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                    AddRoutes(x.BuilderRoutes);
+                foreach (EconomyBaseOpportunity x in eco.BaseOpportunities
+                             ?? System.Array.Empty<EconomyBaseOpportunity>())
+                    AddRoutes(x.BuilderRoutes);
+                foreach (MobileCollectionOpportunity x in eco.MobileCollectionOpportunities
+                             ?? System.Array.Empty<MobileCollectionOpportunity>())
+                    ids.Add(x.CollectorArmyId);
+            }
+            return ids;
+        }
+
+        // Compact, order-stable digest of a defender roster — enough for "did the fight this
+        // equipment is judged against change", without embedding the whole profile list.
+        private static string DefenderFingerprint(IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> defenders)
+        {
+            if (defenders == null || defenders.Count == 0)
+                return "0";
+            float attack = 0f, defense = 0f, hp = 0f, init = 0f;
+            foreach (Game.Combat.WorthIt.DefenderProfile d in defenders)
+            {
+                attack += d.Attack; defense += d.Defense;
+                hp += d.HitPoints; init += d.Initiative;
+            }
+            return $"{defenders.Count}:{attack:0.###},{defense:0.###},{hp:0.###},{init:0.###}";
         }
 
         public static IEnumerator RunTurn(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
@@ -737,7 +936,7 @@ namespace Game.Ai.V2
                             CultureInfo.InvariantCulture)));
                     if (axis == DesireAxis.Development)
                         return DevelopmentAdmissionFingerprint(snapshot, activeIntents,
-                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1);
+                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand);
                     string armies = string.Join(";", (snapshot?.Self?.Armies
                             ?? System.Array.Empty<ArmySnapshot>())
                         .Where(a => a != null).OrderBy(a => a.ArmyId)
