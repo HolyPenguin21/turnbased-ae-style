@@ -135,6 +135,12 @@ namespace Game.Ai.V2
             { reason = $"card type {def.cardType} not a Unit/Hero deploy"; return false; }
             if (root.Setup != player)
             { reason = "resource owner does not match card owner"; return false; }
+            // CreateArmy charges PlayerRootRegistry.FindFor(player), whereas DeployUnitFromCard
+            // receives this explicit root and the result measures its delta. Two different roots
+            // with the SAME Setup would split the payment and silently omit CreateArmy's 2 AP
+            // from the V2 ledger. Bind the entire chain to the domain registry's actual root.
+            if (!object.ReferenceEquals(PlayerRootRegistry.FindFor(player), root))
+            { reason = "resource root is not the registered player root"; return false; }
             // This is the same physical prerequisite as human CardHandUI.IsValidDropTarget and
             // ArmyActions.DeployUnitFromCard, for ALL placement kinds. Check before CreateArmy
             // charges its 2 AP, including when requiredBuildingAbility is empty.
@@ -268,7 +274,7 @@ namespace Game.Ai.V2
 
         private static bool SameResources(int[] a, int[] b)
         {
-            for (int i = 0; i < a.Length; i++)
+            for (int i = 0; i < Res.Length; i++)
                 if (a[i] != b[i]) return false;
             return true;
         }
