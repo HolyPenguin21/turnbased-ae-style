@@ -68,6 +68,16 @@ namespace Game.EditorTests
                 Assert.That(CardPlayExecutor.Preflight(owner, root, hand, ctx, valid,
                     out string reason), Is.True, reason);
                 Assert.That(root.ActionPoints, Is.EqualTo(10));
+
+                var unknown = new CardPlayPlan(card, hex, (DeploymentKind)999, ground);
+                Assert.That(CardPlayExecutor.Preflight(owner, root, hand, ctx, unknown,
+                    out string unknownReason), Is.False);
+                Assert.That(unknownReason, Does.Contain("unknown deployment kind"));
+                CardPlayResult unknownResult = CardPlayExecutor.Play(owner, root, hand, ctx, unknown);
+                Assert.That(unknownResult.Deployed, Is.False);
+                Assert.That(unknownResult.ApSpent, Is.Zero);
+                Assert.That(root.ActionPoints, Is.EqualTo(10));
+                Assert.That(hand.Hand, Does.Contain(card));
             }
             finally
             {
