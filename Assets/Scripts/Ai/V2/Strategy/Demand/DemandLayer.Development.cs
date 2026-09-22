@@ -362,9 +362,9 @@ namespace Game.Ai.V2
             // Last resort: a planned step that was impossible for the current bottleneck (an
             // expensive-terrain hex costing more than MaxMovement) becomes possible.
             bool stepBefore = SafeStepPathing.FindNextSafeStep(ctx.Map, army, obligation.TargetHex,
-                false, army.CurrentMovement, armyMoveBefore).HasValue;
+                army.CurrentMovement, armyMoveBefore).HasValue;
             bool stepAfter = SafeStepPathing.FindNextSafeStep(ctx.Map, army, obligation.TargetHex,
-                false, army.CurrentMovement, armyMoveAfter).HasValue;
+                army.CurrentMovement, armyMoveAfter).HasValue;
             return stepAfter && !stepBefore;
         }
 
