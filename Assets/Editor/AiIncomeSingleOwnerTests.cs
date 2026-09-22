@@ -24,15 +24,18 @@ namespace Game.EditorTests
         private GameConfig _config;
         private GameObject _turnObject;
         private GameTurnController _turn;
+        private List<PlayerSetupData> _previousPlayers;
 
         [SetUp]
         public void SetUp()
         {
+            _previousPlayers = GameSession.Players;
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
             HexResourceBonusRegistry.Clear();
             PlayerRootRegistry.Clear();
             _player = new PlayerSetupData();
+            GameSession.Players = new List<PlayerSetupData> { _player };
             _root = PlayerRoot.Create(_player, "actual income parity account");
             PlayerRootRegistry.Register(_player, _root);
             _map = new GameObject("actual income parity map").AddComponent<HexMap>();
@@ -54,6 +57,7 @@ namespace Game.EditorTests
         [TearDown]
         public void TearDown()
         {
+            GameSession.Players = _previousPlayers;
             ArmyRegistry.Clear();
             BuildingRegistry.Clear();
             HexResourceBonusRegistry.Clear();
@@ -160,10 +164,11 @@ namespace Game.EditorTests
             Assert.That(IncomeProjection.IncomeFor(_player, ResourceType.Tech, _map), Is.EqualTo(3));
             Assert.That(_root.GetResource(ResourceType.Tech), Is.Zero);
             CollectPhysical();
-            Assert.That(_root.GetResource(ResourceType.Tech), Is.Zero);
-            // GameSession.Players governs which real players receive Produce during the round.
-            // This focused test verifies the very same source count without changing global
-            // game-session state or pretending a direct private-method invocation paid anyone.
+            Assert.That(_root.GetResource(ResourceType.Tech), Is.Zero,
+                "Hex collection must not pay a flat Produce ability before its separate phase.");
+            GrantProduce();
+            Assert.That(_root.GetResource(ResourceType.Tech), Is.EqualTo(3),
+                "The actual turn's Produce grant must match the read-only forecast exactly.");
         }
     }
 }
