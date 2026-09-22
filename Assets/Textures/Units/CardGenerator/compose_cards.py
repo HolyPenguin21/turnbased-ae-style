@@ -42,6 +42,12 @@ BORDER_OVERLAY_PX = 12
 STATS_FADE_START_Y = 510
 STATS_FADE_END_Y = 690
 
+# Full-card fade: keep most of the illustration intact, then let it dissolve
+# into the paper before reaching the bottom frame. This avoids a hard cutoff
+# and prevents the character/background from visually running too far down.
+FULL_FADE_START_Y = 900
+FULL_FADE_END_Y = 1040
+
 
 def ensure_directories() -> None:
     for directory in (BASES_DIR, INPUT_DIR, OUTPUT_DIR):
@@ -242,9 +248,13 @@ def compose_one(
     )
     stats_art = apply_mask(fitted_art, stats_mask)
 
-    # Full version: no bottom fade; artwork reaches the bottom of the clear
-    # base and is clipped only by the base alpha silhouette.
-    full_mask = make_edge_mask(OUTPUT_SIZE)
+    # Full version: use a late, gentle bottom fade so the illustration blends
+    # into the clean paper area before the decorative lower frame.
+    full_mask = make_edge_mask(
+        OUTPUT_SIZE,
+        FULL_FADE_START_Y,
+        FULL_FADE_END_Y,
+    )
     full_art = apply_mask(fitted_art, full_mask)
 
     stats_border = make_border_overlay(stats_base)
@@ -287,6 +297,7 @@ def main() -> int:
     print(f"Clear base : {CLEAR_BASE_NAME}")
     print(f"Output size: {OUTPUT_SIZE[0]}x{OUTPUT_SIZE[1]}")
     print(f"Stats fade : y={STATS_FADE_START_Y}..{STATS_FADE_END_Y}px")
+    print(f"Full fade  : y={FULL_FADE_START_Y}..{FULL_FADE_END_Y}px")
     print(f"Border top : {BORDER_OVERLAY_PX}px")
     print(f"Units      : {len(art_paths)}")
     print()
