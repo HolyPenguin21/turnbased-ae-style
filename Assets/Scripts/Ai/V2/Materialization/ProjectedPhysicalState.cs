@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using Game.Cards;
+using Game.Map;
 using Game.Units;
 using UnityEngine;
 
@@ -18,15 +19,17 @@ namespace Game.Ai.V2
     //    · an EXISTING hero in the recipient governs capacity (its CommandRating is already baked
     //      into the frozen ArmySnapshot.Capacity we seed with);
     //    · otherwise the FIRST hero THIS portfolio adds governs capacity (== its CommandRating —
-    //      a replacement of the nominal value, never nominal + 1);
+    //      a replacement of the nominal value, even when CommandRating is zero);
     //    · otherwise the nominal base (garrison 4 / field 2).
     //  A recipient's projected roster fits when projected member count <= projected capacity.
     //  Hand-slot peaks of every generate chain are summed against the free hand.
     // ===========================================================================================
     internal sealed class ProjectedPhysicalState
     {
-        private const int FieldBaseCapacity = 2;   // ArmyData.BaseCapacity — a fresh, un-seeded
-                                                   // (NewArmy / ReusableShell) recipient's nominal.
+        // Obtain the unseeded field capacity from the live domain rule rather than
+        // independently hardcoding its default in the V2 projection.
+        private static readonly int FieldBaseCapacity =
+            ArmyData.ComputeCapacity(System.Array.Empty<UnitData>(), isGarrison: false);
 
         // Canonical recipient identity for a plan's deploy target. NewArmy is keyed by StableKey so
         // two distinct fresh-army plans never share a projection; every other kind by army id.
@@ -53,7 +56,9 @@ namespace Game.Ai.V2
         private static int HeroCommandRating(MaterializationPlan p)
         {
             CardDefinition d = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
-            return d != null ? Mathf.Max(1, d.commandRating) : 1;
+            // The physical ArmyData.ComputeCapacity uses CommandRating verbatim. Clamping to 1
+            // made a zero-command Hero look deployable in planning, then fail in ArmyActions.
+            return d != null ? d.commandRating : 0;
         }
 
         private struct Recipient
@@ -64,7 +69,7 @@ namespace Game.Ai.V2
             public int BaseNominalCapacity; // frozen ArmySnapshot.Capacity — governs the base-hero case
             public int AddedNonHero;
             public int AddedHeroes;
-            public int FirstAddedHeroCr;    // 0 until the first hero is added by this projection
+            public int FirstAddedHeroCr;    // valid only when AddedHeroes > 0; zero is a legal rating
         }
 
         private readonly Dictionary<string, Recipient> _recipients =
@@ -86,7 +91,9 @@ namespace Game.Ai.V2
                 IsGarrison = isGarrison,
                 BaseNonHero = Mathf.Max(0, baseNonHero),
                 BaseHasHero = baseHasHero,
-                BaseNominalCapacity = Mathf.Max(1, baseNominalCapacity),
+                // Preserve the physical capacity exactly. A zero-CommandRating existing hero
+                // yields capacity zero, not one; a planner must not make that army expandable.
+                BaseNominalCapacity = baseNominalCapacity,
             };
         }
 
@@ -137,8 +144,10 @@ namespace Game.Ai.V2
             bool hero = IsHeroPlan(p);
             if (hero)
             {
+                // Count is the identity sentinel, not the CommandRating (which can be zero).
+                bool firstHero = r.AddedHeroes == 0;
                 r.AddedHeroes++;
-                if (r.FirstAddedHeroCr == 0) r.FirstAddedHeroCr = HeroCommandRating(p);
+                if (firstHero) r.FirstAddedHeroCr = HeroCommandRating(p);
             }
             else r.AddedNonHero++;
             return RosterFits(r);
@@ -161,8 +170,9 @@ namespace Game.Ai.V2
             bool firstHero = false;
             if (hero)
             {
+                firstHero = r.AddedHeroes == 0;
                 r.AddedHeroes++;
-                if (r.FirstAddedHeroCr == 0) { r.FirstAddedHeroCr = HeroCommandRating(p); firstHero = true; }
+                if (firstHero) r.FirstAddedHeroCr = HeroCommandRating(p);
             }
             else r.AddedNonHero++;
             _recipients[key] = r;
