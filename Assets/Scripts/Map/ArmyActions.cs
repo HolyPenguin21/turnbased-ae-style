@@ -114,9 +114,9 @@ namespace Game.Map
             PlayerRoot root, HexSelectionController hexSelectionController, out string failReason,
             CardDefinition attachedEquipment = null, CardData sourceCard = null)
         {
-            return DeployUnitFromCardCore(definition, owner, targetArmy, targetArmy != null ? targetArmy.Hex : default,
-                newArmyCatalog: null, root, hexSelectionController, out _, out failReason,
-                attachedEquipment, sourceCard);
+            return DeployUnitFromCardCore(definition, owner, targetArmy,
+                targetArmy != null ? targetArmy.Hex : default, null, root,
+                hexSelectionController, out _, out failReason, attachedEquipment, sourceCard);
         }
 
         // Atomic "create a fresh field army + deploy its first card" form. The same core validates
@@ -127,7 +127,7 @@ namespace Game.Map
             HexSelectionController hexSelectionController, out ArmyData createdArmy, out string failReason,
             CardDefinition attachedEquipment = null, CardData sourceCard = null)
         {
-            return DeployUnitFromCardCore(definition, owner, targetArmy: null, hex, catalog,
+            return DeployUnitFromCardCore(definition, owner, null, hex, catalog,
                 root, hexSelectionController, out createdArmy, out failReason,
                 attachedEquipment, sourceCard);
         }
