@@ -59,23 +59,8 @@ namespace Game.Ai.V2
                 || ctx?.ResearchProductionCatalog == null)
                 return new GenerationOutcome(false, false, null, false,
                     "no generation step/catalog/args");
-            // Catalog membership is execution authority too: a stale plan must not mint a card
-            // removed from the authored Research/Production catalog after planning.
-            if (!ResearchProductionSystem.Offers(
-                    ctx.ResearchProductionCatalog, g.Mode, player.Faction, g.CardDef))
-                return new GenerationOutcome(false, false, null, false,
-                    "card no longer offered by Research/Production catalog");
-
-            if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out string why)
-                || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
-                return new GenerationOutcome(false, false, null, false,
-                    $"generation no longer valid ({why ?? "hero moved"})");
-            if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-                return new GenerationOutcome(false, false, null, false,
-                    "generation AP/resources unaffordable");
-            // An earlier card, mission, or new reservation can change spendability after
-            // candidate enumeration. Raw gameplay affordability is not enough: enforce the
-            // same canonical reserved-resource gate at the last point before Challenge payment.
+            // AI-only reservation policy is checked BEFORE the shared gameplay transaction:
+            // a protected resource may reject this plan, but must never reveal/pay first.
             if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.CardDef))
                 return new GenerationOutcome(false, false, null, false,
                     "generation resources reserved since planning");
@@ -85,11 +70,12 @@ namespace Game.Ai.V2
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
 
-            // Research reveals the Researcher whether or not the roll wins (parity with
-            // AiDevelopmentPlanner). Production never reveals.
-            ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
-            // Challenge AP + resources are consumed by the attempt and never refunded on loss.
-            ResearchProductionSystem.PayCardCost(root, g.CardDef);
+            // All gameplay-side revalidation, canonical-root validation, Research reveal and
+            // irreversible payment are owned by the same transaction the human path uses.
+            if (!ResearchProductionSystem.TryStartAttempt(player, root, g.Hero, g.FacilityHex,
+                    g.Mode, g.CardDef, ctx.ResearchProductionCatalog, out string why))
+                return new GenerationOutcome(false, false, null, false,
+                    $"generation no longer valid ({why})");
 
             bool costMoved = ap0 != root.ActionPoints
                 || h0 != root.GetResource(ResourceType.Human)
