@@ -110,7 +110,9 @@ namespace Game.Map
         public static bool CanPayToEnterStealth(UnitData unit, PlayerRoot root, int preserveActionPoints = 0)
         {
             int reserve = Math.Max(0, preserveActionPoints);
-            return CanEnterStealth(unit) && root != null
+            return CanEnterStealth(unit) && unit.Owner != null && root != null
+                && object.ReferenceEquals(root, PlayerRootRegistry.FindFor(unit.Owner))
+                && object.ReferenceEquals(root.Setup, unit.Owner)
                 && root.CanSpendActionPoints(EnterStealthApCost + reserve);
         }
 
