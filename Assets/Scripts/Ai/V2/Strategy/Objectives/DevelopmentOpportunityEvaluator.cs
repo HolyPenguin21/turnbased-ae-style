@@ -630,7 +630,7 @@ namespace Game.Ai.V2
                 comparable++;
                 if (cand.RecipientUnit != null && army?.Members != null)
                 {
-                    if (DemandLayer.ImprovesRaidCombatOutcome(
+                    if (DemandLayer.ImprovesGroundCombatOutcome(
                         cand.RecipientUnit, army.Members, grant, defenders))
                         improved++;
                 }

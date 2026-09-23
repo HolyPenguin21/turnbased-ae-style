@@ -277,7 +277,11 @@ namespace Game.Ai.V2
         public float ProtectedAssetValue;
         public float ThreatSeverity;
         public int? PrimaryArmyId;
-        public MissionIntentKey? SuspendedRaidIntentKey;
+        // ATK §49 — the offensive ground-combat intent this defence preempted for its actor, so
+        // Continuity can resume exactly that one when the threat is gone. Deliberately NOT named
+        // after a single lane: Raid and Attack are both offensive owners of the same armies, and a
+        // second parallel SuspendedAttackIntentKey would split one ownership fact in two.
+        public MissionIntentKey? SuspendedOffensiveIntentKey;
         public HexCoord? ReturnHex;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;

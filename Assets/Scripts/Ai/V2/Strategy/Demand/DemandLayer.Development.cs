@@ -112,8 +112,10 @@ namespace Game.Ai.V2
 
 
         // Production amplifies an already-owned need; never invent a mission. Recon and
-        // Economy keep their existing evidence; a bound active Raid can ALSO witness equipment
-        // when its own primary combat roster improves against the known target by WorthIt.
+        // Economy keep their existing evidence; a bound active GROUND-COMBAT operation can ALSO
+        // witness equipment when its own primary combat roster improves against the known
+        // defenders by WorthIt. ATK §42 — "ground-combat operation" is every lane that fights on
+        // the ground, not Raid alone.
         // Independent reinforcement FieldCombatPower demands are NOT fulfilled by upgrading
         // their existing primary: only a separate deployable army can close those.
         internal static bool HasSupportedDevelopmentAxisDemand(DevelopmentOpportunity op,
@@ -151,37 +153,74 @@ namespace Game.Ai.V2
             if (reconWitness && ImprovesReconCapability(op))
                 return true;
 
-            // Only an ACTUAL owned Raid primary may justify strengthening its existing unit.
-            // Research/Production mode has no bearing here: the offered output must be Equipment.
-            // A potential future raid (or an independent reinforcement demand) cannot create
-            // a generic "upgrade the strongest body" entitlement without a named recipient.
+            // Only an ACTUAL owned ground-combat primary may justify strengthening its existing
+            // unit. Research/Production mode has no bearing here: the offered output must be
+            // Equipment. A potential future operation (or an independent reinforcement demand)
+            // cannot create a generic "upgrade the strongest body" entitlement without a named
+            // recipient.
             if (snap == null || op.RecipientUnit.IsHero || op.Card?.cardType != CardType.Equipment
                 || op.Card.equipment == null || activeIntents == null)
                 return false;
             foreach (MissionIntent intent in activeIntents)
             {
-                RaidIntent raid = intent?.Raid;
-                if (intent == null || intent.Status != IntentStatus.Active
-                    || intent.Kind != MissionKind.Raid || raid == null
-                    || !raid.Target.HasValue || raid.PrimaryArmyId != army.Id
-                    || (raid.Phase != RaidMissionPhase.Assault
-                        && raid.Phase != RaidMissionPhase.Reinforcement))
+                if (!TryBoundGroundCombatFight(intent, army.Id, snap,
+                        out IReadOnlyList<WorthIt.DefenderProfile> defenders,
+                        out HexCoord fightHex))
                     continue;
-                var defenders = AiV2Util.KnownDefenders(snap, raid.Target);
-                if (defenders.Count == 0)
-                    continue;
-                // The same defender-side base bonus enters both immutable projections.
-                // Terrain is not present in the snapshot, so this is a marginal signal,
-                // never a substitute for Raid's final live WorthIt admission.
-                // FIX-05 — the raid target's own hex may well be fogged (that is the normal
-                // case for a last-known position). WorthIt.HexDefenseBonus would read the live
+                // The same defender-side structural bonus enters both immutable projections.
+                // Terrain is not present in the snapshot, so this is a marginal signal, never a
+                // substitute for the lane's final live WorthIt admission.
+                // FIX-05 — the target hex may well be fogged (that is the normal case for a
+                // last-known position). WorthIt.HexDefenseBonus would read the live
                 // BuildingRegistry there and leak a structure we have not observed; AiMapMemory
                 // answers the same question from what this player actually knows.
-                float hexBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx?.Map, raid.LastKnownHex);
-                if (ImprovesRaidCombatOutcome(op.RecipientUnit, army.Members,
+                float hexBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx?.Map, fightHex);
+                if (ImprovesGroundCombatOutcome(op.RecipientUnit, army.Members,
                     op.Card.equipment, defenders, hexBonus))
                     return true;
             }
+            return false;
+        }
+
+        // ATK §42 — the ONE witness translation from "this army is bound to a live ground-combat
+        // operation" to the concrete fight that operation is committed to: which defenders, on
+        // which hex. Every ground-combat lane answers the SAME question, so the equipment proof
+        // below stays a single shared before/after comparison instead of one copy per lane
+        // (ImprovesRaidCombatOutcome / ImprovesAttackCombatOutcome / ...). A leg that is walking
+        // home rather than fighting (Raid Return/SupportReturn/RecoveryReturn, ActiveDefence
+        // Return) is deliberately NOT a fight and witnesses nothing.
+        internal static bool TryBoundGroundCombatFight(MissionIntent intent, int armyId,
+            WorldSnapshot snap, out IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            out HexCoord fightHex)
+        {
+            defenders = System.Array.Empty<WorthIt.DefenderProfile>();
+            fightHex = default;
+            if (intent == null || intent.Status != IntentStatus.Active)
+                return false;
+
+            if (intent.Kind == MissionKind.Raid)
+            {
+                RaidIntent raid = intent.Raid;
+                if (raid == null || !raid.Target.HasValue || raid.PrimaryArmyId != armyId
+                    || (raid.Phase != RaidMissionPhase.Assault
+                        && raid.Phase != RaidMissionPhase.Reinforcement))
+                    return false;
+                defenders = AiV2Util.KnownDefenders(snap, raid.Target);
+                fightHex = raid.LastKnownHex;
+                return defenders.Count > 0;
+            }
+
+            if (intent.Kind == MissionKind.ActiveDefence)
+            {
+                ActiveDefenceIntent defence = intent.ActiveDefence;
+                if (defence == null || defence.Phase != ActiveDefencePhase.Intercept
+                    || defence.PrimaryArmyId != armyId)
+                    return false;
+                defenders = AiV2Util.KnownDefenders(snap, defence.EnemyArmyId);
+                fightHex = defence.LastKnownHex;
+                return defenders.Count > 0;
+            }
+
             return false;
         }
 
@@ -415,7 +454,7 @@ namespace Game.Ai.V2
         // Protection: a concrete threat the AI actually REMEMBERS (snapshot sightings only — never
         // an ArmyRegistry sweep for hidden enemies) standing on or beside this mission's own route,
         // whose outcome the grant demonstrably changes. WorthIt owns the outcome; this is the same
-        // roster-level before/after comparison the Raid branch already uses.
+        // roster-level before/after comparison the ground-combat branch already uses.
         private static bool ImprovesEconomicProtection(DevelopmentOpportunity op, ArmyData army,
             UnitData recipient, EquipmentGrant grant, in EconomicObligation obligation,
             PlayerSetupData player, WorldSnapshot snap, AiTurnContext ctx)
@@ -436,9 +475,9 @@ namespace Game.Ai.V2
                 // FIX-05 — the threats themselves come honestly from
                 // WorldAnalysis.KnownThreatsAffectingEconomyRoute, so reading the hex's defence
                 // from the live BuildingRegistry broke the fog boundary on the second step of the
-                // very same chain. Same knowledge-scoped read as the Raid branch above.
+                // very same chain. Same knowledge-scoped read as the ground-combat branch above.
                 float hexBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx.Map, threat.Hex);
-                if (ImprovesRaidCombatOutcome(recipient, army.Members, grant, defenders, hexBonus))
+                if (ImprovesGroundCombatOutcome(recipient, army.Members, grant, defenders, hexBonus))
                     return true;
             }
             return false;
@@ -451,7 +490,7 @@ namespace Game.Ai.V2
         // demands instead of a separate, unmigrated scale. Only meaningful for an op that already
         // passed the gate above. A fresh formedDemand this cycle carries its own scored Value; a
         // witness that is only a live MissionIntent (Economy/Recon already committed, or a
-        // confirmed Raid combat improvement) counts as a fully-proven need — the running operation
+        // confirmed ground-combat improvement) counts as a fully-proven need — the running operation
         // itself is the evidence, not a candidate still being scored.
         internal static float SupportedNeedStrength(DevelopmentOpportunity op,
             IReadOnlyList<AxisDemand> formedDemands, IReadOnlyList<MissionIntent> activeIntents,
@@ -495,7 +534,11 @@ namespace Game.Ai.V2
         // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability
         // projection. Compare the SAME primary's roster before/after replacing only its recipient,
         // without mutating gameplay UnitData or pretending the grant created a new combat body.
-        internal static bool ImprovesRaidCombatOutcome(UnitData recipient,
+        // ATK §42 — was ImprovesRaidCombatOutcome. Nothing in the body was ever Raid-specific: it
+        // takes a recipient, a roster, a grant, defenders and a defender hex bonus, and asks WorthIt
+        // whether the SAME army fights measurably better. It is shared by Raid, ActiveDefence,
+        // Economy route protection and (from ATK) Attack — one proof, never a copy per lane.
+        internal static bool ImprovesGroundCombatOutcome(UnitData recipient,
             IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
             IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
         {

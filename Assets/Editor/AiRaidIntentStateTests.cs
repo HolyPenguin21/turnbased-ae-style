@@ -305,6 +305,10 @@ namespace Game.EditorTests
                 Self = new SelfSnapshot
                 {
                     Armies = new List<ArmySnapshot> { primary },
+                    // ATK §20/§48 — own-Base identity is the current-truth topology; Known.Buildings
+                    // below stays the metadata memory holds about that same hex.
+                    BaseHexes = new[] { baseHex },
+                    Citadel = baseHex,
                 },
                 Known = new KnownSnapshot
                 {

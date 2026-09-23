@@ -24,7 +24,8 @@ namespace Game.Ai.V2
         public float ProtectedAssetValue;
         public float ThreatSeverity;
         public int? PrimaryArmyId;
-        public MissionIntentKey? SuspendedRaidIntentKey;
+        // ATK §49 — see ActiveDefenceIntent.SuspendedOffensiveIntentKey.
+        public MissionIntentKey? SuspendedOffensiveIntentKey;
         public HexCoord? ReturnHex;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;

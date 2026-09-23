@@ -91,18 +91,25 @@ namespace Game.Ai.V2
         public bool AllowSameHexAssembly = true;
         // The result must be an army OTHER than PreferredPrimaryArmyId (a separate support actor).
         public bool RequiresSeparateSupportActor;
+        // ATK §29/§30 — the defence bonus the DEFENDERS enjoy where the fight will happen
+        // (structural + terrain), as the honest knowledge read AiMapMemory.KnownHexDefenseBonus
+        // owns. Mission-agnostic: a field battle passes 0f, an assault on a known Base/Citadel
+        // passes what memory actually observed. Never read live from BuildingRegistry here.
+        public float DefenderHexDefenseBonus;
     }
 
     public static class GroundCombatAssemblyPlanner
     {
         // Legacy/raid-shaped facade. `target` is identity only; the kernel needs the defenders.
         public static GroundCombatAssemblyPlan Plan(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds) =>
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds,
+            float defenderHexDefenseBonus = 0f) =>
             Plan(snap, new GroundCombatAssemblyRequest
             {
                 Defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>(),
                 WinChanceGate = RaidAdmissionPolicy.FreshStartWinChanceGate,
                 ExcludedArmyIds = excludeArmyIds,
+                DefenderHexDefenseBonus = defenderHexDefenseBonus,
             });
 
         // The generalized kernel. Prefer an already-sufficient free army; otherwise (when allowed)
@@ -140,7 +147,8 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot a in eligible)
             {
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
-                    snap, defenders, a.ArmyId, request.WinChanceGate);
+                    snap, defenders, a.ArmyId, request.WinChanceGate,
+                    request.DefenderHexDefenseBonus);
                 if (exact.Feasible)
                     return exact;
             }
@@ -156,7 +164,8 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot a in eligible)
             {
                 GroundCombatAssemblyPlan assembled = TryAssembleForHost(
-                    snap, defenders, a, request.ExcludedArmyIds, request.WinChanceGate);
+                    snap, defenders, a, request.ExcludedArmyIds, request.WinChanceGate,
+                    request.DefenderHexDefenseBonus);
                 if (assembled.Feasible)
                     return assembled;
             }
@@ -232,7 +241,8 @@ namespace Game.Ai.V2
         // physically claimed. Demand reads this to decide whether a NEW army even needs to be
         // materialized; Missions/Provisioning read it to run the normal actor-contention batch solve.
         public static List<int> ReinforcementSupportCandidates(WorldSnapshot snap, int primaryArmyId,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds)
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds,
+            float defenderHexDefenseBonus = 0f)
         {
             var ids = new List<int>();
             if (snap?.Self?.Armies == null)
@@ -263,7 +273,8 @@ namespace Game.Ai.V2
                     .Take(transferable)
                     .ToList();
                 if (TryProjectReinforcement(primaryBodies, sparable, primary.Capacity,
-                        primary.MemberCount, defenders, out _, out _))
+                        primary.MemberCount, defenders, out _, out _,
+                        defenderHexDefenseBonus))
                     ids.Add(candidate.ArmyId);
             }
             return ids;
@@ -279,7 +290,8 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> sparableSupportBodies,
             int primaryCapacity, int primaryMemberCount,
             IReadOnlyList<WorthIt.DefenderProfile> defenders,
-            out List<WorthIt.DefenderProfile> projected, out string why)
+            out List<WorthIt.DefenderProfile> projected, out string why,
+            float defenderHexDefenseBonus = 0f)
         {
             why = null;
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
@@ -321,10 +333,10 @@ namespace Game.Ai.V2
 
             float winBefore = defenders.Count == 0 ? 1f
                 : WorthIt.WinChance(before,
-                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, defenderHexDefenseBonus);
             float winAfter = defenders.Count == 0 ? 1f
                 : WorthIt.WinChance(projected,
-                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, defenderHexDefenseBonus);
             if (winAfter <= winBefore + 0.001f)
             {
                 why = $"projected executable win {winAfter:0.##} does not improve on {winBefore:0.##}";
@@ -366,18 +378,22 @@ namespace Game.Ai.V2
         // continuation hysteresis so a valid multi-turn operation is not destroyed by the stricter
         // start gate on every subsequent turn.
         public static GroundCombatAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId) =>
-            PlanForArmyAtThreshold(snap, defenders, armyId, RaidAdmissionPolicy.ContinuationWinChanceFloor);
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId,
+            float defenderHexDefenseBonus = 0f) =>
+            PlanForArmyAtThreshold(snap, defenders, armyId,
+                RaidAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
 
         // AGG-RAID §6 — the exact gate the Aggression demand layer re-runs against the NEXT
         // objective before it may call an active Raid "covered". Threshold is explicit: a fresh
         // target is a fresh start decision even for an incumbent army.
         public static GroundCombatAssemblyPlan PlanForArmyAt(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance) =>
-            PlanForArmyAtThreshold(snap, defenders, armyId, minWinChance);
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance,
+            float defenderHexDefenseBonus = 0f) =>
+            PlanForArmyAtThreshold(snap, defenders, armyId, minWinChance, defenderHexDefenseBonus);
 
         internal static GroundCombatAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance)
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance,
+            float defenderHexDefenseBonus = 0f)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatAssemblyPlan.Infeasible("no own-force snapshot");
@@ -389,7 +405,8 @@ namespace Game.Ai.V2
             defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
             List<WorthIt.DefenderProfile> roster =
                 (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
-            if (!GroundCombatFeasibility.Clears(roster, defenders, minWinChance, out float win, out bool cover))
+            if (!GroundCombatFeasibility.Clears(roster, defenders, minWinChance,
+                    defenderHexDefenseBonus, out float win, out bool cover))
                 return GroundCombatAssemblyPlan.Infeasible(
                     $"raid actor #{armyId} does not clear the assigned-actor raid estimator "
                     + $"(win {win:0.00} < {minWinChance:0.00} or coverage missing)");
@@ -406,7 +423,7 @@ namespace Game.Ai.V2
 
         private static GroundCombatAssemblyPlan TryAssembleForHost(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ArmySnapshot hostSnap, ISet<int> excludeArmyIds,
-            float minWinChance)
+            float minWinChance, float defenderHexDefenseBonus)
         {
             PlayerSetupData owner = hostSnap?.Owner;
             if (owner == null)
@@ -436,7 +453,8 @@ namespace Game.Ai.V2
                         projectedUnits.Add(hero);
                         projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
                         selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
-                        if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance, out float hWin, out bool hCover))
+                        if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance,
+                                defenderHexDefenseBonus, out float hWin, out bool hCover))
                             return FinishAssembly(host, selected, hWin, hCover);
                     }
                 }
@@ -489,13 +507,14 @@ namespace Game.Ai.V2
                     projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
                     selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
                     if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance,
-                            out float win, out bool cover))
+                            defenderHexDefenseBonus, out float win, out bool cover))
                         return FinishAssembly(host, selected, win, cover);
                 }
             }
 
             // The hero alone (no bodies available/needed) may already clear.
-            if (selected.Count > 0 && GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance, out float wOnly, out bool cOnly))
+            if (selected.Count > 0 && GroundCombatFeasibility.Clears(projectedProfiles, defenders,
+                    minWinChance, defenderHexDefenseBonus, out float wOnly, out bool cOnly))
                 return FinishAssembly(host, selected, wOnly, cOnly);
 
             return GroundCombatAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");

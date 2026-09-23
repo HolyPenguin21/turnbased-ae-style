@@ -390,7 +390,7 @@ namespace Game.Ai.V2
                 target.ProjectedWinChance = plan.ProjectedWinChance;
                 target.CoversAllDefenders = plan.CoversAllDefenders;
                 target.EstimatedEta = eta;
-                target.SuspendedRaidIntentKey = borrowedRaid?.IntentKey;
+                target.SuspendedOffensiveIntentKey = borrowedRaid?.IntentKey;
                 target.ReturnHex = actor.ReachableOwnBaseHexes?
                     .OrderBy(h => HexGridMath.Distance(actor.Hex, h))
                     .ThenBy(h => h.Q).ThenBy(h => h.R)

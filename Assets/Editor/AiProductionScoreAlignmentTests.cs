@@ -370,7 +370,7 @@ namespace Game.EditorTests
             {
                 stat = EquipmentStat.MoveMax, amount = 3,
             });
-            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+            Assert.That(DemandLayer.ImprovesGroundCombatOutcome(
                 primary, new[] { primary }, moveOnly, guards), Is.False,
                 "Mobility alone cannot claim a WorthIt combat improvement against known guards");
             var weapon = new EquipmentGrant();
@@ -378,10 +378,10 @@ namespace Game.EditorTests
             {
                 stat = EquipmentStat.Attack, amount = 20,
             });
-            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+            Assert.That(DemandLayer.ImprovesGroundCombatOutcome(
                 primary, new[] { primary }, weapon, guards), Is.True,
                 "A proven improvement in the primary's combat outcome can support its Raid");
-            Assert.That(DemandLayer.ImprovesRaidCombatOutcome(
+            Assert.That(DemandLayer.ImprovesGroundCombatOutcome(
                 primary, new[] { primary }, weapon, Array.Empty<WorthIt.DefenderProfile>()), Is.False,
                 "An unobserved enemy cannot justify speculative Raid equipment");
             Assert.That(primary.Attack, Is.EqualTo(1),

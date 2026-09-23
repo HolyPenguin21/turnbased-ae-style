@@ -31,14 +31,14 @@ namespace Game.EditorTests
             var mission = Assault();
             var claimed = new ActorCommitments();
             claimed.Claim(9); // Economy owns the only viable ground actor.
-            session.SetRaidConstraints(claimed, new HashSet<int>());
+            session.SetGroundCombatConstraints(claimed, new HashSet<int>());
 
             GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
             Assert.That(failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
-            Assert.That(session.ExcludedForRaid(mission), Does.Contain(9));
+            Assert.That(session.ExcludedForGroundCombat(mission), Does.Contain(9));
         }
 
         [Test]
@@ -46,13 +46,13 @@ namespace Game.EditorTests
         {
             var session = new ProvisioningSession(new WorldSnapshot());
             MissionProposal mission = Assault();
-            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>
+            session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int>
             {
                 { StableMissionKey.For(mission), 9 },
             });
             var claimed = new ActorCommitments();
             claimed.Claim(9);
-            session.SetRaidConstraints(claimed, new HashSet<int>());
+            session.SetGroundCombatConstraints(claimed, new HashSet<int>());
 
             GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
@@ -71,20 +71,20 @@ namespace Game.EditorTests
             var claimed = new ActorCommitments();
             claimed.Claim(9);
             claimed.Claim(10); // Other Economy/Recon operation, including donor eligibility.
-            session.SetRaidConstraints(claimed, new HashSet<int> { 11 });
-            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>
+            session.SetGroundCombatConstraints(claimed, new HashSet<int> { 11 });
+            session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int>
             {
                 { StableMissionKey.For(incumbent), 9 },
                 { StableMissionKey.For(Assault(43)), 13 }, // Funded Raid not yet provisioned.
             });
 
-            HashSet<int> excluded = session.ExcludedForRaid(incumbent);
+            HashSet<int> excluded = session.ExcludedForGroundCombat(incumbent);
             Assert.That(excluded.Contains(9), Is.False);
             Assert.That(excluded, Does.Contain(10));
             Assert.That(excluded, Does.Contain(11));
             Assert.That(excluded, Does.Contain(13)); // Cannot borrow another Raid's host.
             session.ClaimedArmyIds.Add(12);
-            Assert.That(session.ExcludedForRaid(incumbent), Does.Contain(12));
+            Assert.That(session.ExcludedForGroundCombat(incumbent), Does.Contain(12));
         }
 
         [Test]
@@ -100,7 +100,7 @@ namespace Game.EditorTests
             } };
             var session = new ProvisioningSession(snap);
             MissionProposal mission = Assault();
-            session.SetRaidConstraints(new ActorCommitments(), new HashSet<int>());
+            session.SetGroundCombatConstraints(new ActorCommitments(), new HashSet<int>());
 
             GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
@@ -125,8 +125,8 @@ namespace Game.EditorTests
             } };
             var session = new ProvisioningSession(snap);
             MissionProposal mission = Assault();
-            session.SetRaidConstraints(new ActorCommitments(), new HashSet<int>());
-            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>
+            session.SetGroundCombatConstraints(new ActorCommitments(), new HashSet<int>());
+            session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int>
             {
                 { StableMissionKey.For(mission), 9 },
             });
@@ -158,9 +158,9 @@ namespace Game.EditorTests
             };
             var claimed = new ActorCommitments();
             claimed.Claim(9);
-            session.SetRaidConstraints(claimed, new HashSet<int> { 8, 9, 10 });
+            session.SetGroundCombatConstraints(claimed, new HashSet<int> { 8, 9, 10 });
 
-            HashSet<int> excluded = session.ExcludedForRaid(mission);
+            HashSet<int> excluded = session.ExcludedForGroundCombat(mission);
             Assert.That(excluded.Contains(9), Is.False);
             Assert.That(excluded, Does.Contain(8));
             Assert.That(excluded, Does.Contain(10));

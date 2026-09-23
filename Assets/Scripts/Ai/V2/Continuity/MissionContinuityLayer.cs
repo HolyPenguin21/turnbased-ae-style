@@ -19,20 +19,23 @@ namespace Game.Ai.V2
         internal static HexCoord? SelectEconomyRecoveryTarget(WorldSnapshot snap,
             PlayerSetupData player, ArmySnapshot actor, bool avoidCurrentHex = false)
         {
-            if (snap?.Known?.Buildings == null || actor == null || player == null)
+            if (snap?.Self?.BaseHexes == null || actor == null || player == null)
                 return null;
-            IEnumerable<Game.Ai.AiMapMemory.KnownBuilding> candidates =
-                snap.Known.Buildings.Where(b => b.Owner == player
-                    && (b.IsBase || b.IsStartingCitadel));
-            if (avoidCurrentHex && candidates.Any(b => !b.Hex.Equals(actor.Hex)))
-                candidates = candidates.Where(b => !b.Hex.Equals(actor.Hex));
-            List<Game.Ai.AiMapMemory.KnownBuilding> ordered = candidates
-                .OrderBy(b => HexGridMath.Distance(actor.Hex, b.Hex))
-                .ThenBy(b => DemandLayer.EconomyRecoveryThreatExposure(snap, b.Hex))
-                .ThenByDescending(b => b.IsStartingCitadel)
-                .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R).ToList();
+            // ATK §20/§53 — one own-Base identity owner for EVERY consumer, Economy recovery
+            // included. Self.BaseHexes is current truth; a remembered KnownBuilding.Owner could
+            // send a retreating builder to a base we had already lost, or hide one we had just
+            // built or captured.
+            IEnumerable<HexCoord> candidates = snap.Self.BaseHexes;
+            if (avoidCurrentHex && candidates.Any(h => !h.Equals(actor.Hex)))
+                candidates = candidates.Where(h => !h.Equals(actor.Hex));
+            HexCoord citadel = snap.Self.Citadel;
+            List<HexCoord> ordered = candidates
+                .OrderBy(h => HexGridMath.Distance(actor.Hex, h))
+                .ThenBy(h => DemandLayer.EconomyRecoveryThreatExposure(snap, h))
+                .ThenByDescending(h => h.Equals(citadel) ? 1 : 0)
+                .ThenBy(h => h.Q).ThenBy(h => h.R).ToList();
             if (ordered.Count > 0)
-                return ordered[0].Hex;
+                return ordered[0];
             return player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue
                 ? new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value)
                 : (HexCoord?)null;
@@ -349,10 +352,11 @@ namespace Game.Ai.V2
                 + (lender != null ? $" lender={lender.IntentKey}" : ""));
         }
 
+        // ATK §20/§53 — same single own-Base identity owner as SelectEconomyRecoveryTarget and
+        // SelectReturnBase above.
         private static bool IsProtectedEconomyHex(WorldSnapshot snap,
             PlayerSetupData player, HexCoord hex) =>
-            snap?.Known?.Buildings != null && snap.Known.Buildings.Any(b => b.Owner == player
-                && b.Hex.Equals(hex) && (b.IsBase || b.IsStartingCitadel));
+            snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Contains(hex);
 
         private static void ResumeEconomyLender(MissionIntent lender)
         {
@@ -411,8 +415,8 @@ namespace Game.Ai.V2
             // twice into an active defence.
             var liveBorrowedRaids = new HashSet<MissionIntentKey>(state.All
                 .Where(i => i?.Kind == MissionKind.ActiveDefence
-                    && i.ActiveDefence?.SuspendedRaidIntentKey.HasValue == true)
-                .Select(i => i.ActiveDefence.SuspendedRaidIntentKey.Value));
+                    && i.ActiveDefence?.SuspendedOffensiveIntentKey.HasValue == true)
+                .Select(i => i.ActiveDefence.SuspendedOffensiveIntentKey.Value));
             foreach (MissionIntent orphanedRaid in state.All.Where(i => i != null
                 && i.Kind == MissionKind.Raid && i.Status == IntentStatus.Suspended
                 && i.Suspended == SuspendReason.ActiveDefencePreemption
@@ -672,17 +676,18 @@ namespace Game.Ai.V2
                     }
                     if (defence == null || actor == null || ShouldReap(intent))
                     {
-                        // Resume ONLY a raid this defence actually preempted: a raid suspended for
-                        // another reason (Siege, pool exhaustion) is not this mission's to revive.
-                        if (defence?.SuspendedRaidIntentKey.HasValue == true
-                            && state.TryGet(defence.SuspendedRaidIntentKey.Value,
-                                out MissionIntent suspendedRaid)
-                            && suspendedRaid?.Raid != null
-                            && suspendedRaid.Suspended == SuspendReason.ActiveDefencePreemption)
+                        // Resume ONLY the offensive operation this defence actually preempted: one
+                        // suspended for another reason (Siege, pool exhaustion) is not this
+                        // mission's to revive.
+                        if (defence?.SuspendedOffensiveIntentKey.HasValue == true
+                            && state.TryGet(defence.SuspendedOffensiveIntentKey.Value,
+                                out MissionIntent suspendedOffensive)
+                            && IsOffensiveGroundCombatIntent(suspendedOffensive)
+                            && suspendedOffensive.Suspended == SuspendReason.ActiveDefencePreemption)
                         {
-                            suspendedRaid.Status = IntentStatus.Active;
-                            suspendedRaid.Suspended = SuspendReason.None;
-                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME raid={suspendedRaid.IntentKey} reason=defence_ended");
+                            suspendedOffensive.Status = IntentStatus.Active;
+                            suspendedOffensive.Suspended = SuspendReason.None;
+                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME offensive={suspendedOffensive.IntentKey} reason=defence_ended");
                         }
                         dead.Add(intent.IntentKey);
                         continue;
@@ -742,16 +747,16 @@ namespace Game.Ai.V2
                             active.Add(intent);
                             continue;
                         }
-                        if (defence.SuspendedRaidIntentKey.HasValue
-                            && state.TryGet(defence.SuspendedRaidIntentKey.Value,
-                                out MissionIntent suspendedRaid)
-                            && suspendedRaid?.Raid != null
-                            && suspendedRaid.Suspended == SuspendReason.ActiveDefencePreemption)
+                        if (defence.SuspendedOffensiveIntentKey.HasValue
+                            && state.TryGet(defence.SuspendedOffensiveIntentKey.Value,
+                                out MissionIntent suspendedOffensive)
+                            && IsOffensiveGroundCombatIntent(suspendedOffensive)
+                            && suspendedOffensive.Suspended == SuspendReason.ActiveDefencePreemption)
                         {
-                            suspendedRaid.Status = IntentStatus.Active;
-                            suspendedRaid.Suspended = SuspendReason.None;
+                            suspendedOffensive.Status = IntentStatus.Active;
+                            suspendedOffensive.Suspended = SuspendReason.None;
                             dead.Add(intent.IntentKey);
-                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME raid={suspendedRaid.IntentKey} reason=threat_ended");
+                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME offensive={suspendedOffensive.IntentKey} reason=threat_ended");
                             continue;
                         }
                         HexCoord? home = SelectReturnBase(snap, player, defence.PrimaryArmyId);
@@ -1686,11 +1691,14 @@ namespace Game.Ai.V2
         internal static bool ReturnBaseStillValid(WorldSnapshot snap, PlayerSetupData player,
             int? moverArmyId, HexCoord? hex)
         {
-            if (!hex.HasValue || snap?.Known?.Buildings == null)
+            if (!hex.HasValue || snap?.Self?.BaseHexes == null)
                 return false;
-            bool ownedBase = snap.Known.Buildings.Any(b => b.Owner == player && b.Hex.Equals(hex.Value)
-                && (b.IsBase || b.IsStartingCitadel));
-            if (!ownedBase)
+            // ATK §20/§48 — "is this hex MY base right now" is answered by Self.BaseHexes, the
+            // current-truth topology WorldAnalysis derives from live owned buildings, never by a
+            // remembered KnownBuilding.Owner. The old read could keep walking an army home to a
+            // base this player had already lost (memory still says we own it) and could refuse a
+            // freshly built or freshly captured base until it happened to be re-observed.
+            if (!snap.Self.BaseHexes.Contains(hex.Value))
                 return false;
 
             ArmySnapshot mover = moverArmyId.HasValue
@@ -1729,11 +1737,13 @@ namespace Game.Ai.V2
         // ---------------------------------------------------------------------------------------
         internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int? moverArmyId)
         {
-            if (snap?.Known?.Buildings == null || player == null)
+            if (snap?.Self?.BaseHexes == null || player == null)
                 return null;
-            List<Game.Ai.AiMapMemory.KnownBuilding> bases = snap.Known.Buildings
-                .Where(b => b.Owner == player && (b.IsBase || b.IsStartingCitadel))
-                .ToList();
+            // ATK §20/§48 — identity comes from Self.BaseHexes (current truth); Known.Buildings
+            // stays the METADATA source the ranking below reads (stored resources, facilities).
+            // Splitting the two is what lets a just-built or just-captured base be chosen on the
+            // very turn it becomes ours, without waiting for a fresh structural observation.
+            List<HexCoord> bases = snap.Self.BaseHexes.ToList();
             if (bases.Count == 0)
                 return null;
 
@@ -1747,21 +1757,22 @@ namespace Game.Ai.V2
             // bases with the SAME reachability, and — if genuinely none are reachable right now —
             // still returns the best-by-distance candidate rather than stranding the operation on a
             // signal that may only be a transient blockade.
-            bool Reachable(Game.Ai.AiMapMemory.KnownBuilding b) =>
+            bool Reachable(HexCoord h) =>
                 mover == null || !mover.IsStructuralRaidActor
-                || mover.ReachableOwnBaseHexes.Contains(b.Hex);
+                || mover.ReachableOwnBaseHexes.Contains(h);
 
+            HexCoord citadel = snap.Self.Citadel;
             return bases
-                .OrderByDescending(b => Reachable(b) ? 1 : 0)
-                .ThenByDescending(b => BaseCollectedAmount(snap, b.Hex))
-                .ThenByDescending(b => BaseHasDevelopmentInfrastructure(snap, player, b.Hex) ? 1 : 0)
-                .ThenByDescending(b => BaseOwnPowerAt(snap, b.Hex))
-                .ThenBy(b => BaseThreatSeverityAt(snap, b.Hex))
-                .ThenBy(b => mover == null ? 0
-                    : AiV2Util.CeilDiv(HexGridMath.Distance(mover.Hex, b.Hex), moveBudget))
-                .ThenByDescending(b => b.IsStartingCitadel ? 1 : 0)
-                .ThenBy(b => b.Hex.Q).ThenBy(b => b.Hex.R)
-                .Select(b => (HexCoord?)b.Hex)
+                .OrderByDescending(h => Reachable(h) ? 1 : 0)
+                .ThenByDescending(h => BaseCollectedAmount(snap, h))
+                .ThenByDescending(h => BaseHasDevelopmentInfrastructure(snap, h) ? 1 : 0)
+                .ThenByDescending(h => BaseOwnPowerAt(snap, h))
+                .ThenBy(h => BaseThreatSeverityAt(snap, h))
+                .ThenBy(h => mover == null ? 0
+                    : AiV2Util.CeilDiv(HexGridMath.Distance(mover.Hex, h), moveBudget))
+                .ThenByDescending(h => h.Equals(citadel) ? 1 : 0)
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .Select(h => (HexCoord?)h)
                 .FirstOrDefault();
         }
 
@@ -1793,6 +1804,8 @@ namespace Game.Ai.V2
         private static float BaseCollectedAmount(WorldSnapshot snap, HexCoord hex)
         {
             float total = 0f;
+            if (snap.Known?.Buildings == null)
+                return total;
             foreach (Game.Ai.AiMapMemory.KnownBuilding b in snap.Known.Buildings)
             {
                 if (!b.Hex.Equals(hex) || b.CollectedAmounts == null) continue;
@@ -1802,8 +1815,12 @@ namespace Game.Ai.V2
             return total;
         }
 
-        private static bool BaseHasDevelopmentInfrastructure(WorldSnapshot snap, PlayerSetupData player, HexCoord hex) =>
-            snap.Known.Buildings.Any(b => b.Owner == player && b.Hex.Equals(hex)
+        // Metadata read only — the caller has ALREADY established that `hex` is one of our own
+        // bases (Self.BaseHexes). Matching on the hex alone is deliberate: a remembered
+        // KnownBuilding.Owner can lag reality on a base we just built or captured, and gating this
+        // on it would silently drop real facilities out of the ranking.
+        private static bool BaseHasDevelopmentInfrastructure(WorldSnapshot snap, HexCoord hex) =>
+            snap.Known?.Buildings != null && snap.Known.Buildings.Any(b => b.Hex.Equals(hex)
                 && (b.HasFacilityWithAbility(UnitAbilities.Research)
                     || b.HasFacilityWithAbility(UnitAbilities.Production)
                     || b.HasFacilityWithAbility(UnitAbilities.Barracks)));
@@ -1988,15 +2005,15 @@ namespace Game.Ai.V2
             {
                 if (o.MissionKind == MissionKind.ActiveDefence && intent?.ActiveDefence != null)
                 {
-                    MissionIntentKey? suspendedRaid = intent.ActiveDefence.SuspendedRaidIntentKey;
-                    if (suspendedRaid.HasValue
-                        && state.TryGet(suspendedRaid.Value, out MissionIntent raid)
-                        && raid?.Raid != null
-                        && raid.Suspended == SuspendReason.ActiveDefencePreemption)
+                    MissionIntentKey? suspendedKey = intent.ActiveDefence.SuspendedOffensiveIntentKey;
+                    if (suspendedKey.HasValue
+                        && state.TryGet(suspendedKey.Value, out MissionIntent offensive)
+                        && IsOffensiveGroundCombatIntent(offensive)
+                        && offensive.Suspended == SuspendReason.ActiveDefencePreemption)
                     {
-                        raid.Status = IntentStatus.Active;
-                        raid.Suspended = SuspendReason.None;
-                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME raid={raid.IntentKey}");
+                        offensive.Status = IntentStatus.Active;
+                        offensive.Suspended = SuspendReason.None;
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME offensive={offensive.IntentKey}");
                         state.Remove(intent.IntentKey);
                         return;
                     }
@@ -2008,7 +2025,7 @@ namespace Game.Ai.V2
                 }
                 if (o.MissionKind == MissionKind.ActiveDefence && intent == null
                     && o.HasActiveDefencePayload && o.MoverArmyId.HasValue
-                    && !o.ActiveDefenceTarget.SuspendedRaidIntentKey.HasValue)
+                    && !o.ActiveDefenceTarget.SuspendedOffensiveIntentKey.HasValue)
                 {
                     CreateActiveDefenceIntent(state, o, turn);
                     if (state.TryGet(MissionIntentKey.ForActiveDefence(
@@ -2526,6 +2543,13 @@ namespace Game.Ai.V2
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
         }
 
+        // ATK §49 — the ONE predicate for "this intent is an offensive ground-combat operation an
+        // ActiveDefence may preempt and later resume". Raid today; Attack becomes eligible by
+        // adding its payload check here, so the five preempt/resume sites above never grow a
+        // per-lane branch and no second suspended-key field is needed.
+        private static bool IsOffensiveGroundCombatIntent(MissionIntent i) =>
+            i != null && i.Kind == MissionKind.Raid && i.Raid != null;
+
         private static void CreateActiveDefenceIntent(MissionIntentState state,
             MissionTurnOutcome o, int turn)
         {
@@ -2539,20 +2563,21 @@ namespace Game.Ai.V2
                 ProtectedAssetValue = t.ProtectedAssetValue,
                 ThreatSeverity = t.ThreatSeverity,
                 PrimaryArmyId = o.MoverArmyId ?? t.PrimaryArmyId,
-                SuspendedRaidIntentKey = t.SuspendedRaidIntentKey,
+                SuspendedOffensiveIntentKey = t.SuspendedOffensiveIntentKey,
                 ReturnHex = t.ReturnHex, ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
                 CommitmentTier.Hard, payload);
             state.Put(intent);
-            if (t.SuspendedRaidIntentKey.HasValue
-                && state.TryGet(t.SuspendedRaidIntentKey.Value, out MissionIntent raid)
-                && raid?.Raid != null && raid.PreferredMoverArmyId == payload.PrimaryArmyId)
+            if (t.SuspendedOffensiveIntentKey.HasValue
+                && state.TryGet(t.SuspendedOffensiveIntentKey.Value, out MissionIntent offensive)
+                && IsOffensiveGroundCombatIntent(offensive)
+                && offensive.PreferredMoverArmyId == payload.PrimaryArmyId)
             {
-                raid.Status = IntentStatus.Suspended;
-                raid.Suspended = SuspendReason.ActiveDefencePreemption;
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=SUSPEND raid={raid.IntentKey} actor={payload.PrimaryArmyId}");
+                offensive.Status = IntentStatus.Suspended;
+                offensive.Suspended = SuspendReason.ActiveDefencePreemption;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=SUSPEND offensive={offensive.IntentKey} actor={payload.PrimaryArmyId}");
             }
             AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }

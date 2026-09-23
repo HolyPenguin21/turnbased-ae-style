@@ -258,6 +258,13 @@ namespace Game.Ai
             // it. Same honesty rule as every other field here: written only for a hex this player
             // can genuinely see right now, then frozen until that same hex is re-observed.
             public float Defense;
+            // ATK §66 — the global game turn this sighting was last written (same _currentTurn
+            // stamp EnemySighting.SeenTurn already uses). A structure's LOCATION never expires
+            // here; this only lets a consumer tell a fresh observation apart from a remembered one
+            // whose owner/defence/facility data may long since have changed in the fog, so
+            // TaskScore.Staleness can price structural intel age instead of every caller inventing
+            // its own age model. Never auto-expired in this class.
+            public int SeenTurn;
         }
 
         private static readonly Dictionary<PlayerSetupData, Dictionary<HexCoord, BuildingSighting>> KnownBuildings =
@@ -274,13 +281,18 @@ namespace Game.Ai
             public readonly int FreeFacilitySlots;
             // FIX-05 — last-observed Defense stat (see BuildingSighting.Defense).
             public readonly float Defense;
+            // ATK §66 — see BuildingSighting.SeenTurn. 0 means "never stamped" (a synthesised
+            // record in a test, or memory written before this field existed), which callers must
+            // read as "age unknown", never as "observed on turn 0".
+            public readonly int SeenTurn;
 
             public KnownBuilding(HexCoord hex, PlayerSetupData owner, bool isStartingCitadel,
                 IReadOnlyCollection<string> facilityAbilities,
                 IReadOnlyList<int> collectedAmounts = null, int freeFacilitySlots = int.MaxValue,
-                bool isBase = false, float defense = 0f)
+                bool isBase = false, float defense = 0f, int seenTurn = 0)
             {
                 Defense = defense;
+                SeenTurn = seenTurn;
                 Hex = hex;
                 Owner = owner;
                 IsStartingCitadel = isStartingCitadel;
@@ -810,6 +822,9 @@ namespace Game.Ai
                         // FIX-05 — the hex is genuinely visible in this loop, so its structural
                         // defence is exactly as honest an observation as its owner or facilities.
                         Defense = building.Defense,
+                        // ATK §66 — this hex is genuinely visible in this loop, so the stamp is a
+                        // real observation turn, not a bookkeeping default.
+                        SeenTurn = _currentTurn,
                     };
                 }
                 else
@@ -1006,7 +1021,7 @@ namespace Game.Ai
             return new KnownBuilding(sighting.Hex, sighting.Owner,
                 sighting.IsStartingCitadel, sighting.FacilityAbilities,
                 sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
-                sighting.Defense);
+                sighting.Defense, sighting.SeenTurn);
         }
 
         // FIX-05 (2026-09-22) — the ONE fog-honest answer to "what structural/terrain defence
@@ -1105,7 +1120,7 @@ namespace Game.Ai
                 yield return new KnownBuilding(sighting.Hex, sighting.Owner,
                     sighting.IsStartingCitadel, sighting.FacilityAbilities,
                     sighting.CollectedAmounts, sighting.FreeFacilitySlots, sighting.IsBase,
-                    sighting.Defense);
+                    sighting.Defense, sighting.SeenTurn);
         }
 
         // How many individual non-hero members, across every currently-known ARMY sighting for

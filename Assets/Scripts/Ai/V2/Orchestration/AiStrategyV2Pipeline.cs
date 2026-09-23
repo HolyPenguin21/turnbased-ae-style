@@ -191,13 +191,26 @@ namespace Game.Ai.V2
             switch (axis)
             {
                 case DesireAxis.Recon:
+                    // ATK §54 — a Base is a Recon WORLD FACT, not just infrastructure: it is the
+                    // home anchor, the nearest-owned-base distance origin, the local exploration
+                    // anchor and the coverage anchor. Building, capturing or losing one changes
+                    // every one of those, so Recon has to be re-admitted on Infrastructure exactly
+                    // the way Economy and Development already are — otherwise the settled-step loop
+                    // keeps answering from the pre-capture topology for the rest of the turn.
                     return StrategicInvalidationReason.ReconKnowledge
-                        | StrategicInvalidationReason.Actor;
+                        | StrategicInvalidationReason.Actor
+                        | StrategicInvalidationReason.Infrastructure;
                 case DesireAxis.Aggression:
+                    // ATK §55 — own/foreign Base facts drive the Aggression lane too: Attack
+                    // objectives come from known enemy Bases/Citadels, and every offensive lane's
+                    // route, support reachability and recovery/return base come from our own Base
+                    // network. A Base built, captured, lost, discovered or observed under a new
+                    // owner must therefore re-admit Aggression, not wait for the next turn.
                     return StrategicInvalidationReason.Contact
                         | StrategicInvalidationReason.Actor
                         | StrategicInvalidationReason.EventState
-                        | StrategicInvalidationReason.Threat;
+                        | StrategicInvalidationReason.Threat
+                        | StrategicInvalidationReason.Infrastructure;
                 case DesireAxis.Economy:
                     // Economy feasibility depends on where a Hero-led builder is NOW, not only
                     // on newly discovered resources. A Recon step can deliver that builder onto
@@ -562,7 +575,7 @@ namespace Game.Ai.V2
             // Economy's delivery proof (AI-03) compares an army's route and shared movement
             // bottleneck before/after a grant, so an Economy mover's position/movement/activation
             // has to invalidate Development. Raid's combat proof (WorthIt via
-            // ImprovesRaidCombatOutcome) reads army.Members composition but never position. Recon's
+            // ImprovesGroundCombatOutcome) reads army.Members composition but never position. Recon's
             // proof (ImprovesReconCapability) reads only the OFFERED equipment/recipient card's own
             // static abilities/MoveMax/ActivationApCost — never anything about the scout army
             // itself — so a Scout-only mover needs neither block: a plain scout patrolling its
@@ -587,7 +600,7 @@ namespace Game.Ai.V2
                     if (!wantsComposition && !wantsPosition)
                         return a.ArmyId.ToString(CultureInfo.InvariantCulture);
                     // FIX-04 — the ATTACKING side of the same proof needs the same precision as
-                    // the defending side: ImprovesRaidCombatOutcome builds `before`/`after` from
+                    // the defending side: ImprovesGroundCombatOutcome builds `before`/`after` from
                     // this army's individual non-hero members (WorthIt.FromLiveUnit each) and
                     // replaces exactly one of them with the equipped projection. Aggregates alone
                     // (MemberCount/AttackSum/DefenseSum/power/quality) cannot distinguish two
@@ -669,7 +682,7 @@ namespace Game.Ai.V2
                             + $":{i.Economy.BuilderArmyId}:{i.Economy.CollectorArmyId}"
                             + $":{(i.Economy.SafeReturnHex.HasValue ? $"{i.Economy.SafeReturnHex.Value.Q},{i.Economy.SafeReturnHex.Value.R}" : "-")}";
                     else if (i.Kind == MissionKind.Raid && i.Raid != null)
-                        // The exact target/combat-viability feed into ImprovesRaidCombatOutcome.
+                        // The exact target/combat-viability feed into ImprovesGroundCombatOutcome.
                         // A Scout intent contributes nothing beyond its mover: ImprovesReconCapability
                         // reads only the recipient's own abilities, never the scout's target.
                         extra = $":{(int)i.Raid.Phase}:{i.Raid.PrimaryArmyId}"
@@ -784,7 +797,7 @@ namespace Game.Ai.V2
 
         // Armies whose COMPOSITION (beyond Economy's — see DevelopmentEconomyRelevantArmyIds
         // above, unioned in by the caller) can change a Development decision: only Raid's combat
-        // proof (ImprovesRaidCombatOutcome via WorthIt) reads army.Members. Recon's proof
+        // proof (ImprovesGroundCombatOutcome via WorthIt) reads army.Members. Recon's proof
         // (ImprovesReconCapability) reads only the offered equipment/recipient card's own static
         // abilities/MoveMax/ActivationApCost — never anything about the scout army itself — so a
         // Scout-only mover contributes nothing here, and a plain scout stepping its waypoint no
@@ -807,7 +820,7 @@ namespace Game.Ai.V2
 
         // FIX-04 — EXACT, order-stable digest of a combat roster. It used to be Count plus four
         // SUMS (Attack/Defense/HP/Initiative), which is strictly weaker than what the cached
-        // decision actually depends on: DemandLayer.Development.ImprovesRaidCombatOutcome runs
+        // decision actually depends on: DemandLayer.Development.ImprovesGroundCombatOutcome runs
         // WorthIt.CanDamageAll and WorthIt.Estimate, and those read each profile INDIVIDUALLY —
         // per-defender Defense, CeramicArmor, ability list, unit type tags, current AND max HP, and
         // Initiative (which sets the turn order, not a sum). Two genuinely different rosters can

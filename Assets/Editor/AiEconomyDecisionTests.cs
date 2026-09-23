@@ -786,6 +786,10 @@ namespace Game.EditorTests
                     new Game.Ai.AiMapMemory.KnownBuilding(altBase, player, isStartingCitadel: false,
                         facilityAbilities: null, isBase: true),
                 };
+                // ATK §20/§48 — own-Base IDENTITY is Self.BaseHexes now; Known.Buildings is only the
+                // metadata beside it. "The shelter was lost and only altBase remains" is therefore
+                // stated here, not by editing remembered structures.
+                snapshot.Self.BaseHexes = new List<HexCoord> { altBase };
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snapshot);
 
@@ -822,7 +826,10 @@ namespace Game.EditorTests
             {
                 WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, true);
                 snapshot.Self.Armies = new List<ArmySnapshot> { ReturnBuilderActor(armyId, actorHex) };
-                snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>(); // no base left
+                snapshot.Known.Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>();
+                // ATK §20/§48 — losing every base is expressed on Self.BaseHexes, the current-truth
+                // topology, not by forgetting the structures.
+                snapshot.Self.BaseHexes = new List<HexCoord>(); // no base left
                 // player.CitadelHexQ/R left null -> SelectEconomyRecoveryTarget has no fallback either
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snapshot);
@@ -888,6 +895,7 @@ namespace Game.EditorTests
                     new Game.Ai.AiMapMemory.KnownBuilding(shelter, player, isStartingCitadel: false,
                         facilityAbilities: null, isBase: true),
                 };
+                snapshot.Self.BaseHexes = new List<HexCoord> { shelter };
 
                 List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snapshot);
 
@@ -3066,7 +3074,14 @@ namespace Game.EditorTests
             var actor = new ArmySnapshot { ArmyId = 4, Hex = new HexCoord(0, 0) };
             var snap = new WorldSnapshot
             {
-                Self = new SelfSnapshot { Armies = new List<ArmySnapshot> { actor } },
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot> { actor },
+                    // ATK §20/§48 — the facility-only hex (1,0) is excluded because it is not in the
+                    // current-truth Base topology at all, which is where own-Base identity lives.
+                    // Known.Buildings below still carries it, exactly as memory would.
+                    BaseHexes = new List<HexCoord> { new HexCoord(2, 0) },
+                },
                 Known = new KnownSnapshot
                 {
                     Buildings = new List<Game.Ai.AiMapMemory.KnownBuilding>

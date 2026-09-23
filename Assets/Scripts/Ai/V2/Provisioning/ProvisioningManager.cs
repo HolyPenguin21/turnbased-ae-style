@@ -236,12 +236,15 @@ namespace Game.Ai.V2
         // is now a pure translation of this into a ProvisionFailure — it never re-derives it.
         private readonly Dictionary<StableMissionKey, ScoutAssignmentFailureReason> _assignmentRejections =
             new Dictionary<StableMissionKey, ScoutAssignmentFailureReason>();
-        private readonly Dictionary<StableMissionKey, int> _raidAssignment =
+        private readonly Dictionary<StableMissionKey, int> _groundCombatAssignment =
             new Dictionary<StableMissionKey, int>();
-        // The SAME ownership constraints used for Raid batch assignment must survive into
-        // RaidProvisioner (including its same-hex donors). They are refreshed on every repack.
-        private ActorCommitments _raidDurableCommitments;
-        private HashSet<int> _raidPinnedByOtherLegs = new HashSet<int>();
+        // The SAME ownership constraints used for the single ground-combat batch assignment must
+        // survive into the per-leg provisioners (including their same-hex donors). Refreshed on
+        // every repack. ATK §44 — this store is the ONE ground-combat actor assignment for every
+        // lane that fights on the ground (Raid, ActiveDefence and, from ATK, Attack); it was named
+        // after Raid only because Raid happened to be the first lane built on it.
+        private ActorCommitments _groundCombatDurableCommitments;
+        private HashSet<int> _groundCombatPinnedByOtherLegs = new HashSet<int>();
 
         public ProvisioningSession(WorldSnapshot snapshot) { Snapshot = snapshot; }
         public IReadOnlyDictionary<StableMissionKey, ProvisionedMission> Successful => _successful;
@@ -283,21 +286,21 @@ namespace Game.Ai.V2
         internal IReadOnlyDictionary<StableMissionKey, ScoutAssignmentFailureReason>
             AssignmentRejections => _assignmentRejections;
 
-        internal void SetRaidConstraints(ActorCommitments durableCommitments,
+        internal void SetGroundCombatConstraints(ActorCommitments durableCommitments,
             ISet<int> pinnedByOtherLegs)
         {
-            _raidDurableCommitments = durableCommitments;
-            _raidPinnedByOtherLegs = pinnedByOtherLegs == null
+            _groundCombatDurableCommitments = durableCommitments;
+            _groundCombatPinnedByOtherLegs = pinnedByOtherLegs == null
                 ? new HashSet<int>() : new HashSet<int>(pinnedByOtherLegs);
         }
 
-        // Single Raid ownership read, shared by batch assignment AND final binding.
-        // A durable Raid may use its own incumbent, but never another mission's army;
+        // Single ground-combat ownership read, shared by batch assignment AND final binding.
+        // A durable mission may use its own incumbent, but never another mission's army;
         // exclusions also apply to donors, not merely the primary host.
-        internal HashSet<int> ExcludedForRaid(MissionProposal proposal)
+        internal HashSet<int> ExcludedForGroundCombat(MissionProposal proposal)
         {
             var excluded = new HashSet<int>(ClaimedArmyIds);
-            foreach (int pinnedId in _raidPinnedByOtherLegs)
+            foreach (int pinnedId in _groundCombatPinnedByOtherLegs)
             {
                 // The pinned set is computed across ALL funded non-Assault Raid legs, including
                 // this very Reinforcement/Return leg. Its own actor must remain permitted;
@@ -314,32 +317,32 @@ namespace Game.Ai.V2
                 if (!thisLegsActor)
                     excluded.Add(pinnedId);
             }
-            if (_raidDurableCommitments != null)
-                foreach (int id in _raidDurableCommitments.ClaimedArmyIds)
+            if (_groundCombatDurableCommitments != null)
+                foreach (int id in _groundCombatDurableCommitments.ClaimedArmyIds)
                 {
                     bool ownIncumbent = proposal != null && proposal.FromDurableIntent
                         && proposal.PreferredMoverArmyId == id;
-                    bool exactRaidBorrow = proposal?.Target is ActiveDefenceMissionTarget defence
-                        && defence.SuspendedRaidIntentKey.HasValue
+                    bool exactOffensiveBorrow = proposal?.Target is ActiveDefenceMissionTarget defence
+                        && defence.SuspendedOffensiveIntentKey.HasValue
                         && proposal.PreferredMoverArmyId == id;
-                    if (!ownIncumbent && !exactRaidBorrow)
+                    if (!ownIncumbent && !exactOffensiveBorrow)
                         excluded.Add(id);
                 }
             // Batch-assigned Raid hosts/support are also unavailable as donors, even before
             // their mission executes and RegisterSuccess adds them to ClaimedArmyIds.
             StableMissionKey? ownKey = proposal == null
                 ? (StableMissionKey?)null : StableMissionKey.For(proposal);
-            foreach (KeyValuePair<StableMissionKey, int> assignment in _raidAssignment)
+            foreach (KeyValuePair<StableMissionKey, int> assignment in _groundCombatAssignment)
                 if (!ownKey.HasValue || !assignment.Key.Equals(ownKey.Value))
                     excluded.Add(assignment.Value);
             return excluded;
         }
 
-        internal void SetRaidAssignment(Dictionary<StableMissionKey, int> a)
+        internal void SetGroundCombatAssignment(Dictionary<StableMissionKey, int> a)
         {
-            _raidAssignment.Clear();
+            _groundCombatAssignment.Clear();
             foreach (KeyValuePair<StableMissionKey, int> kv in a)
-                _raidAssignment[kv.Key] = kv.Value;
+                _groundCombatAssignment[kv.Key] = kv.Value;
         }
 
         internal void SetDurableClaims(IEnumerable<int> ids)
@@ -349,8 +352,8 @@ namespace Game.Ai.V2
             foreach (int id in ids) DurableClaimedArmyIds.Add(id);
         }
 
-        internal bool TryGetAssignedRaidActor(StableMissionKey k, out int armyId) =>
-            _raidAssignment.TryGetValue(k, out armyId);
+        internal bool TryGetAssignedGroundCombatActor(StableMissionKey k, out int armyId) =>
+            _groundCombatAssignment.TryGetValue(k, out armyId);
     }
 
     internal static class ProvisioningManager
@@ -640,9 +643,10 @@ namespace Game.Ai.V2
             TentativeAllocation allocation, ActorCommitments durableCommitments)
         {
             var open = new List<FundedEntry>();
-            // AGG-RAID §8 — ALL ground-combat proposals are decided in ONE pass, so one army can
-            // never simultaneously receive an Assault assignment and be pinned as another Raid's
-            // primary or reinforcement convoy (and, later, an Active Defence assignment).
+            // AGG-RAID §8 / ATK §44 — ALL ground-combat proposals are decided in ONE pass, so one
+            // army can never simultaneously receive an Assault assignment and be pinned as another
+            // mission's primary or reinforcement convoy. Every ground-combat MissionKind admitted
+            // below shares this one solve; a new lane joins the batch, it does not get its own.
             var pinnedByOtherLegs = new HashSet<int>();
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
@@ -686,18 +690,18 @@ namespace Game.Ai.V2
 
             // A re-pack refreshes the entire assignment; never let last pass's assignments
             // exclude current candidates while solving the new batch.
-            session.SetRaidAssignment(new Dictionary<StableMissionKey, int>());
-            session.SetRaidConstraints(durableCommitments, pinnedByOtherLegs);
+            session.SetGroundCombatAssignment(new Dictionary<StableMissionKey, int>());
+            session.SetGroundCombatConstraints(durableCommitments, pinnedByOtherLegs);
             var cands = new List<List<int>>(open.Count);
             foreach (FundedEntry fe in open)
             {
-                HashSet<int> excluded = session.ExcludedForRaid(fe.Mission);
+                HashSet<int> excluded = session.ExcludedForGroundCombat(fe.Mission);
                 var ids = new List<int>();
                 if (GroundCombatAdmissionRegistry.TryGet(fe.Mission, out HashSet<int> eligible))
                     ids.AddRange(eligible
                         .Where(id => !excluded.Contains(id))
-                        .OrderBy(id => RaidActorActivation(session.Snapshot, id))
-                        .ThenBy(id => RaidActorPower(session.Snapshot, id))
+                        .OrderBy(id => GroundCombatActorActivation(session.Snapshot, id))
+                        .ThenBy(id => GroundCombatActorPower(session.Snapshot, id))
                         .ThenBy(id => id));
                 cands.Add(ids);
             }
@@ -706,34 +710,34 @@ namespace Game.Ai.V2
             var best = new int[open.Count];
             for (int i = 0; i < best.Length; i++) best[i] = -1;
             long[] bestKey = null;
-            RecurseRaid(0, open, cands, chosen, new HashSet<int>(), session.Snapshot, ref bestKey, best);
+            RecurseGroundCombat(0, open, cands, chosen, new HashSet<int>(), session.Snapshot, ref bestKey, best);
 
             var map = new Dictionary<StableMissionKey, int>();
             for (int i = 0; i < open.Count; i++)
                 if (best[i] >= 0)
                     map[StableMissionKey.For(open[i].Mission)] = cands[i][best[i]];
-            session.SetRaidAssignment(map);
+            session.SetGroundCombatAssignment(map);
 
             if (open.Count > 0)
-                AiDebugLog.Write($"[AI][V2]   provision prepare raid — {open.Count} open, assigned ["
+                AiDebugLog.Write($"[AI][V2]   provision prepare ground-combat — {open.Count} open, assigned ["
                     + string.Join(" ", map.Select(kv => $"{kv.Key}->#{kv.Value}")) + "]");
         }
 
-        private static int RaidActorActivation(WorldSnapshot snap, int id)
+        private static int GroundCombatActorActivation(WorldSnapshot snap, int id)
         {
             ArmySnapshot a = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
             return a == null || a.HasActivatedThisTurn ? 0 : a.ActivationApCost;
         }
 
-        private static float RaidActorPower(WorldSnapshot snap, int id) =>
+        private static float GroundCombatActorPower(WorldSnapshot snap, int id) =>
             snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id)?.EffectiveArmyPower ?? float.MaxValue;
 
-        private static void RecurseRaid(int i, List<FundedEntry> open, List<List<int>> cands,
+        private static void RecurseGroundCombat(int i, List<FundedEntry> open, List<List<int>> cands,
             int[] chosen, HashSet<int> usedArmyIds, WorldSnapshot snap, ref long[] bestKey, int[] best)
         {
             if (i == open.Count)
             {
-                long[] key = ScoreRaidAssignment(open, cands, chosen, snap);
+                long[] key = ScoreGroundCombatAssignment(open, cands, chosen, snap);
                 if (bestKey == null || Lex(key, bestKey) < 0)
                 {
                     bestKey = key;
@@ -743,20 +747,20 @@ namespace Game.Ai.V2
             }
 
             chosen[i] = -1;
-            RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, snap, ref bestKey, best);
+            RecurseGroundCombat(i + 1, open, cands, chosen, usedArmyIds, snap, ref bestKey, best);
             for (int c = 0; c < cands[i].Count; c++)
             {
                 int aid = cands[i][c];
                 if (usedArmyIds.Contains(aid)) continue;
                 usedArmyIds.Add(aid);
                 chosen[i] = c;
-                RecurseRaid(i + 1, open, cands, chosen, usedArmyIds, snap, ref bestKey, best);
+                RecurseGroundCombat(i + 1, open, cands, chosen, usedArmyIds, snap, ref bestKey, best);
                 usedArmyIds.Remove(aid);
             }
             chosen[i] = -1;
         }
 
-        private static long[] ScoreRaidAssignment(List<FundedEntry> open, List<List<int>> cands,
+        private static long[] ScoreGroundCombatAssignment(List<FundedEntry> open, List<List<int>> cands,
             int[] chosen, WorldSnapshot snap)
         {
             int n = open.Count;
@@ -773,8 +777,8 @@ namespace Game.Ai.V2
                 int actorId = cands[i][chosen[i]];
                 covered++;
                 priorityCoverage += n - i;
-                activation += RaidActorActivation(snap, actorId);
-                overkillPower += Mathf.RoundToInt(RaidActorPower(snap, actorId) * 100f);
+                activation += GroundCombatActorActivation(snap, actorId);
+                overkillPower += Mathf.RoundToInt(GroundCombatActorPower(snap, actorId) * 100f);
                 actorIdSum += actorId;
 
                 int? preferred = open[i].Mission.PreferredMoverArmyId;
@@ -2542,10 +2546,10 @@ namespace Game.Ai.V2
                 + "decision=APPROACH_LAST_KNOWN");
 
             StableMissionKey key = StableMissionKey.For(mission);
-            if (!session.TryGetAssignedRaidActor(key, out int actorId))
+            if (!session.TryGetAssignedGroundCombatActor(key, out int actorId))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"active defence {key} has no actor in shared ground-combat assignment"));
-            HashSet<int> excluded = session.ExcludedForRaid(mission);
+            HashSet<int> excluded = session.ExcludedForGroundCombat(mission);
             if (excluded.Contains(actorId))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"active defence actor #{actorId} is owned by another mission"));
@@ -2912,7 +2916,7 @@ namespace Game.Ai.V2
 
             // Assault actor ownership is decided once by PrepareGroundCombatAssignments. Do not
             // re-run a FREE army search here: re-plan ONLY the assigned host, through the same
-            // ExcludedForRaid ownership view the batch solver used, so a Raid can never steal a
+            // ExcludedForGroundCombat ownership view the batch solver used, so a Raid can never steal a
             // durable Economy/Recon/Raid actor after the batch solver correctly rejected it.
             GroundCombatAssemblyPlan plan = PlanAssignedAssault(session, m, defenders,
                 out ProvisionFailure assignmentFailure);
@@ -3187,14 +3191,14 @@ namespace Game.Ai.V2
         {
             failure = default;
             StableMissionKey key = StableMissionKey.For(proposal);
-            if (!session.TryGetAssignedRaidActor(key, out int actorId))
+            if (!session.TryGetAssignedGroundCombatActor(key, out int actorId))
             {
                 failure = ProvisionFailure.MoverContended(
                     $"raid {key} has no actor in the shared ground-combat assignment");
                 return null;
             }
 
-            HashSet<int> excluded = session.ExcludedForRaid(proposal);
+            HashSet<int> excluded = session.ExcludedForGroundCombat(proposal);
             if (excluded.Contains(actorId))
             {
                 failure = ProvisionFailure.MoverContended(
@@ -3340,7 +3344,7 @@ namespace Game.Ai.V2
             int supportArmyId;
             if (!target.SupportArmyId.HasValue)
             {
-                if (!session.TryGetAssignedRaidActor(key, out supportArmyId))
+                if (!session.TryGetAssignedGroundCombatActor(key, out supportArmyId))
                     return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                         $"raid reinforcement for primary #{target.PrimaryArmyId.Value} has no existing free "
                         + "support army assigned this cycle"));
@@ -3356,7 +3360,7 @@ namespace Game.Ai.V2
                 || support.IsAirfield || AviationRules.IsAirArmy(support))
                 return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
                     $"raid reinforcement support #{supportArmyId} is not a separate mobile ground army"));
-            if (session.ExcludedForRaid(funded.Mission).Contains(support.Id))
+            if (session.ExcludedForGroundCombat(funded.Mission).Contains(support.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"raid reinforcement support #{support.Id} is claimed by another mission or Raid leg"));
 
