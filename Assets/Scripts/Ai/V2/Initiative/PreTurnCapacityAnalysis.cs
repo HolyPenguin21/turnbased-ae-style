@@ -126,15 +126,20 @@ namespace Game.Ai.V2.Initiative
                 a.CurrentApPressure * AiConfigV2.initiativeTurnOrderPressureScale);
 
             // --- resource expendability ---
-            IEnumerable<CardDefinition> demandDefs;
+            // Hand cards are instances: Research/Production may have prepaid their resources.
+            // Keep their instance state and use the same physical play-cost rule as execution.
+            // Undrawn deck cards are definitions and retain their full printed costs.
             if (hand != null)
-                demandDefs = hand.Hand.Where(c => c != null).Select(c => c.Definition)
-                    .Concat(hand.RemainingDeck);
+            {
+                InitiativeDeckDemand.AccumulateHand(hand.Hand, a.DeckDemand);
+                InitiativeDeckDemand.Accumulate(hand.RemainingDeck, a.DeckDemand);
+            }
             else
-                demandDefs = deckCatalog != null
+            {
+                InitiativeDeckDemand.Accumulate(deckCatalog != null
                     ? deckCatalog.BuildDeckPool(player.Faction)
-                    : Enumerable.Empty<CardDefinition>();
-            InitiativeDeckDemand.Accumulate(demandDefs, a.DeckDemand);
+                    : Enumerable.Empty<CardDefinition>(), a.DeckDemand);
+            }
 
             for (int i = 0; i < Types.Length; i++)
             {

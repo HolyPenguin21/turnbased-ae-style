@@ -59,23 +59,8 @@ namespace Game.Ai.V2
                 || ctx?.ResearchProductionCatalog == null)
                 return new GenerationOutcome(false, false, null, false,
                     "no generation step/catalog/args");
-            // Catalog membership is execution authority too: a stale plan must not mint a card
-            // removed from the authored Research/Production catalog after planning.
-            if (!ResearchProductionSystem.Offers(
-                    ctx.ResearchProductionCatalog, g.Mode, player.Faction, g.CardDef))
-                return new GenerationOutcome(false, false, null, false,
-                    "card no longer offered by Research/Production catalog");
-
-            if (!ResearchProductionSystem.IsEligible(player, g.FacilityHex, g.Mode, out string why)
-                || !ResearchProductionSystem.ActorStillQualifies(player, g.Hero, g.FacilityHex, g.Mode))
-                return new GenerationOutcome(false, false, null, false,
-                    $"generation no longer valid ({why ?? "hero moved"})");
-            if (!ResearchProductionSystem.CanAffordCard(root, g.CardDef))
-                return new GenerationOutcome(false, false, null, false,
-                    "generation AP/resources unaffordable");
-            // An earlier card, mission, or new reservation can change spendability after
-            // candidate enumeration. Raw gameplay affordability is not enough: enforce the
-            // same canonical reserved-resource gate at the last point before Challenge payment.
+            // AI-only reservation policy is checked BEFORE the shared gameplay transaction:
+            // a protected resource may reject this plan, but must never reveal/pay first.
             if (!GenerationSource.FitsReservedAffordability(root, player, ctx, g.CardDef))
                 return new GenerationOutcome(false, false, null, false,
                     "generation resources reserved since planning");
@@ -85,11 +70,12 @@ namespace Game.Ai.V2
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
 
-            // Research reveals the Researcher whether or not the roll wins (parity with
-            // AiDevelopmentPlanner). Production never reveals.
-            ResearchProductionSystem.ApplyResearchReveal(g.Mode, g.Hero);
-            // Challenge AP + resources are consumed by the attempt and never refunded on loss.
-            ResearchProductionSystem.PayCardCost(root, g.CardDef);
+            // All gameplay-side revalidation, canonical-root validation, Research reveal and
+            // irreversible payment are owned by the same transaction the human path uses.
+            if (!ResearchProductionSystem.TryStartAttempt(player, root, g.Hero, g.FacilityHex,
+                    g.Mode, g.CardDef, ctx.ResearchProductionCatalog, out string why))
+                return new GenerationOutcome(false, false, null, false,
+                    $"generation no longer valid ({why})");
 
             bool costMoved = ap0 != root.ActionPoints
                 || h0 != root.GetResource(ResourceType.Human)
@@ -132,13 +118,17 @@ namespace Game.Ai.V2
             int apStart = root.ActionPoints;
             int h0 = root.GetResource(ResourceType.Human), e0 = root.GetResource(ResourceType.Energy),
                 m0 = root.GetResource(ResourceType.Materials), t0 = root.GetResource(ResourceType.Tech);
-            void StampResources()
+            // A standalone CardPlayExecutor.Play already stamps a deployment (including a partial
+            // failed deploy that changed AP/resources or created an army). An enclosing chain must
+            // stamp only when no child has done so, while still stamping generate/attach-only
+            // partial failures. Both execution paths report the same current version.
+            void StampResources(bool childAlreadyStamped = false)
             {
                 int dh = h0 - root.GetResource(ResourceType.Human), de = e0 - root.GetResource(ResourceType.Energy),
                     dm = m0 - root.GetResource(ResourceType.Materials), dt = t0 - root.GetResource(ResourceType.Tech);
                 res.ResourcesSpent = (dh | de | dm | dt) == 0
                     ? null : new ResourceCost { human = dh, energy = de, materials = dm, tech = dt };
-                if (res.StateChanged) V2StateVersion.Bump();
+                if (res.StateChanged && !childAlreadyStamped) V2StateVersion.Bump();
                 res.StateVersionAfter = V2StateVersion.Current;
             }
 
@@ -219,10 +209,9 @@ namespace Game.Ai.V2
             res.ApSpent = apStart - root.ActionPoints;
             if (play.StateChanged)
                 res.StateChanged = true;
-            // Stamp only after the deploy outcome has contributed to StateChanged. The old order
-            // missed the V2 state-version bump for a successful direct deploy with no preceding
-            // generation or attachment.
-            StampResources();
+            // CardPlayExecutor has already bumped for any deployment-side mutation. Do not bump
+            // twice for the same chain; generation/attachment-only failures still bump above.
+            StampResources(childAlreadyStamped: play.StateChanged);
             res.ArmyCreated = play.ArmyCreated;
             res.Deployed = play.Deployed;
             if (!play.Deployed)

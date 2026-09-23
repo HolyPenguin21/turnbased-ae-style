@@ -131,7 +131,8 @@ namespace Game.Ai.V2
         // is a game rule (non-zero only for a real air army, so 0 here). Stealth is a separate
         // opt-in 1 AP, only when the route carries real detection risk.
         public const int scoutNotionalActivationAp = 1;  // used when no concrete mover exists yet (Provisioning, step 6, resolves it)
-        public const int scoutOptionalStealthAp = 1;
+        // Compatibility alias only. The gameplay cost itself is owned by StealthSystem.
+        public const int scoutOptionalStealthAp = Game.Map.StealthSystem.EnterStealthApCost;
 
         // RECON-AIR-01 — a generic (non-stealth) Refresh/Surveil mission is executable by EITHER a
         // ground scout OR an air actor (see ReconAssignmentPlanner.AppendAirCandidates); the

@@ -260,17 +260,7 @@ namespace Game.UI
                 // user's own call). Same +Attack / -Defense (floored at 1) mutation and
                 // BerserkStacks/BerserkDefenseLost bookkeeping ResolveDamage does for the primary
                 // defender, reverted identically by RevertBerserkStacks at battle end.
-                if (victim.HasAbility(UnitAbilities.Berserk))
-                {
-                    victim.Attack += magnitudes.BerserkAttackGain;
-                    int defenseLoss = Mathf.Min(magnitudes.BerserkDefenseLoss, victim.Defense - 1);
-                    if (defenseLoss > 0)
-                    {
-                        victim.Defense -= defenseLoss;
-                        victim.BerserkDefenseLost += defenseLoss;
-                    }
-                    victim.BerserkStacks++;
-                }
+                ChallengeResult.ApplyBerserkOnHit(victim, magnitudes);
 
                 if (died)
                     // Don't hand the OTHER side an "enemy killed" gloat line when the attacker's

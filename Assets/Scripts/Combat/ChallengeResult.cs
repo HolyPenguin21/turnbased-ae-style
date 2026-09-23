@@ -87,6 +87,26 @@ namespace Game.Combat
             return damage;
         }
 
+        // One authoritative Berserk-on-hit mutation for primary Ground Combat hits and
+        // Splash/Scorcher side-hits. Call only when a real positive-damage hit landed.
+        // Attack always grows; Defense loss is floored at 1 and only the actually-lost amount
+        // is recorded so BattleScreenUI can restore the exact pre-battle value at battle end.
+        public static bool ApplyBerserkOnHit(UnitData victim, AbilityMagnitudes magnitudes)
+        {
+            if (victim == null || !victim.HasAbility(UnitAbilities.Berserk))
+                return false;
+
+            victim.Attack += magnitudes.BerserkAttackGain;
+            int defenseLoss = Mathf.Min(magnitudes.BerserkDefenseLoss, Mathf.Max(0, victim.Defense - 1));
+            if (defenseLoss > 0)
+            {
+                victim.Defense -= defenseLoss;
+                victim.BerserkDefenseLost += defenseLoss;
+            }
+            victim.BerserkStacks++;
+            return true;
+        }
+
         private static bool HasAbility(IEnumerable<string> abilities, string wanted)
         {
             if (abilities == null)

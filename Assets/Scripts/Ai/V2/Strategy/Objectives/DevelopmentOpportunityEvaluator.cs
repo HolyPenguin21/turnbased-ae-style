@@ -48,6 +48,9 @@ namespace Game.Ai.V2
         public DevRecipientKind RecipientKind;
         public CardData RecipientCard;
         public UnitData RecipientUnit;
+        // Stable owning-army identity captured at recipient selection. Demand must not rediscover
+        // membership by scanning every live army from the UnitData reference a second time.
+        public int? RecipientArmyId;
         public string RecipientLabel;
 
         public float ExpectedGain;
@@ -553,7 +556,7 @@ namespace Game.Ai.V2
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
                         off.Card, c, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, DevRecipientKind.HandCard, c, null,
-                        $"hand:{c.Definition.displayName}", gain));
+                        null, $"hand:{c.Definition.displayName}", gain));
                 }
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -568,7 +571,8 @@ namespace Game.Ai.V2
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
                         off.Card, u, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, army.IsGarrison ? DevRecipientKind.GarrisonUnit : DevRecipientKind.FieldUnit,
-                        null, u, $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain), army);
+                        null, u, army.Id,
+                        $"{(army.IsGarrison ? "garr" : "field")}:{u.Name ?? "unit"}@{army.Hex.Q},{army.Hex.R}", gain), army);
                 }
             }
 
@@ -690,7 +694,7 @@ namespace Game.Ai.V2
         }
 
         private static DevelopmentOpportunity Make(DevelopmentOffering off, DevRecipientKind kind,
-            CardData card, UnitData unit, string label, float gain) => new DevelopmentOpportunity
+            CardData card, UnitData unit, int? recipientArmyId, string label, float gain) => new DevelopmentOpportunity
         {
             Mode = off.Mode,
             FacilityHex = off.FacilityHex,
@@ -702,6 +706,7 @@ namespace Game.Ai.V2
             RecipientKind = kind,
             RecipientCard = card,
             RecipientUnit = unit,
+            RecipientArmyId = recipientArmyId,
             RecipientLabel = label,
             ExpectedGain = Mathf.Max(0f, gain),
         };

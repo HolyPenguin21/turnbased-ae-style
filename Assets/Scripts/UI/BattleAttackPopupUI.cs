@@ -1231,21 +1231,8 @@ namespace Game.UI
             // BerserkStacks records how much was added so BattleScreenUI.Combat.cs's
             // FinishBattleEnd can revert it once the battle's over — a permanent buff was never
             // the intent, just a same-battle snowball.
-            if (damage > 0 && _defender.HasAbility(UnitAbilities.Berserk))
-            {
-                _defender.Attack += BerserkAttackGain;
-                // Defense never drops below 1 from Berserk — per the user's own call, a unit
-                // that's been hit enough times shouldn't end up rolling defense dice at a
-                // negative count. A stack triggered while already at the floor still counts
-                // towards BerserkStacks (Attack still grows), it just removes 0 Defense.
-                int defenseLoss = Mathf.Min(BerserkDefenseLoss, _defender.Defense - 1);
-                if (defenseLoss > 0)
-                {
-                    _defender.Defense -= defenseLoss;
-                    _defender.BerserkDefenseLost += defenseLoss;
-                }
-                _defender.BerserkStacks++;
-            }
+            if (damage > 0)
+                ChallengeResult.ApplyBerserkOnHit(_defender, Magnitudes);
 
             _resultDamage = damage;
             _resultDied = died;
