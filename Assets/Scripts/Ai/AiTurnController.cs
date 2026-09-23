@@ -355,25 +355,19 @@ namespace Game.Ai
                 && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, destination))
             {
                 UnitData scout = army.Members[0];
-                if (Game.Map.StealthSystem.CanEnterStealth(scout))
+                // The shared StealthSystem owns both validation and the 1-AP debit. Preserve this
+                // army's still-unpaid activation AP so entering stealth can never strand the move.
+                if (Game.Map.StealthSystem.TryEnterStealth(scout, root, army.ActivationApCost))
                 {
-                    // Stealth entry costs 1 AP ON TOP of this move's own ActivationApCost (the army
-                    // hasn't activated yet — see the guard above). Only slip into stealth if the
-                    // turn can still afford BOTH; if it can afford the scouting move but not
-                    // move + stealth, the scout still goes out, just visible (stealth design §8 —
-                    // never skip the discovery move itself just to stay hidden).
-                    if (root.CanSpendActionPoints(army.ActivationApCost + 1))
-                    {
-                        root.SpendActionPoints(1);
-                        Game.Map.StealthSystem.EnterStealth(scout);
-                        if (trace != null)
-                            trace.EnteredStealthThisStep = true;
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting (-1 AP).");
-                    }
-                    else
-                    {
-                        AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" skips stealth — insufficient AP for activation + stealth.");
-                    }
+                    if (trace != null)
+                        trace.EnteredStealthThisStep = true;
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" enters stealth before scouting "
+                        + $"(-{Game.Map.StealthSystem.EnterStealthApCost} AP).");
+                }
+                else
+                {
+                    AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" skips stealth — "
+                        + "entry invalid or insufficient AP for activation + stealth.");
                 }
             }
             // The mirror: this move ends on an undefended enemy/neutral building this army will
