@@ -130,7 +130,7 @@ namespace Game.Ai
             public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields = new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
             public readonly Dictionary<int, ReturnCostField> ReturnCostFields = new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
-            public int MemoryVersion;
+            public long MemoryVersion;
             public void ClearPathsAndFields() { Routes.Clear(); BaseCostFields.Clear(); ReturnCostFields.Clear(); }
         }
         private sealed class ReturnCostField { public HashSet<HexCoord> Bases; public Dictionary<HexCoord, int> Costs; }
@@ -157,7 +157,7 @@ namespace Game.Ai
         private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
             if (map != _cacheMap || map.PathingVersion != _cacheMapVersion) { _playerCaches.Clear(); _cacheMap = map; _cacheMapVersion = map.PathingVersion; }
-            int memoryVersion = AiMapMemory.RouteMemoryVersion;
+            long memoryVersion = AiMapMemory.RouteMemoryVersionFor(owner);
             if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
             {
                 cache = new PlayerRouteCache { BlockedHexes = CaptureMemoryBlockers(map, owner), MemoryVersion = memoryVersion };
