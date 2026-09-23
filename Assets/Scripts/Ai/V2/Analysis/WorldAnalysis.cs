@@ -49,6 +49,7 @@ namespace Game.Ai.V2
         {
             var snap = new WorldSnapshot
             {
+                Observer = player,
                 TurnNumber = ctx.TurnNumber,
                 KnowledgeVersion = AiMapMemory.KnowledgeVersionFor(player),
             };
@@ -74,6 +75,7 @@ namespace Game.Ai.V2
 
             var snap = new WorldSnapshot
             {
+                Observer = player,
                 TurnNumber = prev.TurnNumber,
                 KnowledgeVersion = prev.KnowledgeVersion,
                 Known = prev.Known,
@@ -105,6 +107,7 @@ namespace Game.Ai.V2
 
             var snap = new WorldSnapshot
             {
+                Observer = player,
                 TurnNumber = prev.TurnNumber,
                 KnowledgeVersion = knowledgeVersion,
             };
