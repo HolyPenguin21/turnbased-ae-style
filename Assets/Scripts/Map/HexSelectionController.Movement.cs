@@ -419,7 +419,8 @@ namespace Game.Map
         // registry state change fires on a re-visit), and the whole thing is done by the time
         // IssueMoveOrder's caller regains control. Left null by the human path.
         public MoveOrderResult IssueMoveOrder(ArmyController controller, HexCoord destination,
-            System.Action<HexCoord> onHexEventEncountered = null)
+            System.Action<HexCoord> onHexEventEncountered = null,
+            bool allowUndefendedBuildingTakeover = true)
         {
             if (controller == null || controller.IsMoving)
                 return MoveOrderResult.AlreadyMoving;
@@ -594,7 +595,7 @@ namespace Game.Map
                     // on the same hex as someone else's army. Shared with BattleScreenUI.Retreat.
                     // cs's PerformRetreat, which needs the exact same check for a retreat landing
                     // on an undefended hex — see BuildingRegistry.CaptureOrDestroyIfUndefended.
-                    if (!AviationRules.IsAirArmy(army))
+                    if (!AviationRules.IsAirArmy(army) && allowUndefendedBuildingTakeover)
                         BuildingRegistry.CaptureOrDestroyIfUndefended(actualHex, army.Owner, this, army);
 
                     // movingArmy's own marker was last positioned by MoveAlong's resolveOffset
