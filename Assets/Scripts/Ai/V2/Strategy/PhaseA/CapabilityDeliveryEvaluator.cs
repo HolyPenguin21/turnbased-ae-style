@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Combat;
 using Game.Players;
 using UnityEngine;
 
@@ -174,9 +175,9 @@ namespace Game.Ai.V2
             // post-deployment roster. A one-body shell is useful construction progress, but it
             // cannot spare a body without emptying its container and must not close the demand or
             // become Continuity's support actor yet.
-            if (IsRaidReinforcementDemand(demand))
+            if (IsGroundCombatReinforcementDemand(demand))
             {
-                if (TryHandoffRaidSupport(player, afterSnap, demand, leased, ctx.TurnNumber))
+                if (TryHandoffGroundCombatSupport(player, afterSnap, demand, leased, ctx.TurnNumber))
                     return true;
 
                 // Keep the partial recipient intact through this turn's Housekeeping. The residual
@@ -185,8 +186,8 @@ namespace Game.Ai.V2
                 StrategicCapabilityLeaseRegistry.Mark(
                     player, ctx.TurnNumber, demand.Capability, leased);
                 delivered = 0f;
-                AiDebugLog.Write($"[AI][V2][Raid] materialization partial support for "
-                    + $"{demand.ConsumerIntentKey}: no transfer-ready leased army; "
+                AiDebugLog.Write($"[AI][V2][{demand.ConsumerMissionKind}] materialization partial "
+                    + $"support for {demand.ConsumerIntentKey}: no transfer-ready leased army; "
                     + "demand remains open");
                 return false;
             }
@@ -201,22 +202,34 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool IsRaidReinforcementDemand(AxisDemand demand)
+        // ATK §41/§75 — a reinforcement demand of EITHER offensive ground-combat lane. Attack
+        // raises the identical FieldCombatPower/IndependentFieldArmy demand against an identical
+        // proof (its bound primary no longer clears a known defender package), so the delivery that
+        // answers it must bind the same way. Gating this on MissionKind.Raid meant Production built
+        // the army Attack asked for and then nobody ever handed it over.
+        private static bool IsGroundCombatReinforcementDemand(AxisDemand demand)
             => demand != null
                 && demand.RequestingAxis == DesireAxis.Aggression
                 && demand.Capability == CapabilityKind.FieldCombatPower
                 && demand.DeliveryShape == CapabilityDeliveryShape.IndependentFieldArmy
                 && demand.ConsumerIntentKey.HasValue
-                && demand.ConsumerMissionKind == MissionKind.Raid;
+                && (demand.ConsumerMissionKind == MissionKind.Raid
+                    || demand.ConsumerMissionKind == MissionKind.Attack);
 
-        // AGG-RAID §7 — bind an IndependentFieldArmy delivery to the exact RaidIntent that asked
-        // for it. Returns true when the support actor was handed to Continuity.
-        // AGG-RAID P1#1 — this is also the single point that stamps RaidIntent.
+        // AGG-RAID §7 / ATK §46 — bind an IndependentFieldArmy delivery to the exact offensive
+        // ground-combat intent that asked for it. Returns true when the support actor was handed to
+        // Continuity.
+        // AGG-RAID P1#1 — this is also the single point that stamps the intent's
         // ReinforcementRequestedTurn: the demand is "accepted/funded" exactly when a materialization
         // for its ConsumerIntentKey actually delivered a concrete support army, never merely when
         // AggressionDemandEvaluator.Build (a pure read) proposed it.
-        private static bool TryHandoffRaidSupport(PlayerSetupData player, WorldSnapshot afterSnap,
-            AxisDemand demand, IReadOnlyList<int> leased, int turnNumber)
+        // ATK §46 — Raid and Attack differ here in exactly two facts, which the small switch below
+        // resolves once: which primary is being reinforced, and which defender package (plus its
+        // site defence, §30) the admission is measured against. Everything after that — the one
+        // GroundCombatAssemblyPlanner admission, the leased-army intersection, the deterministic
+        // pick and the phase/turn stamping — is shared, not copied per lane.
+        private static bool TryHandoffGroundCombatSupport(PlayerSetupData player,
+            WorldSnapshot afterSnap, AxisDemand demand, IReadOnlyList<int> leased, int turnNumber)
         {
             if (player == null || demand == null
                 || demand.RequestingAxis != DesireAxis.Aggression
@@ -226,20 +239,37 @@ namespace Game.Ai.V2
 
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             if (!state.TryGet(demand.ConsumerIntentKey.Value, out MissionIntent intent)
-                || intent?.Raid == null)
+                || intent == null)
                 return false;
+
             RaidIntent ri = intent.Raid;
-            if (!ri.PrimaryArmyId.HasValue)
+            AttackIntent ai = intent.Attack;
+            int primaryId;
+            IReadOnlyList<WorthIt.DefenderProfile> defenders;
+            float hexBonus = 0f;
+            if (ri != null && ri.PrimaryArmyId.HasValue)
+            {
+                primaryId = ri.PrimaryArmyId.Value;
+                defenders = AiV2Util.KnownDefenders(afterSnap, ri.Target);
+            }
+            else if (ai != null && ai.PrimaryArmyId.HasValue && ai.Target.HasValue)
+            {
+                primaryId = ai.PrimaryArmyId.Value;
+                defenders = AttackObjectiveEvaluator.KnownSiteDefenders(afterSnap, ai.Target.Hex);
+                hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
+                    afterSnap, null, ai.Target.Hex);
+            }
+            else
+            {
                 return false;
-            int primaryId = ri.PrimaryArmyId.Value;
+            }
 
             // GroundCombatAssemblyPlanner is the single owner of reinforcement admission. Intersect
             // its transfer-ready candidates with the armies this materialization actually touched;
             // never weaken that contract back to the generic IsStructuralRaidActor shape.
             var admissible = new HashSet<int>(
                 GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    afterSnap, primaryId,
-                    AiV2Util.KnownDefenders(afterSnap, ri.Target), null));
+                    afterSnap, primaryId, defenders, null, hexBonus));
             int? support = leased
                 .Where(id => id != primaryId && admissible.Contains(id))
                 .OrderBy(id => id)
@@ -248,10 +278,19 @@ namespace Game.Ai.V2
             if (!support.HasValue)
                 return false;
 
-            ri.SupportArmyId = support;
-            ri.Phase = RaidMissionPhase.Reinforcement;
-            ri.ReinforcementRequestedTurn = turnNumber;
-            AiDebugLog.Write($"[AI][V2][Raid] materialization handoff {intent.IntentKey} "
+            if (ri != null)
+            {
+                ri.SupportArmyId = support;
+                ri.Phase = RaidMissionPhase.Reinforcement;
+                ri.ReinforcementRequestedTurn = turnNumber;
+            }
+            else
+            {
+                ai.SupportArmyId = support;
+                ai.Phase = AttackMissionPhase.Reinforcement;
+                ai.ReinforcementRequestedTurn = turnNumber;
+            }
+            AiDebugLog.Write($"[AI][V2][{intent.Kind}] materialization handoff {intent.IntentKey} "
                 + $"support=#{support.Value} primary=#{primaryId} phase=Reinforcement "
                 + "(Continuity owns the actor; no generic housekeeping lease)");
             return true;

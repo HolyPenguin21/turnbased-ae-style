@@ -84,6 +84,34 @@ namespace Game.EditorTests
                 Is.Empty);
         }
 
+        // ---- §62/§63 and §83 O — a base we LOST comes back as an ordinary Attack target ---
+
+        // No RecaptureMission exists and none should: once our own topology no longer contains the
+        // hex and our own honest memory has seen the new owner on it, the hex satisfies exactly the
+        // §19 hostile-structure test every other Attack candidate satisfies. This is the knowledge
+        // invariant the whole "lost base" chain rests on, so it is pinned here rather than assumed.
+        [Test]
+        public void Enumerate_OwnBaseLostAndReObserved_BecomesAnOrdinaryAttackTarget()
+        {
+            HexCoord lost = OurBase;
+
+            // Still ours: current truth wins over any memory record on the same hex.
+            Assert.That(AttackObjectiveEvaluator.Enumerate(
+                    Snap(new[] { B(lost, Us) }, new[] { lost })),
+                Is.Empty);
+
+            // Captured by Red and re-observed: out of Self.BaseHexes, remembered under Red.
+            List<AttackObjective> after = AttackObjectiveEvaluator.Enumerate(
+                Snap(new[] { B(lost, Red) }, Array.Empty<HexCoord>()));
+
+            Assert.That(after.Count, Is.EqualTo(1));
+            Assert.That(after[0].Target.Hex, Is.EqualTo(lost));
+            Assert.That(after[0].Target.ExpectedOwner, Is.EqualTo(Red));
+            Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
+                    Snap(new[] { B(lost, Red) }, Array.Empty<HexCoord>()), after[0].Target),
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Continue));
+        }
+
         // ---- §21/§72 identity ------------------------------------------------------------
 
         [Test]

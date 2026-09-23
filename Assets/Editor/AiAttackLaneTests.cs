@@ -361,7 +361,158 @@ namespace Game.EditorTests
                 Is.False, "only the bound primary is witnessed");
         }
 
+        // ---- ATK review P0-1 — the per-cycle provisioning key is per OPERATION ------------
+
+        // Every Attack proposal used to fall through StableMissionKey.For onto one fallback key.
+        // That single key is what PrepareGroundCombatAssignments maps actors by, what
+        // AlreadyProvisioned/_rejectedThisTurn/cooldowns are recorded against, and what
+        // ExcludedForGroundCombat compares to decide whether an assigned army is "ours" — so two
+        // objectives silently shared one slot.
+        [Test]
+        public void StableMissionKey_TwoAttackObjectives_AreTwoDistinctKeys()
+        {
+            StableMissionKey red = StableMissionKey.For(AttackProposal(
+                AttackMissionPhase.Assault, RedBase, Red, primaryId: 7));
+            StableMissionKey blue = StableMissionKey.For(AttackProposal(
+                AttackMissionPhase.Assault, new HexCoord(9, 0), Blue, primaryId: 8));
+
+            Assert.That(red, Is.Not.EqualTo(blue));
+            Assert.That(red.Kind, Is.EqualTo(MissionKind.Attack));
+            Assert.That(red, Is.EqualTo(StableMissionKey.For(AttackProposal(
+                    AttackMissionPhase.Assault, RedBase, Red, primaryId: 7))),
+                "the same operation must key identically across a re-pack");
+        }
+
+        [Test]
+        public void StableMissionKey_SameTargetUnderANewOwner_IsADifferentOperation()
+        {
+            Assert.That(
+                StableMissionKey.For(AttackProposal(AttackMissionPhase.Assault, RedBase, Red, 7)),
+                Is.Not.EqualTo(
+                    StableMissionKey.For(AttackProposal(AttackMissionPhase.Assault, RedBase, Blue, 7))),
+                "ownership is part of Attack identity, exactly as in MissionIntentKey.ForAttack");
+        }
+
+        [Test]
+        public void StableMissionKey_LegsOfOneOperation_DoNotCollide()
+        {
+            StableMissionKey assault = StableMissionKey.For(
+                AttackProposal(AttackMissionPhase.Assault, RedBase, Red, 7));
+            StableMissionKey reinforcement = StableMissionKey.For(
+                AttackProposal(AttackMissionPhase.Reinforcement, RedBase, Red, 7));
+            StableMissionKey recovery = StableMissionKey.For(
+                AttackProposal(AttackMissionPhase.RecoveryReturn, RedBase, Red, 7));
+
+            Assert.That(new HashSet<StableMissionKey> { assault, reinforcement, recovery }.Count,
+                Is.EqualTo(3));
+        }
+
+        // ---- ATK review P0-2 — the unpinned reinforcement leg -----------------------------
+
+        // The demand layer deliberately answers "an existing free army can solve this, materialise
+        // nothing". If the planner then also holds, nothing in the pipeline ever joins the two
+        // armies and the operation sits in Reinforcement forever. This leg is what the batch
+        // assignment and AttackProvisioner were already written to consume.
+        [Test]
+        public void AppendAttack_ReinforcementWithAFreeArmy_ProposesAnUnpinnedLeg()
+        {
+            WorldSnapshot snap = DefendedSite(
+                new[] { Army(7, EnRoute, Weak()), Army(9, EnRoute, Strong()) },
+                new[] { OurBase }, alsoOwnBuilding: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7);
+            var proposals = new List<MissionProposal>();
+
+            AggressionMissionLayer.AppendAttack(snap, new[] { intent },
+                new HashSet<int> { 7 }, proposals, null);
+
+            MissionProposal leg = proposals.Find(p => p.Target is AttackMissionTarget t
+                && t.Phase == AttackMissionPhase.Reinforcement);
+            Assert.That(leg, Is.Not.Null, "an existing free support must be proposed, not held");
+            var target = (AttackMissionTarget)leg.Target;
+            Assert.That(target.SupportArmyId, Is.Null,
+                "the actor is the batch solve's decision, never a private free-army pick");
+            Assert.That(target.PrimaryArmyId, Is.EqualTo(7));
+            Assert.That(GroundCombatAdmissionRegistry.TryGet(leg, out HashSet<int> eligible),
+                Is.True);
+            Assert.That(eligible, Does.Contain(9));
+        }
+
+        [Test]
+        public void AppendAttack_ReinforcementWithNoFreeArmy_HoldsForDemand()
+        {
+            WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Weak()) },
+                new[] { OurBase }, alsoOwnBuilding: true);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7);
+            var proposals = new List<MissionProposal>();
+
+            AggressionMissionLayer.AppendAttack(snap, new[] { intent },
+                new HashSet<int> { 7 }, proposals, null);
+
+            Assert.That(proposals.Exists(p => p.Target is AttackMissionTarget t
+                    && t.Phase == AttackMissionPhase.Reinforcement), Is.False,
+                "asking for a NEW capability is the Demand layer's decision, not the planner's");
+        }
+
+        // ---- ATK review P1-4 — ActiveDefence may borrow an Attack primary -----------------
+
+        [Test]
+        public void OffensiveAssaultOperation_CoversBothOffensiveLanes()
+        {
+            Assert.That(MissionContinuityLayer.TryOffensiveAssaultOperation(
+                    AttackIntent(AttackMissionPhase.Assault, 7), out int primary,
+                    out HexCoord hex), Is.True);
+            Assert.That(primary, Is.EqualTo(7));
+            Assert.That(hex, Is.EqualTo(RedBase), "the site is the operation's own hex");
+
+            Assert.That(MissionContinuityLayer.TryOffensiveAssaultOperation(
+                    AttackIntent(AttackMissionPhase.Reinforcement, 7), out _, out _), Is.False,
+                "a leg mid-handoff is not borrowable");
+            Assert.That(MissionContinuityLayer.TryOffensiveAssaultOperation(
+                    AttackIntent(AttackMissionPhase.RecoveryReturn, 7, recoveryBase: OurBase),
+                    out _, out _), Is.False,
+                "an army already walking home is not borrowable");
+        }
+
+        // ---- ATK review P2-5/P2-6 — Attack rides the Aggression lane/axis and pool --------
+
+        [Test]
+        public void AttackBelongsToTheAggressionLaneAndAxis()
+        {
+            MissionProposal attack = AttackProposal(AttackMissionPhase.Assault, RedBase, Red, 7);
+            var raid = new MissionProposal
+            {
+                Kind = MissionKind.Raid,
+                Target = new RaidMissionTarget { Phase = RaidMissionPhase.Assault },
+            };
+
+            Assert.That(MissionAdmissionPolicy.LaneFor(attack),
+                Is.EqualTo(MissionAdmissionPolicy.LaneFor(raid)));
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.Attack),
+                Is.EqualTo(DesireAxis.Aggression),
+                "there is deliberately no DesireAxis.Attack, and it is not Development either");
+            Assert.That(CapabilityPoolExhaustionRegistry.PoolFor(attack),
+                Is.EqualTo(CapabilityPoolExhaustionRegistry.PoolFor(raid)));
+        }
+
         // ---- helpers ---------------------------------------------------------------------
+
+        private static MissionProposal AttackProposal(AttackMissionPhase phase, HexCoord hex,
+            PlayerSetupData owner, int primaryId)
+        {
+            AttackTargetRef target = AttackTargetRef.For(hex, owner, AttackTargetKind.Base);
+            return new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                PreferredMoverArmyId = primaryId,
+                Target = new AttackMissionTarget
+                {
+                    Phase = phase,
+                    Target = target,
+                    PrimaryArmyId = primaryId,
+                    DestinationHex = phase == AttackMissionPhase.Assault ? hex : OurBase,
+                },
+            };
+        }
 
         private static WorthIt.DefenderProfile Body(float atk, float def, float hp, int init) =>
             new WorthIt.DefenderProfile(def, false, null, atk, hp, init, null, hp);

@@ -38,7 +38,7 @@ namespace Game.Ai.V2
                         AppendAttackWalkHome(snap, intent, a, AttackMissionPhase.SupportReturn,
                             a.SupportArmyId, a.SupportReturnHex, proposals);
                     else if (a.Phase == AttackMissionPhase.Reinforcement)
-                        AppendAttackReinforcement(snap, intent, a, committed, proposals);
+                        AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx);
                 }
 
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
@@ -219,7 +219,7 @@ namespace Game.Ai.V2
         // proposes nothing and holds: asking for a NEW capability is the Demand layer's decision,
         // never the mission planner's (exactly the rule the Raid lane already follows).
         private static void AppendAttackReinforcement(WorldSnapshot snap, MissionIntent intent,
-            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals)
+            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return;
@@ -230,9 +230,14 @@ namespace Game.Ai.V2
 
             if (!a.SupportArmyId.HasValue)
             {
-                AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
-                    $"[AI][V2][Attack] decision=HOLD {intent.IntentKey}: primary #{a.PrimaryArmyId} "
-                    + "waits; no support army assigned yet (Aggression demand owns the request)");
+                // §46 — an EXISTING free army is an actor-contention decision, not a capability
+                // request: it belongs in the SAME batch solve the assault legs run through, exactly
+                // as the Raid lane's unpinned reinforcement leg already does. Without this leg the
+                // operation sat in Reinforcement forever — the demand layer correctly answered
+                // "an existing free army can solve this, materialise nothing", and nothing ever
+                // proposed the join. Only when no free army exists at all does the planner hold and
+                // let Aggression demand ask Production for one.
+                AppendAttackUnpinnedReinforcement(snap, intent, a, primary, committed, proposals, ctx);
                 return;
             }
 
@@ -274,6 +279,81 @@ namespace Game.Ai.V2
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1f;
             proposals.Add(proposal);
+        }
+
+        // §46 — the UNPINNED reinforcement leg: "some existing free army should join this primary",
+        // with the actor left to the one batch solve (PrepareGroundCombatAssignments) exactly as the
+        // Raid lane leaves it. Nothing is picked here; the eligible set is published through the one
+        // admission registry, and the AP envelope is priced off the candidate that same solve
+        // prefers first (cheapest activation, then weakest, then lowest id) so funding matches the
+        // actor it is most likely to bind.
+        private static void AppendAttackUnpinnedReinforcement(WorldSnapshot snap,
+            MissionIntent intent, AttackIntent a, ArmySnapshot primary, ISet<int> committed,
+            List<MissionProposal> proposals, AiTurnContext ctx)
+        {
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
+            List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
+                snap, a.PrimaryArmyId.Value, defenders, committed, hexBonus);
+            if (candidates.Count == 0)
+            {
+                AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                    $"[AI][V2][Attack] decision=HOLD {intent.IntentKey}: primary #{a.PrimaryArmyId} "
+                    + "waits; no existing free army improves the assault (Aggression demand owns "
+                    + "the request for a new one)");
+                return;
+            }
+
+            ArmySnapshot priced = snap.Self.Armies?
+                .Where(x => x != null && candidates.Contains(x.ArmyId))
+                .OrderBy(x => x.HasActivatedThisTurn ? 0 : x.ActivationApCost)
+                .ThenBy(x => x.EffectiveArmyPower)
+                .ThenBy(x => x.ArmyId)
+                .FirstOrDefault();
+            float ap = priced != null && !priced.HasActivatedThisTurn ? priced.ActivationApCost : 0f;
+            int distance = priced == null ? 0 : HexGridMath.Distance(priced.Hex, primary.Hex);
+            int eta = priced == null ? 1
+                : AiV2Util.CeilDiv(distance, Mathf.Max(1, priced.MaxMovement));
+
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.Reinforcement,
+                Target = a.Target,
+                PrimaryArmyId = a.PrimaryArmyId,
+                SupportArmyId = null,
+                DestinationHex = primary.Hex,
+                DefenderHexDefenseBonus = hexBonus,
+                DefenderCount = defenders.Count,
+                EstimatedEta = eta,
+                OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = 0f,
+                LocalAdmissionScore = 0f,
+                PreferredMoverArmyId = priced?.ArmyId,
+                FromDurableIntent = true,
+                DurableFundingTier = intent.Funding,
+                Requirements = new MissionRequirements
+                {
+                    MoverKnown = priced != null, RequiresArmy = true,
+                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
+                    EtaTurns = Mathf.Max(1, eta), EstimatedDistance = distance,
+                },
+                Explain = $"Attack {a.Target.DiagnosticLabel} Reinforcement: select an existing free "
+                    + $"support for primary #{a.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R}); "
+                    + $"{candidates.Count} candidate(s); Hard funding protection is allocator-owned",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);
+            proposals.Add(proposal);
+            AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                $"[AI][V2][Attack][Admission] decision=REINFORCE-SELECT {intent.IntentKey} "
+                + $"primary={a.PrimaryArmyId} candidates={candidates.Count} "
+                + $"eligible=[{GroundCombatAdmissionRegistry.EligibleIds(proposal)}]");
         }
     }
 }

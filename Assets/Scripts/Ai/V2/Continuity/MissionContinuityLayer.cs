@@ -2619,6 +2619,41 @@ namespace Game.Ai.V2
             && ((i.Kind == MissionKind.Raid && i.Raid != null)
                 || (i.Kind == MissionKind.Attack && i.Attack != null));
 
+        // ATK §49/§73 — the ONE answer to "this offensive operation is marching on its objective
+        // right now, with actor X, toward hex Y". ActiveDefence's preemption arithmetic (how far
+        // off its route would borrowing this army drag it) needs exactly those two facts and must
+        // not care which lane owns them: a Raid's own target hex and an Attack's Base/Citadel hex
+        // are the same kind of fact. A leg that is reinforcing, returning or recovering is NOT
+        // borrowable here — its actor is already mid-handoff or walking home.
+        internal static bool TryOffensiveAssaultOperation(MissionIntent i, out int primaryArmyId,
+            out HexCoord operationHex)
+        {
+            primaryArmyId = 0;
+            operationHex = default;
+            if (i == null || i.Status != IntentStatus.Active)
+                return false;
+            RaidIntent raid = i.Raid;
+            if (raid != null)
+            {
+                if (raid.Phase != RaidMissionPhase.Assault || !raid.PrimaryArmyId.HasValue)
+                    return false;
+                primaryArmyId = raid.PrimaryArmyId.Value;
+                operationHex = raid.LastKnownHex;
+                return true;
+            }
+            AttackIntent attack = i.Attack;
+            if (attack != null)
+            {
+                if (attack.Phase != AttackMissionPhase.Assault || !attack.PrimaryArmyId.HasValue
+                    || !attack.Target.HasValue)
+                    return false;
+                primaryArmyId = attack.PrimaryArmyId.Value;
+                operationHex = attack.Target.Hex;
+                return true;
+            }
+            return false;
+        }
+
         private static void CreateActiveDefenceIntent(MissionIntentState state,
             MissionTurnOutcome o, int turn)
         {

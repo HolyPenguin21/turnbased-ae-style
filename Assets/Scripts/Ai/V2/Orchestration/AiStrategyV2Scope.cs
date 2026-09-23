@@ -92,8 +92,12 @@ namespace Game.Ai.V2
             switch (kind)
             {
                 case MissionKind.Scout: return DesireAxis.Recon;
+                // ATK §2/§22 — Attack shares the Aggression axis with Raid and ActiveDefence.
+                // Left to the default it read as Development, so a focus-scoped run admitted the
+                // Attack lane with the wrong axis.
                 case MissionKind.Raid:
-                case MissionKind.ActiveDefence: return DesireAxis.Aggression;
+                case MissionKind.ActiveDefence:
+                case MissionKind.Attack: return DesireAxis.Aggression;
                 case MissionKind.Economy: return DesireAxis.Economy;
                 default: return DesireAxis.Development;
             }

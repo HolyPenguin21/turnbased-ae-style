@@ -75,7 +75,22 @@ namespace Game.Ai.V2
                 snap, null).ClaimedArmyIdSet;
             var fresh = new List<RaidCandidate>();
             foreach (AggressionObjective o in objectives)
+            {
+                // ATK §50/§51 — a target standing on a known hostile Base/Citadel belongs to that
+                // structure's defender package, which only the Attack lane may take on. The same
+                // DEFER the ActiveDefence lane already issues for this exact situation. Without it
+                // the raid kept being proposed and kept being refused at the movement-authority
+                // gate (its terminal step is Combat, never CombatAndCapture), one stalled step per
+                // turn, instead of the Attack owner picking the site up.
+                if (RaidTargetSitsOnHostileStructure(snap, o))
+                {
+                    AiDebugLog.WriteDeduped(o.Target.DiagnosticLabel,
+                        $"[AI][V2][Raid][Admission] decision=DEFER target={o.Target.DiagnosticLabel} "
+                        + "reason=target_on_known_foreign_structure attack_owner_required");
+                    continue;
+                }
                 fresh.Add(ToCandidate(snap, o, breakdown, unavailableArmyIds: committed));
+            }
 
             var incumbents = new List<RaidCandidate>();
             if (activeIntents != null)
@@ -304,23 +319,29 @@ namespace Game.Ai.V2
                         ExcludedArmyIds = excluded,
                     });
                 float moverOpportunityCost = 0f;
-                MissionIntent borrowedRaid = null;
+                MissionIntent borrowedOffensive = null;
                 if (!plan.Feasible && incumbent == null && ctx?.Map != null && activeIntents != null)
                 {
-                    foreach (MissionIntent raidIntent in activeIntents.Where(i => i != null
-                        && i.Status == IntentStatus.Active && i.Kind == MissionKind.Raid
-                        && i.Raid != null && i.Raid.Phase == RaidMissionPhase.Assault
-                        && i.Raid.PrimaryArmyId.HasValue))
+                    // ATK §49/§73 — EVERY offensive ground-combat operation currently marching on
+                    // its objective is a preemption candidate, not Raid alone. The suspend/resume
+                    // machinery below and in Continuity was already lane-neutral
+                    // (SuspendedOffensiveIntentKey); this enumeration was the last Raid-only link,
+                    // which meant an urgent threat could never borrow an Attack primary however
+                    // close it stood.
+                    foreach (MissionIntent offensiveIntent in activeIntents)
                     {
+                        if (!MissionContinuityLayer.TryOffensiveAssaultOperation(offensiveIntent,
+                                out int offensivePrimaryId, out HexCoord offensiveHex))
+                            continue;
                         ArmySnapshot candidate = snap.Self.Armies.FirstOrDefault(a => a != null
-                            && a.ArmyId == raidIntent.Raid.PrimaryArmyId.Value);
+                            && a.ArmyId == offensivePrimaryId);
                         if (candidate == null) continue;
                         int direct = SafeStepPathing.FindSafePathCost(ctx.Map, candidate.Owner,
-                            candidate.Hex, raidIntent.Raid.LastKnownHex, candidate.MaxMovement);
+                            candidate.Hex, offensiveHex, candidate.MaxMovement);
                         int first = SafeStepPathing.FindSafePathCost(ctx.Map, candidate.Owner,
                             candidate.Hex, objective.Target.LastKnownHex, candidate.MaxMovement);
                         int second = SafeStepPathing.FindSafePathCost(ctx.Map, candidate.Owner,
-                            objective.Target.LastKnownHex, raidIntent.Raid.LastKnownHex,
+                            objective.Target.LastKnownHex, offensiveHex,
                             candidate.MaxMovement);
                         if (direct == int.MaxValue || first == int.MaxValue || second == int.MaxValue)
                             continue;
@@ -342,7 +363,7 @@ namespace Game.Ai.V2
                         if (!borrowed.Feasible) continue;
                         plan = borrowed;
                         excluded = borrowExcluded;
-                        borrowedRaid = raidIntent;
+                        borrowedOffensive = offensiveIntent;
                         moverOpportunityCost = UnityEngine.Mathf.Max(0, detour)
                             * candidate.ActivationApCost
                             * AiConfigV2.taskScoreReactivationApWeight;
@@ -393,7 +414,7 @@ namespace Game.Ai.V2
                 target.ProjectedWinChance = plan.ProjectedWinChance;
                 target.CoversAllDefenders = plan.CoversAllDefenders;
                 target.EstimatedEta = eta;
-                target.SuspendedOffensiveIntentKey = borrowedRaid?.IntentKey;
+                target.SuspendedOffensiveIntentKey = borrowedOffensive?.IntentKey;
                 target.ReturnHex = actor.ReachableOwnBaseHexes?
                     .OrderBy(h => HexGridMath.Distance(actor.Hex, h))
                     .ThenBy(h => h.Q).ThenBy(h => h.R)
@@ -746,6 +767,23 @@ namespace Game.Ai.V2
                 && !c.Target.SupportArmyId.HasValue)
                 GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);
             return proposal;
+        }
+
+        // §50/§51 — honest knowledge only, through the one hostile-structure predicate the Attack
+        // objective evaluator owns. A NEUTRAL structure (the ordinary guarded-event or neutral-base
+        // raid) is deliberately not covered: taking that over after the fight is existing, intended
+        // gameplay and stays exactly as it was.
+        private static bool RaidTargetSitsOnHostileStructure(WorldSnapshot snap, AggressionObjective o)
+        {
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
+            if (buildings == null || o == null)
+                return false;
+            HexCoord hex = o.LastKnownHex;
+            for (int i = 0; i < buildings.Count; i++)
+                if (buildings[i].Hex.Equals(hex)
+                    && AttackObjectiveEvaluator.IsHostileStrategicStructure(buildings[i], snap.Observer))
+                    return true;
+            return false;
         }
 
         private static string F(float v) => v.ToString("0.00", CultureInfo.InvariantCulture);

@@ -26,8 +26,10 @@ namespace Game.Ai.V2
             switch (mission.Kind)
             {
                 case MissionKind.Scout: return ExecutionLane.Recon;
+                // ATK §22 — Attack is a third Aggression-lane mission, not a lane of its own.
                 case MissionKind.Raid:
-                case MissionKind.ActiveDefence: return ExecutionLane.Aggression;
+                case MissionKind.ActiveDefence:
+                case MissionKind.Attack: return ExecutionLane.Aggression;
                 case MissionKind.Economy: return ExecutionLane.Economy;
                 case MissionKind.Development: return ExecutionLane.Development;
                 default: return ExecutionLane.None;

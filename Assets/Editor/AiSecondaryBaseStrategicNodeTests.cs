@@ -638,6 +638,43 @@ namespace Game.EditorTests
             }
         }
 
+        // ATK §59 / §83 L — a base we just captured is an ordinary secondary Base to Housekeeping.
+        // Attack releases its claim and touches no roster; the garrison floor the shared analyzer
+        // applies must therefore be the secondary-base one, decided purely by "is this the
+        // citadel hex", with no Attack-specific code anywhere in the path.
+        [Test]
+        public void CapturedSecondaryBase_StabilizesOnTheBaseFloorNotTheCitadelFloor()
+        {
+            var owner = new PlayerSetupData { CitadelHexQ = 0, CitadelHexR = 0 };
+            HexCoord citadelHex = new HexCoord(0, 0);
+            HexCoord capturedHex = new HexCoord(4, 0);
+            try
+            {
+                ArmyRegistry.Clear();
+                var citadelGarrison = new ArmyData
+                    { Owner = owner, Hex = citadelHex, IsGarrison = true };
+                var capturedGarrison = new ArmyData
+                    { Owner = owner, Hex = capturedHex, IsGarrison = true };
+                ArmyRegistry.Register(citadelGarrison);
+                ArmyRegistry.Register(capturedGarrison);
+
+                ArmyReorgAnalysis analysis = ArmyReorgAnalyzer.Analyze(
+                    owner, new ActorCommitments(), new WorldSnapshot(), new AiTurnContext());
+
+                int FloorAt(HexCoord hex) => analysis.Groups
+                    .First(g => g.Q == hex.Q && g.R == hex.R)
+                    .Garrison
+                    .GarrisonNonHeroFloor;
+
+                Assert.That(FloorAt(capturedHex), Is.EqualTo(AiConfig.secureBaseMinNonHeroUnits));
+                Assert.That(FloorAt(citadelHex), Is.EqualTo(AiConfig.secureCitadelMinNonHeroUnits));
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+            }
+        }
+
         private static UnitData Aircraft(PlayerSetupData owner, int move = 3) => new UnitData
         {
             Owner = owner, IsAviation = true, MoveMax = move, MoveCurrent = move,

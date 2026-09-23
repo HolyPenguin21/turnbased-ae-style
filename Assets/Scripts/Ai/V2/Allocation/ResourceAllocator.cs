@@ -135,6 +135,33 @@ namespace Game.Ai.V2
                 rt.DestinationHex.Q, rt.DestinationHex.R);
         }
 
+        // ATK §22/§44 — the Attack lane's own key shape, in the SAME place and the same encoding
+        // every other lane's lives. Identity is (phase, owner-of-the-target, hex) for the assault —
+        // exactly the AttackTargetRef identity MissionIntentKey.ForAttack uses, so the durable
+        // intent and the per-cycle provisioning key can never disagree about which operation this
+        // is — and (phase, leg actor, destination) for the three lifecycle legs, mirroring ForRaid.
+        // Without this, every Attack proposal collapsed onto the fallback key below: two objectives
+        // shared one batch-assignment slot, one AlreadyProvisioned/rejected/cooldown entry spoke
+        // for the whole lane, and ExcludedForGroundCombat read another operation's actor as its own.
+        public static StableMissionKey ForAttack(AttackMissionTarget at)
+        {
+            switch (at.Phase)
+            {
+                case AttackMissionPhase.Reinforcement:
+                    return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Reinforcement,
+                        at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
+                case AttackMissionPhase.SupportReturn:
+                    return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.SupportReturn,
+                        at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
+                case AttackMissionPhase.RecoveryReturn:
+                    return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.RecoveryReturn,
+                        at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
+                default:
+                    return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Assault,
+                        at.Target.ExpectedOwnerId, at.Target.Hex.Q, at.Target.Hex.R);
+            }
+        }
+
         public static StableMissionKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
@@ -144,6 +171,8 @@ namespace Game.Ai.V2
             }
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)
                 return ForRaid(rt);
+            if (m != null && m.Kind == MissionKind.Attack && m.Target is AttackMissionTarget at)
+                return ForAttack(at);
             if (m != null && m.Kind == MissionKind.ActiveDefence
                 && m.Target is ActiveDefenceMissionTarget ad)
                 return new StableMissionKey(MissionKind.ActiveDefence, (int)ad.Phase,
@@ -189,6 +218,10 @@ namespace Game.Ai.V2
                     ? (SubKind == (int)RaidMissionPhase.Assault
                         ? (TargetKind == RaidTargetKind.EventGuard ? $"Raid(Guard@{Q},{R})" : $"Raid(#{TargetId})")
                         : $"Raid({(RaidMissionPhase)SubKind} #{TargetId} {Q},{R})")
+                    : Kind == MissionKind.Attack
+                        ? (SubKind == (int)AttackMissionPhase.Assault
+                            ? $"Attack(Base@{Q},{R}#P{TargetId})"
+                            : $"Attack({(AttackMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.ActiveDefence
                         ? $"ActiveDefence({(ActiveDefencePhase)SubKind} #{TargetId})"
                     : Kind == MissionKind.Economy

@@ -186,7 +186,8 @@ namespace Game.Ai.V2
             if (mission.Kind == MissionKind.Scout && mission.Target is ScoutMissionTarget st)
                 return st.Stealth == StealthRequirement.Required || st.DetectionRisk > 0f
                     ? CapabilityPoolKind.StealthScout : CapabilityPoolKind.Scout;
-            if (mission.Kind == MissionKind.Raid)
+            // ATK §41 — an Attack draws on exactly the same field-combat pool a Raid does.
+            if (mission.Kind == MissionKind.Raid || mission.Kind == MissionKind.Attack)
                 return CapabilityPoolKind.FieldCombat;
             if (mission.Kind == MissionKind.Economy)
                 return CapabilityPoolKind.EconomyHeroBuilder;
@@ -217,10 +218,11 @@ namespace Game.Ai.V2
                     return !ReconAssignmentPlanner.HasEligibleMover(snap, target);
 
                 case MissionKind.Raid:
+                case MissionKind.Attack:
                 {
                     CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
-                    // No unclaimed ready field power AND no free hero anywhere -> the raid pool
-                    // itself is empty this cycle, not merely contended.
+                    // No unclaimed ready field power AND no free hero anywhere -> the ground-combat
+                    // pool itself is empty this cycle, not merely contended.
                     return inv.RaidAvailableFieldPower <= AiConfigV2.allocatorSliceEpsilon
                         && inv.AvailableHeroes <= 0;
                 }

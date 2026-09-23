@@ -137,16 +137,43 @@ namespace Game.Ai.V2
         // improves the primary's WorthIt win chance, so PrepareGroundCombatAssignments can run the
         // same actor-contention batch solve it already runs for Assault instead of leaving the leg
         // permanently unassignable until a materialization happens to hand it an actor.
+        //
+        // ATK §45/§46 — Attack's unpinned Reinforcement leg asks the identical question, so it goes
+        // through this same entry point: the dispatch below only decides WHICH primary is being
+        // reinforced and against WHICH defender package (and, for a structure assault, what defence
+        // that site gives them, §30). There is deliberately no RecordAttackReinforcement twin.
         public static void RecordReinforcement(MissionProposal proposal, WorldSnapshot snap)
         {
-            if (proposal == null || snap == null || !(proposal.Target is RaidMissionTarget target)
-                || target.Phase != RaidMissionPhase.Reinforcement || target.SupportArmyId.HasValue
-                || !target.PrimaryArmyId.HasValue)
+            if (proposal == null || snap == null)
                 return;
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, target.Target);
+            int primaryArmyId;
+            IReadOnlyList<WorthIt.DefenderProfile> defenders;
+            float hexBonus = 0f;
+            if (proposal.Target is RaidMissionTarget raid)
+            {
+                if (raid.Phase != RaidMissionPhase.Reinforcement || raid.SupportArmyId.HasValue
+                    || !raid.PrimaryArmyId.HasValue)
+                    return;
+                primaryArmyId = raid.PrimaryArmyId.Value;
+                defenders = AiV2Util.KnownDefenders(snap, raid.Target);
+            }
+            else if (proposal.Target is AttackMissionTarget attack)
+            {
+                if (attack.Phase != AttackMissionPhase.Reinforcement || attack.SupportArmyId.HasValue
+                    || !attack.PrimaryArmyId.HasValue)
+                    return;
+                primaryArmyId = attack.PrimaryArmyId.Value;
+                defenders = AttackObjectiveEvaluator.KnownSiteDefenders(snap, attack.Target.Hex);
+                hexBonus = attack.DefenderHexDefenseBonus;
+            }
+            else
+            {
+                return;
+            }
+
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, target.PrimaryArmyId.Value, defenders, null);
+                snap, primaryArmyId, defenders, null, hexBonus);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
