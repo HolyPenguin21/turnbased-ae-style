@@ -35,6 +35,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public sealed class WorldSnapshot
     {
+        // Explicit observer identity for every player-scoped cache/read. Never reconstruct this
+        // from army contents or citadel coordinates: an empty/army-less snapshot is still owned
+        // by exactly one player.
+        public PlayerSetupData Observer;
         public int TurnNumber;
         // Revision of the authoritative per-player knowledge memory captured by this immutable
         // snapshot. AiMapMemory already owns and bumps this player-scoped signal when visibility,
