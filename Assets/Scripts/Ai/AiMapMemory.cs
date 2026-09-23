@@ -353,17 +353,28 @@ namespace Game.Ai
         // itself.
         private static int _currentTurn;
 
-        // Bumped on every write that could change what SafeStepPathing's SafeRouteBlocker
-        // returns for ANY hex/owner — a known enemy/neutral sighting appearing, moving or
-        // expiring (EnemySightings), or a scout-danger zone being marked/pruned
-        // (ScoutDangerZones). SafeStepPathing's route cache compares its own last-seen value of
-        // this against RouteMemoryVersion before trusting a cached path, so a route computed
-        // before a relevant memory change is never handed out after it. Deliberately coarse (one
-        // counter for all players/hexes, and OnVisibilityChanged bumps it even when only
-        // KnownResourceHexes/KnownBuildings/KnownEventGuards actually changed) — correctness over
-        // precision, since this is just an int compare, not a new lookup structure.
-        private static int _routeMemoryVersion;
-        public static int RouteMemoryVersion => _routeMemoryVersion;
+        // Player-scoped revision of exactly the memory that can change SafeStepPathing blockers.
+        // One player's observation must never invalidate another player's route cache. The high
+        // 32 bits are a global Clear() epoch; the low 32 bits are this player's own revision, so
+        // clearing a reused session invalidates every old cache without sharing normal writes.
+        private static long _routeMemoryEpoch;
+        private static readonly Dictionary<PlayerSetupData, uint> RouteMemoryVersions =
+            new Dictionary<PlayerSetupData, uint>();
+
+        public static long RouteMemoryVersionFor(PlayerSetupData player)
+        {
+            uint local = player != null && RouteMemoryVersions.TryGetValue(player, out uint version)
+                ? version : 0u;
+            return (_routeMemoryEpoch << 32) | local;
+        }
+
+        private static void BumpRouteMemoryVersion(PlayerSetupData player)
+        {
+            if (player == null)
+                return;
+            uint current = RouteMemoryVersions.TryGetValue(player, out uint version) ? version : 0u;
+            RouteMemoryVersions[player] = current + 1u;
+        }
 
         // Snapshot invalidation is player-scoped: another player's observation must not force this
         // AI to rebuild Known/MapKnowledge. This is only a revision of the memory already owned
@@ -430,9 +441,10 @@ namespace Game.Ai
             AirReconTargets.Clear();
             RaidPlanRejected.Clear();
             KnowledgeVersions.Clear();
+            RouteMemoryVersions.Clear();
             _currentTurn = 0;
             _map = null;
-            _routeMemoryVersion++;
+            _routeMemoryEpoch++;
         }
 
         // The memory layer classifies ownerless physical encounter armies with explicit neutrals;
@@ -484,7 +496,7 @@ namespace Game.Ai
                             + $"{AiConfig.enemySightingMemoryTurns} turns.");
                         sightings.Remove(armyId);
                     }
-                    _routeMemoryVersion++;
+                    BumpRouteMemoryVersion(actor);
                     BumpKnowledgeVersion(actor);
                 }
             }
@@ -492,7 +504,7 @@ namespace Game.Ai
             if (ScoutDangerZones.TryGetValue(actor, out List<ScoutDangerZone> zones)
                 && zones.RemoveAll(z => turnNumber > z.AvoidUntilTurn) > 0)
             {
-                _routeMemoryVersion++;
+                BumpRouteMemoryVersion(actor);
                 BumpKnowledgeVersion(actor);
             }
         }
@@ -518,12 +530,12 @@ namespace Game.Ai
                 existing.Radius = radius;
                 if (avoidUntilTurn > existing.AvoidUntilTurn)
                     existing.AvoidUntilTurn = avoidUntilTurn;
-                _routeMemoryVersion++;
+                BumpRouteMemoryVersion(actor);
                 BumpKnowledgeVersion(actor);
                 return;
             }
             zones.Add(new ScoutDangerZone { Center = center, Radius = radius, AvoidUntilTurn = avoidUntilTurn });
-            _routeMemoryVersion++;
+            BumpRouteMemoryVersion(actor);
             BumpKnowledgeVersion(actor);
         }
 
@@ -812,13 +824,11 @@ namespace Game.Ai
             }
             // KnowledgeVersion (WorldAnalysis's own snapshot-refresh gate) stays coarse on
             // purpose — resource/building/event observations matter to it even when nothing
-            // route-relevant changed. RouteMemoryVersion (SafeStepPathing's blocker-snapshot
-            // gate) only bumps when this call actually wrote or removed a sighting: it used to
-            // bump unconditionally here too, which forced an O(map size) blocker rebuild on
-            // nearly every pathing call regardless of whether hostiles/danger zones changed.
+            // route-relevant changed. The player-scoped route revision only bumps when this
+            // observer's own blocker memory actually changed.
             BumpKnowledgeVersion(player);
             if (sightingsChanged || buildingsChanged)
-                _routeMemoryVersion++;
+                BumpRouteMemoryVersion(player);
         }
 
         // The event's own guard just got beaten for real (reward claimed) — a genuine world-state
@@ -837,7 +847,7 @@ namespace Game.Ai
             foreach (KeyValuePair<PlayerSetupData, Dictionary<HexCoord, GuardStrength>> kv in KnownEventGuards)
                 if (VisionSystem.IsVisible(kv.Key, hex) && kv.Value.Remove(hex))
                 {
-                    _routeMemoryVersion++;
+                    BumpRouteMemoryVersion(kv.Key);
                     BumpKnowledgeVersion(kv.Key);
                 }
         }
