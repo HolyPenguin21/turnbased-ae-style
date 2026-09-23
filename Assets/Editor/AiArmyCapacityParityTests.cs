@@ -1,5 +1,6 @@
 #if UNITY_INCLUDE_TESTS
 using System;
+using System.Linq;
 using System.Reflection;
 using Game.Ai;
 using Game.Ai.V2;
