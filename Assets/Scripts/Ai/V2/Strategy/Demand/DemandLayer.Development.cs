@@ -129,11 +129,7 @@ namespace Game.Ai.V2
             if (op.RecipientKind == DevRecipientKind.HandCard)
                 return hasReconDemand && ImprovesReconCapability(op);
 
-            if (op.RecipientUnit == null || player == null)
-                return false;
-            ArmyData army = ArmyRegistry.AllForOwner(player)
-                .FirstOrDefault(a => a?.Members != null && a.Members.Contains(op.RecipientUnit));
-            if (army == null)
+            if (!TryResolveRecipientArmy(op, player, out ArmyData army))
                 return false;
 
             // AI-03 — membership in an economic task is NECESSARY but NOT SUFFICIENT. Previously
@@ -471,17 +467,29 @@ namespace Game.Ai.V2
                 return reconDemand != null
                     ? DemandUrgencyPolicy.NormalizedWorldValue(reconDemand.Value) : 1f;
             }
-            if (op.RecipientUnit == null || player == null)
-                return 0f;
-            ArmyData army = ArmyRegistry.AllForOwner(player)
-                .FirstOrDefault(a => a?.Members != null && a.Members.Contains(op.RecipientUnit));
-            if (army == null)
+            if (!TryResolveRecipientArmy(op, player, out ArmyData army))
                 return 0f;
             AxisDemand economyDemand = formedDemands?.FirstOrDefault(d => d != null
                 && d.RequestingAxis == DesireAxis.Economy
                 && d.EconomyPreferredBuilderArmyId == army.Id);
             return economyDemand != null
                 ? DemandUrgencyPolicy.NormalizedWorldValue(economyDemand.Value) : 1f;
+        }
+
+        // One resolver for the live execution recipient. DevelopmentOpportunity captures the
+        // stable army id when the recipient is selected; downstream demand checks revalidate that
+        // exact identity rather than rediscovering ownership by scanning for UnitData membership.
+        private static bool TryResolveRecipientArmy(DevelopmentOpportunity op,
+            PlayerSetupData player, out ArmyData army)
+        {
+            army = null;
+            if (op?.RecipientUnit == null || player == null || !op.RecipientArmyId.HasValue)
+                return false;
+            int armyId = op.RecipientArmyId.Value;
+            army = ArmyRegistry.AllForOwner(player)
+                .FirstOrDefault(a => a != null && a.Id == armyId
+                    && a.Members.Contains(op.RecipientUnit));
+            return army != null;
         }
 
         // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability
