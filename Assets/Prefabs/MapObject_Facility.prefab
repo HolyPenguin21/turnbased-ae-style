@@ -48,7 +48,9 @@ MonoBehaviour:
   innerCircle: {fileID: 0}
   objectImage: {fileID: 100022}
   factionAccent: {fileID: 9057904098540088780}
-  auxiliaryRenderers: []
+  auxiliaryRenderers:
+  - {fileID: 1619999690649994478}
+  - {fileID: 534231579699829968}
   tintInnerCircle: 1
   clearFactionAccentOnSetIcon: 0
   layeredIconTrigger: {fileID: 0}

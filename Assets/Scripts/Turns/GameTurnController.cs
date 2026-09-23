@@ -516,6 +516,15 @@ namespace Game.Turns
             if (_gameOver)
                 return;
 
+            // BeginPlayerTurn's own ShowForOther(null) ("Current turn: Neutral") is still up
+            // from Neutral's pass and has no Confirm button to dismiss it — left showing, it
+            // sits on top of (or blocks input behind) whatever ResolveDelayedBattlesThen is
+            // about to show for a drained battle, hanging the game on a popup nothing can
+            // click through. ProceedWithNewTurn hides it too, but that only runs once every
+            // delayed battle has already drained, which is too late for this.
+            if (popupPanel != null)
+                popupPanel.Hide();
+
             StartCoroutine(ResolveDelayedBattlesThen(ProceedWithNewTurn));
         }
 
