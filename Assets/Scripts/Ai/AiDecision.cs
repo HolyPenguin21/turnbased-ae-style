@@ -46,6 +46,16 @@ namespace Game.Ai
         Pass,
     }
 
+    // Typed authorization for the side effects a ground move is deliberately allowed to seek.
+    // This is AI intent only: the gameplay movement owner still resolves surprise contacts found
+    // after entering fog exactly as the normal game does. Never infer this from Reason text.
+    public enum AiGroundMoveAuthority
+    {
+        Transit,
+        Combat,
+        CombatAndCapture,
+    }
+
     public class AiDecision
     {
         public AiActionKind Kind;
@@ -75,10 +85,17 @@ namespace Game.Ai
         // automatic preparation unless they explicitly opt out.
         public bool AllowAutomaticStealth = true;
 
+        // Transit is deliberately the safe default: a caller must opt into deliberate combat or
+        // an undefended-structure takeover. Air movement ignores this ground-only authorization.
+        public AiGroundMoveAuthority GroundMoveAuthority = AiGroundMoveAuthority.Transit;
+        public bool AllowsGroundCombat => GroundMoveAuthority != AiGroundMoveAuthority.Transit;
+        public bool AllowsStructureTakeover => GroundMoveAuthority == AiGroundMoveAuthority.CombatAndCapture;
 
-        public static AiDecision Move(ArmyData army, HexCoord hex, string reason, float score) => new AiDecision
+        public static AiDecision Move(ArmyData army, HexCoord hex, string reason, float score,
+            AiGroundMoveAuthority groundMoveAuthority = AiGroundMoveAuthority.Transit) => new AiDecision
         {
             Kind = AiActionKind.MoveArmy, ExistingArmy = army, TargetHex = hex, Reason = reason, Score = score,
+            GroundMoveAuthority = groundMoveAuthority,
         };
     }
 }

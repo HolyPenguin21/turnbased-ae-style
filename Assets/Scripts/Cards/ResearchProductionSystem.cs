@@ -178,12 +178,55 @@ namespace Game.Cards
                 && root.CanSpendActionPoints(AttemptApCost(card))
                 && (card.resourceCost == null || card.resourceCost.CanAfford(root));
 
-        // AP and resources are spent immediately before the Challenge and NEVER refunded on a
-        // loss: the attempt itself consumed them regardless of its result.
-        public static void PayCardCost(PlayerRoot root, CardDefinition card)
+        // Single irreversible attempt-start transaction shared by the human animated Challenge
+        // and AI headless Challenge. Every condition that can reject an attempt is checked before
+        // reveal/payment; after true is returned the AP/resources are intentionally spent even if
+        // the subsequent Challenge loses. Human Research may already have revealed the hero when
+        // its modal opened; ApplyResearchReveal is idempotent, so the same transaction is still
+        // safe and keeps AI/human execution on one mutation boundary.
+        public static bool TryStartAttempt(PlayerSetupData player, PlayerRoot root, UnitData hero,
+            HexCoord hex, ResearchProductionMode mode, CardDefinition card,
+            ResearchProductionCatalog catalog, out string reason)
         {
-            if (root == null || card == null)
-                return;
+            reason = null;
+            if (player == null || root == null || hero == null || card == null || catalog == null)
+            {
+                reason = "missing Research/Production attempt data";
+                return false;
+            }
+            if (!object.ReferenceEquals(root, PlayerRootRegistry.FindFor(player))
+                || !object.ReferenceEquals(root.Setup, player))
+            {
+                reason = "player resource account is not the canonical registered root";
+                return false;
+            }
+            if (!Offers(catalog, mode, player.Faction, card))
+            {
+                reason = "card is not offered by the current Research/Production catalog";
+                return false;
+            }
+            if (!IsEligible(player, hex, mode, out reason))
+                return false;
+            if (!ActorStillQualifies(player, hero, hex, mode))
+            {
+                reason = "the selected Research/Production hero no longer qualifies";
+                return false;
+            }
+            if (!CanAffordCard(root, card))
+            {
+                reason = "not enough AP or resources for the Research/Production attempt";
+                return false;
+            }
+
+            ApplyResearchReveal(mode, hero);
+            PayCardCost(root, card);
+            return true;
+        }
+
+        // Payment is private so no caller can debit an attempt while bypassing the canonical
+        // eligibility/catalog/actor/root checks above.
+        private static void PayCardCost(PlayerRoot root, CardDefinition card)
+        {
             root.SpendActionPoints(AttemptApCost(card));
             card.resourceCost?.PayFrom(root);
         }

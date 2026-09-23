@@ -80,7 +80,8 @@ namespace Game.Turns
         [SerializeField] private CardHandUI cardHand;
         // Gameplay-side deck source for pre-turn Initiative resource-demand analysis. Existing
         // scenes predate this field, so BeginGame bootstraps it once from CardHandUI when the
-        // serialized reference has not been wired yet; Initiative itself never reaches into UI.
+        // serialized reference has not been wired yet; from this point the Initiative module
+        // is independent of the UI object.
         [SerializeField] private StartingDeckCatalog startingDeckCatalog;
 
         // AI turn visualization (see Game.Ai.AiTurnController) — the camera pans to whatever the
@@ -133,8 +134,8 @@ namespace Game.Turns
 
         // Both cached and recomputed only when one of the underlying popups' own
         // VisibilityChanged fires (see OnEnable/RecomputeBlockedState) — this game is
-        // turn-based, these flip on discrete open/close actions a handful of times per turn at
-        // most, so there was never a reason for every reader (this controller's own Update,
+        // turn-based, these flip on discrete open/close actions a handful of times per turn
+        // at most, so there was never a reason for every reader (this controller's own Update,
         // HexSelectionController, CardHandUI) to re-derive them from 4-5 live property reads
         // every single frame. The public surface is unchanged — still plain bool properties —
         // so nothing reading InputBlocked/CardDraggingBlocked needed to change.
@@ -149,7 +150,7 @@ namespace Game.Turns
         // can ever be dropped.
         public bool CardDraggingBlocked => _cardDraggingBlocked;
 
-        // Fired whenever InputBlocked/CardDraggingBlocked's cached value actually flips — lets
+        // Fired whenever InputBlocked/CardDraggingBlocked's cached bool actually flips — lets
         // CardHandUI (and anything else) subscribe instead of polling either every frame.
         public event Action<bool> InputBlockedChanged;
         public event Action<bool> CardDraggingBlockedChanged;
@@ -225,7 +226,7 @@ namespace Game.Turns
 
         // Fired whenever CurrentPlayer or TurnConfirmed changes — lets CardHandUI's
         // CanDragCards-dependent UI (the draw button) react instead of re-checking both every
-        // frame just to notice a turn handoff or the human confirming their turn.
+        // frame just to notice a turn handoff.
         public event Action TurnStateChanged;
 
         private int _currentPlayerIndex;
@@ -498,18 +499,18 @@ namespace Game.Turns
 
         // Every player has just passed (Neutral's own fixed last slot in phase 2 — see
         // BeginPlayerTurn) — exactly when the manual's Delay Attack says a delayed battle
-        // actually starts. Drained here, one at a time, before the new round's dice-off gets a
-        // chance to run — see ResolveDelayedBattlesThen. Always starts the coroutine, even with
-        // an empty DelayedBattleRegistry — ResolveDelayedBattlesThen's own loop already falls
-        // back to TryFindNextContestedBattle in that case, which is the ONLY place that sweeps
-        // for a leftover contested hex nobody ever explicitly Delayed (e.g. a hero that Escaped
-        // a Capture Kill Challenge started via direct Fight contact — the hunter army just stays
-        // parked on its hex, never queued in DelayedBattleRegistry at all). Gating the coroutine
-        // itself behind HasAny, like this used to, skipped that fallback sweep entirely whenever
-        // no EXPLICIT delay was pending, leaving a stuck pair like that coexisting forever — the
-        // enemy-present check in RefreshResourceActionRow then keeps that hex's own extraction
-        // Facility action permanently unavailable, since nothing ever forces the standoff to a
-        // conclusion (see the user's own report).
+        // actually starts. Drained here, one at a time, before the new round's dice-off gets
+        // a chance to run — see ResolveDelayedBattlesThen. Always starts the coroutine, even
+        // with an empty DelayedBattleRegistry — ResolveDelayedBattlesThen's own loop already
+        // falls back to TryFindNextContestedBattle in that case, which is the ONLY place that
+        // sweeps for a leftover contested hex nobody ever explicitly Delayed (e.g. a hero that
+        // Escaped a Capture Kill Challenge started via direct Fight contact — the hunter army
+        // just stays parked on its hex, never queued in DelayedBattleRegistry at all). Gating
+        // the coroutine itself behind HasAny, like this used to, skipped that fallback sweep
+        // entirely whenever no EXPLICIT delay was pending, leaving a stuck pair like that
+        // coexisting forever — the enemy-present check in RefreshResourceActionRow then keeps
+        // that hex's own extraction Facility action permanently unavailable, since nothing
+        // ever forces the standoff to a conclusion (see the user's own report).
         private void BeginNewTurn()
         {
             if (_gameOver)
@@ -553,10 +554,10 @@ namespace Game.Turns
                 // instant it's drained here — reveal right now, before ShowResolved (or a direct
                 // Show()/BeginCaptureKillEncounter for a no-human pairing) below ever displays it.
                 // The observer can't just be battle.Participants[0].Owner — in a hot-seat game
-                // that's whichever side happened to be the original mover/hunter, which is just as
-                // likely to be an AI as the human this popup is actually about to render for (see
-                // BattleContactPopupUI.ShowSideList's own note) — ResolveHumanObserver finds the
-                // real one. The context this returns is also the single source of truth for
+                // that's whichever side happened to be the original mover/hunter, which is just
+                // as likely to be an AI as the human this popup is actually about to render for
+                // (see BattleContactPopupUI.ShowSideList's own note) — ResolveHumanObserver finds
+                // the real one. The context this returns is also the single source of truth for
                 // TargetHeroOnly below, instead of a second, separately re-derived bool.
                 Game.Combat.BattleEncounterContext encounter = Game.Combat.BattleEncounterCoordinator.PrepareCommittedEncounter(
                     battle.Hex, battle.Participants, Game.Combat.BattleEncounterCoordinator.ResolveHumanObserver(battle.Participants));
@@ -564,13 +565,13 @@ namespace Game.Turns
                 // ShowResolved only makes sense when a human is actually there to click its own
                 // "Continue" button — same human-only gating every other contact point in this
                 // project already applies (see HexSelectionController.Movement.cs's own onFight/
-                // onDelay branch). Ordinary AI-vs-Neutral contact no longer reaches this drain at
-                // all (it fights immediately on contact now — see that same branch's own comment),
-                // but TryFindNextContestedBattle's own fallback sweep just above can still surface
-                // a leftover pairing with no human on either side (its own comment: e.g. a hero
-                // that Escaped a Capture Kill Challenge). Without this check that used to wait on a
-                // click nobody was ever going to make — the exact same hang, just through a rarer
-                // door.
+                // onDelay branch). Ordinary AI-vs-Neutral contact no longer reaches this drain
+                // at all (it fights immediately on contact now — see that same branch's own
+                // comment), but TryFindNextContestedBattle's own fallback sweep just above can
+                // still surface a leftover pairing with no human on either side (its own comment:
+                // e.g. a hero that Escaped a Capture Kill Challenge). Without this check that
+                // used to wait on a click nobody was ever going to make — the exact same hang,
+                // just through a rarer door.
                 bool acknowledged = false;
                 bool anyHuman = encounter.PresentationObserver != null;
                 if (battleContactPopup != null && anyHuman)
@@ -582,8 +583,8 @@ namespace Game.Turns
                 bool closed = false;
                 // Same hero-only branch as HexSelectionController.Movement.cs's own contact
                 // handling — nothing for a Ground Combat round to do against a target with no
-                // units, so this goes straight to a Capture Kill Challenge sequence instead (see
-                // BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
+                // units, so this goes straight to a Capture Kill Challenge sequence instead
+                // (see BattleScreenUI.BeginCaptureKillEncounter). Participants[0] is always the
                 // original mover/hunter — see IsStillAGenuineBattle's own comment.
                 bool targetHeroOnly = encounter.TargetHeroOnly;
                 if (battleScreen != null && targetHeroOnly)
@@ -601,18 +602,18 @@ namespace Game.Turns
         // DelayedBattleRegistry is empty — scans every occupied hex for a still-unresolved
         // conflict (armies of different owners, per the user's own "this applies to every
         // battle, not just building ones" call) and hands back a fresh PendingBattle-shaped
-        // pairing for it, same as if the player had chosen Delay on it directly. `mover` (always
-        // Participants[0]) must be combat-capable to match IsStillAGenuineBattle's own
-        // requirement — a hex where every engageable army present is hero-only (nobody able to
-        // hunt, see BattleInitiator.IsEngageable's own note) is left alone rather than returned
-        // here, same as it already is everywhere else in this project; otherwise this would loop
-        // forever trying to "resolve" a pairing nothing can ever actually fight. The defending
-        // side (`other`) is picked via BattleInitiator.FindEnemyAt rather than a hand-rolled
-        // "first engageable enemy" scan (2026-08-21 fix, consistency follow-up to FindEnemyAt's
-        // own strongest-defender fix) — a multi-army hex left with several unresolved contests at
-        // once (e.g. a delayed battle plus a second, uninvolved attacker that also landed there)
-        // should keep offering up its strongest remaining defender each time this sweep asks, not
-        // whichever one the registry happens to enumerate first.
+        // pairing for it, same as if the player had chosen Delay on it directly. `mover`
+        // (always Participants[0]) must be combat-capable to match IsStillAGenuineBattle's own
+        // requirement — a hex where every engageable army present is hero-only (nobody able
+        // to hunt, see BattleInitiator.IsEngageable's own note) is left alone rather than returned
+        // here, same as it already is everywhere else in this project; otherwise this would
+        // loop forever trying to "resolve" a pairing nothing can ever actually fight. The
+        // defending side (`other`) is picked via BattleInitiator.FindEnemyAt rather than a
+        // hand-rolled "first engageable enemy" scan (2026-08-21 fix, consistency follow-up to
+        // FindEnemyAt's own strongest-defender fix) — a multi-army hex left with several
+        // unresolved contests at once (e.g. a delayed battle plus a second, uninvolved attacker
+        // that also landed there) should keep offering up its strongest remaining defender each
+        // time this sweep asks, not whichever one the registry happens to enumerate first.
         private static bool TryFindNextContestedBattle(out HexCoord hex, out List<ArmyData> participants)
         {
             foreach (HexCoord candidateHex in ArmyRegistry.AllOccupiedHexes())
@@ -686,9 +687,8 @@ namespace Game.Turns
                 PlayerRootRegistry.FindFor(player)?.ResetBonusInitiativeDice();
 
             // Initiative has one implementation now. Every AI plans from the same immutable
-            // pre-purchase state, then all paid purchases are applied before the human sees the
-            // popup. There is no V1/random/free fallback and no strategy-version flag at this
-            // round-boundary decision point.
+            // pre-purchase state, then all paid purchases are applied before the human sees
+            // the popup. There is no V1/random/free fallback and no strategy-version flag.
             Game.Ai.V2.Initiative.InitiativeCoordinatorV2.PlanAndApplyForAll(
                 GameSession.Players, map, startingDeckCatalog, TurnNumber);
 
@@ -700,106 +700,15 @@ namespace Game.Turns
             ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech,
         };
 
-        // Every building on the map collects its own hex's yield now — right at the start of
-        // the turn, before the initiative roll, so the buying step (and the roll itself) sees
-        // this turn's income, not last turn's. A hex's total yield already folds in whatever
-        // permanent bonus was stamped onto it (see HexResourceBonusRegistry — a citadel's own
-        // bonus belongs to the hex the player chose, not to the citadel's continued presence);
-        // a Base collects the full yield of every resource type on its hex; a hero-built
-        // extraction site collects only its matching CollectX capacity (see BuildingData.
-        // CollectedAmount). Whatever headroom is left after the building's cut then goes to an
-        // army SITTING on the hex with a
-        // matching CollectX unit (see CollectArmyIncomeAt) — so a hex needs no building at all
-        // for an army alone to work it, and iterates every occupied hex too, not just built ones.
+        // The physical allocation is owned by IncomeProjection; this turn controller only
+        // performs the live credits in exactly the allocator's building-first/army-owner order.
+        // The existing gameConfig guard, collection-before-Produce and initiative order remain.
         private void CollectResourceIncome()
         {
             if (map == null || gameConfig == null)
                 return;
-
-            HashSet<HexCoord> hexes = new HashSet<HexCoord>();
-            foreach (BuildingData building in BuildingRegistry.AllBuildings())
-                hexes.Add(building.Hex);
-            foreach (HexCoord hex in ArmyRegistry.AllOccupiedHexes())
-                hexes.Add(hex);
-
-            foreach (HexCoord hex in hexes)
-            {
-                if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry entry))
-                    continue;
-
-                ResourceYields hexYield = HexResourceCalculator.GetEffectiveYield(entry, HexResourceBonusRegistry.GetBonus(hex));
-                if (!hexYield.HasAnyYield)
-                    continue;
-
-                BuildingData building = BuildingRegistry.FindAt(hex);
-                PlayerRoot buildingRoot = building?.Owner != null ? PlayerRootRegistry.FindFor(building.Owner) : null;
-
-                foreach (ResourceType type in AllResourceTypes)
-                {
-                    int hexAmount = hexYield.Get(type);
-                    if (hexAmount <= 0)
-                        continue;
-
-                    int remaining = hexAmount;
-
-                    if (buildingRoot != null)
-                    {
-                        int buildingCollected = Mathf.Min(building.CollectedAmount(type), remaining);
-                        if (buildingCollected > 0)
-                        {
-                            buildingRoot.AddResource(type, buildingCollected);
-                            remaining -= buildingCollected;
-                        }
-                    }
-
-                    if (remaining > 0)
-                        CollectArmyIncomeAt(hex, type, remaining);
-                }
-            }
-        }
-
-        // Mirrors BuildingData.CollectedAmount, but for whatever headroom is left of the hex's
-        // yield once the building there (if any) already took its own cut — a unit with a
-        // matching CollectX ability contributes 1, same rate as a citadel/facility's own baked-in
-        // ability, but purely for as long as its army is actually parked on the hex; nothing here
-        // is ever cached across turns, so the contribution vanishes the instant the army leaves
-        // or the unit's removed/killed. Grouped and credited per ARMY OWNER rather than always
-        // going to the building's owner, since the whole point is letting a player with no
-        // building on the hex at all still collect via a unit alone (see the user's own two
-        // examples: a bare hex, and a partially-worked one with a Facility already on it). An
-        // owner whose army shares the hex with an engageable enemy army gets nothing this turn —
-        // "no stealth yet" (see ResolveDelayedBattlesThen) only forces a fight between COMBAT-
-        // CAPABLE armies, so two hero-only armies of different owners can still coexist on a hex
-        // indefinitely, which is exactly the "shared with an enemy" case this guard exists for.
-        private static void CollectArmyIncomeAt(HexCoord hex, ResourceType type, int remaining)
-        {
-            string ability = UnitAbilities.CollectAbilityFor(type);
-
-            foreach (IGrouping<PlayerSetupData, ArmyData> ownerArmies in ArmyRegistry.AllAt(hex).GroupBy(a => a.Owner))
-            {
-                if (remaining <= 0)
-                    break;
-
-                PlayerSetupData owner = ownerArmies.Key;
-                if (owner == null)
-                    continue;
-
-                ArmyData enemy = BattleInitiator.FindEnemyAt(hex, owner);
-                if (enemy != null)
-                    continue;
-
-                int unitCount = ownerArmies.Sum(army => army.Members.Count(unit => unit.HasAbility(ability)));
-                if (unitCount <= 0)
-                    continue;
-
-                PlayerRoot root = PlayerRootRegistry.FindFor(owner);
-                if (root == null)
-                    continue;
-
-                int granted = Mathf.Min(unitCount, remaining);
-                root.AddResource(type, granted);
-                remaining -= granted;
-            }
+            IncomeProjection.ForEachHexCollectionGrant(map,
+                (recipient, type, amount) => recipient.AddResource(type, amount));
         }
 
         private void OnTurnOrderResolved(List<PlayerSetupData> order)
@@ -868,10 +777,9 @@ namespace Game.Turns
         // skipped for the SAME reason GrantPrisonBonusActionPoints only ever reads them: a
         // captured hero (TryImprison sets hero.Owner to its CAPTOR) sits in the captor's own
         // Prison army, not free to act for them — it already earns the captor a separate,
-        // ability-independent prison bonus, it shouldn't also earn them this skill's bonus just
-        // for having originally carried it.
-        // Canonical value lives on UnitAbilities so the V2 AI (StrategicEffectRegistry) prices the
-        // recurring ApBonus effect from the same number this grant uses.
+        // ability-independent prison bonus, it shouldn't also earn them this skill's bonus.
+        // Canonical value lives on UnitAbilities so the V2 AI (StrategicEffectRegistry) prices
+        // the recurring ApBonus effect from the same number this grant uses.
         private const int ApBonusPerSource = UnitAbilities.ApBonusActionPointsPerSource;
 
         private static void GrantApBonusActionPoints(List<PlayerSetupData> order)
@@ -921,10 +829,8 @@ namespace Game.Turns
             }
         }
 
-        // UnitAbilities.Produce{Human,Energy,Materials,Tech}: +1 of the matching resource per
-        // in-play carrier, every turn — an ordinary (non-Prison) army member, an owned Base, or a
-        // placed Facility, exactly the same "in play" population GrantApBonusActionPoints counts.
-        // Run at the start of the round alongside CollectResourceIncome (see ProceedWithNewTurn).
+        // Produce grants stay AFTER the physical hex grants; only the carrier enumeration has
+        // moved into IncomeProjection, the same count used by its read-only IncomeFor.
         private void GrantProduceResourceIncome()
         {
             if (GameSession.Players == null)
@@ -936,7 +842,8 @@ namespace Game.Turns
                     continue;
                 foreach (ResourceType type in AllResourceTypes)
                 {
-                    int sources = CountInPlayAbilitySources(player, UnitAbilities.ProduceAbilityFor(type));
+                    int sources = IncomeProjection.CountInPlayAbilitySources(
+                        player, UnitAbilities.ProduceAbilityFor(type));
                     if (sources > 0)
                         root.AddResource(type, sources);
                 }
@@ -945,8 +852,8 @@ namespace Game.Turns
 
         // UnitAbilities.Regeneration: at the end of `player`'s turn every carrier they own
         // restores 1 Hit Point, capped at its maximum — a unit's HitPointsCurrent, or a Base's
-        // StructurePointsCurrent (a Facility has no HP field, so it is skipped). Prison armies are
-        // excluded, same as the Produce/ApBonus grants. Called from AdvanceToNextPlayer.
+        // StructurePointsCurrent (a Facility has no HP field, so it is skipped). Prison armies
+        // are excluded, same as the Produce/ApBonus grants. Called from AdvanceToNextPlayer.
         private static void RegenerateForOwner(PlayerSetupData player)
         {
             if (player == null)
@@ -960,8 +867,6 @@ namespace Game.Turns
                         && unit.HitPointsCurrent > 0 && unit.HitPointsCurrent < unit.HitPointsMax)
                     {
                         unit.HitPointsCurrent++;
-                        // Mutates HP directly, not through ArmyRegistry — see the matching notify
-                        // in AviationTurnLifecycle.ResolveEndOfTurn for the same gap.
                         VisionSystem.NotifyContentChanged(army.Hex);
                     }
             }
@@ -978,33 +883,6 @@ namespace Game.Turns
             }
         }
 
-        // Shared "carriers of `ability` this player has in play right now" count — non-Prison army
-        // members, owned Base buildings, and placed Facilities. Mirrors GrantApBonusActionPoints'
-        // own enumeration (kept separate there only because that one also builds a UI breakdown).
-        private static int CountInPlayAbilitySources(PlayerSetupData player, string ability)
-        {
-            int sources = 0;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
-            {
-                if (army.IsPrison)
-                    continue;
-                foreach (UnitData unit in army.Members)
-                    if (unit.HasAbility(ability))
-                        sources++;
-            }
-            foreach (BuildingData building in BuildingRegistry.AllBuildings())
-            {
-                if (building.Owner != player)
-                    continue;
-                if (building.HasAbility(ability))
-                    sources++;
-                foreach (FacilityData facility in building.FacilitySlots)
-                    if (facility != null && facility.HasAbility(ability))
-                        sources++;
-            }
-            return sources;
-        }
-
         private void BeginPlayerTurn(int index)
         {
             if (_gameOver)
@@ -1013,13 +891,9 @@ namespace Game.Turns
             TurnChanging?.Invoke();
             _currentPlayerIndex = index;
             TurnConfirmed = false;
-            // Re-enabled only once TurnConfirmed (human, after dismissing the shared popupPanel) —
-            // see OnTurnConfirmed. Button itself stays visible the whole time, this is the only
-            // state that changes.
             if (endTurnButton != null)
                 endTurnButton.interactable = false;
 
-            // Past the last real player — Neutral's fixed last slot.
             if (index >= CurrentTurnOrder.Count)
             {
                 CurrentPlayer = null;
@@ -1032,13 +906,6 @@ namespace Game.Turns
             }
 
             PlayerSetupData player = CurrentTurnOrder[index];
-
-            // The buffer window from the user's own Siege spec: a captured starting citadel
-            // doesn't eliminate its owner the instant it changes hands, only if they still
-            // haven't retaken that exact hex by the moment their OWN next turn would otherwise
-            // begin (see StartingCitadelLost/EliminatePlayer above). Checked before CurrentPlayer
-            // is even assigned, so an eliminated player is never treated as "acting" even
-            // momentarily.
             if (!player.IsEliminated && StartingCitadelLost(player))
                 EliminatePlayer(player);
             if (player.IsEliminated)
@@ -1049,12 +916,6 @@ namespace Game.Turns
 
             CurrentPlayer = player;
             ReplenishMoveForOwner(player);
-            // The map is rendered from whichever human's turn it currently is (see
-            // VisionSystem.CurrentViewer) — a hot-seat game can have several human players
-            // sharing one screen, so this has to track CurrentPlayer, not "the" human (there
-            // isn't always exactly one). Left untouched on an AI/Neutral turn — no screen to
-            // switch to, so the last human's own view stays up rather than going blank — unless
-            // debugWatchAiTurns opts into watching that AI's own vision instead.
             if (player.IsHuman || debugWatchAiTurns)
                 VisionSystem.CurrentViewer = player;
             TurnStateChanged?.Invoke();
@@ -1068,17 +929,9 @@ namespace Game.Turns
             }
             else
             {
-                // An AI detector never gets a spawn-hint popup (that's human turn-start
-                // only, via OnTurnConfirmed) — drop its queued detection notices here so they
-                // don't accumulate forever.
                 StealthSystem.TakeDetectionNotices(player);
                 if (popupPanel != null)
                     popupPanel.ShowForOther(player);
-                // debugWatchAiTurns' hand/resources half (see ShowAiHandDebug/ShowRootDebug's
-                // own comments) — shown before RunTurn starts so both are already visible for the
-                // very first decision; both stay live for the rest of the turn off their own
-                // change events (AiHandData.HandChanged, PlayerRoot.ResourcesChanged) rather than
-                // any per-step push from RunTurn.
                 if (debugWatchAiTurns && cardHand != null)
                     cardHand.ShowAiHandDebug(AiHandRegistry.GetOrCreate(player, cardHand.StartingDeckCatalog, cardHand.StartingHandSize));
                 if (debugWatchAiTurns)
@@ -1090,9 +943,6 @@ namespace Game.Turns
             }
         }
 
-        // Fired by the shared popupPanel's Confirm button — the only thing that actually lets
-        // the human touch the map (and end their turn) this turn — see
-        // HexSelectionController.IsInputAllowed.
         private void OnTurnConfirmed()
         {
             TurnConfirmed = true;
@@ -1111,10 +961,6 @@ namespace Game.Turns
                         _aviationMessageQueue.Enqueue(message);
                     anyQueued |= messages.Count > 0;
                 }
-                // Stealth-detection announcements — shown to (and only to) the player who
-                // rolled the successful detection, right AFTER the aviation damage messages
-                // and through the same one-at-a-time popupPanel queue. The hidden
-                // unit's owner is still told nothing (design §4/§16).
                 foreach (string notice in StealthSystem.TakeDetectionNotices(CurrentPlayer))
                 {
                     _aviationMessageQueue.Enqueue(notice);
@@ -1126,16 +972,8 @@ namespace Game.Turns
             TurnStateChanged?.Invoke();
         }
 
-        // Restores move points for every unit belonging to whoever's turn is starting — player
-        // is null for Neutral's slot, matching ArmyData.Owner for any Neutral armies. Units have
-        // no registry of their own any more (see Game.Map.ArmyController) — reached only through
-        // the armies that contain them. Hero Fate is deliberately NOT touched here any more — it
-        // refills as soon as each battle ends now (see UnitData.ReplenishFateForNewBattle/
-        // BattleScreenUI.Combat.cs's OnBattleOutcomeAcknowledged), not per strategic turn.
         private static void ReplenishMoveForOwner(PlayerSetupData player)
         {
-            // AA availability is turn-scoped the same way move points are (see AntiAirState's
-            // own comment) — reset alongside everything else this owner's fresh turn restores.
             AntiAirState.ResetForOwner(player);
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
             {
@@ -1145,15 +983,10 @@ namespace Game.Turns
                     if (unit.IsAviation)
                         unit.HasAirAttackedThisTurn = false;
                 }
-                // Activation is tracked per-ARMY, not per-unit (see ArmyData.
-                // HasActivatedThisTurn) — a unit never moves on its own. Also clears the
-                // per-unit activation-coverage ledger (see ArmyData.ResetActivationForNewTurn).
                 army.ResetActivationForNewTurn();
             }
         }
 
-        // Stands in for "the AI/Neutral thought about it and had nothing to do" — the same short
-        // fixed pacing step used by ordinary strategic AI actions.
         private IEnumerator PassAfterDelay(Action onDone)
         {
             yield return new WaitForSeconds(aiStepDelay);
@@ -1171,12 +1004,8 @@ namespace Game.Turns
             if (aviationMessages.Count > 0)
                 _pendingAviationMessages[CurrentPlayer] = aviationMessages;
 
-            // The outgoing player's turn has now fully ended — bump their completed-turn
-            // count and lapse any personal detections that were only valid "through the end
-            // of this player's next turn" (see _completedTurns / StealthSystem).
             if (CurrentPlayer != null)
             {
-                // UnitAbilities.Regeneration — end-of-turn heal for this player's carriers.
                 RegenerateForOwner(CurrentPlayer);
                 _completedTurns[CurrentPlayer] = CompletedTurnsFor(CurrentPlayer) + 1;
                 Game.Map.StealthSystem.PurgeExpiredFor(CurrentPlayer);

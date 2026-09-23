@@ -12,21 +12,19 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  CARD PLAY EXECUTOR  (Strategy V2 — Strategic Manager)
     // ===========================================================================================
-    //  The SINGLE authoritative V2 path for strategic card deployment. V2 code never scatters
-    //  hand mutation across StrategicManager / axis planners — card removal from hand happens
-    //  HERE, exactly once, only after a successful ArmyActions.DeployUnitFromCard. V1's own
-    //  card-play path (AiTurnController.PlayCardRoutine) is untouched, and hand ownership is NOT
-    //  moved into ArmyActions.DeployUnitFromCard globally.
+    // The SINGLE authoritative V2 path for strategic card deployment. V2 code never scatters
+    // hand mutation across StrategicManager / axis planners — card removal from hand happens
+    // HERE, exactly once, only after a successful ArmyActions.DeployUnitFromCard. V1's own
+    // card-play path (AiTurnController.PlayCardRoutine) is untouched, and hand ownership is NOT
+    // moved into ArmyActions.DeployUnitFromCard globally.
     //
-    //  Draw / hand cycling is a SEPARATE operation (CardDrawExecutor) — never part of this
-    //  transaction.
+    // Draw / hand cycling is a SEPARATE operation (CardDrawExecutor) — never part of this
+    // transaction.
     //
-    //  MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine, and
-    //  DeployUnitFromCard itself spends AP/resources BEFORE it spawns (a null spawn returns false
-    //  with the cost already gone). Play() preflights the whole sequence, then reports the REAL
-    //  AP/resource delta measured on PlayerRoot — not the nominal card cost — so the ledger and
-    //  the refresh trigger stay honest even on a partial failure. A fresh empty ArmyData left by
-    //  CreateArmy after a failed deploy is KEPT as a reusable asset, never rolled back.
+    // MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine.
+    // This existing method owns V2 planning preconditions; ArmyActions remains the authoritative
+    // gameplay transaction. Fresh-army deployment is atomic in ArmyActions, so a failure cannot
+    // leave a charged/published empty shell. Play() still reports the REAL AP/resource delta.
     // ===========================================================================================
     public enum DeploymentKind
     {
@@ -84,39 +82,18 @@ namespace Game.Ai.V2
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
-        // CANONICAL projected battle-cell capacity of a destination roster AFTER `incoming` joins.
-        // The ONE place the "a hero rewrites capacity" rule lives for the V2 path — mirrors
-        // ArmyActions.DeployUnitFromCard exactly: a hero sets capacity to its CommandRating ONLY
-        // when it is the FIRST hero in the roster (a REPLACEMENT of the nominal value, never a
-        // Math.Max — a low-CommandRating first hero can make a roomy no-hero base too small); a
-        // SUBSEQUENT hero, or any non-hero, leaves the nominal capacity untouched (a second hero is
-        // appended after the existing commander and never becomes commander without an explicit
-        // TryReorderCommander, which the executor does not do). Both the strategic planner
-        // (StrategicEffectRegistry.ResolveDestination) and this preflight go through here so the
-        // projected-capacity rule cannot drift between planning and execution.
-        internal static int ProjectedCapacityAfterDeploy(
-            int nominalCapacity, bool targetHasHero, CardDefinition incoming)
-        {
-            bool incomingHero = incoming != null && incoming.cardType == CardType.Hero;
-            return ArmyCapacityRules.ProjectedCapacity(nominalCapacity, targetHasHero,
-                incomingHero ? 1 : 0, incomingHero ? incoming.commandRating : 0);
-        }
-
-        // Shared V2 projected-capacity predicate. Mirrors ArmyActions.DeployUnitFromCard: capacity
-        // is evaluated after the incoming card joins, so a first hero may raise a full 2/2 army to
-        // (for example) 3/5 instead of being rejected by the old pre-join HasRoom value.
+        // Predictive composite only. Container identity remains a V2 admission concern here,
+        // while the actual capacity-after-add rule is owned by ArmyData and shared with execution.
         internal static bool CanFitAfterDeploy(ArmyData target, CardDefinition def)
         {
-            if (target == null || def == null)
+            if (target == null || def == null || def.isAviation
+                || target.IsPrison || target.IsAirfield
+                || target.Members.Any(m => m.IsAviation))
                 return false;
-            if (target.IsAirfield)
-                return true; // V2 rejects aviation cards earlier; airfield capacity is handled elsewhere.
-            int projectedCapacity = ProjectedCapacityAfterDeploy(
-                target.Capacity, target.Members.Any(m => m.IsHero), def);
-            return projectedCapacity >= target.Members.Count + 1;
+            return target.CanFitAdditionalCard(def);
         }
 
-        // Full preflight of the CreateArmy -> DeployUnitFromCard sequence. No spend, no mutation.
+        // Full preflight of the atomic fresh-army/existing-army card deployment. No spend, no mutation.
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, CardPlayPlan plan, out string reason)
         {
@@ -131,6 +108,19 @@ namespace Game.Ai.V2
             if (def.isAviation) { reason = "aviation card not handled by StrategicManager"; return false; }
             if (def.cardType != CardType.Unit && def.cardType != CardType.Hero)
             { reason = $"card type {def.cardType} not a Unit/Hero deploy"; return false; }
+            if (root.Setup != player)
+            { reason = "resource owner does not match card owner"; return false; }
+            // CreateArmy charges PlayerRootRegistry.FindFor(player), whereas DeployUnitFromCard
+            // receives this explicit root and the result measures its delta. Two different roots
+            // with the SAME Setup would split the payment and silently omit CreateArmy's 2 AP
+            // from the V2 ledger. Bind the entire chain to the domain registry's actual root.
+            if (!object.ReferenceEquals(PlayerRootRegistry.FindFor(player), root))
+            { reason = "resource root is not the registered player root"; return false; }
+            // This is the same physical prerequisite as human CardHandUI.IsValidDropTarget and
+            // ArmyActions.DeployUnitFromCard, for ALL placement kinds. Check before CreateArmy
+            // charges its 2 AP, including when requiredBuildingAbility is empty.
+            if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, plan.DeploymentHex, def))
+            { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             int totalAp = plan.TotalApCost;
             if (!root.CanSpendActionPoints(totalAp))
@@ -141,31 +131,54 @@ namespace Game.Ai.V2
             switch (plan.Kind)
             {
                 case DeploymentKind.NewArmy:
-                    break; // a fresh army always has room for the first member
+                    // A first Hero replaces the field army's default capacity even when its
+                    // CommandRating is zero. Reuse the existing projection rule before the
+                    // separate CreateArmy transaction can spend 2 AP on an unusable shell.
+                    if (!ArmyData.ProjectedRosterFits(
+                            ArmyData.ComputeCapacity(System.Array.Empty<Game.Units.UnitData>(), false),
+                            hasExistingHero: false, projectedMemberCount: 1, incoming: def))
+                    { reason = "first card would not fit in a fresh army"; return false; }
+                    break;
                 case DeploymentKind.ReusableShell:
-                    if (plan.TargetArmy == null || plan.TargetArmy.Members.Count != 0
+                    if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
+                        || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count != 0
                         || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "shell is no longer a valid empty army at the deployment hex"; return false; }
+                    { reason = "shell is no longer a valid owned empty army at the deployment hex"; return false; }
                     break;
                 case DeploymentKind.Garrison:
-                    if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                    if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
+                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || !plan.TargetArmy.IsGarrison
                         || !PlacementRules.CanDepositIntoGarrison(plan.TargetArmy)
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "garrison no longer a valid deposit target (reserved slots/capacity)"; return false; }
+                    { reason = "garrison no longer a valid owned deposit target (reserved slots/capacity)"; return false; }
                     break;
-                default: // ExistingArmy
-                    if (plan.TargetArmy == null || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
+                case DeploymentKind.ExistingArmy:
+                    if (plan.TargetArmy == null || plan.TargetArmy.Owner != player
+                        || !plan.TargetArmy.Hex.Equals(plan.DeploymentHex)
                         || plan.TargetArmy.IsPrison || plan.TargetArmy.Members.Count == 0
                         || !CanFitAfterDeploy(plan.TargetArmy, def))
-                    { reason = "target army no longer valid / projected roster has no room"; return false; }
+                    { reason = "target army no longer owned/valid / projected roster has no room"; return false; }
                     break;
+                default:
+                    // A corrupt/stale enum value must not be treated as an ExistingArmy plan.
+                    // Never allow a new placement mode to inherit existing-army permissions by
+                    // accident without an explicit validation branch in this one preflight.
+                    reason = "unknown deployment kind";
+                    return false;
             }
 
-            if (!string.IsNullOrEmpty(def.requiredBuildingAbility)
-                && !PlacementRules.HasRequiredBuilding(player, plan.DeploymentHex, def))
-            { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
+            // The domain deployment requires HexSelectionController for SpawnUnit. Without it,
+            // CreateArmy itself can still consume 2 AP and register an empty shell before the
+            // subsequent deployment rejects the null controller. This is a required executable
+            // dependency, not just a UI rendering concern; guard the entire chain here.
+            if (ctx.HexSelection == null)
+            { reason = "missing deployment controller"; return false; }
+            // CreateArmy additionally needs the faction catalog. Guard it here instead of
+            // offering a plan that can only fail at the next transaction boundary.
+            if (plan.RequiresCreateArmy && ctx.StartingDeckCatalog?.GetCatalog(player.Faction) == null)
+            { reason = "missing faction army catalog"; return false; }
 
             return true;
         }
@@ -184,28 +197,27 @@ namespace Game.Ai.V2
             var resStart = Snapshot(root);
 
             ArmyData shell = plan.TargetArmy;
+            bool deployed;
+            string deployFail;
             if (plan.RequiresCreateArmy)
             {
                 FactionCardCatalog catalog = ctx.StartingDeckCatalog?.GetCatalog(player.Faction);
-                shell = ArmyActions.CreateArmy(player, plan.DeploymentHex, catalog, ctx.HexSelection);
-                if (shell == null)
-                {
-                    result.ApSpent = apStart - root.ActionPoints;   // real (0 on a clean refusal)
-                    result.StateChanged = result.ApSpent > 0f;
-                    result.FailReason = "CreateArmy failed";
-                    Stamp(result, resStart, root);
-                    return result;
-                }
-                result.ArmyCreated = true;
-                result.ArmyShell = shell;   // an empty army now exists — a retained reusable asset
+                deployed = ArmyActions.DeployUnitFromCardToNewArmy(plan.Card.Definition, player,
+                    plan.DeploymentHex, catalog, root, ctx.HexSelection, out shell, out deployFail,
+                    attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
+                result.ArmyCreated = deployed && shell != null;
+                result.ArmyShell = shell;
+            }
+            else
+            {
+                deployed = ArmyActions.DeployUnitFromCard(plan.Card.Definition, player, shell, root,
+                    ctx.HexSelection, out deployFail,
+                    attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
             }
 
-            bool deployed = ArmyActions.DeployUnitFromCard(plan.Card.Definition, player, shell, root,
-                ctx.HexSelection, out string deployFail,
-                attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
-
-            // Real mutation, measured — DeployUnitFromCard spends AP/resources before it spawns, so
-            // even a FALSE return can have moved the books.
+            // The domain transaction is atomic for fresh-army deployment: FALSE means no new army,
+            // no AP/resource debit and no published unit. Existing-recipient deployment uses the
+            // same validation/payment/spawn core and is measured here for the action ledger.
             result.ApSpent = apStart - root.ActionPoints;
             bool resChanged = !SameResources(resStart, Snapshot(root));
             result.StateChanged = result.ApSpent > 0f || resChanged || result.ArmyCreated;

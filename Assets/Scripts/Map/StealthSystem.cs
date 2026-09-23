@@ -102,15 +102,33 @@ namespace Game.Map
 
         // ---------------------------------------------------------------- stealth state ----
 
+        public const int EnterStealthApCost = 1;
+
         public static bool CanEnterStealth(UnitData unit)
             => unit != null && !unit.IsHidden && AbilityParams.GetStealthLevel(unit) > 0;
 
-        public static void EnterStealth(UnitData unit)
+        public static bool CanPayToEnterStealth(UnitData unit, PlayerRoot root, int preserveActionPoints = 0)
         {
-            if (!CanEnterStealth(unit))
-                return;
+            int reserve = Math.Max(0, preserveActionPoints);
+            return CanEnterStealth(unit) && unit.Owner != null && root != null
+                && object.ReferenceEquals(root, PlayerRootRegistry.FindFor(unit.Owner))
+                && object.ReferenceEquals(root.Setup, unit.Owner)
+                && root.CanSpendActionPoints(EnterStealthApCost + reserve);
+        }
+
+        // Canonical paid entry transaction for BOTH human UI and AI. The optional AP reserve is
+        // money this caller still needs immediately after entering stealth (for example the
+        // army's first-move activation). Validation and the 1-AP debit happen before the state
+        // mutation, so no caller can pay for an entry that did not happen.
+        public static bool TryEnterStealth(UnitData unit, PlayerRoot root, int preserveActionPoints = 0)
+        {
+            if (!CanPayToEnterStealth(unit, root, preserveActionPoints))
+                return false;
+
+            root.SpendActionPoints(EnterStealthApCost);
             unit.IsHidden = true;
             Notify(unit, null);
+            return true;
         }
 
         // Voluntary owner exit (0 AP) AND the involuntary reveal a directed enemy action /

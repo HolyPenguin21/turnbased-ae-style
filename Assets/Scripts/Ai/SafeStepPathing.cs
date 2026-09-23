@@ -130,7 +130,7 @@ namespace Game.Ai
             public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields = new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
             public readonly Dictionary<int, ReturnCostField> ReturnCostFields = new Dictionary<int, ReturnCostField>();
             public HashSet<HexCoord> BlockedHexes;
-            public int MemoryVersion;
+            public long MemoryVersion;
             public void ClearPathsAndFields() { Routes.Clear(); BaseCostFields.Clear(); ReturnCostFields.Clear(); }
         }
         private sealed class ReturnCostField { public HashSet<HexCoord> Bases; public Dictionary<HexCoord, int> Costs; }
@@ -142,6 +142,14 @@ namespace Game.Ai
             var blocked = new HashSet<HexCoord>();
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(owner)) blocked.Add(sighting.Hex);
             foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner)) blocked.Add(sighting.Hex);
+            // A known foreign building is a capture/destroy contact even without a defending
+            // army. Returning builders, collectors and scouts must not path THROUGH one and
+            // accidentally capture it. Read only this observer's last-seen memory, never live
+            // BuildingRegistry: a hidden ownership change cannot silently alter route policy.
+            // The route's explicit destination remains separately exempt in SafeRouteBlocker;
+            // the mission's permission to capture THAT endpoint is an independent check.
+            foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(owner))
+                if (building.Owner != owner) blocked.Add(building.Hex);
             foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
                 foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius)) blocked.Add(hex);
             return blocked;
@@ -149,7 +157,7 @@ namespace Game.Ai
         private static PlayerRouteCache EnsureCacheState(HexMap map, PlayerSetupData owner)
         {
             if (map != _cacheMap || map.PathingVersion != _cacheMapVersion) { _playerCaches.Clear(); _cacheMap = map; _cacheMapVersion = map.PathingVersion; }
-            int memoryVersion = AiMapMemory.RouteMemoryVersion;
+            long memoryVersion = AiMapMemory.RouteMemoryVersionFor(owner);
             if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
             {
                 cache = new PlayerRouteCache { BlockedHexes = CaptureMemoryBlockers(map, owner), MemoryVersion = memoryVersion };

@@ -153,6 +153,25 @@ namespace Game.Ai.V2
                 return false;
             }
 
+            // Admission must precede BOTH durable patrol creation and required-stealth AP spend.
+            // RunPreparedStep repeats these same domain checks after each awaited movement: a
+            // valid scout can still be lost/recomposed or a battle can start between steps.
+            if (!AiArmyRoles.IsSoloRecce(army))
+            {
+                result.StopReason = ExecutionStopReason.MoverLost;
+                result.ApSpent = 0f;
+                ReconPatrolStateRegistry.Retire(player, army.Id, "actor no longer solo Recce");
+                return false;
+            }
+            if (ctx.HexSelection != null && ctx.HexSelection.IsBattleActive)
+            {
+                result.StopReason = ExecutionStopReason.BattleStarted;
+                result.ApSpent = 0f;
+                if (result.StepsMoved == 0 && !result.EnteredStealth)
+                    result.BlockedBeforeMovement = true;
+                return false;
+            }
+
             prepared = new PreparedStep
             {
                 ExploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f,
@@ -309,7 +328,8 @@ namespace Game.Ai.V2
                 beforeHex, next.Value, actionWhy);
             var move = AiDecision.Move(army, next.Value,
                 $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
-                + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f);
+                + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f,
+                forceDecloakForAttack ? AiGroundMoveAuthority.Combat : AiGroundMoveAuthority.Transit);
             // Required/optional stealth and visible opportunistic attacks were resolved above.
             // Re-entering stealth in the shared mover would cancel the intended combat and could
             // also spend AP that Recon deliberately reserved for other missions.
@@ -481,13 +501,9 @@ namespace Game.Ai.V2
             if (army.HasActivatedThisTurn)
                 return false;
             var scout = army.Members[0];
-            if (!StealthSystem.CanEnterStealth(scout))
+            if (root == null || !StealthSystem.TryEnterStealth(
+                    scout, root, army.ActivationApCost))
                 return false;
-            int stealthAp = AiConfigV2.scoutOptionalStealthAp;
-            if (root == null || !root.CanSpendActionPoints(army.ActivationApCost + stealthAp))
-                return false;
-            root.SpendActionPoints(stealthAp);
-            StealthSystem.EnterStealth(scout);
             entered = true;
             return true;
         }
@@ -511,11 +527,8 @@ namespace Game.Ai.V2
             if (army.Members.Any(m => m.IsHidden) || army.HasActivatedThisTurn)
                 return false;
             var scout = army.Members[0];
-            if (!StealthSystem.CanEnterStealth(scout))
-                return false;
-
-            int stealthAp = AiConfigV2.scoutOptionalStealthAp;
-            if (stealthAp <= 0 || !root.CanSpendActionPoints(stealthAp))
+            int stealthAp = StealthSystem.EnterStealthApCost;
+            if (!StealthSystem.CanPayToEnterStealth(scout, root))
                 return false;
 
             AiHandData hand = AiHandRegistry.Peek(player);
@@ -550,9 +563,7 @@ namespace Game.Ai.V2
                 || slack + AiConfigV2.allocatorSliceEpsilon < stealthAp)
                 return false;
 
-            root.SpendActionPoints(stealthAp);
-            StealthSystem.EnterStealth(scout);
-            return true;
+            return StealthSystem.TryEnterStealth(scout, root);
         }
 
         // Spec §12 — stealth as route topology. RouteAccessBenefit is 1 when a known non-own army

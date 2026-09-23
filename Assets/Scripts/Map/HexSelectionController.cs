@@ -902,39 +902,28 @@ namespace Game.Map
                 || attackPopup == null || cardHandUI == null)
                 return;
 
-            // 2. Revalidate world state.
             PlayerSetupData human = turnController?.CurrentPlayer;
             if (human == null || !human.IsHuman)
                 return;
-            if (_rpHero == null
-                || !ResearchProductionSystem.IsEligible(human, _rpHex, _rpMode, out _)
-                || !ResearchProductionSystem.ActorStillQualifies(human, _rpHero, _rpHex, _rpMode))
-                return;
-            // The card must still be one this open mode/faction offers.
-            if (!researchProductionModal.Offers(card))
-                return;
-
             PlayerRoot root = PlayerRootRegistry.FindFor(human);
-            if (root == null)
-                return;
 
-            // 4/5. Full attempt affordability. Produced cards may intentionally overflow the
-            // hand cap, so capacity is not part of this preflight.
-            if (!ResearchProductionSystem.CanAffordCard(root, card))
+            // Gameplay revalidation + canonical account + catalog + actor + affordability +
+            // irreversible payment are one shared transaction with the AI headless path.
+            // Produced cards may intentionally overflow the hand cap, so capacity is not part of
+            // this attempt-start transaction.
+            if (!ResearchProductionSystem.TryStartAttempt(human, root, _rpHero, _rpHex, _rpMode,
+                    card, researchProductionModal.Catalog, out string startFail))
             {
-                turnController?.ShowSpawnHint($"Not enough AP or resources to create {card.displayName}.");
+                turnController?.ShowSpawnHint(startFail);
                 return;
             }
 
-            // 6. Lock the transaction (modal frozen, no second Create).
+            // Lock the presentation only after the shared transaction commits.
             _rpTransactionActive = true;
             _rpPendingCard = card;
             researchProductionModal.SetBusy(true);
 
-            // 7. Spend AP + resources — irreversible; not returned on a loss.
-            ResearchProductionSystem.PayCardCost(root, card);
-
-            // 8. Start the Challenge through its own dedicated entry point.
+            // Start the animated Challenge through its dedicated presentation entry point.
             Sprite logo = cardHandUI.StartingDeckCatalog != null
                 ? cardHandUI.StartingDeckCatalog.GetCatalog(human.Faction)?.logo
                 : null;

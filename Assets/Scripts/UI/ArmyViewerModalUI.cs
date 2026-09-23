@@ -462,10 +462,10 @@ namespace Game.UI
 
         public bool CanEnterStealthUnit(UnitData unit)
         {
-            if (IsReadOnly || _currentArmy == null || !Game.Map.StealthSystem.CanEnterStealth(unit))
+            if (IsReadOnly || _currentArmy == null)
                 return false;
             PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
-            return root != null && root.CanSpendActionPoints(1);
+            return Game.Map.StealthSystem.CanPayToEnterStealth(unit, root);
         }
 
         public bool CanExitStealthUnit(UnitData unit)
@@ -473,11 +473,11 @@ namespace Game.UI
 
         public void EnterStealthUnit(UnitData unit)
         {
-            if (!CanEnterStealthUnit(unit))
+            if (IsReadOnly || _currentArmy == null)
                 return;
             PlayerRoot root = PlayerRootRegistry.FindFor(_currentArmy.Owner);
-            root.SpendActionPoints(1);
-            Game.Map.StealthSystem.EnterStealth(unit);
+            if (!Game.Map.StealthSystem.TryEnterStealth(unit, root))
+                return;
             // Trigger C — a hidden unit's state changed via the shared hex action menu; the
             // action here is not a move, so re-check detection now (design §3.C).
             Game.Map.StealthSystem.RunChecksAfterHiddenUnitAction(unit, _currentArmy.Hex, _currentArmy.Owner);

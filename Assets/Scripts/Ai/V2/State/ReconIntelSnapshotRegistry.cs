@@ -85,30 +85,8 @@ namespace Game.Ai.V2
             return count > 0 ? Mathf.Clamp01(sum / count) : 0f;
         }
 
-        // WorldSnapshot deliberately has no player identity field. Resolve the frozen owner from
-        // honest self-state without inventing one: normally any own army gives the owner directly;
-        // the citadel fallback keeps an eliminated/temporarily army-less player unambiguous.
-        private static PlayerSetupData ResolvePlayer(WorldSnapshot snapshot)
-        {
-            if (snapshot?.Self == null)
-                return null;
-
-            if (snapshot.Self.Armies != null)
-                foreach (ArmySnapshot army in snapshot.Self.Armies)
-                    if (army?.Owner != null)
-                        return army.Owner;
-
-            HexCoord citadel = snapshot.Self.Citadel;
-            foreach (KeyValuePair<PlayerSetupData, Entry> kv in ByPlayer)
-            {
-                PlayerSetupData p = kv.Key;
-                if (p == null || kv.Value == null || kv.Value.Turn != snapshot.TurnNumber
-                    || !p.CitadelHexQ.HasValue || !p.CitadelHexR.HasValue)
-                    continue;
-                if (p.CitadelHexQ.Value == citadel.Q && p.CitadelHexR.Value == citadel.R)
-                    return p;
-            }
-            return null;
-        }
+        // Snapshot identity is explicit. A cache read must never infer its player key from
+        // mutable/optional contents such as current armies or citadel coordinates.
+        private static PlayerSetupData ResolvePlayer(WorldSnapshot snapshot) => snapshot?.Observer;
     }
 }
