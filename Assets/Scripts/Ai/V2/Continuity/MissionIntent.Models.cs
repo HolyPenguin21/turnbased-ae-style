@@ -40,6 +40,14 @@ namespace Game.Ai.V2
                 ? new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, target.ArmyId, 0, 0, RaidTargetKind.NeutralArmy)
                 : new MissionIntentKey(MissionKind.Raid, (int)AggressionObjectiveKind.Raid, 0, target.Hex.Q, target.Hex.R, RaidTargetKind.EventGuard);
 
+        // ATK §21/§72 — single owner of Attack key encoding. Identity is the target hex plus the
+        // STABLE numeric id of the owner we expect to be holding it, so the same hex under a new
+        // owner is a different objective, while a tactical detour, a phase change or a refined
+        // Base/Citadel classification never disturbs the key.
+        public static MissionIntentKey ForAttack(AttackTargetRef target) =>
+            new MissionIntentKey(MissionKind.Attack, (int)AggressionObjectiveKind.Attack,
+                target.ExpectedOwnerId, target.Hex.Q, target.Hex.R);
+
         public static MissionIntentKey ForActiveDefence(int enemyArmyId) =>
             new MissionIntentKey(MissionKind.ActiveDefence,
                 (int)AggressionObjectiveKind.ActiveDefence, enemyArmyId, 0, 0);

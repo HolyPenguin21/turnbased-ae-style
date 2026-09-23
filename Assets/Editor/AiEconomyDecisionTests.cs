@@ -1253,7 +1253,7 @@ namespace Game.EditorTests
                     new HexCoord(9, 0), enemy, true, null),
             };
 
-            Assert.That(WorldAnalysis.TrySelectBaseExpansionDirection(
+            Assert.That(WorldAnalysis.TrySelectStrategicDirection(
                 snapshot, self, out HexCoord target, out HexCoord anchor), Is.True);
             Assert.That(anchor, Is.EqualTo(new HexCoord(3, 0)));
             Assert.That(target, Is.EqualTo(new HexCoord(9, 0)));
@@ -1284,7 +1284,7 @@ namespace Game.EditorTests
                 },
             };
 
-            Assert.That(WorldAnalysis.TrySelectBaseExpansionDirection(
+            Assert.That(WorldAnalysis.TrySelectStrategicDirection(
                 snapshot, self, out HexCoord target, out HexCoord anchor), Is.True);
             Assert.That(target, Is.EqualTo(new HexCoord(10, -2)));
             Assert.That(anchor, Is.EqualTo(new HexCoord(0, 0)));
@@ -1315,7 +1315,7 @@ namespace Game.EditorTests
                     new HexCoord(3, 3), enemyB, true, null),
             };
 
-            Assert.That(WorldAnalysis.TrySelectBaseExpansionDirection(
+            Assert.That(WorldAnalysis.TrySelectStrategicDirection(
                 snapshot, self, out HexCoord target, out _), Is.True);
             Assert.That(target, Is.EqualTo(new HexCoord(3, 3)));
         }

@@ -78,6 +78,14 @@ namespace Game.Ai.V2
         public float ReconRefreshPressure;
 
         public float AggRaidOpportunity;
+        // ATK §37 — an OPERATIONAL Attack lane pressure inside the existing Aggression axis, for
+        // diagnostics and for the offensive gate below. Explicitly not a new Radar axis: Radar
+        // still normalises exactly the same four DesireAxis values it always has.
+        public float AggAttackPressure;
+        // The normalised canonical TaskScore of the best currently-known Attack objective, and how
+        // many such objectives exist. Both are plain world facts carried for the gate and the log.
+        public float AggBestAttackOpportunity;
+        public int AggAttackTargetCount;
         public float AggActiveDefencePressure;
         public float AggWarPressure;
         public float AggOpportunity;
@@ -231,10 +239,22 @@ namespace Game.Ai.V2
                 + AiConfigV2.aggWarWeightEcoGate * ecoGate
                 + AiConfigV2.aggWarWeightRelEdge * relativeEdge;
 
-            bool hasKnownCombatTarget = opp.NeutralOpportunities != null
-                && opp.NeutralOpportunities.Count > 0;
+            // ATK §36 — the offensive gate is no longer "a neutral target exists". A known hostile
+            // Base/Citadel is an equally real reason to want to be offensive, and while the gate
+            // was neutral-only the whole war half of Aggression could never fire on a map whose
+            // neutrals had all been cleared.
+            List<AttackObjective> attackObjectives = AttackObjectiveEvaluator.Enumerate(snapshot);
+            float attackOpportunity = BestAttackOpportunity(attackObjectives);
+            float attackPressure =
+                AiConfigV2.aggAttackWeightOpportunity * attackOpportunity
+                + AiConfigV2.aggAttackWeightWarPressure * warPressure
+                + AiConfigV2.aggAttackWeightSurplus * surplus
+                + AiConfigV2.aggAttackWeightRelEdge * relativeEdge;
+
+            bool hasKnownCombatTarget = HasOffensiveTarget(opp, attackObjectives);
             float offensivePressure = hasKnownCombatTarget
-                ? Mathf.Clamp01(Mathf.Max(raidOpportunity, warPressure))
+                ? Mathf.Clamp01(Mathf.Max(raidOpportunity,
+                        Mathf.Max(warPressure, attackPressure)))
                     * (underSiege ? AiConfigV2.aggSiegeDamp : 1f)
                 : 0f;
             float activeDefencePressure = snapshot.Threat?.Threats?
@@ -249,6 +269,9 @@ namespace Game.Ai.V2
                 activeDefencePressure));
 
             breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
+            breakdown.AggAttackPressure = Mathf.Clamp01(attackPressure);
+            breakdown.AggBestAttackOpportunity = attackOpportunity;
+            breakdown.AggAttackTargetCount = attackObjectives.Count;
             breakdown.AggActiveDefencePressure = Mathf.Clamp01(activeDefencePressure);
             breakdown.AggWarPressure = Mathf.Clamp01(warPressure);
             breakdown.AggOpportunity = opportunity;
@@ -352,8 +375,49 @@ namespace Game.Ai.V2
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
             breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
+            // ATK §36/§67 — the Attack lane's operational facts are exactly as perishable as the
+            // Raid lane's within one turn: a settled step can capture the target, reveal a fresh
+            // one or change the defender package. Rebuild them from the fresh snapshot on the same
+            // terms, and — like raidOpportunity above — reuse the turn-frozen cross-turn signals
+            // (warPressure's saturation/eco terms) rather than re-pulsing Radar mid-turn.
+            List<AttackObjective> attackObjectives = AttackObjectiveEvaluator.Enumerate(snapshot);
+            float attackOpportunity = BestAttackOpportunity(attackObjectives);
+            breakdown.AggBestAttackOpportunity = attackOpportunity;
+            breakdown.AggAttackTargetCount = attackObjectives.Count;
+            breakdown.AggAttackPressure = Mathf.Clamp01(
+                AiConfigV2.aggAttackWeightOpportunity * attackOpportunity
+                + AiConfigV2.aggAttackWeightWarPressure * breakdown.AggWarPressure
+                + AiConfigV2.aggAttackWeightSurplus * surplus
+                + AiConfigV2.aggAttackWeightRelEdge * relativeEdge);
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
+        }
+
+        // ATK §38 — an easy capture must be able to raise offensive pressure on its own merit, but
+        // only through the SAME canonical world score every other task is measured on. There is no
+        // Attack-local scale here: DemandUrgencyPolicy.NormalizedWorldValue is the existing owner
+        // of "how urgent is a world value", already used by Development and StrategicCardEvaluator.
+        // ATK §36 — the ONE offensive gate for the Aggression axis. Either family of offensive
+        // target is sufficient on its own: a neutral army/event guard Raid can pursue, or a known
+        // hostile Base/Citadel Attack can capture. While this asked only about neutrals, the whole
+        // war half of Aggression was silently unreachable on a map whose neutrals were cleared.
+        internal static bool HasOffensiveTarget(CombatOpportunityReport opp,
+            List<AttackObjective> attackObjectives) =>
+            (opp?.NeutralOpportunities != null && opp.NeutralOpportunities.Count > 0)
+            || (attackObjectives != null && attackObjectives.Count > 0);
+
+        internal static float BestAttackOpportunity(List<AttackObjective> objectives)
+        {
+            float best = 0f;
+            if (objectives == null)
+                return best;
+            foreach (AttackObjective o in objectives)
+            {
+                float normalized = DemandUrgencyPolicy.NormalizedWorldValue(o.BaseValue);
+                if (normalized > best)
+                    best = normalized;
+            }
+            return best;
         }
 
         private static float ReconExploration(WorldSnapshot snap)
@@ -685,6 +749,8 @@ namespace Game.Ai.V2
                 + $"(explRaw {F(b.ReconExploration)} exploreP {F(b.ReconExplorePressure)} "
                 + $"survRaw {F(b.ReconSurveillance)} refreshP {F(b.ReconRefreshPressure)} "
                 + $"blind {F(b.ReconEnemyBlindness)})");
+            AiDebugLog.Write($"[AI][V2]   desires — AGG attack lane targets={b.AggAttackTargetCount} "
+                + $"bestOpportunity={F(b.AggBestAttackOpportunity)} pressure={F(b.AggAttackPressure)}");
             AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
                 + $"= max(offence=max(raid {F(b.AggRaidOpportunity)}, war {F(b.AggWarPressure)})*siegeDamp, "
                 + $"activeDefence {F(b.AggActiveDefencePressure)}) "

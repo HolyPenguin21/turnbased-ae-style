@@ -306,7 +306,10 @@ namespace Game.Ai.V2
 
     // Concrete mission kinds. Each maps to a V2 Task builder in TaskExecutor. Was a bare string
     // until build-order step 4 — typed now, before anything downstream depends on the spelling.
-    public enum MissionKind { Scout, Raid, ActiveDefence, Economy, Development }
+    // ATK §22 — Attack is a full peer mission kind, not a Phase-B tempo action. It shares the
+    // Aggression desire axis with Raid and ActiveDefence (there is deliberately no DesireAxis.Attack)
+    // and the one ground-combat kernel; only the semantics of its target are its own.
+    public enum MissionKind { Scout, Raid, ActiveDefence, Economy, Development, Attack }
 
     public enum EconomyTaskKind
     {

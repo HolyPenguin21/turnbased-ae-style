@@ -291,7 +291,7 @@ namespace Game.Ai.V2
                     ?? snap.MapKnowledge?.VisitedHexSet
                     ?? (ISet<HexCoord>)new HashSet<HexCoord>());
                 var directionalSites = new HashSet<HexCoord>();
-                bool hasDirection = TrySelectBaseExpansionDirection(snap, player,
+                bool hasDirection = TrySelectStrategicDirection(snap, player,
                     out HexCoord targetCitadel, out HexCoord anchor);
                 if (hasDirection)
                     directionalSites.UnionWith(knownMapHexes);
@@ -349,16 +349,9 @@ namespace Game.Ai.V2
                         float corridorAlignment = 0f;
                         if (hasDirection)
                         {
-                            int directDistance = HexGridMath.Distance(anchor, targetCitadel);
-                            int candidateDistance = HexGridMath.Distance(hex, targetCitadel);
-                            forwardProgress = Mathf.Clamp01(
-                                (directDistance - candidateDistance)
-                                / Mathf.Max(1f, directDistance));
-                            int routedDistance = HexGridMath.Distance(anchor, hex)
-                                + candidateDistance;
-                            int detour = Mathf.Max(0, routedDistance - directDistance);
-                            corridorAlignment = 1f - Mathf.Clamp01(
-                                detour / Mathf.Max(1f, AiConfigV2.economyBaseFoundScanRadius));
+                            forwardProgress = ForwardProgressToward(anchor, targetCitadel, hex);
+                            corridorAlignment = CorridorAlignmentToward(anchor, targetCitadel, hex,
+                                AiConfigV2.economyBaseFoundScanRadius);
                         }
 
                         baseOpportunities.Add(new EconomyBaseOpportunity
@@ -464,8 +457,20 @@ namespace Game.Ai.V2
             return result;
         }
 
-        internal static bool TrySelectBaseExpansionDirection(WorldSnapshot snap,
-            PlayerSetupData player, out HexCoord targetCitadel, out HexCoord anchor)
+        // ATK §35 — the ONE strategic direction owner (anchor -> nearest known hostile starting
+        // citadel) and the ONE pair of direction-derived score inputs derived from it. Economy's
+        // Base expansion has always used this; Attack scores FrontProgress/CorridorAlignment from
+        // exactly the same direction rather than inventing a second, differently-shaped notion of
+        // "forward". Kept in Analysis because it is a world fact, not a per-lane preference.
+        //
+        // `allowTrueWorldFallback` — Economy's own sanctioned knowledge exception (see the branch
+        // below) must NOT leak into an offensive decision: an Attack that scored its targets from
+        // a TrueWorld-derived direction would be reasoning about an enemy capital this player has
+        // never observed. Offensive callers pass false and simply have no direction until Recon
+        // finds one, which is the honest answer.
+        internal static bool TrySelectStrategicDirection(WorldSnapshot snap,
+            PlayerSetupData player, out HexCoord targetCitadel, out HexCoord anchor,
+            bool allowTrueWorldFallback = true)
         {
             targetCitadel = default;
             anchor = default;
@@ -477,7 +482,7 @@ namespace Game.Ai.V2
                     && !b.Owner.IsNeutral && !b.Owner.IsEliminated)
                 .Select(b => b.Hex)
                 .ToList();
-            if (targets.Count == 0)
+            if (targets.Count == 0 && allowTrueWorldFallback)
             {
                 // Explicit Economy knowledge exception: initial expansion must not be disabled
                 // until Recon happens to find a distant opponent. TrueWorld already isolates the
@@ -500,6 +505,30 @@ namespace Game.Ai.V2
                 .OrderBy(h => HexGridMath.Distance(h, citadel))
                 .ThenBy(h => h.Q).ThenBy(h => h.R).First();
             return true;
+        }
+
+        // How much closer to the chosen direction's target a candidate hex sits than our own
+        // anchor does, in [0..1]. Verbatim the rule Economy's Base expansion has always used.
+        internal static float ForwardProgressToward(HexCoord anchor, HexCoord targetCitadel,
+            HexCoord candidate)
+        {
+            int directDistance = HexGridMath.Distance(anchor, targetCitadel);
+            int candidateDistance = HexGridMath.Distance(candidate, targetCitadel);
+            return Mathf.Clamp01((directDistance - candidateDistance)
+                / Mathf.Max(1f, directDistance));
+        }
+
+        // How little the candidate makes us leave the direct anchor -> target corridor, in [0..1].
+        // `detourScale` is how many hexes of detour the caller considers a full loss of alignment;
+        // it is a per-lane tolerance, not a second definition of the corridor itself.
+        internal static float CorridorAlignmentToward(HexCoord anchor, HexCoord targetCitadel,
+            HexCoord candidate, float detourScale)
+        {
+            int directDistance = HexGridMath.Distance(anchor, targetCitadel);
+            int routedDistance = HexGridMath.Distance(anchor, candidate)
+                + HexGridMath.Distance(candidate, targetCitadel);
+            int detour = Mathf.Max(0, routedDistance - directDistance);
+            return 1f - Mathf.Clamp01(detour / Mathf.Max(1f, detourScale));
         }
 
         internal static bool IsForwardBaseCandidate(IReadOnlyList<HexCoord> ownBases,
