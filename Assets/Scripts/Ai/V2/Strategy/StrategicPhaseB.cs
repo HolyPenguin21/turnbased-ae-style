@@ -209,14 +209,6 @@ namespace Game.Ai.V2
                                 | StrategicInvalidationReason.Capability);
                         if (!exec.Succeeded) exec.FailReason = "capacity upgrade refused";
                         break;
-                    case TempoKind.PressureSpend:
-                    {
-                        bool pc = false;
-                        yield return StrategicPressureAdvance.Execute(player, root, ctx, best.Pressure, v => pc = v);
-                        exec.Succeeded = exec.StateChanged = exec.Progressed = pc;
-                        if (!pc) exec.FailReason = "no advance step taken";
-                        break;
-                    }
                     case TempoKind.AviationRebase:
                     {
                         bool moved = false;
@@ -254,8 +246,8 @@ namespace Game.Ai.V2
                     // Canonical bump — exactly ONCE per mutating action. PlayMat / PlayNonCombat
                     // already bump inside MaterializationExecutor / CardPlayExecutor (and their
                     // result's StateVersionAfter must stay == V2StateVersion.Current), so bumping
-                    // again here would break that equality. Draw / MaintenanceSpend / PressureSpend
-                    // do NOT version themselves — bump for those.
+                    // again here would break that equality. Draw / MaintenanceSpend /
+                    // AviationRebase do NOT version themselves — bump for those.
                     bool executorSelfVersions = best.Kind == TempoKind.PlayMat
                         || best.Kind == TempoKind.PlayNonCombat;
                     if (!executorSelfVersions)

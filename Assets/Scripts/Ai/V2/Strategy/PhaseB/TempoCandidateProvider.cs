@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ---- tempo candidate model ------------------------------------------------------------
-    internal enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, PressureSpend, AviationRebase, Hold, EndTurn }
+    internal enum TempoKind { PlayMat, PlayNonCombat, Draw, MaintenanceSpend, AviationRebase, Hold, EndTurn }
 
     internal sealed class TempoCandidate
     {
@@ -25,7 +25,6 @@ namespace Game.Ai.V2
         public string DrawDiag;   // Draw only — preformatted valuation breakdown for the log
         public MatSurplusDecision Mat;
         public NonCombatCardPlayer.NonCombatPlay Nc;
-        public StrategicPressurePlan Pressure;
         public AviationRebasePlan Rebase;
         public StrategicSpendCandidate Spend;   // non-card strategic spend — executed verbatim
     }
@@ -50,8 +49,7 @@ namespace Game.Ai.V2
     {
         internal static bool IsSpend(TempoKind k) =>
             k == TempoKind.PlayMat || k == TempoKind.PlayNonCombat || k == TempoKind.Draw
-            || k == TempoKind.MaintenanceSpend || k == TempoKind.PressureSpend
-            || k == TempoKind.AviationRebase;
+            || k == TempoKind.MaintenanceSpend || k == TempoKind.AviationRebase;
 
         internal static List<TempoCandidate> BuildTempoCandidates(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, ActorCommitments commitments,
@@ -170,20 +168,15 @@ namespace Game.Ai.V2
                     ActionKey = "maint:" + sp.StableKey, Label = sp.Label,
                 });
 
-            StrategicPressurePlan pressure = AiStrategyV2Scope.AllowStrategicPressure
-                ? StrategicPressureAdvance.BuildPlan(player, root, hand, ctx, commitments)
-                : null;
-            if (pressure != null && pressure.Army != null)
-                list.Add(new TempoCandidate
-                {
-                    Kind = TempoKind.PressureSpend, Pressure = pressure,
-                    Utility = AiConfigV2.tempoPressureAdvanceValue,
-                    ApCost = pressure.Army.HasActivatedThisTurn ? 0f : pressure.Army.ActivationApCost,
-                    ActionKey = "pressure:" + pressure.Army.Id,
-                    Label = $"advance army #{pressure.Army.Id} toward known enemy Citadel "
-                        + $"({pressure.TargetHex.Q},{pressure.TargetHex.R})",
-                });
-
+            // ATK stage 5 — the PressureSpend candidate is gone. StrategicPressureAdvance was a
+            // fallback for exactly one dead zone: the enemy's field contacts had all vanished, its
+            // starting Citadel was honestly known, and army-targeted Raid therefore had nothing to
+            // aim at. The Attack lane now enumerates an objective for every known hostile
+            // Base/Citadel with no dependence on enemy field sightings at all, scores it as an
+            // ordinary world task and executes it through the shared ground-combat kernel — so the
+            // dead zone is covered by a real lane instead of a Phase-B fixed-utility bypass that
+            // marched an army on a Citadel outside Provisioning, outside Continuity and outside
+            // every AP/actor claim.
             AviationRebasePlan rebase = AviationRebasePlanner.BuildPlan(
                 snap, player, root, ctx, reconObjectives);
             if (rebase != null)

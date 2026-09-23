@@ -103,8 +103,7 @@ namespace Game.Ai.V2
             // already excluded a candidate standing on any known hostile Base/Citadel, so the
             // contact step is a plain field battle.
             AiGroundMoveAuthority authority = strike.HasValue
-                ? (next.Value.Equals(waypoint)
-                    ? AiGroundMoveAuthority.Combat : AiGroundMoveAuthority.Transit)
+                ? GroundMoveAuthorityPolicy.ForTacticalStrikeStep(next.Value, waypoint)
                 : GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, targetHex);
             var decision = AiDecision.Move(army, next.Value, strike.HasValue
                 ? $"V2 attack — tactical strike on enemy #{strike.EnemyArmyId} en route to "

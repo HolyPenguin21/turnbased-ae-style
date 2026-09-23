@@ -14,10 +14,15 @@ namespace Game.EditorTests
     //  ATK stage 3 — THE ATTACK LANE: intent model, mission proposal, phase machine, recovery,
     //  movement authority and the equipment witness.
     //
-    //  Covers §83 groups D (movement authority, partially — the tactical-strike rows arrive with
-    //  stage 4), I/J (main-target continuity), K (capture behaviour), N (lost base retarget), R
-    //  (one army, one ground-combat mission) and S (only a proven shortage may demand), plus the
-    //  §22 one-primary-field model, §24 phase machine, §47 recovery and §78 equipment proof.
+    //  Covers §83 groups D (movement authority, assault AND tactical strike), I/J (main-target
+    //  continuity), K (capture behaviour), N (lost base retarget), R (one army, one ground-combat
+    //  mission) and S (only a proven shortage may demand), plus the §22 one-primary-field model,
+    //  §24 phase machine, §47 recovery, §78 equipment proof and the §17 once-per-turn side-strike
+    //  marker.
+    //
+    //  The §12/§15/§18 arithmetic of the side strike itself (significance, route economics,
+    //  candidate ordering) is exercised by Tools/attack-tactical-sim against the same production
+    //  methods; those are pure functions and do not belong in a Unity test run.
     // ===========================================================================================
     public class AiAttackLaneTests
     {
@@ -77,6 +82,21 @@ namespace Game.EditorTests
                 "an approach step must never capture a structure it happens to cross");
             Assert.That(GroundMoveAuthorityPolicy.ForStructureAssaultStep(RedBase, RedBase),
                 Is.EqualTo(AiGroundMoveAuthority.CombatAndCapture));
+        }
+
+        // §9/§26 — a side strike may fight and must NEVER capture. Together with
+        // AiGroundMoveAuthorityTests.CombatDoesNotImplicitlyAuthorizeEmptyStructureTakeover this is
+        // also the guard for the stage-5 Raid audit: Combat authority cannot take a building over,
+        // so no lane but Attack's own terminal assault step can.
+        [Test]
+        public void MoveAuthority_ATacticalStrikeMayFightButNeverCapture()
+        {
+            Assert.That(GroundMoveAuthorityPolicy.ForTacticalStrikeStep(OurBase, EnRoute),
+                Is.EqualTo(AiGroundMoveAuthority.Transit),
+                "walking toward the contact is ordinary Transit");
+            Assert.That(GroundMoveAuthorityPolicy.ForTacticalStrikeStep(EnRoute, EnRoute),
+                Is.EqualTo(AiGroundMoveAuthority.Combat),
+                "the contact step fights the army and may not take any structure over");
         }
 
         // ---- §83 K / §8 / §61 capture behaviour ------------------------------------------
@@ -258,6 +278,58 @@ namespace Game.EditorTests
                 "actor contention is the allocator's problem, never a second Attack path");
         }
 
+        // ---- §17 the once-per-turn side-strike marker ----------------------------------
+
+        [Test]
+        public void AppendAttack_FreezesTheOperationsOwnStrikeMarkerIntoTheLeg()
+        {
+            WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Strong()) },
+                new[] { OurBase }, alsoOwnBuilding: true);
+
+            var fresh = new List<MissionProposal>();
+            AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
+                new HashSet<int>(), fresh, null);
+            Assert.That(((AttackMissionTarget)fresh[0].Target).OpportunisticStrikeTurn,
+                Is.EqualTo(0),
+                "a fresh objective has taken no strike, and 0 can never equal a real turn");
+
+            MissionIntent incumbent = AttackIntent(AttackMissionPhase.Assault, 7);
+            incumbent.Attack.LastOpportunisticStrikeTurn = snap.TurnNumber;
+            var carried = new List<MissionProposal>();
+            AggressionMissionLayer.AppendAttack(snap, new[] { incumbent },
+                new HashSet<int>(), carried, null);
+
+            Assert.That(((AttackMissionTarget)carried[0].Target).OpportunisticStrikeTurn,
+                Is.EqualTo(snap.TurnNumber),
+                "the executor must read the marker as a frozen leg fact, not from intent state");
+        }
+
+        [Test]
+        public void CreateAttackIntent_IsBornHavingAlreadySpentTheTurnsStrike()
+        {
+            var state = new MissionIntentState();
+            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: true);
+
+            MissionContinuityLayer.CreateAttackIntent(state, outcome, turn: 6);
+
+            Assert.That(state.TryGet(outcome.IntentKey, out MissionIntent created), Is.True);
+            Assert.That(created.Attack.LastOpportunisticStrikeTurn, Is.EqualTo(6),
+                "an operation that BEGAN with its diversion must not get a second one this turn");
+        }
+
+        [Test]
+        public void CreateAttackIntent_WithoutAStrike_InheritsTheLegsMarker()
+        {
+            var state = new MissionIntentState();
+            MissionTurnOutcome outcome = AttackOutcome(strikeSpent: false);
+
+            MissionContinuityLayer.CreateAttackIntent(state, outcome, turn: 6);
+
+            Assert.That(state.TryGet(outcome.IntentKey, out MissionIntent created), Is.True);
+            Assert.That(created.Attack.LastOpportunisticStrikeTurn, Is.EqualTo(0),
+                "no strike this turn leaves the operation free to take one");
+        }
+
         // ---- §49/§73 Attack is preemptable by ActiveDefence ------------------------------
 
         [Test]
@@ -347,6 +419,27 @@ namespace Game.EditorTests
             buildings.Add(Building(RedBase, Red));
             return Snap(buildings, ownBases, armies,
                 new[] { Sighting(50, RedBase, SiteDefenders()) });
+        }
+
+        private static MissionTurnOutcome AttackOutcome(bool strikeSpent)
+        {
+            AttackTargetRef target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base);
+            return new MissionTurnOutcome
+            {
+                MissionKind = MissionKind.Attack,
+                IntentKey = MissionIntentKey.ForAttack(target),
+                MoverArmyId = 7,
+                HasAttackPayload = true,
+                OperationStarted = true,
+                AttackOpportunisticStrike = strikeSpent,
+                AttackTarget = new AttackMissionTarget
+                {
+                    Phase = AttackMissionPhase.Assault,
+                    Target = target,
+                    PrimaryArmyId = 7,
+                    DestinationHex = RedBase,
+                },
+            };
         }
 
         private static MissionIntent AttackIntent(AttackMissionPhase phase, int primaryId,

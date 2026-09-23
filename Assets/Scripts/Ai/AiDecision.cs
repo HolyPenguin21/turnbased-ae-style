@@ -68,6 +68,17 @@ namespace Game.Ai
             step.Equals(target)
                 ? AiGroundMoveAuthority.CombatAndCapture
                 : AiGroundMoveAuthority.Transit;
+
+        // ATK §9/§26 — one step of an opportunistic side strike on an enemy FIELD army. Same shape
+        // as the assault rule above with one deliberate difference: the terminal step gets Combat,
+        // never CombatAndCapture. A diversion exists to destroy an army, so it must not be able to
+        // take a structure over — deliberate structure capture belongs to the Attack operation's
+        // own target and nothing else.
+        public static AiGroundMoveAuthority ForTacticalStrikeStep(
+            Game.HexGrid.HexCoord step, Game.HexGrid.HexCoord contact) =>
+            step.Equals(contact)
+                ? AiGroundMoveAuthority.Combat
+                : AiGroundMoveAuthority.Transit;
     }
 
     public class AiDecision

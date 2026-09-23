@@ -811,9 +811,17 @@ namespace Game.Ai.V2
             }
 
             HexCoord before = army.Hex;
+            // ATK §26/§27 (stage 5 audit) — Combat, NOT CombatAndCapture. A Raid objective is a
+            // neutral army or an event guard; it is never a structure, so no step of a raid — not
+            // even the terminal one — has any business taking a building over. This step used to
+            // carry full takeover authority for the WHOLE march, which meant a raid arriving on a
+            // hex that also holds a known undefended foreign structure (the destination is the one
+            // hex SafeStepPathing exempts from its foreign-building blocker) would capture it as a
+            // side effect of a fight it came for. Deliberate structure capture is the Attack lane's
+            // and only the Attack lane's.
             var decision = AiDecision.Move(army, next.Value,
                 $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f,
-                AiGroundMoveAuthority.CombatAndCapture);
+                AiGroundMoveAuthority.Combat);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 

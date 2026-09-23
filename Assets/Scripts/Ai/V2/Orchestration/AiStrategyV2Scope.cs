@@ -17,8 +17,6 @@ namespace Game.Ai.V2
     //                      stay.
     //   ReconAggressionEconomyDevelopment
     //                    — Recon + Economy + Aggression + Development, i.e. the same axes as Full.
-    //                      AllowStrategicPressure stays OFF: turning neutral Raid on must never
-    //                      re-enable the old Citadel-pressure advance.
     public enum AiStrategyV2Mode
     {
         Full,
@@ -31,8 +29,7 @@ namespace Game.Ai.V2
     public static class AiStrategyV2Scope
     {
         // Focused production bring-up: Recon -> Economy -> Aggression demand -> Development/
-        // Production support. Phase B and Housekeeping are unaffected, and AllowStrategicPressure
-        // stays OFF for every focus scope.
+        // Production support. Phase B and Housekeeping are unaffected.
         public static AiStrategyV2Mode Mode = AiStrategyV2Mode.ReconAggressionEconomyDevelopment;
 
         public static bool IsReconOnly => Mode == AiStrategyV2Mode.ReconOnly;
@@ -177,16 +174,14 @@ namespace Game.Ai.V2
         // type alone is never a reason a legal card is left in hand.
         public static bool AllowSurplusPreparation => true;
 
-        // Phase B (tempo/UseSurplus) is deliberately NOT scoped by AxisInScope above — it is a
-        // hand-management pass, not an operational-mission one (see AllowSurplusPreparation). That
-        // is exactly why StrategicPressureAdvance's PressureSpend candidate (an army marching on
-        // the enemy Citadel — genuine Aggression, not a card play) could slip through Phase B in a
-        // Recon/Economy focus scope even with Aggression desire at zero: Phase B never asked. This
-        // is the one Phase B decision that IS an operational-mission choice, so
-        // it consults scope directly rather than being carried along by the hand-management
-        // exemption. TempoCandidateProvider is the only consumer; StrategicPressureAdvance and
-        // Execution take the resulting candidate/plan as given and do not re-interpret scope.
-        public static bool AllowStrategicPressure => !IsFocusScoped;
+        // ATK stage 5 — AllowStrategicPressure is gone with StrategicPressureAdvance. It existed
+        // because Phase B is deliberately NOT scoped by AxisInScope (it is a hand-management pass,
+        // see AllowSurplusPreparation) and the pressure advance was the one Phase-B candidate that
+        // was really an operational-mission choice — an army marching on the enemy Citadel — so it
+        // had to consult scope directly or it would slip through a Recon/Economy focus scope with
+        // Aggression desire at zero. Deliberate structure capture is now an ordinary Attack mission
+        // on the Aggression axis, which AxisInScope already gates, so Phase B is once again purely
+        // hand management and needs no operational exemption of its own.
 
         // AGG-RAID P1#2 — the mission axes with a live, in-turn-re-admittable durable OPERATION
         // (Recon/Scout, Aggression/Raid — Active Defence included, folded into Aggression).

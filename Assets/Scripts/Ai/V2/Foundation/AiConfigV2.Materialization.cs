@@ -148,10 +148,6 @@ namespace Game.Ai.V2
         // for a follow-up draw gets this option-continuity value. This is utility, not a gate:
         // genuinely strong/urgent plays can still win the common Phase-B arbitration.
         public const float tempoDrawLastCardContinuityBonus = 0.85f;
-        // Utility of a ready decisive structure-pressure advance (StrategicPressureAdvance), in the
-        // shared band. It fires only in the narrow "no enemy contact, known citadel, saturated
-        // military" fallback, so a modest fixed value is enough for it to beat Hold/EndTurn there.
-        public const float tempoPressureAdvanceValue = 1.20f;
         // AI-MGR-02 — StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
         // band: it is the concrete Facility's dynamic StrategicCardEvaluator TotalUseScore minus

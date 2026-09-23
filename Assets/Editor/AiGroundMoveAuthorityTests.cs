@@ -50,20 +50,25 @@ namespace Game.EditorTests
                 "Authorized outcomes have no rejection reason; rejected outcomes must explain why.");
         }
 
+        // ATK §26/§27 — retargeted from the deleted StrategicPressureAdvance to the surviving
+        // single policy owner. The rule itself is unchanged and is now the Attack lane's: every
+        // approach step of a deliberate structure-capture operation is plain Transit, and only the
+        // terminal step INTO the operation's own target may seek a takeover, so an assault can
+        // never capture some other structure it happens to walk across.
         [Test]
-        public void StrategicPressureOnlyAuthorizesTerminalCitadelContact()
+        public void StructureAssaultOnlyAuthorizesTheTerminalStepIntoItsOwnTarget()
         {
             var target = new HexCoord(9, -4);
             var approach = new HexCoord(8, -4);
 
-            Assert.That(StrategicPressureAdvance.MoveAuthorityForStep(approach, target),
+            Assert.That(GroundMoveAuthorityPolicy.ForStructureAssaultStep(approach, target),
                 Is.EqualTo(AiGroundMoveAuthority.Transit),
                 "Approach steps must remain safe Transit and must not gain incidental combat/capture permission.");
 
             AiGroundMoveAuthority terminal =
-                StrategicPressureAdvance.MoveAuthorityForStep(target, target);
+                GroundMoveAuthorityPolicy.ForStructureAssaultStep(target, target);
             Assert.That(terminal, Is.EqualTo(AiGroundMoveAuthority.CombatAndCapture),
-                "The final step into the honestly-known Citadel must be allowed to complete the pressure objective.");
+                "The final step into the operation's own Base/Citadel must be allowed to complete it.");
             Assert.That(Authorize(terminal, knownContact: true, knownTakeover: true,
                 out string reason), Is.True, reason);
         }
