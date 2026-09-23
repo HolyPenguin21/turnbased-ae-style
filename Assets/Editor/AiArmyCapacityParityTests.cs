@@ -91,8 +91,9 @@ namespace Game.EditorTests
             FactionCardCatalog factionCatalog = null;
             try
             {
+                ArmyRegistry.Clear();
                 root.ActionPoints = 10;
-                // CreateArmy debits the REGISTRY root, not an arbitrary supplied PlayerRoot.
+                // The domain deployment transaction always charges the registered root.
                 PlayerRootRegistry.Register(player, root);
                 var building = new BuildingData { Owner = player, Hex = hex };
                 building.Abilities.Add(UnitAbilities.Barracks);
@@ -172,9 +173,22 @@ namespace Game.EditorTests
                 }
                 Assert.That(CardPlayExecutor.Preflight(player, root, hand, ctx,
                     plan, out string stillValid), Is.True, stillValid);
+
+                CardPlayResult success = CardPlayExecutor.Play(player, root, hand, ctx, plan);
+                Assert.That(success.Deployed, Is.True, success.FailReason);
+                Assert.That(success.ArmyCreated, Is.True);
+                Assert.That(success.ArmyShell, Is.Not.Null);
+                Assert.That(success.ArmyShell.Members.Count, Is.EqualTo(1),
+                    "A fresh army must first become visible to the registry already populated.");
+                Assert.That(ArmyRegistry.AllAt(hex).Count(a => a.Owner == player && !a.IsGarrison),
+                    Is.EqualTo(1), "One logical deploy must publish exactly one field army.");
+                Assert.That(root.ActionPoints, Is.EqualTo(8),
+                    "A zero-card-AP first deploy pays exactly the 2 AP fresh-army cost once.");
+                Assert.That(hand.Hand, Does.Not.Contain(card));
             }
             finally
             {
+                ArmyRegistry.Clear();
                 BuildingRegistry.Clear();
                 PlayerRootRegistry.Clear();
                 if (selectorObject != null) UnityEngine.Object.DestroyImmediate(selectorObject);
