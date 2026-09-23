@@ -556,7 +556,7 @@ namespace Game.Ai.V2
                     float gain = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
                         off.Card, c, snap, inv) * AiConfigV2.combatPowerPerBodyEstimate;
                     Consider(Make(off, DevRecipientKind.HandCard, c, null,
-                        recipientArmyId: null, $"hand:{c.Definition.displayName}", gain));
+                        null, $"hand:{c.Definition.displayName}", gain));
                 }
 
             foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
