@@ -83,6 +83,21 @@ namespace Game.Ai.V2
         // swing than an Economy base site does (economyBaseFoundScanRadius = 3), because the
         // capture itself moves the support network rather than depending on the existing one.
         public const float attackCorridorDetourScale = 6f;
+        // ---- Attack tactical opportunity (ATK §9-§18) ---------------------------------------
+        //  A TacticalOpportunity is a side strike an Attack army takes on a weak enemy FIELD army
+        //  it passes on its way to the Base, without changing the strategic target (§10) and
+        //  without ever raising capability Demand (§14). These two numbers answer only §12's
+        //  question — "is this army significant enough to be worth diverting for at all" — on the
+        //  intentionally crude raw Attack+Defense scalar that §12 mandates. They are NOT a battle
+        //  estimator: safety is decided afterwards by the one shared WorthIt/GroundCombatFeasibility
+        //  owner (§13).
+        //
+        //  NOT calibrated against a playthrough yet: the share is the natural self-scaling shape
+        //  ("a quarter of my own raw strength is a noticeable slice of the enemy's field force")
+        //  and the floor only keeps a single scrap unit from pulling a campaign off its axis. Both
+        //  are meant to be retuned from real [AI][V2][Attack][Tactical] log lines.
+        public const float attackTacticalOpportunityMinStrengthShare = 0.25f;
+        public const float attackTacticalOpportunityMinRawStrength = 2f;
         // N — how many Raid alternatives AggressionMissionPlanner hands downstream (beam width).
         // Execution capacity is bounded by real armies / heroes / commitments / resources, NOT a
         // fixed K (spec §20), so there is no maxConcurrentRaidExecutions.

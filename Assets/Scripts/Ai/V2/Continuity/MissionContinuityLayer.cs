@@ -2371,6 +2371,10 @@ namespace Game.Ai.V2
                 // and the player: AdvanceIntent only records the immutable execution fact.
                 if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
                     ai.Phase = AttackMissionPhase.SupportReturn;
+                // §17 — the operation's turn-local side-strike marker. Continuity is the only
+                // writer; Execution merely reported that the diversion was really spent.
+                if (o.AttackOpportunisticStrike)
+                    ai.LastOpportunisticStrikeTurn = turn;
             }
             if (o.HasRaidPayload && intent.Raid != null)
             {

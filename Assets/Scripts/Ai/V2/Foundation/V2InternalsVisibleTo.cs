@@ -10,4 +10,5 @@
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("capability-quality-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-ownership-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("recon-air-assignment-sim")]
+[assembly: System.Runtime.CompilerServices.InternalsVisibleTo("attack-tactical-sim")]
 [assembly: System.Runtime.CompilerServices.InternalsVisibleTo("Assembly-CSharp-Editor")]

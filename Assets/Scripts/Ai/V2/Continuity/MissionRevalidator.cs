@@ -86,10 +86,20 @@ namespace Game.Ai.V2
                     || pm.RaidPhase == RaidMissionPhase.RecoveryReturn);
             bool defenceReturn = pm.Kind == MissionKind.ActiveDefence
                 && pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Return;
-            if (raidReturn || defenceReturn)
+            // ATK §47 — Attack's two walking-home legs are the same noncapturing obligation and get
+            // the same check: their pinned destination must still be OURS by this player's own
+            // observation, or the leg goes back to Continuity instead of becoming an incidental
+            // capture of a base that changed hands while the army was in transit.
+            bool attackReturn = pm.Kind == MissionKind.Attack
+                && (pm.AttackTarget.Phase == AttackMissionPhase.RecoveryReturn
+                    || pm.AttackTarget.Phase == AttackMissionPhase.SupportReturn);
+            if (raidReturn || defenceReturn || attackReturn)
             {
                 Game.HexGrid.HexCoord? home = raidReturn
-                    ? pm.RaidDestinationHex : pm.ActiveDefenceTarget.ReturnHex;
+                    ? pm.RaidDestinationHex
+                    : attackReturn
+                        ? pm.AttackTarget.DestinationHex
+                        : pm.ActiveDefenceTarget.ReturnHex;
                 if (!home.HasValue)
                     return MissionValidity.StaleTargetInvalidated;
                 AiMapMemory.KnownBuilding? remembered = AiMapMemory.KnownBuildingAt(player, home.Value);
@@ -144,6 +154,36 @@ namespace Game.Ai.V2
                     && pm.EconomyTarget.BuildCard == null)
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;
+            }
+
+            // ATK §25 — Attack needs its OWN branch, like every other non-Scout kind. Without one it
+            // fell through to the Scout rules below, where an Attack target hex we have obviously
+            // already seen reads as a satisfied Explore objective (VisionSystem.IsVisited) and the
+            // assault is skipped as stale on every single step.
+            if (pm.Kind == MissionKind.Attack)
+            {
+                AttackMissionTarget attack = pm.AttackTarget;
+                if (attackReturn)
+                    return mover.Hex.Equals(attack.DestinationHex)
+                        ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
+                // Reinforcement is a rendezvous with the primary, not a fight with the site: its
+                // validity is the primary's, and the executor re-reads the meeting hex itself.
+                if (attack.Phase == AttackMissionPhase.Reinforcement)
+                    return attack.PrimaryArmyId.HasValue
+                        && ArmyRegistry.AllForOwner(player).Any(a =>
+                            a.Id == attack.PrimaryArmyId.Value && a.Members.Count > 0)
+                        ? MissionValidity.Valid : MissionValidity.StaleTargetInvalidated;
+                // Assault: the one §25 owner answers whether this is still the thing we set out to
+                // capture, from live own-Base truth plus this player's own honest memory.
+                switch (AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target))
+                {
+                    case AttackObjectiveEvaluator.AttackTargetStatus.Captured:
+                        return MissionValidity.StaleGoalMet;
+                    case AttackObjectiveEvaluator.AttackTargetStatus.Invalidated:
+                        return MissionValidity.StaleTargetInvalidated;
+                    default:
+                        return MissionValidity.Valid;
+                }
             }
 
             if (ReconScoutKinds.IsSurveil(pm.ScoutKind))

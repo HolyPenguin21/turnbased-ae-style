@@ -114,6 +114,11 @@ namespace Game.Ai.V2
                     ProjectedWinChance = plan.ProjectedWinChance,
                     CoversAllDefenders = plan.CoversAllDefenders,
                     EstimatedEta = eta,
+                    // §17 — carry the operation's own once-per-turn side-strike marker into the leg
+                    // the executor will run. A fresh objective has no incumbent and therefore no
+                    // marker, which is exactly right: it has taken no strike yet.
+                    OpportunisticStrikeTurn =
+                        incumbent?.Attack?.LastOpportunisticStrikeTurn ?? 0,
                 };
                 float ap = actor.HasActivatedThisTurn ? 0f
                     : projectedAp ?? actor.ActivationApCost;
@@ -185,6 +190,7 @@ namespace Game.Ai.V2
                 RecoveryBaseHex = a.RecoveryBaseHex,
                 SupportReturnHex = a.SupportReturnHex,
                 EstimatedEta = eta,
+                OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
             };
             var proposal = new MissionProposal
             {
@@ -246,6 +252,7 @@ namespace Game.Ai.V2
                 SupportArmyId = a.SupportArmyId,
                 DestinationHex = primary.Hex,
                 EstimatedEta = eta,
+                OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
             };
             var proposal = new MissionProposal
             {

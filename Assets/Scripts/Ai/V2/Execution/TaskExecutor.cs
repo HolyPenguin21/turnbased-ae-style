@@ -53,6 +53,11 @@ namespace Game.Ai.V2
         // RaidIntent phase before the outcome ledger reconciles it, so actor-role ownership must
         // never be inferred from the intent's already-mutated current phase.
         public bool ReinforcementHandoffAttempted;
+        // ATK §17 — this Attack step spent its one opportunistic side strike: the mover actually
+        // made contact with the chosen weak enemy field army and a battle started. An execution
+        // fact, like the handoff above: only Continuity may turn it into the durable intent's
+        // turn-local marker, and nothing here re-derives it from the intent's mutated state.
+        public bool AttackOpportunisticStrike;
         public bool RaidAirSupportStrikeSucceeded;
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;

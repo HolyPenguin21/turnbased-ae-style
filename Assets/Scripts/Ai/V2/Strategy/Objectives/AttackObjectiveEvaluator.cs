@@ -46,6 +46,11 @@ namespace Game.Ai.V2
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public int EstimatedEta;
+        // ATK §17 — the game turn on which this operation last took an opportunistic side strike,
+        // copied here from the durable AttackIntent so the executor reads a FROZEN fact like every
+        // other field of this leg instead of reaching into intent state mid-step. 0 (the struct
+        // default) means "never": turn numbering starts at 1.
+        public int OpportunisticStrikeTurn;
     }
 
     // ===========================================================================================
@@ -175,6 +180,32 @@ namespace Game.Ai.V2
             // The structure is no longer remembered at all — AiMapMemory only drops a record when
             // the hex was genuinely re-observed without it.
             return AttackTargetStatus.Invalidated;
+        }
+
+        // The SAME §25 question against LIVE state instead of a snapshot, for the one caller that
+        // has no snapshot: MissionRevalidator's per-mission gate, which runs between provisioned
+        // missions. The rules are identical and deliberately kept in this one owner rather than
+        // reimplemented there — only the two data sources differ: our own current Base topology
+        // (live truth about ourselves, exactly what Self.BaseHexes projects) and this observer's
+        // own remembered buildings (never a live read of a FOREIGN owner, §19/§65).
+        public static AttackTargetStatus EvaluateTargetLive(PlayerSetupData player,
+            AttackTargetRef target)
+        {
+            if (!target.HasValue || player == null)
+                return AttackTargetStatus.Invalidated;
+            BuildingData live = BuildingRegistry.FindAt(target.Hex);
+            if (live != null && live.Owner == player && (live.IsBase || live.IsStartingCitadel))
+                return AttackTargetStatus.Captured;
+
+            AiMapMemory.KnownBuilding? remembered = AiMapMemory.KnownBuildingAt(player, target.Hex);
+            if (!remembered.HasValue)
+                return AttackTargetStatus.Invalidated;
+            AiMapMemory.KnownBuilding b = remembered.Value;
+            if (!b.IsBase && !b.IsStartingCitadel)
+                return AttackTargetStatus.Invalidated;
+            if (b.Owner == null || b.Owner.ColorIndex != target.ExpectedOwnerId)
+                return AttackTargetStatus.Invalidated;
+            return AttackTargetStatus.Continue;
         }
 
         // ---- site facts the mission layer needs (§30/§31) -------------------------------------

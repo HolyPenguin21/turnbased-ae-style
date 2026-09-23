@@ -247,6 +247,11 @@ namespace Game.Ai.V2
                 SupportReturnHex = t.SupportReturnHex,
                 ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders,
+                // §17 — the operation may well have BEGUN with its side strike, in which case the
+                // intent is born having already spent this turn's one diversion. Anything else
+                // would let the very first turn take two.
+                LastOpportunisticStrikeTurn = o.AttackOpportunisticStrike
+                    ? turn : t.OpportunisticStrikeTurn,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
             state.Put(intent);

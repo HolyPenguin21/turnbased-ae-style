@@ -79,7 +79,14 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, targetHex);
+            // §9/§10 — the ONE tactical decision this step is allowed to take: a weak enemy field
+            // army on the way may be destroyed first. This changes only where THIS step walks; the
+            // strategic target above is untouched and no intent, proposal or demand is produced.
+            AttackTacticalStrike strike = AttackTacticalOpportunity.Select(player, ctx.Map,
+                snapshot, army, target, ctx.TurnNumber);
+            HexCoord waypoint = strike.HasValue ? strike.Hex : targetHex;
+
+            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, waypoint);
             if (!next.HasValue)
             {
                 // §27 — a route blocked by another known hostile structure simply has no safe step
@@ -91,10 +98,18 @@ namespace Game.Ai.V2
             }
 
             HexCoord before = army.Hex;
-            AiGroundMoveAuthority authority =
-                GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, targetHex);
-            var decision = AiDecision.Move(army, next.Value,
-                $"V2 attack — assault {target.Target.DiagnosticLabel}", 0f, authority);
+            // A side strike may fight but must NEVER take a structure: only the terminal step into
+            // the Attack's own target carries capture authority (§26/§27). The eligibility gate has
+            // already excluded a candidate standing on any known hostile Base/Citadel, so the
+            // contact step is a plain field battle.
+            AiGroundMoveAuthority authority = strike.HasValue
+                ? (next.Value.Equals(waypoint)
+                    ? AiGroundMoveAuthority.Combat : AiGroundMoveAuthority.Transit)
+                : GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, targetHex);
+            var decision = AiDecision.Move(army, next.Value, strike.HasValue
+                ? $"V2 attack — tactical strike on enemy #{strike.EnemyArmyId} en route to "
+                    + target.Target.DiagnosticLabel
+                : $"V2 attack — assault {target.Target.DiagnosticLabel}", 0f, authority);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -113,6 +128,13 @@ namespace Game.Ai.V2
             if (trace.BattleOccurred)
             {
                 result.CombatChanged = true;
+                // §16/§17 — the diversion was actually spent. Record it as an execution FACT so
+                // Continuity stamps the operation's once-per-turn marker; this Attack cannot divert
+                // again this turn even if a second weak army shows up. Continuation is deliberately
+                // NOT asserted here: the settled-step loop takes a fresh snapshot and re-evaluates
+                // this intent, which may legitimately turn into Reinforcement or Recovery.
+                if (strike.HasValue && next.Value.Equals(waypoint))
+                    result.AttackOpportunisticStrike = true;
                 result.StopReason = ExecutionStopReason.BattleStarted;
                 yield break;
             }

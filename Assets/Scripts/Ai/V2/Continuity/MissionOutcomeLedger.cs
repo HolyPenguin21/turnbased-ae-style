@@ -74,6 +74,8 @@ namespace Game.Ai.V2
         // reads immutable execution facts instead of inspecting an intent Execution may already
         // have advanced.
         public AttackMissionTarget AttackTarget;
+        // ATK §17 — this Attack actually spent its one opportunistic side strike this step.
+        public bool AttackOpportunisticStrike;
         public bool HasActiveDefencePayload;
         public ActiveDefenceMissionTarget ActiveDefenceTarget;
         public bool HasEconomyPayload;
@@ -332,6 +334,18 @@ namespace Game.Ai.V2
                             e.RaidAirSupportStrikeSucceeded;
                         o.RaidRefitSucceeded = e.RaidRefitSucceeded;
                         o.RaidResourcesSpent = e.ResourcesSpent;
+                    }
+                    // ATK §22/§70 — the Attack lane reads exactly the same two ownership facts in
+                    // AdvanceIntent/CreateAttackIntent (operation really begun, roster handoff
+                    // attempted), so they have to be published for Attack too. Engagement counts as
+                    // a start for the same reason it does for a Raid: a battle on the way IS the
+                    // operation physically beginning, even on a step that moved zero hexes.
+                    if (o.MissionKind == MissionKind.Attack)
+                    {
+                        o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
+                            || e.StopReason == ExecutionStopReason.BattleStarted;
+                        o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
+                        o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
                     }
                     if (o.MissionKind == MissionKind.Economy)
                         o.EconomyBuildCompleted = e.InfrastructureChanged;
