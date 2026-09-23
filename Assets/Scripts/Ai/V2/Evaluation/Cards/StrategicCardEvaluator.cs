@@ -1037,7 +1037,7 @@ namespace Game.Ai.V2
         // =======================================================================================
         // AI-MGR §11 — CommandRating is no longer an unconditional absolute bonus. The command part
         // of a hero's leadership fit is the MARGINAL usable capacity it unlocks: how many extra
-        // battle slots its Command opens (canonical CardPlayExecutor.ProjectedCapacityAfterDeploy
+        // battle slots its Command opens (canonical ArmyData.ComputeProjectedCapacity
         // over the projected deployment destination) that the AI actually has bodies to fill. The
         // combat-contribution part is unchanged. `detail` is the AiDebug decomposition (§15).
         private static float HeroLeadershipFit(MaterializationPlan plan, bool hero, EffectEvaluationContext ectx,
@@ -1078,7 +1078,7 @@ namespace Game.Ai.V2
             // StrategicEffectRegistry.ResolveDestination walk that already resolved FreeBattleSlots
             // for this exact plan (single destination-army lookup, not a second one just for Command).
             int nominalCap = ectx.DestNominalCapacity;
-            int projectedCap = CardPlayExecutor.ProjectedCapacityAfterDeploy(nominalCap, ectx.DestHasHero, def);
+            int projectedCap = ArmyData.ComputeProjectedCapacity(nominalCap, ectx.DestHasHero, def);
 
             int occupiedBefore = ectx.DestOccupiedSlots;
             // The hero itself consumes one battle slot; plus the bodies that could jointly-legally

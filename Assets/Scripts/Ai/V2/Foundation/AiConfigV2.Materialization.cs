@@ -302,7 +302,7 @@ namespace Game.Ai.V2
 
         // Hero Command marginal-capacity valuation — REPLACES commandRating * heroRoleCommandWeight
         // inside HeroLeadershipFit. Extra Command is only worth something when the AI actually has
-        // bodies to fill the slots it unlocks (canonical CardPlayExecutor.ProjectedCapacityAfterDeploy).
+        // bodies to fill the slots it unlocks (canonical ArmyData.ComputeProjectedCapacity).
         public const float heroCommandMarginalSlotValue = 0.9f;// value of ONE extra battle slot this hero's Command unlocks AND the AI can fill
         public const int   heroCommandMarginalMaxSlots  = 4;   // cap on counted extra slots
 

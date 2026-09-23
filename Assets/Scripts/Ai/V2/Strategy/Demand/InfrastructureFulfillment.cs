@@ -91,7 +91,7 @@ namespace Game.Ai.V2
                             ResearchProductionSystem.FacilityAbility(mode))
                         || ResearchProductionSystem.FindActor(player, site, mode) != null
                         || Game.Combat.BattleInitiator.FindEnemyAt(site, player) != null
-                        || !PlacementRules.HasRequiredBuilding(player, site, card.Definition))
+                        || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, site, card.Definition))
                         return false;
                     return ArmyRegistry.AllAt(site).Any(g => g != null && g.Owner == player
                         && g.IsGarrison && !g.IsPrison
@@ -755,7 +755,7 @@ namespace Game.Ai.V2
                 || !destination.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(
                     demand.DevelopmentOperatorMode.Value))
                 || destinationGarrison == null || !PlacementRules.CanDepositIntoGarrison(destinationGarrison)
-                || !PlacementRules.HasRequiredBuilding(player, demand.TargetHex.Value, proposed.CardDef))
+                || !ArmyActions.HasRequiredGroundDeploymentBuilding(player, demand.TargetHex.Value, proposed.CardDef))
                 return null;
             GenerationStep live = GenerationSource.Enumerate(player, root, ctx, hand,
                 reservation.ClaimedGeneratorUses, reservation.TriedGeneratorCards)

@@ -270,7 +270,7 @@ namespace Game.Ai.V2
                             claimedUseKeys: null, triedCardKeys: null);
                     generatedOperator = generatedOperatorSources
                         .Where(g => IsGeneratedOperatorCandidate(g, mode)
-                            && PlacementRules.HasRequiredBuilding(player, hex, g.CardDef)
+                            && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, g.CardDef)
                             && CardPlayExecutor.CanFitAfterDeploy(garrison, g.CardDef)
                             && ArmyRegistry.AllAt(g.FacilityHex).Any(source => source != null
                                 && source.Owner == player && !source.IsPrison

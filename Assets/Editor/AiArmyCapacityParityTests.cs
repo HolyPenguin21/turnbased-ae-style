@@ -179,7 +179,7 @@ namespace Game.EditorTests
                     Is.EqualTo(1), "One logical deploy must publish exactly one field army.");
                 Assert.That(root.ActionPoints, Is.EqualTo(8),
                     "A zero-card-AP first deploy pays exactly the 2 AP fresh-army cost once.");
-                Assert.That(hand.Hand, Does.Not.Contain(card));
+                Assert.That(hand.Hand.Contains(card), Is.False);
             }
             finally
             {
