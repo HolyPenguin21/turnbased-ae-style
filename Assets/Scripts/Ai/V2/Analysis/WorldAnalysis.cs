@@ -70,7 +70,10 @@ namespace Game.Ai.V2
         public static WorldSnapshot RefreshOperationalState(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            if (prev == null)
+            // Snapshot ownership is explicit. Never reuse Known/MapKnowledge captured for a
+            // different observer (or a different turn) merely because a caller supplied it.
+            if (prev == null || !object.ReferenceEquals(prev.Observer, player)
+                || ctx == null || prev.TurnNumber != ctx.TurnNumber)
                 return Scan(player, root, hand, ctx);
 
             var snap = new WorldSnapshot
@@ -98,7 +101,8 @@ namespace Game.Ai.V2
         public static WorldSnapshot RefreshStrategicKnowledge(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
-            if (prev == null)
+            if (prev == null || !object.ReferenceEquals(prev.Observer, player)
+                || ctx == null || prev.TurnNumber != ctx.TurnNumber)
                 return Scan(player, root, hand, ctx);
 
             int knowledgeVersion = AiMapMemory.KnowledgeVersionFor(player);
