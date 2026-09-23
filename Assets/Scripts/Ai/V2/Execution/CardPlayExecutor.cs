@@ -22,11 +22,9 @@ namespace Game.Ai.V2
     // transaction.
     //
     // MULTI-STEP PREFLIGHT. CreateArmy -> DeployUnitFromCard is not atomic in the engine.
-    // This existing method owns all V2 preconditions: card, target/roster, AP/resources,
-    // deployment-mode identity and required domain dependencies. It must reject an invalid
-    // sequence BEFORE CreateArmy charges AP, never rely on a refund or a second AI validator.
-    // Play() reports the REAL AP/resource delta measured on PlayerRoot even on unexpected
-    // partial failure. A fresh empty ArmyData left after such a failure remains reusable.
+    // This existing method owns V2 planning preconditions; ArmyActions remains the authoritative
+    // gameplay transaction. Fresh-army deployment is atomic in ArmyActions, so a failure cannot
+    // leave a charged/published empty shell. Play() still reports the REAL AP/resource delta.
     // ===========================================================================================
     public enum DeploymentKind
     {
@@ -118,7 +116,7 @@ namespace Game.Ai.V2
             return projectedCapacity >= target.Members.Count + 1;
         }
 
-        // Full preflight of the CreateArmy -> DeployUnitFromCard sequence. No spend, no mutation.
+        // Full preflight of the atomic fresh-army/existing-army card deployment. No spend, no mutation.
         public static bool Preflight(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, CardPlayPlan plan, out string reason)
         {
@@ -222,28 +220,27 @@ namespace Game.Ai.V2
             var resStart = Snapshot(root);
 
             ArmyData shell = plan.TargetArmy;
+            bool deployed;
+            string deployFail;
             if (plan.RequiresCreateArmy)
             {
                 FactionCardCatalog catalog = ctx.StartingDeckCatalog?.GetCatalog(player.Faction);
-                shell = ArmyActions.CreateArmy(player, plan.DeploymentHex, catalog, ctx.HexSelection);
-                if (shell == null)
-                {
-                    result.ApSpent = apStart - root.ActionPoints;   // real (0 on a clean refusal)
-                    result.StateChanged = result.ApSpent > 0f;
-                    result.FailReason = "CreateArmy failed";
-                    Stamp(result, resStart, root);
-                    return result;
-                }
-                result.ArmyCreated = true;
-                result.ArmyShell = shell;   // an empty army now exists — a retained reusable asset
+                deployed = ArmyActions.DeployUnitFromCardToNewArmy(plan.Card.Definition, player,
+                    plan.DeploymentHex, catalog, root, ctx.HexSelection, out shell, out deployFail,
+                    attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
+                result.ArmyCreated = deployed && shell != null;
+                result.ArmyShell = shell;
+            }
+            else
+            {
+                deployed = ArmyActions.DeployUnitFromCard(plan.Card.Definition, player, shell, root,
+                    ctx.HexSelection, out deployFail,
+                    attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
             }
 
-            bool deployed = ArmyActions.DeployUnitFromCard(plan.Card.Definition, player, shell, root,
-                ctx.HexSelection, out string deployFail,
-                attachedEquipment: plan.Card.Equipment, sourceCard: plan.Card);
-
-            // Real mutation, measured — DeployUnitFromCard spends AP/resources before it spawns, so
-            // even a FALSE return can have moved the books.
+            // The domain transaction is atomic for fresh-army deployment: FALSE means no new army,
+            // no AP/resource debit and no published unit. Existing-recipient deployment uses the
+            // same validation/payment/spawn core and is measured here for the action ledger.
             result.ApSpent = apStart - root.ActionPoints;
             bool resChanged = !SameResources(resStart, Snapshot(root));
             result.StateChanged = result.ApSpent > 0f || resChanged || result.ArmyCreated;
