@@ -168,6 +168,8 @@ namespace Game.Ai
         public bool ReachedDestination;      // the mover ended on decision.TargetHex
         public HexCoord EndHex;              // where the mover PHYSICALLY stopped — captured before any battle, survives the mover's death
         public bool EnteredStealthThisStep;  // a solo Recce slipped into stealth before this move (V2 step-7 "made progress" signal)
+        public bool AuthorizationRejected;   // known contact/takeover was outside this mission's typed authority
+        public string AuthorizationReason;
         private readonly HashSet<int> _destroyedInOwnBattle = new HashSet<int>();
 
         // Capture the terminal result of this precise encounter. No ArmyRegistry lookup:
@@ -236,23 +238,29 @@ namespace Game.Ai
             yield break;
         }
 
-        // Internal, not private — AiAviationSupport.LaunchRoutine also calls this directly to
-        // execute a freshly launched sortie's first real step in the same, indivisible decision
-        // (2026-08-26 P1 fix — see that method's own comment), not just from PerformDecision's
-        // own dispatch switch below.
-        // Would an army of `player`'s finishing its move on `hex` capture the Base / destroy
-        // the facility there for free — i.e. there's a foreign-owned building and nobody of
-        // that owner's still on the hex to defend it (the exact condition BuildingRegistry.
-        // CaptureOrDestroyIfUndefended acts on). Used to decide whether a hidden AI scout
-        // must drop stealth before this move (a hidden unit can't take anything).
-        private static bool WouldTakeOverBuildingAt(HexCoord hex, PlayerSetupData player)
+        // One authorization gate for every deliberate AI ground move outcome. The caller supplies
+        // only typed intent; knowledge is resolved by MoveArmyRoutine immediately before issuing
+        // the order. Surprise contact discovered only AFTER entering fog is never pre-blocked from
+        // hidden world state — the normal gameplay movement pipeline resolves that consequence.
+        internal static bool IsKnownGroundOutcomeAuthorized(AiDecision decision,
+            bool knownContact, bool knownTakeover, out string reason)
         {
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            if (building == null || building.Owner == null || building.Owner == player)
+            reason = null;
+            if (decision == null)
+            {
+                reason = "missing move decision";
                 return false;
-            foreach (ArmyData resident in ArmyRegistry.AllAt(hex))
-                if (resident.Owner == building.Owner && BattleInitiator.IsEngageable(resident, player))
-                    return false;
+            }
+            if (knownContact && !decision.AllowsGroundCombat)
+            {
+                reason = "known combat contact is outside this mission's move authority";
+                return false;
+            }
+            if (knownTakeover && !decision.AllowsStructureTakeover)
+            {
+                reason = "known undefended foreign structure is outside this mission's move authority";
+                return false;
+            }
             return true;
         }
 
@@ -297,12 +305,36 @@ namespace Game.Ai
             int energy0 = root != null ? root.GetResource(ResourceType.Energy) : 0;
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
-            // A hidden unit can't take a hex/base/facility (stealth design §5) — so if this
-            // move ends on an enemy/neutral building nobody's left to defend, the AI must
-            // drop stealth first, whatever the task, or the scout would just walk on and
-            // capture nothing. (An undefended building only — a defended one is a fight the
-            // solo scout stays hidden and out of.)
-            bool wantsBuildingTakeover = WouldTakeOverBuildingAt(destination, player);
+            // Deliberate contact/capture permission is evaluated only against this observer's
+            // knowledge. A fog-hidden army/building cannot veto or alter the order before the
+            // mover actually discovers it. Once a surprise hex is entered, IssueMoveOrder keeps
+            // the ordinary gameplay consequence (battle / automatic undefended takeover).
+            bool isGroundMove = !AviationRules.IsAirArmy(army);
+            bool knownContact = isGroundMove
+                && (AiMapMemory.KnownEnemySightingAt(player, destination).HasValue
+                    || AiMapMemory.KnownEventGuardStrengthAt(player, destination).HasValue);
+            bool knownTakeover = isGroundMove
+                && AiMapMemory.KnownUndefendedForeignStructureAt(player, destination);
+            if (isGroundMove && !IsKnownGroundOutcomeAuthorized(decision,
+                    knownContact, knownTakeover, out string authorizationReason))
+            {
+                if (trace != null)
+                {
+                    trace.AuthorizationRejected = true;
+                    trace.AuthorizationReason = authorizationReason;
+                    trace.MoveResult = MoveOrderResult.CannotMove;
+                    trace.EndHex = army.Hex;
+                }
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" move to "
+                    + $"({destination.Q},{destination.R}) rejected before issue — {authorizationReason}; "
+                    + $"authority={decision.GroundMoveAuthority}.");
+                yield break;
+            }
+
+            // A hidden unit can't deliberately take a known hex/base/facility (stealth design §5).
+            // Only an explicitly capture-authorized move reveals for a KNOWN undefended structure.
+            // No live BuildingRegistry read occurs here, so fog cannot make the AI reveal early.
+            bool wantsBuildingTakeover = knownTakeover && decision.AllowsStructureTakeover;
 
             // Safe-first stealth rule (stealth design §8): a solo reconnaissance army whose
             // sole member carries Stealth4 slips into stealth before it moves, provided it still
