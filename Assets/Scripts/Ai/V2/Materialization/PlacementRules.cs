@@ -13,25 +13,12 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  PLACEMENT RULES  (Strategy V2 — Strategic Manager)
     // ===========================================================================================
-    //  Self-contained "may this card legally deploy at this hex" building check — the same rule
-    //  CardHandUI.IsValidDropTarget enforces for a human drag-drop (an OWN building at the hex
-    //  granting the card's requiredBuildingAbility, Barracks in practice). Kept here so V2 does
-    //  not reach into V1 AiManagementPlanner for it.
+    //  V2-only placement policy that is NOT physical deployment law (reserved garrison slots,
+    //  stable airfield enumeration). Ground building legality is owned by
+    //  ArmyActions.HasRequiredGroundDeploymentBuilding and is called directly by planning/UI.
     // ===========================================================================================
     public static class PlacementRules
     {
-        public static bool HasRequiredBuilding(PlayerSetupData player, HexCoord hex, CardDefinition def)
-        {
-            // For ground Unit/Hero cards, an empty ability is NOT a wildcard. Human
-            // CardHandUI.IsValidDropTarget rejects it; the previous AI-only exemption admitted
-            // a card the live human path would never allow. Aviation uses its independent owned
-            // airfield placement rule and is intentionally not routed through this predicate.
-            if (player == null || def == null || string.IsNullOrEmpty(def.requiredBuildingAbility))
-                return false;
-            BuildingData b = BuildingRegistry.FindAt(hex);
-            return b != null && b.Owner == player && b.HasAbility(def.requiredBuildingAbility);
-        }
-
         // Same stricter rule V1 AiManagementPlanner.HasGarrisonDepositRoom enforces — an ordinary
         // card must not fill a garrison's last slots, part of capacity is kept for later
         // operations / reorganisation. Neutral primitive so V1 and V2 stay in step on the number.

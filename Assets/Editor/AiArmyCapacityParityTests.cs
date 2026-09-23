@@ -16,16 +16,10 @@ namespace Game.EditorTests
 {
     public sealed class AiArmyCapacityParityTests
     {
-        private static Type ProjectionRules => typeof(CardPlayExecutor).Assembly.GetType(
-            "Game.Ai.V2.ArmyCapacityRules", throwOnError: true);
-
-        private static int ProjectedCapacity(int nominal, bool hasHero, int addedHeroes, int firstRating)
-        {
-            MethodInfo method = ProjectionRules.GetMethod("ProjectedCapacity",
-                BindingFlags.NonPublic | BindingFlags.Static);
-            Assert.That(method, Is.Not.Null);
-            return (int)method.Invoke(null, new object[] { nominal, hasHero, addedHeroes, firstRating });
-        }
+        private static int ProjectedCapacity(int nominal, bool hasHero,
+            int addedHeroes, int firstRating)
+            => ArmyData.ComputeProjectedCapacity(
+                nominal, hasHero, addedHeroes, firstRating);
 
         [TestCase(0)]
         [TestCase(1)]

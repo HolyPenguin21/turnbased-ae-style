@@ -667,13 +667,8 @@ namespace Game.UI
         // TryDeployUnitOrHero, so the two can never disagree about what counts as a valid target.
         private static bool IsValidDropTarget(CardDefinition definition, PlayerSetupData player, HexCoord hex)
         {
-            if (!IsUnitOrHero(definition))
-                return false;
-            if (string.IsNullOrEmpty(definition.requiredBuildingAbility))
-                return false;
-
-            BuildingData building = BuildingRegistry.FindAt(hex);
-            return building != null && building.Owner == player && building.HasAbility(definition.requiredBuildingAbility);
+            return IsUnitOrHero(definition)
+                && ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, definition);
         }
 
         // Same idea, for a Base card — the target hex must already have one of the player's own
@@ -814,7 +809,7 @@ namespace Game.UI
             // ArmyData.Capacity) — a full garrison blocks the deploy, same popup as the
             // no-Barracks case, checked before any AP/resources are spent.
             ArmyData garrison = ArmyRegistry.FindGarrisonAt(hex.Value, human);
-            if (garrison == null || !garrison.HasRoom)
+            if (garrison == null || !garrison.CanFitAdditionalCard(definition))
             {
                 turnController.ShowSpawnHint($"Garrison here is full — can't deploy {definition.displayName}.");
                 return false;
@@ -913,7 +908,7 @@ namespace Game.UI
                 return false;
             }
 
-            if (!targetArmy.HasRoom)
+            if (!targetArmy.CanFitAdditionalCard(definition))
             {
                 turnController.ShowSpawnHint($"{targetArmy.Name} is full — can't deploy {definition.displayName}.");
                 return false;

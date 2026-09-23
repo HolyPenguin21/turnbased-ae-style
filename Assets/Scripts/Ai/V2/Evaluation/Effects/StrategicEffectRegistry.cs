@@ -555,7 +555,7 @@ namespace Game.Ai.V2
                 return;
 
             // The plan's own primary body (real card in hand or a generated base def). Its hero /
-            // CommandRating handling is entirely inside CardPlayExecutor.ProjectedCapacityAfterDeploy.
+            // CommandRating handling is entirely inside ArmyData.ComputeProjectedCapacity.
             CardDefinition primary = plan.BaseCardInHand?.Definition ?? plan.GeneratedBaseDef;
             const int primaryBodySlots = 1;
 
@@ -579,11 +579,10 @@ namespace Game.Ai.V2
                     nominalCapacity = a.Capacity;
                     occupiedSlots = a.OccupiedBattleSlots;
                     destHasHero = a.HasHero;
-                    // Mirror CardPlayExecutor / ArmyActions: a hero rewrites capacity to its
+                    // Mirror the ArmyData domain rule: a hero rewrites capacity to its
                     // CommandRating ONLY as the FIRST hero — a second hero is appended after the
                     // existing commander and does NOT raise capacity (no auto TryReorderCommander).
-                    int cap = CardPlayExecutor.ProjectedCapacityAfterDeploy(
-                        nominalCapacity, destHasHero, primary);
+                    int cap = ArmyData.ComputeProjectedCapacity(nominalCapacity, destHasHero, primary);
                     freeSlots = System.Math.Max(0, cap - occupiedSlots - primaryBodySlots);
                     return;
                 }
@@ -603,8 +602,7 @@ namespace Game.Ai.V2
                     // Same canonical rule as a real recipient: a hero primary sets capacity to its
                     // CommandRating (first hero into an empty base), a non-hero keeps nominalCap —
                     // NOT Math.Max(heroCr, nominalCap), which is where phantom slots came from.
-                    int cap = CardPlayExecutor.ProjectedCapacityAfterDeploy(
-                        nominalCapacity, targetHasHero: false, primary);
+                    int cap = ArmyData.ComputeProjectedCapacity(nominalCapacity, hasExistingHero: false, incoming: primary);
                     freeSlots = System.Math.Max(0, cap - primaryBodySlots);
                     return;
                 }

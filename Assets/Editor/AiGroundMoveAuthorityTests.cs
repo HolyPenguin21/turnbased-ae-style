@@ -1,6 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Reflection;
 using Game.Ai;
+using Game.Ai.V2;
 using Game.HexGrid;
 using NUnit.Framework;
 
@@ -47,6 +48,24 @@ namespace Game.EditorTests
             Assert.That(allowed, Is.EqualTo(expected));
             Assert.That(string.IsNullOrEmpty(reason), Is.EqualTo(expected),
                 "Authorized outcomes have no rejection reason; rejected outcomes must explain why.");
+        }
+
+        [Test]
+        public void StrategicPressureOnlyAuthorizesTerminalCitadelContact()
+        {
+            var target = new HexCoord(9, -4);
+            var approach = new HexCoord(8, -4);
+
+            Assert.That(StrategicPressureAdvance.MoveAuthorityForStep(approach, target),
+                Is.EqualTo(AiGroundMoveAuthority.Transit),
+                "Approach steps must remain safe Transit and must not gain incidental combat/capture permission.");
+
+            AiGroundMoveAuthority terminal =
+                StrategicPressureAdvance.MoveAuthorityForStep(target, target);
+            Assert.That(terminal, Is.EqualTo(AiGroundMoveAuthority.CombatAndCapture),
+                "The final step into the honestly-known Citadel must be allowed to complete the pressure objective.");
+            Assert.That(Authorize(terminal, knownContact: true, knownTakeover: true,
+                out string reason), Is.True, reason);
         }
 
         [Test]

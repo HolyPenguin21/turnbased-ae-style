@@ -31,9 +31,9 @@ namespace Game.EditorTests
                 cardType = CardType.Unit,
                 requiredBuildingAbility = null,
             };
-            Assert.That(PlacementRules.HasRequiredBuilding(owner, Site, missingRequirement), Is.False);
+            Assert.That(ArmyActions.HasRequiredGroundDeploymentBuilding(owner, Site, missingRequirement), Is.False);
             missingRequirement.requiredBuildingAbility = string.Empty;
-            Assert.That(PlacementRules.HasRequiredBuilding(owner, Site, missingRequirement), Is.False);
+            Assert.That(ArmyActions.HasRequiredGroundDeploymentBuilding(owner, Site, missingRequirement), Is.False);
         }
 
         [Test]
@@ -50,11 +50,11 @@ namespace Game.EditorTests
                 requiredBuildingAbility = UnitAbilities.Barracks,
             };
 
-            Assert.That(PlacementRules.HasRequiredBuilding(owner, Site, unit), Is.True);
-            Assert.That(PlacementRules.HasRequiredBuilding(other, Site, unit), Is.False);
-            Assert.That(PlacementRules.HasRequiredBuilding(owner, new HexCoord(72, -23), unit), Is.False);
+            Assert.That(ArmyActions.HasRequiredGroundDeploymentBuilding(owner, Site, unit), Is.True);
+            Assert.That(ArmyActions.HasRequiredGroundDeploymentBuilding(other, Site, unit), Is.False);
+            Assert.That(ArmyActions.HasRequiredGroundDeploymentBuilding(owner, new HexCoord(72, -23), unit), Is.False);
             unit.requiredBuildingAbility = UnitAbilities.Research;
-            Assert.That(PlacementRules.HasRequiredBuilding(owner, Site, unit), Is.False);
+            Assert.That(ArmyActions.HasRequiredGroundDeploymentBuilding(owner, Site, unit), Is.False);
         }
     }
 }

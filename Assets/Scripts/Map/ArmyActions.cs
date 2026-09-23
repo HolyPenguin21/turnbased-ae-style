@@ -108,6 +108,21 @@ namespace Game.Map
             return card.ResearchProductionCreated ? definition.activationApCost : definition.apCost;
         }
 
+        // Pure gameplay legality primitive shared by human preview, AI planning and the physical
+        // deployment transaction. Ground Unit/Hero deployment requires an owned building at the
+        // destination carrying the card's declared required ability; an empty requirement is not
+        // a wildcard. Aviation has its separate owned-airfield rule.
+        public static bool HasRequiredGroundDeploymentBuilding(PlayerSetupData owner, HexCoord hex,
+            CardDefinition definition)
+        {
+            if (owner == null || definition == null
+                || string.IsNullOrEmpty(definition.requiredBuildingAbility))
+                return false;
+            BuildingData building = BuildingRegistry.FindAt(hex);
+            return building != null && building.Owner == owner
+                && building.HasAbility(definition.requiredBuildingAbility);
+        }
+
         // Existing-army deployment compatibility surface. All legality/payment/spawn logic lives
         // in DeployUnitFromCardCore below; UI and aviation keep their current call shape.
         public static bool DeployUnitFromCard(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy,
@@ -186,16 +201,10 @@ namespace Game.Map
                     return false;
                 }
             }
-            else
+            else if (!HasRequiredGroundDeploymentBuilding(owner, deploymentHex, definition))
             {
-                BuildingData building = BuildingRegistry.FindAt(deploymentHex);
-                if (string.IsNullOrEmpty(definition.requiredBuildingAbility)
-                    || building == null || building.Owner != owner
-                    || !building.HasAbility(definition.requiredBuildingAbility))
-                {
-                    failReason = $"{definition.displayName} requires your building with '{definition.requiredBuildingAbility}' at this hex.";
-                    return false;
-                }
+                failReason = $"{definition.displayName} requires your building with '{definition.requiredBuildingAbility}' at this hex.";
+                return false;
             }
 
             var prospectiveMember = new UnitData { IsAviation = definition.isAviation };
@@ -217,17 +226,11 @@ namespace Game.Map
                 failReason = $"The airfield at {deploymentHex} is full.";
                 return false;
             }
-            if (!destination.IsAirfield)
+            if (!destination.IsAirfield && !destination.CanFitAdditionalCard(definition))
             {
-                int projectedCapacity = destination.Capacity;
-                if (definition.cardType == CardType.Hero && !destination.Members.Any(m => m.IsHero))
-                    projectedCapacity = definition.commandRating;
-                if (projectedCapacity < destination.Members.Count + 1)
-                {
-                    string targetName = creatingArmy ? "a fresh army" : destination.Name;
-                    failReason = $"{definition.displayName} would exceed {targetName}'s capacity after deployment.";
-                    return false;
-                }
+                string targetName = creatingArmy ? "a fresh army" : destination.Name;
+                failReason = $"{definition.displayName} would exceed {targetName}'s capacity after deployment.";
+                return false;
             }
 
             bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;

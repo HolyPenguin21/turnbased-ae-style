@@ -101,12 +101,12 @@ namespace Game.Ai.V2
             _recipients.TryGetValue(key, out Recipient r) ? r
             : new Recipient { IsGarrison = false, BaseNominalCapacity = FieldBaseCapacity };
 
-        // ARCH-02 §58 — the fit test goes through the shared ArmyCapacityRules, the same primitive
-        // CardPlayExecutor.CanFitAfterDeploy uses, so planner and executor cannot disagree.
+        // ARCH-02 §58 — the fit test goes through ArmyData's shared domain projection, the same primitive
+        // physical deployment uses, so planner and executor cannot disagree.
         private static bool RosterFits(in Recipient r)
         {
             int members = r.BaseNonHero + (r.BaseHasHero ? 1 : 0) + r.AddedNonHero + r.AddedHeroes;
-            return ArmyCapacityRules.RosterFits(r.BaseNominalCapacity, r.BaseHasHero,
+            return ArmyData.ProjectedRosterFits(r.BaseNominalCapacity, r.BaseHasHero,
                 members, r.AddedHeroes, r.FirstAddedHeroCr);
         }
 

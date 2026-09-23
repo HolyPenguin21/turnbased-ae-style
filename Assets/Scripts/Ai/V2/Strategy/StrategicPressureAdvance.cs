@@ -136,6 +136,14 @@ namespace Game.Ai.V2
             };
         }
 
+        // Mission-specific intent mapping: ordinary approach steps are Transit. Only the final
+        // step into the honestly-known Citadel may deliberately fight/capture. This keeps the safe
+        // default everywhere else while allowing the fallback to actually complete its own goal.
+        internal static AiGroundMoveAuthority MoveAuthorityForStep(HexCoord step, HexCoord target)
+            => step.Equals(target)
+                ? AiGroundMoveAuthority.CombatAndCapture
+                : AiGroundMoveAuthority.Transit;
+
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             StrategicPressurePlan plan, System.Action<bool> setChanged)
         {
@@ -169,7 +177,8 @@ namespace Game.Ai.V2
 
                 HexCoord before = army.Hex;
                 var decision = AiDecision.Move(army, next.Value,
-                    $"V2 strategic pressure — advance toward known enemy Citadel at ({plan.TargetHex.Q},{plan.TargetHex.R})", 0f);
+                    $"V2 strategic pressure — advance toward known enemy Citadel at ({plan.TargetHex.Q},{plan.TargetHex.R})", 0f,
+                    MoveAuthorityForStep(next.Value, plan.TargetHex));
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 

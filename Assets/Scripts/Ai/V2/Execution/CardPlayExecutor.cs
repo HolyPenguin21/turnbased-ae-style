@@ -82,38 +82,15 @@ namespace Game.Ai.V2
         private static readonly ResourceType[] Res =
             { ResourceType.Human, ResourceType.Energy, ResourceType.Materials, ResourceType.Tech };
 
-        // CANONICAL projected battle-cell capacity of a destination roster AFTER `incoming` joins.
-        // The ONE place the "a hero rewrites capacity" rule lives for the V2 path — mirrors
-        // ArmyActions.DeployUnitFromCard exactly: a hero sets capacity to its CommandRating ONLY
-        // when it is the FIRST hero in the roster (a REPLACEMENT of the nominal value, never a
-        // Math.Max — a low-CommandRating first hero can make a roomy no-hero base too small); a
-        // SUBSEQUENT hero, or any non-hero, leaves the nominal capacity untouched (a second hero is
-        // appended after the existing commander and never becomes commander without an explicit
-        // TryReorderCommander, which the executor does not do). Both the strategic planner
-        // (StrategicEffectRegistry.ResolveDestination) and this preflight go through here so the
-        // projected-capacity rule cannot drift between planning and execution.
-        internal static int ProjectedCapacityAfterDeploy(
-            int nominalCapacity, bool targetHasHero, CardDefinition incoming)
-        {
-            bool incomingHero = incoming != null && incoming.cardType == CardType.Hero;
-            return ArmyCapacityRules.ProjectedCapacity(nominalCapacity, targetHasHero,
-                incomingHero ? 1 : 0, incomingHero ? incoming.commandRating : 0);
-        }
-
-        // Shared V2 projected-capacity predicate. The physical gameplay boundary is
-        // ArmyActions.DeployUnitFromCard: ground units may never join an airfield, an aviation
-        // roster or a prison, regardless of how many nominal slots those containers report.
-        // Previously the airfield branch returned true unconditionally, so a V2 placement
-        // could admit a plan that its own authoritative executor would always reject.
+        // Predictive composite only. Container identity remains a V2 admission concern here,
+        // while the actual capacity-after-add rule is owned by ArmyData and shared with execution.
         internal static bool CanFitAfterDeploy(ArmyData target, CardDefinition def)
         {
             if (target == null || def == null || def.isAviation
                 || target.IsPrison || target.IsAirfield
                 || target.Members.Any(m => m.IsAviation))
                 return false;
-            int projectedCapacity = ProjectedCapacityAfterDeploy(
-                target.Capacity, target.Members.Any(m => m.IsHero), def);
-            return projectedCapacity >= target.Members.Count + 1;
+            return target.CanFitAdditionalCard(def);
         }
 
         // Full preflight of the atomic fresh-army/existing-army card deployment. No spend, no mutation.
@@ -142,7 +119,7 @@ namespace Game.Ai.V2
             // This is the same physical prerequisite as human CardHandUI.IsValidDropTarget and
             // ArmyActions.DeployUnitFromCard, for ALL placement kinds. Check before CreateArmy
             // charges its 2 AP, including when requiredBuildingAbility is empty.
-            if (!PlacementRules.HasRequiredBuilding(player, plan.DeploymentHex, def))
+            if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, plan.DeploymentHex, def)
             { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             int totalAp = plan.TotalApCost;
@@ -157,9 +134,9 @@ namespace Game.Ai.V2
                     // A first Hero replaces the field army's default capacity even when its
                     // CommandRating is zero. Reuse the existing projection rule before the
                     // separate CreateArmy transaction can spend 2 AP on an unusable shell.
-                    if (ProjectedCapacityAfterDeploy(
+                    if (!ArmyData.ProjectedRosterFits(
                             ArmyData.ComputeCapacity(System.Array.Empty<Game.Units.UnitData>(), false),
-                            false, def) < 1)
+                            hasExistingHero: false, projectedMemberCount: 1, incoming: def))
                     { reason = "first card would not fit in a fresh army"; return false; }
                     break;
                 case DeploymentKind.ReusableShell:

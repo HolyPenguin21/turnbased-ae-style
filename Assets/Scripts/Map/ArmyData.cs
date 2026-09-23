@@ -233,11 +233,50 @@ namespace Game.Map
         // if the roster looked like THIS" before actually committing to an order.
         public static int ComputeCapacity(IEnumerable<UnitData> members, bool isGarrison)
         {
-            foreach (UnitData member in members)
-                if (member.IsHero)
-                    return member.CommandRating;
-            return isGarrison ? GarrisonBaseCapacity : BaseCapacity;
+            int nominalCapacity = isGarrison ? GarrisonBaseCapacity : BaseCapacity;
+            if (members != null)
+                foreach (UnitData member in members)
+                    if (member != null && member.IsHero)
+                        return ComputeProjectedCapacity(nominalCapacity, hasExistingHero: false,
+                            addedHeroCount: 1, firstAddedHeroCommandRating: member.CommandRating);
+            return ComputeProjectedCapacity(nominalCapacity, hasExistingHero: false,
+                addedHeroCount: 0, firstAddedHeroCommandRating: 0);
         }
+
+        // Canonical capacity projection for BOTH live gameplay and read-only planning. A capacity
+        // already governed by an existing commander stays as-is; otherwise the first added Hero
+        // replaces the nominal field/garrison capacity with its CommandRating verbatim, including
+        // zero. All deployment/planning callers must use this domain rule rather than restating it.
+        public static int ComputeProjectedCapacity(int nominalCapacity, bool hasExistingHero,
+            int addedHeroCount, int firstAddedHeroCommandRating)
+        {
+            if (hasExistingHero || addedHeroCount <= 0)
+                return nominalCapacity;
+            return firstAddedHeroCommandRating;
+        }
+
+        public static int ComputeProjectedCapacity(int nominalCapacity, bool hasExistingHero,
+            CardDefinition incoming)
+        {
+            bool incomingHero = incoming != null && incoming.cardType == CardType.Hero;
+            return ComputeProjectedCapacity(nominalCapacity, hasExistingHero,
+                incomingHero ? 1 : 0, incomingHero ? incoming.commandRating : 0);
+        }
+
+        public static bool ProjectedRosterFits(int nominalCapacity, bool hasExistingHero,
+            int projectedMemberCount, int addedHeroCount, int firstAddedHeroCommandRating)
+            => projectedMemberCount <= ComputeProjectedCapacity(
+                nominalCapacity, hasExistingHero, addedHeroCount, firstAddedHeroCommandRating);
+
+        public static bool ProjectedRosterFits(int nominalCapacity, bool hasExistingHero,
+            int projectedMemberCount, CardDefinition incoming)
+            => projectedMemberCount <= ComputeProjectedCapacity(
+                nominalCapacity, hasExistingHero, incoming);
+
+        public bool CanFitAdditionalCard(CardDefinition incoming)
+            => incoming != null
+                && ProjectedRosterFits(Capacity, Members.Any(m => m != null && m.IsHero),
+                    Members.Count + 1, incoming);
 
         // The cap only ever bites when something is about to be ADDED (see Capacity's own
         // comment) — an already-formed roster must never shrink or go partly invisible because
