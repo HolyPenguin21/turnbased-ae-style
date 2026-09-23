@@ -328,7 +328,8 @@ namespace Game.Ai.V2
                 beforeHex, next.Value, actionWhy);
             var move = AiDecision.Move(army, next.Value,
                 $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
-                + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f);
+                + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f,
+                forceDecloakForAttack ? AiGroundMoveAuthority.Combat : AiGroundMoveAuthority.Transit);
             // Required/optional stealth and visible opportunistic attacks were resolved above.
             // Re-entering stealth in the shared mover would cancel the intended combat and could
             // also spend AP that Recon deliberately reserved for other missions.
