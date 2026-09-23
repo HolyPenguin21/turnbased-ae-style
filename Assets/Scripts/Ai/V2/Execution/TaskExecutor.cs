@@ -557,7 +557,7 @@ namespace Game.Ai.V2
                 var returnTrace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player,
                     AiDecision.Move(army, returnStep.Value,
-                        "V2 active defence — return", 0f),
+                        "V2 active defence — return", 0f, AiGroundMoveAuthority.Transit),
                     ctx, returnTrace);
                 army = Resolve(player, pm.MoverArmyId);
                 HexCoord returnAfter = army != null ? army.Hex : returnTrace.EndHex;
@@ -621,7 +621,7 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player,
                 AiDecision.Move(army, next.Value,
-                    $"V2 active defence — intercept enemy #{enemyId}", 0f), ctx, trace);
+                    $"V2 active defence — intercept enemy #{enemyId}", 0f, AiGroundMoveAuthority.Combat), ctx, trace);
             army = Resolve(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             bool moved = !after.Equals(before);
@@ -793,7 +793,8 @@ namespace Game.Ai.V2
 
             HexCoord before = army.Hex;
             var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f);
+                $"V2 raid — strike {pm.RaidTarget.DiagnosticLabel} at ({targetHex.Q},{targetHex.R})", 0f,
+                AiGroundMoveAuthority.CombatAndCapture);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -985,7 +986,8 @@ namespace Game.Ai.V2
 
             HexCoord before = army.Hex;
             var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})", 0f);
+                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})", 0f,
+                AiGroundMoveAuthority.Transit);
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -1054,7 +1056,8 @@ namespace Game.Ai.V2
                 }
                 HexCoord before = support.Hex;
                 var decision = AiDecision.Move(support, next.Value,
-                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})", 0f);
+                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})", 0f,
+                    AiGroundMoveAuthority.Transit);
                 var trace = new AiMoveExecutionTrace();
                 yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
@@ -1604,7 +1607,7 @@ namespace Game.Ai.V2
             var trace = new AiMoveExecutionTrace();
             yield return AiTurnController.MoveArmyRoutine(player,
                 AiDecision.Move(army, next.Value,
-                    $"V2 {label} at ({target.Q},{target.R})", 0f), ctx, trace);
+                    $"V2 {label} at ({target.Q},{target.R})", 0f, AiGroundMoveAuthority.Transit), ctx, trace);
             army = Resolve(player, pm.MoverArmyId);
             HexCoord after = army != null ? army.Hex : trace.EndHex;
             result.FinalHex = after;
