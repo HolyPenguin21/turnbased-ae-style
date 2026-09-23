@@ -10,6 +10,44 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
+    // ATK §23 — the execution legs of ONE Attack operation. Deliberately the same shape the Raid
+    // lane already uses, minus AirSupport (§79 keeps Attack ground-only in this first version) and
+    // minus a post-success Return: §8 says the army STAYS on the Base it just took.
+    //   Assault         — march on the target and take it.
+    //   Reinforcement   — the primary cannot clear the site; a support army is being brought in.
+    //   SupportReturn   — the shared GroundCombat handoff left the support container empty-handed
+    //                     and it walks home. Same leg Raid already owns.
+    //   RecoveryReturn  — the operation is no longer viable; the primary withdraws to an own Base.
+    public enum AttackMissionPhase
+    {
+        Assault = 0,
+        Reinforcement = 1,
+        SupportReturn = 2,
+        RecoveryReturn = 3,
+    }
+
+    // The mission-layer transport for one Attack leg. Every field is a frozen decision the
+    // Provisioning/Execution stages read and never re-derive — no target re-pick, no base re-pick,
+    // no strategic re-scoring below this point.
+    public struct AttackMissionTarget
+    {
+        public AttackMissionPhase Phase;
+        public AttackTargetRef Target;
+        public int? PrimaryArmyId;
+        public int? SupportArmyId;
+        // Where the leg is actually walking this turn: the target site for Assault/Reinforcement,
+        // an own Base for the two return legs.
+        public HexCoord DestinationHex;
+        public HexCoord? RecoveryBaseHex;
+        public HexCoord? SupportReturnHex;
+        // The honest site facts this leg was planned against (§30/§31).
+        public float DefenderHexDefenseBonus;
+        public int DefenderCount;
+        public float ProjectedWinChance;
+        public bool CoversAllDefenders;
+        public int EstimatedEta;
+    }
+
     // ===========================================================================================
     //  ATK §19/§39 — ATTACK OBJECTIVE ENUMERATION.
     //

@@ -63,7 +63,7 @@ namespace Game.Ai.V2
         public IReadOnlyList<string> Diagnostics = System.Array.Empty<string>();
     }
 
-    public static class AggressionDemandEvaluator
+    public static partial class AggressionDemandEvaluator
     {
         public static AggressionDemandEvaluation Build(WorldSnapshot snap,
             IReadOnlyList<AggressionObjective> objectives, IReadOnlyList<MissionIntent> activeIntents,
@@ -228,6 +228,10 @@ namespace Game.Ai.V2
                             + $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}); task={reinforcementValue:0.##}",
                     });
                 }
+            // ATK §41 — the Attack lane's proven shortages join the SAME demand list, through the
+            // same rules, in AggressionDemandEvaluator.Attack.cs.
+            AppendAttackDemands(snap, activeIntents, commitments, inv, diag, reinforcementDemands);
+
             AggressionObjective chosen = null;
             RaidOperationalReadiness chosenReadiness = null;
             int blocked = 0;

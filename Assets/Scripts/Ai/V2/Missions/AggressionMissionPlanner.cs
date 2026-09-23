@@ -7,7 +7,7 @@ using Game.Aviation;
 
 namespace Game.Ai.V2
 {
-    internal static class AggressionMissionLayer
+    internal static partial class AggressionMissionLayer
     {
         private readonly struct RaidCandidate
         {
@@ -224,6 +224,9 @@ namespace Game.Ai.V2
                     $"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
 
             AppendActiveDefence(snap, activeIntents, committed, proposals, ctx);
+            // ATK §40 — Attack is a peer lane of the same Aggression planner, appended through the
+            // same one entry point; it is never orchestrated separately (§81).
+            AppendAttack(snap, activeIntents, committed, proposals, ctx);
             return proposals;
         }
 

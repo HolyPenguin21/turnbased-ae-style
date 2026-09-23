@@ -14,7 +14,7 @@ namespace Game.Ai.V2
     // File-split (mechanical, no behaviour change) from MissionIntent.cs — see
     // Docs/ai-v2-file-split-refactor-tasks.md Task 3. Independent standalone types,
     // not a partial class.
-    internal static class MissionContinuityLayer
+    internal static partial class MissionContinuityLayer
     {
         internal static HexCoord? SelectEconomyRecoveryTarget(WorldSnapshot snap,
             PlayerSetupData player, ArmySnapshot actor, bool avoidCurrentHex = false)
@@ -417,15 +417,18 @@ namespace Game.Ai.V2
                 .Where(i => i?.Kind == MissionKind.ActiveDefence
                     && i.ActiveDefence?.SuspendedOffensiveIntentKey.HasValue == true)
                 .Select(i => i.ActiveDefence.SuspendedOffensiveIntentKey.Value));
-            foreach (MissionIntent orphanedRaid in state.All.Where(i => i != null
-                && i.Kind == MissionKind.Raid && i.Status == IntentStatus.Suspended
+            // ATK §49/§73 — the same repair covers every OFFENSIVE intent a defence may borrow
+            // from, not Raid alone, so a preempted Attack can never be stranded suspended while its
+            // army is free.
+            foreach (MissionIntent orphaned in state.All.Where(i => i != null
+                && IsOffensiveGroundCombatIntent(i) && i.Status == IntentStatus.Suspended
                 && i.Suspended == SuspendReason.ActiveDefencePreemption
                 && !liveBorrowedRaids.Contains(i.IntentKey)))
             {
-                orphanedRaid.Status = IntentStatus.Active;
-                orphanedRaid.Suspended = SuspendReason.None;
+                orphaned.Status = IntentStatus.Active;
+                orphaned.Suspended = SuspendReason.None;
                 AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME "
-                    + $"raid={orphanedRaid.IntentKey} reason=orphan_repair");
+                    + $"offensive={orphaned.IntentKey} reason=orphan_repair");
             }
 
             // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
@@ -787,6 +790,23 @@ namespace Game.Ai.V2
                     {
                         intent.Status = IntentStatus.Active;
                         intent.Suspended = SuspendReason.None;
+                    }
+                    if (intent.Status == IntentStatus.Active) active.Add(intent);
+                    continue;
+                }
+                if (intent.Kind == MissionKind.Attack)
+                {
+                    // ATK §24/§25 — the Attack lane's own lifecycle answers live in
+                    // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
+                    if (!ResolveAttackIntent(player, snap, intent, intent.Attack, out bool captured))
+                    {
+                        dead.Add(intent.IntentKey);
+                        if (captured)
+                            // §8/§59 — success releases the claim in place. Nothing here touches the
+                            // army's roster or its garrison: Housekeeping owns local stabilisation.
+                            AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} claim released on "
+                                + "captured base; Housekeeping owns garrison stabilisation");
+                        continue;
                     }
                     if (intent.Status == IntentStatus.Active) active.Add(intent);
                     continue;
@@ -2053,11 +2073,34 @@ namespace Game.Ai.V2
                             + "target completed; durable campaign kept for re-orient/return");
                         return;
                     }
-                    if (o.HasRaidPayload && o.RaidOperationStarted)
+                    if (o.HasRaidPayload && o.OperationStarted)
                     {
                         CreateRaidIntent(state, o, turn);
                         AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} first "
                             + "target completed during opening step; campaign created for return/refocus");
+                        return;
+                    }
+                }
+
+                // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
+                // Base/Citadel, so there is deliberately no re-orient here: the army stays where it
+                // is, the claim is released, and the next global replan decides what the new
+                // topology is worth. An intent that still exists is advanced so ResolveActive
+                // observes the capture through the ordinary path and logs the release once.
+                if (o.MissionKind == MissionKind.Attack)
+                {
+                    if (intent != null)
+                    {
+                        AdvanceIntent(intent, o, turn, state, allocState);
+                        AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                            + "objective reached; operation ends at the captured site");
+                        return;
+                    }
+                    if (o.HasAttackPayload && o.OperationStarted)
+                    {
+                        CreateAttackIntent(state, o, turn);
+                        AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
+                            + "captured on its opening step; intent recorded for a clean release");
                         return;
                     }
                 }
@@ -2223,9 +2266,13 @@ namespace Game.Ai.V2
                 if (!TryAbsorbIntoExistingActorRole(state, o, turn, allocState))
                     CreateIntent(state, o, turn);
             }
-            else if (o.HasRaidPayload && o.RaidOperationStarted)
+            else if (o.HasRaidPayload && o.OperationStarted)
             {
                 CreateRaidIntent(state, o, turn);
+            }
+            else if (o.HasAttackPayload && o.OperationStarted)
+            {
+                CreateAttackIntent(state, o, turn);
             }
             else if (o.HasActiveDefencePayload && o.MadeProgress)
             {
@@ -2287,7 +2334,7 @@ namespace Game.Ai.V2
                 else if (supportExecutedThisTurn)
                 {
                     if (o.RaidPhase == RaidMissionPhase.Reinforcement
-                        && !o.RaidReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
+                        && !o.ReinforcementHandoffAttempted && !raid.SupportArmyId.HasValue)
                         raid.SupportArmyId = o.MoverArmyId.Value;
                 }
                 // Economy actor ownership is durable. A replacement may only happen after
@@ -2309,10 +2356,26 @@ namespace Game.Ai.V2
                     intent.Scout.TrackedArmyId = o.TrackedArmyId;
             }
 
+            if (o.HasAttackPayload && intent.Attack != null)
+            {
+                AttackIntent ai = intent.Attack;
+                ai.OperationStarted |= o.OperationStarted;
+                if (o.AttackTarget.SupportArmyId.HasValue)
+                    ai.SupportArmyId = o.AttackTarget.SupportArmyId;
+                if (o.AttackTarget.RecoveryBaseHex.HasValue)
+                    ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
+                // §46/§23 — a full/full swap displaced a primary body into the support container, so
+                // the whole support army must walk itself home. Same shared handoff semantics and the
+                // same SupportReturn leg the Raid lane uses.
+                // The destination itself is chosen by ResolveAttackIntent, which has the snapshot
+                // and the player: AdvanceIntent only records the immutable execution fact.
+                if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
+                    ai.Phase = AttackMissionPhase.SupportReturn;
+            }
             if (o.HasRaidPayload && intent.Raid != null)
             {
                 intent.Raid.LastKnownHex = o.RaidLastKnownHex;
-                if (o.RaidOperationStarted)
+                if (o.OperationStarted)
                 {
                     intent.Raid.OperationStarted = true;
                     if (intent.Funding != CommitmentTier.Hard)
@@ -2547,8 +2610,10 @@ namespace Game.Ai.V2
         // ActiveDefence may preempt and later resume". Raid today; Attack becomes eligible by
         // adding its payload check here, so the five preempt/resume sites above never grow a
         // per-lane branch and no second suspended-key field is needed.
-        private static bool IsOffensiveGroundCombatIntent(MissionIntent i) =>
-            i != null && i.Kind == MissionKind.Raid && i.Raid != null;
+        internal static bool IsOffensiveGroundCombatIntent(MissionIntent i) =>
+            i != null
+            && ((i.Kind == MissionKind.Raid && i.Raid != null)
+                || (i.Kind == MissionKind.Attack && i.Attack != null));
 
         private static void CreateActiveDefenceIntent(MissionIntentState state,
             MissionTurnOutcome o, int turn)

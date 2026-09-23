@@ -221,6 +221,23 @@ namespace Game.Ai.V2
                 return defenders.Count > 0;
             }
 
+            // ATK §78 — Development may strengthen a committed Attack primary, but only on the same
+            // proof every other lane must give: the SAME bound roster, the SAME known site
+            // defenders, a real WorthIt before/after. "Equipment makes an army stronger" is not
+            // enough, and a withdrawing or reinforcing-support leg is not a fight this actor is in.
+            if (intent.Kind == MissionKind.Attack)
+            {
+                AttackIntent attack = intent.Attack;
+                if (attack == null || !attack.Target.HasValue
+                    || attack.PrimaryArmyId != armyId
+                    || (attack.Phase != AttackMissionPhase.Assault
+                        && attack.Phase != AttackMissionPhase.Reinforcement))
+                    return false;
+                defenders = AttackObjectiveEvaluator.KnownSiteDefenders(snap, attack.Target.Hex);
+                fightHex = attack.Target.Hex;
+                return defenders.Count > 0;
+            }
+
             return false;
         }
 

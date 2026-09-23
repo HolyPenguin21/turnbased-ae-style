@@ -33,7 +33,7 @@ namespace Game.EditorTests
             claimed.Claim(9); // Economy owns the only viable ground actor.
             session.SetGroundCombatConstraints(claimed, new HashSet<int>());
 
-            GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
+            GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
@@ -54,7 +54,7 @@ namespace Game.EditorTests
             claimed.Claim(9);
             session.SetGroundCombatConstraints(claimed, new HashSet<int>());
 
-            GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
+            GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
@@ -102,7 +102,7 @@ namespace Game.EditorTests
             MissionProposal mission = Assault();
             session.SetGroundCombatConstraints(new ActorCommitments(), new HashSet<int>());
 
-            GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
+            GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
@@ -131,7 +131,7 @@ namespace Game.EditorTests
                 { StableMissionKey.For(mission), 9 },
             });
 
-            GroundCombatAssemblyPlan plan = RaidProvisioner.PlanAssignedAssault(
+            GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
                 session, mission, Array.Empty<WorthIt.DefenderProfile>(), out _);
 
             Assert.That(plan, Is.Not.Null);

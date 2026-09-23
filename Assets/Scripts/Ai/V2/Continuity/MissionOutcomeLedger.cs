@@ -55,7 +55,7 @@ namespace Game.Ai.V2
         public int RaidTargetArmyId => RaidTarget.Kind == RaidTargetKind.NeutralArmy ? RaidTarget.ArmyId : 0;
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
-        public bool RaidOperationStarted;
+        public bool OperationStarted;
         // Exact provisioned leg/actors plus the execution-time handoff boundary. Continuity uses
         // these immutable facts instead of inspecting RaidIntent.Phase after Execution may already
         // have advanced it.
@@ -65,10 +65,15 @@ namespace Game.Ai.V2
         public int? RaidAirSupportArmyId;
         public HexCoord? RaidAirSupportLandingHex;
         public bool RaidAirSupportStrikeSucceeded;
-        public bool RaidReinforcementHandoffAttempted;
+        public bool ReinforcementHandoffAttempted;
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
         public ResourceVector RaidResourcesSpent;
+        public bool HasAttackPayload;
+        // ATK §69 — the whole provisioned Attack leg, carried as ONE frozen object so Continuity
+        // reads immutable execution facts instead of inspecting an intent Execution may already
+        // have advanced.
+        public AttackMissionTarget AttackTarget;
         public bool HasActiveDefencePayload;
         public ActiveDefenceMissionTarget ActiveDefenceTarget;
         public bool HasEconomyPayload;
@@ -264,6 +269,11 @@ namespace Game.Ai.V2
                         o.RaidAirSupportLandingHex = r.Provisioned.RaidAirSupportLandingHex;
                         o.RaidRefitAction = r.Provisioned.RaidRefitAction;
                     }
+                    else if (r.Provisioned.Kind == MissionKind.Attack)
+                    {
+                        o.HasAttackPayload = true;
+                        o.AttackTarget = r.Provisioned.AttackTarget;
+                    }
                     else if (r.Provisioned.Kind == MissionKind.ActiveDefence)
                     {
                         o.HasActiveDefencePayload = true;
@@ -310,14 +320,14 @@ namespace Game.Ai.V2
                     // the former creates the actor, the latter changes its roster and/or donor intent.
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
-                        || e.RaidOperationStarted || raidEngaged
+                        || e.OperationStarted || raidEngaged
                         || e.ActorMaterialized || e.EconomyPrepared;
                     if (o.MissionKind == MissionKind.Raid)
                     {
-                        o.RaidOperationStarted = e.RaidOperationStarted
+                        o.OperationStarted = e.OperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
-                        o.RaidReinforcementHandoffAttempted =
-                            e.RaidReinforcementHandoffAttempted;
+                        o.ReinforcementHandoffAttempted =
+                            e.ReinforcementHandoffAttempted;
                         o.RaidAirSupportStrikeSucceeded =
                             e.RaidAirSupportStrikeSucceeded;
                         o.RaidRefitSucceeded = e.RaidRefitSucceeded;

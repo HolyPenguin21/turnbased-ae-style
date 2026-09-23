@@ -56,6 +56,20 @@ namespace Game.Ai
         CombatAndCapture,
     }
 
+    // ATK §26/§84 — the ONE rule for which authority a single step of a deliberate
+    // structure-capture operation carries. Only the TERMINAL step into the target may seek a
+    // takeover; every approach step is ordinary Transit, so an operation can never capture some
+    // other structure it happens to walk across on the way (§27). Kept beside the enum it decides
+    // because it is part of that contract, not a per-lane preference.
+    public static class GroundMoveAuthorityPolicy
+    {
+        public static AiGroundMoveAuthority ForStructureAssaultStep(
+            Game.HexGrid.HexCoord step, Game.HexGrid.HexCoord target) =>
+            step.Equals(target)
+                ? AiGroundMoveAuthority.CombatAndCapture
+                : AiGroundMoveAuthority.Transit;
+    }
+
     public class AiDecision
     {
         public AiActionKind Kind;

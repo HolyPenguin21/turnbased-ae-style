@@ -48,11 +48,11 @@ namespace Game.Ai.V2
         public bool StealthChanged;
         public bool InfrastructureChanged;
         public bool CombatChanged;
-        public bool RaidOperationStarted;
+        public bool OperationStarted;
         // Immutable execution fact consumed by Continuity. A reinforcement handoff may change the
         // RaidIntent phase before the outcome ledger reconciles it, so actor-role ownership must
         // never be inferred from the intent's already-mutated current phase.
-        public bool RaidReinforcementHandoffAttempted;
+        public bool ReinforcementHandoffAttempted;
         public bool RaidAirSupportStrikeSucceeded;
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
@@ -340,6 +340,20 @@ namespace Game.Ai.V2
                     yield return RunActiveDefenceStep(player, root, ctx, pm, result, apBefore);
                 else
                     yield return RunActiveDefence(player, root, ctx, pm, result, apBefore);
+                ApCheck(pm, apBefore, root, result);
+                StampVersion(result);
+                CompleteResult(result, root);
+                results.Add(result);
+                yield break;
+            }
+
+            // ATK §67 — Attack is ALWAYS one atomic step, in both the single-step and the multi-step
+            // caller. There is deliberately no multi-step Attack variant: a capture changes the map's
+            // topology so much that the next step must be decided against a fresh snapshot, through
+            // the ordinary settled-step loop, never inside one executor call.
+            if (pm.Kind == MissionKind.Attack)
+            {
+                yield return AttackExecutor.RunStep(player, root, ctx, pm, result, snapshot);
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
                 CompleteResult(result, root);
@@ -806,7 +820,7 @@ namespace Game.Ai.V2
             result.FinalHex = endHex;
 
             bool operationStarted = moved || trace.BattleOccurred || trace.HexEventOccurred;
-            result.RaidOperationStarted |= operationStarted;
+            result.OperationStarted |= operationStarted;
             if (operationStarted)
                 result.ActualActorArmyId = pm.MoverArmyId;
 
@@ -996,7 +1010,7 @@ namespace Game.Ai.V2
             bool moved = !endHex.Equals(before);
             if (moved) result.StepsMoved++;
             result.FinalHex = endHex;
-            result.RaidOperationStarted |= moved;
+            result.OperationStarted |= moved;
             if (moved) result.ActualActorArmyId = pm.MoverArmyId;
 
             if (trace.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
@@ -1066,7 +1080,7 @@ namespace Game.Ai.V2
                 bool moved = !endHex.Equals(before);
                 if (moved) result.StepsMoved++;
                 result.FinalHex = endHex;
-                result.RaidOperationStarted |= moved;
+                result.OperationStarted |= moved;
 
                 if (trace.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
                 if (trace.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
@@ -1083,7 +1097,7 @@ namespace Game.Ai.V2
             }
 
             // ---- the atomic handoff transaction ------------------------------------------
-            result.RaidReinforcementHandoffAttempted = true;
+            result.ReinforcementHandoffAttempted = true;
             bool handoffOk = ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — raid "
@@ -1147,7 +1161,7 @@ namespace Game.Ai.V2
         // The concrete roster mutation: fill the primary's free slots first, then — if it is full —
         // swap its most critically wounded bodies for fresh ones. Executed through the SAME
         // authoritative ArmyActions primitives a human uses; the support container is never emptied.
-        private static bool ApplyReinforcementHandoff(PlayerSetupData player, AiTurnContext ctx,
+        internal static bool ApplyReinforcementHandoff(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ArmyData support, ArmyData primary,
             out int transferred, out bool wasSwap, out string displacedUnitName, out string detail)
         {

@@ -61,6 +61,8 @@ namespace Game.Ai.V2
             if (m != null && m.Kind == MissionKind.ActiveDefence
                 && m.Target is ActiveDefenceMissionTarget ad)
                 return ForActiveDefence(ad.EnemyArmyId);
+            if (m != null && m.Kind == MissionKind.Attack && m.Target is AttackMissionTarget at)
+                return ForAttack(at.Target);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return new MissionIntentKey(MissionKind.Economy, (int)et.Kind,
                     et.Kind == EconomyTaskKind.ReturnBuilder
@@ -88,6 +90,9 @@ namespace Game.Ai.V2
             RaidIntent ri = intent?.Raid;
             if (ri != null)
                 return ForRaid(ri.Target);
+            AttackIntent ai = intent?.Attack;
+            if (ai != null)
+                return ForAttack(ai.Target);
             ActiveDefenceIntent ad = intent?.ActiveDefence;
             if (ad != null)
                 return ForActiveDefence(ad.EnemyArmyId);
@@ -300,6 +305,34 @@ namespace Game.Ai.V2
         public bool ObjectiveCompleted;
     }
 
+    // ATK §22 — the durable Attack operation. ONE intent is ONE Base/Citadel (§7): capturing a
+    // Base changes the map's topology so completely — new home anchor, new recovery point, new
+    // garrison asset, new distances — that an automatic retarget inside the same intent would be
+    // planning the next war with the previous war's world. Completion, a global replan, and then a
+    // FRESH objective is the only correct chain.
+    public sealed class AttackIntent
+    {
+        // THE target identity. Hex + expected owner + kind live in one object (§21), never in
+        // separate fields that can drift apart.
+        public AttackTargetRef Target;
+        public AttackMissionPhase Phase;
+        // True once the operation has physically begun (a step taken, a battle fought). Until then
+        // there is nothing to protect and the objective may be freely re-picked — same rule the
+        // Raid lane uses for OperationStarted.
+        public bool OperationStarted;
+        public int? PrimaryArmyId;
+        public int? SupportArmyId;
+        public HexCoord? RecoveryBaseHex;
+        public HexCoord? SupportReturnHex;
+        public int ReinforcementRequestedTurn = -1;
+        // ATK §17 — the game turn this operation last took an opportunistic side strike. At most
+        // one per Attack per turn, so the operation can never degenerate into a hunt. A plain
+        // turn-local marker on the intent is enough; no separate registry (§17).
+        public int LastOpportunisticStrikeTurn = -1;
+        public float ProjectedWinChance;
+        public bool CoversAllDefenders;
+    }
+
     public sealed class MissionIntent
     {
         public MissionIntentKey IntentKey;
@@ -337,13 +370,19 @@ namespace Game.Ai.V2
                 RaidIntent r = Raid;
                 if (r != null) return r.PrimaryArmyId;
                 ActiveDefenceIntent d = ActiveDefence;
-                return d != null ? d.PrimaryArmyId : _preferredMoverArmyId;
+                if (d != null) return d.PrimaryArmyId;
+                // ATK §22 — pass-through to the ONE AttackIntent.PrimaryArmyId, exactly as Raid and
+                // ActiveDefence already do. There is deliberately no second _preferredMoverArmyId
+                // copy for Attack: "the army this operation owns" exists once in the model.
+                AttackIntent a = Attack;
+                return a != null ? a.PrimaryArmyId : _preferredMoverArmyId;
             }
             set
             {
                 RaidIntent r = Raid;
                 if (r != null) r.PrimaryArmyId = value;
                 else if (ActiveDefence != null) ActiveDefence.PrimaryArmyId = value;
+                else if (Attack != null) Attack.PrimaryArmyId = value;
                 else _preferredMoverArmyId = value;
             }
         }
@@ -353,5 +392,6 @@ namespace Game.Ai.V2
         public EconomyIntent Economy => Objective as EconomyIntent;
         public DevelopmentIntent Development => Objective as DevelopmentIntent;
         public ActiveDefenceIntent ActiveDefence => Objective as ActiveDefenceIntent;
+        public AttackIntent Attack => Objective as AttackIntent;
     }
 }

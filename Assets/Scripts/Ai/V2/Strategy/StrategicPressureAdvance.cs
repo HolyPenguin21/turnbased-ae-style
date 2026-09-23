@@ -139,10 +139,10 @@ namespace Game.Ai.V2
         // Mission-specific intent mapping: ordinary approach steps are Transit. Only the final
         // step into the honestly-known Citadel may deliberately fight/capture. This keeps the safe
         // default everywhere else while allowing the fallback to actually complete its own goal.
+        // ATK §26 — delegates to the one policy owner; this legacy path is removed entirely once
+        // the Attack lane owns deliberate structure capture.
         internal static AiGroundMoveAuthority MoveAuthorityForStep(HexCoord step, HexCoord target)
-            => step.Equals(target)
-                ? AiGroundMoveAuthority.CombatAndCapture
-                : AiGroundMoveAuthority.Transit;
+            => GroundMoveAuthorityPolicy.ForStructureAssaultStep(step, target);
 
         public static IEnumerator Execute(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             StrategicPressurePlan plan, System.Action<bool> setChanged)
