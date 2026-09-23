@@ -395,7 +395,8 @@ namespace Game.Ai
             HexCoord before = army.Hex;
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination,
-                    trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null)
+                    trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null,
+                    allowUndefendedBuildingTakeover: decision.AllowsStructureTakeover)
                 : MoveOrderResult.CannotMove;
             if (trace != null)
                 trace.MoveResult = moveResult;
