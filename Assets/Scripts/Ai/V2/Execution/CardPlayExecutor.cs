@@ -119,7 +119,7 @@ namespace Game.Ai.V2
             // This is the same physical prerequisite as human CardHandUI.IsValidDropTarget and
             // ArmyActions.DeployUnitFromCard, for ALL placement kinds. Check before CreateArmy
             // charges its 2 AP, including when requiredBuildingAbility is empty.
-            if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, plan.DeploymentHex, def)
+            if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, plan.DeploymentHex, def))
             { reason = $"no owned '{def.requiredBuildingAbility}' building at deployment hex"; return false; }
 
             int totalAp = plan.TotalApCost;

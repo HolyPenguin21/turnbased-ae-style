@@ -46,7 +46,7 @@ namespace Game.Ai.V2
 
             foreach (HexCoord hex in snap.Self.BaseHexes)
             {
-                if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, def)
+                if (!ArmyActions.HasRequiredGroundDeploymentBuilding(player, hex, def))
                     continue;
 
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, commitments);
