@@ -1,0 +1,517 @@
+# AI Strategy V2 — file-split task set, round 2 (Provisioning / Continuity / Pipeline)
+
+Follow-up to `docs/ai-v2-file-split-refactor-tasks.md` (Tasks 1-5, all Done). Same philosophy:
+a purely mechanical readability refactor of the heaviest files in `Assets/Scripts/Ai/V2/`, split
+along boundaries that already exist inside them. **No behavior change.** The motivation is
+unchanged and is not aesthetic: root-cause work over `Logs/AiDebug.log` gets slower every time
+the owning method for a log line sits inside a multi-thousand-line file that mixes several
+lanes' responsibilities.
+
+Recall phrase: «продолжаем file-split V2 раунд 2 — см. docs/ai-v2-provisioning-continuity-pipeline-split-tasks.md»
+
+Scope (measured 2026-09-23):
+
+| File | Lines | Top-level types in it |
+|---|---|---|
+| `Provisioning/ProvisioningManager.cs` | 3241 | 7 (4 model types + 3 lane provisioners + the manager) |
+| `Continuity/MissionContinuityLayer.cs` | 2803 | 1 (already `static partial`, sibling `MissionContinuityLayer.Attack.cs` exists) |
+| `Orchestration/AiStrategyV2Pipeline.cs` | 2262 | 16 (15 model types + `Pipeline`) |
+
+## Ground rules
+
+Identical to `docs/ai-v2-file-split-refactor-tasks.md` — read that file's "Ground rules" section;
+it is the contract, not restated here. Two additions specific to this round:
+
+- **`partial` gives free cross-file access to `private` members.** Every slice below relies on
+  this: a `private static` helper kept in the root file is visible from every other partial file
+  of the same class. Do **not** duplicate a helper into a slice file to "make it local" — that is
+  exactly how this codebase grew the `N`/`F`/`ResolveArmy` copies catalogued in
+  `docs/ai-duplicate-methods-analysis.md` section D.
+- **A nested type may live in any partial file.** External call sites spell it
+  `ProvisioningManager.GarrisonExtractionCandidate` and do not care which file declares it.
+
+## Progress tracker
+
+| # | Task | Risk | Status |
+|---|---|---|---|
+| 1 | `ProvisioningManager.cs` — lift the 4 model types out (type-level) | lowest | Todo |
+| 2 | `ProvisioningManager.cs` — lift the 3 sibling provisioner types out (type-level) | low | Todo |
+| 3 | `AiStrategyV2Pipeline.cs` — lift the 15 model types out (type-level) | low | Todo |
+| 4 | `AiStrategyV2Pipeline.cs` — `partial` Development-admission slice | low | Todo |
+| 5 | `ProvisioningManager.cs` — `partial` GarrisonExtraction / Development / Air | medium | Todo |
+| 6 | `ProvisioningManager.cs` — `partial` Economy / EconomyCompletion | medium | Todo |
+| 7 | `MissionContinuityLayer.cs` — `partial` Economy / Recon / Basing / ActiveDefence | medium | Todo |
+| 8 | `MissionContinuityLayer.cs` — `partial` Raid | medium | Todo |
+| 9 | `MissionContinuityLayer.cs` — `partial` Reconcile / IntentFactory | highest | Todo |
+
+Order rationale: Tasks 1-3 are type-level moves of types that are *already* independent — C#
+does not care which file a type is declared in, so the diff is provably behavior-neutral without
+any call-site reasoning. Tasks 4-6 are `partial` slices with a verified-closed call subgraph.
+Tasks 7-9 touch the file that owns intent lifecycle, and Task 9 in particular touches the
+reconcile/intent-factory pair that every lane's durable state flows through — the same reasoning
+that put `WorldAnalysis.cs` last in round 1.
+
+**Everything in "Decision points" at the end of this doc is explicitly NOT in this task list.**
+Those are findings that cannot be fixed by moving code.
+
+---
+
+# 1. `Provisioning/ProvisioningManager.cs` (3241 lines)
+
+## 1.1 Member inventory
+
+Top-level types in the file:
+
+| Lines | Type | Responsibility |
+|---|---|---|
+| 18-117 | `public sealed class ProvisionedMission` | Provisioning's output record — the pinned decision Execution replays |
+| 119-169 | `public readonly struct ProvisionFailure` | Typed failure + disposition, with 12 named factories |
+| 171-218 | `public sealed class ProvisioningResult` | Ok/Fail wrapper around the two above |
+| 220-374 | `public sealed class ProvisioningSession` | Per-pass claim ledger (AP, Energy, army ids, assignments) |
+| 376-2545 | `internal static class ProvisioningManager` | The manager itself (see 1.2) |
+| 2547-2824 | `internal static class ActiveDefenceProvisioner` | ActiveDefence lane provisioning |
+| 2826-2872 | `internal static class GroundCombatAssemblyTransaction` | Shared assembly rollback/accounting primitive |
+| 2874-3240 | `internal static class RaidProvisioner` | Raid lane provisioning (assault / air support / return / reinforcement) |
+
+`ProvisioningManager`'s own members, grouped by the boundary they actually fall on:
+
+| Lines | Len | Member | Slice |
+|---|---|---|---|
+| 378-381 | 4 | `StealthTransitionApCost` | root (only caller is `Provision`:997) |
+| 382-393 | 12 | `IsMobileEconomyHero` | Economy (3 callers, all inside `ProvisionEconomy`) |
+| 394-404 | 11 | `SyntheticGarrisonExtractionActorId` | GarrisonExtraction |
+| 405 | 1 | `enum GarrisonExtractionTier` | GarrisonExtraction |
+| 407-440 | 34 | `struct GarrisonExtractionCandidate` | GarrisonExtraction |
+| 441-513 | 73 | `ResolveGarrisonExtractionCandidate` | GarrisonExtraction |
+| 514-536 | 23 | `BuildGarrisonExtractionPreview` | GarrisonExtraction |
+| 537-574 | 38 | `ApplyGarrisonExtraction` | GarrisonExtraction |
+| 575-598 | 24 | `EconomyHostCandidates` | GarrisonExtraction (sole caller: `ResolveGarrisonExtractionCandidate`) |
+| 599-611 | 13 | `PreparePass` | root — pass entry point |
+| 612-636 | 25 | `PreparePass` (overload returning rejections) | root |
+| 637-658 | 22 | `PrepareScoutAssignments` | root |
+| 659-763 | 105 | `PrepareGroundCombatAssignments` | root |
+| 764-769 | 6 | `GroundCombatActorActivation` | root |
+| 770-772 | 3 | `GroundCombatActorPower` | root |
+| 773-800 | 28 | `RecurseGroundCombat` | root — injective assignment search (see DP5) |
+| 801-839 | 39 | `ScoreGroundCombatAssignment` | root |
+| 840-841 | 2 | `Lex` | root — already a thin delegate to `AiV2Util.Lex` |
+| 842-1075 | 234 | `Provision` | root — **mixed**: kind dispatcher (842-863) + inline Ground-Scout body (863-1075), see DP8 |
+| 1076-1091 | 16 | `IsEligibleEconomyRecoveryActor` | Economy |
+| 1092-1212 | 121 | `ProvisionDevelopment` | Development |
+| 1213-1766 | 554 | `ProvisionEconomy` | Economy |
+| 1767-1810 | 44 | `struct EconomyCompletionPlan` | EconomyCompletion |
+| 1811-1882 | 72 | `PlanEconomyCompletion` | EconomyCompletion |
+| 1883-1897 | 15 | `TryLightenEconomyArmy` x2 | EconomyCompletion |
+| 1898-1995 | 98 | `PlanEconomyArmyLightening` x2 | EconomyCompletion |
+| 1996-2037 | 42 | `ApplyEconomyArmyLightening` | EconomyCompletion |
+| 2038-2096 | 59 | `SelectEconomyEscort` x2 | EconomyCompletion |
+| 2097-2115 | 19 | `Combinations` | EconomyCompletion |
+| 2116-2145 | 30 | `EconomyMissionClaimedAp` x3 | EconomyCompletion |
+| 2146-2204 | 59 | `ProvisionEconomyRecovery` | Economy |
+| 2205-2265 | 61 | `ProvisionMobileCollection` | Economy |
+| 2266-2283 | 18 | `CostVector` | EconomyCompletion |
+| 2284-2465 | 182 | `ProvisionAir` | Air |
+| 2466-2499 | 34 | `AirSortieReservationAdmission` | Air |
+| 2500-2503 | 4 | `ClassifyNoAssignment` | root |
+| 2504-2531 | 28 | `AssignmentFailure` | root |
+| 2532-2540 | 9 | `HasFresherSighting` | root (callers: `Provision`, `ProvisionAir`) |
+| 2541-2543 | 3 | `ResolveArmy` | root — thin delegate to `AiV2Util.ResolveArmy` |
+| 2544 | 1 | `N` | root — formatter |
+
+## 1.2 Target layout
+
+```
+Provisioning/
+├── ProvisionedMission.cs                          (ProvisionedMission)                   ~100
+├── ProvisioningResult.cs                          (ProvisionFailure, ProvisioningResult) ~100
+├── ProvisioningSession.cs                         (ProvisioningSession)                  ~155
+├── ProvisioningManager.cs                         (partial: PreparePass cluster,
+│                                                    Provision dispatcher + ground scout,
+│                                                    assignment-failure + micro-helpers)  ~560
+├── ProvisioningManager.GarrisonExtraction.cs                                             ~215
+├── ProvisioningManager.Development.cs                                                    ~135
+├── ProvisioningManager.Economy.cs                                                        ~715
+├── ProvisioningManager.EconomyCompletion.cs                                              ~380
+├── ProvisioningManager.Air.cs                                                            ~230
+├── ActiveDefenceProvisioner.cs                                                           ~280
+├── GroundCombatAssemblyTransaction.cs                                                    ~50
+└── RaidProvisioner.cs                                                                    ~370
+```
+
+Split kind: **hybrid**. The first three and the last three files are type-level splits (those are
+independent types today, merely co-located — the same situation `MissionIntent.cs` was in for
+round-1 Task 3, so **do not** `partial`-ize them). The `ProvisioningManager.*` family is a
+`partial static class` split (one class, separable static methods — the `DemandLayer` situation).
+
+Naming follows the round-1 rule verbatim: `ProvisioningManager.Economy.cs`, **not**
+`EconomyProvisioner.cs`. The file name must make it obvious that no new provisioning owner type
+was introduced. `ActiveDefenceProvisioner.cs` / `RaidProvisioner.cs` keep their bare names because
+those genuinely *are* separate types already.
+
+Folder placement note: `GroundCombatAssemblyTransaction` and the existing separate file
+`GroundCombatAssaultTransaction.cs` are two different types one word apart in the same folder.
+This split makes that collision visible for the first time (today one of them is buried).
+Renaming is behavior-neutral but is not code motion — see DP7.
+
+## 1.3 Cross-boundary call-outs (from the actual call table, not from memory)
+
+Verified by enumerating every member's body, not by name inspection:
+
+- **`ResolveArmy`, `N`, `Lex` stay in the root file, single copy each.** They are `private static`
+  and every slice reaches them through `partial`. `ResolveArmy` and `Lex` are already thin
+  delegates to `AiV2Util` (fixed 2026-09-13); do not re-inline them. `N` is called from both
+  `Provision` (root) and `ProvisionAir` (Air slice) — which is precisely why it must not be copied
+  into the Air file.
+- **GarrisonExtraction is consumed by three slices, not one.** `ResolveGarrisonExtractionCandidate`
+  is called from `ProvisionEconomy` *and* `ProvisionDevelopment`; `ApplyGarrisonExtraction` and
+  `BuildGarrisonExtractionPreview` from `ProvisionEconomy`. It also has **external** callers:
+  `Execution/TaskExecutor.cs:1329,1402` and `Strategy/Demand/DemandLayer.Economy.cs:519-521`. That
+  3-family fan-in is what justifies its own file rather than folding it into Economy — the same
+  rule round-1 Task 5 set out for 3+-family helpers.
+- **GarrisonExtraction → EconomyCompletion is a back-edge.** `ResolveGarrisonExtractionCandidate`
+  calls `PlanEconomyCompletion` and `PlanEconomyArmyLightening`; `BuildGarrisonExtractionPreview`
+  calls `EconomyMissionClaimedAp`. The two slices are mutually referential. That is fine inside one
+  `partial` class and is *not* a reason to merge them — but it is a reason not to promote either
+  slice to a standalone type later without first re-deciding the direction of that dependency.
+- **EconomyCompletion is the externally-called half.** `TaskExecutor.cs` calls exactly
+  `PlanEconomyCompletion` (1376), `ApplyEconomyArmyLightening` (1452), `EconomyMissionClaimedAp`
+  (1465), `CostVector` (1502) and `ApplyGarrisonExtraction` (1329/1402). Keeping the first four in
+  one file is deliberate: that file is Provisioning's contract with Execution.
+- **`PreparePass` has no in-file caller** — it is an entry point, called from
+  `Orchestration/AiStrategyV2Pipeline.cs:1472,1943` and `Reaction/ReactionRoundExecutor.cs:177`.
+  Keep it in root.
+- **`AirSortieReservationAdmission` is named in five `Recon/*` comments** but called only from
+  `ProvisionAir`. Moving it into `ProvisioningManager.Air.cs` does not make those comments wrong
+  (they name the method, not the file) — no comment edits needed, and do not make any.
+- **`SparableSupportBodies` (3212) is a delegating alias**, not a copy: its body is
+  `GroundCombatReinforcement.SparableSupportBodies(support)`. It travels with `RaidProvisioner`.
+- **`RollbackAssembly` (3218) has zero callers** — see DP7 before moving it.
+
+---
+
+# 2. `Continuity/MissionContinuityLayer.cs` (2803 lines)
+
+## 2.1 Member inventory
+
+One type: `internal static partial class MissionContinuityLayer`. It is **already `partial`** —
+`MissionContinuityLayer.Attack.cs` (271 lines) was carved out earlier and is the working precedent
+for everything below.
+
+| Lines | Len | Member | Slice |
+|---|---|---|---|
+| 19-43 | 25 | `SelectEconomyRecoveryTarget` | Economy |
+| 44-58 | 15 | `RequiresEconomyBuilderRecovery` | Economy |
+| 59-70 | 12 | `HoldsEconomyBuildSite` | Economy |
+| 71-90 | 20 | `CanGrantEconomyBuildSite` | Economy |
+| 91-206 | 116 | `BeginEconomyDelivery` | Economy |
+| 207-264 | 58 | `TryRetargetCommittedBase` | Economy (external caller: `StrategicPhaseA.cs`) |
+| 265-356 | 92 | `BeginEconomyBuilderRecovery` | Economy |
+| 357-360 | 4 | `IsProtectedEconomyHex` | Economy |
+| 361-374 | 14 | `ResumeEconomyLender` | Economy |
+| **375-1207** | **833** | **`ResolveActive`** | **root — see DP1** |
+| 1208-1214 | 7 | `IsProductiveReconLaneThisTurn` | Recon |
+| 1215-1275 | 61 | `TrimSurplusReconLanes` | Recon |
+| 1276-1328 | 53 | `TryRefocusScoutIntent` | Recon |
+| 1329-1336 | 8 | `RaidPrimaryActorAlive` | Raid |
+| 1337-1348 | 12 | `RaidSupportActorAlive` | Raid |
+| 1349-1456 | 108 | `AdvanceRaidPhase` | Raid |
+| 1457-1466 | 10 | `RecoveryUnavailable` | Raid |
+| 1467-1522 | 56 | `TransitionToBestRecovery` | Raid |
+| 1523-1550 | 28 | `BeginTerminalRaidReturn` | Raid |
+| 1551-1556 | 6 | `ClearRaidRecovery` | Raid |
+| 1557-1569 | 13 | `CurrentRaidWinChance` | **dead — zero callers, see DP7** |
+| 1570-1576 | 7 | `RefitDecision` | **dead — zero callers, see DP7** |
+| 1577-1598 | 22 | `CompleteRaidReinforcement` | Raid |
+| 1599-1634 | 36 | `BeginRaidSupportReturn` | Raid (external caller: `TaskExecutor.cs`) |
+| 1635-1675 | 41 | `CompleteRaidSupportReturn` | Raid |
+| 1676-1692 | 17 | `CompleteRaidRecoveryReturn` | Raid |
+| 1693-1710 | 18 | `PrimaryClearsTarget` | **Basing (shared)** |
+| 1711-1733 | 23 | `ReturnBaseStillValid` | Basing |
+| 1734-1757 | 24 | `RecoveryBaseStillValid` | Basing |
+| 1758-1801 | 44 | `SelectReturnBase` | **Basing (shared)** |
+| 1802-1818 | 17 | `RequiresLocalBaseStabilization` | ActiveDefence |
+| 1819-1823 | 5 | `ProtectedBaseWasLost` | ActiveDefence |
+| 1824-1841 | 18 | `BaseCollectedAmount` | Basing |
+| 1842-1847 | 6 | `BaseHasDevelopmentInfrastructure` | Basing |
+| 1848-1856 | 9 | `BaseOwnPowerAt` | Basing |
+| 1857-1865 | 9 | `BaseThreatSeverityAt` | Basing |
+| 1866-1902 | 37 | `BindFunding` | Reconcile (entry point) |
+| 1903-1927 | 25 | `ReconcileStep` | Reconcile (entry point) |
+| 1928-1936 | 9 | `MarkProtectedThisTurn` | Reconcile |
+| 1937-1988 | 52 | `ReconcileAfterTurn` | Reconcile (entry point) |
+| 1989-2004 | 16 | `TryGetEconomyTarget` | Reconcile |
+| 2005-2291 | 287 | `ReconcileOutcome` | Reconcile |
+| 2292-2501 | 210 | `AdvanceIntent` | Reconcile |
+| 2502-2526 | 25 | `ReleaseOtherReconActorClaims` | Reconcile |
+| 2527-2572 | 46 | `TryAbsorbIntoExistingActorRole` | Reconcile |
+| 2573-2595 | 23 | `NewIntent` | IntentFactory |
+| 2596-2616 | 21 | `CreateIntent` (Scout) | IntentFactory |
+| 2617-2627 | 11 | `IsOffensiveGroundCombatIntent` | ActiveDefence |
+| 2628-2656 | 29 | `TryOffensiveAssaultOperation` | ActiveDefence (external: `AggressionMissionPlanner`) |
+| 2657-2688 | 32 | `CreateActiveDefenceIntent` | IntentFactory |
+| 2689-2702 | 14 | `CreateRaidIntent` | IntentFactory |
+| 2703-2732 | 30 | `CreateEconomyIntent` | IntentFactory |
+| 2733-2754 | 22 | `CreateDevelopmentIntent` | IntentFactory |
+| 2755-2770 | 16 | `RepayEconomyLoan` | Economy |
+| 2771-2784 | 14 | `ShouldReap` | Reconcile |
+| 2785-2795 | 11 | `StartPersistentCooldown` | Reconcile |
+| 2796-2801 | 6 | `Describe` | Reconcile |
+
+## 2.2 Target layout
+
+```
+Continuity/
+├── MissionContinuityLayer.cs                  (ResolveActive only — see DP1)           ~850
+├── MissionContinuityLayer.Economy.cs          (19-374 + RepayEconomyLoan)              ~375
+├── MissionContinuityLayer.Recon.cs            (1208-1328)                              ~125
+├── MissionContinuityLayer.Raid.cs             (1329-1692, minus the two dead members)  ~345
+├── MissionContinuityLayer.Basing.cs           (1693-1801, 1824-1865)                   ~160
+├── MissionContinuityLayer.ActiveDefence.cs    (1802-1823, 2617-2656)                   ~70
+├── MissionContinuityLayer.Reconcile.cs        (1866-2572, 2771-2801)                   ~750
+├── MissionContinuityLayer.IntentFactory.cs    (2573-2616, 2657-2754)                   ~190
+└── MissionContinuityLayer.Attack.cs           (exists, unchanged)                      271
+```
+
+Split kind: **`partial`, per lane**, matching the file's own existing precedent. The class stays
+one owner; only lanes move. `MissionContinuityLayer.ActiveDefence.cs` is deliberately shaped like
+`MissionContinuityLayer.Attack.cs` so the two ground-combat lanes read the same way.
+
+## 2.3 Cross-boundary call-outs
+
+- **`MissionContinuityLayer.Basing.cs` is the `WorldAnalysis.Shared.cs` case.** `SelectReturnBase`
+  is called from the Economy slice (`BeginEconomyBuilderRecovery`), the Raid slice
+  (`BeginRaidSupportReturn`, `BeginTerminalRaidReturn`), `ResolveActive`, the existing
+  `MissionContinuityLayer.Attack.cs` partial, **and** externally from
+  `Missions/Raid/RaidRecoveryPlanner.cs`. `PrimaryClearsTarget` is called from Raid,
+  `ResolveActive` and `MissionContinuityLayer.Attack.cs`. Four families → its own file, exactly as
+  round-1 Task 5 prescribed. Do **not** file these under Raid just because their names read
+  "raid-ish".
+- **`RaidPrimaryActorAlive` is used by `MissionContinuityLayer.Attack.cs`** but otherwise only by
+  the Raid slice — keep it in `MissionContinuityLayer.Raid.cs`; the Attack partial resolves it
+  cross-file for free.
+- **`RepayEconomyLoan` moves to the Economy slice although its callers are elsewhere**
+  (`ResolveActive`, `AdvanceIntent`, `ReconcileOutcome`). It is the *other half* of the loan
+  protocol whose granting half (`ResumeEconomyLender`, `BeginEconomyDelivery`) already sits in
+  Economy, and the loan invariant documented in the comment at `MissionContinuityLayer.cs:637-645`
+  depends on reading both halves together.
+- **`ShouldReap` / `StartPersistentCooldown` / `Describe` go with Reconcile, not root**, even
+  though `ResolveActive` calls `ShouldReap`. `ShouldReap` has 4 in-file callers, all but one in the
+  Reconcile cluster.
+- **`NewIntent` must stay the single constructor for all five `Create*Intent` methods.** All five
+  already route through it (the 2026-09-13 remediation of finding **M**). Keeping the factory in
+  one file is the point of `MissionContinuityLayer.IntentFactory.cs`; do not let a lane slice grow
+  a sixth inline `new MissionIntent { ... }`.
+- **`TryRetargetCommittedBase` has no in-file caller** — its only caller is
+  `Strategy/StrategicPhaseA.cs`. It is `internal`, so the move is invisible to it.
+
+---
+
+# 3. `Orchestration/AiStrategyV2Pipeline.cs` (2262 lines)
+
+## 3.1 Member inventory
+
+This file is **two different things stapled together**: a 150-line design-record header plus 15
+pipeline-stage model types (lines 14-496), and then `public static class Pipeline` (498-2226),
+which is 78% one method.
+
+| Lines | Len | Member | Slice |
+|---|---|---|---|
+| 14-163 | 150 | file header: the V2 design record + inter-type "Stage N output" commentary | root |
+| 165 | 1 | `enum DesireAxis` | Desire models |
+| 167-243 | 77 | `static class DesireAxes` (`All`, `Abbrev`, `InvalidationMaskFor`) | Desire models |
+| 245-260 | 16 | `class DesireVector` | Desire models |
+| 262-300 | 39 | `class Radar` | Desire models |
+| 302-310 | 9 | `class AxisContribution` | Desire models |
+| 312 | 1 | `enum MissionKind` | Mission-target models |
+| 314-322 | 9 | `enum EconomyTaskKind` | Mission-target models |
+| 323-345 | 23 | `struct EconomyMissionTarget` | Mission-target models |
+| 346-358 | 13 | `struct DevelopmentMissionTarget` | Mission-target models |
+| 359-366 | 8 | `enum ScoutTargetKind`, `enum StealthRequirement` | Mission-target models |
+| 367-377 | 11 | `struct ScoutMissionTarget` | Mission-target models |
+| 378-432 | 55 | `class MissionProposal` | Proposal models |
+| 433-469 | 37 | `class MissionRequirements` | Proposal models |
+| 470-496 | 27 | `class Commitment` | Proposal models |
+| 500-505 | 6 | `Pipeline.StrategicAdmissionNeeded` | root (called by `RunTurn`) |
+| 506-520 | 15 | `Pipeline.RefreshDevelopmentOpportunities` | **dead — zero callers, see DP7** |
+| 521-528 | 8 | `DevelopmentAdmissionFingerprint` | DevelopmentAdmission (entry) |
+| 529-550 | 22 | `DevelopmentApAffordability` | DevelopmentAdmission |
+| 551-737 | 187 | `DevelopmentAdmissionFacts` | DevelopmentAdmission |
+| 738-762 | 25 | `DevelopmentRelevantIntent` | DevelopmentAdmission |
+| 763-807 | 45 | `DevelopmentEconomyRelevantArmyIds` | DevelopmentAdmission |
+| 808-838 | 31 | `DevelopmentRaidRelevantArmyIds` | DevelopmentAdmission |
+| 839-859 | 21 | `DefenderFingerprint` | DevelopmentAdmission |
+| **860-2159** | **1299** | **`Pipeline.RunTurn`** | **root — see DP2** |
+| 2160-2202 | 43 | `BuildMissionSet` | root |
+| 2203-2226 | 24 | `RecordInitiativeAnalytics` | root |
+
+## 3.2 Target layout
+
+```
+Orchestration/
+├── AiStrategyV2Pipeline.cs                        (design-record header, partial class
+│                                                    Pipeline: RunTurn, BuildMissionSet,
+│                                                    RecordInitiativeAnalytics,
+│                                                    StrategicAdmissionNeeded)          ~1400
+├── AiStrategyV2Pipeline.DevelopmentAdmission.cs   (521-859)                             ~355
+├── DesireModels.cs                                (DesireAxis, DesireAxes, DesireVector,
+│                                                    Radar, AxisContribution)            ~150
+├── MissionTargetModels.cs                         (MissionKind, EconomyTaskKind,
+│                                                    EconomyMissionTarget,
+│                                                    DevelopmentMissionTarget,
+│                                                    ScoutTargetKind, StealthRequirement,
+│                                                    ScoutMissionTarget)                  ~70
+└── MissionProposal.cs                             (MissionProposal, MissionRequirements,
+                                                     Commitment)                         ~125
+```
+
+Split kind: **hybrid**, same reasoning as ProvisioningManager. The 15 model types are independent
+types — type-level split, **no `partial`**. `Pipeline` itself is one class with a separable static
+cluster — `partial` there, and there only.
+
+## 3.3 Cross-boundary call-outs
+
+- **The Development-admission cluster is a closed subgraph.** Verified: `DevelopmentApAffordability`
+  and `DevelopmentAdmissionFacts` are called only by `DevelopmentAdmissionFingerprint`;
+  `DevelopmentRelevantIntent`, `DevelopmentEconomyRelevantArmyIds`,
+  `DevelopmentRaidRelevantArmyIds` and `DefenderFingerprint` only by `DevelopmentAdmissionFacts`.
+  The only edge crossing into the cluster from the rest of the class is
+  `RunTurn → DevelopmentAdmissionFingerprint`. Nothing outside the file calls any of the seven.
+  This is the cleanest slice boundary in all three files.
+- **`DesireAxes.InvalidationMaskFor` is called from `Orchestration/AiStrategyV2Scope.cs:214`** —
+  the one external reference among the model types' members. Moving `DesireAxes` to
+  `DesireModels.cs` leaves that call untouched (same namespace, same type name).
+- **The header's "Stage N output" comments are load-bearing prose, and they sit *between* the
+  types.** Lines 236-243, 294-301 and 487-496 are narrative connective tissue explaining what each
+  stage feeds. When a type moves, the stage comment immediately preceding it must move **with it**,
+  verbatim. The design record at 14-163 stays in `AiStrategyV2Pipeline.cs`. Add a one-line pointer
+  at the top of each new model file naming that header file — this is the one comment addition the
+  whole task set permits, and it is the difference between a useful split and losing the map.
+- `BuildMissionSet` and `RecordInitiativeAnalytics` are `RunTurn`-only and stay in root.
+
+---
+
+# 4. Still-open findings from `docs/ai-duplicate-methods-analysis.md`
+
+Scoped to these three files only, as instructed. Statuses re-verified against the code on
+2026-09-23; several were fixed since without that report being updated.
+
+| ID | Finding | Status today | Effect on this split |
+|---|---|---|---|
+| **A** | Four independent injective actor↔task assignment searches | **partly open.** The `ProvisioningManager` copy was renamed `RecurseRaid` → `RecurseGroundCombat` (773-800) and now serves both ground-combat lanes. `Lex` (840) is now a thin delegate to `AiV2Util.Lex`, so the byte-identical-comparator half is **closed**. The substantive half — `RecurseScout` carries cumulative constraints (air/ground actor caps, min-separation, air energy budget), `RecurseGroundCombat` carries **none** — is unchanged. | None. Lives entirely in the root file and does not cross any proposed boundary. → **DP5** |
+| **B** | 5 copies of the provisioning skeleton | **open, and grown to ~10.** Today: `Provision` (ground scout, 863-1075), `ProvisionEconomy`, `ProvisionEconomyRecovery`, `ProvisionMobileCollection`, `ProvisionDevelopment`, `ProvisionAir`, `ActiveDefenceProvisioner.Provision`, `RaidProvisioner.Provision` / `.ProvisionAirSupport` / `.ProvisionReturn` / `.ProvisionReinforcement`, plus `AttackProvisioner`. | The split makes it *visible* for the first time — each copy lands in its own named file, side by side. It does not fix it. → **DP4** |
+| **C** | 5 near-literal copies of the AP-envelope + live-AP gate | **open, ~10 sites** (`ProvisioningManager.cs:1001-1006, 1191-1194, 1379-1380, 1673-1689, 1864-1872, 2187-2190, 2250-2253, 2387-2399, 2711-2716, 2810, 3064`). | Same as B: the split scatters the copies across 5 files, which makes a later consolidation harder to *spot* but no harder to do. Flagged here so it is not rediscovered from scratch. → **DP3** |
+| **D** | Micro-helpers duplicated by copy-paste | **partly closed.** `ResolveArmy` (2541, 3227) and `Lex` (840) are now one-line delegates to `AiV2Util`; `KnownDefenders` now goes through `AiV2Util.KnownDefenders` (2923, 3044, 3172). Residue: the `N`/`F` formatter, ~19 private copies across `Ai/V2`, 3 of them in this one file. | **Directly relevant.** The split must keep exactly one `N` per *type* and rely on `partial` for cross-file access — copying `N` into each new slice file would take the count from 3 to 8 in this file alone. Called out in §1.3. → **DP6** |
+| **D1** | The 5 AP-gate copies *differ*: failure ordering/type varies; Economy loses its reprice on insufficient live AP; Air alone raises an Energy floor | **open.** This is the only D-series drift entry that lives in one of the three files. | It is a **behavior** drift, not a location problem. Explicitly out of the split task list. → **DP3** |
+| **D4** | Raid win-chance threshold: 0.40 for incumbents vs a hardcoded 0.65 in `RaidProvisioner.Clears` | **closed.** The hardcoded copy is gone; the comment at `ProvisioningManager.cs:3222` records the migration to `GroundCombatFeasibility.Clears`. | None. |
+| **F** | "Known defenders by army id", 3+ copies incl. `ProvisioningManager.cs:1664` | **closed in this file** — all three sites now call `AiV2Util.KnownDefenders`. Copies outside these three files not re-examined (out of scope). | None. |
+| **G** | Combat gate with divergent thresholds, incl. a hardcoded 0.65 at `ProvisioningManager.cs:1644` | **closed in this file** (same migration as D4). The other five sites are outside scope. | None. |
+| **H** | "Can I afford this given reservations" — the raw-stock read at `ProvisioningManager.cs:1320` | **closed in this file.** `ProvisionEconomy` now goes through `StrategicSpendability.FitsSpendableResources` (`:1871`). The other H sites (`Recon/*`, `GenerationSource`, …) are outside scope. | None. |
+| **M** | Three copies of the `MissionIntent` constructor | **closed.** All five `Create*Intent` methods route through `NewIntent` (2573). | Protecting this is a stated constraint of Task 9 (§2.3). |
+
+Every other entry in that report's drift table (D2, D3, D5-D15) lives outside these three files and
+is out of scope for this pass, per the instruction not to re-run the analysis.
+
+One correction worth recording: **section 0 of `ai-duplicate-methods-analysis.md` is now stale.**
+It states that `DesireAxis` has 5 values including `Defence` and that `MissionKind` has 3. Today
+(`AiStrategyV2Pipeline.cs:165, 312`) `DesireAxis` has **4** (`Recon, Aggression, Economy,
+Development` — `Defence` was removed) and `MissionKind` has **6** (`Scout, Raid, ActiveDefence,
+Economy, Development, Attack`). The Defence-lane risk list R1-R12 in that report was written
+against an architecture that no longer exists in that shape; do not act on its §0/§5 without
+re-deriving them.
+
+---
+
+# 5. Decision points — NOT part of the task list
+
+Each of these needs more than moving code. They go to the project owner as decisions, not to the
+split agent as work.
+
+**DP1 — `MissionContinuityLayer.ResolveActive` is 833 lines and the split cannot reduce it.**
+Its body is one `foreach` over `state.All` (450-1147) containing a per-kind
+`if (intent.Kind == ...) { ...; continue; }` chain: Development 452-485, Economy 486-664,
+ActiveDefence 665-796, Attack 797-813, Raid 814-1081, Scout 1083-1146. Every block reads and writes
+loop-local accumulators (`dead`, `rekeys`, `active`, `scoutFoci`, `activeRaidTargets`,
+`underSiege`), so extracting one is **not** pure code motion — it requires designing a signature.
+The Attack block is already extracted this way (`ResolveAttackIntent` in
+`MissionContinuityLayer.Attack.cs`, returning `bool` plus `out bool captured`, block shrunk to 17
+lines) and that is the proven shape. Recommendation: after Tasks 7-9 land, do the remaining five
+blocks, one commit per lane, following the Attack precedent exactly. Not in this task list because
+it changes signatures.
+
+**DP2 — `Pipeline.RunTurn` is 1299 lines, 57% of its file, and the split cannot reduce it.**
+It is a flat `IEnumerator` coroutine with 16 `yield` points, no local functions and no region
+banners. Extracting a phase out of a coroutine is materially riskier than extracting a normal
+method — the extracted part must itself become an iterator and be `yield return`-ed, which changes
+when its code runs relative to the caller's locals. That is a real refactor with a real regression
+risk, not a file split. Recommendation: leave it alone until there is a concrete debugging need,
+and if it is done, do it one phase at a time using that phase's own log lines as the check.
+
+**DP3 — AP-gate copies (findings C + D1).** ~10 sites, and they do not agree with each other. The
+Economy path losing its reprice on insufficient live AP is a live behavior difference, not
+cosmetics. Fixing it means introducing one `AdmitEnvelope(...)` and choosing *which* of the current
+behaviors becomes canonical — a decision with a visible effect on which missions get funded. Must
+not be folded into a "pure motion" commit.
+
+**DP4 — ~10 copies of the provisioning skeleton (finding B).** Consolidating them means agreeing on
+the 8-step contract (resolve actor → validate target → path step → real price → envelope → live AP
+→ Ok/Fail) and on what each lane is allowed to vary. That is a design task.
+
+**DP5 — `RecurseGroundCombat` has no cumulative constraints (finding A).** `RecurseScout` enforces
+air/ground actor caps, min-separation and an air energy budget across the whole assignment; the
+ground-combat search enforces only injectivity. Whether that is correct or a latent bug is a
+gameplay question, not a refactor question.
+
+**DP6 — the `N`/`F` formatter residue (finding D).** ~19 private copies across `Ai/V2`, 3 in
+`ProvisioningManager.cs` alone, with **three different format strings** (`0.##`, `0.0`, `0.00`).
+Consolidating them into `AiV2Util` would change the text of existing log lines wherever a call
+site's local format differs from the chosen canonical one. Cheap, but it *is* a log-format change
+and should be an explicit decision, not a side effect of a split.
+
+**DP7 — dead code found while building the call tables.** Four members with zero call sites
+anywhere in `Assets/Scripts`:
+
+- `MissionContinuityLayer.CurrentRaidWinChance` (1557-1569)
+- `MissionContinuityLayer.RefitDecision` (1570-1576)
+- `Pipeline.RefreshDevelopmentOpportunities` (506-520) — `internal`, so nothing outside the
+  assembly can reach it either
+- `ProvisioningManager.RollbackAssembly` (3218-3226)
+
+Deleting them is behavior-neutral, but it is a deletion, not a move, so it does not belong in a
+"pure code motion" commit. Do it as its own commit, before or after — not inside one. Also in this
+bucket: `GroundCombatAssemblyTransaction` and the existing `GroundCombatAssaultTransaction.cs` are
+two distinct types whose names differ by one word, and after Task 2 they sit next to each other in
+the same folder. Renaming one would help; renaming is not code motion.
+
+**DP8 — `ProvisioningManager.Provision` mixes two responsibilities.** Lines 842-863 are the
+`MissionKind` dispatcher; 863-1075 are the Ground-Scout provisioning body inlined into the same
+method. The layout in §1.2 keeps the whole method in the root file precisely because separating
+them requires extracting `ProvisionGroundScout(...)` — a new signature, not a move. Worth doing
+(it would let the root file shrink to ~330 lines and give Scout the same named slice every other
+lane gets), but as its own commit with its own review.
+
+---
+
+# 6. Acceptance criteria (every task)
+
+- Method bodies unchanged — the diff is a pure move: the new file gets the member verbatim, the old
+  file loses it, no logic edits mixed in.
+- `namespace` (`Game.Ai.V2`) and access modifiers unchanged on every moved member.
+- `partial` added **only** where the task says: `ProvisioningManager` (Tasks 5-6) and `Pipeline`
+  (Task 4). **Not** on `ProvisionedMission` / `ProvisionFailure` / `ProvisioningResult` /
+  `ProvisioningSession` / `ActiveDefenceProvisioner` / `GroundCombatAssemblyTransaction` /
+  `RaidProvisioner` / any of the 15 pipeline model types — those are independent types being
+  moved, the `MissionIntent.cs` case from round 1. `MissionContinuityLayer` is already `partial`.
+- No helper is duplicated into a slice file. If a slice needs a `private static` helper that stayed
+  in the root file, it reaches it through `partial` — that is the whole point.
+- Stage/section comments move **with** the member or type they describe (see §3.3).
+- New Unity `.meta` files generated by Unity on reimport and included in the commit — never
+  hand-written GUIDs.
+- One task = one commit. No two files' splits in one commit, no logic change mixed in, no dead-code
+  deletion mixed in (DP7).
+- `dotnet build Assembly-CSharp.csproj` — 0 warnings, 0 errors, after every task.
+- Verification is **structural**: same members exist, same signatures, same call sites resolve, same
+  total member count per type before and after. Do **not** byte-compare `Logs/AiDebug.log` —
+  `CallerFilePath`/line numbers embedded in log text will legitimately change with zero behavior
+  change, exactly as in round 1.
+- Unity reimport is not a gate on handing the work back (that still needs the user), but the dotnet
+  build must be clean first.
