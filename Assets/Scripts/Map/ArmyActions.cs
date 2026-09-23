@@ -57,9 +57,8 @@ namespace Game.Map
             }
 
             root.SpendActionPoints(CreateArmyApCost);
-            ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController);
             source.Members.Remove(member);
-            army.AddMemberSorted(member);
+            ArmyData army = RegisterNewArmy(owner, hex, catalog, hexSelectionController, member);
             army.MarkUnitActivationPaid(member);
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (AbilityParams.GetBestRecceRadius(member) > 0)
@@ -71,7 +70,8 @@ namespace Game.Map
         }
 
         private static ArmyData RegisterNewArmy(PlayerSetupData owner, HexCoord hex,
-            FactionCardCatalog catalog, HexSelectionController hexSelectionController)
+            FactionCardCatalog catalog, HexSelectionController hexSelectionController,
+            UnitData firstMember = null)
         {
             var takenNames = ArmyRegistry.AllForOwner(owner).Select(a => a.Name);
             var army = new ArmyData
@@ -81,6 +81,10 @@ namespace Game.Map
                 Owner = owner,
                 IsGarrison = false,
             };
+            // When the caller is creating a populated army, publish the FINAL roster to the
+            // registry. Observers must never see a transient empty shell for one logical action.
+            if (firstMember != null)
+                army.AddMemberSorted(firstMember);
             ArmyRegistry.Register(army);
             hexSelectionController?.CreateArmyMarker(army);
             return army;
@@ -104,37 +108,79 @@ namespace Game.Map
             return card.ResearchProductionCreated ? definition.activationApCost : definition.apCost;
         }
 
+        // Existing-army deployment compatibility surface. All legality/payment/spawn logic lives
+        // in DeployUnitFromCardCore below; UI and aviation keep their current call shape.
         public static bool DeployUnitFromCard(CardDefinition definition, PlayerSetupData owner, ArmyData targetArmy,
             PlayerRoot root, HexSelectionController hexSelectionController, out string failReason,
             CardDefinition attachedEquipment = null, CardData sourceCard = null)
         {
+            return DeployUnitFromCardCore(definition, owner, targetArmy, targetArmy != null ? targetArmy.Hex : default,
+                newArmyCatalog: null, root, hexSelectionController, out _, out failReason,
+                attachedEquipment, sourceCard);
+        }
+
+        // Atomic "create a fresh field army + deploy its first card" form. The same core validates
+        // the complete final roster and complete AP/resource cost BEFORE anything is published or
+        // charged. A failed operation therefore cannot leave a paid empty shell behind.
+        public static bool DeployUnitFromCardToNewArmy(CardDefinition definition, PlayerSetupData owner,
+            HexCoord hex, FactionCardCatalog catalog, PlayerRoot root,
+            HexSelectionController hexSelectionController, out ArmyData createdArmy, out string failReason,
+            CardDefinition attachedEquipment = null, CardData sourceCard = null)
+        {
+            return DeployUnitFromCardCore(definition, owner, targetArmy: null, hex, catalog,
+                root, hexSelectionController, out createdArmy, out failReason,
+                attachedEquipment, sourceCard);
+        }
+
+        private static bool DeployUnitFromCardCore(CardDefinition definition, PlayerSetupData owner,
+            ArmyData targetArmy, HexCoord deploymentHex, FactionCardCatalog newArmyCatalog,
+            PlayerRoot root, HexSelectionController hexSelectionController, out ArmyData resultingArmy,
+            out string failReason, CardDefinition attachedEquipment, CardData sourceCard)
+        {
+            resultingArmy = targetArmy;
             failReason = null;
-            if (definition == null || owner == null || targetArmy == null || root == null || hexSelectionController == null)
+            bool creatingArmy = targetArmy == null;
+
+            if (definition == null || owner == null || root == null || hexSelectionController == null
+                || (creatingArmy && newArmyCatalog == null))
             {
                 failReason = "Invalid deploy request.";
                 return false;
             }
-            // This is the authoritative mutation boundary for human, V1, V2 and aviation.
-            // UI and AI preflight may predict legality, but cannot authorize deployment into
-            // another player's army or charge a different player's AP/resources. Check before
-            // any payment; a card instance must refer to the definition being deployed.
-            // CreateArmy and every other shared army payment use the registered root; a second
-            // PlayerRoot with the same Setup is NOT the same resource account.
+            // One authoritative mutation boundary for human, V1, V2 and aviation. A new field
+            // army is only a valid ground Unit/Hero destination; aviation must still use Airfield.
             if ((definition.cardType != CardType.Unit && definition.cardType != CardType.Hero)
-                || targetArmy.Owner != owner || targetArmy.IsPrison || root.Setup != owner
+                || root.Setup != owner
                 || !object.ReferenceEquals(root, PlayerRootRegistry.FindFor(owner))
-                || (sourceCard != null && !object.ReferenceEquals(sourceCard.Definition, definition)))
+                || (sourceCard != null && !object.ReferenceEquals(sourceCard.Definition, definition))
+                || (!creatingArmy && (targetArmy.Owner != owner || targetArmy.IsPrison))
+                || (creatingArmy && definition.isAviation))
             {
                 failReason = "Card, owner, target army or resource owner is invalid for deployment.";
                 return false;
             }
-            // Ground deployment always requires an OWN building with the card's declared
-            // ability. Empty requiredBuildingAbility is invalid, as in CardHandUI's actual
-            // drag-drop. Aviation is a separate operation: it requires an OWN airfield, not a
-            // ground Barracks requirement. Neither path can bypass these rules via an AI call.
+
+            // A prospective army is validation-only and never enters a registry. It lets the SAME
+            // container/capacity rules below validate a fresh final roster without a special AI
+            // approximation or a temporary empty shell.
+            ArmyData destination = targetArmy;
+            if (creatingArmy)
+            {
+                destination = ArmyData.CreateVisualSnapshot();
+                destination.Owner = owner;
+                destination.Hex = deploymentHex;
+                destination.IsGarrison = false;
+            }
+            else
+            {
+                deploymentHex = targetArmy.Hex;
+            }
+
+            // Ground deployment requires an OWN building with the card's declared ability.
+            // Aviation remains Airfield-only.
             if (definition.isAviation)
             {
-                if (!targetArmy.IsAirfield || !AviationRules.IsOwnedAirfieldAt(targetArmy.Hex, owner))
+                if (!destination.IsAirfield || !AviationRules.IsOwnedAirfieldAt(deploymentHex, owner))
                 {
                     failReason = "Aircraft must be deployed into an owned airfield first.";
                     return false;
@@ -142,7 +188,7 @@ namespace Game.Map
             }
             else
             {
-                BuildingData building = BuildingRegistry.FindAt(targetArmy.Hex);
+                BuildingData building = BuildingRegistry.FindAt(deploymentHex);
                 if (string.IsNullOrEmpty(definition.requiredBuildingAbility)
                     || building == null || building.Owner != owner
                     || !building.HasAbility(definition.requiredBuildingAbility))
@@ -151,53 +197,61 @@ namespace Game.Map
                     return false;
                 }
             }
-            if (!AviationRules.CanContain(targetArmy, new UnitData { IsAviation = definition.isAviation }))
+
+            var prospectiveMember = new UnitData { IsAviation = definition.isAviation };
+            if (!AviationRules.CanContain(destination, prospectiveMember))
             {
                 failReason = definition.isAviation
                     ? "Aircraft must be deployed into an airfield or an aviation army."
                     : "Ground units and heroes cannot join an aviation army.";
                 return false;
             }
-            if (definition.isAviation && !targetArmy.IsAirfield)
+            if (definition.isAviation && !destination.IsAirfield)
             {
                 failReason = "Aircraft must be deployed into an owned airfield first.";
                 return false;
             }
-            if (targetArmy.IsAirfield && targetArmy.Members.Count >= AviationRules.AirfieldCapacityAt(targetArmy.Hex, owner))
+            if (destination.IsAirfield
+                && destination.Members.Count >= AviationRules.AirfieldCapacityAt(deploymentHex, owner))
             {
-                failReason = $"The airfield at {targetArmy.Hex} is full.";
+                failReason = $"The airfield at {deploymentHex} is full.";
                 return false;
             }
-            if (!targetArmy.IsAirfield)
+            if (!destination.IsAirfield)
             {
-                int projectedCapacity = targetArmy.Capacity;
-                if (definition.cardType == CardType.Hero && !targetArmy.Members.Any(m => m.IsHero))
+                int projectedCapacity = destination.Capacity;
+                if (definition.cardType == CardType.Hero && !destination.Members.Any(m => m.IsHero))
                     projectedCapacity = definition.commandRating;
-                if (projectedCapacity < targetArmy.Members.Count + 1)
+                if (projectedCapacity < destination.Members.Count + 1)
                 {
-                    failReason = $"{definition.displayName} would exceed {targetArmy.Name}'s capacity after deployment.";
+                    string targetName = creatingArmy ? "a fresh army" : destination.Name;
+                    failReason = $"{definition.displayName} would exceed {targetName}'s capacity after deployment.";
                     return false;
                 }
             }
 
             bool alreadyPaidResources = sourceCard != null && sourceCard.ResearchProductionCreated;
-            int apCost = sourceCard != null ? EffectiveDeployApCost(sourceCard) : EffectiveDeployApCost(definition);
-            if (!root.CanSpendActionPoints(apCost))
+            int deployAp = sourceCard != null ? EffectiveDeployApCost(sourceCard) : EffectiveDeployApCost(definition);
+            int totalAp = deployAp + (creatingArmy ? CreateArmyApCost : 0);
+            if (!root.CanSpendActionPoints(totalAp))
             {
-                failReason = $"Not enough action points to deploy {definition.displayName}.";
+                failReason = creatingArmy
+                    ? $"Not enough action points to create an army and deploy {definition.displayName} ({totalAp} AP needed)."
+                    : $"Not enough action points to deploy {definition.displayName}.";
                 return false;
             }
-            if (!alreadyPaidResources && definition.resourceCost != null && !definition.resourceCost.CanAfford(root))
+            if (!alreadyPaidResources && definition.resourceCost != null
+                && !definition.resourceCost.CanAfford(root))
             {
                 failReason = $"Not enough resources to deploy {definition.displayName}.";
                 return false;
             }
 
-            root.SpendActionPoints(apCost);
-            if (!alreadyPaidResources && definition.resourceCost != null)
-                definition.resourceCost.PayFrom(root);
+            // SpawnUnit only materializes UnitData; it does not publish it to ArmyRegistry. Do it
+            // before the irreversible debit so an unexpected spawn refusal cannot consume AP or
+            // resources. Equipment mutates this unpublished body for the same reason.
             bool isHero = definition.cardType == CardType.Hero;
-            var spawned = hexSelectionController.SpawnUnit(definition.displayName, owner, definition.moveMax,
+            UnitData spawned = hexSelectionController.SpawnUnit(definition.displayName, owner, definition.moveMax,
                 definition.activationApCost, isHero, definition.commandRating, definition.art, definition.grantedAbilities,
                 definition.attack, definition.range, definition.hitPoints, definition.initiative, definition.fate,
                 definition.defenseRating, definition.resistanceRating, definition.unitTypeTags, definition.detailArt,
@@ -208,22 +262,32 @@ namespace Game.Map
                 failReason = $"Could not spawn {definition.displayName}.";
                 return false;
             }
-
             if (attachedEquipment != null)
             {
                 EquipmentSystem.Apply(attachedEquipment.equipment, spawned);
                 spawned.Equipment = attachedEquipment;
             }
 
-            targetArmy.AddMemberSorted(spawned);
-            hexSelectionController.RestackArmiesOn(targetArmy.Hex, null);
-            // A new Recce member (including Recce granted by equipment while in hand)
-            // changes the owner's footprint. Any deploy changes what already-visible
-            // opponents can see, even when that footprint remains identical.
+            root.SpendActionPoints(totalAp);
+            if (!alreadyPaidResources && definition.resourceCost != null)
+                definition.resourceCost.PayFrom(root);
+
+            if (creatingArmy)
+            {
+                resultingArmy = RegisterNewArmy(owner, deploymentHex, newArmyCatalog,
+                    hexSelectionController, spawned);
+            }
+            else
+            {
+                destination.AddMemberSorted(spawned);
+                resultingArmy = destination;
+            }
+
+            hexSelectionController.RestackArmiesOn(deploymentHex, null);
             if (AbilityParams.GetBestRecceRadius(spawned) > 0)
                 VisionSystem.RecomputeFor(owner);
-            StealthSystem.RunChecksForNewVisionSource(targetArmy, spawned);
-            VisionSystem.NotifyContentChanged(targetArmy.Hex);
+            StealthSystem.RunChecksForNewVisionSource(resultingArmy, spawned);
+            VisionSystem.NotifyContentChanged(deploymentHex);
             return true;
         }
 
