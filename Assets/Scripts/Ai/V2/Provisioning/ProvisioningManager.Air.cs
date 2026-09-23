@@ -244,10 +244,5 @@ namespace Game.Ai.V2
                 : ProvisionFailure.SortieNotWorthwhile(
                     $"air actor #{moverArmyId}: sortie not worth reserving this turn ({decision.Reason})");
         }
-
-        // Round 3 (Problem 2) — PURE translation of ReconAssignmentPlanner.AssignFunded's already-
-        // computed rejection reason into a ProvisionFailure. No eligibility / route / vantage
-        // re-derivation happens here any more — "why couldn't this job be assigned" has exactly ONE
-        // owner, ReconAssignmentPlanner, and this is just its vocabulary mapped onto Provisioning's.
     }
 }

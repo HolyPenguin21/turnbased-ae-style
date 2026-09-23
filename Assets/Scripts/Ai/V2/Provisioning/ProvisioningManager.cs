@@ -1572,6 +1572,11 @@ namespace Game.Ai.V2
             ? ResourceVector.Zero
             : new ResourceVector(0f, cost.Get(ResourceType.Human), cost.Get(ResourceType.Energy),
                 cost.Get(ResourceType.Materials), cost.Get(ResourceType.Tech));
+
+        // Round 3 (Problem 2) — PURE translation of ReconAssignmentPlanner.AssignFunded's already-
+        // computed rejection reason into a ProvisionFailure. No eligibility / route / vantage
+        // re-derivation happens here any more — "why couldn't this job be assigned" has exactly ONE
+        // owner, ReconAssignmentPlanner, and this is just its vocabulary mapped onto Provisioning's.
         private static ProvisioningResult ClassifyNoAssignment(ProvisioningSession session,
             StableMissionKey key, ScoutMissionTarget target)
             => ProvisioningResult.Fail(AssignmentFailure(session, key, target));
