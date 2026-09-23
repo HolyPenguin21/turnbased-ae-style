@@ -512,8 +512,8 @@ MonoBehaviour:
   - id: 11
     authoredKey: 
     displayName: RC Vehicle
-    art: {fileID: 21300000, guid: 06998ca246d9c0a43b29560a3d6e324c, type: 3}
-    detailArt: {fileID: 21300000, guid: c9601829c5e8a7945a5f4e10893f9edc, type: 3}
+    art: {fileID: 21300000, guid: ec740b73693f73c4c80d7cc9193d533a, type: 3}
+    detailArt: {fileID: 21300000, guid: a8e0a294aa9960e4486fdf6bfb1a4691, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -1038,8 +1038,8 @@ MonoBehaviour:
   - id: 23
     authoredKey: 
     displayName: Artillery Cannon
-    art: {fileID: 21300000, guid: 3826ac6974438f4478b6044379a4e644, type: 3}
-    detailArt: {fileID: 21300000, guid: 1dc7beb4d6e83964cb2674463d455939, type: 3}
+    art: {fileID: 21300000, guid: 8bee7943fe7c30a489fc96518362a5f7, type: 3}
+    detailArt: {fileID: 21300000, guid: ba5bb2c74bc68e2438906abee131e7bd, type: 3}
     faction: 0
     cardType: 1
     apCost: 4
@@ -1082,8 +1082,8 @@ MonoBehaviour:
   - id: 24
     authoredKey: 
     displayName: AT Cannon
-    art: {fileID: 21300000, guid: 6fa8bc7390af5324caaaa5589e00b6f4, type: 3}
-    detailArt: {fileID: 21300000, guid: b3a0a5eff7d1ad24eb69b856bef41b77, type: 3}
+    art: {fileID: 21300000, guid: fd60c9277a2c8984ba5a57441dbd1c12, type: 3}
+    detailArt: {fileID: 21300000, guid: 9a3822a26cb6dcc4f907d483b86d8668, type: 3}
     faction: 0
     cardType: 1
     apCost: 4
