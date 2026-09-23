@@ -24,7 +24,7 @@ OUTPUT_DIR = ROOT / "Output"
 
 STATS_BASE_NAME = "Card_Base.png"
 CLEAR_BASE_NAME = "Card_Base_Clear.png"
-OUTPUT_SIZE = (768, 1120)
+OUTPUT_SIZE = (772, 1124)
 
 # Shared composition settings.
 ART_CENTER_X = 0.50
@@ -32,18 +32,18 @@ ART_CENTER_Y = 0.48
 
 # Keep the original base border above the artwork so the art can never
 # visually cover/eat the frame. Use the same overlay width on every side.
-BORDER_OVERLAY_TOP_PX = 48
-BORDER_OVERLAY_SIDE_PX = 48
-BORDER_OVERLAY_BOTTOM_PX = 48
+BORDER_OVERLAY_TOP_PX = 28
+BORDER_OVERLAY_SIDE_PX = 28
+BORDER_OVERLAY_BOTTOM_PX = 28
 
 # Immediately inside the ragged 48 px base overlay, fade the artwork from
 # alpha 0 to full opacity over 48 px on all four sides.
-IMAGE_EDGE_FEATHER_PX = 48
+IMAGE_EDGE_FEATHER_PX = 72
 
 # Deterministic irregularity of the inner overlay boundary. The same ragged
 # profile is reused by the overlay and artwork mask so there are no gaps or
 # mismatched seams between the two layers.
-BORDER_RAGGEDNESS_PX = 10
+BORDER_RAGGEDNESS_PX = 16
 
 # Fixed stats fade in final 768x1120 coordinates.
 # Artwork is fully transparent from the top edge of the stat slots downward.

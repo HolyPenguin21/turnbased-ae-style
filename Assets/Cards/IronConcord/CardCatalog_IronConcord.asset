@@ -689,8 +689,8 @@ MonoBehaviour:
   - id: 15
     authoredKey: 
     displayName: Light Infantry
-    art: {fileID: 21300000, guid: 87d2e43c93ec46f449df54e7dbd79630, type: 3}
-    detailArt: {fileID: 21300000, guid: 112869c9859c1004e87d3fd582acd1b6, type: 3}
+    art: {fileID: 21300000, guid: 2041e4a4aa26a50458f4c061b7125f9b, type: 3}
+    detailArt: {fileID: 21300000, guid: 9e8b61860a53d9045a793adeb2bda763, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
@@ -732,8 +732,8 @@ MonoBehaviour:
   - id: 16
     authoredKey: 
     displayName: Medium infantry
-    art: {fileID: 21300000, guid: 3900480d0177f1145b50517dca5f02be, type: 3}
-    detailArt: {fileID: 21300000, guid: 4271f47fdc840af4fb95ee0478b0ad61, type: 3}
+    art: {fileID: 21300000, guid: f84d75a21baefb54186695b4b8b70eac, type: 3}
+    detailArt: {fileID: 21300000, guid: f5d5a338fc909d1448e8c396629781d9, type: 3}
     faction: 0
     cardType: 1
     apCost: 1
