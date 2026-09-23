@@ -501,13 +501,9 @@ namespace Game.Ai.V2
             if (army.HasActivatedThisTurn)
                 return false;
             var scout = army.Members[0];
-            if (!StealthSystem.CanEnterStealth(scout))
+            if (root == null || !StealthSystem.TryEnterStealth(
+                    scout, root, army.ActivationApCost))
                 return false;
-            int stealthAp = AiConfigV2.scoutOptionalStealthAp;
-            if (root == null || !root.CanSpendActionPoints(army.ActivationApCost + stealthAp))
-                return false;
-            root.SpendActionPoints(stealthAp);
-            StealthSystem.EnterStealth(scout);
             entered = true;
             return true;
         }
@@ -531,11 +527,8 @@ namespace Game.Ai.V2
             if (army.Members.Any(m => m.IsHidden) || army.HasActivatedThisTurn)
                 return false;
             var scout = army.Members[0];
-            if (!StealthSystem.CanEnterStealth(scout))
-                return false;
-
-            int stealthAp = AiConfigV2.scoutOptionalStealthAp;
-            if (stealthAp <= 0 || !root.CanSpendActionPoints(stealthAp))
+            int stealthAp = StealthSystem.EnterStealthApCost;
+            if (!StealthSystem.CanPayToEnterStealth(scout, root))
                 return false;
 
             AiHandData hand = AiHandRegistry.Peek(player);
@@ -570,9 +563,7 @@ namespace Game.Ai.V2
                 || slack + AiConfigV2.allocatorSliceEpsilon < stealthAp)
                 return false;
 
-            root.SpendActionPoints(stealthAp);
-            StealthSystem.EnterStealth(scout);
-            return true;
+            return StealthSystem.TryEnterStealth(scout, root);
         }
 
         // Spec §12 — stealth as route topology. RouteAccessBenefit is 1 when a known non-own army
