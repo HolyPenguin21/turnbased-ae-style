@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Combat;
@@ -56,8 +56,12 @@ namespace Game.Ai.V2
             int activeReconExecutions = activeReconActors.Count;
             int activeGroundReconExecutions = activeGroundReconActors.Count;
 
+            // AirSweep is aviation-only support supplied by aviation cards (Phase B), never by a
+            // Scout capability demand: it must not size ground/observation lanes, be a fallback
+            // materialisation target, or create a scout. Air capacity is still witnessed below.
             var uncovered = objectives
-                .Where(o => o.BaseValue > 0f && !coveredKeys.Contains(o.IntentKey))
+                .Where(o => o.BaseValue > 0f && !coveredKeys.Contains(o.IntentKey)
+                    && o.Kind != ReconObjectiveKind.AirSweep)
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.IntentKey)
                 .ToList();
@@ -115,9 +119,11 @@ namespace Game.Ai.V2
             // to size its own Desired/deficit fields (see MeasureAirCapacity's header comment).
             (int airborneWitnessed, int spareLaunchWitnessed) = ReconAssignmentPlanner.MeasureAirCapacity(
                 ctx, player, root, snap, objectives, activeIntents, commitments);
+            // Aviation now serves only AirSweep (ReconAirCapacityPolicy.IsAirServiceable), so its
+            // witnessed wings are NOT capacity for these ground-served observation lanes.
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
                 snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player,
-                airborneWitnessed, spareLaunchWitnessed);
+                0, 0);
             AiDebugLog.Write($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
                 + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
                 + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "

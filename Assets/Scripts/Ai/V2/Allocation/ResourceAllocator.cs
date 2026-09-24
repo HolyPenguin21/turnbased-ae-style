@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -167,6 +167,10 @@ namespace Game.Ai.V2
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
             {
                 int targetId = t.Kind == ScoutTargetKind.Surveil ? (t.Contact?.Army?.ArmyId ?? 0) : 0;
+                // AirSweep: one operation per player — the moving anchor is not identity (same rule
+                // as MissionIntentKey.ForScoutTarget), so cooldown/funding follow the operation.
+                if (t.Kind == ScoutTargetKind.AirSweep)
+                    return new StableMissionKey(MissionKind.Scout, (int)t.Kind, 0, 0, 0);
                 return new StableMissionKey(MissionKind.Scout, (int)t.Kind, targetId, t.FocusHex.Q, t.FocusHex.R);
             }
             if (m != null && m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget rt)

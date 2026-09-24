@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
@@ -253,6 +253,7 @@ namespace Game.Ai.V2
             HexCoord? next = null;
             string actionWhy = null;
             bool forceDecloakForAttack = false;
+            bool sabotage = false;
             switch (reaction.Action)
             {
                 case ReconReactionAction.Flee:
@@ -270,6 +271,12 @@ namespace Game.Ai.V2
                         next = reaction.TargetHex.Value;
                     actionWhy = "AttackOpportunity";
                     forceDecloakForAttack = true;
+                    break;
+                case ReconReactionAction.SabotageStructure:
+                    if (reaction.TargetHex.HasValue)
+                        next = reaction.TargetHex.Value;
+                    actionWhy = "SabotageStructure";
+                    sabotage = true;
                     break;
                 case ReconReactionAction.Continue:
                 default:
@@ -310,8 +317,24 @@ namespace Game.Ai.V2
                 }
             }
 
+            if (sabotage)
+            {
+                // A fully hidden mover takes no action on arrival, so the takeover needs a visible
+                // scout. Leaving stealth is free; re-check the one arrival rule on the settled
+                // post-decloak state before committing the step.
+                result.StealthChanged |= ExitArmyStealth(army);
+                VisionSystem.RecomputeFor(player);
+                AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
+                if (!reaction.TargetHex.HasValue || !next.Value.Equals(reaction.TargetHex.Value)
+                    || !AiMapMemory.KnownUndefendedForeignStructureAt(player, next.Value))
+                {
+                    control.StopReason = ExecutionStopReason.TargetInvalidated;
+                    yield break;
+                }
+            }
+
             if (!runtime.OptionalStealthChecked && !pm.StealthApReserved
-                && !result.EnteredStealth && !forceDecloakForAttack)
+                && !result.EnteredStealth && !forceDecloakForAttack && !sabotage)
             {
                 runtime.OptionalStealthChecked = true;
                 float mandatoryClaims = MandatoryApClaimsFrom(queue, missionIndex);
@@ -327,7 +350,9 @@ namespace Game.Ai.V2
             var move = AiDecision.Move(army, next.Value,
                 $"V2 recon continuous — {actionWhy}; mission={ReconScoutKinds.Name(pm.ScoutKind)}; "
                 + $"mode={assignment.Mode}; anchor=({assignment.StrategicAnchor.Q},{assignment.StrategicAnchor.R})", 0f,
-                forceDecloakForAttack ? AiGroundMoveAuthority.Combat : AiGroundMoveAuthority.Transit);
+                forceDecloakForAttack ? AiGroundMoveAuthority.Combat
+                    : sabotage ? GroundMoveAuthorityPolicy.ForStructureAssaultStep(next.Value, reaction.TargetHex.Value)
+                    : AiGroundMoveAuthority.Transit);
             // Required/optional stealth and visible opportunistic attacks were resolved above.
             // Re-entering stealth in the shared mover would cancel the intended combat and could
             // also spend AP that Recon deliberately reserved for other missions.

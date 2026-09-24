@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -82,6 +82,9 @@ namespace Game.Ai.V2
             if (t.Kind == ScoutTargetKind.Surveil)
                 return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
                     t.Contact?.Army?.ArmyId ?? 0, 0, 0);
+            // AirSweep is one durable operation whose anchor follows the enemy — hex-less identity.
+            if (t.Kind == ScoutTargetKind.AirSweep)
+                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
             return new MissionIntentKey(MissionKind.Scout, (int)t.Kind, 0, t.FocusHex.Q, t.FocusHex.R);
         }
 
@@ -115,6 +118,8 @@ namespace Game.Ai.V2
             if (s.Kind == ScoutTargetKind.Surveil)
                 return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
                     s.TrackedArmyId ?? 0, 0, 0);
+            if (s.Kind == ScoutTargetKind.AirSweep)
+                return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
             return new MissionIntentKey(MissionKind.Scout, (int)s.Kind, 0, s.FocusHex.Q, s.FocusHex.R);
         }
 
@@ -142,6 +147,8 @@ namespace Game.Ai.V2
                     return $"Intent(Surveil #{ObjectiveId})";
                 if (SubKind == (int)ReconScoutKinds.Refresh)
                     return $"Intent(Refresh {Q},{R})";
+                if (SubKind == (int)ScoutTargetKind.AirSweep)
+                    return "Intent(AirSweep)";
                 return $"Intent(Explore {Q},{R})";
             }
             if (Kind == MissionKind.Raid)

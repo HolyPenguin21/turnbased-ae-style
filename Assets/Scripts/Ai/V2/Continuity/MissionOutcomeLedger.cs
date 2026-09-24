@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -222,6 +222,10 @@ namespace Game.Ai.V2
                 else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
                 {
                     satisfied = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
+                }
+                else if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
+                {
+                    satisfied = false; // ends by sortie endurance, never by observation
                 }
                 else
                 {

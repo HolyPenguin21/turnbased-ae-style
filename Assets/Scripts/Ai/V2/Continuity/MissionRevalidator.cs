@@ -1,4 +1,4 @@
-using System.Linq;
+﻿using System.Linq;
 using Game.Cards;
 using Game.Map;
 using Game.Players;
@@ -196,6 +196,11 @@ namespace Game.Ai.V2
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;
             }
+
+            // AirSweep is an aviation pass toward a moving anchor; it is never goal-met by
+            // observation and its route safety is re-proved by the air step director every step.
+            if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
+                return MissionValidity.Valid;
 
             if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
             {

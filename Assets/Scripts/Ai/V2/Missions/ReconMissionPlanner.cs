@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.HexGrid;
@@ -153,6 +153,8 @@ namespace Game.Ai.V2
                 o = ReconObjectiveEvaluator.SurveilOf(snap,
                     ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
                     intent.PreferredMoverArmyId);
+            else if (ReconScoutKinds.IsAirSweep(si.Kind))
+                o = ReconObjectiveEvaluator.AirSweepOf(snap);
             else
             {
                 AiDebugLog.Write($"[AI][V2][Recon] intent materialize reject — unknown Scout kind {(int)si.Kind}");
@@ -169,6 +171,7 @@ namespace Game.Ai.V2
             bool explore = o.Kind == ReconObjectiveKind.Explore;
             bool refresh = o.Kind == ReconObjectiveKind.Refresh;
             bool surveil = o.Kind == ReconObjectiveKind.Surveil;
+            bool airSweep = o.Kind == ReconObjectiveKind.AirSweep;
             float rawSubDesire = explore
                 ? bd.ReconExplorePressure
                 : refresh
@@ -199,6 +202,13 @@ namespace Game.Ai.V2
                     + $"strategic {F(o.StrategicRelevance)} direction {F(o.DirectionPressure)} prox {F(proximity)}"
                     + $"{StealthTag(o.Stealth, o.DetectionRisk)} task {F(o.BaseValue)} "
                     + $"refreshP {F(rawSubDesire)} LAS {F(admission)}";
+            }
+            else if (airSweep)
+            {
+                explain = $"AirSweep @{o.FocusHex.Q},{o.FocusHex.R} "
+                    + $"{(o.DirectionPressure >= 1f ? "enemy-concentration" : "enemy-citadel")} "
+                    + $"d{o.DistanceFromBase} strategic {F(o.StrategicRelevance)} task {F(o.BaseValue)} "
+                    + $"LAS {F(admission)}";
             }
             else if (surveil)
             {

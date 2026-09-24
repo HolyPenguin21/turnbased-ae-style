@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -56,7 +56,10 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  ATK §19/§39 — ATTACK OBJECTIVE ENUMERATION.
     //
-    //  One objective per known hostile Base/Citadel. This is an OBJECTIVE EVALUATOR sitting beside
+    //  One objective per known hostile Base/Citadel, plus one per known hostile Facility (extractor,
+    //  lab, factory) while it is known UNDEFENDED — walking onto it destroys it and drops the
+    //  owner's income; a defended Facility is a field-army fight, not a structure objective.
+    //  This is an OBJECTIVE EVALUATOR sitting beside
     //  RaidObjectiveEvaluator and ActiveDefenceObjectiveEvaluator at the existing Strategy/Objectives
     //  level — deliberately not a new Manager, Layer or Service, and it owns no actor selection, no
     //  combat estimator and no movement. AggressionObjectiveEvaluator remains the aggregation owner
@@ -111,7 +114,10 @@ namespace Game.Ai.V2
 
             foreach (AiMapMemory.KnownBuilding b in buildings)
             {
-                if (!IsHostileStrategicStructure(b, player))
+                bool facility = IsHostileFacility(b, player);
+                if (!facility && !IsHostileStrategicStructure(b, player))
+                    continue;
+                if (facility && !KnownUndefendedSite(snap, b.Hex))
                     continue;
                 // A hex that is currently ours is never an Attack target, whatever memory says.
                 // Self.BaseHexes is the own-Base identity owner (§20); this is the one place the
@@ -152,7 +158,9 @@ namespace Game.Ai.V2
         // from honest memory only. A fogged target keeps its last honest answer: absence of a
         // fresh observation is never evidence of change.
         //   owner is us now      -> SUCCESS (caller retires the intent as completed)
-        //   structure gone       -> INVALIDATED
+        //   structure gone       -> INVALIDATED for a Base/Citadel; SUCCESS for a Facility
+        //                           (destroying it was the objective)
+        //   Facility now defended-> INVALIDATED (no longer a walk-in; a field fight instead)
         //   owner is someone else-> INVALIDATED (a fresh objective may appear for the new owner)
         //   still ExpectedOwner  -> CONTINUE
         public enum AttackTargetStatus { Continue, Captured, Invalidated }
@@ -167,19 +175,34 @@ namespace Game.Ai.V2
 
             IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
                 ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
+            AiMapMemory.KnownBuilding? remembered = null;
             foreach (AiMapMemory.KnownBuilding b in buildings)
-            {
-                if (!b.Hex.Equals(target.Hex))
-                    continue;
-                if (!b.IsBase && !b.IsStartingCitadel)
-                    return AttackTargetStatus.Invalidated;
-                if (b.Owner == null || b.Owner.ColorIndex != target.ExpectedOwnerId)
-                    return AttackTargetStatus.Invalidated;
-                return AttackTargetStatus.Continue;
-            }
-            // The structure is no longer remembered at all — AiMapMemory only drops a record when
-            // the hex was genuinely re-observed without it.
-            return AttackTargetStatus.Invalidated;
+                if (b.Hex.Equals(target.Hex)) { remembered = b; break; }
+            return StatusFromMemory(target, remembered,
+                () => KnownUndefendedSite(snap, target.Hex));
+        }
+
+        // The one memory-side rule both overloads share. AiMapMemory only drops a building record
+        // when the hex was genuinely re-observed without it, so "no longer remembered" is honest:
+        //   Base/Citadel target — gone means it is no longer the thing we set out to capture.
+        //   Facility target     — gone IS the objective (it was destroyed), so it reads Captured
+        //                         (= achieved). It stays an objective only while it is still a
+        //                         non-Base structure of the expected owner and known undefended.
+        private static AttackTargetStatus StatusFromMemory(AttackTargetRef target,
+            AiMapMemory.KnownBuilding? remembered, Func<bool> knownUndefended)
+        {
+            bool facility = target.Kind == AttackTargetKind.Facility;
+            if (!remembered.HasValue)
+                return facility ? AttackTargetStatus.Captured : AttackTargetStatus.Invalidated;
+            AiMapMemory.KnownBuilding b = remembered.Value;
+            bool stronghold = b.IsBase || b.IsStartingCitadel;
+            if (facility == stronghold)
+                return AttackTargetStatus.Invalidated;
+            if (b.Owner == null || b.Owner.ColorIndex != target.ExpectedOwnerId)
+                return AttackTargetStatus.Invalidated;
+            if (facility && !knownUndefended())
+                return AttackTargetStatus.Invalidated;
+            return AttackTargetStatus.Continue;
         }
 
         // The SAME §25 question against LIVE state instead of a snapshot, for the one caller that
@@ -197,15 +220,8 @@ namespace Game.Ai.V2
             if (live != null && live.Owner == player && (live.IsBase || live.IsStartingCitadel))
                 return AttackTargetStatus.Captured;
 
-            AiMapMemory.KnownBuilding? remembered = AiMapMemory.KnownBuildingAt(player, target.Hex);
-            if (!remembered.HasValue)
-                return AttackTargetStatus.Invalidated;
-            AiMapMemory.KnownBuilding b = remembered.Value;
-            if (!b.IsBase && !b.IsStartingCitadel)
-                return AttackTargetStatus.Invalidated;
-            if (b.Owner == null || b.Owner.ColorIndex != target.ExpectedOwnerId)
-                return AttackTargetStatus.Invalidated;
-            return AttackTargetStatus.Continue;
+            return StatusFromMemory(target, AiMapMemory.KnownBuildingAt(player, target.Hex),
+                () => AiMapMemory.KnownUndefendedForeignStructureAt(player, target.Hex));
         }
 
         // ---- site facts the mission layer needs (§30/§31) -------------------------------------
@@ -273,11 +289,51 @@ namespace Game.Ai.V2
             b.Owner != null && b.Owner != player && !b.Owner.IsNeutral && !b.Owner.IsEliminated
             && (b.IsBase || b.IsStartingCitadel);
 
+        // A hostile non-Base structure (extractor / lab / factory). Separate from
+        // IsHostileStrategicStructure on purpose: that predicate is also the "do not walk onto a
+        // hostile Base/Citadel" rule for Raid and tactical strikes, which must stay Base-only.
+        internal static bool IsHostileFacility(AiMapMemory.KnownBuilding b, PlayerSetupData player) =>
+            b.Owner != null && b.Owner != player && !b.Owner.IsNeutral && !b.Owner.IsEliminated
+            && !b.IsBase && !b.IsStartingCitadel;
+
+        // Snapshot mirror of AiMapMemory.KnownUndefendedForeignStructureAt's fogged branch: no
+        // remembered army (enemy or neutral) and no known guarded Hex Event on the hex. Unknown
+        // defence is never read as "undefended" — the building record itself is honest memory.
+        private static bool KnownUndefendedSite(WorldSnapshot snap, HexCoord hex)
+        {
+            if (snap?.Known == null)
+                return false;
+            if (snap.Known.EnemySightings != null && snap.Known.EnemySightings.Any(s => s.Hex.Equals(hex)))
+                return false;
+            if (snap.Known.NeutralSightings != null && snap.Known.NeutralSightings.Any(s => s.Hex.Equals(hex)))
+                return false;
+            return snap.Known.EventGuardHexes == null || !snap.Known.EventGuardHexes.Contains(hex);
+        }
+
+        // What the owner loses when this facility is destroyed, on the SAME asset-value scale the
+        // ThreatModel prices our own facilities with (WorldAnalysis.BuildingAssetValue): a base
+        // value, the collector bonus scaled by the income it was last seen producing, and the
+        // barracks / Research-Production bonuses from its remembered facility abilities.
+        private static float EnemyFacilityAssetValue(AiMapMemory.KnownBuilding b)
+        {
+            float v = AiConfigV2.assetValueFacilityBase;
+            if (b.HasFacilityWithAbility(Game.Cards.UnitAbilities.Barracks))
+                v += AiConfigV2.assetValueFacilityBarracksBonus;
+            if (b.HasFacilityWithAbility(Game.Cards.UnitAbilities.Research)
+                || b.HasFacilityWithAbility(Game.Cards.UnitAbilities.Production))
+                v += AiConfigV2.assetValueFacilityDevBonus;
+            int collected = 0;
+            foreach (Game.Economy.ResourceType t in ResourceBundle.All)
+                collected += b.CollectedAmount(t);
+            v += AiConfigV2.assetValueFacilityCollectorBonus * Mathf.Clamp01(collected);
+            return v;
+        }
+
         private static AttackObjective Build(WorldSnapshot snap, PlayerSetupData player,
             AiMapMemory.KnownBuilding b, bool hasDirection, HexCoord anchor, HexCoord directionTarget)
         {
-            AttackTargetKind kind = b.IsStartingCitadel
-                ? AttackTargetKind.Citadel : AttackTargetKind.Base;
+            AttackTargetKind kind = b.IsStartingCitadel ? AttackTargetKind.Citadel
+                : b.IsBase ? AttackTargetKind.Base : AttackTargetKind.Facility;
             List<WorthIt.DefenderProfile> defenders = KnownSiteDefenders(snap, b.Hex);
 
             // §34 — the site's own defence is NOT a positive term for the attacker. It is priced
@@ -286,9 +342,10 @@ namespace Game.Ai.V2
             // is deliberately left at zero here. Defender power likewise stays out of
             // MilitaryTargetRelevance: it already lowers WinChance and already shows up as
             // ThreatDirection where those defenders genuinely threaten us.
-            float assetNorm = (kind == AttackTargetKind.Citadel
-                ? AiConfigV2.assetValueCitadel : AiConfigV2.assetValueBase)
-                / Mathf.Max(1f, AiConfigV2.assetValueCitadel);
+            float assetValue = kind == AttackTargetKind.Citadel ? AiConfigV2.assetValueCitadel
+                : kind == AttackTargetKind.Base ? AiConfigV2.assetValueBase
+                : EnemyFacilityAssetValue(b);
+            float assetNorm = assetValue / Mathf.Max(1f, AiConfigV2.assetValueCitadel);
 
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, b.Hex);
             int intelAge = IntelAge(snap, b);
@@ -309,8 +366,11 @@ namespace Game.Ai.V2
                 frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
-                militaryTargetRelevance: TaskScoreEvaluator.MilitaryTargetRelevance(
-                    potentialSaturation * AiConfigV2.attackPotentialSaturationScoreWeight),
+                // Military-potential realisation is a stronghold fact (§ Attack-only): a Facility
+                // needs no concentrated stack to destroy, so it earns none of it.
+                militaryTargetRelevance: kind == AttackTargetKind.Facility ? 0f
+                    : TaskScoreEvaluator.MilitaryTargetRelevance(
+                        potentialSaturation * AiConfigV2.attackPotentialSaturationScoreWeight),
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(
                     intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled

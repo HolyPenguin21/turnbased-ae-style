@@ -33,6 +33,17 @@ namespace Game.Map
 
         public bool TryGetTerrainAt(HexCoord coord, out TerrainTypeEntry entry) => _hexData.TryGetValue(coord, out entry);
 
+        // Terrain name of the "City ruins" hex type — matches GameConfig's
+        // MapGenerationSettings.terrainTypes entry. Map generation ALWAYS seeds every such hex
+        // with a Hex Event and may garrison it (CitadelSetupController.MapContent), a public map
+        // rule — terrain itself is never fog-gated. The one owner of that name; setup and AI read
+        // it through IsCityRuins rather than repeating the string.
+        public const string CityRuinsTerrainName = "City ruins";
+
+        public bool IsCityRuins(HexCoord coord) =>
+            TryGetTerrainAt(coord, out TerrainTypeEntry entry)
+            && string.Equals(entry.terrainName, CityRuinsTerrainName, System.StringComparison.OrdinalIgnoreCase);
+
         public HexCoord WorldToHex(Vector3 worldPos) => HexGridMath.WorldToAxial(transform.InverseTransformPoint(worldPos), outerRadius);
 
         public Vector3 HexToWorld(HexCoord coord) => transform.TransformPoint(HexGridMath.AxialToWorld(coord.Q, coord.R, outerRadius));

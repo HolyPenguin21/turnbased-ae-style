@@ -59,7 +59,7 @@ namespace Game.Ai.V2
                     $"attack target {target.Target.DiagnosticLabel} is already ours"));
             if (status == AttackObjectiveEvaluator.AttackTargetStatus.Invalidated)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    $"attack target {target.Target.DiagnosticLabel} is no longer a hostile Base/Citadel "
+                    $"attack target {target.Target.DiagnosticLabel} is no longer a hostile Attack structure "
                     + "under its expected owner"));
 
             HexCoord targetHex = target.Target.Hex;

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -481,15 +481,22 @@ namespace Game.Ai.V2
             float bestValue = float.NegativeInfinity;
             foreach (ReconObjective objective in objectives ?? System.Array.Empty<ReconObjective>())
             {
-                // Only jobs the Recon owner will actually hand to an aircraft carry value here;
-                // Explore / stealth jobs are ground-only (ReconAirCapacityPolicy.IsAirServiceable).
+                // Only jobs the Recon owner will actually hand to an aircraft carry value here:
+                // the aviation-only AirSweep pass (ReconAirCapacityPolicy.IsAirServiceable).
                 if (!ReconAirCapacityPolicy.IsAirServiceable(objective))
                     continue;
+                // An AirSweep is served by flying TOWARD its anchor as deep as these aircraft's
+                // refuel endurance allows (plane: half its move; helicopter: its whole move) and
+                // returning — prove that sortie, not a flight all the way to the anchor.
+                HexCoord sweepPoint = ReconAirCapacityPolicy.SweepEndpoint(airfield, objective.FocusHex,
+                    ReconAirCapacityPolicy.SweepReach(projected));
+                if (sweepPoint.Equals(airfield))
+                    continue;
                 Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortieFromStorage(
-                    airfield, projected, objective.FocusHex, ctx.Map, player);
+                    airfield, projected, sweepPoint, ctx.Map, player);
                 MultiTurnSortie? multiTurn = sameTurn.HasValue ? null
                     : AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
-                        airfield, projected, objective.FocusHex, ctx.Map, player);
+                        airfield, projected, sweepPoint, ctx.Map, player);
                 if (!sameTurn.HasValue && !multiTurn.HasValue)
                     continue;
                 coverage++;

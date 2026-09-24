@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Map;
 
@@ -197,6 +197,9 @@ namespace Game.Ai.V2
                                 break;
                             case ScoutTargetKind.Refresh:
                                 o = ReconObjectiveEvaluator.RefreshAt(snap, i.Scout.FocusHex);
+                                break;
+                            case ScoutTargetKind.AirSweep:
+                                o = ReconObjectiveEvaluator.AirSweepOf(snap);
                                 break;
                             default:
                                 o = ReconObjectiveEvaluator.SurveilOf(snap,

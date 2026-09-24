@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -61,6 +61,11 @@ namespace Game.Ai.V2
                 EnemyContactSnapshot contact = SurveilContact(snap, intent.TrackedArmyId);
                 return contact != null && contact.LastObservedTurn <= intent.BaselineObservedTurn;
             }
+
+            // AirSweep stays a live operation while an anchor exists (the enemy is somewhere);
+            // it is never "met" by observation — each sortie ends by its own refuel endurance.
+            if (ReconScoutKinds.IsAirSweep(intent.Kind))
+                return WorldAnalysis.TryAirSweepAnchor(snap, out _, out _);
 
             if (ReconScoutKinds.IsRefresh(intent.Kind))
             {

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Players;
 
@@ -183,6 +183,12 @@ namespace Game.Ai.V2
         public static CapabilityPoolKind PoolFor(MissionProposal mission)
         {
             if (mission == null) return CapabilityPoolKind.None;
+            // AirSweep is flown by aviation (own per-turn cap, own provisioning). It never draws on
+            // the ground Scout pool: a ground-pool exhaustion must not block the air pass, and an
+            // air failure must not mark ground scouts exhausted.
+            if (mission.Kind == MissionKind.Scout && mission.Target is ScoutMissionTarget sw
+                && ReconScoutKinds.IsAirSweep(sw.Kind))
+                return CapabilityPoolKind.None;
             if (mission.Kind == MissionKind.Scout && mission.Target is ScoutMissionTarget st)
                 return st.Stealth == StealthRequirement.Required || st.DetectionRisk > 0f
                     ? CapabilityPoolKind.StealthScout : CapabilityPoolKind.Scout;

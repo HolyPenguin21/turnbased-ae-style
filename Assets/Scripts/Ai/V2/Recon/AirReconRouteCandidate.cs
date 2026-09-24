@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
@@ -462,12 +462,10 @@ namespace Game.Ai.V2
         public static AirReconRouteCandidate Score(AirReconRouteInputs x)
         {
             // --- Destination-footprint split (unchanged basis, kept as two named components). ---
-            float infoGain = x.Mode == ReconMode.Explore
-                ? AiConfigV2.airReconNeverObservedWeight * x.NeverObservedFootprint
-                : 0.20f * AiConfigV2.airReconNeverObservedWeight * x.NeverObservedFootprint;
-            float staleRefresh = x.Mode == ReconMode.Explore
-                ? 0.20f * AiConfigV2.airReconStaleWeight * x.StaleFootprint
-                : AiConfigV2.airReconStaleWeight * x.StaleFootprint;
+            // One observation-sweep mode (AirReconModePolicy): a never-observed hex and a stale
+            // one are both information the pass brings back, each at its own full weight.
+            float infoGain = AiConfigV2.airReconNeverObservedWeight * x.NeverObservedFootprint;
+            float staleRefresh = AiConfigV2.airReconStaleWeight * x.StaleFootprint;
 
             // --- EnemyInterest — blended sanitized sector pressure toward the first step. --------
             // R2 review fix — measure the step's wedge from our CITADEL, the same frame the anchor

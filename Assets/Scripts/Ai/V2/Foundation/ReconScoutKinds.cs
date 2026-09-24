@@ -1,4 +1,4 @@
-namespace Game.Ai.V2
+﻿namespace Game.Ai.V2
 {
     // Small semantic helpers for the three explicit Scout target kinds. Keeping these predicates
     // central avoids scattered two-way assumptions as Recon evolves while the enum itself remains
@@ -10,6 +10,8 @@ namespace Game.Ai.V2
         public static bool IsRefresh(ScoutTargetKind kind) => kind == ScoutTargetKind.Refresh;
         public static bool IsExplore(ScoutTargetKind kind) => kind == ScoutTargetKind.Explore;
         public static bool IsSurveil(ScoutTargetKind kind) => kind == ScoutTargetKind.Surveil;
+        // Aviation-only observation pass (support, never a ground visit). See ScoutTargetKind.
+        public static bool IsAirSweep(ScoutTargetKind kind) => kind == ScoutTargetKind.AirSweep;
 
         public static bool IsGround(ScoutTargetKind kind) =>
             kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh;
@@ -21,6 +23,7 @@ namespace Game.Ai.V2
                 case ScoutTargetKind.Refresh: return "Refresh";
                 case ScoutTargetKind.Surveil: return "Surveil";
                 case ScoutTargetKind.Explore: return "Explore";
+                case ScoutTargetKind.AirSweep: return "AirSweep";
                 default: return $"Unknown({(int)kind})";
             }
         }

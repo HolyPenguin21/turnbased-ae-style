@@ -34,10 +34,26 @@
         public const int reconRefreshPerimeterRadius = 3;           // ring radius around each own asset for the perimeter term
         public const int reconRefreshCorridorRadius = 2;            // sample radius around the citadel<->enemy midpoint
         public const float reconRefreshConcentrationNorm = 3f;      // this many true-world enemy armies -> concentration term 1
+        // StalePressure weighting: every observed hex weighs this + its RefreshRelevance (0..1), so
+        // stale empty terrain still registers a little while stale buildings / resources / event
+        // guards dominate the whole-map IntelAge term (it no longer climbs just because game time
+        // passes over ever more remembered wasteland).
+        public const float reconRefreshPressureFloorWeight = 0.15f;
         public const float reconBlindnessMagnitude = 1.0f;
         public const float reconWeightExploration = 0.55f;
         public const float reconWeightSurveillance = 0.55f;
         public const float reconWeightBlindness = 0.35f;
+        // Explore value of an unvisited "City ruins" hex (always seeded with a Hex Event): priced
+        // through TaskScore.EconomicHexBenefit as this many per-turn income units — parity with an
+        // extraction hex adding +1 income (EventCatalog rewards are one-shot 2..4 resources).
+        public const float reconRuinsEventIncomeEquivalent = 1f;
+        // AirSweep (aviation-only observation pass). Anchor = the TRUE enemy army concentration
+        // (cheat, owner-approved): the enemy army hex maximising the summed EffectiveArmyPower of
+        // enemy armies within this radius; the enemy citadel is only the fallback.
+        public const int airSweepClusterRadius = 2;
+        // How many hexes of the sweep corridor (nearest own airfield -> anchor) the objective's
+        // intrinsic value samples — roughly one deep sortie's outbound leg.
+        public const int airSweepValueDepth = 6;
         // =======================================================================================
         //  RECON MISSION PLANNER  (Strategy V2 build-order step 4, + step 7.1 candidate beam)
         //  MissionLayer turns one WorldSnapshot + the Recon DesireBreakdown into a CANDIDATE BEAM
@@ -248,14 +264,6 @@
         public const float airReconActivationApPenalty = 0.35f;     // per AP of the wing's first activation
         public const float airReconActivationEnergyPenalty = 0.20f; // per Energy of the wing's first activation
         public const float airReconMinimumUsefulScore = 0.15f;      // a step/launch below this is not worth flying — turn for home / do not launch
-        // Air Recon flips from Refresh scoring to never-observed (Explore) weighting once at least
-        // this fraction of the map has NEVER been observed by anything — measured from
-        // AiReconIntelMemory (recorded intel age), the exact basis ReconAirStepPlanner.
-        // ScoreInformation scores against, NOT ground-Visited. Aviation still only reveals; it
-        // never marks a hex ground-Visited, and it runs after every provisioned ground scout so
-        // it cannot displace a mandatory ground Explore/Visit. Lower this to make aviation chase
-        // the last unknown pockets harder.
-        public const float airReconExploreDarkFloor = 0.25f;
 
         // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,

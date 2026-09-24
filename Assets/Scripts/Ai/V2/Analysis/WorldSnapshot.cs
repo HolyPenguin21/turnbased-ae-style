@@ -575,6 +575,12 @@ namespace Game.Ai.V2
         // plan across these known hexes without requiring a physical visit; exact resource yields
         // still come only from AiMapMemory's observation snapshot.
         public ISet<HexCoord> EverSeenHexSet;
+
+        // Never-visited "City ruins" hexes (HexMap.IsCityRuins). Map generation always seeds a
+        // ruins hex with a Hex Event — a public map rule on always-visible terrain — and only a
+        // physical visit resolves it, so an unvisited ruins hex is a presumed event-reward site.
+        // Visited ruins drop out: their outcome (consumed / remembered guard) is already known.
+        public ISet<HexCoord> UnvisitedRuinsHexes;
     }
 
     // One frontier hex plus what the Recon planner needs to value it, computed once in the scan.

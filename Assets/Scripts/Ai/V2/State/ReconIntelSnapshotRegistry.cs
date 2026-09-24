@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
@@ -75,25 +75,67 @@ namespace Game.Ai.V2
             return e.LastObserved;
         }
 
-        // Continuous [0..1] generic Refresh pressure across actually-observed map information.
-        // Never-observed hexes are absent by construction and therefore cannot masquerade as stale.
+        // Continuous [0..1] generic Refresh pressure across actually-observed map information,
+        // weighted by what that information is worth. An unweighted mean let every empty hex ever
+        // seen count the same as an enemy Base, so the pressure only grew with game time. Weight =
+        // reconRefreshPressureFloorWeight + RefreshRelevance: plain terrain still counts a little,
+        // buildings / resource sites / event guards dominate. Never-observed hexes are absent by
+        // construction and therefore cannot masquerade as stale. Read by Desire (RefreshPressure),
+        // ReconConcurrencyPolicy (refresh lane) and the ground executor's mode score alike.
         public static float StalePressure(WorldSnapshot snapshot)
         {
             IReadOnlyDictionary<HexCoord, int> observed = LastObservedFor(snapshot);
             if (observed.Count == 0)
                 return 0f;
 
+            float floor = Mathf.Max(0f, AiConfigV2.reconRefreshPressureFloorWeight);
             float sum = 0f;
-            int count = 0;
+            float weight = 0f;
             foreach (KeyValuePair<HexCoord, int> kv in observed)
             {
                 int age = Mathf.Max(0, snapshot.TurnNumber - kv.Value);
                 float stale = Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
                     AiConfigV2.scoutSurveilStaleTurnsHi, age);
-                sum += stale;
-                count++;
+                float w = floor + RefreshRelevance(snapshot, kv.Key);
+                sum += stale * w;
+                weight += w;
             }
-            return count > 0 ? Mathf.Clamp01(sum / count) : 0f;
+            return weight > 0f ? Mathf.Clamp01(sum / weight) : 0f;
+        }
+
+        // [0..1] strategic relevance of re-observing `hex`: a remembered building (citadel highest),
+        // a known resource site or a known guarded Hex Event on it, or next to it. The one owner —
+        // Refresh objectives (ReconObjectiveEvaluator.BuildRefresh) and StalePressure above both
+        // read it, so the objective ranking and the lane/desire pressure cannot disagree.
+        public static float RefreshRelevance(WorldSnapshot snap, HexCoord hex)
+        {
+            float relevance = 0f;
+            if (snap?.Known == null)
+                return relevance;
+            if (snap.Known.Buildings != null)
+                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
+                {
+                    int d = HexGridMath.Distance(b.Hex, hex);
+                    if (d == 0) relevance = Mathf.Max(relevance, b.IsStartingCitadel ? 1f : 0.85f);
+                    else if (d == 1) relevance = Mathf.Max(relevance, 0.50f);
+                }
+
+            if (snap.Known.ResourceHexes != null)
+                foreach (AiMapMemory.KnownResourceHex r in snap.Known.ResourceHexes)
+                {
+                    int d = HexGridMath.Distance(r.Hex, hex);
+                    if (d == 0) relevance = Mathf.Max(relevance, 0.75f);
+                    else if (d == 1) relevance = Mathf.Max(relevance, 0.40f);
+                }
+
+            if (snap.Known.EventGuardHexes != null)
+                foreach (HexCoord e in snap.Known.EventGuardHexes)
+                {
+                    int d = HexGridMath.Distance(e, hex);
+                    if (d == 0) relevance = Mathf.Max(relevance, 0.80f);
+                    else if (d == 1) relevance = Mathf.Max(relevance, 0.45f);
+                }
+            return relevance;
         }
 
         // Snapshot identity is explicit. A cache read must never infer its player key from

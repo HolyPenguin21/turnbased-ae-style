@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
@@ -22,6 +22,10 @@ namespace Game.Ai.V2
         Flee,
         EvadeDetector,
         AttackOpportunity,
+        // Step onto an adjacent, currently visible, undefended enemy structure: a Facility is
+        // destroyed (the owner loses its output), a Base is taken over. Requires leaving stealth —
+        // a fully hidden mover takes no action on arrival (BuildingRegistry.CaptureOrDestroyIfUndefended).
+        SabotageStructure,
         StopAndReplan,
     }
 
@@ -81,6 +85,10 @@ namespace Game.Ai.V2
                         ReconReactionAction.EvadeDetector, evade, null, 0f,
                         "known detector envelope; lower-risk adjacent step exists"));
             }
+
+            ReconReactionDecision? sabotage = FindUndefendedStructureOpportunity(player, map, army);
+            if (sabotage.HasValue)
+                return Log(army, assignment, sabotage.Value);
 
             ReconReactionDecision? attack = FindWeakScoutOpportunity(player, map, army);
             if (attack.HasValue)
@@ -219,6 +227,45 @@ namespace Game.Ai.V2
                     est.WinChance, "adjacent solo Recce: beatable, damage-complete, post-combat safe");
             }
             return best;
+        }
+
+        // A scout passing an enemy structure nobody defends should not walk by it. Honest, live
+        // observation only: the hex must be VISIBLE now and pass the one arrival rule
+        // (AiMapMemory.KnownUndefendedForeignStructureAt), the one step must be affordable, and the
+        // hex it would end on must not sit under a known enemy it cannot survive — the same
+        // post-action safety gate the weak-Recce attack uses. A Base/Citadel outranks a Facility.
+        private static ReconReactionDecision? FindUndefendedStructureOpportunity(PlayerSetupData player,
+            HexMap map, ArmyData army)
+        {
+            HexCoord? best = null;
+            bool bestIsStronghold = false;
+            foreach (HexCoord h in HexGridMath.Neighbors(army.Hex)
+                .OrderBy(x => x.Q).ThenBy(x => x.R))
+            {
+                if (!VisionSystem.IsVisible(player, h) || !map.TryGetTerrainAt(h, out var terrain))
+                    continue;
+                AiMapMemory.KnownBuilding? building = AiMapMemory.KnownBuildingAt(player, h);
+                if (!building.HasValue || building.Value.Owner == null
+                    || building.Value.Owner == player || building.Value.Owner.IsNeutral)
+                    continue;
+                if (!AiMapMemory.KnownUndefendedForeignStructureAt(player, h))
+                    continue;
+                int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
+                if (cost > army.CurrentMovement)
+                    continue;
+                if (PostCombatPositionUnsafe(player, map, army, h, -1))
+                    continue;
+                bool stronghold = building.Value.IsBase || building.Value.IsStartingCitadel;
+                if (best.HasValue && (bestIsStronghold || !stronghold))
+                    continue;
+                best = h;
+                bestIsStronghold = stronghold;
+            }
+            if (!best.HasValue)
+                return null;
+            return new ReconReactionDecision(ReconReactionAction.SabotageStructure, best, null, 1f,
+                bestIsStronghold ? "adjacent undefended enemy Base: take it over"
+                    : "adjacent undefended enemy Facility: destroy it");
         }
 
         // §17 acceptable post-combat position — would any OTHER known non-neutral enemy within

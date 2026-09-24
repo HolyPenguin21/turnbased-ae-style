@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
@@ -431,7 +431,8 @@ namespace Game.Ai.V2
             // durable intents on the same waypoint. Mutated as intents are re-pointed below.
             var scoutFoci = new HashSet<HexCoord>();
             foreach (MissionIntent i in state.All)
-                if (i.Scout != null && i.Scout.Kind != ScoutTargetKind.Surveil)
+                if (i.Scout != null && i.Scout.Kind != ScoutTargetKind.Surveil
+                    && !ReconScoutKinds.IsAirSweep(i.Scout.Kind))
                     scoutFoci.Add(i.Scout.FocusHex);
 
             // Neutral targets already owned by a durable Raid, so a re-orientation
@@ -1211,7 +1212,9 @@ namespace Game.Ai.V2
                 .Where(a => a != null && a.IsAir).Select(a => a.ArmyId));
             // DesiredTotal/HardCap govern physical ground scout lanes. Air intents use the
             // independent aviation capacity policy and must survive this contraction pass.
+            // AirSweep is an aviation operation even when its wing has landed back into storage.
             var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
+                && !ReconScoutKinds.IsAirSweep(i.Scout.Kind)
                 && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
                 .ToList();
             if (scoutLanes.Count == 0)
@@ -1267,7 +1270,10 @@ namespace Game.Ai.V2
         // remains, in which case the caller retires the intent.
         private static bool TryRefocusScoutIntent(WorldSnapshot snap, ScoutIntent s, HashSet<HexCoord> ownedFoci)
         {
-            if (snap?.MapKnowledge == null || s == null || s.Kind == ScoutTargetKind.Surveil)
+            // AirSweep has no waypoint to re-point: its anchor is re-derived every turn, and an
+            // invalid sweep (no enemy anchor at all) simply retires.
+            if (snap?.MapKnowledge == null || s == null || s.Kind == ScoutTargetKind.Surveil
+                || ReconScoutKinds.IsAirSweep(s.Kind))
                 return false;
 
             HexCoord old = s.FocusHex;

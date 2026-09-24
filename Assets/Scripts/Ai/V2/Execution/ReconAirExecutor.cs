@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
@@ -514,9 +514,7 @@ namespace Game.Ai.V2
             er.StateVersionAfter = V2StateVersion.Current;
             if (player == null || pm == null || er.ReachedGoal)
                 return;
-            bool satisfied = pm.ScoutKind == ScoutTargetKind.Surveil
-                ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
-                : ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
+            bool satisfied = ObjectiveSatisfied(player, pm);
             if (satisfied)
             {
                 er.ReachedGoal = true;
@@ -525,8 +523,10 @@ namespace Game.Ai.V2
             }
         }
 
+        // An AirSweep is never "met" by seeing its anchor: the sortie ends by its own refuel
+        // endurance (AirReconStepDirector outbound cap -> Return), not by an observation check.
         private static bool ObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
-            pm != null && (pm.ScoutKind == ScoutTargetKind.Surveil
+            pm != null && !ReconScoutKinds.IsAirSweep(pm.ScoutKind) && (pm.ScoutKind == ScoutTargetKind.Surveil
                 ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(
                     player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
                 : ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex));

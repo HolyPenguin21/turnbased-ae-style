@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
@@ -10,23 +10,15 @@ using Game.Units;
 
 namespace Game.Ai.V2
 {
-    // ARCH-02 §35 — the air-recon INFORMATION-WEIGHTING policy. Aviation only ever REVEALS a hex
-    // (it never marks one ground-Visited). While a large fraction of the whole board is still
-    // never-observed it values that dark territory (Explore); otherwise it re-checks stale known
-    // hexes (Refresh). Shared by AirReconPlanner (storage-launch first-step gate) and AirReconStepDirector
-    // (per-step) so the executor never owns this decision.
+    // ARCH-02 §35 — the air-recon INFORMATION-WEIGHTING policy. Aviation is SUPPORT: it only ever
+    // REVEALS hexes (never marks one ground-Visited) and serves only the AirSweep observation
+    // pass, so it has ONE mode — an observation sweep that values never-observed and stale hexes
+    // alike along the route (AirReconRouteScorer). There is no Explore/Refresh split for air;
+    // Refresh is returned only because ReconMode is the shared patrol-state vocabulary.
     internal static class AirReconModePolicy
     {
-        internal static ReconMode RequestedMode(PlayerSetupData player, WorldSnapshot snapshot)
-        {
-            int total = snapshot?.MapKnowledge?.TotalHexes ?? 0;
-            if (total <= 0)
-                return ReconMode.Refresh;
-            int observed = AiReconIntelMemory.Snapshot(player)?.Count ?? 0;
-            float neverObservedFrac = 1f - Math.Min(1f, observed / (float)total);
-            return neverObservedFrac >= AiConfigV2.airReconExploreDarkFloor
-                ? ReconMode.Explore : ReconMode.Refresh;
-        }
+        internal static ReconMode RequestedMode(PlayerSetupData player, WorldSnapshot snapshot) =>
+            ReconMode.Refresh;
     }
 
     // ARCH-02 review r4 — the explicit lifecycle owner for a wing's ReconAirSortieState. The

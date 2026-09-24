@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using UnityEngine;
@@ -110,6 +110,31 @@ namespace Game.Ai.V2
         public static ScoutCostEstimate Estimate(WorldSnapshot snap, ScoutMissionTarget target,
             int? preferredMoverArmyId = null)
         {
+            // AirSweep has no ground actor to plan. Price the incumbent wing itself when known: a
+            // wing already activated this turn continues its outbound leg for 0 AP / 0 Energy
+            // (the sortie was paid at launch), otherwise its own real activation cost.
+            if (ReconScoutKinds.IsAirSweep(target.Kind) && preferredMoverArmyId.HasValue)
+            {
+                ArmySnapshot wing = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                    && a.IsAir && a.ArmyId == preferredMoverArmyId.Value);
+                if (wing != null)
+                {
+                    float ap = wing.HasActivatedThisTurn ? 0f : Mathf.Max(0, wing.ActivationApCost);
+                    float energy = wing.HasActivatedThisTurn ? 0f : Mathf.Max(0, wing.ActivationEnergyCost);
+                    return new ScoutCostEstimate
+                    {
+                        MoverKnown = true,
+                        PreferredMoverArmyId = wing.ArmyId,
+                        ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
+                        ActivationApNow = ap,
+                        EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
+                        EtaTurns = 1,
+                        EstimatedDistance = HexGridMath.Distance(wing.Hex, target.FocusHex),
+                        RecurringActivationAp = Mathf.Max(0, wing.ActivationApCost),
+                    };
+                }
+            }
+
             PlannedGroundCost? planned = PlanGroundCost(snap, target, preferredMoverArmyId);
             if (planned.HasValue)
             {
@@ -184,7 +209,8 @@ namespace Game.Ai.V2
             float stealthAp = AiConfigV2.scoutOptionalStealthAp;
             float notionalActivationAp = AiConfigV2.scoutNotionalActivationAp;
 
-            bool airPlausible = (target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsRefresh(target.Kind))
+            bool airPlausible = (target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsRefresh(target.Kind)
+                    || ReconScoutKinds.IsAirSweep(target.Kind))
                 && target.Stealth != StealthRequirement.Required && !(target.DetectionRisk > 0f);
 
             int fleetBudget = snap?.Self?.Armies != null

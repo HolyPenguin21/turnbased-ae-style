@@ -44,7 +44,7 @@ namespace Game.Ai.V2
                 // §7/§25 — a new owner on the same hex is a NEW objective, never a silent retarget
                 // of this operation. Retire and let the next pass enumerate it fresh.
                 AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — "
-                    + $"{a.Target.DiagnosticLabel} is no longer a hostile Base/Citadel under its "
+                    + $"{a.Target.DiagnosticLabel} is no longer a hostile Attack structure under its "
                     + "expected owner");
                 return false;
             }

@@ -499,8 +499,7 @@ namespace Game.Setup
             var result = new List<HexCoord>();
             foreach (HexCoord hex in map.AllCoords)
             {
-                if (map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) &&
-                    string.Equals(terrain.terrainName, CityRuinsTerrainName, System.StringComparison.OrdinalIgnoreCase))
+                if (map.IsCityRuins(hex))
                     result.Add(hex);
             }
             return result;

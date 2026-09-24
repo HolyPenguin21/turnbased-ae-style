@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
 using UnityEngine;
@@ -11,9 +11,10 @@ namespace Game.Ai.V2
     // One frozen turn produces three explicit Recon opportunity classes:
     // Explore — never/ground-unvisited frontier information;
     // Refresh — stale previously-observed information;
-    // Surveil — stale enemy contact; observation-vantage semantics in provisioning.
+    // Surveil — stale enemy contact; observation-vantage semantics in provisioning;
+    // AirSweep — aviation-only observation pass toward the strategic sweep anchor.
     // ===========================================================================================
-    public enum ReconObjectiveKind { Explore, Refresh, Surveil }
+    public enum ReconObjectiveKind { Explore, Refresh, Surveil, AirSweep }
 
     public sealed class ReconObjective
     {
@@ -43,6 +44,10 @@ namespace Game.Ai.V2
                 if (Kind == ReconObjectiveKind.Surveil)
                     return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.Surveil,
                         ContactArmyId, 0, 0);
+                // One durable sweep identity: the anchor follows the enemy, the operation does not
+                // become a new intent every time the concentration moves.
+                if (Kind == ReconObjectiveKind.AirSweep)
+                    return new MissionIntentKey(MissionKind.Scout, (int)ScoutTargetKind.AirSweep, 0, 0, 0);
                 ScoutTargetKind sub = Kind == ReconObjectiveKind.Refresh
                     ? ScoutTargetKind.Refresh
                     : ScoutTargetKind.Explore;
@@ -53,8 +58,8 @@ namespace Game.Ai.V2
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,
-            Kind = Kind == ReconObjectiveKind.Surveil
-                ? ScoutTargetKind.Surveil
+            Kind = Kind == ReconObjectiveKind.Surveil ? ScoutTargetKind.Surveil
+                : Kind == ReconObjectiveKind.AirSweep ? ScoutTargetKind.AirSweep
                 : Kind == ReconObjectiveKind.Refresh ? ScoutTargetKind.Refresh : ScoutTargetKind.Explore,
             Contact = Kind == ReconObjectiveKind.Surveil ? Contact : null,
             Stealth = Stealth,
@@ -80,6 +85,24 @@ namespace Game.Ai.V2
                         f.EnemyExposure, f.StealthDetectionRisk));
                 }
 
+            // An unvisited City-ruins hex is a known event-reward site, so it is an Explore focus
+            // worth walking to even before it becomes part of the frontier wave band. Same
+            // Explore shape and validity rule as a frontier focus; distance is priced by the
+            // ordinary Delivery / OwnTerritoryProximity slots, never filtered here.
+            ISet<HexCoord> ruins = snap.MapKnowledge.UnvisitedRuinsHexes;
+            if (ruins != null && ruins.Count > 0)
+            {
+                var listed = new HashSet<HexCoord>(list.Select(o => o.FocusHex));
+                foreach (HexCoord r in ruins.OrderBy(h => h.Q).ThenBy(h => h.R))
+                {
+                    if (listed.Contains(r))
+                        continue;
+                    ReconObjective o = ExploreAt(snap, r);
+                    if (o != null)
+                        list.Add(o);
+                }
+            }
+
             // Generic Refresh is NOT enemy-contact surveillance. It revisits map information the
             // player genuinely observed in an earlier turn. The frozen sidecar excludes never-seen
             // hexes by construction and current-visible hexes naturally have age 0.
@@ -93,6 +116,10 @@ namespace Game.Ai.V2
                     if (c.Source == ContactSource.Honest && c.Knowledge == ContactKnowledge.LastKnown
                         && c.Position.HasValue && c.Army != null)
                         list.Add(BuildSurveil(snap, c));
+
+            ReconObjective sweep = AirSweepOf(snap);
+            if (sweep != null)
+                list.Add(sweep);
 
             var auditPlayer = snap.Self.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
             if (auditPlayer != null)
@@ -141,6 +168,66 @@ namespace Game.Ai.V2
             if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
                 return null;
             return BuildRefresh(snap, hex, age, preferredMoverArmyId);
+        }
+
+        // The aviation-only observation pass (ScoutTargetKind.AirSweep). FocusHex = the sweep
+        // anchor (WorldAnalysis.TryAirSweepAnchor: true enemy army concentration, else enemy
+        // citadel). Its intrinsic value is what one deep pass along the corridor from our nearest
+        // base toward the anchor would observe, on the existing Recon TaskScore slots: never-
+        // observed hexes (InfoGain), relevance-weighted staleness (Staleness), what the anchor is
+        // (StrategicRelevance) and that it is where the enemy is (ThreatDirection). AP/Energy of
+        // the actual wing are priced by allocation/provisioning like every air sortie.
+        public static ReconObjective AirSweepOf(WorldSnapshot snap)
+        {
+            if (!WorldAnalysis.TryAirSweepAnchor(snap, out HexCoord anchor, out bool armyConcentration))
+                return null;
+            IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
+            HexCoord origin = bases != null && bases.Count > 0
+                ? bases.OrderBy(b => HexGridMath.Distance(b, anchor)).ThenBy(b => b.Q).ThenBy(b => b.R).First()
+                : snap.Self.Citadel;
+
+            int samples = 0, neverObserved = 0;
+            float staleWeighted = 0f, weight = 0f;
+            HexCoord cur = origin;
+            for (int i = 0; i < AiConfigV2.airSweepValueDepth && !cur.Equals(anchor); i++)
+            {
+                cur = ReconAirCapacityPolicy.SweepEndpoint(cur, anchor, 1);
+                samples++;
+                float w = AiConfigV2.reconRefreshPressureFloorWeight
+                    + ReconIntelSnapshotRegistry.RefreshRelevance(snap, cur);
+                weight += w;
+                if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, cur, out int age))
+                {
+                    neverObserved++;
+                    staleWeighted += w;
+                    continue;
+                }
+                staleWeighted += w * Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
+                    AiConfigV2.scoutSurveilStaleTurnsHi);
+            }
+            if (samples == 0)
+                return null;
+
+            float anchorRelevance = Mathf.Max(armyConcentration ? 1f : 0.85f,
+                ReconIntelSnapshotRegistry.RefreshRelevance(snap, anchor));
+            var score = new TaskScore(
+                infoGain: TaskScoreEvaluator.InfoGain(neverObserved / (float)samples),
+                staleness: TaskScoreEvaluator.PositiveStaleness(weight > 0f ? staleWeighted / weight : 0f),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(anchorRelevance),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(armyConcentration ? 1f : 0.75f));
+
+            return new ReconObjective
+            {
+                Kind = ReconObjectiveKind.AirSweep,
+                FocusHex = anchor,
+                TaskScore = score,
+                BaseValue = score.Value,
+                DetectionRisk = 0f,
+                Stealth = StealthRequirement.None,
+                DistanceFromBase = HexGridMath.Distance(origin, anchor),
+                StrategicRelevance = anchorRelevance,
+                DirectionPressure = armyConcentration ? 1f : 0.75f,
+            };
         }
 
         public static ReconObjective SurveilOf(WorldSnapshot snap, EnemyContactSnapshot c,
@@ -221,6 +308,7 @@ namespace Game.Ai.V2
                 preferredMoverArmyId);
 
             var score = new TaskScore(
+                economicHexBenefit: RuinsEventBenefit(snap, hex),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
                 cardPrice: ThisTurnCardPrice(cost),
@@ -241,6 +329,24 @@ namespace Game.Ai.V2
                 FreshNeighbors = freshNeighbors,
                 DistanceFromBase = distFromBase,
             };
+        }
+
+        // A presumed Hex Event on an unvisited City-ruins focus pays resources (EventCatalog). It is
+        // priced in the SAME slot Economy prices a resource hex with, at resource-hex parity:
+        // reconRuinsEventIncomeEquivalent income-equivalent units spread evenly over the resource
+        // types (which type the event pays is unknown until visited), each at its canonical
+        // ResourcePriority — so a starving economy values ruins more, a saturated one less.
+        private static float RuinsEventBenefit(WorldSnapshot snap, HexCoord hex)
+        {
+            ISet<HexCoord> ruins = snap?.MapKnowledge?.UnvisitedRuinsHexes;
+            IReadOnlyList<EconomyResourceStanding> perType = snap?.Economy?.PerType;
+            if (ruins == null || !ruins.Contains(hex) || perType == null || perType.Count == 0)
+                return 0f;
+            float share = AiConfigV2.reconRuinsEventIncomeEquivalent / perType.Count;
+            var perResource = new List<(float Gain, float Priority)>(perType.Count);
+            foreach (EconomyResourceStanding standing in perType)
+                perResource.Add((share, TaskScoreEvaluator.ResourcePriority(standing)));
+            return TaskScoreEvaluator.EconomicHexBenefit(perResource);
         }
 
         // Average [floor..1] information-retention factor over the Explore focus and the unvisited,
@@ -282,7 +388,7 @@ namespace Game.Ai.V2
             float staleRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
                 AiConfigV2.scoutSurveilStaleTurnsHi);
 
-            float strategicRaw = StrategicRefreshRelevance(snap, hex);
+            float strategicRaw = ReconIntelSnapshotRegistry.RefreshRelevance(snap, hex);
             direction = direction ?? ReconDirectionModel.Build(snap);
             ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
             float directionalRaw = direction?.EnemyDirectionSectors != null
@@ -380,35 +486,6 @@ namespace Game.Ai.V2
                 Severity = maxSeverity,
                 DistanceFromBase = fallbackDistance,
             };
-        }
-
-        private static float StrategicRefreshRelevance(WorldSnapshot snap, HexCoord hex)
-        {
-            float relevance = 0f;
-            if (snap.Known?.Buildings != null)
-                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
-                {
-                    int d = HexGridMath.Distance(b.Hex, hex);
-                    if (d == 0) relevance = Mathf.Max(relevance, b.IsStartingCitadel ? 1f : 0.85f);
-                    else if (d == 1) relevance = Mathf.Max(relevance, 0.50f);
-                }
-
-            if (snap.Known?.ResourceHexes != null)
-                foreach (Game.Ai.AiMapMemory.KnownResourceHex r in snap.Known.ResourceHexes)
-                {
-                    int d = HexGridMath.Distance(r.Hex, hex);
-                    if (d == 0) relevance = Mathf.Max(relevance, 0.75f);
-                    else if (d == 1) relevance = Mathf.Max(relevance, 0.40f);
-                }
-
-            if (snap.Known?.EventGuardHexes != null)
-                foreach (HexCoord e in snap.Known.EventGuardHexes)
-                {
-                    int d = HexGridMath.Distance(e, hex);
-                    if (d == 0) relevance = Mathf.Max(relevance, 0.80f);
-                    else if (d == 1) relevance = Mathf.Max(relevance, 0.45f);
-                }
-            return relevance;
         }
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);

@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Core;
@@ -115,6 +115,66 @@ namespace Game.Ai.V2
             return tw;
         }
 
+        // The AirSweep anchor — where an aviation observation pass should head. Deliberately a
+        // CHEAT read of TrueWorld (owner-approved for aviation support, like the per-base cheat
+        // contacts in WorldAnalysis.Threat): the enemy army concentration first, the enemy citadel
+        // only as the fallback when no enemy army exists. Concentration = the enemy army hex with
+        // the largest summed EffectiveArmyPower of enemy armies within airSweepClusterRadius;
+        // ties go to the one nearer our citadel, then coordinates (deterministic).
+        internal static bool TryAirSweepAnchor(WorldSnapshot snap, out HexCoord anchor,
+            out bool armyConcentration)
+        {
+            anchor = default;
+            armyConcentration = false;
+            if (snap?.Self == null || snap.TrueWorld == null)
+                return false;
+            HexCoord home = snap.Self.Citadel;
+
+            IReadOnlyList<ArmySnapshot> enemies = snap.TrueWorld.EnemyArmies;
+            if (enemies != null && enemies.Count > 0)
+            {
+                float bestPower = float.NegativeInfinity;
+                foreach (ArmySnapshot center in enemies)
+                {
+                    if (center == null)
+                        continue;
+                    float power = 0f;
+                    foreach (ArmySnapshot e in enemies)
+                        if (e != null && HexGridMath.Distance(e.Hex, center.Hex) <= AiConfigV2.airSweepClusterRadius)
+                            power += Mathf.Max(0f, e.EffectiveArmyPower);
+                    bool better = power > bestPower
+                        || (Mathf.Approximately(power, bestPower) && (
+                            HexGridMath.Distance(home, center.Hex) < HexGridMath.Distance(home, anchor)
+                            || (HexGridMath.Distance(home, center.Hex) == HexGridMath.Distance(home, anchor)
+                                && (center.Hex.Q < anchor.Q || (center.Hex.Q == anchor.Q && center.Hex.R < anchor.R)))));
+                    if (better)
+                    {
+                        bestPower = power;
+                        anchor = center.Hex;
+                    }
+                }
+                if (bestPower > float.NegativeInfinity)
+                {
+                    armyConcentration = true;
+                    return true;
+                }
+            }
+
+            bool found = false;
+            foreach (OpponentSnapshot o in snap.TrueWorld.Opponents ?? new List<OpponentSnapshot>())
+            {
+                if (o?.Player == null || !o.Player.CitadelHexQ.HasValue || !o.Player.CitadelHexR.HasValue)
+                    continue;
+                var citadel = new HexCoord(o.Player.CitadelHexQ.Value, o.Player.CitadelHexR.Value);
+                if (!found || HexGridMath.Distance(home, citadel) < HexGridMath.Distance(home, anchor))
+                {
+                    anchor = citadel;
+                    found = true;
+                }
+            }
+            return found;
+        }
+
         internal static BuildingSnapshot ToBuildingSnapshot(BuildingData b)
         {
             var abilities = new HashSet<string>();
@@ -139,11 +199,13 @@ namespace Game.Ai.V2
             var all = new List<HexCoord>();
             var visitedSet = new HashSet<HexCoord>();
             var everSeenSet = new HashSet<HexCoord>();
+            var unvisitedRuins = new HashSet<HexCoord>();
             int visited = 0, visible = 0;
             foreach (HexCoord c in map.AllCoords)
             {
                 all.Add(c);
                 if (VisionSystem.IsVisited(player, c)) { visited++; visitedSet.Add(c); }
+                else if (map.IsCityRuins(c)) unvisitedRuins.Add(c);
                 if (VisionSystem.HasEverSeen(player, c)) everSeenSet.Add(c);
                 if (VisionSystem.IsVisible(player, c)) visible++;
             }
@@ -284,6 +346,7 @@ namespace Game.Ai.V2
                 VisibleArrivalBlockedHexes = visibleArrivalBlocked,
                 VisitedHexSet = visitedSet,
                 EverSeenHexSet = everSeenSet,
+                UnvisitedRuinsHexes = unvisitedRuins,
             };
         }
 

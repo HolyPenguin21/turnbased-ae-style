@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -53,9 +53,11 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                         $"tracked #{trackedId} already re-observed (focus ({focus.Q},{focus.R}), baseline turn {baseline})"));
             }
-            else
+            else if (!ReconScoutKinds.IsAirSweep(target.Kind))
             {
-                // Air only serves Refresh in this round's scope (see AppendAirCandidates).
+                // An AirSweep's focus is its moving ANCHOR, not an observation goal: seeing the
+                // enemy concentration never "satisfies" the pass (the sortie ends by its refuel
+                // endurance), so only a legacy Refresh target is checked here.
                 if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, focus))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                         $"refresh focus ({focus.Q},{focus.R}) is already visible again"));

@@ -1,4 +1,4 @@
-namespace Game.Ai.V2
+﻿namespace Game.Ai.V2
 {
     // Part of AiConfigV2. Materialization — Strategic Manager (Phase A/B card play + capability
     // preparation), end-of-turn tempo arbiter, strategic card evaluator.
@@ -358,7 +358,7 @@ namespace Game.Ai.V2
         //     breakdown / NetScore as Unit/Hero. Values sit in the same band as a decent combat
         //     body's ForceGrowth + gap so the two lanes are directly comparable. First-pass.
         public const float nonCombatAviationBaseValue = 1.4f;
-        public const float nonCombatAviationNoAirGap = 1.2f;   // added when the AI has zero air observation capacity (no wing, no launchable storage)
+        public const float nonCombatAviationNoAirGap = 0.6f;   // added when the AI has zero air observation capacity (no wing, no launchable storage)
         public const float nonCombatFacilityValue = 1.1f;
         public const float nonCombatEconomyRunwayBonus = 1.0f; // scales Facility RoleFit by (1 - EconomicSecurity)
         public const float nonCombatEquipmentValueFloor = 0.15f;

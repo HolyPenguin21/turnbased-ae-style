@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -64,8 +64,12 @@ namespace Game.Ai.V2
 
     // A Scout mission's focus. Explore -> a MapKnowledge.Frontier hex; Refresh -> a previously
     // observed hex whose frozen IntelAge is stale; Surveil -> a stale honest contact's last-known
-    // hex (Contact non-null). The numeric identities remain Explore=0, Surveil=1, Refresh=2.
-    public enum ScoutTargetKind { Explore, Surveil, Refresh }
+    // hex (Contact non-null); AirSweep -> an AVIATION-ONLY observation pass whose FocusHex is the
+    // strategic sweep anchor (enemy army concentration, else enemy citadel): the wing flies toward
+    // it as deep as its refuel endurance allows and returns — never a ground job, never "met" by
+    // simply seeing the anchor. The numeric identities remain Explore=0, Surveil=1, Refresh=2,
+    // AirSweep=3.
+    public enum ScoutTargetKind { Explore, Surveil, Refresh, AirSweep }
 
     // How hidden the mover must be by the time it reaches the risky leg. None -> any scout.
     // Required -> the mover must be hidden OR able to enter stealth first (a visible scout is not a

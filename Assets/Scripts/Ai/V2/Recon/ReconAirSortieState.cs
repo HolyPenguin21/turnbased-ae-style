@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -69,14 +69,19 @@ namespace Game.Ai.V2
                 return;
             LaunchMovementBudget = System.Math.Max(0, airArmy.MaxMovement);
             LaunchSafeUnlandedEnds = AviationRange.SafeUnlandedEndsRemaining(airArmy);
-            OutboundMovementCap = LaunchSafeUnlandedEnds > 0
-                ? LaunchMovementBudget
-                : LaunchMovementBudget / 2;
+            OutboundMovementCap = OutboundCapFor(LaunchMovementBudget, LaunchSafeUnlandedEnds);
             // A state can be reconstructed for an already-airborne wing. Account for movement
             // already spent this turn instead of granting a second outbound budget.
             OutboundMovementSpent = System.Math.Max(0,
                 LaunchMovementBudget - System.Math.Max(0, airArmy.CurrentMovement));
         }
+
+        // THE refuel-endurance rule for how deep one sortie flies outbound: a wing that must land
+        // the same turn (0 safe unlanded turn-ends — a plane) spends half its movement out and
+        // half back; a wing that may end a turn aloft (a helicopter) flies its whole movement out
+        // and returns next turn. Sortie execution and the AirSweep reach projection both read it.
+        public static int OutboundCapFor(int moveBudget, int safeUnlandedEnds) =>
+            safeUnlandedEnds > 0 ? System.Math.Max(0, moveBudget) : System.Math.Max(0, moveBudget) / 2;
 
         public void RecordOutboundMovement(int movementSpent)
         {

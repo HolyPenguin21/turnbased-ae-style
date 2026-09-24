@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.HexGrid;
@@ -136,7 +136,8 @@ namespace Game.Ai.V2
         public static List<ArmySnapshot> Eligible(WorldSnapshot snap, ScoutMissionTarget target, ISet<int> excludeArmyIds)
         {
             var result = new List<ArmySnapshot>();
-            if (snap?.Self?.Armies == null)
+            // AirSweep is aviation-only; no ground scout is ever an eligible mover for it.
+            if (snap?.Self?.Armies == null || ReconScoutKinds.IsAirSweep(target.Kind))
                 return result;
             bool needStealth = target.Stealth == StealthRequirement.Required;
             // Continuity owns the contraction decision; the same per-turn registry is used by
@@ -201,7 +202,7 @@ namespace Game.Ai.V2
         {
             var result = new List<ArmySnapshot>();
             if (snap?.Self?.Armies == null || player == null
-                || target.Kind == ScoutTargetKind.Surveil)
+                || target.Kind == ScoutTargetKind.Surveil || ReconScoutKinds.IsAirSweep(target.Kind))
                 return result;
 
             bool needStealth = target.Stealth == StealthRequirement.Required;

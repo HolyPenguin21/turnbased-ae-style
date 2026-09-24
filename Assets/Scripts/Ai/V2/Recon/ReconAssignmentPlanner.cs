@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -248,6 +248,12 @@ namespace Game.Ai.V2
             ActorCommitments commitments = null)
         {
             var list = new List<ScoutExecutionCandidate>();
+            // AirSweep is aviation-only support: no ground or garrison candidate may ever bind it.
+            if (ReconScoutKinds.IsAirSweep(target.Kind))
+            {
+                AppendAirCandidates(list, snap, ctx, player, root, target, excludeArmyIds, airPool);
+                return list;
+            }
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
             bool surveil = target.Kind == ScoutTargetKind.Surveil;
 
@@ -350,7 +356,9 @@ namespace Game.Ai.V2
         {
             if (airPool == null || airPool.Count == 0 || root == null || ctx?.Map == null || snap?.Self == null)
                 return;
-            bool observationClass = ReconScoutKinds.IsRefresh(target.Kind) || ReconScoutKinds.IsSurveil(target.Kind);
+            // Aviation serves only the aviation-only AirSweep pass (ReconAirCapacityPolicy.
+            // IsAirServiceable): generic Refresh / Surveil stay with ground scouts.
+            bool observationClass = ReconScoutKinds.IsAirSweep(target.Kind);
             bool stealthOrRisky = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f;
             if (!observationClass || stealthOrRisky)
                 return;
@@ -398,8 +406,8 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    if (target.Kind != ScoutTargetKind.Refresh)
-                        continue; // round-4 scope — see note above
+                    if (!ReconScoutKinds.IsAirSweep(target.Kind))
+                        continue; // a hangar launch serves only the AirSweep pass
                     ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
                     if (airfield == null)
                         continue;
@@ -805,16 +813,16 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // An observation job with a real, mission-specific air route belongs to the independent
-        // aviation lane. Ground remains eligible as a fallback, but must not consume that lane
-        // merely because its AP envelope is cheaper.
+        // A job with a real, mission-specific air route belongs to the independent aviation lane;
+        // ground must not consume it merely because its AP envelope is cheaper. Aviation now
+        // serves only the aviation-only AirSweep (ReconAirCapacityPolicy.IsAirServiceable), so
+        // generic Refresh / Surveil never reserve for air — they are ground jobs.
         internal static bool ShouldReserveObservationForAir(ScoutMissionTarget target,
             ScoutExecutionCandidate selected, IEnumerable<ScoutExecutionCandidate> candidates)
         {
             if (selected.ExecutorKind != ScoutExecutorKind.Ground)
                 return false;
-            bool observationClass = ReconScoutKinds.IsRefresh(target.Kind)
-                || ReconScoutKinds.IsSurveil(target.Kind);
+            bool observationClass = ReconScoutKinds.IsAirSweep(target.Kind);
             bool compatible = observationClass
                 && target.Stealth != StealthRequirement.Required
                 && target.DetectionRisk <= 0f;
@@ -1083,8 +1091,9 @@ namespace Game.Ai.V2
                         && !airActorIds.Contains(i.PreferredMoverArmyId.Value))
                         activeObsLaneActors.Add(i.PreferredMoverArmyId.Value);
 
-            int desiredObs = ReconConcurrencyPolicy.DesiredForClass(
-                snap, obsRunnable, ReconConcurrencyPolicy.ReconCoverageClass.Observation);
+            // obsRunnable holds only aviation-serviceable AirSweep jobs, which are not ground
+            // concurrency lanes (ReconConcurrencyPolicy ignores them): each is one air job.
+            int desiredObs = obsRunnable.Count;
             int observationNeed = Mathf.Clamp(
                 obsRunnable.Count, 0, Mathf.Max(0, desiredObs - activeObsLaneActors.Count));
 

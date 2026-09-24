@@ -168,8 +168,10 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ReconAssignment_ObservationKeepsAirLaneWhenAirRouteExists()
+        public void ReconAssignment_RefreshIsAGroundJob_AirNoLongerReservesIt()
         {
+            // 24.09 aviation contract: aircraft serve only the AirSweep pass, so a generic Refresh
+            // never holds the ground scout back for an air lane.
             var target = new ScoutMissionTarget
             {
                 Kind = ScoutTargetKind.Refresh,
@@ -184,7 +186,7 @@ namespace Game.EditorTests
                 ScoutExecutorKind.AirExisting, requiredEnergy: 1f, routeScore: 2f);
 
             Assert.That(ReconAssignmentPlanner.ShouldReserveObservationForAir(
-                target, ground, new[] { ground, air }), Is.True);
+                target, ground, new[] { ground, air }), Is.False);
             Assert.That(ReconAssignmentPlanner.ShouldReserveObservationForAir(
                 target, air, new[] { ground, air }), Is.False);
         }

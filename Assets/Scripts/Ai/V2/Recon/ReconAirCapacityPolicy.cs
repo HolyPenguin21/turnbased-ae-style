@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
 using Game.Aviation;
@@ -94,11 +94,50 @@ namespace Game.Ai.V2
         // Assignment and aviation Deployment/Rebase valuation (NonCombatCardPlayer.
         // BestAirfieldServiceTaskScore) all read this, so a card is never valued for a job the
         // Recon owner will never hand to an aircraft.
+        // Aviation is SUPPORT: it never visits a hex, so it serves only the aviation-only AirSweep
+        // observation pass. Generic Refresh / Surveil stay with ground scouts — an aircraft is no
+        // longer spent (or valued) on re-checking one hex next to home.
         internal static bool IsAirServiceable(ReconObjective o)
             => o != null
-               && o.Kind != ReconObjectiveKind.Explore
+               && o.Kind == ReconObjectiveKind.AirSweep
                && o.Stealth != StealthRequirement.Required
                && !(o.DetectionRisk > 0f);
+
+        // How far one sortie of these aircraft reaches outbound, by the refuel-endurance rule
+        // (ReconAirSortieState.OutboundCapFor): the slowest aircraft's movement, halved unless
+        // every aircraft may end a turn aloft (TurnsWithoutRefuel > 0).
+        internal static int SweepReach(IReadOnlyList<UnitData> aircraft)
+        {
+            if (aircraft == null || aircraft.Count == 0)
+                return 0;
+            int move = aircraft.Select(AviationRules.EffectiveMoveMax).DefaultIfEmpty(0).Min();
+            int safeEnds = aircraft.Select(u => Mathf.Max(0, u.TurnsWithoutRefuel)).DefaultIfEmpty(0).Min();
+            return ReconAirSortieState.OutboundCapFor(move, safeEnds);
+        }
+
+        // The farthest point of a sweep from `from` toward `anchor`: walk the straight hex line
+        // (each step to the neighbour closest to the anchor, deterministic tie-break) for `reach`
+        // steps, stopping at the anchor. Air movement is flat-cost, so this IS the outbound leg.
+        internal static HexCoord SweepEndpoint(HexCoord from, HexCoord anchor, int reach)
+        {
+            HexCoord cur = from;
+            for (int i = 0; i < reach && !cur.Equals(anchor); i++)
+            {
+                HexCoord best = cur;
+                int bestD = int.MaxValue;
+                foreach (HexCoord n in HexGridMath.Neighbors(cur))
+                {
+                    int d = HexGridMath.Distance(n, anchor);
+                    if (d < bestD || (d == bestD && (n.Q < best.Q || (n.Q == best.Q && n.R < best.R))))
+                    {
+                        bestD = d;
+                        best = n;
+                    }
+                }
+                cur = best;
+            }
+            return cur;
+        }
 
         // Mirror of ReconAirExecutor's own storage-subset rule — kept here so both read ONE rule:
         // the cheapest-to-activate minimum aircraft subset for a single recon sortie, deterministic

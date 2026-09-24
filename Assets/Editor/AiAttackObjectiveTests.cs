@@ -1,4 +1,4 @@
-#if UNITY_INCLUDE_TESTS
+﻿#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
 using Game.Ai;
@@ -58,9 +58,6 @@ namespace Game.EditorTests
             Assert.That(AttackObjectiveEvaluator.Enumerate(
                     Snap(new[] { B(elsewhere, Neutral) }, new[] { OurBase })),
                 Is.Empty, "a neutral Base belongs to Raid's world, not Attack's");
-            Assert.That(AttackObjectiveEvaluator.Enumerate(
-                    Snap(new[] { B(elsewhere, Red, isBase: false) }, new[] { OurBase })),
-                Is.Empty, "an enemy Facility that is not a Base/Citadel is not a strategic node");
             Assert.That(AttackObjectiveEvaluator.Enumerate(
                     Snap(new[] { B(elsewhere, dead) }, new[] { OurBase })),
                 Is.Empty, "an eliminated player's structure is not an objective");
@@ -147,6 +144,42 @@ namespace Game.EditorTests
         }
 
         // ---- §83 B/J: fog of war and owner changes ---------------------------------------
+
+        [Test]
+        public void Enumerate_EnemyFacility_IsTargetOnlyWhileKnownUndefended()
+        {
+            var site = new HexCoord(4, 0);
+            List<AttackObjective> open = AttackObjectiveEvaluator.Enumerate(
+                Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase }));
+            Assert.That(open, Has.Count.EqualTo(1),
+                "an undefended enemy Facility is a destroy-it objective (drops the owner's income)");
+            Assert.That(open[0].Target.Kind, Is.EqualTo(AttackTargetKind.Facility));
+
+            Assert.That(AttackObjectiveEvaluator.Enumerate(
+                    Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
+                        new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) })),
+                Is.Empty, "a defended Facility is a field-army fight, not a structure objective");
+        }
+
+        [Test]
+        public void EvaluateTarget_Facility_DestroyedIsSuccess()
+        {
+            var site = new HexCoord(4, 0);
+            AttackTargetRef target = AttackTargetRef.For(site, Red, AttackTargetKind.Facility);
+
+            Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
+                    Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase }), target),
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Continue));
+            Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
+                    Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase }), target),
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Captured),
+                "a Facility no longer remembered after re-observation was destroyed: objective met");
+            Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
+                    Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
+                        new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) }), target),
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Invalidated),
+                "a defender arriving turns the walk-in into a different operation");
+        }
 
         [Test]
         public void EvaluateTarget_CoversCaptureInvalidationAndContinuation()

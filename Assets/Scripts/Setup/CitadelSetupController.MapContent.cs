@@ -339,10 +339,8 @@ namespace Game.Setup
             return excluded;
         }
 
-        // Terrain name driving GenerateCityRuinsGarrisons below — matches GameConfig's
-        // MapGenerationSettings.terrainTypes entry, same lookup-by-name convention
-        // HexMapGenerator.IndexOfTerrainNamed already uses for mountainsTerrainName.
-        private const string CityRuinsTerrainName = "City ruins";
+        // The "City ruins" terrain name driving GenerateCityRuinsGarrisons below is owned by
+        // HexMap.CityRuinsTerrainName / HexMap.IsCityRuins (the AI reads the same rule).
 
         // Chance that any single eligible "City ruins" hex becomes a garrisoned outpost at all
         // (the user's own later call, 2026-08-23) — a miss leaves that ruins hex with no neutral
@@ -375,8 +373,7 @@ namespace Game.Setup
             {
                 if (citadelHexes.Contains(hex))
                     continue;
-                if (!map.TryGetTerrainAt(hex, out TerrainTypeEntry terrain) ||
-                    !string.Equals(terrain.terrainName, CityRuinsTerrainName, System.StringComparison.OrdinalIgnoreCase))
+                if (!map.IsCityRuins(hex))
                     continue;
                 if (ArmyRegistry.AllAt(hex).Any(a => a.Owner == _neutralPlayer))
                     continue;

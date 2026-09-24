@@ -1,4 +1,5 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 using UnityEngine;
 
@@ -23,6 +24,11 @@ namespace Game.Ai.V2
         public static int DesiredForClass(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable,
             ReconCoverageClass klass)
         {
+            // Concurrency here is GROUND Recon lanes. The aviation-only AirSweep is never a ground
+            // lane, so its value must not open (or keep) a scout lane — every caller (Demand
+            // capacity, Continuity trim, Phase-B scout saturation) gets the same answer.
+            if (runnable != null && runnable.Any(o => o != null && o.Kind == ReconObjectiveKind.AirSweep))
+                runnable = runnable.Where(o => o != null && o.Kind != ReconObjectiveKind.AirSweep).ToList();
             int hardCap = HardCap;
             if (hardCap == 0 || runnable == null || runnable.Count == 0
                 || !HasMaterialValue(runnable[0]))
