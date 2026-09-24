@@ -481,6 +481,10 @@ namespace Game.Ai.V2
             float bestValue = float.NegativeInfinity;
             foreach (ReconObjective objective in objectives ?? System.Array.Empty<ReconObjective>())
             {
+                // Only jobs the Recon owner will actually hand to an aircraft carry value here;
+                // Explore / stealth jobs are ground-only (ReconAirCapacityPolicy.IsAirServiceable).
+                if (!ReconAirCapacityPolicy.IsAirServiceable(objective))
+                    continue;
                 Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortieFromStorage(
                     airfield, projected, objective.FocusHex, ctx.Map, player);
                 MultiTurnSortie? multiTurn = sameTurn.HasValue ? null

@@ -1098,8 +1098,7 @@ namespace Game.Ai.V2
             // ground/air actor.
             var obsRunnable = (reconObjectives ?? System.Array.Empty<ReconObjective>())
                 .Where(o => o != null && o.BaseValue > 0f
-                    && o.Kind != ReconObjectiveKind.Explore
-                    && o.Stealth != StealthRequirement.Required && !(o.DetectionRisk > 0f))
+                    && ReconAirCapacityPolicy.IsAirServiceable(o))
                 .OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey)
                 .ToList();
 

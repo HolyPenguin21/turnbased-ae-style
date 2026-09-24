@@ -88,6 +88,18 @@ namespace Game.Ai.V2
         // continued + newly launched combined).
         public const int MaxAirReconActorsPerTurn = 2;
 
+        // The ONE rule for "can aviation service this Recon objective at all": generic Observation
+        // only — never Explore/GroundTraversal (a physical visit), never a stealth-Required or
+        // positive-DetectionRisk job (air cannot go hidden). Capacity (MeasureAirCapacity),
+        // Assignment and aviation Deployment/Rebase valuation (NonCombatCardPlayer.
+        // BestAirfieldServiceTaskScore) all read this, so a card is never valued for a job the
+        // Recon owner will never hand to an aircraft.
+        internal static bool IsAirServiceable(ReconObjective o)
+            => o != null
+               && o.Kind != ReconObjectiveKind.Explore
+               && o.Stealth != StealthRequirement.Required
+               && !(o.DetectionRisk > 0f);
+
         // Mirror of ReconAirExecutor's own storage-subset rule — kept here so both read ONE rule:
         // the cheapest-to-activate minimum aircraft subset for a single recon sortie, deterministic
         // tie-break on the canonical storage roster order.
