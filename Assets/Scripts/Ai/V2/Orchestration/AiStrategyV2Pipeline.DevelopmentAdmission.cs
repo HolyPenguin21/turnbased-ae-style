@@ -94,7 +94,7 @@ namespace Game.Ai.V2
             // static abilities/MoveMax/ActivationApCost — never anything about the scout army
             // itself — so a Scout-only mover needs neither block: a plain scout patrolling its
             // waypoint must not force a full re-enumeration on every step.
-            var positionRelevantArmyIds = DevelopmentEconomyRelevantArmyIds(snapshot, activeIntents);
+            var positionRelevantArmyIds = EconomyRelevantArmyIds(snapshot, activeIntents);
             var raidRelevantArmyIds = DevelopmentRaidRelevantArmyIds(activeIntents);
             string armies = string.Join(";", (snapshot?.Self?.Armies
                     ?? System.Array.Empty<ArmySnapshot>())
@@ -264,13 +264,14 @@ namespace Game.Ai.V2
             }
         }
 
-        // Armies whose POSITION/movement/activation can change a Development decision: only
-        // Economy's delivery proof (AI-03) compares an army's route and shared movement bottleneck
-        // before/after a grant. Includes every army the Economy analysis already advertises as a
-        // possible builder/collector — those become the EconomyPreferredBuilderArmyId witness a
+        // Armies whose POSITION/movement/activation can change an Economy decision — and through
+        // it a Development one (shared by both admission fingerprints): Economy's delivery proof
+        // (AI-03) compares an army's route and shared movement bottleneck before/after a grant.
+        // Includes every army the Economy analysis already advertises as a possible
+        // builder/collector — those become the EconomyPreferredBuilderArmyId witness a
         // fresh Economy demand carries, and protection/delivery proofs may run against them too.
         // Operator armies are handled separately by the caller (pre-existing optimization).
-        internal static HashSet<int> DevelopmentEconomyRelevantArmyIds(WorldSnapshot snapshot,
+        internal static HashSet<int> EconomyRelevantArmyIds(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents)
         {
             var ids = new HashSet<int>();
@@ -308,7 +309,7 @@ namespace Game.Ai.V2
             return ids;
         }
 
-        // Armies whose COMPOSITION (beyond Economy's — see DevelopmentEconomyRelevantArmyIds
+        // Armies whose COMPOSITION (beyond Economy's — see EconomyRelevantArmyIds
         // above, unioned in by the caller) can change a Development decision: only Raid's combat
         // proof (ImprovesGroundCombatOutcome via WorthIt) reads army.Members. Recon's proof
         // (ImprovesReconCapability) reads only the offered equipment/recipient card's own static

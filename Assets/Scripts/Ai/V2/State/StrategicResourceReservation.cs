@@ -310,6 +310,17 @@ namespace Game.Ai.V2
             }
         }
 
+        // Order-stable key of every row held for one reason — an admission-fingerprint input
+        // (see Pipeline's Economy fingerprint), not a spend query.
+        internal static string ReasonDigest(PlayerSetupData player, int turn,
+            StrategicReservationReason reason)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return string.Empty;
+            return string.Join(";", e.Reservations.Where(r => r.Reason == reason)
+                .Select(r => r.ToString()).OrderBy(x => x, System.StringComparer.Ordinal));
+        }
+
         public static string DebugLine(PlayerSetupData player, int turn)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn

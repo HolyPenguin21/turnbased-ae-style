@@ -116,6 +116,13 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
 Цель — не производительность, а детерминизм и меньше порядко-зависимых эффектов (строки резервов от
 прошлого прохода). Затрагивает `Orchestration/AiStrategyV2Pipeline` — только анализ условий
 перезапуска, реализация по согласованию.
+**Сделано 2026-09-24 (вариант А).** Замер: 84 re-admission, 77 с `changed=0`; Economy не
+пропускался ни разу — его fingerprint содержал `v=V2StateVersion.Current` и позиции/движение ВСЕХ
+армий, т.е. менялся на каждом шаге любого разведчика. Теперь в нём: raw AP, ресурсы, рука, строки
+ledger чужой причины (`StrategicReactionPass`), для всех армий id/размер/герой, позиция/движение/
+активация — только для `EconomyRelevantArmyIds` (builder-маршруты + Economy-intent), занятость
+акторов всеми intent (без IntentKey), sites/bases/threats/owners. Порог AP как у Development не
+вводился: у Economy нет точного малого набора порогов (суммы цепочек, ledger-aware SpendableAp).
 
 ### C5. История ревью в комментариях кода — риск низкий (поведение не меняется)
 
