@@ -1,7 +1,7 @@
 namespace Game.Ai.V2
 {
-    // Part of AiConfigV2 (file-split Task 2, see Docs/ai-v2-file-split-refactor-tasks.md).
-    // Materialization — Strategic Manager (Phase A/B card play + capability preparation), AI-MGR-02 end-of-turn tempo arbiter, AI-MGR-01 strategic card evaluator.
+    // Part of AiConfigV2. Materialization — Strategic Manager (Phase A/B card play + capability
+    // preparation), end-of-turn tempo arbiter, strategic card evaluator.
     public static partial class AiConfigV2
     {
         // =======================================================================================
@@ -73,8 +73,7 @@ namespace Game.Ai.V2
         public const float surplusAttachTraitBonus = 0.30f;   // added when a proactive attach grants a scarce trait
 
         public const bool surplusAllowDraw = true;
-        // AI-MGR-02 — SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. The
-        // unified loop honours this exactly like the old terminal-draw stage did; a draw beyond it
+        // SEMANTIC sub-cap: the max number of end-of-turn tempo *draws* per turn. A draw beyond it
         // is not offered as a candidate.
         public const int maxTerminalDrawsPerTurn = 4;
         // Generic (no-residual) combat surplus into an already-saturated garrison must clear
@@ -92,7 +91,7 @@ namespace Game.Ai.V2
         // add its own explicit V2 reservation contract rather than reviving a fixed floor here.
 
         // =======================================================================================
-        //  AI-MGR-02 — END-OF-TURN TEMPO ARBITER
+        //  END-OF-TURN TEMPO ARBITER
         //  StrategicManager.UseSurplus is one bounded live-arbitration loop. Every end-of-turn
         //  decision (PlayCard / DrawCard / strategic spend / HoldResources / EndTurn) is a candidate
         //  in ONE comparable utility space; PlayCard utility is the StrategicCardEvaluator NetScore
@@ -106,20 +105,20 @@ namespace Game.Ai.V2
         // stranded AP is used for a marginally-useful action, but a genuinely worthless one still
         // loses to EndTurn (spec §4 — "high SpendPressure is not play garbage at any cost").
         public const float tempoMinSpendUtility = 0.05f;
-        // AI-MGR-02 §P0 (round 4) — HoldResources is NOT a global "stop everything" gate. AP is
-        // never held, so an AP-only action (Draw, AP-only Pressure) is COMPATIBLE with keeping the
-        // persistent pool and competes only against EndTurn / tempoMinSpendUtility. The H/E/M/T
-        // A concrete non-card spend is priced from its exact cost vector by the same canonical
-        // StrategicCardEvaluator resource-opportunity model as card plays. PlayCard remains exempt
-        // from any Phase-B adjustment: its NetScore already owns HoldValue /
-        // ResourcePressureBenefit. The constants below retain only the whole-pool scarcity signal
-        // shown on the diagnostic `policy Hold(full pool)` line; it is not an execution stop gate.
+        // HoldResources is NOT a global "stop everything" gate. AP is never held, so an AP-only
+        // action (Draw, AP-only Pressure) is COMPATIBLE with keeping the persistent pool and
+        // competes only against EndTurn / tempoMinSpendUtility. A concrete non-card spend is priced
+        // from its exact cost vector by the same canonical StrategicCardEvaluator
+        // resource-opportunity model as card plays. PlayCard remains exempt from any Phase-B
+        // adjustment: its NetScore already owns HoldValue / ResourcePressureBenefit. The constants
+        // below retain only the whole-pool scarcity signal shown on the diagnostic `policy
+        // Hold(full pool)` line; it is not an execution stop gate.
         public const int   tempoHoldResourceComfortableStock = 8;    // a resource at/above this is not "scarce"
         public const float tempoHoldFragilityWeight = 0.5f;
         public const float tempoHoldScarcityWeight = 1.0f;
         public const float tempoHoldPersistentResourceValueScale = 1.6f;
         public const float tempoHoldPersistentResourceValueCap = 2.5f; // a strong play (NetScore > this) still wins
-        // AI-MGR-02 §P1 (round 4) — STRATEGIC OVERSTOCK relief, per resource. The game has NO hard
+        // STRATEGIC OVERSTOCK relief, per resource. The game has NO hard
         // resource storage cap (PlayerRoot.AddResource is unbounded), so nothing is physically lost
         // and this is NOT "overflow". It only expresses: a resource held far above the deck's
         // sustainable runway need is worth LESS to keep, so a spend that consumes it is penalised
@@ -148,14 +147,14 @@ namespace Game.Ai.V2
         // for a follow-up draw gets this option-continuity value. This is utility, not a gate:
         // genuinely strong/urgent plays can still win the common Phase-B arbitration.
         public const float tempoDrawLastCardContinuityBonus = 0.85f;
-        // AI-MGR-02 — StrategicMaintenancePolicy enumerates only genuinely non-card strategic
+        // StrategicMaintenancePolicy enumerates only genuinely non-card strategic
         // actions (Base/Citadel slot-capacity upgrades). Their utility is not configured as a fixed
         // band: it is the concrete Facility's dynamic StrategicCardEvaluator TotalUseScore minus
         // the upgrade AP opportunity cost; Phase B then subtracts the tier's exact marginal H/E/M/T
         // opportunity cost on the same evaluator scale. Facility placement, Equipment attach and
         // Research/Production generation remain ordinary PlayCard candidates through that single
         // evaluator (spec §5, one scorer).
-        // spec §7 (round 4) — the reaction pass reserves a BOUNDED AP BUDGET for its same-turn
+        // spec §7 — the reaction pass reserves a BOUNDED AP BUDGET for its same-turn
         // replan, not an exact action cost (the replan re-runs the whole Demand→Mission→Provision
         // pipeline and picks its own action, so there is no single pre-planned action to price).
         // This is the ceiling on that budget; the estimate feeding it may legitimately exceed it —
@@ -167,37 +166,31 @@ namespace Game.Ai.V2
         // spec §7 — extra AP beyond a responder's activation cost folded into the reaction estimate
         // for the one repositioning step a bounded replan typically makes.
         public const int reactionResponderMoveApEstimate = 1;
-        // AI-MGR-02 §7 — kept for HousekeepingManager's same-turn tempo re-run after a released
+        // §7 — for HousekeepingManager's same-turn tempo re-run after a released
         // reservation. UseSurplus is itself the bounded loop; this only caps the re-run repeats.
         public const int maxEndOfTurnTempoReruns = 1;
 
         // =======================================================================================
-        //  STRATEGIC CARD EVALUATOR  (AI-MGR-01 — the shared Card x IntendedUse model used by BOTH
-        //  StrategicManager phases). Replaces ScorePlanA's cost/fit product and SurplusUtility's
-        //  additive sum with one breakdown (RoleFit / ImmediateTempo / NextTurnPotential /
+        //  STRATEGIC CARD EVALUATOR  (the shared Card x IntendedUse model used by BOTH
+        //  StrategicManager phases): one breakdown (RoleFit / ImmediateTempo / NextTurnPotential /
         //  ThreatCounterValue / ForceGrowthValue / ResourceEfficiency /
         //  SynergyValue / GenerationRiskDiscount / RedundancyPenalty /
         //  AlternativeUseValue / HoldValue / ResourcePressureBenefit / HandPressureBenefit). The
         //  Hero card CLASS adds no flat bonus or penalty — hero fitness is HeroRoleEvaluator's
         //  characteristic score, and the only hero cost is AlternativeUseValue when a scarce hero is
         //  spent off its best use. First-pass; tune against real AiDebug.log strat.eval lines.
-        //  NOTE (2026-09-21) — ScarcityValue and the standalone ThreatResponseValue field were
-        //  deleted entirely (both phases). The field formerly named CapabilityGapValue was renamed
-        //  ThreatCounterValue and narrowed to AntiAir/AntiArmor-only in Phase B (Scout's "0 scouts"
-        //  case moved into RoleFit; the generic combat-body/mobile gap cases were removed). Phase A
-        //  (ScoreForDemand) still writes its OLDER, broader capability-gap meaning into that same
-        //  ThreatCounterValue field — see StrategicUseScoreBreakdown's own field comment. Phase B
-        //  also no longer assigns ImmediateTempo or NextTurnPotential; those two are Phase A only now.
+        //  ThreatCounterValue is AntiAir/AntiArmor-only in Phase B (Scout's "0 scouts" case lives in
+        //  RoleFit); Phase A (ScoreForDemand) writes its broader capability-gap meaning into the same
+        //  field — see StrategicUseScoreBreakdown's field comment. ImmediateTempo and
+        //  NextTurnPotential are Phase A only.
         // =======================================================================================
         // ForceGrowthValue = SurplusCombatReadinessUtility (marginal AiPower, [0..2]) * Lerp(
         //   baselineReadinessGrowthFloor, 1, BaselineForceReadiness.Need) * this. Keeps an ordinary
         //   combat body worth materialising at AGG = 0 / DEF = 0 without out-bidding a real demand.
         public const float forceGrowthValueWeight = 0.60f;
         // Flat bonus for a card that closes a capability the AI currently lacks ENTIRELY. Phase A:
-        // 0 scouts / 0 heroes / no field body. Phase B (2026-09-21): only the AntiAir/AntiArmor
-        // enemy-matchup case (SurplusThreatCounter) and Scout's "0 scouts" RoleFit fold-in use this
-        // — the generic "no field body"/MobileCombat cases were removed as either non-specific or
-        // duplicating an existing RoleFit signal.
+        // 0 scouts / 0 heroes / no field body. Phase B: only the AntiAir/AntiArmor enemy-matchup
+        // case (SurplusThreatCounter) and Scout's "0 scouts" RoleFit fold-in use this.
         public const float capabilityGapValue = 0.50f;
         // ThreatCounterValue's AntiArmor / AntiAir case = clamp(enemyDriverPower / norm) * weight.
         // Uses omniscient enemy power as a DIRECTIONAL strategic bias; never becomes normal AI intel.
@@ -212,11 +205,7 @@ namespace Game.Ai.V2
         public const float heroLeadershipFitNorm = 8f;
         public const float heroLeadershipFitCap = 1.20f;
         public const float heroSupportFitValue = 0.30f;   // a Researcher/Assembler hero evaluated for the Support role
-        // HoldValue (spec §3) parts.
-        // Only these 3 of the original Hold-block survive (reused by EquipmentRoleDelta's lost-role
-        // penalty, not by any Hold mechanic — Hold itself was removed). holdHandPressurePenalty /
-        // holdLostTempoPenalty / holdComboPreservationValue / holdResourcePressurePenalty were dead
-        // (no remaining references) and removed 2026-09-21.
+        // HoldValue (spec §3) parts, used by EquipmentRoleDelta's lost-role penalty.
         public const float holdUniqueRoleValue = 0.40f;    // a rare stealth body / a support hero while a combat leader is already fielded
         public const float holdScarcityValue = 0.25f;      // reused by EquipmentRoleDelta's lost-Scout-role penalty (see that function)
         public const float holdNearTermDemandValue = 0.30f;// P1.6 — a specialist counter whose triggering threat is already visible is worth keeping ready
@@ -313,8 +302,7 @@ namespace Game.Ai.V2
         // card's ONLY source of RoleFit under this role — ec.GlobalRoleFit is zeroed for ResourceGain
         // (see StrategicCardEvaluator.ScoreSurplusRole) so this one number has to carry the whole
         // case for playing it, EXCEPT for a hero's own HeroCommandMarginalValue (command-only, no
-        // combatPart — added 2026-09-21, orthogonal to the recurring-resource specialty). Calibrated
-        // 2026-09-21 against 4 real
+        // combatPart, orthogonal to the recurring-resource specialty). Calibrated against 4 real
         // ApBonus/Produce heroes pulled from a played log (Dorian Kesh T3, Miller Hayes T4, Iri Vane
         // T5, Tessa Rourke T10, res cost ~-0.18..-0.20 each): the minimum base that beats all 4
         // CombatBody Totals is 3.4 (tightest case Miller Hayes T4, CombatBody Total 2.67); set with
@@ -353,9 +341,7 @@ namespace Game.Ai.V2
         // --- BaselineForceReadiness (spec §4) — radar-DEMAND-INDEPENDENT standing-force signal.
         //     Need in [0..1]: high when the fielded force / combat-actor count / capability coverage
         //     is thin for the game stage, economy and known enemy strength. Consumed by
-        //     ForceGrowthValue. (The AGG-RAID Defence cleanup removed the separate
-        //     DemandLayer.BaselineForceReadinessDemands pull that was charged to the Defence axis;
-        //     ForceGrowthValue is now the single consumer of Need.)
+        //     ForceGrowthValue, the single consumer of Need.
         public const int baselineReadinessStageRampLo = 2;    // turn at/under which "stage" is 0 (very little standing force expected)
         public const int baselineReadinessStageRampHi = 18;   // turn at/over which "stage" is 1 (a full standing force is expected)
         public const float baselineReadinessBaseTargetPower = 12f;   // minimum expected fielded power regardless of enemy
@@ -368,11 +354,9 @@ namespace Game.Ai.V2
         public const float baselineReadinessSecureDamp = 0.55f;      // a fully secure economy multiplies Need by this
         public const float baselineReadinessGrowthFloor = 0.40f;     // ForceGrowthValue keeps at least this fraction of its marginal value at Need 0
 
-        // --- P0.1 non-combat cards (Aviation / Facility / standalone Equipment) scored on the SAME
-        //     breakdown / NetScore as Unit/Hero — no more NonCombatCardPlayer's fixed 55/45/40/24
-        //     scale. Values sit in the same band as a decent combat body's ForceGrowth + gap so the
-        //     two lanes are directly comparable. First-pass. (Base removed 2026-09-21 — dead code,
-        //     see ScoreNonCombat / NonCombatRole.)
+        // --- Non-combat cards (Aviation / Facility / standalone Equipment) scored on the SAME
+        //     breakdown / NetScore as Unit/Hero. Values sit in the same band as a decent combat
+        //     body's ForceGrowth + gap so the two lanes are directly comparable. First-pass.
         public const float nonCombatAviationBaseValue = 1.4f;
         public const float nonCombatAviationNoAirGap = 1.2f;   // added when the AI has zero air observation capacity (no wing, no launchable storage)
         public const float nonCombatFacilityValue = 1.1f;

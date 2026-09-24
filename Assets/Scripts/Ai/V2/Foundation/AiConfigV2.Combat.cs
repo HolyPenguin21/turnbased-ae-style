@@ -112,7 +112,7 @@ namespace Game.Ai.V2
         public const float opportunityNoHeroPenalty = 0.35f;      // raids are hero-led; no hero obtainable -> weak
         public const float opportunityValueNorm = 30f;            // targetValue that maps to a full value term
         // A safe, cheap, close win is itself worth wanting — one weak neutral next door is "a good
-        // reason to be aggressive" (project owner's call), so a target that CLEARS the viability
+        // reason to be aggressive", so a target that CLEARS the viability
         // gate scores on at least this much value even if its defenders are near worthless. The
         // reported CombatOpportunity.TargetValue stays the true (un-floored) number.
         public const float opportunityBeatableValueFloor = 12f;

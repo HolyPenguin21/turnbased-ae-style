@@ -32,9 +32,9 @@ namespace Game.Ai.V2
         public const float productionSupportEmergencyFloor = 0.70f;
 
         // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). Tuned against
-        // AiDebug.log 2026-09-07: with the old values (apValue 3, margin 0.5, full alt-cost) a
-        // p=0.77 offering scored EV = 0.77*G - ~8 - 3, so equipment upgrades (single-item G ~2..10)
-        // could never clear the margin and Enumerate returned 0 objectives every turn.
+        // AiDebug.log: with apValue 3, margin 0.5 and full alt-cost a p=0.77 offering scored
+        // EV = 0.77*G - ~8 - 3, so equipment upgrades (single-item G ~2..10) could never clear the
+        // margin and Enumerate returned 0 objectives every turn.
         public const float devEvToBaseValue = 2.5f;    // EV (AiPower units) -> 0..100 BaseValue
         public const float devEvMargin = 0.05f;        // keep an opportunity only if EV exceeds this
         public const float devApValue = 1f;            // value of 1 AP, for the EV apCost term

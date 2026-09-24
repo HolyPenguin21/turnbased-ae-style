@@ -9,8 +9,8 @@
         //                 MapKnowledge.ExplorableUnknownFrac (build-order step 4's real frontier
         //                 flood — the dark map still reachable on foot), NOT raw UnknownFrac: the
         //                 slice behind an enemy citadel / hostile guard simply isn't in that
-        //                 number. 0 exactly when the frontier is empty. NO turn-number term
-        //                 (project owner's call — decay is state-driven, not clock-driven).
+        //                 number. 0 exactly when the frontier is empty. NO turn-number term:
+        //                 decay is state-driven, not clock-driven.
         //  surveillance — SUSTAINED all game: a non-burning baseline (re-scan hex content, keep
         //                 resource sites / vision current) plus a bump for TARGETABLE contacts
         //                 (honest + positioned) gone stale. Cheat uncertainty is enemyBlindness's
@@ -134,7 +134,7 @@
         // Compatibility alias only. The gameplay cost itself is owned by StealthSystem.
         public const int scoutOptionalStealthAp = Game.Map.StealthSystem.EnterStealthApCost;
 
-        // RECON-AIR-01 — a generic (non-stealth) Refresh/Surveil mission is executable by EITHER a
+        // A generic (non-stealth) Refresh/Surveil mission is executable by EITHER a
         // ground scout OR an air actor (see ReconAssignmentPlanner.AppendAirCandidates); the
         // Mission-stage estimate must therefore size an envelope wide enough for air's typical
         // activation cost too, not only a ground scout's. Both are notional, worst-reasonable-case
@@ -298,7 +298,7 @@
         public const float airReconRouteObservationRingWeight = 0.35f; // weight on a route hex's 6 immediate neighbours (corridor width), on top of the hex itself
         public const int airReconRouteObservationMaxHexes = 14;     // hard cap on scored route hexes per candidate (bounds the per-decision cost)
         public const float airReconCitadelDirectionWeight = 0.70f;  // first step heads into the enemy-Citadel sector (× confidence: 1.0 known, 0.55 hidden-bias only)
-        // RECON-AIR-05 (round 5) / Bug B fix (round 6) — the strongest anchor: Assignment/Continuity
+        // The strongest anchor: Assignment/Continuity
         // already bound this sortie to a SPECIFIC Refresh/Surveil target this turn (or a durable one,
         // for a continuing sortie), and the tactical planner must drift toward it rather than pick a
         // fresh unrelated objective. Weighted above every discovered/inferred anchor (Citadel
@@ -382,8 +382,6 @@
         // effectRecurring* / apMarginalUtil*). Kept only so any stale reference still compiles.
         public const float surplusRecurringApIncomeBonus = 0.75f;
         public const float surplusHandPressureBonus = 0.30f; // hand is full -> playing a card frees a slot
-        // surplusScarcityHigh/Med/Low removed 2026-09-21 — ScarcityValue/SurplusScarcity() deleted
-        // from Phase B (user call: a generic scarcity tier wasn't a real composition need).
         public const int surplusScoutOversupplyAt = 3;       // ReadyScouts >= this -> another Recce is oversupply
         public const float surplusOversupplyPenalty = 0.8f;
 
