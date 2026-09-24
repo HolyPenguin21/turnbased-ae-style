@@ -278,7 +278,7 @@ namespace Game.Ai.V2
                 var targetable = new HashSet<int>();
                 foreach (ReorgUnit u in nonHeroFriendlies)
                     if (unitByKey.TryGetValue(u.Key, out UnitData live) && live != null
-                        && !StealthSystem.IsHiddenFrom(live, enemy.Owner))
+                        && !live.IsHidden)
                         targetable.Add(u.Key);
 
                 result.Add(new ReorgThreatBenchmark

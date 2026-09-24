@@ -237,7 +237,7 @@ namespace Game.Ai.V2
                 prepared.ExploreScore, prepared.RefreshScore);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
-                player, ctx.Map, army, assignment, ctx.TurnNumber, pm.RequiresStealth);
+                player, ctx.Map, army, assignment);
             if (reaction.Action == ReconReactionAction.StopAndReplan)
             {
                 control.StopReason = ExecutionStopReason.TargetInvalidated;
@@ -274,7 +274,7 @@ namespace Game.Ai.V2
                 case ReconReactionAction.Continue:
                 default:
                     ReconGroundStepPlanner.StepChoice? choice = ReconGroundStepPlanner.Pick(
-                        player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot, pm.RequiresStealth);
+                        player, ctx.Map, army, assignment, ctx.TurnNumber, snapshot);
                     if (choice.HasValue)
                         next = choice.Value.Hex;
                     actionWhy = assignment.Mode.ToString();
@@ -574,18 +574,14 @@ namespace Game.Ai.V2
         {
             access = 0f;
             shorten = 0f;
-            bool hidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
+            bool hidden = StealthSystem.IsArmyFullyHidden(army);
             if (hidden)
                 return; // already hidden — this policy is only asked before entering stealth
 
-            bool OccupiedByOther(HexCoord h)
-            {
-                foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                    if (s.Hex.Equals(h)) return true;
-                foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownNeutralSightings(player))
-                    if (s.Hex.Equals(h)) return true;
-                return false;
-            }
+            // A hex only a hidden mover may enter — exactly what the one arrival rule refuses a
+            // VISIBLE mover (a known army to fight, a known undefended structure to take over).
+            bool OccupiedByOther(HexCoord h) =>
+                AiMapMemory.KnownGroundArrival(player, h, moverFullyHidden: false).HasOutcome;
 
             if (OccupiedByOther(nextHex) || OccupiedByOther(anchor))
                 access = 1f;

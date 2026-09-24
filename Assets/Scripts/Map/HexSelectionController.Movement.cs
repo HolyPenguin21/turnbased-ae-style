@@ -420,7 +420,8 @@ namespace Game.Map
         // IssueMoveOrder's caller regains control. Left null by the human path.
         public MoveOrderResult IssueMoveOrder(ArmyController controller, HexCoord destination,
             System.Action<HexCoord> onHexEventEncountered = null,
-            bool allowUndefendedBuildingTakeover = true)
+            bool allowUndefendedBuildingTakeover = true,
+            bool allowAiEventExplore = true)
         {
             if (controller == null || controller.IsMoving)
                 return MoveOrderResult.AlreadyMoving;
@@ -626,7 +627,8 @@ namespace Game.Map
                     // never even runs for this hex-entry.
                     if (eventStopClaimed)
                     {
-                        BeginCleanHexEvent(army, actualHex, destination, movingArmy);
+                        BeginCleanHexEvent(army, actualHex, destination, movingArmy,
+                            allowUndefendedBuildingTakeover, allowAiEventExplore);
                         RestackArmiesOn(actualHex, movingArmy);
                         return;
                     }

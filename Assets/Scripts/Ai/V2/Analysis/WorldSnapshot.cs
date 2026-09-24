@@ -544,23 +544,24 @@ namespace Game.Ai.V2
 
         // The subset of AllHexes a ground scout must never be routed ONTO regardless of stealth:
         // an active scout-danger cooldown (off-map is implicit). Enemy PROXIMITY is deliberately
-        // NOT here (it only annotates). Spec §19 — a known neutral physically on a hex is NO LONGER
-        // folded in here: that block is actor-state-aware (a fully-hidden scout can pass) and lives
-        // in NeutralOccupiedHexes below. Use IsBlockedForScout to combine the two correctly.
+        // NOT here (it only annotates). Spec §19 — arrival outcomes are NO LONGER folded in here:
+        // that block is actor-state-aware (a fully-hidden scout can pass) and lives in
+        // VisibleArrivalBlockedHexes below. Use IsBlockedForScout to combine the two correctly.
         public ISet<HexCoord> ScoutHardBlockedHexes;
 
-        // Hexes with a known neutral force physically standing on them. A VISIBLE scout must not be
-        // routed through these (it would be forced into an engagement); a fully-hidden scout can
-        // pass per the authoritative Stealth/BattleInitiator rules. Kept separate from
+        // Hexes a VISIBLE ground mover may not arrive on without setting something off — a known
+        // army (enemy or neutral) it would fight, a known undefended foreign structure it would
+        // take over. Built from the one AI arrival rule (AiMapMemory.KnownGroundArrival) at
+        // snapshot time; a fully-hidden scout passes them (stealth design). Kept separate from
         // ScoutHardBlockedHexes so the block can be applied conditionally.
-        public ISet<HexCoord> NeutralOccupiedHexes;
+        public ISet<HexCoord> VisibleArrivalBlockedHexes;
 
-        // Spec §19 — the single actor-state-aware "may this scout be routed onto/through `h`" test.
-        // A stealth-capable mover ignores neutral occupancy; every mover still respects the true
-        // hard blocks.
+        // Spec §19 — the single actor-state-aware "may this scout be routed onto/through `h`" test,
+        // the frozen-snapshot form of ScoutExecutionSafety.StepBlocked. A stealth-capable mover
+        // ignores arrival outcomes; every mover still respects the true hard blocks.
         public bool IsBlockedForScout(HexCoord h, bool stealthCapable) =>
             (ScoutHardBlockedHexes != null && ScoutHardBlockedHexes.Contains(h))
-            || (!stealthCapable && NeutralOccupiedHexes != null && NeutralOccupiedHexes.Contains(h));
+            || (!stealthCapable && VisibleArrivalBlockedHexes != null && VisibleArrivalBlockedHexes.Contains(h));
 
         // Every hex this player has ever stood on (VisionSystem.IsVisited). A byproduct of the
         // frontier scan, exposed so the step-7 continuity layer can tell whether a durable Explore

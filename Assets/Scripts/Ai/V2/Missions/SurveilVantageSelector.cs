@@ -15,11 +15,11 @@ namespace Game.Ai.V2
     //  VALID VANTAGE for THIS mover
     //    * on the map (MapKnowledge.AllHexes) and != FocusHex
     //    * within the mover's REAL vision reach: Distance(hex, FocusHex) <= EffectiveVisionRadius
-    //    * not ScoutHardBlocked (a known neutral on it / an active scout-danger cooldown)
-    //    * no CURRENTLY-observed (this turn) non-neutral force standing on it
-    //    * not a known FOREIGN-OWNED building (a ground army entering one auto-captures/destroys
-    //      it — a Surveil mission must never do an Aggression action). Own buildings are fine.
-    //  A stale (LastKnown) enemy position is NOT a hard block — it only raises DetectionRisk.
+    //    * not MapKnowledge.IsBlockedForScout for THIS mover — an active scout-danger cooldown for
+    //      every scout; for a mover that cannot go hidden also any hex whose arrival sets
+    //      something off (a known army to fight, a known undefended foreign structure to take
+    //      over — a Surveil mission must never do an Aggression action). A fully hidden scout
+    //      may share such a hex (stealth design); DetectionRisk ranks it.
     //  An own army on the hex does NOT block it. See ScoutExecutionSafety for the same rule as the
     //  live-memory check provisioning / execution apply.
     //
@@ -60,12 +60,6 @@ namespace Game.Ai.V2
             bool stealthCapable = mover.IsHidden || mover.StealthLevel > 0 || mover.CanEnterStealth;
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : 1;
 
-            var foreignBuildings = new HashSet<HexCoord>();
-            if (snap.Known?.Buildings != null)
-                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings)
-                    if (b.Owner != mover.Owner)
-                        foreignBuildings.Add(b.Hex);
-
             foreach (HexCoord h in snap.MapKnowledge.AllHexes)
             {
                 if (h.Equals(focus))
@@ -73,11 +67,9 @@ namespace Game.Ai.V2
                 int standOff = HexGridMath.Distance(h, focus);
                 if (standOff > visionR)
                     continue;
+                // The one arrival rule (snapshot form): danger zones for every scout; a known army
+                // or undefended foreign structure only for a scout that cannot go hidden.
                 if (snap.MapKnowledge.IsBlockedForScout(h, stealthCapable))
-                    continue;
-                if (foreignBuildings.Contains(h))
-                    continue;
-                if (CurrentHostileOn(snap, h))
                     continue;
 
                 int dist = HexGridMath.Distance(mover.Hex, h);
@@ -95,20 +87,6 @@ namespace Game.Ai.V2
                 return x.ExecutionHex.R.CompareTo(y.ExecutionHex.R);
             });
             return result;
-        }
-
-        // A currently-observed (SeenTurn >= this turn) non-neutral force standing ON `hex`. A
-        // stale sighting is deliberately NOT caught here — it feeds DetectionRisk instead.
-        // snap.Known.EnemySightings is already non-neutral only.
-        private static bool CurrentHostileOn(WorldSnapshot snap, HexCoord hex)
-        {
-            var sightings = snap.Known?.EnemySightings;
-            if (sightings == null)
-                return false;
-            foreach (AiMapMemory.KnownEnemySighting s in sightings)
-                if (s.Hex.Equals(hex) && s.SeenTurn >= snap.TurnNumber)
-                    return true;
-            return false;
         }
 
         private static int CeilDiv(int a, int b) => AiV2Util.CeilDiv(a, b);

@@ -625,22 +625,37 @@ namespace Game.Turns
         // time this sweep asks, not whichever one the registry happens to enumerate first.
         private static bool TryFindNextContestedBattle(out HexCoord hex, out List<ArmyData> participants)
         {
+            // Stealth: two armies sharing a hex only fight here if both sides actually show up —
+            // the initiator needs a visible non-hero member (CanInitiateContact, the same rule a
+            // move uses), and a FULLY hidden army (StealthSystem.IsArmyFullyHidden) is never pulled
+            // in, even when its opponent has detected it: it walked in hidden and did nothing, and
+            // the detecting player attacks it only by an explicit attack of their own.
             foreach (HexCoord candidateHex in ArmyRegistry.AllOccupiedHexes())
             {
                 List<ArmyData> armies = ArmyRegistry.AllAt(candidateHex);
-                ArmyData mover = null;
-                foreach (ArmyData candidate in armies)
-                    if (BattleInitiator.IsCombatCapable(candidate)) { mover = candidate; break; }
-                if (mover == null)
-                    continue;
+                foreach (ArmyData mover in armies)
+                {
+                    if (!BattleInitiator.IsCombatCapable(mover) || !BattleInitiator.CanInitiateContact(mover))
+                        continue;
 
-                ArmyData other = BattleInitiator.FindEnemyAt(candidateHex, mover);
-                if (other == null)
-                    continue;
+                    ArmyData other = BattleInitiator.FindEnemyAt(candidateHex, mover);
+                    if (other != null && Game.Map.StealthSystem.IsArmyFullyHidden(other))
+                    {
+                        other = null;
+                        foreach (ArmyData candidate in armies)
+                            if (candidate.Owner != mover.Owner
+                                && BattleInitiator.IsEngageable(candidate, mover.Owner)
+                                && !Game.Map.StealthSystem.IsArmyFullyHidden(candidate)
+                                && (other == null || candidate.Id < other.Id))
+                                other = candidate;
+                    }
+                    if (other == null)
+                        continue;
 
-                hex = candidateHex;
-                participants = new List<ArmyData> { mover, other };
-                return true;
+                    hex = candidateHex;
+                    participants = new List<ArmyData> { mover, other };
+                    return true;
+                }
             }
             hex = default;
             participants = null;

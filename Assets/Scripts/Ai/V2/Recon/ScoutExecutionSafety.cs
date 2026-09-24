@@ -7,37 +7,35 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  SCOUT EXECUTION SAFETY  (Strategy V2 build-order step 6b)
     // ===========================================================================================
-    // The ONE rule for "can a Surveil scout stand on this hex". SurveilVantageSelector applies it
-    // against the snapshot; ProvisioningManager and TaskExecutor apply it against LIVE memory.
-    // Keeping the rule in one place stops the class of bug where the selector says "acceptable
-    // risk, vantage allowed" and the executor says "invalid target" — which strands a scout that
-    // never moves at all.
+    // The ONE Recon rule for "may a scout step onto / stand on this hex" — every per-step Recon
+    // choice (ReconGroundStepPlanner, ReconReactionPolicy) and every live vantage check
+    // (ProvisioningManager, MissionRevalidator) asks this, so a Recon choice can never be one the
+    // execution gate (AiTurnController.MoveArmyRoutine) then rejects — the class of bug that
+    // strands a scout re-picking the same refused hex every turn.
     //
-    // A vantage is BLOCKED when it is CURRENTLY occupied by something a scout cannot / must not
-    // share:
-    //    * a currently-known NON-NEUTRAL force standing on it. A STALE last-known enemy position is
-    //      NOT a block — deliberately closing on one is what Surveil is for; it only raises risk.
-    //    * any known NEUTRAL army on it — a scout never fights.
-    // Buildings are deliberately absent: lawful entry and any capture/destruction consequence
-    // belong to IssueMoveOrder and BuildingRegistry after actual movement, not Recon safety.
+    // A hex is BLOCKED for a scout when:
+    //    * it lies in an active scout-danger cooldown zone (a recently fled-from area), or
+    //    * arriving there would set something off — AiMapMemory.KnownGroundArrival, the single
+    //      AI arrival rule the execution gate itself uses: a known army fights a visible scout,
+    //      a known undefended foreign structure is taken over by it. A FULLY hidden scout sets
+    //      neither off and may share the hex (stealth design). A scout never seeks either.
+    // Hex Events are not blocks: a Transit scout always Skips them and keeps stealth/movement.
+    // `moverFullyHidden` is the mover's own stealth state as it will move (a planned stealth
+    // entry counts: callers pass requiresStealth for a mission that enters stealth first).
     // ===========================================================================================
     public static class ScoutExecutionSafety
     {
-        // LIVE check — ProvisioningManager / TaskExecutor. The requiresStealth argument remains
-        // part of the shared caller contract but does not turn a building into a route blocker.
+        public static bool StepBlocked(PlayerSetupData player, HexCoord hex, bool moverFullyHidden)
+            => AiMapMemory.IsScoutDangerous(player, hex)
+               || AiMapMemory.KnownGroundArrival(player, hex, moverFullyHidden).HasOutcome;
+
+        public static bool StepBlocked(PlayerSetupData player, ArmyData mover, HexCoord hex)
+            => StepBlocked(player, hex, StealthSystem.IsArmyFullyHidden(mover));
+
+        // LIVE vantage check — ProvisioningManager / MissionRevalidator. A Surveil vantage is a
+        // hex the scout must physically reach and stand on, so it is exactly StepBlocked.
         public static bool VantageBlockedNow(PlayerSetupData player, HexCoord hex, int currentTurn,
             bool requiresStealth)
-        {
-            AiMapMemory.KnownEnemySighting? s = AiMapMemory.KnownEnemySightingAt(player, hex);
-            if (s.HasValue)
-            {
-                bool neutral = s.Value.Owner != null && s.Value.Owner.IsNeutral;
-                bool current = s.Value.SeenTurn >= currentTurn || VisionSystem.IsVisible(player, hex);
-                if (neutral || current)
-                    return true;
-            }
-
-            return false;
-        }
+            => StepBlocked(player, hex, requiresStealth);
     }
 }

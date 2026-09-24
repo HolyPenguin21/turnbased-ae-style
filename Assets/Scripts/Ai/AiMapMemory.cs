@@ -1062,6 +1062,48 @@ namespace Game.Ai
             return bonus;
         }
 
+        // THE one AI rule for "what does this ground mover's arrival on `hex` set off, as far as
+        // this player knows" — the knowledge-side mirror of the gameplay arrival rules:
+        //   * a known enemy/neutral army on the hex fights a mover that is visible
+        //     (BattleInitiator.CanInitiateContact on entry, GameTurnController's contested sweep
+        //     for a visible hero), and a FULLY hidden mover walks past it with nothing happening;
+        //   * a known undefended foreign structure is captured/destroyed by a visible mover
+        //     (BuildingRegistry.CaptureOrDestroyIfUndefended), and a fully hidden mover walks past.
+        // "Fully hidden" is the mover's OWN stealth state (StealthSystem.IsArmyFullyHidden — the
+        // same definition the gameplay rules use) — never whether an enemy has detected it: the
+        // owner of a hidden army does not know that (stealth design).
+        // A Hex Event is deliberately not part of this: every AI move resolves its own event choice
+        // by authority (AiTurnController.MoveArmyRoutine → IssueMoveOrder allowAiEventExplore), so
+        // a Transit move always skips and keeps its stealth / movement, exactly like a human Skip.
+        // Every AI "may this mover step onto hex X" check must derive from this — the execution
+        // gate, Recon step/vantage safety, the route blockers and the snapshot's scout block set.
+        public readonly struct GroundArrival
+        {
+            public readonly bool KnownArmy;
+            public readonly bool UndefendedStructure;
+            public readonly bool MoverFullyHidden;
+
+            public GroundArrival(bool knownArmy, bool undefendedStructure, bool moverFullyHidden)
+            {
+                KnownArmy = knownArmy;
+                UndefendedStructure = undefendedStructure;
+                MoverFullyHidden = moverFullyHidden;
+            }
+
+            public bool Contact => KnownArmy && !MoverFullyHidden;
+            public bool Takeover => UndefendedStructure && !MoverFullyHidden;
+            // Arrival sets off a fight or a takeover — something only a Combat/Capture authority
+            // may deliberately seek.
+            public bool HasOutcome => Contact || Takeover;
+        }
+
+        public static GroundArrival KnownGroundArrival(PlayerSetupData actor, HexCoord hex, bool moverFullyHidden)
+            => new GroundArrival(KnownEnemySightingAt(actor, hex).HasValue,
+                KnownUndefendedForeignStructureAt(actor, hex), moverFullyHidden);
+
+        public static GroundArrival KnownGroundArrival(PlayerSetupData actor, ArmyData mover, HexCoord hex)
+            => KnownGroundArrival(actor, hex, StealthSystem.IsArmyFullyHidden(mover));
+
         // FIX-07 (2026-09-22) — is the building on `hex` KNOWN to be foreign and KNOWN to be
         // standing there with nobody to defend it? This is the one knowledge-side mirror of the
         // authoritative gameplay rule (BuildingRegistry.CaptureOrDestroyIfUndefended: a foreign
