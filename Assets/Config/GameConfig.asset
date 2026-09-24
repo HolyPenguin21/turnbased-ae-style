@@ -58,8 +58,8 @@ MonoBehaviour:
   - id: 0
     authoredKey: 
     displayName: Human Extractor
-    art: {fileID: 21300000, guid: 4343a82645393a04390f46f60b5ab801, type: 3}
-    detailArt: {fileID: 21300000, guid: 3d5f5382cd6db30419bbc82c3ce13b5c, type: 3}
+    art: {fileID: 21300000, guid: 81133127c384a1c4c89ba4f5ff5edbcc, type: 3}
+    detailArt: {fileID: 21300000, guid: 9216ef50314fe634894883f4170f0e7a, type: 3}
     faction: 2
     cardType: 2
     apCost: 1
@@ -102,8 +102,8 @@ MonoBehaviour:
   - id: 0
     authoredKey: 
     displayName: Energy Extractor
-    art: {fileID: 21300000, guid: edec1a70df08df347a39ef8e724fc11b, type: 3}
-    detailArt: {fileID: 21300000, guid: 63d77ff72622da94ca2218b0a1809950, type: 3}
+    art: {fileID: 21300000, guid: 0628af61b07c6e74996de9b87cb0e839, type: 3}
+    detailArt: {fileID: 21300000, guid: 2fe6e13a648f9be42a1e1931d927288e, type: 3}
     faction: 2
     cardType: 2
     apCost: 1
@@ -146,8 +146,8 @@ MonoBehaviour:
   - id: 0
     authoredKey: 
     displayName: Materials Extractor
-    art: {fileID: 21300000, guid: ef0427c9400c2e0438f951a3cc56a0a5, type: 3}
-    detailArt: {fileID: 21300000, guid: 43065c17f648ac6428a1cb8bd55ede29, type: 3}
+    art: {fileID: 21300000, guid: 03e7d0b093c05814c9397632b6dee701, type: 3}
+    detailArt: {fileID: 21300000, guid: 24f6910cd29945046b0043af16ef2f9a, type: 3}
     faction: 2
     cardType: 2
     apCost: 1
@@ -190,8 +190,8 @@ MonoBehaviour:
   - id: 0
     authoredKey: 
     displayName: Tech Extractor
-    art: {fileID: 21300000, guid: 741264e82ea0621489800d346d6aabdd, type: 3}
-    detailArt: {fileID: 21300000, guid: 24ff3e10f6409fa4bb24584396940582, type: 3}
+    art: {fileID: 21300000, guid: ee2a9235ce512ad4897d04e2bf36f259, type: 3}
+    detailArt: {fileID: 21300000, guid: 6a244ea68f6d8fd4795ca9a54c84dbd3, type: 3}
     faction: 2
     cardType: 2
     apCost: 2
