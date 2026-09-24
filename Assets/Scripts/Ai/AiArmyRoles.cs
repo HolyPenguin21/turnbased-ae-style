@@ -47,13 +47,28 @@ namespace Game.Ai
             return !army.Members[0].IsAviation && AbilityParams.UnitHasAnyRecce(army.Members[0]);
         }
 
-        public static bool IsGroundCombatBody(UnitData unit) => unit != null
-            && !unit.IsHero && !unit.IsAviation && !AbilityParams.UnitHasAnyRecce(unit);
+        // THE one AI role rule for "a body that fights a ground battle": a ground combatant
+        // (UnitData.IsGroundCombatant — the battle's own rule, heroes excluded) that is not an
+        // aircraft. Every body pool, escort roster, donor pick and "army has a fighting body" check
+        // reads this instead of re-spelling the filter. Win-chance math needs no pre-filter at all:
+        // WorthIt drops non-combatants itself.
+        public static bool IsGroundBattleBody(UnitData unit) =>
+            unit != null && unit.IsGroundCombatant && !unit.IsAviation;
+
+        // Same rule on a WorthIt profile (a remembered enemy or a projected roster): the profile
+        // carries IsGroundCombatant from its source; aircraft by type tag.
+        public static bool IsGroundBattleBody(WorthIt.DefenderProfile profile) =>
+            profile.IsGroundCombatant
+            && (profile.TypeTags == null || !profile.TypeTags.Contains(UnitTypeTag.Aircraft));
+
+        // A ground battle body that is also NOT a dedicated Recce — ATK §12's "combat body" for the
+        // crude tactical-significance scalar. A role/importance choice only, never a win estimate:
+        // a Recce inside an army still fights, and WorthIt counts it.
+        public static bool IsGroundCombatBody(UnitData unit) =>
+            IsGroundBattleBody(unit) && !AbilityParams.UnitHasAnyRecce(unit);
 
         public static bool IsGroundCombatBody(WorthIt.DefenderProfile profile) =>
-            (profile.TypeTags == null || (!profile.TypeTags.Contains(UnitTypeTag.Hero)
-                && !profile.TypeTags.Contains(UnitTypeTag.Aircraft)))
-            && !AbilityParams.AbilitiesHaveAnyRecce(profile.Abilities);
+            IsGroundBattleBody(profile) && !AbilityParams.AbilitiesHaveAnyRecce(profile.Abilities);
 
         // A lone resource-collector carrier — the same "belongs solo" shape as IsSoloRecce, for the
         // same reason (project owner's own 2026-09-21 call: a bigger army costs more AP to move for
@@ -234,8 +249,8 @@ namespace Game.Ai
             if (isCitadel && allowCitadelEmergency)
                 return true;
 
-            int removedNonHero = selected.Count(u => !u.IsHero);
-            int remainingNonHero = source.Members.Count(m => !m.IsHero) - removedNonHero;
+            int removedNonHero = selected.Count(u => u.IsGroundCombatant);
+            int remainingNonHero = source.Members.Count(m => m.IsGroundCombatant) - removedNonHero;
             int floor = isCitadel ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
             return remainingNonHero >= floor;
         }
@@ -257,7 +272,7 @@ namespace Game.Ai
             if (player == null)
                 return false;
             ArmyData garrison = ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(hex));
-            return garrison != null && garrison.Members.Count(m => !m.IsHero) >= AiConfig.secureBaseMinNonHeroUnits;
+            return garrison != null && garrison.Members.Count(m => m.IsGroundCombatant) >= AiConfig.secureBaseMinNonHeroUnits;
         }
 
         // The best hero Economy may pull straight out of `garrison` to travel to a resource site,

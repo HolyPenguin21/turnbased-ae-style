@@ -85,7 +85,7 @@ namespace Game.Ai.V2
                     bool heroCanLeadFullFormation = isHero
                         && !a.IsAirfield && !a.IsAirArmy
                         && !AbilityParams.ArmyHasAnyRecce(a)
-                        && a.Members.All(u => u != null && !u.IsHero && !u.IsAviation);
+                        && a.Members.All(u => AiArmyRoles.IsGroundBattleBody(u));
                     bool ok = AiArmyRoles.IsPlainReserveArmy(a)
                         || heroCanLeadFullFormation
                         || (isUnit && AiArmyRoles.IsHeroLedCombatArmy(a));

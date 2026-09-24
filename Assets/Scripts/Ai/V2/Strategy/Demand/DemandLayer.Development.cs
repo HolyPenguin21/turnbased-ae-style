@@ -589,7 +589,9 @@ namespace Game.Ai.V2
 
             foreach (UnitData unit in members)
             {
-                if (unit == null || unit.IsHero)
+                // A non-combatant recipient's projected profile is built by hand above and would
+                // otherwise default to a combatant — skip it on the domain rule, not a hero check.
+                if (unit == null || !unit.IsGroundCombatant)
                     continue;
                 before.Add(WorthIt.FromLiveUnit(unit));
                 after.Add(object.ReferenceEquals(unit, recipient) ? projected : WorthIt.FromLiveUnit(unit));

@@ -117,7 +117,7 @@ namespace Game.Ai.V2
                 if (!IsFieldContainer(dst) || !dst.CanReceive)
                     continue;
                 List<ReorgUnit> dstUnits = state.Roster[dstId];
-                if (dstUnits.Any(u => u.IsHero) || dstUnits.Count(u => !u.IsHero) < 2
+                if (dstUnits.Any(u => u.IsHero) || dstUnits.Count(u => u.IsGroundCombatant) < 2
                     || !ReorgViability.IsViable(dstUnits))
                     continue;
 
@@ -149,7 +149,7 @@ namespace Game.Ai.V2
                     }
 
                     ReorgUnit weakestBody = state.Roster[dstId]
-                        .Where(u => !u.IsHero && !u.IsCommitted && !u.IsAviation
+                        .Where(u => u.IsGroundBattleBody && !u.IsCommitted
                             && !state.MovedUnitKeys.Contains(u.Key))
                         .OrderBy(u => u.Power).ThenBy(u => u.Key)
                         .FirstOrDefault();

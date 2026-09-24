@@ -59,7 +59,7 @@ namespace Game.Ai.V2
 
                 if (meta.IsGarrison)
                 {
-                    int nonHero = units.Count(u => !u.IsHero);
+                    int nonHero = units.Count(u => u.IsGroundCombatant);
                     garrisonDeficit += Math.Max(0, meta.GarrisonNonHeroFloor - nonHero);
                     if (units.Count == 0 && meta.GarrisonNonHeroFloor > 0)
                         garrisonDeficit++;
@@ -98,7 +98,7 @@ namespace Game.Ai.V2
                     composition += ReorgViability.CompositionQuality(units);
 
                     ReorgUnit commander = units.FirstOrDefault(u => u.IsHero);
-                    if (commander == null && units.Count(u => !u.IsHero) >= 2)
+                    if (commander == null && units.Count(u => u.IsGroundCombatant) >= 2)
                         unledViableFields++;
                     else if (commander != null && commander.HeroRole == HeroOperationalRole.SupportOperator)
                         supportLedWhileCombatBenched++;
@@ -152,8 +152,7 @@ namespace Game.Ai.V2
                         continue;
 
                     var defenders = units
-                        .Where(u => u != null && !u.IsHero
-                            && threat.TargetableUnitKeys.Contains(u.Key))
+                        .Where(u => u != null && threat.TargetableUnitKeys.Contains(u.Key))
                         .Select(u => u.CombatProfile)
                         .ToList();
                     if (defenders.Count == 0)

@@ -477,7 +477,7 @@ namespace Game.Ai.V2
                     continue;
 
                 List<UnitData> picks = donor.Members
-                    .Where(u => u != null && !u.IsHero && !u.IsAviation
+                    .Where(u => AiArmyRoles.IsGroundBattleBody(u)
                         && donor.Members.Count > 1
                         && donor.CanLeaveWithoutOvercrowding(u)
                         && (!host.HasActivatedThisTurn || u.ActivationApCost <= 0))

@@ -115,6 +115,12 @@ namespace Game.Units
         // no-hero default. Meaningless when IsHero is false. Carried over from
         // CardDefinition.commandRating at spawn time, same as MoveMax/ActivationApCost.
         public bool IsHero;
+
+        // THE one rule for "does this unit fight in a ground battle" — heroes never take a turn in
+        // the Tactical Battle Module (BattleTurnOrder) and are never a Ground Combat target. Every
+        // battle participant filter and every win-chance estimate (WorthIt) reads this, so a
+        // planner can never count a hero as a fighting body that the real battle then ignores.
+        public bool IsGroundCombatant => !IsHero;
         public int CommandRating;
 
         // Meaningful only for a hero (same as CommandRating) — spent during a battle challenge

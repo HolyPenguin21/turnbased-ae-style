@@ -72,8 +72,17 @@ namespace Game.Combat
         // must not feed the "which army do I contact" power read (BattleInitiator.FindEnemyAt),
         // or an invisible heavy unit inside a mixed army would still steer the enemy's target
         // pick (project owner's own P1).
-        public static float AttackSum(IEnumerable<UnitData> members) => members?.Where(m => !m.IsHero).Sum(m => m.Attack) ?? 0f;
-        public static float DefenseSum(IEnumerable<UnitData> members) => members?.Where(m => !m.IsHero).Sum(m => m.Defense) ?? 0f;
+        public static float AttackSum(IEnumerable<UnitData> members) => members == null ? 0f : CombatantsOf(members).Sum(m => m.Attack);
+        public static float DefenseSum(IEnumerable<UnitData> members) => members == null ? 0f : CombatantsOf(members).Sum(m => m.Defense);
+
+        // The ONE ground-combatant filter every estimator entry point below applies to BOTH sides
+        // (UnitData.IsGroundCombatant / DefenderProfile.IsGroundCombatant). Callers pass whole
+        // rosters; no caller filters heroes itself, so no caller can disagree with the battle.
+        private static List<UnitData> CombatantsOf(IEnumerable<UnitData> units) =>
+            units == null ? new List<UnitData>() : units.Where(u => u != null && u.IsGroundCombatant).ToList();
+
+        private static List<DefenderProfile> CombatantsOf(IEnumerable<DefenderProfile> profiles) =>
+            profiles == null ? new List<DefenderProfile>() : profiles.Where(p => p.IsGroundCombatant).ToList();
 
         // `defender`'s own non-hero Defense sum PLUS whatever `hex` itself would grant a real
         // defender standing there (terrain + Base-building bonus — see HexDefenseBonus). This is
@@ -313,7 +322,7 @@ namespace Game.Combat
             var list = new List<BattleUnit>();
             if (attacker == null)
                 return list;
-            foreach (UnitData m in attacker.Members.Where(u => !u.IsHero))
+            foreach (UnitData m in CombatantsOf(attacker.Members))
                 list.Add(new BattleUnit
                 {
                     Attack = m.Attack,
@@ -506,7 +515,7 @@ namespace Game.Combat
         public static DefenderProfile FromLiveUnit(UnitData unit) =>
             new DefenderProfile(unit.Defense, unit.HasAbility(UnitAbilities.CeramicArmor), unit.TypeTags.ToList(),
                 unit.Attack, unit.HitPointsCurrent, unit.Initiative, unit.Abilities.ToList(),
-                unit.HitPointsMax);
+                unit.HitPointsMax, unit.IsGroundCombatant);
 
         // Richer Monte Carlo readout added 2026-08-24 (project owner's own P1 plan, "WorthIt не
         // оценивает цену победы") alongside the bare win/lose verdict WinChance always returned —
@@ -546,7 +555,8 @@ namespace Game.Combat
         public static BattleEstimate Estimate(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits,
             float hexDefenseBonus = 0f)
         {
-            if (enemyUnits == null || enemyUnits.Count == 0)
+            enemyUnits = CombatantsOf(enemyUnits);
+            if (enemyUnits.Count == 0)
                 return new BattleEstimate(1f, 1f, 0f);
 
             List<BattleUnit> baseline = ToAttackerBattleUnits(attacker);
@@ -556,7 +566,7 @@ namespace Game.Combat
             // Seeded off the same FromLiveUnit-derived profile the live roster represents — real
             // MaxHp still comes from ToAttackerBattleUnits above (a wounded attacker's true max is
             // not recoverable from DefenderProfile.HitPoints, which only ever carries CURRENT hp).
-            var seedProfiles = attacker.Members.Where(m => !m.IsHero).Select(FromLiveUnit).ToList();
+            var seedProfiles = CombatantsOf(attacker.Members).Select(FromLiveUnit).ToList();
             int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus);
             return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed);
         }
@@ -569,7 +579,9 @@ namespace Game.Combat
         public static BattleEstimate Estimate(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus)
         {
-            if (defenderUnits == null || defenderUnits.Count == 0)
+            attackerUnits = CombatantsOf(attackerUnits);
+            defenderUnits = CombatantsOf(defenderUnits);
+            if (defenderUnits.Count == 0)
                 return new BattleEstimate(1f, 1f, 0f);
 
             List<BattleUnit> baseline = ToBattleUnits(attackerUnits);
@@ -687,11 +699,18 @@ namespace Game.Combat
             public readonly float MaxHitPoints;
             public readonly int Initiative;
             public readonly IReadOnlyList<string> Abilities;
+            // UnitData.IsGroundCombatant carried into the profile (FromLiveUnit), so a profile
+            // roster keeps the one "fights in a ground battle" fact after conversion. Producers that
+            // only ever describe fighting bodies (remembered enemies, cards, projections) leave the
+            // default true. Every WorthIt estimator filters on it — see CombatantsOf.
+            public readonly bool IsGroundCombatant;
 
             public DefenderProfile(float defense, bool hasCeramicArmor, IReadOnlyList<UnitTypeTag> typeTags = null,
                 float attack = 0f, float hitPoints = 0f, int initiative = 0,
-                IReadOnlyList<string> abilities = null, float maxHitPoints = 0f)
+                IReadOnlyList<string> abilities = null, float maxHitPoints = 0f,
+                bool isGroundCombatant = true)
             {
+                IsGroundCombatant = isGroundCombatant;
                 Defense = defense;
                 HasCeramicArmor = hasCeramicArmor;
                 TypeTags = typeTags ?? System.Array.Empty<UnitTypeTag>();
@@ -751,9 +770,11 @@ namespace Game.Combat
         public static bool CanDamageAll(IReadOnlyCollection<DefenderProfile> attackerUnits,
             IReadOnlyCollection<DefenderProfile> defenders, float extraDefense = 0f)
         {
-            if (defenders == null || defenders.Count == 0)
+            defenders = CombatantsOf(defenders);
+            if (defenders.Count == 0)
                 return true;
-            if (attackerUnits == null || attackerUnits.Count == 0)
+            attackerUnits = CombatantsOf(attackerUnits);
+            if (attackerUnits.Count == 0)
                 return false;
             foreach (DefenderProfile defender in defenders)
                 if (!attackerUnits.Any(attacker => CanDamage(attacker, defender, extraDefense)))
@@ -769,16 +790,17 @@ namespace Game.Combat
         // `defenders` (no guard, or a data source that has no per-unit read at all) is vacuously
         // coverable — nothing to fail to cover.
         public static bool CanDamageAll(ArmyData attacker, IReadOnlyCollection<DefenderProfile> defenders, float extraDefense = 0f) =>
-            CanDamageAll(attacker?.Members.Where(m => !m.IsHero), defenders, extraDefense);
+            CanDamageAll(attacker?.Members, defenders, extraDefense);
 
         // Same coverage gate, against a raw unit set instead of a real ArmyData — the shared
         // building block the ArmyData overload above delegates to.
         public static bool CanDamageAll(IEnumerable<UnitData> attackerUnits, IReadOnlyCollection<DefenderProfile> defenders, float extraDefense = 0f)
         {
-            if (defenders == null || defenders.Count == 0)
+            defenders = CombatantsOf(defenders);
+            if (defenders.Count == 0)
                 return true;
-            List<UnitData> ourUnits = attackerUnits?.ToList();
-            if (ourUnits == null || ourUnits.Count == 0)
+            List<UnitData> ourUnits = CombatantsOf(attackerUnits);
+            if (ourUnits.Count == 0)
                 return false;
             foreach (DefenderProfile defender in defenders)
                 if (!ourUnits.Any(u => CanDamage(u.Attack, defender, extraDefense)))

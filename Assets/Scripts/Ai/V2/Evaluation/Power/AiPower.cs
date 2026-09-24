@@ -187,7 +187,8 @@ namespace Game.Ai.V2
                 c.attack,
                 c.hitPoints,
                 c.initiative,
-                c.grantedAbilities);
+                c.grantedAbilities,
+                isGroundCombatant: c.cardType != CardType.Hero);
 
         // Power from a WorthIt.DefenderProfile roster — the only stat line available for a
         // remembered / fog-read enemy (no Range on a profile, so composition uses type coverage

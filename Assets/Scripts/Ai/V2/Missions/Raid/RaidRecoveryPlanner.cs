@@ -290,7 +290,7 @@ namespace Game.Ai.V2
                 return RaidRecoveryProjection.None(currentWin, "recovery base has no safe structural route");
 
             var roster = (primary.RecoveryMembers ?? Array.Empty<RaidRecoveryMemberSnapshot>())
-                .Where(m => !m.IsHero && !m.IsAviation)
+                .Where(m => m.IsGroundBattleBody)
                 .Select(m => new SimMember { Source = m, Profile = m.CurrentProfile })
                 .ToList();
             int initialCombatBodyCount = roster.Count;
@@ -303,7 +303,7 @@ namespace Game.Ai.V2
                     && !a.IsPrison && !a.IsAir && !a.IsAirfield
                     && (unavailableArmyIds == null || !unavailableArmyIds.Contains(a.ArmyId)))
                 .SelectMany(a => (a.RecoveryMembers ?? Array.Empty<RaidRecoveryMemberSnapshot>())
-                    .Where(m => m.CanSpareForRaid && !m.IsHero && !m.IsAviation)
+                    .Where(m => m.CanSpareForRaid && m.IsGroundBattleBody)
                     .Select(m => (Army: a, Member: m)))
                 .OrderBy(x => x.Army.ArmyId).ThenBy(x => x.Member.UnitIndex)
                 .ToList();
@@ -409,7 +409,7 @@ namespace Game.Ai.V2
                 if (support == null) continue;
                 List<WorthIt.DefenderProfile> supportBodies = (support.RecoveryMembers
                         ?? Array.Empty<RaidRecoveryMemberSnapshot>())
-                    .Where(m => m.CanSpareForRaid && !m.IsHero && !m.IsAviation)
+                    .Where(m => m.CanSpareForRaid && m.IsGroundBattleBody)
                     .OrderByDescending(m => m.FullCombatValue)
                     .ThenBy(m => m.UnitIndex)
                     .Select(m => m.CurrentProfile).ToList();
@@ -500,7 +500,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                foreach (SimMember displaced in roster.Where(x => !x.Source.IsHero && !x.Source.IsAviation))
+                foreach (SimMember displaced in roster.Where(x => x.Source.IsGroundBattleBody))
                 {
                     var projected = roster.Select(x => x.Profile).ToList();
                     projected[roster.IndexOf(displaced)] = donor.CurrentProfile;
@@ -568,7 +568,7 @@ namespace Game.Ai.V2
 
         private static List<WorthIt.DefenderProfile> CombatRoster(ArmySnapshot army) =>
             (army?.RecoveryMembers ?? Array.Empty<RaidRecoveryMemberSnapshot>())
-            .Where(m => !m.IsHero && !m.IsAviation).Select(m => m.CurrentProfile).ToList();
+            .Where(m => m.IsGroundBattleBody).Select(m => m.CurrentProfile).ToList();
 
         private static float Win(IReadOnlyList<WorthIt.DefenderProfile> roster,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, out bool cover)

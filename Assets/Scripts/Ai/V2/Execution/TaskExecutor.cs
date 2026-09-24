@@ -1202,7 +1202,7 @@ namespace Game.Ai.V2
             // successful swap here is the AGG-RAID §SupportReturn trigger: the displaced unit only
             // exists in support now, so the whole support army must walk itself home afterward.
             UnitData weakest = primary.Members
-                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .OrderBy(u => u.HitPointsMax > 0 ? (float)u.HitPointsCurrent / u.HitPointsMax : 1f)
                 .ThenBy(u => GroundCombatDonorPolicy.UnitCombatValue(u))
                 .FirstOrDefault();

@@ -1504,7 +1504,7 @@ namespace Game.Ai.V2
                     && a.ArmyId == raid.PrimaryArmyId.Value) : null;
             if (primary == null) return 0f;
             var roster = (primary.RecoveryMembers ?? System.Array.Empty<RaidRecoveryMemberSnapshot>())
-                .Where(m => !m.IsHero && !m.IsAviation).Select(m => m.CurrentProfile).ToList();
+                .Where(m => m.IsGroundBattleBody).Select(m => m.CurrentProfile).ToList();
             GroundCombatFeasibility.Clears(roster, AiV2Util.KnownDefenders(snap, raid.Target),
                 AiConfigV2.raidMinViableWinChance, out float win, out _);
             return win;

@@ -118,7 +118,9 @@ namespace Game.Ai.V2
             int maxMovement = Mathf.Max(1, army.MaxMovement);
             float significanceFloor = SignificanceFloor(ownRaw);
 
-            List<WorthIt.DefenderProfile> attackers = BuildAttackerProfiles(ownBodies);
+            // §13 — safety is the shared estimator over the army that will actually fight: its whole
+            // roster (WorthIt keeps only ground combatants itself), never the §12 significance subset.
+            List<WorthIt.DefenderProfile> attackers = BuildAttackerProfiles(army.Members);
             AttackTacticalStrike best = AttackTacticalStrike.None;
 
             foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings
@@ -305,11 +307,12 @@ namespace Game.Ai.V2
 
         // ---- internals -------------------------------------------------------------------------
 
-        private static List<WorthIt.DefenderProfile> BuildAttackerProfiles(List<UnitData> bodies)
+        private static List<WorthIt.DefenderProfile> BuildAttackerProfiles(IReadOnlyList<UnitData> bodies)
         {
             var profiles = new List<WorthIt.DefenderProfile>(bodies.Count);
             for (int i = 0; i < bodies.Count; i++)
-                profiles.Add(WorthIt.FromLiveUnit(bodies[i]));
+                if (bodies[i] != null)
+                    profiles.Add(WorthIt.FromLiveUnit(bodies[i]));
             return profiles;
         }
 

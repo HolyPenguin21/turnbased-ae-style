@@ -153,6 +153,8 @@ namespace Game.Ai.V2
                 {
                     Key = key,
                     IsHero = u.IsHero,
+                    IsGroundCombatant = u.IsGroundCombatant,
+                    IsGroundBattleBody = AiArmyRoles.IsGroundBattleBody(u),
                     CommandRating = u.CommandRating,
                     HeroCombatLeadership = u.IsHero ? HeroRoleEvaluator.CombatLeadershipScore(u) : 0f,
                     HeroRole = u.IsHero ? HeroRoleEvaluator.Classify(u) : HeroOperationalRole.Flexible,
@@ -260,7 +262,7 @@ namespace Game.Ai.V2
             // planner's virtual roster keeps them. Visibility is evaluated once here, off the live
             // roster, and travels with the Key through every later virtual transfer/swap.
             List<ReorgUnit> nonHeroFriendlies = containers.SelectMany(c => c.Units)
-                .Where(u => u != null && !u.IsHero).ToList();
+                .Where(u => u != null && u.IsGroundCombatant).ToList();
 
             foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
             {

@@ -183,7 +183,7 @@ namespace Game.Ai.V2
                     }
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
-                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation)
+                        && p.Deploy.Army.Members.Any(u => AiArmyRoles.IsGroundBattleBody(u))
                             ? DeliveryAssessment.Ok
                             : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 case CapabilityKind.FieldCombatPower:
@@ -219,7 +219,7 @@ namespace Game.Ai.V2
                         return DeliveryAssessment.Ok;
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
-                        && p.Deploy.Army.Members.Any(u => u != null && !u.IsHero && !u.IsAviation)
+                        && p.Deploy.Army.Members.Any(u => AiArmyRoles.IsGroundBattleBody(u))
                             ? DeliveryAssessment.Ok
                             : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 }

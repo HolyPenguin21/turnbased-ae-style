@@ -210,7 +210,7 @@ namespace Game.Ai.V2
                 return unload;
 
             List<UnitData> bodies = builder.Members
-                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .OrderByDescending(u => AiPower.ToPowerUnit(u).BasePower)
                 .ThenBy(u => u.Name).ToList();
             HexPath escortRoute = SafeStepPathing.FindSafePath(
@@ -242,7 +242,7 @@ namespace Game.Ai.V2
             // The field roster is deficient. At a Base/Citadel add only the smallest garrison
             // subset that makes the whole hero-led formation safe; do not add surplus beyond it.
             List<UnitData> reserve = garrison.Members
-                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .OrderBy(u => u.ActivationApCost)
                 .ThenByDescending(u => AiPower.ToPowerUnit(u).BasePower)
                 .ThenBy(u => u.Name).ToList();

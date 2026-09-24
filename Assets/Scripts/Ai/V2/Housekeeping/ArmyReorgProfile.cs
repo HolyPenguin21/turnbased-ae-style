@@ -34,6 +34,12 @@ namespace Game.Ai.V2
     {
         public int Key;
         public bool IsHero;
+        // The two canonical body rules, frozen from the live unit at Analyzer time:
+        // UnitData.IsGroundCombatant (fights a ground battle) and AiArmyRoles.IsGroundBattleBody
+        // (a transferable ground fighting body — combatant and not an aircraft). Body counts and
+        // body pools read these; IsHero stays for commander / capacity identity only.
+        public bool IsGroundCombatant;
+        public bool IsGroundBattleBody;
         public int CommandRating;
         // §8 — canonical hero operational-role signals, 0 / Flexible for non-heroes.
         public float HeroCombatLeadership;
@@ -182,7 +188,7 @@ namespace Game.Ai.V2
         }
 
         public static bool IsSingletonShape(IReadOnlyList<ReorgUnit> units) =>
-            units != null && units.Count == 1 && !units[0].IsHero;
+            units != null && units.Count == 1 && units[0].IsGroundCombatant;
 
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsMutableGround && IsSingletonShape(c.Units);
