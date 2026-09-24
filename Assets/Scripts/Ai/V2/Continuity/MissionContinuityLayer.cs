@@ -158,7 +158,7 @@ namespace Game.Ai.V2
                     builderArmyId, objective.BuildCard))
                 return null;
 
-            // P0-3 (AI V2 economy audit 2026-09-21) + 2026-09-21 Block A — this is the ONE place
+            // This is the ONE place
             // Economy ownership is granted, so it is the one place that resolves ownership
             // CONFLICTS. Once the reentry case above has returned, a pre-existing Economy intent is
             // superseded only when it actually collides with the new grant:
@@ -168,11 +168,7 @@ namespace Game.Ai.V2
             //   · same objective identity (IntentKey) — a takeover of this exact objective;
             //   · same physical build card — one card cannot fund two sites at once.
             // Any OTHER active Economy intent — a different target run by a different actor with a
-            // different card — is an independent delivery and survives this handoff untouched. The
-            // original predicate here was the logical INVERSE of this test
-            // (`!i.IntentKey.Equals(...) || i.PreferredMoverArmyId != ...`), so it was true for
-            // almost every unrelated intent and creating any one new delivery silently deleted
-            // every other one in flight.
+            // different card — is an independent delivery and survives this handoff untouched.
             bool ConflictsWithGrant(MissionIntent i)
             {
                 if (i == null || i.Kind != MissionKind.Economy) return false;
@@ -186,7 +182,7 @@ namespace Game.Ai.V2
                 if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
                     && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
                     ResumeEconomyLender(staleLender);
-                // P0-3 follow-up — a takeover/redirect conflict releases the DISPLACED intent's own
+                // A takeover/redirect conflict releases the DISPLACED intent's own
                 // reservation the same way its normal retirement path does (see Continuity's retire
                 // branch in ReconcileAfterTurn), so a forced handoff cannot leave this turn's H/E/M/T
                 // hold reserved for an owner key nothing will ever complete or release again.
@@ -268,7 +264,7 @@ namespace Game.Ai.V2
             if (player == null || snap == null || completedDemand?.TargetHex == null)
                 return;
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
-            // 2026-09-21 Block A — with several builds legally active at once, "the first Economy
+            // With several builds legally active at once, "the first Economy
             // intent holding this actor" must resolve to the CONCRETE mission that just completed.
             // Prefer the intent whose own target matches the completed demand; only then fall back
             // to the actor match, and make that fallback deterministic instead of dictionary-order.
@@ -368,7 +364,7 @@ namespace Game.Ai.V2
             }
         }
 
-        // AGG-RAID §5 — `aggressionObjectives` is the freshly sorted, neutral-only objective list,
+        // `aggressionObjectives` is the freshly sorted, neutral-only objective list,
         // handed in exactly the way `reconObjectives` already is. It is what lets a durable Raid
         // role be RE-ORIENTED onto the next neutral once its current target is confirmed gone,
         // mirroring the Scout re-focus pattern instead of retiring and re-creating the operation.
@@ -388,12 +384,12 @@ namespace Game.Ai.V2
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
             var rekeys = new List<(MissionIntentKey Old, MissionIntent Intent)>();
-            // 2026-09-21 Block A — there is deliberately NO global "primary" build selection here
-            // any more. ResolveActive validates each build intent on its OWN facts (objective
-            // completed / target still legal / actor still alive / route still usable). Progress on
-            // one site is not evidence that another site's obligation became illegal; real ownership
-            // conflicts (same actor, same objective identity, same physical card) are resolved where
-            // ownership is actually granted — BeginEconomyDelivery — not by retiring bystanders here.
+            // There is deliberately NO global "primary" build selection here. ResolveActive
+            // validates each build intent on its OWN facts (objective completed / target still
+            // legal / actor still alive / route still usable). Progress on one site is not evidence
+            // that another site's obligation became illegal; real ownership conflicts (same actor,
+            // same objective identity, same physical card) are resolved where ownership is actually
+            // granted — BeginEconomyDelivery — not by retiring bystanders here.
             var liveLoanSources = new HashSet<MissionIntentKey>(state.All
                 .Where(i => i?.Kind == MissionKind.Economy && i.Economy?.Loaned == true)
                 .Select(i => i.Economy.LoanSource));
@@ -406,7 +402,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
             }
 
-            // 2026-09-21 Block C5 — the same orphan repair for the Raid an ActiveDefence borrowed.
+            // The same orphan repair for the Raid an ActiveDefence borrowed.
             // Every ordinary ActiveDefence exit resumes its lender explicitly, but if the defending
             // intent is gone without one of those exits having run (retired on another path, or its
             // record dropped), the Raid would stay ActiveDefencePreemption-suspended forever while
@@ -438,7 +434,7 @@ namespace Game.Ai.V2
                 if (i.Scout != null && i.Scout.Kind != ScoutTargetKind.Surveil)
                     scoutFoci.Add(i.Scout.FocusHex);
 
-            // AGG-RAID §5 — neutral targets already owned by a durable Raid, so a re-orientation
+            // Neutral targets already owned by a durable Raid, so a re-orientation
             // never lands two Raid operations on the same neutral target (either kind).
             HashSet<int> raidClaims = ActorCommitments.FromIntents(state.All, snap,
                 reconObjectives).ClaimedArmyIdSet;
@@ -1317,7 +1313,7 @@ namespace Game.Ai.V2
         }
 
         // =====================================================================================
-        //  AGG-RAID §5 / §11 — the Raid phase machine and its actor/base helpers.
+        //  The Raid phase machine and its actor/base helpers.
         // =====================================================================================
 
         // Is the durable primary still the kind of army Raid provisioning would accept? Uses the
@@ -1372,9 +1368,8 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} phase Reinforcement -> Assault "
                         + "reason=primary_clears_current_target_again");
                 }
-                // AGG-RAID P1#1 — the symmetric direction. This used to be a side effect of
-                // AggressionDemandEvaluator.Build (now a pure snapshot read); Continuity is the sole
-                // owner of durable Phase, so a bound primary that no longer clears its CURRENT
+                // The symmetric direction. AggressionDemandEvaluator.Build is a pure snapshot read;
+                // Continuity is the sole owner of durable Phase, so a bound primary that no longer clears its CURRENT
                 // (possibly already re-oriented) target is moved to Reinforcement here, before
                 // Demand/Missions run this same pass.
                 else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId.HasValue
@@ -1514,7 +1509,7 @@ namespace Game.Ai.V2
             kind == RaidRefitActionKind.RepairUnit ? "REPAIR"
             : kind == RaidRefitActionKind.TransferUnit ? "TRANSFER" : "SWAP";
 
-        // AGG-RAID §9/§10 — Execution has finished the atomic rendezvous handoff. Continuity (the
+        // Execution has finished the atomic rendezvous handoff. Continuity (the
         // sole owner of intent state) releases the support claim and returns the operation to
         // Assault ONLY when the post-transfer roster actually re-cleared the shared estimator.
         internal static void CompleteRaidReinforcement(PlayerSetupData player, int primaryArmyId,
@@ -1535,7 +1530,7 @@ namespace Game.Ai.V2
                 + $"phase={ri.Phase} verified={(rosterVerified ? 1 : 0)} {detail}");
         }
 
-        // AGG-RAID §SupportReturn — a full/full swap displaced a primary member into support;
+        // A full/full swap displaced a primary member into support;
         // Execution has finished the swap and now hands the support army a Return leg home while
         // the primary stays put on the target. Called once, from the same execution step that ran
         // ArmyActions.SwapMembers.
@@ -1572,7 +1567,7 @@ namespace Game.Ai.V2
                 + $"primary #{primaryArmyId} holds target {ri.Target.DiagnosticLabel} {detail}");
         }
 
-        // AGG-RAID §SupportReturn — the return leg ended (arrival or actor loss). Release its claim,
+        // The return leg ended (arrival or actor loss). Release its claim,
         // clear the leg, and re-evaluate the primary against the current target exactly like any
         // other reinforcement-completion edge.
         internal static void CompleteRaidSupportReturn(PlayerSetupData player, WorldSnapshot snap,
@@ -1608,10 +1603,9 @@ namespace Game.Ai.V2
         }
 
         // The primary reached its recovery base. This operation is OVER the moment it retreats —
-        // never a commitment to refit and march back out at the same target (project owner's own
-        // 2026-09-21 call: repairing a unit and then spending AP to walk it back into the very
-        // raid it just retreated from is a mistake; a healed unit belongs to the standing force,
-        // not to a specific past operation). Repair itself is no longer this module's concern —
+        // never a commitment to refit and march back out at the same target: a healed unit belongs
+        // to the standing force, not to a specific past operation. Repair is not this module's
+        // concern —
         // StrategicMaintenancePolicy's own repair candidate (a parallel, independent Phase-B
         // maintenance action) picks up any wounded member of this now-ordinary army on its own,
         // whether or not it was ever part of a raid. A fresh RaidIntent decides independently,
@@ -1644,7 +1638,7 @@ namespace Game.Ai.V2
             return plan.Feasible;
         }
 
-        // §11 / AGG-RAID P1#3 — is the fixed return base still ours AND still structurally
+        // §11 — is the fixed return base still ours AND still structurally
         // reachable? "Structurally" is the key word: this reads the GENUINE, any-number-of-turns
         // route-existence fact WorldAnalysis froze onto the mover's ArmySnapshot
         // (SafeStepPathing.FindSafePath — the same oracle Provisioning uses live), never "reachable
@@ -1715,8 +1709,8 @@ namespace Game.Ai.V2
                 : null;
             int moveBudget = System.Math.Max(1, mover?.MaxMovement ?? AiConfigV2.etaFallbackMoveBudget);
 
-            // AGG-RAID P1#3 — a structurally reachable base always outranks an unreachable one,
-            // ahead of every other tie-break. Falls back to the old distance-only ordering among
+            // A structurally reachable base always outranks an unreachable one, ahead of every
+            // other tie-break. Falls back to distance-only ordering among
             // bases with the SAME reachability, and — if genuinely none are reachable right now —
             // still returns the best-by-distance candidate rather than stranding the operation on a
             // signal that may only be a transient blockade.
@@ -2247,7 +2241,7 @@ namespace Game.Ai.V2
             if (o.MoverArmyId.HasValue)
             {
                 ReleaseOtherReconActorClaims(state, intent, o.MoverArmyId.Value);
-                // AGG-RAID §5 (critical) — for a Raid the executor of a given turn may be the
+                // For a Raid the executor of a given turn may be the
                 // SUPPORT army (Reinforcement transit / handoff), not the primary. Generic code
                 // must never let that support id overwrite PrimaryArmyId and silently orphan the
                 // real raiding force. Only a mover that IS (or is taking over as) the primary may
@@ -2397,12 +2391,11 @@ namespace Game.Ai.V2
                     return;
                 }
 
-                // R3 (2026-09-17) — the same "no upper bound" gap existed for BuildExtraction: it is
-                // exempt from StallTurns/ShouldReap for the identical reason (capabilityUnavailable,
-                // above), but nothing ever counted its consecutive NoMoverExists/MoverContended
-                // turns, so a durable extraction intent whose pinned mover can no longer advance
-                // (e.g. its safe route stays blocked every turn) could be suspended forever: never
-                // reaped, never released, its actor and card claim held for the rest of the game.
+                // BuildExtraction needs the same upper bound: it is exempt from StallTurns/ShouldReap
+                // for the identical reason (capabilityUnavailable, above), so its consecutive
+                // NoMoverExists/MoverContended turns are counted here — otherwise an intent whose
+                // pinned mover can no longer advance (e.g. its safe route stays blocked every turn)
+                // would stay suspended forever with its actor and card claim held.
                 // Extraction has no single staged slot like Base (several sites can be active at
                 // once), so the counter is keyed per (resource, site) in MissionIntentState — same
                 // owner, same StartPersistentCooldown exit already used by every other retirement

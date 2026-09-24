@@ -121,10 +121,10 @@ namespace Game.Ai.V2
                 if (target.Phase == ActiveDefencePhase.Return)
                     return target.ReturnHex.HasValue && mover.Hex.Equals(target.ReturnHex.Value)
                         ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
-                // FIX-01 — knowledge of an enemy army is AiMapMemory's, never a global
-                // ArmyRegistry sweep: this used to end an intercept because the army had really
-                // vanished from the world, not because WE had learned anything, while the
-                // provisioner for the very same mission still read honest sightings.
+                // Knowledge of an enemy army is AiMapMemory's, never a global ArmyRegistry sweep:
+                // an intercept ends because WE learned something, not because the army vanished
+                // from the world, and the provisioner for the same mission reads the same
+                // sightings.
                 return ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(
                         player, target.EnemyArmyId)
                     ? MissionValidity.StaleGoalMet : MissionValidity.Valid;

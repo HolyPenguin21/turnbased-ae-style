@@ -26,7 +26,7 @@ namespace Game.Ai.V2
         public int Rounds;
     }
 
-    // AI-MGR-02 §7 (round 5) — a BOUNDED REACTION BUDGET backed by a REAL feasibility probe. The
+    // §7 — a BOUNDED REACTION BUDGET backed by a REAL feasibility probe. The
     // bounded reaction round re-runs the whole Demand→Mission→Provision→Execute pipeline and picks
     // its own action, so the budget stays GENERIC (not bound to one exact actor/card). But it is
     // only created when the SAME gates the real pipeline uses prove at least one feasible reaction
@@ -61,7 +61,7 @@ namespace Game.Ai.V2
             new StrategicReactionOpportunity(false, null, null, 0f, null, default, null, failReason);
     }
 
-    // Round 6/round 7 (P0.1/P0.2) — ONE feasible reaction the real pipeline would actually admit
+    // ONE feasible reaction the real pipeline would actually admit
     // at the current state. BuildReactionOpportunity collects EVERY witness from EVERY enabled
     // source (discovery-direct responder, discovery-materialization, hand follow-up) — never a
     // fixed `targetDriven ? A : B` branch — and reserves a bounded budget for the single cheapest
@@ -92,7 +92,7 @@ namespace Game.Ai.V2
         public readonly string Kind;             // "RespondToDiscovery" | "MaterializeForDiscovery" | "HandFollowup"
         public readonly string ActionKey;        // stable deterministic tie-break key
         public readonly ReactionStateBasis StateBasis;   // §26 — the world/version this was proved against
-        // round 10 (P0.1) — the ONE full AP the protected reaction actually needs, downstream/move
+        // The ONE full AP the protected reaction actually needs, downstream/move
         // envelope INCLUDED (direct: activation + responder-move; materialization: prep + downstream;
         // hand: play AP + follow-up floor). Arbitration ranks and gates on this exact number and
         // NEVER reserves a budget below it (a clamped-below reservation does not protect the action).
@@ -131,7 +131,7 @@ namespace Game.Ai.V2
     // solve the materialization closure or run the round itself.
     internal static class StrategicReactionPass
     {
-        // AI-MGR-02 §7 — CAN the pass run with a resolvable world context.
+        // §7 — CAN the pass run with a resolvable world context.
         internal static bool CanStrategicReactionPassRun(PlayerSetupData player, AiTurnContext ctx)
         {
             if (player == null || ctx == null || ctx.Map == null)
@@ -139,7 +139,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // AI-MGR-02 §7 (round 5) — reserve a bounded reaction budget ONLY when a real feasibility
+        // §7 — reserve a bounded reaction budget ONLY when a real feasibility
         // probe proves at least one genuinely feasible reaction exists, and only for an AP budget
         // >= its minimum feasible AP, plus its persistent-resource envelope. `snap` is the world
         // the probe runs against (the same one the caller will arbitrate / replan with).
@@ -172,8 +172,8 @@ namespace Game.Ai.V2
             var basis = new ReactionStateBasis(snap.TurnNumber,
                 StrategicInterruptRegistry.Version(player, ctx.TurnNumber), apAvailable);
 
-            // round 6 architectural-debt fix — the canonical normalized commitment source, not a
-            // hand-rolled PreferredMoverArmyId scrape.
+            // The canonical normalized commitment source, not a hand-rolled PreferredMoverArmyId
+            // scrape.
             ActorCommitments commitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snap, ReconObjectiveEvaluator.Enumerate(snap));
 
@@ -223,7 +223,7 @@ namespace Game.Ai.V2
                 result ?? new StrategicReactionResult(), 0,
                 carriedReservation ?? new MaterializationReservation());
 
-            // AI-MGR-02 §4 — the pass has had its bounded round(s); any AP Phase B reserved for it
+            // §4 — the pass has had its bounded round(s); any AP Phase B reserved for it
             // is now free (its own inner Phase B call already spent whatever it wanted).
             if (player != null && ctx != null)
                 StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,

@@ -29,7 +29,7 @@ namespace Game.Ai.V2
     // StrategicReactionPass.ProjectMaterializationClosure.
     internal static class ReactionMaterializationSolver
     {
-        // P1 (round 10) — candidate-WIDTH DoS valve; at realistic hand sizes it never truncates.
+        // Candidate-WIDTH DoS valve; at realistic hand sizes it never truncates.
         private const int reactionMatPoolCap = 24;
 
         internal static MaterializationClosure ProjectMaterializationClosure(PlayerSetupData player,
@@ -80,14 +80,14 @@ namespace Game.Ai.V2
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
 
-            // P0.2 (round 10) — the shortage (NumericPowerDeficit) is measured in the CANONICAL
+            // The shortage (NumericPowerDeficit) is measured in the CANONICAL
             // own-force metric: ArmySnapshot.EffectiveArmyPower == AiPower.EffectiveArmyPower over
             // AiPower.PowerUnit (Attack/Defense/HP/Init/Resistance/Fate/Range/IsHero + full ability
             // multiplier + composition). The contribution MUST be a delta of that SAME metric —
             // NOT WorthIt.DefenderProfile, which is a lossy enemy/fog line (no Resistance/Fate,
             // Range forced to 1, IsHero=false, reduced abilities).
             //
-            // P0.3 (round 10) — per target army also carry the projected physical CAPACITY (canonical
+            // Per target army also carry the projected physical CAPACITY (canonical
             // ArmyData.Capacity baseline + hero occupancy). Two individually-legal cards into the
             // SAME army with one free slot must not BOTH be accepted — execution would preflight-fail
             // the second. Conservative: one hero per army; a hero raises capacity by +1 (an under-

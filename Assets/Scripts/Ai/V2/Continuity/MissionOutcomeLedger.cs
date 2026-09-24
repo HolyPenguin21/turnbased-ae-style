@@ -177,7 +177,7 @@ namespace Game.Ai.V2
                 bool satisfied;
                 if (pm.Kind == MissionKind.Raid)
                 {
-                    // AGG-RAID §9/§10 — only the ASSAULT leg's objective is the target army. A
+                    // Only the ASSAULT leg's objective is the target army. A
                     // Reinforcement convoy or a Return march must never be reported as "objective
                     // already met" just because the (by definition already dead) previous target no
                     // longer exists — that would retire the whole operation mid-leg.
@@ -207,7 +207,7 @@ namespace Game.Ai.V2
                     }
                     else
                     {
-                        // FIX-01 — same fog-of-war seam as MissionRevalidator: the post-execution
+                        // Same fog-of-war seam as MissionRevalidator: the post-execution
                         // pass may not learn from a global ArmyRegistry sweep what observation
                         // never told this player. One owner for the question, one answer.
                         satisfied = ActiveDefenceObjectiveEvaluator.IsObjectiveSatisfiedLive(
@@ -309,7 +309,7 @@ namespace Game.Ai.V2
                     o.StepsMoved = e.StepsMoved;
                     o.ApSpent = e.ApSpent;
                     o.FinalHex = e.FinalHex;
-                    // RECON-AIR-06 — an AirLaunch mission was bound at Assignment time to a
+                    // An AirLaunch mission was bound at Assignment time to a
                     // synthetic per-airfield actor id (no ArmyData existed yet); once execution
                     // actually launched the aircraft, ActualActorArmyId carries the REAL ArmyId, and
                     // that is what MissionContinuity must track from now on, not the synthetic key.

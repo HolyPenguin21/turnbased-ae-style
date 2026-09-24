@@ -185,7 +185,7 @@ namespace Game.Ai.V2
         public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
         public HexCoord? TargetHex => Target.Kind == RaidTargetKind.EventGuard ? Target.Hex : (HexCoord?)null;
 
-        // AGG-RAID §4/§5 — the execution phase of this one Raid operation (Assault ->
+        // The execution phase of this one Raid operation (Assault ->
         // Reinforcement -> SupportReturn -> Assault -> ... -> Return). NOT an objective type.
         // ReinforcementRequestedTurn belongs to one reinforcement cycle, not to the durable Raid.
         // Any phase transition invalidates that age. A repeated Reinforcement assignment keeps it

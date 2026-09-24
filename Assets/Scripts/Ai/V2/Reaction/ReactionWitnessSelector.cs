@@ -19,9 +19,9 @@ namespace Game.Ai.V2
         internal static StrategicReactionOpportunity Select(IReadOnlyList<ReactionWitness> witnesses,
             float ceiling, PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
         {
-            // round 10 (P0.1) — rank and gate on the witness's FULL RequiredAp (downstream/move
+            // Rank and gate on the witness's FULL RequiredAp (downstream/move
             // envelope already folded in). A witness whose RequiredAp exceeds the ceiling is dropped
-            // outright — never clamped down and then treated as "protected". P1 — the envelope-
+            // outright — never clamped down and then treated as "protected". The envelope-
             // spendable check excludes THIS witness's own prospective reservation OWNER (not merely
             // its shared Reason), so the §6 re-probe of an already-placed budget does not fail
             // against itself and two distinct reaction owners cannot shadow each other.

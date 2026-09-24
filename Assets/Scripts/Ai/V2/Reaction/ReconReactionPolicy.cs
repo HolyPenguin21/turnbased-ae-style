@@ -296,12 +296,9 @@ namespace Game.Ai.V2
             return Mathf.Clamp01(detectors / Math.Max(1f, AiConfigV2.scoutDetectionRiskNorm));
         }
 
-        // FIX-05 — this was the original (and, until now, only) fog-honest variant of
-        // WorthIt.HexDefenseBonus, and its own comment named the missing piece: "Conservative
-        // strategic building treatment can be added later by storing the observed defense in
-        // KnownBuilding itself." AiMapMemory now does exactly that and owns this question for the
-        // whole AI, so this is the same rule with the fogged case no longer discarded — a
-        // remembered Base's last-observed Defense is used instead of silently dropping to terrain.
+        // Fog-honest variant of WorthIt.HexDefenseBonus. AiMapMemory stores the observed defense
+        // in KnownBuilding and owns this question for the whole AI, so a remembered Base's
+        // last-observed Defense is used for a fogged hex instead of dropping to terrain.
         private static float HonestHexDefenseBonus(PlayerSetupData player, HexMap map, HexCoord hex) =>
             AiMapMemory.KnownHexDefenseBonus(player, map, hex);
 

@@ -15,12 +15,12 @@ namespace Game.Ai.V2
     // from the former StrategicReactionPass.
     internal static class ReactionOpportunityProbe
     {
-        // round 9 (P0.1) — a DIRECT-responder reaction witness is built ONLY from a discovered target
+        // A DIRECT-responder reaction witness is built ONLY from a discovered target
         // whose canonical RaidOperationalReadiness is ReadyExecutable right now (no GatePassed
         // filter — GatePassed is a frozen strategic projection, not the live admission gate). The AP
         // envelope is the ready GroundCombatAssemblyPlan's own actor (ReadyPlan.BaseArmyId), NOT the cheapest
         // arbitrary pathable army — the cheapest pathable army may not be the one that clears
-        // GroundCombatAssemblyPlanner, which under-reserved the budget.
+        // GroundCombatAssemblyPlanner and would under-reserve the budget.
         internal static List<ReactionWitness> ProbeTargetDriven(PlayerSetupData player, AiTurnContext ctx,
             AggressionDemandEvaluation eval, ReactionStateBasis basis)
         {
@@ -55,9 +55,9 @@ namespace Game.Ai.V2
         // A discovered target that has a canonical Hero / FieldCombatPower shortage (from the shared
         // AggressionDemandEvaluator — SAME primitive DemandLayer.AggressionDemands uses, no mirrored
         // admission rules) is a real reaction ONLY if ProjectMaterializationClosure proves a BOUNDED
-        // combination of legal materialization actions FULLY closes that shortage (round 8/9 P0),
-        // never counting one physical card twice (round 9 P0.2) and measuring contribution as the
-        // projected RaidAvailableFieldPower delta, not raw Σ BasePower (round 9 P0.3).
+        // combination of legal materialization actions FULLY closes that shortage, never counting
+        // one physical card twice and measuring contribution as the projected
+        // RaidAvailableFieldPower delta, not raw Σ BasePower.
         internal static List<ReactionWitness> ProbeMaterializationForDiscovery(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
             ActorCommitments commitments, AggressionDemandEvaluation eval, ReactionStateBasis basis)
@@ -96,7 +96,7 @@ namespace Game.Ai.V2
             return witnesses;
         }
 
-        // §3/§P1 (round 6) — a hand follow-up is feasible only if SOME legal play (from the full
+        // §3 — a hand follow-up is feasible only if SOME legal play (from the full
         // preflighted enumeration, not just the best-scored one) fits the reaction AP ceiling AND
         // its persistent envelope is spendable. FitsSpendableResources excludes the HandFollowup
         // reservation owner so a re-probe after the envelope is placed doesn't fail against itself.

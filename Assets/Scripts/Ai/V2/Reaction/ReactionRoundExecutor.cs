@@ -96,7 +96,7 @@ namespace Game.Ai.V2
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(
                 player, snapshot, reconObjectives, aggressionObjectives);
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
-            // RECON-AIR-02 (round 5) — no separate prepass any more: DemandLayer measures air
+            // No separate prepass: DemandLayer measures air
             // capacity itself (ReconAssignmentPlanner.MeasureAirCapacity), recomputed fresh against
             // the now-current AP / Energy / movement every call — the reaction round gets a live
             // re-evaluation for free, with no stale registry to reset.
@@ -252,7 +252,7 @@ namespace Game.Ai.V2
             // ProvisionedMissions; it no longer selects independently.
             AirReconPlan reactionAirPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
             var reactionAirResult = new AirReconExecutionResult();
-            // RECON-AIR-06 — same per-mission ExecutionResult collection as the main pipeline.
+            // Same per-mission ExecutionResult collection as the main pipeline.
             var reactionAirPerMissionResults = new List<ExecutionResult>();
             yield return ReconAirExecutor.Execute(reactionAirPlan, player, root, ctx, snapshot, reactionAirResult, reactionAirPerMissionResults);
             if (reactionAirResult.Mutated)
@@ -278,7 +278,7 @@ namespace Game.Ai.V2
             snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
-            // AI-MGR-02 §7/§P0 — the reaction round is NOW executing its own spend. The AP that
+            // §7 — the reaction round is NOW executing its own spend. The AP that
             // Phase B reserved as a placeholder for "the reaction will need AP" must be released
             // BEFORE this inner tempo arbitration, or the reaction cannot use the very AP it held
             // back (and it would look stranded until end of turn).

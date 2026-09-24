@@ -140,7 +140,7 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // R3 (2026-09-17) — same bounded-suppression pattern as Base above, generalized to a key
+        // Same bounded-suppression pattern as Base above, generalized to a key
         // per (resource type, site) because BuildExtraction has no single staged slot: several
         // extraction intents can be durable and suspended at once, unlike Base's one project. Wired
         // from MissionContinuityLayer.AdvanceIntent's capabilityUnavailable branch — the sole call
