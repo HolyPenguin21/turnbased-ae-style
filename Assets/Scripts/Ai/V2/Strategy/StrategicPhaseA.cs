@@ -28,14 +28,7 @@ namespace Game.Ai.V2
         public int InfrastructureBuilt;
         public int CapabilityDeliveries;   // operational capability actually delivered to a demand
 
-        public readonly Dictionary<DesireAxis, float> ApDebited = new Dictionary<DesireAxis, float>();
         public MaterializationReservation Reservation;
-
-        public void AddDebit(DesireAxis a, float ap)
-        {
-            ApDebited.TryGetValue(a, out float cur);
-            ApDebited[a] = cur + ap;
-        }
 
         // Multiple bounded local admissions in one turn report through one phase aggregate.
         // The shared ledgers/budgets remain the authorities; this only combines telemetry and
@@ -55,8 +48,6 @@ namespace Game.Ai.V2
             InfrastructureAttempts += other.InfrastructureAttempts;
             InfrastructureBuilt += other.InfrastructureBuilt;
             CapabilityDeliveries += other.CapabilityDeliveries;
-            foreach (KeyValuePair<DesireAxis, float> debit in other.ApDebited)
-                AddDebit(debit.Key, debit.Value);
             if (other.Reservation != null)
                 Reservation = other.Reservation;
         }
@@ -402,13 +393,10 @@ namespace Game.Ai.V2
                         // ledger records an already-permitted action, never grants overdraft.
                         // §2.3 — measure the REAL ledger balance drop around Debit so the check
                         // compares three independently sourced facts (physical / reported / ledger).
-                        float infraLedgerBefore = ledger.Balance(istate.Demand.RequestingAxis);
+                        float infraLedgerBefore = ledger.Balance();
                         if (infra.ApSpent > 0f)
-                        {
-                            ledger.Debit(istate.Demand.RequestingAxis, infra.ApSpent);
-                            result.AddDebit(istate.Demand.RequestingAxis, infra.ApSpent);
-                        }
-                        float infraLedgerAfter = ledger.Balance(istate.Demand.RequestingAxis);
+                            ledger.Debit(infra.ApSpent);
+                        float infraLedgerAfter = ledger.Balance();
                         AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
                             infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent,
                             infraLedgerBefore - infraLedgerAfter);
@@ -489,7 +477,7 @@ namespace Game.Ai.V2
                     {
                         var feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
                             ctx, state.Demand, ledger, commitments,
-                            ledger.ReservedFollowup(state.Demand.RequestingAxis), result.Reservation);
+                            ledger.ReservedFollowup(), result.Reservation);
                         if (feas.Count > 0)
                             measOptions[state] = feas;
                     }
@@ -524,7 +512,7 @@ namespace Game.Ai.V2
                             && other.Demand.Capability == CapabilityKind.Hero);
                     List<DemandCandidate> top =
                         MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
-                            ledger, commitments, ledger.ReservedFollowup(state.Demand.RequestingAxis),
+                            ledger, commitments, ledger.ReservedFollowup(),
                             result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK,
                             witnessedUsefulApDemand: witnessedUsefulApDemand,
                             fillerUniverse: fillerUniverse);
@@ -579,7 +567,7 @@ namespace Game.Ai.V2
                     foreach (DemandState state in active)
                     {
                         AxisDemand d = state.Demand;
-                        float reserved = ledger.ReservedFollowup(d.RequestingAxis);
+                        float reserved = ledger.ReservedFollowup();
                         if (options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
                         {
                             DemandCandidate b = topOpts[0];
@@ -591,8 +579,8 @@ namespace Game.Ai.V2
                         string diag = MaterializationDiagnostics.ExplainNoChain(
                             snap, player, root, hand, ctx, d, ledger, commitments, reserved);
                         AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
-                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(ledger.Balance(d.RequestingAxis))}, "
-                            + $"discrete {F(ledger.DiscreteAdmissionBudget(d.RequestingAxis))}, "
+                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(ledger.Balance())}, "
+                            + $"discrete {F(ledger.DiscreteAdmissionBudget())}, "
                             + $"followup reserved {F(reserved)}); {diag}");
 
                         // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
@@ -642,10 +630,9 @@ namespace Game.Ai.V2
 
                     if (up.ApSpent > 0f)
                     {
-                        float ledgerBefore = ledger.Balance(chosenDemand.RequestingAxis);
-                        ledger.Debit(chosenDemand.RequestingAxis, up.ApSpent);
-                        result.AddDebit(chosenDemand.RequestingAxis, up.ApSpent);
-                        float ledgerAfter = ledger.Balance(chosenDemand.RequestingAxis);
+                        float ledgerBefore = ledger.Balance();
+                        ledger.Debit(up.ApSpent);
+                        float ledgerAfter = ledger.Balance();
                         AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
                             chainApBefore - upgradeApAfter, up.ApSpent, ledgerBefore - ledgerAfter);
                     }
@@ -718,17 +705,13 @@ namespace Game.Ai.V2
                 if (play.StateChanged)
                     result.StateChanged = true;
 
-                // §2.3 — measure the REAL AxisBudgetLedger balance drop around Debit, BEFORE any
-                // discrete follow-up borrow moves balances, so the check has three independently
-                // sourced facts: physical AP delta, the chain's reported ApSpent, and the actual
-                // ledger debit (catches a missing / wrong-axis / wrong-amount Debit).
-                float chainLedgerBefore = ledger.Balance(chosenDemand.RequestingAxis);
+                // §2.3 — measure the REAL AxisBudgetLedger balance drop around Debit so the check
+                // has three independently sourced facts: physical AP delta, the chain's reported
+                // ApSpent, and the actual ledger debit (catches a missing / wrong-amount Debit).
+                float chainLedgerBefore = ledger.Balance();
                 if (play.ApSpent > 0f)
-                {
-                    ledger.Debit(chosenDemand.RequestingAxis, play.ApSpent);
-                    result.AddDebit(chosenDemand.RequestingAxis, play.ApSpent);
-                }
-                float chainLedgerAfter = ledger.Balance(chosenDemand.RequestingAxis);
+                    ledger.Debit(play.ApSpent);
+                float chainLedgerAfter = ledger.Balance();
                 AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
                     chainApBefore - chainApAfter, play.ApSpent, chainLedgerBefore - chainLedgerAfter);
 
@@ -759,13 +742,9 @@ namespace Game.Ai.V2
                     && chosenDemand.EconomyPreferredBuilderArmyId.HasValue)
                     commitments?.Claim(chosenDemand.EconomyPreferredBuilderArmyId.Value);
 
-                float borrowed = 0f;
                 if (operationallyDelivered)
                 {
-                    float alreadyReserved = ledger.ReservedFollowup(chosenDemand.RequestingAxis);
-                    borrowed = ledger.CommitDiscreteFollowupBorrow(chosenDemand.RequestingAxis,
-                        alreadyReserved + selected.FollowupAp);
-                    ledger.ReserveFollowup(chosenDemand.RequestingAxis, selected.FollowupAp);
+                    ledger.ReserveFollowup(selected.FollowupAp);
                     selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                     result.CapabilityDeliveries++;
                 }
@@ -781,7 +760,6 @@ namespace Game.Ai.V2
                     + $"@{plan.Deploy.Hex.Q},{plan.Deploy.Hex.R} "
                     + $"(ap {F(play.ApSpent)} -> {DesireAxes.Abbrev(chosenDemand.RequestingAxis)}, {plan.Deploy.Kind}, "
                     + $"delivered {F(delivered)}, followup {(operationallyDelivered ? F(selected.FollowupAp) : "0")}ap reserved"
-                    + (borrowed > AiConfigV2.allocatorSliceEpsilon ? $", discreteBorrow {F(borrowed)}ap" : "")
                     + $", {plan.StableKey})");
             }
 
@@ -962,7 +940,7 @@ namespace Game.Ai.V2
                 // one every other demand answers the same way: is there a legal/affordable/
                 // deliverable candidate for it RIGHT NOW (AC7) — never a phantom fulfillment.
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
-                    ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(ds.Demand.RequestingAxis),
+                    ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(),
                     reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK,
                     witnessedUsefulApDemand: witnessedUsefulApDemand);
                 if (top.Count == 0)

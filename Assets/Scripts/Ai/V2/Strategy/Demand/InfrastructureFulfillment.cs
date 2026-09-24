@@ -138,12 +138,10 @@ namespace Game.Ai.V2
             string economyOwner = EconomyReservationOwner(demand);
 
             // --- budget admission BEFORE any gameplay mutation (spec §1). Radar already affected
-            //     demand value/priority; this admission reads the ONE unreserved AP pool. The axis
-            //     argument is telemetry only and does not create a separate wallet. ---
+            //     demand value/priority; this admission reads the ONE unreserved AP pool. ---
             if (ledger != null)
             {
-                float axisRoom = ledger.Balance(demand.RequestingAxis)
-                                 - ledger.ReservedFollowup(demand.RequestingAxis);
+                float axisRoom = ledger.UnreservedBalance();
                 if (cand.ApCost > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return InfraFulfillResult.No(
                         $"shared AP pool {axisRoom:0.##} < {DesireAxes.Abbrev(demand.RequestingAxis)} demand cost {cand.ApCost:0.##}");

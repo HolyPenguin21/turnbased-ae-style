@@ -149,8 +149,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            float axis = ledger != null ? ledger.Balance(demand.RequestingAxis) : 0f;
-            float discrete = ledger != null ? ledger.DiscreteAdmissionBudget(demand.RequestingAxis) : axis;
+            float axis = ledger != null ? ledger.Balance() : 0f;
+            float discrete = ledger != null ? ledger.DiscreteAdmissionBudget() : axis;
             int ap = root != null ? root.ActionPoints : 0;
             string failText = failures.Count == 0
                 ? "-"

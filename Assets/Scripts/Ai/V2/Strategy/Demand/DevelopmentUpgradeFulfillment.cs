@@ -73,8 +73,7 @@ namespace Game.Ai.V2
             int completeAp = challengeAp + attachAp;
             if (ledger != null)
             {
-                float axisRoom = ledger.Balance(demand.RequestingAxis)
-                    - ledger.ReservedFollowup(demand.RequestingAxis);
+                float axisRoom = ledger.UnreservedBalance();
                 if (completeAp > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return DevUpgradeResult.Skip(
                         $"axis_budget {axisRoom:0.##} < challenge+attach {completeAp}");

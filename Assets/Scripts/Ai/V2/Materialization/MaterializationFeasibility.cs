@@ -40,7 +40,7 @@ namespace Game.Ai.V2
             WorldSnapshot snapshot = null)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            float axisBudget = ledger.DiscreteAdmissionBudget(demand.RequestingAxis);
+            float axisBudget = ledger.DiscreteAdmissionBudget();
             int stealthSurcharge = (demand.RequiredTraits & TraitPreference.Stealth) != 0
                 ? AiConfigV2.scoutOptionalStealthAp : 0;
 
