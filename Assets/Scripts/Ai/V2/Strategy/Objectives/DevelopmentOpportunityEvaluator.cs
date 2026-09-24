@@ -16,7 +16,9 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  The ONE enumeration of Research/Production (Laboratory / Factory) opportunities. Laboratory
     //  and Factory are a late resource sink that strengthens the units the main deck already put
-    //  on the map, so the whole enumeration runs only inside DevelopmentInvestmentGate's window.
+    //  on the map, so every opportunity must be inside DevelopmentInvestmentGate's window for the
+    //  resources ITS OWN chain consumes (a READY Challenge: the card; a PREPARE: facility +
+    //  operator + output). An unrelated empty resource never blocks it.
     //
     //  Each (mode, own base) site is in exactly one stage:
     //    READY    — facility built and staffed: every affordable Equipment offering, bound to its
@@ -90,15 +92,6 @@ namespace Game.Ai.V2
             if (snap?.Self?.BaseHexes == null || snap.Development == null || player == null
                 || root == null || hand?.Hand == null || ctx?.ResearchProductionCatalog == null)
                 return result;
-            if (!DevelopmentInvestmentGate.IsOpen(player, snap.TurnNumber,
-                    out int streak, out float surplus))
-            {
-                AiDebugLog.WriteDeduped("window", $"[AI][V2][Dev] window CLOSED "
-                    + $"investSurplus={surplus:0.00} streak={streak}/{AiConfigV2.devInvestmentSurplusTurns} "
-                    + "— Research/Production waits for resources the main deck does not absorb");
-                return result;
-            }
-
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             ActorCommitments occupied = ActorCommitments.FromIntents(activeIntents, snap, null);
             // One settled evaluation has one immutable set of available operator sources.
@@ -146,6 +139,13 @@ namespace Game.Ai.V2
                 if (off.Mode != mode || !off.FacilityHex.Equals(hex) || off.Card == null)
                     continue;
                 offered++;
+                List<ResourceType> closed = DevelopmentInvestmentGate.ClosedResources(
+                    player, snap.TurnNumber, off.Card.resourceCost);
+                if (closed.Count > 0)
+                {
+                    last = $"'{off.Card.displayName}':window_closed({ResourceList(closed)})";
+                    continue;
+                }
                 if (!off.ProducesEquipment)
                 {
                     // Unit/Hero/Aviation mints are materialization / non-combat chains.
@@ -345,6 +345,7 @@ namespace Game.Ai.V2
             int outputs = 0, admitted = 0;
             float bestEv = float.NegativeInfinity;
             string bestRejected = null;
+            var windowClosed = new HashSet<ResourceType>();
             foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
                 ctx.ResearchProductionCatalog, mode, player.Faction))
             {
@@ -353,13 +354,19 @@ namespace Game.Ai.V2
                     && card.cardType != CardType.Unit && card.cardType != CardType.Hero))
                     continue;
                 outputs++;
-                if (ResourceBundle.All.Any(t =>
-                    (facility?.EffectivePlayResourceCost?.Get(t) ?? 0)
-                    + (operatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
-                    + (generatedOperator?.GenerationResourceCost?.Get(t) ?? 0)
-                    + (card.resourceCost?.Get(t) ?? 0)
-                    > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
+                ResourceCost chainCost = SumCost(facility?.EffectivePlayResourceCost,
+                    operatorCard?.EffectivePlayResourceCost,
+                    generatedOperator?.GenerationResourceCost, card.resourceCost);
+                if (ResourceBundle.All.Any(t => chainCost.Get(t)
+                        > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                     continue;
+                List<ResourceType> closed = DevelopmentInvestmentGate.ClosedResources(
+                    player, snap.TurnNumber, chainCost);
+                if (closed.Count > 0)
+                {
+                    windowClosed.UnionWith(closed);
+                    continue;
+                }
 
                 DevelopmentOpportunity op = card.isAviation
                         || card.cardType == CardType.Unit || card.cardType == CardType.Hero
@@ -395,9 +402,24 @@ namespace Game.Ai.V2
                 + (admitted == 0
                     ? (bestRejected != null
                         ? $" reason=ev_below_margin(best '{bestRejected}' EV={bestEv:0.##})"
-                        : " reason=no_valuable_output")
+                        : windowClosed.Count > 0
+                            ? $" reason=window_closed({ResourceList(windowClosed)})"
+                            : " reason=no_valuable_output")
                     : "");
         }
+
+        // The complete H/E/M/T a PREPARE chain consumes: facility + operator + output.
+        private static ResourceCost SumCost(params ResourceCost[] costs) => new ResourceCost
+        {
+            human = costs.Sum(c => c?.Get(ResourceType.Human) ?? 0),
+            energy = costs.Sum(c => c?.Get(ResourceType.Energy) ?? 0),
+            materials = costs.Sum(c => c?.Get(ResourceType.Materials) ?? 0),
+            tech = costs.Sum(c => c?.Get(ResourceType.Tech) ?? 0),
+        };
+
+        private static string ResourceList(IEnumerable<ResourceType> types) =>
+            string.Concat(ResourceBundle.All.Where(types.Contains)
+                .Select(DevelopmentInvestmentGate.Abbrev));
 
         private static DevelopmentOpportunity PrepareEquipment(CardDefinition card,
             ResearchProductionMode mode, HexCoord hex, UnitData projectedActor, float operatorChance,

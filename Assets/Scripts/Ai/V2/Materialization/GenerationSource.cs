@@ -51,8 +51,9 @@ namespace Game.Ai.V2
         // order. `triedCardKeys` is the actual retry guard: gameplay defines the spent attempt as
         // (hero, mode, authored card key), not "this hero may only Challenge once".
         // Every executable caller (materialization chains, generated non-combat plays, Development
-        // upgrades, operator minting) receives nothing while DevelopmentInvestmentGate is closed:
-        // Research/Production is a late resource sink and never competes with the main deck.
+        // upgrades, operator minting) receives only cards whose OWN Challenge cost is inside
+        // DevelopmentInvestmentGate's window: Research/Production is a late resource sink and never
+        // competes with the main deck, and a resource the card does not consume never blocks it.
         // `analysisView` is used only by Analysis to DESCRIBE readiness in its snapshot: it keeps
         // temporarily contested facilities and ignores the investment window.
         public static List<GenerationStep> Enumerate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -61,8 +62,6 @@ namespace Game.Ai.V2
         {
             var result = new List<GenerationStep>();
             if (player == null || root == null || ctx?.ResearchProductionCatalog == null || hand == null)
-                return result;
-            if (!analysisView && !DevelopmentInvestmentGate.IsOpen(player, ctx.TurnNumber))
                 return result;
 
             List<BuildingData> ownBuildings = BuildingRegistry.AllBuildings()
@@ -96,6 +95,9 @@ namespace Game.Ai.V2
                             if (triedCardKeys != null && triedCardKeys.Contains(cardKey))
                                 continue;
                             if (!ResearchProductionSystem.CanAffordCard(root, card))
+                                continue;
+                            if (!analysisView && !DevelopmentInvestmentGate.IsOpenFor(
+                                    player, ctx.TurnNumber, card.resourceCost))
                                 continue;
                             if (!FitsReservedAffordability(root, player, ctx, card))
                                 continue;

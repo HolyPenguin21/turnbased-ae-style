@@ -96,8 +96,11 @@ namespace Game.Ai.V2
         public bool AnyFacilityWithHero;   // a facility exists AND carries a qualifying hero (execution-ready)
         public float BestSuccessChance;    // max p over Offerings (0 if none)
         public float SurplusFraction;      // [0..1] radar headroom (1 while a staffed offering is executable)
-        // [0..1] coarse four-resource headroom (weakest spendable / 2x income), never overridden
-        // by readiness. The one input of DevelopmentInvestmentGate.
+        // [0..1] per-resource headroom: (spendable - unreserved Economy build commitments) /
+        // (2x income), never overridden by readiness. The one input of DevelopmentInvestmentGate,
+        // which judges each concrete spend only by the resources THAT spend consumes.
+        public ResourceBundle InvestmentSurplusByType;
+        // Weakest of the four — the coarse RADAR / latent-appetite signal only, never a gate.
         public float InvestmentSurplus;
         public int UpgradeTargetCount;     // rough count of own units / hand Unit cards worth improving
 
