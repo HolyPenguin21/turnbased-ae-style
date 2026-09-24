@@ -960,10 +960,8 @@ namespace Game.Ai.V2
         // Launch-affordability pre-check for a still-STORED group of aircraft (no ArmyData exists
         // yet to read ActivationApCost/ActivationEnergyCost off — see ArmyData's own comment on
         // where those numbers come from for an already-formed air army). Mirrors that same
-        // computation over the specific UnitData subset a candidate wants to launch, and reads
-        // Energy through AiResourceReservation.Available (never root.GetResource directly) for the
-        // exact reason every other AI spend check in this codebase already does — must not
-        // double-count what an active task has already claimed.
+        // computation over the specific UnitData subset a candidate wants to launch. Energy is read
+        // from the raw stockpile, the same figure AiTurnController.CanIssueMoveNow uses.
         public static bool CanAffordLaunch(PlayerRoot root, PlayerSetupData player, IReadOnlyList<UnitData> aircraft)
         {
             if (root == null || aircraft == null || aircraft.Count == 0)
@@ -971,7 +969,7 @@ namespace Game.Ai.V2
             int apCost = aircraft.Sum(u => u.ActivationApCost);
             int energyCost = aircraft.Sum(u => u.LaunchEnergyCost);
             return root.CanSpendActionPoints(apCost)
-                && AiResourceReservation.Available(root, player, ResourceType.Energy) >= energyCost;
+                && root.GetResource(ResourceType.Energy) >= energyCost;
         }
 
         // Shared execution for LaunchAirStrike/LaunchAirRecon (see AiTurnController.
@@ -981,16 +979,9 @@ namespace Game.Ai.V2
         // Forming the stack itself is free (see AviationActions.TryLaunch's own comment — "forming a
         // stack is not a take-off"); the real AP/Energy launch cost is still charged the ordinary
         // way, by this new army's own first MoveArmy activation, whenever that step actually comes
-        // up (possibly several Decide() steps or even turns later — see AiTurnController.RunTurn's
-        // own one-decision-per-step loop). The Energy portion of that future cost IS reserved here,
-        // though (2026-08-26 P1 fix, project owner's own report) via the AiResourceReservation.TopUp
-        // call below — otherwise a higher-scoring candidate on some later step could spend it out
-        // from under this army before its own first move ever gets a turn, and the safe-return
-        // invariant every AirStrike/AirRecon sortie is supposed to guarantee would already be
-        // broken by the time CanIssueMoveNow finally catches the shortfall. Registers the fresh
-        // AiTask itself once the army actually exists — Commit never does this for a Launch*
-        // decision (decision.Task is deliberately left null by the factories; there is no task, and
-        // nothing to claim, until the launch actually succeeds).
+        // up — below, synchronously, via ContinueSortie. Registers the fresh AirSortie itself once
+        // the army actually exists; there is no sortie, and nothing to claim, until the launch
+        // actually succeeds.
         public static IEnumerator LaunchRoutine(PlayerSetupData player, AiDecision decision,
             AiTurnContext ctx, AirSortieKind taskKind, AiMoveExecutionTrace executionTrace = null)
         {
@@ -1024,33 +1015,17 @@ namespace Game.Ai.V2
             };
             AirSortieRegistry.Add(player, task);
 
-            // Reserve this army's own first-move ActivationEnergyCost the instant the task exists
-            // (2026-08-26 P1 fix, project owner's own report) — CanAffordLaunch above only checked
-            // it was available a moment ago, at candidate time; without a real reservation here, a
-            // DIFFERENT higher-scoring task could spend that same Energy before this army's own
-            // first MoveArmy step ever gets a turn to claim it (Decide only ever commits ONE
-            // decision per step — see AiTurnController.RunTurn's own per-step loop — so a freshly
-            // formed air army can easily sit un-activated for one or more further steps, even whole
-            // turns, before ContinueSortie's own CanIssueMoveNow check ever runs again). Released
-            // the moment that first move actually executes for real — see
-            // AiTurnController.MoveArmyRoutine's own Release call — never held past that, unlike
-            // BuildFacility/BuildBase's own multi-turn trickle reservation.
             PlayerRoot root = PlayerRootRegistry.FindFor(player);
             AiDebugLog.Write($"[AI] {player.Nickname}: \"{airArmy.Name}\" assigned {taskKind} — target "
                 + $"({decision.AirActionHex.Q},{decision.AirActionHex.R}), landing ({decision.AirLandingHex.Q},{decision.AirLandingHex.R}).");
 
-            // Launch and the sortie's first real step are now one indivisible sequence (2026-08-26
-            // P1 fix, project owner's own report) — RunTurn's own one-decision-per-step loop used
-            // to leave it here: task registered, Energy reserved, but the army itself still just
-            // sitting on the map unactivated until ContinueSortie happened to win arbitration on
-            // some LATER Decide() step. A different, higher-scoring candidate could spend AP in
-            // between, or a route/landing-slot could stop being safe, and the aircraft would be
-            // stranded already airborne with no step left to move it. Driving ContinueSortie
-            // synchronously right here — the exact same recheck of route/AP/Energy/landing-slot
-            // every later step already goes through, this task's own reservation excluded via
-            // CanIssueMoveNow's own reservationOwner param — closes that gap: by the time this
-            // coroutine yields back to RunTurn's own step loop, the army has either taken its
-            // first real step for real, or never left storage at all.
+            // Launch and the sortie's first real step are one indivisible sequence: otherwise the
+            // army could sit unactivated while another action spends the AP/Energy its first step
+            // needs, or a route/landing slot stops being safe, stranding it airborne. Driving
+            // ContinueSortie synchronously right here — the same route/AP/Energy/landing-slot
+            // recheck every later step goes through (CanIssueMoveNow) — closes that gap: by the
+            // time this coroutine yields, the army has either taken its first real step or never
+            // left storage at all.
             string logLabel = taskKind == AirSortieKind.Strike ? "AirStrike"
                 : taskKind == AirSortieKind.Rebase ? "AviationRebase" : "AirRecon";
             string outboundReason = taskKind == AirSortieKind.Strike

@@ -86,7 +86,7 @@ namespace Game.Ai.V2
                         }
                         opDeliver++;
                         ResourceCost chainCost = CardCostRules.PlayResources(card);
-                        if (chainCost != null && !AiResourceReservation.CanAffordCardPlay(root, player, card))
+                        if (chainCost != null && !CardCostRules.CanAffordPlay(root, card))
                         {
                             resReject++;
                             foreach (ResourceType type in ResourceBundle.All)
@@ -94,8 +94,7 @@ namespace Game.Ai.V2
                                 int need = chainCost.Get(type);
                                 if (need <= 0)
                                     continue;
-                                int available = UnityEngine.Mathf.FloorToInt(
-                                    Game.Ai.AiResourceReservation.Available(root, player, type));
+                                int available = Stock(root, type);
                                 if (available < need
                                     && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed)
                                         || need < priorNeed))
@@ -118,15 +117,14 @@ namespace Game.Ai.V2
                     // for a capability/trait-matching card examined by this demand diagnostic.
                     ResourceCost preflightCost = CardCostRules.PlayResources(card);
                     if (root != null && player != null && preflightCost != null
-                        && !AiResourceReservation.CanAffordCardPlay(root, player, card))
+                        && !CardCostRules.CanAffordPlay(root, card))
                     {
                         foreach (ResourceType type in ResourceBundle.All)
                         {
                             int need = preflightCost.Get(type);
                             if (need <= 0)
                                 continue;
-                            int available = UnityEngine.Mathf.FloorToInt(
-                                Game.Ai.AiResourceReservation.Available(root, player, type));
+                            int available = Stock(root, type);
                             if (available < need
                                 && (!verifiedResourceBlocks.TryGetValue(type, out int priorNeed)
                                     || need < priorNeed))
@@ -144,7 +142,7 @@ namespace Game.Ai.V2
                 foreach (KeyValuePair<ResourceType, int> block in verifiedResourceBlocks)
                 {
                     ResourceType type = block.Key;
-                    float available = Game.Ai.AiResourceReservation.Available(root, player, type);
+                    float available = Stock(root, type);
                     float income = snap?.Self != null ? snap.Self.PerTurnIncome.Get(type) : 0f;
                     ResourceStarvationRegistry.RecordVerifiedBlock(player, type, block.Value,
                         available, income, demand.Value, snap?.TurnNumber ?? 0);
@@ -186,6 +184,9 @@ namespace Game.Ai.V2
                 + $"axis={axis:0.##} discrete={discrete:0.##} ap={ap} followupReserved={reservedFollowup:0.##}";
         }
 
+        private static int Stock(PlayerRoot root, ResourceType type) =>
+            root != null ? System.Math.Max(0, root.GetResource(type)) : 0;
+
         private static string DetailFailure(PlayerRoot root, PlayerSetupData player, CardData card, string reason)
         {
             string cardName = card?.Definition?.displayName ?? "?";
@@ -193,7 +194,7 @@ namespace Game.Ai.V2
                 return $"{cardName}: {reason ?? "preflight rejected"}";
 
             ResourceCost cost = CardCostRules.PlayResources(card);
-            if (cost != null && !AiResourceReservation.CanAffordCardPlay(root, player, card))
+            if (cost != null && !CardCostRules.CanAffordPlay(root, card))
             {
                 return $"{cardName}: resources need H/E/M/T={cost.human}/{cost.energy}/{cost.materials}/{cost.tech} "
                     + $"have={Available(ResourceType.Human)}/{Available(ResourceType.Energy)}/"
@@ -203,7 +204,7 @@ namespace Game.Ai.V2
             return $"{cardName}: {reason ?? "preflight rejected"}";
 
             int Available(ResourceType type) =>
-                UnityEngine.Mathf.FloorToInt(Game.Ai.AiResourceReservation.Available(root, player, type));
+                Stock(root, type);
         }
     }
 }

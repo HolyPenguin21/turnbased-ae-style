@@ -391,7 +391,6 @@ namespace Game.EditorTests
                 ArmyRegistry.Clear();
                 AiMapMemory.Clear();
                 AirSortieRegistry.Clear();
-                AiResourceReservation.Clear();
 
                 HexMap map = mapObject.AddComponent<HexMap>();
                 var terrain = new TerrainTypeEntry { moveCost = 1 };
@@ -465,7 +464,6 @@ namespace Game.EditorTests
                 ArmyRegistry.Clear();
                 AiMapMemory.Clear();
                 AirSortieRegistry.Clear();
-                AiResourceReservation.Clear();
                 Object.DestroyImmediate(mapObject);
                 Object.DestroyImmediate(rootObject);
             }

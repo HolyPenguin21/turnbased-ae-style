@@ -653,27 +653,17 @@ namespace Game.Ai
         // this turn also has to afford out of the shared AP pool, plus (2026-08-26 fix, project
         // owner's own report) that same activation's ActivationEnergyCost — zero for every ground
         // army, but real for an air army about to launch, and IssueMoveOrder rejects the order for
-        // it same as a missing AP would. Read through AiResourceReservation.Available (never
-        // root.GetResource directly), the same reservation-aware figure CanAffordLaunch already
-        // uses, so this can't double-spend Energy another active task already claimed. Every
-        // category's candidate sites now route through this one helper instead of each growing its
-        // own copy of either check — since all three conditions are things execution already
+        // it same as a missing AP would. Energy is read from the raw stockpile, the same figure
+        // CanAffordLaunch uses; it does not net StrategicSpendability's owner-aware reservations.
+        // Every category's candidate sites route through this one helper instead of each growing
+        // its own copy of either check — since all three conditions are things execution already
         // independently requires, a candidate this rejects would always have failed at
         // IssueMoveOrder anyway, so gating it here only ever removes a doomed candidate from
         // arbitration, never a viable one.
-        // `reservationOwner` — the AirStrike/AirRecon task this exact army/move belongs to, if
-        // any (2026-08-26 P1 fix, project owner's own report). AiAviationSupport.LaunchRoutine
-        // reserves this army's own ActivationEnergyCost the instant its task is created (so no
-        // OTHER task can spend it out from under a not-yet-activated sortie), but that same
-        // reservation used to count against THIS check too — at Energy exactly equal to the
-        // activation cost, Available() came back 0 (root's Energy minus the task's own claim on
-        // it) and the army could never take its first step at all, despite the Energy genuinely
-        // being there. Passing the task here excludes only ITS OWN reservation from the read,
-        // never anyone else's — a rival task's claim still counts exactly as before.
         internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination) =>
             root != null && army != null && FindAffordableStep(map, army, destination).HasValue
                 && (army.HasActivatedThisTurn || (root.CanSpendActionPoints(army.ActivationApCost)
-                    && AiResourceReservation.Available(root, player, ResourceType.Energy) >= army.ActivationEnergyCost));
+                    && root.GetResource(ResourceType.Energy) >= army.ActivationEnergyCost));
 
         // Trailer for an action's own log line — "what did this actually cost", read as a
         // before/after snapshot around the spend rather than off the CardDefinition/ResourceCost

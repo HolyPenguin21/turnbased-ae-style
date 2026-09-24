@@ -60,7 +60,7 @@ namespace Game.Ai.V2
             int deployApCost = CardCostRules.PlayAp(card);
             if (requireCurrentAp && !root.CanSpendActionPoints(deployApCost))
             { reason = "unaffordable(ap)"; return new List<HexCoord>(); }
-            if (!AiResourceReservation.CanAffordCardPlay(root, player, card))
+            if (!CardCostRules.CanAffordPlay(root, card))
             { reason = "unaffordable(resources)"; return new List<HexCoord>(); }
 
             List<HexCoord> options = FeasibleAviationAirfields(

@@ -10,13 +10,10 @@ namespace Game.Ai.V2
 {
     // ARCH-02 §45/§47 — the ONE owner-aware strategic-spendability seam. Every "can I afford this
     // persistent-resource cost right now" question in the strategic + materialization + reaction
-    // paths goes through SpendableAmount, which nets BOTH:
-    //   · StrategicResourceReservationLedger  — the owner-aware explicit reservations (e.g. a
+    // paths goes through SpendableAmount, which nets from the raw PlayerRoot stockpile:
+    //   · StrategicResourceReservationLedger — the owner-aware explicit reservations (e.g. a
     //     bounded reaction envelope), optionally excluding the caller's own owner key; and
-    //   · Game.Ai.AiResourceReservation       — the legacy recon-air protected pool.
-    // Before this fix ReservesOkAfterChain and MaterializationCandidateBuilder.ChainResourcesAffordable
-    // and MaterializationPortfolioSolver's resPool each consulted ONLY AiResourceReservation, so the
-    // owner-aware ledger was not authoritative for materialization feasibility.
+    //   · the unpaid activation of mandatory air-recovery wings (OutstandingRecoveryActivation).
     public static class StrategicSpendability
     {
         // An already-airborne wing whose canonical lifecycle projection demands Return, or whose
@@ -64,12 +61,10 @@ namespace Game.Ai.V2
             && alreadyCommittedEnergy + nextActivationEnergy <= availableEnergy;
 
         // An existing owner-aware hold and the recovery obligation are independent claims on
-        // the SAME physical stock. Legacy reservations are a separate view of that stock and
-        // must not be subtracted a second time if they already protect a wing.
+        // the SAME physical stock, so both are subtracted.
         internal static float SpendableWithRecovery(float ownerAwareSpendable,
-            float legacySpendable, float unpaidRecoveryCost) =>
-            Mathf.Min(Mathf.Max(0f, ownerAwareSpendable - Mathf.Max(0f, unpaidRecoveryCost)),
-                Mathf.Max(0f, legacySpendable));
+            float unpaidRecoveryCost) =>
+            Mathf.Max(0f, ownerAwareSpendable - Mathf.Max(0f, unpaidRecoveryCost));
 
         internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, string excludeOwner = null)
@@ -94,9 +89,8 @@ namespace Game.Ai.V2
         {
             if (root == null)
                 return 0f;
-            float legacy = Mathf.Max(0f, Game.Ai.AiResourceReservation.Available(root, player, t));
             if (player == null || ctx == null)
-                return legacy;
+                return Mathf.Max(0f, root.GetResource(t));
             StrategicReservedResource srr = StrategicResourceReservationLedger.Map(t);
             float strategic = excludeOwner == null && ignoreReason == null
                 ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber, srr, root.GetResource(t))
@@ -104,7 +98,7 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner, ignoreReason);
             float recovery = t == ResourceType.Energy
                 ? OutstandingRecoveryActivation(player, root, ctx).Energy : 0f;
-            return SpendableWithRecovery(strategic, legacy, recovery);
+            return SpendableWithRecovery(strategic, recovery);
         }
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
@@ -120,8 +114,8 @@ namespace Game.Ai.V2
         // owner's EconomyDeferredBuild hold is ignored — by contract such a hold belongs to a
         // build that cannot complete this turn and only shields H/E/M/T from non-Economy spending
         // (cards, Phase B, reactions), which keep using FitsSpendableResources. Reaction holds,
-        // other builds' proven EconomyBuildCompletion rows and the legacy recon-air pool still
-        // count, so two builds completing in the same turn are ordered by whoever claims first.
+        // other builds' proven EconomyBuildCompletion rows and unpaid air-recovery activation
+        // still count, so two builds completing in the same turn are ordered by whoever claims first.
         internal static bool FitsSpendableForEconomyCompletion(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ResourceCost cost, string owner)
             => FitsSpendable(player, root, ctx, cost, owner,

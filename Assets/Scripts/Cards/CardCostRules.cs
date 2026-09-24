@@ -9,9 +9,8 @@ namespace Game.Cards
     // ArmyActions.EffectiveDeployApCost and CardData.EffectivePlayResourceCost that both gameplay
     // and the AI share. Was Game.Ai.AiCardCost before ARCH-01.
     //
-    // No affordability check lives here: "can the player physically pay" is PlayerRoot's job, and
-    // "can the player pay once strategic AI reservations are netted out" is an AI concern
-    // (AiResourceReservation.CanAffordCardPlay) — neither belongs in Game.Cards.
+    // CanAffordPlay is the physical check against the real stockpile only. "Can the AI pay once
+    // its own strategic reservations are netted out" is Game.Ai.V2.StrategicSpendability's job.
     public static class CardCostRules
     {
         // Play-time AP. Delegates to ArmyActions.EffectiveDeployApCost(CardData), which already
@@ -28,6 +27,15 @@ namespace Game.Cards
         {
             ResourceCost cost = PlayResources(card);
             return cost == null ? 0 : cost.Get(type);
+        }
+
+        // Can `root` physically pay this instance's play-time resources. A null cost (a
+        // Research/Production card — already paid at Create) is always affordable, unlike
+        // ResourceCost.CanAfford's own null root -> false.
+        public static bool CanAffordPlay(PlayerRoot root, CardData card)
+        {
+            ResourceCost cost = PlayResources(card);
+            return cost == null || cost.CanAfford(root);
         }
     }
 }

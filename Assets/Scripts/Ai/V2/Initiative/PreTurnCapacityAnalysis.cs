@@ -35,7 +35,7 @@ namespace Game.Ai.V2.Initiative
         public float TurnOrderPressure;           // [0..1] generic capacity only — never DesireVector / mission priorities
 
         // ---- Resource expendability (index order: Human, Energy, Materials, Tech) ----
-        public readonly int[] Available = new int[4];              // AiResourceReservation.Available (reservation-aware)
+        public readonly int[] Available = new int[4];              // raw stockpile (PlayerRoot.GetResource)
         public readonly int[] IncomePerTurn = new int[4];
         public readonly int[] DeckDemand = new int[4];             // remaining-game resource appetite
 
@@ -143,7 +143,7 @@ namespace Game.Ai.V2.Initiative
 
             for (int i = 0; i < Types.Length; i++)
             {
-                a.Available[i] = Mathf.Max(0, AiResourceReservation.Available(root, player, Types[i]));
+                a.Available[i] = Mathf.Max(0, root.GetResource(Types[i]));
                 a.IncomePerTurn[i] = Mathf.Max(0, IncomeProjection.IncomeFor(player, Types[i], map));
             }
             return a;

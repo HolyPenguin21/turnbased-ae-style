@@ -154,7 +154,7 @@ namespace Game.Ai.V2
     //                       step list produced AFTER provisioning succeeds.
     //    V2 "Radar/axis"  : conceptually V1's AiStrategyAssessment, but normalised (sum==1) and
     //                       without a Management axis.
-    //    Reused as-is     : AiResourcePool, AiResourceReservation, WorthIt, AiMapMemory,
+    //    Reused as-is     : AiResourcePool, WorthIt, AiMapMemory,
     //                       VisionSystem, ArmyActions, HexSelectionController — V2 mutates game
     //                       state only through the same player-agnostic paths V1 (and the human)
     //                       already use.

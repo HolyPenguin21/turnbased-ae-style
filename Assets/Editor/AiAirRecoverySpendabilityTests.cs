@@ -12,7 +12,7 @@ namespace Game.EditorTests
             // Rust Bite has not activated this turn: 3 Energy total, 2 owed to its
             // mandatory return. A discretionary 2-Energy card must not spend that fuel.
             float spendable = StrategicSpendability.SpendableWithRecovery(
-                ownerAwareSpendable: 3f, legacySpendable: 3f, unpaidRecoveryCost: 2f);
+                ownerAwareSpendable: 3f, unpaidRecoveryCost: 2f);
             Assert.That(spendable, Is.EqualTo(1f));
             Assert.That(spendable, Is.LessThan(2f));
         }
@@ -21,19 +21,16 @@ namespace Game.EditorTests
         public void IndependentEconomyAndReturnHoldsBothReducePhysicalSpendability()
         {
             float spendable = StrategicSpendability.SpendableWithRecovery(
-                ownerAwareSpendable: 2f, legacySpendable: 3f, unpaidRecoveryCost: 2f);
+                ownerAwareSpendable: 2f, unpaidRecoveryCost: 2f);
             Assert.That(spendable, Is.Zero,
                 "a separate Economy reservation cannot silently consume safety fuel");
         }
 
         [Test]
-        public void LegacyProtectionIsNotSubtractedTwiceAndRecoveryReleasesItsOwnHold()
+        public void RecoveryReleasesItsOwnHold()
         {
             Assert.That(StrategicSpendability.SpendableWithRecovery(
-                ownerAwareSpendable: 3f, legacySpendable: 1f, unpaidRecoveryCost: 2f),
-                Is.EqualTo(1f), "legacy and recovery views of one reserve cannot stack twice");
-            Assert.That(StrategicSpendability.SpendableWithRecovery(
-                ownerAwareSpendable: 3f, legacySpendable: 3f, unpaidRecoveryCost: 0f),
+                ownerAwareSpendable: 3f, unpaidRecoveryCost: 0f),
                 Is.EqualTo(3f), "a landed or already activated wing owes no further activation");
         }
 

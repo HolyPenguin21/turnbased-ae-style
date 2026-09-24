@@ -125,7 +125,7 @@ namespace Game.Ai.V2
             int totalAp = plan.TotalApCost;
             if (!root.CanSpendActionPoints(totalAp))
             { reason = $"need {totalAp} AP for the full sequence"; return false; }
-            if (!AiResourceReservation.CanAffordCardPlay(root, player, plan.Card))
+            if (!CardCostRules.CanAffordPlay(root, plan.Card))
             { reason = "resource cost unaffordable"; return false; }
 
             switch (plan.Kind)

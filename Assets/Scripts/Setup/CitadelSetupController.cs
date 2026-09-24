@@ -163,7 +163,6 @@ namespace Game.Setup
             Game.Ai.V2.AiV2Trace.Clear();                        // Strategy V2 per-player debuggability trace scopes (correlation ids)
             Game.Turns.InitiativePublicHistory.Clear();          // public previous-initiative results (opponent estimate)
             Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear(); // per-player initiative AP telemetry
-            AiResourceReservation.Clear();
             AssignStartingHexes(GameSession.Players);
 
             _allPlayers.Clear();
