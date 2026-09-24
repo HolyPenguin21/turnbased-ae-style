@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
+using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -45,6 +46,14 @@ namespace Game.Ai
             // its own separate task/pipeline entirely, never VisitHexTask's).
             return !army.Members[0].IsAviation && AbilityParams.UnitHasAnyRecce(army.Members[0]);
         }
+
+        public static bool IsGroundCombatBody(UnitData unit) => unit != null
+            && !unit.IsHero && !unit.IsAviation && !AbilityParams.UnitHasAnyRecce(unit);
+
+        public static bool IsGroundCombatBody(WorthIt.DefenderProfile profile) =>
+            (profile.TypeTags == null || (!profile.TypeTags.Contains(UnitTypeTag.Hero)
+                && !profile.TypeTags.Contains(UnitTypeTag.Aircraft)))
+            && !AbilityParams.AbilitiesHaveAnyRecce(profile.Abilities);
 
         // A lone resource-collector carrier — the same "belongs solo" shape as IsSoloRecce, for the
         // same reason (project owner's own 2026-09-21 call: a bigger army costs more AP to move for

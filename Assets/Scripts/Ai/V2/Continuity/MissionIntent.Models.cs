@@ -180,6 +180,7 @@ namespace Game.Ai.V2
         public HexCoord LastKnownHex;
         public bool TargetIsNeutral;
         public bool OperationStarted;
+        public bool CompletedTargetAwaitingFreshDecision;
 
         public int TargetArmyId => Target.Kind == RaidTargetKind.NeutralArmy ? Target.ArmyId : 0;
         public HexCoord? TargetHex => Target.Kind == RaidTargetKind.EventGuard ? Target.Hex : (HexCoord?)null;

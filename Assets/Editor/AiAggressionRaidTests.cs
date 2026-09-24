@@ -301,6 +301,29 @@ namespace Game.EditorTests
             Assert.That(eventRaid.BaseValue, Is.EqualTo(nearRaid.BaseValue));
         }
 
+        [Test]
+        public void RaidValue_IsIndependentOfMilitaryPotentialRealization()
+        {
+            WorldSnapshot low = SnapshotWithNeutralSighting(armyId: 83,
+                hex: new HexCoord(3, 0),
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            low.Self.BestStackPotential = 10f;
+            low.Self.TotalMilitaryPotential = 100f;
+            WorldSnapshot high = SnapshotWithNeutralSighting(armyId: 83,
+                hex: new HexCoord(3, 0),
+                defenders: new List<WorthIt.DefenderProfile> { Weak() }, withOwnArmy: true);
+            high.Self.BestStackPotential = 90f;
+            high.Self.TotalMilitaryPotential = 100f;
+
+            AggressionObjective lowRaid = AggressionObjectiveEvaluator.Enumerate(low,
+                CombatOpportunityAnalyzer.Analyze(low)).Single();
+            AggressionObjective highRaid = AggressionObjectiveEvaluator.Enumerate(high,
+                CombatOpportunityAnalyzer.Analyze(high)).Single();
+
+            Assert.That(highRaid.BaseValue, Is.EqualTo(lowRaid.BaseValue));
+            Assert.That(highRaid.TaskScore.Value, Is.EqualTo(lowRaid.TaskScore.Value));
+        }
+
         // ---- RaidObjectiveEvaluator: event-guard lifecycle -------------------------------------
 
         [Test]

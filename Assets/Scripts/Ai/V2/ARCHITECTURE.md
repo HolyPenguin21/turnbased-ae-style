@@ -38,8 +38,8 @@ Everything stays in namespace `Game.Ai.V2` (flat). Folders express ownership onl
 
 Four axes compete for the same turn's AP/resources, all through the same
 `MissionProposal` shape and the same allocator. **There is still no Defence axis.**
-`MissionKind` has five members because Aggression produces two mission shapes —
-`Raid` and `ActiveDefence` — from the same `Missions/AggressionMissionPlanner`,
+Aggression produces three mission shapes — `Raid`, `ActiveDefence` and `Attack` —
+from the same `Missions/AggressionMissionPlanner`,
 scored by the same `TaskScore`, admitted by the same `GroundCombatAdmissionPolicy`
 thresholds and funded from the same Aggression slice. ActiveDefence is a durable
 threat-interception mission (`Intercept → Return`) owned by Aggression, **not** a
@@ -54,6 +54,7 @@ same `GroundCombatAdmissionPolicy` pair Raid uses, applied identically in Missio
 | `Economy` | `Missions/EconomyMissionPlanner` | `EconomyTaskKind`: BuildExtraction, FoundBase, MobileCollection, ReturnCollector, ReturnBuilder. Several build obligations may be active at once: Continuity keeps each one on its own facts (`Continuity/MissionContinuityLayer.ResolveActive`), real ownership conflicts (same actor / same objective / same physical card) are resolved where ownership is granted (`BeginEconomyDelivery`), and each obligation holds its own owner-scoped rows in `StrategicResourceReservationLedger`. Keeping an obligation and funding it are separate decisions — the allocator still owns the budget. |
 | `Raid` | `Missions/AggressionMissionPlanner` | One durable multi-turn mission moving through `RaidMissionPhase`: Assault → Reinforcement/SupportReturn/Return → AirSupport / RecoveryReturn → Refit. Not five competing tasks — five phases of one committed raid. |
 | `ActiveDefence` (Aggression) | `Missions/AggressionMissionPlanner` (`AppendActiveDefence`) | `ActiveDefencePhase`: Intercept → Return. May borrow an Assault-phase Raid's army (`SuspendReason.ActiveDefencePreemption` + `ActiveDefenceIntent.SuspendedOffensiveIntentKey`); Continuity resumes that Raid exactly once, and repairs it if no live defence still borrows it. |
+| `Attack` (Aggression) | `Missions/AggressionMissionPlanner` (`AppendAttack`) | One known enemy Base/Citadel per durable intent. `AttackMissionPhase`: Assault → Reinforcement/SupportReturn or RecoveryReturn. Attack is ground-first; successful capture retires the intent and leaves the army on the captured structure. |
 | `Scout` (Recon) | `Missions/ReconMissionPlanner` | `ScoutTargetKind`: Explore, Surveil, Refresh — crossed with `ScoutExecutorKind` (Ground / AirExisting / AirLaunch) at Assignment time. Air can never take Explore or any `StealthRequirement.Required`/positive-`DetectionRisk` target (Surveil is always `Required` → ground-only in practice); only a low-risk Refresh is air-eligible. |
 | `Development` | `Missions/DevelopmentMissionPlanner` | Place an existing hero as operator on a Research or Production facility (`ResearchProductionMode`). |
 
@@ -63,18 +64,30 @@ same `GroundCombatAdmissionPolicy` pair Raid uses, applied identically in Missio
 computed. It is a plain struct of named bonus/penalty slots (CardPrice, Delivery,
 OwnTerritoryProximity, MoverOpportunityCost, MilitaryTargetRelevance/RaidReward,
 TerrainDefense, DetectionRisk, InfoGain, ContactRelevance, Staleness, …) folded
-by `TaskScoreEvaluator`/`.Value` into one comparable number across Economy, Raid,
-Recon and Development alike. A new scoring fact must be added as a named slot on
+by `TaskScoreEvaluator`/`.Value` into one comparable number across Economy, Recon,
+Development, Raid, ActiveDefence and Attack alike. A new scoring fact must be added as a named slot on
 `TaskScore` and constructed *before* the fold — never applied to `.Value`/
 `BaseValue` after the fact from planner- or allocator-local code. See the
 canonical-seams table below.
 
-One known, deliberate exception exists today: `Missions/MissionAdmissionPolicy.AdmissionRank`
-adds a flat `economySameTurnCompletionBonus` on top of an already-folded
-`BaseValue`, Economy-only, used only as the allocator's same-`EffectiveValue`
-tie-break (`Allocation/ResourceAllocator.cs`). It predates ARCH-02 and is not yet
-migrated into a proper `TaskScore` slot — treat any other post-fold score
-adjustment found elsewhere as a bug, not a precedent.
+Radar answers which **axis** matters now. `TaskScore` answers how good a concrete
+world task is. `EffectiveValue` is the intrinsic `BaseValue` multiplied by that
+task's axis weight. Radar never chooses Attack versus Raid: all three military
+families share the Aggression axis and therefore compete by their canonical task
+values in the global allocator. Lifecycle hysteresis may break an otherwise local
+tie, but it is not intrinsic world-task value and may not manufacture a new score.
+
+Military-potential realization (`BestStackPotential / TotalMilitaryPotential`) is
+an Attack-only strategic fact. `AttackObjectiveEvaluator` converts it into the
+existing `MilitaryTargetRelevance` slot before the fold. It does not enter the
+common Aggression desire, so it cannot raise Raid or ActiveDefence value. Its
+coefficient is a calibration point pending gameplay logs.
+
+One completed Raid target is one completed strategic objective. Continuity never
+selects or mutates the intent to a second neutral target. It exposes the surviving
+army to fresh mission construction/allocation; a new Raid, Attack or ActiveDefence
+must win the shared competition. A zero-value Return/Recovery fallback remains
+available if no fresh operation is admitted.
 
 ## Dependency direction (must hold)
 
@@ -125,12 +138,19 @@ capability fulfilment and surplus/tempo arbitration. They are re-entered only
 through bounded adapters and retain turn-scoped parking/reservation state; the
 terminal Phase-B/reaction path remains the final safety net.
 
-**Rollout is complete, not partial.** The bounded typed loop (`AiStrategyV2Scope.UsesTypedLoop`,
-always `true`) is the production execution path for every scope, including `Full` — there is no
-longer a separate legacy batch orchestrator it falls back to, and no axis is disabled by default.
-Default mode is `ReconAggressionEconomyDevelopment` (`AiStrategyV2Scope.cs`): all four axes —
-Recon, Aggression (incl. Raid), Economy, Development — run through this same loop. `AiStrategyV2Scope`
-still exists for isolated diagnostics/focus-testing (e.g. `ReconOnly`), not as a rollout gate.
+**Rollout is complete, not partial.** The bounded typed loop is the single production
+execution path. There is no runtime strategy/focus mode and no axis-scope filtering.
+Every turn builds the real Desire evaluators, normalizes one Radar and runs all four
+axes — Recon, Economy, Aggression and Development. `AiStrategyV2Scope` remains only
+as a pure `MissionKind → DesireAxis`/operational-invalidation mapping helper.
+
+Ground Recon concurrency is value-gated `0..maxConcurrentReconExecutions`.
+`DemandUrgencyPolicy.NormalizedWorldValue` is the canonical adapter from TaskScore
+to “material value”; frontier-region count or stale pressure may justify a second
+lane only when a second runnable observation objective passes that value gate.
+There is no mandatory first lane, third production lane or turn-number decay.
+Consequently Recon naturally falls to zero on a fully known/current map and can
+reactivate when important contact becomes stale or blind again.
 
 ## Canonical seams (one owner each)
 

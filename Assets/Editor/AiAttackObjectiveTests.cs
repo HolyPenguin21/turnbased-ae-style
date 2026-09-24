@@ -238,10 +238,26 @@ namespace Game.EditorTests
                 "a Citadel is a more relevant strategic node than an ordinary Base");
             Assert.That(citadel.TaskScore.TerrainDefense, Is.EqualTo(0f),
                 "defender-side terrain is not an attacker bonus");
-            Assert.That(citadel.TaskScore.MilitaryTargetRelevance, Is.EqualTo(0f),
-                "§33 does not list this slot for Attack; Raid's fixed reward is not borrowed");
+            Assert.That(citadel.TaskScore.MilitaryTargetRelevance, Is.GreaterThanOrEqualTo(0f));
             Assert.That(citadel.TaskScore.EconomicExpansionValue, Is.EqualTo(0f),
                 "no economic justification is claimed until the Economy model actually proves one");
+        }
+
+        [Test]
+        public void IntrinsicScore_MilitaryRealizationRaisesAttackThroughCanonicalSlot()
+        {
+            WorldSnapshot low = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            low.Self.BestStackPotential = 10f;
+            low.Self.TotalMilitaryPotential = 100f;
+            WorldSnapshot high = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            high.Self.BestStackPotential = 90f;
+            high.Self.TotalMilitaryPotential = 100f;
+
+            AttackObjective lowAttack = AttackObjectiveEvaluator.Enumerate(low)[0];
+            AttackObjective highAttack = AttackObjectiveEvaluator.Enumerate(high)[0];
+            Assert.That(highAttack.TaskScore.MilitaryTargetRelevance,
+                Is.GreaterThan(lowAttack.TaskScore.MilitaryTargetRelevance));
+            Assert.That(highAttack.BaseValue, Is.GreaterThan(lowAttack.BaseValue));
         }
 
         [Test]

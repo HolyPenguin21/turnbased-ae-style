@@ -1,5 +1,3 @@
-using UnityEngine;
-
 namespace Game.Ai.V2
 {
     // ===========================================================================================
@@ -85,14 +83,21 @@ namespace Game.Ai.V2
             if (a == null || b == null) return false;
 
             if (a.Kind == MissionKind.Raid && b.Kind == MissionKind.Raid
-                && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb)
+                && a.Target is RaidMissionTarget ra && b.Target is RaidMissionTarget rb
+                && ra.Target.HasValue && rb.Target.HasValue && ra.Target.Equals(rb.Target))
+                return true;
+
+            if (a.Kind == MissionKind.Attack && b.Kind == MissionKind.Attack
+                && a.Target is AttackMissionTarget aaTarget && b.Target is AttackMissionTarget abTarget
+                && aaTarget.Target.HasValue && abTarget.Target.HasValue
+                && aaTarget.Target.Equals(abTarget.Target))
+                return true;
+
+            if (UsesGroundCombatAssignmentRegistry(a) && UsesGroundCombatAssignmentRegistry(b))
             {
-                if (ra.Target.HasValue && rb.Target.HasValue && ra.Target.Equals(rb.Target))
-                    return true;
-                // Raid owns its richer alternative-set feasibility in the existing registry. Do not
-                // replace it with a second matching layer here.
                 if (!GroundCombatAdmissionRegistry.PairHasDistinctAssignment(a, b))
                     return true;
+                return false;
             }
 
             if (a.Kind == MissionKind.Economy && b.Kind == MissionKind.Economy
@@ -115,23 +120,22 @@ namespace Game.Ai.V2
             return aa.HasValue && ba.HasValue && aa.Value == ba.Value;
         }
 
+        private static bool UsesGroundCombatAssignmentRegistry(MissionProposal mission)
+        {
+            if (mission?.Target is RaidMissionTarget raid)
+                return raid.Phase == RaidMissionPhase.Assault
+                    || raid.Phase == RaidMissionPhase.Reinforcement;
+            if (mission?.Target is AttackMissionTarget attack)
+                return attack.Phase == AttackMissionPhase.Assault
+                    || attack.Phase == AttackMissionPhase.Reinforcement;
+            return false;
+        }
+
         public static float AdmissionRank(MissionProposal m)
         {
             if (m == null) return 0f;
-            float score = m.LocalAdmissionScore;
-            if (m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget)
-            {
-                float sameTurn = m.Requirements != null && m.Requirements.EtaTurns <= 0
-                    ? AiConfigV2.economySameTurnCompletionBonus : 0f;
-                // TaskScore already priced card AP/resources and actor delivery once. Economy's
-                // local urgency and same-turn scheduling remain admission-only, not TaskScore.
-                // Radar scales EffectiveValue for CROSS-lane competition only: using it here
-                // changes Economy's within-lane order when the radar weight changes, even if
-                // BaseValue, urgency, feasibility and the available AP stay identical.
-                score = m.BaseValue + sameTurn
-                    + Mathf.Max(0f, m.LocalAdmissionScore - m.BaseValue);
-            }
-            return AdmissionRank(score, m.FromDurableIntent, m.DurableFundingTier);
+            return AdmissionRank(m.LocalAdmissionScore,
+                m.FromDurableIntent, m.DurableFundingTier);
         }
 
         public static float AdmissionRank(float localScore, bool fromDurableIntent, CommitmentTier tier)

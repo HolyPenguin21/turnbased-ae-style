@@ -46,6 +46,8 @@ namespace Game.Ai.V2
             public readonly Dictionary<ResourceType, ResourceBlockEvidence> CurrentBlocks =
                 new Dictionary<ResourceType, ResourceBlockEvidence>();
             public readonly HashSet<ResourceType> VerifiedPending = new HashSet<ResourceType>();
+            public readonly Dictionary<ResourceType, int> LastPressureHitTurn =
+                new Dictionary<ResourceType, int>();
             // Production diagnostics enable strict evidence mode. Standalone pure tests that call
             // RecordBlock directly keep the original simple semantics unless they explicitly enter
             // this mode, so the existing S26 harness remains useful and backward compatible.
@@ -88,7 +90,7 @@ namespace Game.Ai.V2
             // verified mode (pure harnesses / isolated callers), retain the original API behaviour.
             if (s.RequireVerifiedEvidence && !s.VerifiedPending.Remove(type))
                 return;
-            AddPressure(s, type);
+            AddPressureOncePerTurn(s, type, s.LastDecayTurn);
         }
 
         // Exact current-turn evidence used by StrategicCardEvaluator to price the marginal value of
@@ -102,14 +104,12 @@ namespace Game.Ai.V2
             State s = Get(player);
             s.RequireVerifiedEvidence = true;
             s.VerifiedPending.Remove(type);
-            AddPressure(s, type);
+            AddPressureOncePerTurn(s, type, turn);
 
             var next = new ResourceBlockEvidence(required, available, incomePerTurn, demandValue, turn);
             if (s.CurrentBlocks.TryGetValue(type, out ResourceBlockEvidence current)
                 && current.Turn == turn
-                && (current.DemandValue > next.DemandValue
-                    || (Mathf.Approximately(current.DemandValue, next.DemandValue)
-                        && current.Required <= next.Required)))
+                && !StrongerThan(next, current))
                 return;
             s.CurrentBlocks[type] = next;
         }
@@ -124,10 +124,22 @@ namespace Game.Ai.V2
                 && evidence.Turn == turn;
         }
 
-        private static void AddPressure(State s, ResourceType type)
+        private static void AddPressureOncePerTurn(State s, ResourceType type, int turn)
         {
+            if (s.LastPressureHitTurn.TryGetValue(type, out int hitTurn) && hitTurn == turn)
+                return;
+            s.LastPressureHitTurn[type] = turn;
             s.Pressure.TryGetValue(type, out float cur);
             s.Pressure[type] = Mathf.Clamp01(cur + AiConfigV2.starvationHitGain);
+        }
+
+        private static bool StrongerThan(ResourceBlockEvidence candidate,
+            ResourceBlockEvidence current)
+        {
+            if (!Mathf.Approximately(candidate.DemandValue, current.DemandValue))
+                return candidate.DemandValue > current.DemandValue;
+            return candidate.Required - candidate.AvailableAtBlock
+                > current.Required - current.AvailableAtBlock;
         }
 
         public static void DecayOncePerTurn(PlayerSetupData player, int turn)

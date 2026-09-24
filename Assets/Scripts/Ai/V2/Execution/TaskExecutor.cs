@@ -418,20 +418,13 @@ namespace Game.Ai.V2
             // executable Scout this turn.
             if (provisioned == null || provisioned.Count == 0)
             {
-                if (AiStrategyV2Scope.IsFocusScoped)
-                {
-                    ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-                    ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
-                }
+                ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
+                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
                 yield break;
             }
 
             var queue = new List<ProvisionedMission>(provisioned);
-            if (AiStrategyV2Scope.IsFocusScoped)
-            {
-                ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-                ReconAcceptanceAudit.RecordThreeScoutBatch(player, ctx.TurnNumber, queue);
-            }
+            ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
 
             for (int missionIndex = 0; missionIndex < queue.Count; missionIndex++)
             {
@@ -452,8 +445,7 @@ namespace Game.Ai.V2
             // provisioned Scout becomes stale, loses its mover, or otherwise never enters the Ground
             // executor. Individual Ground hooks may summarize earlier; the collector is idempotent
             // and automatically reopens the summary if later evidence changes a status.
-            if (AiStrategyV2Scope.IsFocusScoped)
-                ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
+            ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
         }
 
         // Mid-turn orchestration door for exactly one already-provisioned Ground/Raid task step.

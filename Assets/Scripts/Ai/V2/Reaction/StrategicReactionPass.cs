@@ -131,13 +131,12 @@ namespace Game.Ai.V2
     // solve the materialization closure or run the round itself.
     internal static class StrategicReactionPass
     {
-        // AI-MGR-02 §7 — CAN the pass run at all in this scope / with a resolvable hand.
+        // AI-MGR-02 §7 — CAN the pass run with a resolvable world context.
         internal static bool CanStrategicReactionPassRun(PlayerSetupData player, AiTurnContext ctx)
         {
             if (player == null || ctx == null || ctx.Map == null)
                 return false;
-            // ExecuteIfPending consumes-and-suppresses the whole pass in any focus scope.
-            return !AiStrategyV2Scope.IsFocusScoped;
+            return true;
         }
 
         // AI-MGR-02 §7 (round 5) — reserve a bounded reaction budget ONLY when a real feasibility
@@ -148,7 +147,7 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap)
         {
             if (!CanStrategicReactionPassRun(player, ctx))
-                return StrategicReactionOpportunity.None("cannotRun(scope)");
+                return StrategicReactionOpportunity.None("cannotRun(worldContext)");
             if (!StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
                 return StrategicReactionOpportunity.None("noPendingInvalidation");
             if (snap == null)
@@ -220,27 +219,6 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, StrategicReactionResult result,
             MaterializationReservation carriedReservation = null)
         {
-            // A focus scope isolates the current task-family loop from the legacy reaction round.
-            // Ordinary step invalidations are consumed by their typed local family before this
-            // terminal safety-net boundary. Never Clear() the remaining aggregate here: Hand /
-            // Capability / Resources / Infrastructure / Threat may belong to a family intentionally
-            // disabled by the current scope, and clearing them would make suppression an accidental
-            // universal consumer.
-            if (AiStrategyV2Scope.IsFocusScoped)
-            {
-                if (player != null && ctx != null && StrategicInterruptRegistry.HasPending(player, ctx.TurnNumber))
-                {
-                    StrategicInvalidation pending =
-                        StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
-                    AiDebugLog.Write($"[AI][V2][Scope] strategic reaction pass suppressed "
-                        + $"reason={AiStrategyV2Scope.Mode}; deferred={pending.Reasons}");
-                }
-                // AI-MGR-02 §4 — a scope-suppressed pass deliberately leaves any AP reservation in
-                // place: HousekeepingManager releases it and re-runs end-of-turn tempo spending with
-                // the freed AP the same turn (so it is not stranded).
-                yield break;
-            }
-
             yield return ReactionRoundExecutor.ExecuteRound(priorSnapshot, player, root, ctx,
                 result ?? new StrategicReactionResult(), 0,
                 carriedReservation ?? new MaterializationReservation());

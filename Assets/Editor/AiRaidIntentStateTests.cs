@@ -182,9 +182,12 @@ namespace Game.EditorTests
                 Assert.That(intent.Raid.Phase, Is.EqualTo(RaidMissionPhase.Return));
                 Assert.That(intent.Raid.ReturnHex, Is.EqualTo(baseHex));
                 Assert.That(intent.Raid.PrimaryArmyId, Is.EqualTo(11));
-                Assert.That(intent.Raid.Target, Is.EqualTo(target), "depleted primary must not chain");
+                Assert.That(intent.Raid.Target, Is.EqualTo(target),
+                    "continuity must never mutate a completed Raid into the next objective");
                 Assert.That(intent.IntentKey, Is.EqualTo(originalKey));
-                Assert.That(commitments.IsArmyClaimed(11), Is.True);
+                Assert.That(intent.Raid.CompletedTargetAwaitingFreshDecision, Is.True);
+                Assert.That(intent.Funding, Is.EqualTo(CommitmentTier.None));
+                Assert.That(commitments.IsArmyClaimed(11), Is.False);
                 Assert.That(MissionIntentRegistry.GetOrCreate(player).TryGet(originalKey, out _), Is.True);
             }
             finally { HexEventRegistry.Clear(); }

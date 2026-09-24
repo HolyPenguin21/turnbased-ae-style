@@ -4,42 +4,17 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Demand-side desired concurrency is deliberately softer than the allocator's hard K.
-    // K answers "how many may execute"; this policy answers "how many are worth owning now".
-    // Additional lanes are requested only while the map remains materially dark and the next
-    // runnable objective retains enough absolute and relative value. This prevents the hard cap
-    // from becoming an unconditional production target late in exploration.
+    // Desired Recon capacity is 0..K. Coverage facts may justify a second lane only when a second
+    // runnable objective already has material value on the canonical TaskScore scale.
     internal static class ReconConcurrencyPolicy
     {
-        // A focus scope (ReconOnly / ReconDevelopment) is the isolated Ground-Recon acceptance
-        // environment. It deliberately permits a three-scout portfolio so deconfliction/spread can
-        // be exercised without changing the Full strategy's historical K=2 tuning before the Ground
-        // Recon acceptance suite passes.
-        internal const int ReconOnlyHardCap = AiConfigV2.reconConcurrencyReconOnlyHardCap;
+        internal const float SecondLaneMinRelativeValue =
+            AiConfigV2.reconConcurrencySecondLaneMinRelValue;
+        internal const float SecondLaneMinExplorableUnknownFrac =
+            AiConfigV2.reconConcurrencySecondLaneMinDarkFrac;
 
-        internal const float SecondLaneMinBaseValue = AiConfigV2.reconConcurrencySecondLaneMinBaseValue;
-        internal const float SecondLaneMinRelativeValue = AiConfigV2.reconConcurrencySecondLaneMinRelValue;
-        internal const float SecondLaneMinExplorableUnknownFrac = AiConfigV2.reconConcurrencySecondLaneMinDarkFrac;
+        public static int HardCap => Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions);
 
-        // The third lane is a coverage lane: require a materially darker map, but allow its absolute
-        // objective value to be below lane two because marginal frontier/Refresh value naturally
-        // falls as scouts spread. It still must retain a meaningful fraction of the best job.
-        internal const float ThirdLaneMinBaseValue = AiConfigV2.reconConcurrencyThirdLaneMinBaseValue;
-        internal const float ThirdLaneMinRelativeValue = AiConfigV2.reconConcurrencyThirdLaneMinRelValue;
-        internal const float ThirdLaneMinExplorableUnknownFrac = AiConfigV2.reconConcurrencyThirdLaneMinDarkFrac;
-
-        public static int HardCap => AiStrategyV2Scope.IsFocusScoped
-            ? ReconOnlyHardCap
-            : Mathf.Max(0, AiConfigV2.maxConcurrentReconExecutions);
-
-        // AI-RECON-02 — which requirement class a desired-concurrency estimate is being sized for.
-        // The value-driven 1..3 count is common to all; the coverage add-ons are NOT:
-        //   · frontier-region coverage (spec §28) is a GROUND-VISIT concern — aviation cannot close
-        //     an unexplored walking region — so it applies to GroundTraversal / Combined only.
-        //   · the dedicated Refresh lane is an OBSERVATION concern (stale known intel) — it applies
-        //     to Observation / Combined only.
-        // A class-scoped estimate is also clamped to the number of runnable lanes of that class, so
-        // e.g. a single Refresh objective can never be inflated to desired=3 by 3 frontier regions.
         internal enum ReconCoverageClass { Combined, Observation, GroundTraversal }
 
         public static int DesiredTotal(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable) =>
@@ -48,71 +23,38 @@ namespace Game.Ai.V2
         public static int DesiredForClass(WorldSnapshot snap, IReadOnlyList<ReconObjective> runnable,
             ReconCoverageClass klass)
         {
-            int hardCap = Mathf.Max(0, HardCap);
-            if (hardCap == 0 || runnable == null || runnable.Count == 0)
+            int hardCap = HardCap;
+            if (hardCap == 0 || runnable == null || runnable.Count == 0
+                || !HasMaterialValue(runnable[0]))
                 return 0;
 
-            bool applyFrontierCoverage = klass != ReconCoverageClass.Observation;
-            bool applyRefreshLane = klass != ReconCoverageClass.GroundTraversal;
-
             int desired = 1;
-            float dark = snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
+            if (hardCap < 2 || runnable.Count < 2 || !HasMaterialValue(runnable[1]))
+                return desired;
 
-            if (hardCap >= 2 && runnable.Count >= 2)
-            {
-                ReconObjective first = runnable[0];
-                ReconObjective second = runnable[1];
-                float best = Mathf.Max(0.0001f, first?.BaseValue ?? 0f);
-                float secondValue = Mathf.Max(0f, second?.BaseValue ?? 0f);
-                float secondRatio = secondValue / best;
+            float best = Mathf.Max(AiConfigV2.allocatorSliceEpsilon,
+                runnable[0]?.BaseValue ?? 0f);
+            float secondValue = Mathf.Max(0f, runnable[1]?.BaseValue ?? 0f);
+            if (secondValue / best < SecondLaneMinRelativeValue)
+                return desired;
 
-                if (secondValue >= SecondLaneMinBaseValue
-                    && secondRatio >= SecondLaneMinRelativeValue
-                    && dark >= SecondLaneMinExplorableUnknownFrac)
-                    desired = 2;
+            bool frontierCoverage = klass != ReconCoverageClass.Observation
+                && CountFrontierRegions(snap?.MapKnowledge?.Frontier) >= 2;
+            bool refreshCoverage = klass != ReconCoverageClass.GroundTraversal
+                && ReconIntelSnapshotRegistry.StalePressure(snap)
+                    >= AiConfigV2.reconDemandRefreshLaneThreshold;
+            bool darkCoverage = (snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f)
+                >= SecondLaneMinExplorableUnknownFrac;
 
-                // A third lane is never requested unless lane two already qualified. This keeps the
-                // concurrency curve monotonic and prevents a very dark map from skipping a weak
-                // second objective just because a third entry happens to look acceptable alone.
-                if (desired >= 2 && hardCap >= 3 && runnable.Count >= 3)
-                {
-                    ReconObjective third = runnable[2];
-                    float thirdValue = Mathf.Max(0f, third?.BaseValue ?? 0f);
-                    float thirdRatio = thirdValue / best;
-                    if (thirdValue >= ThirdLaneMinBaseValue
-                        && thirdRatio >= ThirdLaneMinRelativeValue
-                        && dark >= ThirdLaneMinExplorableUnknownFrac)
-                        desired = 3;
-                }
-            }
-
-            // Spec §28 — coverage sizing on top of the value-driven count: never fewer scouts than
-            // distinct reachable unexplored regions (capped), plus one dedicated lane when Refresh
-            // pressure alone is high enough that an Explore-only portfolio would let the known
-            // picture rot.
-            if (applyFrontierCoverage)
-            {
-                int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
-                desired = Mathf.Max(desired, Mathf.Min(hardCap, regions));
-            }
-
-            if (applyRefreshLane)
-            {
-                float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
-                if (refresh >= AiConfigV2.reconDemandRefreshLaneThreshold && desired < hardCap)
-                    desired += 1;
-            }
-
-            desired = Mathf.Min(hardCap, desired);
-            // A class-scoped estimate never exceeds the runnable lanes it is actually sizing for.
-            if (klass != ReconCoverageClass.Combined)
-                desired = Mathf.Min(desired, runnable.Count);
-            return desired;
+            if (frontierCoverage || refreshCoverage || darkCoverage)
+                desired = 2;
+            return Mathf.Min(desired, Mathf.Min(hardCap, runnable.Count));
         }
 
-        // Coarse count of connected reachable unexplored regions: frontier hexes within
-        // reconDemandRegionMergeDistance of each other are one region. Frontier is bounded so the
-        // O(n^2) flood is cheap.
+        private static bool HasMaterialValue(ReconObjective objective) => objective != null
+            && DemandUrgencyPolicy.NormalizedWorldValue(objective.BaseValue)
+                > AiConfigV2.allocatorSliceEpsilon;
+
         internal static int CountFrontierRegions(IReadOnlyList<FrontierHexSnapshot> frontier)
         {
             if (frontier == null || frontier.Count == 0)
@@ -120,7 +62,6 @@ namespace Game.Ai.V2
             var unassigned = new HashSet<HexCoord>();
             foreach (FrontierHexSnapshot f in frontier)
                 unassigned.Add(f.Hex);
-
             int regions = 0;
             var stack = new Stack<HexCoord>();
             while (unassigned.Count > 0)
@@ -135,7 +76,8 @@ namespace Game.Ai.V2
                     HexCoord cur = stack.Pop();
                     var near = new List<HexCoord>();
                     foreach (HexCoord other in unassigned)
-                        if (HexGridMath.Distance(cur, other) <= AiConfigV2.reconDemandRegionMergeDistance)
+                        if (HexGridMath.Distance(cur, other)
+                            <= AiConfigV2.reconDemandRegionMergeDistance)
                             near.Add(other);
                     foreach (HexCoord n in near) { unassigned.Remove(n); stack.Push(n); }
                 }
@@ -147,15 +89,13 @@ namespace Game.Ai.V2
         {
             float first = runnable != null && runnable.Count > 0 ? runnable[0].BaseValue : 0f;
             float second = runnable != null && runnable.Count > 1 ? runnable[1].BaseValue : 0f;
-            float third = runnable != null && runnable.Count > 2 ? runnable[2].BaseValue : 0f;
-            float secondRatio = first > 0f ? second / first : 0f;
-            float thirdRatio = first > 0f ? third / first : 0f;
+            float ratio = first > 0f ? second / first : 0f;
             float dark = snap?.MapKnowledge?.ExplorableUnknownFrac ?? 0f;
             int regions = CountFrontierRegions(snap?.MapKnowledge?.Frontier);
             float refresh = ReconIntelSnapshotRegistry.StalePressure(snap);
             return $"desired={DesiredTotal(snap, runnable)} hard={HardCap} "
-                + $"best={first:0.0} second={second:0.0} r2={secondRatio:0.00} "
-                + $"third={third:0.0} r3={thirdRatio:0.00} dark={dark:0.00} regions={regions} refresh={refresh:0.00}";
+                + $"best={first:0.0} second={second:0.0} r2={ratio:0.00} "
+                + $"dark={dark:0.00} regions={regions} refresh={refresh:0.00}";
         }
     }
 }

@@ -131,11 +131,12 @@ namespace Game.Ai.V2
             // Round 3 (Problem 3) — the stealth free-actor count is now the SAME joint witness
             // MeasureCapacity produces for everything else (see `witness` below), not a second raw
             // ReconAssignmentPlanner.CountEligibleMovers count with no job-matching behind it.
-            int desiredStealthLanes = Mathf.Min(stealthRunnable.Count,
-                ReconConcurrencyPolicy.DesiredForClass(snap, stealthObsRunnable,
-                    ReconConcurrencyPolicy.ReconCoverageClass.Observation)
-                + ReconConcurrencyPolicy.DesiredForClass(snap, stealthGroundRunnable,
-                    ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal));
+            int desiredStealthLanes = Mathf.Min(ReconConcurrencyPolicy.HardCap,
+                Mathf.Min(stealthRunnable.Count,
+                    ReconConcurrencyPolicy.DesiredForClass(snap, stealthObsRunnable,
+                        ReconConcurrencyPolicy.ReconCoverageClass.Observation)
+                    + ReconConcurrencyPolicy.DesiredForClass(snap, stealthGroundRunnable,
+                        ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal)));
 
             // --- "Usable capacity" witness. A raw actor COUNT (GroundTraversalSupply/
             //     ObservationSupply) is not proof of executable work: an idle solo Recce can still be

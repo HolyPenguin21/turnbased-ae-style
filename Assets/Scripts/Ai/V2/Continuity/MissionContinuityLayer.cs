@@ -440,10 +440,6 @@ namespace Game.Ai.V2
 
             // AGG-RAID §5 — neutral targets already owned by a durable Raid, so a re-orientation
             // never lands two Raid operations on the same neutral target (either kind).
-            var activeRaidTargets = new HashSet<RaidTargetRef>();
-            foreach (MissionIntent i in state.All)
-                if (i?.Raid != null && i.Raid.Target.HasValue)
-                    activeRaidTargets.Add(i.Raid.Target);
             HashSet<int> raidClaims = ActorCommitments.FromIntents(state.All, snap,
                 reconObjectives).ClaimedArmyIdSet;
 
@@ -954,8 +950,8 @@ namespace Game.Ai.V2
                     bool isReturnLeg = ri.Phase == RaidMissionPhase.Return || ri.Phase == RaidMissionPhase.SupportReturn;
                     HashSet<int> recoveryUnavailable = RecoveryUnavailable(raidClaims, ri);
                     if (!isReturnLeg
-                        && !AdvanceRaidPhase(player, snap, intent, ri, aggressionObjectives,
-                            activeRaidTargets, rekeys, recoveryUnavailable, safeRouteCost))
+                        && !AdvanceRaidPhase(player, snap, intent, ri,
+                            recoveryUnavailable, safeRouteCost))
                     {
                         dead.Add(intent.IntentKey);
                         continue;
@@ -1222,7 +1218,7 @@ namespace Game.Ai.V2
             var scoutLanes = active.Where(i => i.Kind == MissionKind.Scout && i.Scout != null
                 && (!i.PreferredMoverArmyId.HasValue || !airActorIds.Contains(i.PreferredMoverArmyId.Value)))
                 .ToList();
-            if (scoutLanes.Count <= 1)
+            if (scoutLanes.Count == 0)
                 return;
 
             var runnable = reconObjectives
@@ -1230,7 +1226,7 @@ namespace Game.Ai.V2
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.IntentKey)
                 .ToList();
-            int desired = System.Math.Max(1, ReconConcurrencyPolicy.DesiredTotal(snap, runnable));
+            int desired = ReconConcurrencyPolicy.DesiredTotal(snap, runnable);
 
             var shedable = scoutLanes
                 .Where(i => i.Funding < CommitmentTier.Hard
@@ -1340,18 +1336,12 @@ namespace Game.Ai.V2
             return a != null && !a.IsPrison && !a.IsAir && a.MemberCount > 0;
         }
 
-        // The §5 transition table, run once per reconciliation pass against FRESH objectives:
-        //   target completed -> surviving depleted primary                  => Return
-        //                    -> next neutral exists -> primary clears it   => Assault
-        //                                           -> needs reinforcement => Reinforcement
-        //                    -> no neutral targets left                    => Return
+        // A completed target is a strategic decision boundary: this intent becomes a Return
+        // fallback with an unclaimed actor. Any next Raid / Attack / ActiveDefence is proposed as
+        // a fresh mission and competes through TaskScore + the global allocator.
         // Returns false only when the operation cannot continue in any phase (caller retires it).
         private static bool AdvanceRaidPhase(PlayerSetupData player, WorldSnapshot snap,
-            MissionIntent intent, RaidIntent ri,
-            IReadOnlyList<AggressionObjective> aggressionObjectives,
-            HashSet<RaidTargetRef> activeRaidTargets,
-            List<(MissionIntentKey Old, MissionIntent Intent)> rekeys,
-            ISet<int> unavailableArmyIds,
+            MissionIntent intent, RaidIntent ri, ISet<int> unavailableArmyIds,
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
             // Loss of VISIBILITY is never proof of destruction — IsObjectiveSatisfiedLive is the
@@ -1401,57 +1391,10 @@ namespace Game.Ai.V2
                 return true;
             }
 
-            AggressionObjective next = (aggressionObjectives
-                    ?? (IReadOnlyList<AggressionObjective>)System.Array.Empty<AggressionObjective>())
-                .Where(o => o != null && o.TargetIsNeutral && o.Target.HasValue
-                    && !o.Target.Equals(ri.Target)
-                    && !activeRaidTargets.Contains(o.Target))
-                .OrderByDescending(o => o.BaseValue)
-                .ThenBy(o => o.Target.DiagnosticLabel)
-                .FirstOrDefault();
-
-            // A completed objective must not chain a surviving but depleted primary onto the
-            // next neutral (not even into Reinforcement). Keep its durable identity and return
-            // it home through the existing Return transition instead.
-            bool depletedPrimary = ri.OperationStarted && ri.PrimaryArmyId.HasValue
-                && !RaidPrimaryActorAlive(snap, ri.PrimaryArmyId.Value);
-            if (next == null || depletedPrimary)
-            {
-                string reason = depletedPrimary ? "primary depleted" : "no neutral targets left";
-                return BeginTerminalRaidReturn(player, snap, intent, ri, reason);
-            }
-
-            // Re-orient the SAME durable operation onto the next neutral (identity is the target
-            // itself, so the registry slot is re-keyed in place — accumulated AP/steps kept).
-            MissionIntentKey oldKey = intent.IntentKey;
-            activeRaidTargets.Remove(ri.Target);
-            ri.Target = next.Target;
-            ri.LastKnownHex = next.LastKnownHex;
-            ri.TargetIsNeutral = true;
-            activeRaidTargets.Add(ri.Target);
-            intent.IntentKey = MissionIntentKey.For(intent);
-            if (!intent.IntentKey.Equals(oldKey))
-                rekeys.Add((oldKey, intent));
-            intent.StallTurns = 0;
-            intent.LastProgressTurn = snap?.TurnNumber ?? intent.LastProgressTurn;
-
-            // §5 — the new target is a FRESH decision: the primary is re-checked against the strict
-            // start gate, never against the stale gate that admitted the previous target.
-            bool strongEnough = PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target);
-            ri.Phase = strongEnough ? RaidMissionPhase.Assault : RaidMissionPhase.Reinforcement;
-            if (strongEnough)
-            {
-                ri.SupportArmyId = null;
-                ri.ReinforcementRequestedTurn = -1;
-                ClearRaidRecovery(ri);
-            }
-            else if (ri.OperationStarted
-                && !TransitionToBestRecovery(player, snap, intent, ri, unavailableArmyIds,
-                    "next_target_requires_recovery", safeRouteCost))
-                return false;
-            AiDebugLog.Write($"[AI][V2][Raid] {oldKey} target completed -> re-oriented to {intent.IntentKey} "
-                + $"phase={ri.Phase} primary=#{ri.PrimaryArmyId} worthIt={(strongEnough ? 1 : 0)}");
-            return true;
+            ri.CompletedTargetAwaitingFreshDecision = true;
+            intent.Funding = CommitmentTier.None;
+            return BeginTerminalRaidReturn(player, snap, intent, ri,
+                "target completed; awaiting fresh global Aggression decision");
         }
 
         private static HashSet<int> RecoveryUnavailable(ISet<int> allClaims, RaidIntent raid)
@@ -2673,6 +2616,8 @@ namespace Game.Ai.V2
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
                 CommitmentTier.Hard, payload);
+            RetireCompletedRaidFallbackForActor(state, payload.PrimaryArmyId,
+                "fresh ActiveDefence admitted");
             state.Put(intent);
             if (t.SuspendedOffensiveIntentKey.HasValue
                 && state.TryGet(t.SuspendedOffensiveIntentKey.Value, out MissionIntent offensive)
@@ -2696,8 +2641,25 @@ namespace Game.Ai.V2
                 OperationStarted = true,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Raid, CommitmentTier.Hard, ri);
+            RetireCompletedRaidFallbackForActor(state, intent.PreferredMoverArmyId,
+                "fresh Raid admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
+        }
+
+        private static void RetireCompletedRaidFallbackForActor(MissionIntentState state,
+            int? actorId, string reason)
+        {
+            if (state == null || !actorId.HasValue)
+                return;
+            foreach (MissionIntent fallback in state.All.Where(i => i?.Raid != null
+                && i.Raid.CompletedTargetAwaitingFreshDecision
+                && i.Raid.PrimaryArmyId == actorId).ToList())
+            {
+                state.Remove(fallback.IntentKey);
+                AiDebugLog.Write($"[AI][V2][Raid] {fallback.IntentKey} return fallback retired — "
+                    + $"actor #{actorId.Value} reassigned by global allocation ({reason})");
+            }
         }
 
         private static void CreateEconomyIntent(MissionIntentState state, MissionTurnOutcome o, int turn)

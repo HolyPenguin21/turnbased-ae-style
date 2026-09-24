@@ -122,7 +122,7 @@ namespace Game.Ai.V2
         // (§44 "не складывать Energy cost всей колоды"). Zero once the deck is empty or the hand is
         // full (no draw is coming).
         //
-        // §41.4 Research/Production opportunity is intentionally not added here: under ReconOnly no
+        // §41.4 Research/Production opportunity is intentionally not added here: no
         // such action exists, and when Full V2 returns its own funded Develop actions already claim
         // their Energy through the pipeline before AirRecon is evaluated.
         // Exposed (AviationSortieReservationEvaluator §2 Deck Energy Pressure) — probability-weighted
