@@ -687,7 +687,7 @@ namespace Game.Ai
                 foreach (ArmyData enemy in observedArmies)
                 {
                     observedIds.Add(enemy.Id);
-                    List<UnitData> nonHero = enemy.Members.Where(m => !m.IsHero && !StealthSystem.IsHiddenFrom(m, player)).ToList();
+                    List<UnitData> nonHero = enemy.Members.Where(m => m.IsGroundCombatant && !StealthSystem.IsHiddenFrom(m, player)).ToList();
                     int visibleMemberCount = enemy.Members.Count(m => !StealthSystem.IsHiddenFrom(m, player));
                     // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
                     // same army was last recorded at a DIFFERENT hex, this overwrites that record in

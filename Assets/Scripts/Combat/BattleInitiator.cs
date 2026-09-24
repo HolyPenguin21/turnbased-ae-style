@@ -30,7 +30,7 @@ namespace Game.Combat
             if (army == null || AviationRules.IsAirArmy(army) || AviationRules.IsAirfield(army))
                 return false;
             foreach (UnitData member in army.Members)
-                if (!member.IsHero)
+                if (member.IsGroundCombatant)
                     return true;
             return false;
         }
@@ -75,7 +75,7 @@ namespace Game.Combat
             if (mover == null || AviationRules.IsAirArmy(mover) || AviationRules.IsAirfield(mover))
                 return false;
             foreach (UnitData member in mover.Members)
-                if (!member.IsHero && !member.IsHidden)
+                if (member.IsGroundCombatant && !member.IsHidden)
                     return true;
             return false;
         }
@@ -109,8 +109,9 @@ namespace Game.Combat
                     continue;
                 }
 
+                // Whole visible roster — WorthIt keeps only ground combatants itself.
                 var visibleRoster = Game.Map.StealthSystem.TargetableMembersFor(army, observer)
-                    .Where(member => member != null && !member.IsHero)
+                    .Where(member => member != null)
                     .Select(WorthIt.FromLiveUnit)
                     .ToList();
                 WorthIt.BattleEstimate estimate = WorthIt.Estimate(mover, visibleRoster, 0f);

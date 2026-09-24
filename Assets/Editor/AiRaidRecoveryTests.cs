@@ -249,7 +249,7 @@ namespace Game.EditorTests
             WorthIt.DefenderProfile current, WorthIt.DefenderProfile full,
             bool repairable, ResourceVector repairCost = default, bool canSpare = false,
             int activationAp = 0) =>
-            new RaidRecoveryMemberSnapshot(id, index, false, false, canSpare, activationAp,
+            new RaidRecoveryMemberSnapshot(id, index, false, false, true, canSpare, activationAp,
                 current, full, repairable, repairCost);
 
         private static WorthIt.DefenderProfile Profile(float attack, float defense,

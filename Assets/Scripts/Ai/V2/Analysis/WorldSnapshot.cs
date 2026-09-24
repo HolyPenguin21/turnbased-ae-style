@@ -315,6 +315,8 @@ namespace Game.Ai.V2
         public readonly int UnitIndex;
         public readonly bool IsHero;
         public readonly bool IsAviation;
+        // AiArmyRoles.IsGroundBattleBody frozen at snapshot time — the one body rule.
+        public readonly bool IsGroundBattleBody;
         public readonly bool CanSpareForRaid;
         public readonly int ActivationApCost;
         public readonly WorthIt.DefenderProfile CurrentProfile;
@@ -323,7 +325,7 @@ namespace Game.Ai.V2
         public readonly ResourceVector RepairCost;
 
         public RaidRecoveryMemberSnapshot(int runtimeId, int unitIndex, bool isHero,
-            bool isAviation, bool canSpareForRaid, int activationApCost,
+            bool isAviation, bool isGroundBattleBody, bool canSpareForRaid, int activationApCost,
             WorthIt.DefenderProfile currentProfile, WorthIt.DefenderProfile fullHealthProfile,
             bool repairCostInitialized, ResourceVector repairCost)
         {
@@ -331,6 +333,7 @@ namespace Game.Ai.V2
             UnitIndex = unitIndex;
             IsHero = isHero;
             IsAviation = isAviation;
+            IsGroundBattleBody = isGroundBattleBody;
             CanSpareForRaid = canSpareForRaid;
             ActivationApCost = activationApCost;
             CurrentProfile = currentProfile;

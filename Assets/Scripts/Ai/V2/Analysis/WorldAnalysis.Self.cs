@@ -190,7 +190,7 @@ namespace Game.Ai.V2
             foreach (ArmyData a in ownArmies)
             {
                 foreach (UnitData m in a.Members)
-                    if (m != null && !m.IsHero) nonHeroBodies++;
+                    if (m != null && m.IsGroundCombatant) nonHeroBodies++;
                 if (a.IsGarrison || a.IsPrison || a.IsAirArmy || a.Members.Count == 0) continue;
                 if (a.HasActivatedThisTurn) continue;
                 unactivatedArmies++;
@@ -230,7 +230,7 @@ namespace Game.Ai.V2
 
         private static ArmySnapshot ToArmySnapshot(ArmyData a, PlayerSetupData viewer, bool isOwn, int armyVisionRadius)
         {
-            var nonHero = a.Members.Where(m => !m.IsHero).ToList();
+            var nonHero = a.Members.Where(m => m.IsGroundCombatant).ToList();
             bool allHidden = !isOwn && a.Members.Count > 0
                 && a.Members.All(m => StealthSystem.IsHiddenFrom(m, viewer));
 
@@ -327,11 +327,12 @@ namespace Game.Ai.V2
                     unit.RepairResourceCost.Get(ResourceType.Materials),
                     unit.RepairResourceCost.Get(ResourceType.Tech))
                 : ResourceVector.Zero;
-            bool canSpare = isOwn && army.Members.Count > 1 && !unit.IsHero && !unit.IsAviation
+            bool isBody = AiArmyRoles.IsGroundBattleBody(unit);
+            bool canSpare = isOwn && army.Members.Count > 1 && isBody
                 && army.CanLeaveWithoutOvercrowding(unit)
                 && (!army.IsGarrison || AiArmyRoles.CanSpareGarrisonMember(viewer, army, unit));
             return new RaidRecoveryMemberSnapshot(unit.RuntimeId, index, unit.IsHero,
-                unit.IsAviation, canSpare, unit.ActivationApCost, current, full,
+                unit.IsAviation, isBody, canSpare, unit.ActivationApCost, current, full,
                 initialized, cost);
         }
 

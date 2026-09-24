@@ -306,7 +306,7 @@ namespace Game.Map
             if (army == null)
                 return false;
             foreach (UnitData member in army.Members)
-                if (!member.IsHero && !IsHiddenFrom(member, observer))
+                if (member.IsGroundCombatant && !IsHiddenFrom(member, observer))
                     return true;
             return false;
         }

@@ -34,7 +34,7 @@ namespace Game.Combat
             UnitData attackerHero = FindHero(grid, attackerSide: true);
             UnitData defenderHero = FindHero(grid, attackerSide: false);
 
-            var order = new List<UnitData>(grid.AllUnits().Where(u => !u.IsHero));
+            var order = new List<UnitData>(grid.AllUnits().Where(u => u.IsGroundCombatant));
             order.Sort((a, b) => EffectiveInitiative(b, attacker, defender, attackerHero, defenderHero)
                 .CompareTo(EffectiveInitiative(a, attacker, defender, attackerHero, defenderHero)));
             return order;

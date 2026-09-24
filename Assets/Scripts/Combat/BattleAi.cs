@@ -168,7 +168,7 @@ namespace Game.Combat
         {
             int count = 0;
             foreach (UnitData member in army.Members)
-                if (!member.IsHero && member.Range <= 2)
+                if (member.IsGroundCombatant && member.Range <= 2)
                     count++;
             return count;
         }
@@ -218,7 +218,7 @@ namespace Game.Combat
             int enemyMaxRange = 0;
             if (enemyArmy != null)
                 foreach (UnitData enemyMember in enemyArmy.Members)
-                    if (!enemyMember.IsHero && enemyMember.Range > enemyMaxRange)
+                    if (enemyMember.IsGroundCombatant && enemyMember.Range > enemyMaxRange)
                         enemyMaxRange = enemyMember.Range;
 
             bool weAreAttackerSide = frontRow == BattleGrid.AttackerFrontRow;
@@ -636,7 +636,7 @@ namespace Game.Combat
                 return;
             foreach (UnitData member in army.Members)
             {
-                if (member.IsHero || member.HitPointsCurrent <= 0) // heroes never attack
+                if (!member.IsGroundCombatant || member.HitPointsCurrent <= 0) // heroes never attack
                     continue;
                 if (!liveGrid.TryFindPosition(member, out int row, out int col))
                     continue;
@@ -656,7 +656,7 @@ namespace Game.Combat
             if (army == null)
                 return total;
             foreach (UnitData member in army.Members)
-                if (!member.IsHero)
+                if (member.IsGroundCombatant)
                     total += member.HitPointsCurrent;
             return total;
         }
@@ -760,7 +760,7 @@ namespace Game.Combat
         {
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (candidate.IsHero || candidate.Owner == actor.Owner)
+                if (!candidate.IsGroundCombatant || candidate.Owner == actor.Owner)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                     continue;
@@ -782,7 +782,7 @@ namespace Game.Combat
             int nearestDist = int.MaxValue;
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (candidate.IsHero || candidate.Owner == actor.Owner)
+                if (!candidate.IsGroundCombatant || candidate.Owner == actor.Owner)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                     continue;

@@ -106,7 +106,7 @@ namespace Game.Ai.V2
             ReorgContainer donorMeta = c.Meta[donorId];
             ReorgContainer weakMeta = c.Meta[weakId];
 
-            List<ReorgUnit> spare = donor.Where(u => !u.IsHero && !u.IsCommitted && !u.IsAviation
+            List<ReorgUnit> spare = donor.Where(u => u.IsGroundBattleBody && !u.IsCommitted
                     && !c.MovedUnitKeys.Contains(u.Key))
                 .OrderBy(u => u.Power).ThenBy(u => u.Key).ToList();
 
@@ -214,7 +214,7 @@ namespace Game.Ai.V2
             }
             else
             {
-                int remainingNonHero = garrison.Count(x => !x.IsHero) - 1;
+                int remainingNonHero = garrison.Count(x => x.IsGroundCombatant) - 1;
                 if (remainingNonHero < meta.GarrisonNonHeroFloor)
                     return false;
             }

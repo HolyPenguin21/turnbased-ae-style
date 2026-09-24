@@ -213,7 +213,7 @@ namespace Game.Ai.V2
         {
             List<UnitData> sparable = SparableSupportBodies(support);
             List<WorthIt.DefenderProfile> primaryBodies = primary.Members
-                .Where(u => u != null && !u.IsHero && !u.IsAviation)
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .Select(WorthIt.FromLiveUnit)
                 .ToList();
             List<WorthIt.DefenderProfile> supportBodies = sparable
@@ -232,7 +232,7 @@ namespace Game.Ai.V2
             if (support == null)
                 return list;
             foreach (UnitData u in support.Members
-                .Where(x => x != null && !x.IsHero && !x.IsAviation)
+                .Where(x => AiArmyRoles.IsGroundBattleBody(x))
                 .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                 .ThenBy(x => x.Name))
             {
