@@ -16,7 +16,7 @@ using Game.Combat;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  WORLD ANALYSIS  (Strategy V2 build-order step 2, 2026-08-29)
+    //  WORLD ANALYSIS
     // ===========================================================================================
     //  Builds the one shared WorldSnapshot at the top of Pipeline.RunTurn. Everything downstream
     //  reads that object and never touches raw game state again.
@@ -38,8 +38,7 @@ namespace Game.Ai.V2
     //  type invariant.
     // ===========================================================================================
     //
-    //  File-split (mechanical, no behaviour change, Docs/ai-v2-file-split-refactor-tasks.md Task 5):
-    //  this file keeps only the entry points (Scan / RefreshOperationalState /
+    //  This file keeps only the entry points (Scan / RefreshOperationalState /
     //  RefreshStrategicKnowledge) that orchestrate the per-family builders below. Each snapshot
     //  family's builder + its own-only helpers live in the sibling WorldAnalysis.<Family>.cs
     //  partial file (Observation / Self / Development / Knowledge / Economy / Threat).

@@ -12,7 +12,7 @@ using Game.Combat;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  WORLD SNAPSHOT  (Strategy V2 build-order step 2)
+    //  WORLD SNAPSHOT
     // ===========================================================================================
     //  The single shared world scan. WorldAnalysis.Scan builds one of these once at the top of
     //  Pipeline.RunTurn; every stage after it (StrategyLayer, MissionLayer, ResourceAllocator,
@@ -25,7 +25,7 @@ namespace Game.Ai.V2
     //                  VisionSystem. This is what a fair player could know.
     //    TrueWorld   — CHEAT. Direct registry reads, hidden units included, enemy incomes/
     //                  stockpiles included. Downstream code uses this ONLY where cheating is
-    //                  sanctioned (the project owner's explicit calls). Kept in its own layer so
+    //                  explicitly sanctioned. Kept in its own layer so
     //                  "did this decision cheat" is always answerable by which field it read.
     //    MapKnowledge— fog / frontier / how much of the board is understood.
     //    Economy     — EconomyStanding: continuous, RELATIVE-to-the-field economic health.
@@ -195,7 +195,7 @@ namespace Game.Ai.V2
         // enemy contact it means "fields AA guns" (aviation-routing danger). Kept as its own field
         // because the aviation path (AirReconRouteCandidate) reads it independently.
         public bool HasAntiAir;
-        // AI-MGR-01 P1.7 / review-r4 P1 ARCH — the strategic ROLES this army covers for standing-
+        // The strategic ROLES this army covers for standing-
         // force readiness, derived DYNAMICALLY from its members' abilities + stats via
         // StrategicEffectRegistry (not a card type / class flag). Own armies only in practice; an
         // enemy/cheat-read army leaves it None. Consumed by BaselineForceReadiness's coverage
@@ -249,7 +249,7 @@ namespace Game.Ai.V2
         public int OccupiedBattleSlots;     // members currently occupying slots (heroes included)
         public int FreeBattleSlots => System.Math.Max(0, Capacity - OccupiedBattleSlots);
 
-        // ---- OPERATIONAL state (2026-08-29, build-order step 4) ----------------------------
+        // ---- OPERATIONAL state --------------------------------------------------------------
         // Frozen here so the Recon mission planner / ScoutCostModel can size a mover's cost for
         // THIS allocation cycle without a fresh live read downstream. Only meaningful for
         // Self.Armies — an enemy/cheat-read army's activation/movement state is NOT knowable and
@@ -291,7 +291,7 @@ namespace Game.Ai.V2
         // to avoid pricing a Facility that would merely displace this army's existing collection.
         public ResourceBundle CollectionCapacity;
 
-        // AGG-RAID P1#3 — the GENUINE (structural, any-number-of-turns) route-existence fact for
+        // The GENUINE (structural, any-number-of-turns) route-existence fact for
         // this own army against every own base hex, computed ONCE here (SafeStepPathing.FindSafePath,
         // the exact same route oracle Provisioning re-runs live) so a snapshot-only consumer
         // (Continuity) never has to guess reachability from geometric distance alone. This answers
@@ -778,14 +778,13 @@ namespace Game.Ai.V2
             // DesireEvaluators read it the same way; repurposing it here would silently change
             // those unrelated consumers' behaviour.
             float target = Mathf.Max(opponentMedianIncome, cardCadence);
-            // 2026-09-15 — incomeGap itself replaced with a turns-to-afford bottleneck (project
-            // owner's own model, see docs/ai-economy-mover-materialization-decision-tree.md):
-            // instead of comparing the current income RATE to a target rate, solve directly for
+            // incomeGap is a turns-to-afford bottleneck (see
+            // docs/ai-economy-mover-materialization-decision-tree.md): solve directly for
             // how many turns until spendableStockpile + ownIncome×turns covers the FULL,
             // undiscounted hand+deck need ("play everything, in a vacuum"). The resource with the
             // largest turnsToAfford is the true bottleneck — a high-income resource with an even
             // larger total need can still be worse off than a low-income one with modest need,
-            // which the old rate-vs-target comparison could not express.
+            // which a rate-vs-target comparison cannot express.
             float totalCardNeed = handNeed + remainingDeckNeed;
             float turnsToAfford = totalCardNeed <= spendableStockpile ? 0f
                 : (totalCardNeed - spendableStockpile) / Mathf.Max(ownIncome, 0.0001f);

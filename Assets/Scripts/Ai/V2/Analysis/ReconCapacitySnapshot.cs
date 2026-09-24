@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  AI-RECON-02 — UNIFIED RECON CAPACITY MODEL
+    //  UNIFIED RECON CAPACITY MODEL
     // ===========================================================================================
     //  Observation capacity and ground-traversal capacity are DIFFERENT resources:
     //
@@ -16,12 +16,12 @@ namespace Game.Ai.V2
     //      count as visited) can ONLY be served by a ground actor. Aviation reveals a hex; it
     //      never visits it, so it is NEVER counted here.
     //
-    //  BUDGET DISCIPLINE (review round 3): all air observation capacity comes from ONE place,
+    //  BUDGET DISCIPLINE: all air observation capacity comes from ONE place,
     //  ReconAirCapacityPolicy (WorldSnapshot.SelfSnapshot.AirborneReconWings /
     //  SpareAirObservationSorties). That policy runs a single greedy AP/Energy pass bounded by the
     //  per-turn air-recon actor slot cap, so the same AP/Energy is never counted for two aircraft
-    //  and the executor's own MaxAirReconActorsPerTurn ceiling is honoured here too. This class no
-    //  longer re-derives air readiness (which had diverged from the executor).
+    //  and the executor's own MaxAirReconActorsPerTurn ceiling is honoured here too. This class
+    //  never re-derives air readiness itself.
     //
     //  STEALTH: deficits here are sized for GENERIC (non-stealth) lanes only. Neither aviation nor
     //  an ordinary scout can serve a stealth-required objective, so stealth is DemandLayer's
@@ -67,7 +67,7 @@ namespace Game.Ai.V2
         // idle-usable solo Recce. This is what DemandLayer's global-concurrency clamp subtracts.
         // Air capacity is DELIBERATELY NOT folded in: aviation can close an Observation lane but
         // NEVER a GroundTraversal lane, so letting it shrink the combined ceiling would let a
-        // helicopter phantom-cover a required physical visit (review round 4, P0).
+        // helicopter phantom-cover a required physical visit.
         public int ExistingGroundUsableCapacity;
 
         public string Explain =>
@@ -107,12 +107,12 @@ namespace Game.Ai.V2
                     snap, groundGeneric, ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal),
                 CombinedDesiredConcurrency = Mathf.Min(allGeneric.Count, ReconConcurrencyPolicy.DesiredForClass(
                     snap, allGeneric, ReconConcurrencyPolicy.ReconCoverageClass.Combined)),
-                // RECON-AIR-02 (round 5) — air observation capacity is the WITNESSED count
+                // Air observation capacity is the WITNESSED count
                 // ReconAssignmentPlanner.MeasureAirCapacity just computed (the same "does a usable
-                // actor structurally exist" question MeasureCapacity answers for ground), not a
-                // fresh unpinned ReconAirCapacityPolicy re-evaluation the pipeline never committed to
-                // (that was the phantom-capacity path: model says the helicopter covers a lane,
-                // nothing reserved its AP/Energy, Phase A spends it, the sortie can't launch).
+                // actor structurally exist" question MeasureCapacity answers for ground), never a
+                // fresh unpinned ReconAirCapacityPolicy re-evaluation the pipeline did not commit to:
+                // that would let the model count a helicopter nothing reserved AP/Energy for, Phase A
+                // spend it, and the sortie fail to launch.
                 AirborneReconLanes = Mathf.Max(0, airborneWitnessed),
                 SpareAirObservationSorties = Mathf.Max(0, spareLaunchWitnessed),
             };

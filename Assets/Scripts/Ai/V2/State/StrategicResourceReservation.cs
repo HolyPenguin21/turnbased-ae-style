@@ -8,12 +8,12 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  STRATEGIC RESOURCE RESERVATION  (Strategy V2 — AI-MGR-02, spec §6/§7/§8)
+    //  STRATEGIC RESOURCE RESERVATION  (spec §6/§7/§8)
     // ===========================================================================================
     //  An EXPLICIT, owner + reason + resource tagged hold on the shared physical pool. DesireAxis
-    //  never keys a row and therefore never creates an Economy/Recon/etc. resource wallet. It replaces every
-    //  hidden "Phase B just returns early and N AP are silently preserved" path. After this change
-    //  a resource is in exactly one of three states:
+    //  never keys a row and therefore never creates an Economy/Recon/etc. resource wallet. There is no
+    //  hidden "Phase B just returns early and N AP are silently preserved" path: a resource is in
+    //  exactly one of three states:
     //    · really spent,
     //    · covered by an ACTIVE reservation here (owner + reason + amount + expiration known), or
     //    · free for end-of-turn tempo arbitration.
@@ -27,7 +27,7 @@ namespace Game.Ai.V2
     //  Lifecycle rule (spec §7): if the pass that owns a reservation is Suppressed / NoAction /
     //  Invalidated / Skipped, the reservation is released IMMEDIATELY (regardless of its nominal
     //  ExpirationStage) and end-of-turn tempo spending runs again the same turn. Nothing may
-    //  survive turn end (spec §8 — there is no legitimate cross-turn reservation in this task).
+    //  survive turn end (spec §8 — there is no legitimate cross-turn reservation).
     // ===========================================================================================
 
     public enum StrategicReservedResource { ActionPoints, Human, Energy, Materials, Tech }
@@ -121,7 +121,7 @@ namespace Game.Ai.V2
         public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res)
             => Active(player, turn, res, (string)null);
 
-        // AI-MGR-02 round 7 (P1) — `ignoreOwner` excludes a caller's OWN reservation from the sum by
+        // `ignoreOwner` excludes a caller's OWN reservation from the sum by
         // its EXACT Owner key (not by the shared Reason), so a pass can re-check "would this still be
         // affordable if MY hold weren't there" without tearing its reservation down (which would let
         // another action grab the freed resource), AND two reaction owners that share
@@ -149,7 +149,7 @@ namespace Game.Ai.V2
         public static float Spendable(PlayerSetupData player, int turn, StrategicReservedResource res, float total)
             => Mathf.Max(0f, total - Active(player, turn, res));
 
-        // As Spendable, but excluding the caller's own reservation by its EXACT Owner key (P1).
+        // As Spendable, but excluding the caller's own reservation by its EXACT Owner key.
         // See Active(…, ignoreOwner).
         public static float SpendableExcludingOwner(PlayerSetupData player, int turn, StrategicReservedResource res,
             float total, string ignoreOwner, StrategicReservationReason? ignoreReason = null)
@@ -178,12 +178,12 @@ namespace Game.Ai.V2
             return removed > 0;
         }
 
-        // Multiple independent Economy deliveries can be active at once (P0-4, AI V2 economy audit
-        // 2026-09-21) — this reason is no longer a single mutually-exclusive global slot. With an
+        // Multiple independent Economy deliveries can be active at once, so this reason is not a
+        // single mutually-exclusive global slot. With an
         // explicit owner, this call touches ONLY that owner's own rows for the given reason and
         // never another operation's hold; passing owner=null is the one legitimate whole-reason
         // reset (see ClearDeferredEconomyResources, the once-per-turn full rebuild). For the SAME
-        // owner, writing the deferred stage is still an explicit lifecycle downgrade: that actor
+        // owner, writing the deferred stage is an explicit lifecycle downgrade: that actor
         // can no longer complete this turn, so its OWN old EconomyBuildCompletion rows (including
         // AP) must disappear immediately while the durable mission remains protected by the
         // deferred H/E/M/T rows written next — a different owner's completion hold is untouched.
@@ -227,9 +227,9 @@ namespace Game.Ai.V2
             && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Any(r => r.Owner == owner && r.Reason == reason);
 
-        // 2026-09-21 Block B — deliberately UNUSED by policy code. "Does anybody hold this reason"
-        // is not a valid question for a per-owner obligation: asking it is what let one Economy
-        // build's completion suppress another build's protection. Kept only as a ledger-inspection
+        // Deliberately UNUSED by policy code. "Does anybody hold this reason" is not a valid
+        // question for a per-owner obligation: it would let one Economy build's completion suppress
+        // another build's protection. Kept only as a ledger-inspection
         // primitive (diagnostics/tests); every lifecycle decision must use HasOwnerReason.
         public static bool HasReason(PlayerSetupData player, int turn,
             StrategicReservationReason reason) => player != null

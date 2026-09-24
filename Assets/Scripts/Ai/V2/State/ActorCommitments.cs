@@ -55,7 +55,7 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent i in intents)
             {
-                // AGG-RAID §5/§SupportReturn — the SUPPORT actor of a Raid is claimed independently
+                // The SUPPORT actor of a Raid is claimed independently
                 // of the primary while it is either carrying reinforcement TO the primary
                 // (Reinforcement) or walking a displaced member back home AFTER a full/full swap
                 // (SupportReturn): Housekeeping (and every other mission lane) must never see the

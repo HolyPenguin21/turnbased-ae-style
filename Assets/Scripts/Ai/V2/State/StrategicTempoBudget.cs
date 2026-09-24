@@ -4,7 +4,7 @@ using Game.Players;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  STRATEGIC TEMPO BUDGET  (AI-MGR-02 §P0.4)
+    //  STRATEGIC TEMPO BUDGET
     // ===========================================================================================
     //  ONE authoritative per-(player, turn) budget for every end-of-turn tempo action. All the
     //  hard caps are enforced against THIS, not against locals inside a single UseSurplus() call,

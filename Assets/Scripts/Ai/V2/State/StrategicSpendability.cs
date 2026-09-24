@@ -102,7 +102,7 @@ namespace Game.Ai.V2
         }
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
-        // round 6/7 (P1) — `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
+        // `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
         // key, not by the shared Reason) so a re-probe of the reaction that placed a hold does not fail
         // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,

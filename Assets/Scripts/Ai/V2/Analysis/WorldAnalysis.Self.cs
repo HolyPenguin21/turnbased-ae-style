@@ -51,7 +51,7 @@ namespace Game.Ai.V2
             self.BaseHexes = baseHexes;
             self.Armies = ownArmies.Select(a => ToArmySnapshot(a, player, isOwn: true, ArmyVisionRadius(ctx))).ToList();
 
-            // AGG-RAID P1#3 — freeze the GENUINE route-existence fact for every structural raid
+            // Freeze the GENUINE route-existence fact for every structural raid
             // actor against every own base, the exact same SafeStepPathing oracle Provisioning
             // re-runs live for the Return leg (ProvisionReturn's FindNextSafeStep), so a
             // snapshot-only consumer (MissionContinuityLayer.SelectReturnBase /

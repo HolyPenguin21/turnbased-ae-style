@@ -65,10 +65,9 @@ namespace Game.Ai.V2
                     ReconObjectiveEvaluator.Enumerate(snapshot));
             }
 
-            // AI-MGR-02 §4/§P0 — if the reaction held back AP and that reservation is now gone
-            // (the pass ran and released it or its EndOfReaction expiry fired), the freed AP MUST
-            // re-enter arbitration THIS turn — never
-            // stranded to EndTurn. This is independent of whether the reaction ran.
+            // If the reaction held back AP and that reservation is now gone (the pass ran and
+            // released it or its EndOfReaction expiry fired), the freed AP MUST re-enter arbitration
+            // THIS turn — never stranded to EndTurn. This is independent of whether the reaction ran.
             if (hand != null && player != null && root != null && ctx != null
                 && apReservedForReactionBefore > 0f)
             {
@@ -104,8 +103,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            // AI-MGR-02 §P0 — decisive structure pressure and strategic maintenance are NO LONGER
-            // run here as post-tempo lanes. They are `StrategicSpend` candidates inside the one
+            // Decisive structure pressure and strategic maintenance are not post-tempo lanes. They
+            // are `StrategicSpend` candidates inside the one
             // end-of-turn tempo arbiter (StrategicManager.UseSurplus), so they compete for AP in the
             // same comparable utility space as Play / Draw / Hold / EndTurn. Housekeeping past this
             // point is ONLY the zero-AP / zero-resource structural reorganisation pass.

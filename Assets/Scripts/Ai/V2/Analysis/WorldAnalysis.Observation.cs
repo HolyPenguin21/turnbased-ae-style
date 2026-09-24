@@ -70,9 +70,9 @@ namespace Game.Ai.V2
                     | StrategicInvalidationReason.ResourceSite,
                     hexes: resourceHexes);
 
-            // FIX-06 — compare actual opportunity facts, not just newly discovered resource hexes.
+            // Compare actual opportunity facts, not just newly discovered resource hexes.
             // FoundBase is included in the same canonical producer as extraction and collection.
-            // An empty newly scouted base site can now wake Economy without waking it merely
+            // An empty newly scouted base site can wake Economy without waking it merely
             // because an unrelated scout moved: only a genuine opportunity delta publishes.
             HashSet<HexCoord> changedSites =
                 ChangedEconomicOpportunitySites(before.Snapshot, after.Snapshot);
@@ -350,14 +350,10 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:{x.IsBase}:"
                     + $"owner={x.Owner?.ColorIndex}:{x.Owner?.Nickname}:"
-                    // FIX-05 review gap — Defense (the observed structural bonus DemandLayer.
-                    // Development.ImprovesEconomicProtection now reads via KnownHexDefenseBonus)
-                    // was not part of this key, so a re-observed building whose Defense changed
-                    // (only) never reached InfrastructureChanged, even though Development's own
-                    // fingerprint (knownbases=) could already tell the two observations apart.
-                    // The owner of "did infrastructure change" is this comparison; it must cover
-                    // every field a downstream consumer's fingerprint depends on, not just the
-                    // ones that changed first.
+                    // Defense is part of this key because DemandLayer.Development.
+                    // ImprovesEconomicProtection reads it via KnownHexDefenseBonus. The owner of "did
+                    // infrastructure change" is this comparison; it must cover every field a
+                    // downstream consumer's fingerprint depends on.
                     + $"defense={x.Defense.ToString("R", CultureInfo.InvariantCulture)}:"
                     + string.Join(",", (x.FacilityAbilities ?? System.Array.Empty<string>())
                         .OrderBy(v => v)));
@@ -397,7 +393,7 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // FIX-06 — the canonical signature of ONE facility-shaped economic opportunity: the site's
+        // The canonical signature of ONE facility-shaped economic opportunity: the site's
         // own income physics plus WHICH actors can serve it and in what state. Deliberately does
         // NOT include travel costs or turns-to-income: those shift on every step of any candidate
         // builder and would turn this into the blanket recompute the architecture forbids, while

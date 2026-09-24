@@ -35,7 +35,7 @@ namespace Game.Ai.V2
         {
             if (proposal == null || snap == null || !(proposal.Target is RaidMissionTarget target))
                 return;
-            // AGG-RAID §8 — only an ASSAULT leg is a fresh actor-admission decision. Reinforcement
+            // Only an ASSAULT leg is a fresh actor-admission decision. Reinforcement
             // and Return already carry a Continuity-pinned actor.
             if (target.Phase != RaidMissionPhase.Assault)
                 return;
@@ -132,13 +132,13 @@ namespace Game.Ai.V2
                 + "reason=durable_hard_incumbent_passed_continuation_gate");
         }
 
-        // AGG-RAID P0#1 — mirror of Record() for an UNPINNED Reinforcement leg (no SupportArmyId
+        // Mirror of Record() for an UNPINNED Reinforcement leg (no SupportArmyId
         // yet): the eligible set is every existing free army whose merge with the primary's roster
         // improves the primary's WorthIt win chance, so PrepareGroundCombatAssignments can run the
         // same actor-contention batch solve it already runs for Assault instead of leaving the leg
         // permanently unassignable until a materialization happens to hand it an actor.
         //
-        // ATK §45/§46 — Attack's unpinned Reinforcement leg asks the identical question, so it goes
+        // Attack's unpinned Reinforcement leg asks the identical question, so it goes
         // through this same entry point: the dispatch below only decides WHICH primary is being
         // reinforced and against WHICH defender package (and, for a structure assault, what defence
         // that site gives them, §30). There is deliberately no RecordAttackReinforcement twin.
