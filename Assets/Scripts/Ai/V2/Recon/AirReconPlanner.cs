@@ -132,7 +132,7 @@ namespace Game.Ai.V2
                     });
                     continue;
                 }
-                if (!AiAirSortiePlanner.CanAffordLaunch(root, player, pm.LaunchSubset))
+                if (!AiAirSortiePlanner.CanAffordLaunch(root, pm.LaunchSubset))
                 {
                     skips.Add("launchNoLongerAffordable");
                     plan.SkippedMissions.Add(new AirReconSkippedMission

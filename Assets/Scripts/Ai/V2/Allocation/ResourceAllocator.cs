@@ -372,13 +372,12 @@ namespace Game.Ai.V2
 
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
-            ApBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
+            ApBudgetLedger ledger = null)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
-                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger,
-                protectedPhysicalEnergy, protectedAp);
+                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger);
         }
     }
 
@@ -389,8 +388,6 @@ namespace Game.Ai.V2
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
         private readonly ApBudgetLedger _ledger;
-        private readonly float _protectedAp;
-        private readonly float _protectedPhysicalEnergy;
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
             new Dictionary<StableMissionKey, ProvisionRequirement>();
@@ -439,16 +436,13 @@ namespace Game.Ai.V2
         public bool Converged { get; private set; }
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null,
-            float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
+            List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null)
         {
             _snap = snap;
             _missions = missions;
             _commitments = commitments;
             _state = state;
             _ledger = ledger;
-            _protectedPhysicalEnergy = Mathf.Max(0f, protectedPhysicalEnergy);
-            _protectedAp = Mathf.Max(0f, protectedAp);
         }
 
         public void RegisterProvisionFailure(FundedEntry funded, ProvisionFailure failure)
@@ -493,9 +487,9 @@ namespace Game.Ai.V2
 
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
             float reserve = Mathf.Max(0f, AiConfigV2.housekeepingApReserve);
-            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve - _protectedAp));
+            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve));
             alloc.InitialPool = pool;
-            alloc.ManagerReserve = new ResourceVector(reserve + _protectedAp);
+            alloc.ManagerReserve = new ResourceVector(reserve);
 
             float lockedStrict = 0f;
             float lockedRemainderConsumed = 0f;
@@ -520,8 +514,10 @@ namespace Game.Ai.V2
             float budget = Mathf.Max(0f, entitlement - lockedStrict);
 
             ResourceBundle stock = _snap?.Self?.Stockpile ?? default;
-            float poolEnergy = Mathf.Max(0f, stock.Energy - _protectedPhysicalEnergy);
-            var physicalPool = new ResourceVector(0f, stock.Human, poolEnergy, stock.Materials, stock.Tech);
+            // Raw physical stock. Owner-aware ledger holds are NOT netted here: an Economy build's own
+            // deferred hold would then block its own funding. Non-Economy consumers apply
+            // StrategicSpendability at their Provisioning gate instead.
+            var physicalPool = new ResourceVector(0f, stock.Human, stock.Energy, stock.Materials, stock.Tech);
             var lockedPhysical = ResourceVector.Zero;
             foreach (LockedAllocation lc in _lockedClaims.Values)
                 lockedPhysical += lc.PhysicalClaim;

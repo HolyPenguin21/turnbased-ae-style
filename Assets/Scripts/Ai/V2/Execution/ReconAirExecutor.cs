@@ -358,7 +358,7 @@ namespace Game.Ai.V2
                 }
                 yield break;
             }
-            if (!AiAirSortiePlanner.CanAffordLaunch(root, player, lp.Subset))
+            if (!AiAirSortiePlanner.CanAffordLaunch(root, lp.Subset))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
                     + "— planned launch no longer affordable (earlier sortie spent it); skip, no replan");

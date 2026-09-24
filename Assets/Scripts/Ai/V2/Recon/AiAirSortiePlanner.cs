@@ -861,7 +861,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            if (!AiTurnController.CanIssueMoveNow(root, player, task.Army, ctx.Map, destination))
+            if (!AiTurnController.CanIssueMoveNow(root, task.Army, ctx.Map, destination))
                 return null;
             HexCoord? nextStep = AiTurnController.FindAffordableStep(ctx.Map, task.Army, destination);
             if (nextStep == null)
@@ -895,8 +895,9 @@ namespace Game.Ai.V2
         // yet to read ActivationApCost/ActivationEnergyCost off — see ArmyData's own comment on
         // where those numbers come from for an already-formed air army). Mirrors that same
         // computation over the specific UnitData subset a candidate wants to launch. Energy is read
-        // from the raw stockpile, the same figure AiTurnController.CanIssueMoveNow uses.
-        public static bool CanAffordLaunch(PlayerRoot root, PlayerSetupData player, IReadOnlyList<UnitData> aircraft)
+        // from the raw stockpile, the same physical gate as AiTurnController.CanIssueMoveNow (see
+        // its comment); owner-reserved Energy is protected at the Provisioning gate.
+        public static bool CanAffordLaunch(PlayerRoot root, IReadOnlyList<UnitData> aircraft)
         {
             if (root == null || aircraft == null || aircraft.Count == 0)
                 return false;

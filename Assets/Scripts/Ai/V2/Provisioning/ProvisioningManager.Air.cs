@@ -120,7 +120,7 @@ namespace Game.Ai.V2
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(exec.AirfieldHex, player);
                 if (airfield == null || exec.LaunchSubset == null || exec.LaunchSubset.Count == 0
-                    || !AiAirSortiePlanner.CanAffordLaunch(root, player, exec.LaunchSubset))
+                    || !AiAirSortiePlanner.CanAffordLaunch(root, exec.LaunchSubset))
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"assigned launch airfield ({exec.AirfieldHex.Q},{exec.AirfieldHex.R}) no longer has an affordable subset"));
                 moverArmyId = exec.ActorKey;

@@ -88,7 +88,7 @@ namespace Game.Ai.V2
                     .Where(AviationRules.IsAviation).OrderBy(u => u.RuntimeId))
                 {
                     IReadOnlyList<UnitData> group = new[] { aircraft };
-                    if (!AiAirSortiePlanner.CanAffordLaunch(root, player, group))
+                    if (!AiAirSortiePlanner.CanAffordLaunch(root, group))
                         continue;
                     TaskScore sourceService = NonCombatCardPlayer.BestAirfieldServiceTaskScore(
                         snap, player, ctx, group, source.Hex, objectives,
@@ -147,7 +147,7 @@ namespace Game.Ai.V2
                 yield break;
             ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u))
-                || !AiAirSortiePlanner.CanAffordLaunch(root, player, plan.Aircraft)
+                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft)
                 || !AiAirSortiePlanner.TryPlanRebaseFromStorage(plan.SourceHex, plan.Aircraft,
                     plan.DestinationHex, ctx.Map, player).HasValue)
                 yield break;

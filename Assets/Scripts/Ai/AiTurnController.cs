@@ -654,13 +654,16 @@ namespace Game.Ai
         // owner's own report) that same activation's ActivationEnergyCost — zero for every ground
         // army, but real for an air army about to launch, and IssueMoveOrder rejects the order for
         // it same as a missing AP would. Energy is read from the raw stockpile, the same figure
-        // CanAffordLaunch uses; it does not net StrategicSpendability's owner-aware reservations.
+        // CanAffordLaunch uses — deliberately: this is the execution-time PHYSICAL gate, and a
+        // mandatory return must be able to spend Energy StrategicSpendability protects for it.
+        // Whether a discretionary sortie may spend owner-reserved Energy is decided earlier, at
+        // its Provisioning gate (ProvisioningManager.AirSpendableEnergyLeft).
         // Every category's candidate sites route through this one helper instead of each growing
         // its own copy of either check — since all three conditions are things execution already
         // independently requires, a candidate this rejects would always have failed at
         // IssueMoveOrder anyway, so gating it here only ever removes a doomed candidate from
         // arbitration, never a viable one.
-        internal static bool CanIssueMoveNow(PlayerRoot root, PlayerSetupData player, ArmyData army, HexMap map, HexCoord destination) =>
+        internal static bool CanIssueMoveNow(PlayerRoot root, ArmyData army, HexMap map, HexCoord destination) =>
             root != null && army != null && FindAffordableStep(map, army, destination).HasValue
                 && (army.HasActivatedThisTurn || (root.CanSpendActionPoints(army.ActivationApCost)
                     && root.GetResource(ResourceType.Energy) >= army.ActivationEnergyCost));
