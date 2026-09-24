@@ -261,12 +261,21 @@ namespace Game.Ai.V2
                 return false;
             foreach (EconomyBuilderRouteSnapshot route in demand.EconomyBuilderRoutes)
             {
+                // A garrison hero that must first be extracted is a real builder too, but only the
+                // one Demand actually chose (AssessEconomyArmy already proved its container); its
+                // reach is the extracted hero's own movement carried on the route, not the
+                // garrison's.
+                bool chosenGarrisonBuilder = route.RequiresGarrisonExtraction
+                    && demand.EconomyPreferredBuilderArmyId == route.ArmyId;
                 ArmySnapshot actor = snap.Self.Armies.FirstOrDefault(a => a != null
                     && a.ArmyId == route.ArmyId && a.HasHero && !a.IsPrison && !a.IsAir
                     && (a.IsMobileEconomyBuilder
-                        || (a.IsGarrison && a.Hex.Equals(demand.TargetHex ?? a.Hex))));
-                if (actor != null && (route.IsOnTarget
-                        || route.TravelCost <= UnityEngine.Mathf.Max(0, actor.MaxMovement)))
+                        || (a.IsGarrison && (chosenGarrisonBuilder
+                            || a.Hex.Equals(demand.TargetHex ?? a.Hex)))));
+                if (actor == null)
+                    continue;
+                int reach = chosenGarrisonBuilder ? route.MaxMovement : actor.MaxMovement;
+                if (route.IsOnTarget || route.TravelCost <= UnityEngine.Mathf.Max(0, reach))
                     return true;
             }
             return false;
