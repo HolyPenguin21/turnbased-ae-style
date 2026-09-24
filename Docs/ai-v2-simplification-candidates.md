@@ -95,6 +95,9 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
 Около 200 строк с маркерами дат/раундов (`2026-09-14 review round 8 (P0)` и т.п.), 12 файлов с
 `review round`/`(P0)`. Заменить на описание ДЕЙСТВУЮЩЕГО контракта; историю оставить в git.
 Делать по папкам, отдельными коммитами, без изменения кода.
+**Сделано 2026-09-24** (ветка `refactor/c5-review-history-comments`, 11 коммитов): все папки V2,
+~270 блоков; шапка-«design record» `AiStrategyV2Pipeline` заменена сводкой инвариантов со ссылкой
+на ARCHITECTURE.md; убраны ссылки на удалённые V1-типы и `FinishEconomyBuilder`. Только комментарии.
 
 ### C6. Объём диагностики — риск низкий (только `Diagnostics`/логи)
 
