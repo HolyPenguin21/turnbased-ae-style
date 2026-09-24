@@ -325,17 +325,29 @@ namespace Game.Ai.V2
                     player, ctx.TurnNumber);
             }
 
-            // Zero-weight uncommitted infrastructure is residual work; active committed builds
-            // keep their original early admission and resource/card protection.
+            // Residual infrastructure runs only after card arbitration, on the AP and resources the
+            // cards left: zero-weight uncommitted infrastructure, and EVERY Development facility /
+            // operator request — Laboratory/Factory are a late sink that must never take AP the
+            // main deck's demand chains could use. Active committed Economy builds keep their
+            // original early admission and resource/card protection.
             var zeroRadarInfrastructure = states
                 .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
                     && !IsCommittedEconomyBuild(activeIntents, state.Demand)
                     && RadarValueScale.For(radar, state.Demand.RequestingAxis) <= 0f)
                 .ToList();
-            foreach (DemandState deferred in zeroRadarInfrastructure)
+            var developmentInfrastructure = states
+                .Where(state => InfrastructureFulfillment.Handles(state.Demand.Capability)
+                    && state.Demand.RequestingAxis == DesireAxis.Development
+                    && !zeroRadarInfrastructure.Contains(state))
+                .ToList();
+            var residualInfrastructure = zeroRadarInfrastructure
+                .Concat(developmentInfrastructure).ToList();
+            foreach (DemandState deferred in residualInfrastructure)
                 deferred.Blocked = true;
             if (zeroRadarInfrastructure.Count > 0)
                 AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {zeroRadarInfrastructure.Count} zero-Radar requests until after card arbitration");
+            if (developmentInfrastructure.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {developmentInfrastructure.Count} Development request(s) until after card arbitration");
 
             // The SAME infrastructure executor handles early and residual batches.
             void FulfillInfrastructure(IEnumerable<DemandState> pending)
@@ -431,7 +443,7 @@ namespace Game.Ai.V2
 
             FulfillInfrastructure(states.Where(state =>
                 InfrastructureFulfillment.Handles(state.Demand.Capability)
-                && !zeroRadarInfrastructure.Contains(state)));
+                && !residualInfrastructure.Contains(state)));
 
             // CardUpgrade is intentionally not pre-executed here. It enters the same candidate
             // builder + jointly-feasible Phase-A portfolio below as every materialization demand.
@@ -770,7 +782,7 @@ namespace Game.Ai.V2
             }
 
             // Recheck real AP and protected resources before residual infrastructure.
-            FulfillInfrastructure(zeroRadarInfrastructure);
+            FulfillInfrastructure(residualInfrastructure);
 
             result.Reservation.UnresolvedDemands.Clear();
             foreach (DemandState state in states.Where(s => s.Remaining > 0f))

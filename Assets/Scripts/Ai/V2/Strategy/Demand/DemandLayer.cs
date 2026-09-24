@@ -20,14 +20,16 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> objectives, IReadOnlyList<AggressionObjective> aggressionObjectives,
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
-            PlayerRoot root = null, IReadOnlyList<DevelopmentOpportunity> devOpportunities = null,
-            ISet<DesireAxis> dirtyAxes = null, IReadOnlyList<AxisDemand> carriedDemands = null)
+            PlayerRoot root = null, ISet<DesireAxis> dirtyAxes = null)
         {
             var demands = new List<AxisDemand>();
             bool GenerateAxis(DesireAxis axis) => dirtyAxes == null || dirtyAxes.Contains(axis);
             // §17 — decay the resource-starvation feedback once per turn before it is read.
             if (player != null && snap != null)
                 ResourceStarvationRegistry.DecayOncePerTurn(player, snap.TurnNumber);
+            // The Research/Production investment window is recorded once per turn from the first
+            // (turn-start) snapshot, before any spender reads it.
+            DevelopmentInvestmentGate.Observe(player, snap);
             if (GenerateAxis(DesireAxis.Recon))
                 demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx, root));
             if (GenerateAxis(DesireAxis.Aggression))
@@ -42,20 +44,7 @@ namespace Game.Ai.V2
                     $"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
             }
             if (GenerateAxis(DesireAxis.Development))
-            {
-                // Development is generated LAST precisely so the other axes'
-                // needs already exist in `demands`. On a partial re-evaluation (dirtyAxes excludes
-                // Recon/Economy/Aggression) those axes are not regenerated here, but their demands
-                // from the carrying pass are still valid: the orchestrator hands them in so the
-                // need context is the same on a first and on a repeat pass. Only demands of axes
-                // this call did NOT regenerate are taken, so nothing is ever counted twice.
-                var needContext = new List<AxisDemand>(demands);
-                if (carriedDemands != null)
-                    needContext.AddRange(carriedDemands.Where(d => d != null
-                        && !GenerateAxis(d.RequestingAxis)));
-                demands.AddRange(DevelopmentDemands(snap, breakdown, devOpportunities,
-                    needContext, activeIntents, player, ctx, root));
-            }
+                demands.AddRange(DevelopmentDemands(snap, activeIntents, player, ctx, root));
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
             // ToString from here — into Phase A and every [CHECK] line raised for the demand.

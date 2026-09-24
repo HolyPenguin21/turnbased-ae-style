@@ -191,9 +191,9 @@ namespace Game.EditorTests
                 ExpectedGain = 10f,
             };
 
-            float handValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(hand, null, null);
-            float garrisonValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(garrison, null, null);
-            float fieldValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(field, null, null);
+            float handValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(hand);
+            float garrisonValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(garrison);
+            float fieldValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(field);
 
             Assert.That(garrisonValue, Is.EqualTo(handValue).Within(0.0001f));
             Assert.That(fieldValue, Is.EqualTo(handValue).Within(0.0001f),

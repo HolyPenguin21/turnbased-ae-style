@@ -350,8 +350,8 @@ namespace Game.Ai.V2
                     ?? System.Array.Empty<AiMapMemory.KnownBuilding>())
                 .Select(x => $"{x.Hex.Q},{x.Hex.R}:{x.IsStartingCitadel}:{x.IsBase}:"
                     + $"owner={x.Owner?.ColorIndex}:{x.Owner?.Nickname}:"
-                    // Defense is part of this key because DemandLayer.Development.
-                    // ImprovesEconomicProtection reads it via KnownHexDefenseBonus. The owner of "did
+                    // Defense is part of this key because Attack/Reaction combat estimates read it
+                    // via AiMapMemory.KnownHexDefenseBonus. The owner of "did
                     // infrastructure change" is this comparison; it must cover every field a
                     // downstream consumer's fingerprint depends on.
                     + $"defense={x.Defense.ToString("R", CultureInfo.InvariantCulture)}:"
@@ -539,7 +539,7 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2]   dev.readiness facilities={rd.Facilities.Count} "
                     + $"withHero={(rd.AnyFacilityWithHero ? 1 : 0)} offerings={rd.Offerings.Count} "
                     + $"bestP={P(rd.BestSuccessChance)} surplus={P(rd.SurplusFraction)} "
-                    + $"prodSupport={F(rd.ProductionSupport)} targets={rd.UpgradeTargetCount}"
+                    + $"investSurplus={P(rd.InvestmentSurplus)} targets={rd.UpgradeTargetCount}"
                     + $"{(rd.Facilities.Any(f => f.Contested) ? " [contested]" : "")}");
             }
             AiDebugLog.Write($"[AI][V2]   self.stock H/E/M/T={F(self.Stockpile.Human)}/{F(self.Stockpile.Energy)}/"

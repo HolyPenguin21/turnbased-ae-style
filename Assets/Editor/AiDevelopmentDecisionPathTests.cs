@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
@@ -75,7 +74,6 @@ namespace Game.EditorTests
                     DevPathViable = true,
                     SurplusFraction = WorldAnalysis.DevelopmentRadarSurplus(
                         investmentSurplus: 0f, hasExecutableOffering: true),
-                    ProductionSupport = 1f,
                 },
             };
         }
@@ -104,17 +102,19 @@ namespace Game.EditorTests
                 SuccessChance = 1f,
                 ExpectedGain = 10f,
                 BaseValue = 8f,
-                ProductionSupport = 1f,
             };
-            MethodInfo method = typeof(DemandLayer).GetMethod("DevelopmentDemands",
-                BindingFlags.Static | BindingFlags.NonPublic);
-            Assert.That(method, Is.Not.Null);
-            var demands = (IEnumerable<AxisDemand>)method.Invoke(null, new object[]
+            // The READY CardUpgrade demand exactly as DemandLayer.Development shapes it.
+            var devScore = new TaskScore(
+                upgradeMatchupValue: TaskScoreEvaluator.UpgradeMatchupValue(opportunity.MatchupFit));
+            var demand = new AxisDemand
             {
-                snapshot, null, new[] { opportunity }, Array.Empty<AxisDemand>(),
-                Array.Empty<MissionIntent>(), null, null, null,
-            });
-            AxisDemand demand = demands.Single(d => d.Capability == CapabilityKind.CardUpgrade);
+                RequestingAxis = DesireAxis.Development,
+                Capability = CapabilityKind.CardUpgrade,
+                DesiredAmount = 1,
+                WorldTaskScore = devScore,
+                Value = devScore.Value,
+                DevOpportunity = opportunity,
+            };
             MaterializationPlan plan = MaterializationPlanFactory.MakeDevelopmentUpgradePlan(demand);
             Assert.That(plan, Is.Not.Null);
             float score = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(

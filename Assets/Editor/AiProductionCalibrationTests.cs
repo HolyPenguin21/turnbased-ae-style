@@ -1,6 +1,5 @@
 #if UNITY_INCLUDE_TESTS
 using System;
-using System.Reflection;
 using Game.Ai.V2;
 using Game.Cards;
 using Game.Economy;
@@ -55,41 +54,6 @@ namespace Game.EditorTests
                 "Reserved energy must be priced consistently in Phase A and Phase B");
         }
 
-        [Test]
-        public void ConcreteProductionCannotReceiveAnAdditionalGlobalSupportMultiplier()
-        {
-            var breakdown = new StrategicUseScoreBreakdown { RoleFit = 4f };
-            var plan = new MaterializationPlan
-            {
-                Generation = new GenerationStep
-                {
-                    CardDef = new CardDefinition { cardType = CardType.Unit },
-                    SuccessChance = 1f,
-                },
-            };
-            var snapshot = new WorldSnapshot
-            {
-                Development = new DevelopmentReadiness
-                {
-                    ProductionSupport = AiConfigV2.productionSupportMin,
-                },
-            };
-            MethodInfo method = typeof(StrategicCardEvaluator).GetMethod(
-                "ProductionSupportAdjustment", BindingFlags.NonPublic | BindingFlags.Static,
-                null, new[] { typeof(StrategicUseScoreBreakdown), typeof(MaterializationPlan),
-                    typeof(WorldSnapshot), typeof(float) }, null);
-            Assert.That(method, Is.Not.Null);
-            float Adjust(float floor) => (float)method.Invoke(null,
-                new object[] { breakdown, plan, snapshot, floor });
-            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor), Is.Zero,
-                "Only the actual production-chain cost may affect an offered card");
-            snapshot.Development.ProductionSupport = AiConfigV2.productionSupportMax;
-            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor), Is.Zero,
-                "A global economic multiplier must not bypass chain-specific pricing");
-            plan.Generation = null;
-            Assert.That(Adjust(AiConfigV2.productionSupportEmergencyFloor), Is.Zero,
-                "Direct hand card must not inherit a production-only multiplier");
-        }
     }
 }
 #endif

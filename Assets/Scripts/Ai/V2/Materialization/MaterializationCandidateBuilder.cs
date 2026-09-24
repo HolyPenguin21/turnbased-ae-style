@@ -257,7 +257,7 @@ namespace Game.Ai.V2
 
             if (demand.Capability == CapabilityKind.CardUpgrade)
             {
-                DevelopmentOpportunityEvaluator.Rescore(demand.DevOpportunity, snap, root, hand);
+                DevelopmentOpportunityEvaluator.Rescore(demand.DevOpportunity);
                 if (demand.DevOpportunity == null)
                     return new List<DemandCandidate>();
                 MaterializationPlan upgrade = candidates[0].plan;

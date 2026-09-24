@@ -92,7 +92,6 @@ namespace Game.Ai.V2
         public float HoldValue;               // value of deliberately NOT playing it now (separate; NetScore subtracts it)
         public float ResourcePressureBenefit; // stranded AP / near-cap resource makes spending now better
         public float HandPressureBenefit;     // a full hand makes materialising now better
-        public float ProductionSupportAdjustment; // economy-backed amplifier/drag for Production-generated value
         // Canonical world-task value directly enabled by this exact non-combat placement. Only the
         // shared scorer may fold it into global card arbitration; callers never post-adjust Total.
         public float OperationalTaskValue;
@@ -112,7 +111,7 @@ namespace Game.Ai.V2
                  + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(GenerationRiskDiscount)} "
                  + $"redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
                  + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} "
-                 + $"prod {F(ProductionSupportAdjustment)} task {F(OperationalTaskValue)} "
+                 + $"task {F(OperationalTaskValue)} "
                  + $"hold {F(HoldValue)} "
                  + $"= {Total.ToString("0.00", CultureInfo.InvariantCulture)}"
                  + (string.IsNullOrEmpty(EffectDetail) ? "" : $"  || {EffectDetail}");
@@ -285,8 +284,10 @@ namespace Game.Ai.V2
     internal static class StrategicCardEvaluator
     {
         // Generated Equipment strengthens an EXISTING host: price its marginal signed gain,
-        // never the host's total combat power. Development.Ev remains the separate owner of
-        // prerequisite investment ranking, expressed in persistent AiPower units. Phase A and
+        // never the host's total combat power. DevelopmentOpportunity.Ev remains the separate
+        // owner of prerequisite investment ranking. WHEN Research/Production may spend at all is
+        // DevelopmentInvestmentGate's decision (resources the main deck does not absorb), so no
+        // displaced-alternative or economy multiplier is priced here a second time. Phase A and
         // other card chains share this evaluator's ONE AP/resource/chain cost function.
         // Research and Production labels never decide output type: use the actual card definition.
         internal static float ScoreGeneratedEquipmentUpgrade(DevelopmentOpportunity op,
@@ -300,12 +301,11 @@ namespace Game.Ai.V2
                 return float.NegativeInfinity;
 
             float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
-            float marginalBenefit = op.SuccessChance * op.ExpectedGain * op.ProductionSupport / powerUnit;
-            float displacedAlternative = op.AlternativeValue / powerUnit;
+            float marginalBenefit = op.SuccessChance * op.ExpectedGain / powerUnit;
             System.Func<ResourceType, float> spendable = root == null ? null
                 : (System.Func<ResourceType, float>)(type =>
                     StrategicSpendability.SpendableAmount(player, root, ctx, type));
-            return marginalBenefit - displacedAlternative - ResourceCost(plan, snap, spendable, player);
+            return marginalBenefit - ResourceCost(plan, snap, spendable, player);
         }
 
         // -----------------------------------------------------------------------------------------
@@ -379,12 +379,6 @@ namespace Game.Ai.V2
             bd.ThreatCounterValue = CapabilityGapValue(demand.Capability, inv, baseline, role, roleFitCore)
                 + ec.CapabilityGap + ec.GlobalCapabilityGap + ec.ThreatResponse + ec.GlobalThreatResponse;
 
-            // Production amplifies a concrete mission need; it does not manufacture its own reason
-            // to spend. Currently a no-op everywhere: ResourceCost(plan) / ScoreNonCombat's own
-            // resource pricing already prices the exact chain, so a second weakest-resource
-            // multiplier here would double-charge. See bd.ProductionSupportAdjustment's other
-            // assignments (ScoreSurplusRole, ScoreNonCombat) for the same reasoning.
-            bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
 
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
@@ -531,9 +525,6 @@ namespace Game.Ai.V2
             bd.SynergyValue = traits * 0.5f
                 + (role == IntendedRole.EquipmentUpgrade ? 0f : equipmentUpgrade)
                 + ec.Synergy + ec.GlobalSynergy;
-            // Phase B is optional surplus work: no mission urgency may lift the economy-derived
-            // Production support. Currently a no-op — see ScoreForDemand's comment.
-            bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
@@ -729,10 +720,6 @@ namespace Game.Ai.V2
             bd.SynergyValue += ncEc.Synergy + ncEc.GlobalSynergy;
             bd.EffectDetail = JoinDetail(ncEffDetail, calibrationDetail);
 
-            // A generated Base is Economy itself and must remain able to create future runway.
-            // Other optional Production-generated non-combat assets are amplifiers; currently a
-            // no-op either way — see ScoreForDemand's comment.
-            bd.ProductionSupportAdjustment = 0f;
             bd.OperationalTaskValue = operationalTask?.Value ?? 0f;
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
@@ -787,7 +774,7 @@ namespace Game.Ai.V2
             b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.ThreatCounterValue
             + b.ForceGrowthValue + b.ResourceEfficiency + b.SynergyValue
             + b.GenerationRiskDiscount + b.RedundancyPenalty + b.AlternativeUseValue
-            + b.ResourcePressureBenefit + b.HandPressureBenefit + b.ProductionSupportAdjustment
+            + b.ResourcePressureBenefit + b.HandPressureBenefit
             + b.OperationalTaskValue;
 
         // AP + resource cost + extra-chain-step penalty. The ONLY place a chain is charged for cost.
@@ -813,7 +800,7 @@ namespace Game.Ai.V2
                 + b.ThreatCounterValue + b.ForceGrowthValue
                 + b.SynergyValue + b.RedundancyPenalty
                 + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit
-                + b.ProductionSupportAdjustment + b.OperationalTaskValue;
+                + b.OperationalTaskValue;
             return -(1f - Mathf.Clamp01(chance)) * Mathf.Max(0f, contingent);
         }
 

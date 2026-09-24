@@ -101,8 +101,7 @@ namespace Game.Ai.V2
             // the now-current AP / Energy / movement every call — the reaction round gets a live
             // re-evaluation for free, with no stale registry to reset.
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
-                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                devOpportunities: null);
+                reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
             result.Demands += demands.Count;
 
             ApBudgetLedger apLedger = ApBudgetLedger.Create(

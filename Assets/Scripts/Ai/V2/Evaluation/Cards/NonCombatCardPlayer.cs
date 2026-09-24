@@ -15,7 +15,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  RankedSurplus owns Unit / Hero / solo-Recce materialization (and chained Equipment).
     //  This peer lane owns Aviation, surplus Facilities and standalone Equipment. Base founding
-    //  belongs to Economy; Research/Production facilities require a supported Development demand. Both surplus lanes enumerate their complete
+    //  belongs to Economy; Research/Production facilities belong to Development (its investment
+    //  window + preparation EV, built in Phase A). Both surplus lanes enumerate their complete
     //  admissible alternatives before the common Phase-B arbiter ranks them.
     //
     //  It enumerates every hand/generated card through a pure type router and checks it against
@@ -288,7 +289,7 @@ namespace Game.Ai.V2
                 if (def.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research)) == true
                     || def.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)) == true)
                 {
-                    blocked.Add($"{def.displayName}:facility(requires_supported_development_demand)");
+                    blocked.Add($"{def.displayName}:facility(owned_by_development_preparation)");
                     return null;
                 }
                 HexCoord? at = null;
@@ -543,7 +544,7 @@ namespace Game.Ai.V2
             hexThreatRisk: s.HexThreatRisk + airfieldThreatRisk,
             detectionRisk: s.DetectionRisk,
             economicExpansionValue: s.EconomicExpansionValue,
-            supportedNeedValue: s.SupportedNeedValue);
+            upgradeMatchupValue: s.UpgradeMatchupValue);
         }
 
         // A structured result. A generated non-combat play is NOT atomic

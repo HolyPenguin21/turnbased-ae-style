@@ -1051,79 +1051,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void DevelopmentDemand_UpgradeWithoutAxisWitnessIsRejected()
-        {
-            WorldSnapshot snapshot = SnapshotWithDeficits(0f, 0f, actionable: true);
-            snapshot.Self.HasDevFacility = true;
-            var opportunity = new DevelopmentOpportunity
-            {
-                Card = new CardDefinition
-                {
-                    cardType = CardType.Equipment,
-                    displayName = "Heavy MG",
-                    equipment = new EquipmentGrant
-                    {
-                        statChanges = new List<EquipmentStatChange>
-                        {
-                            new EquipmentStatChange
-                                { stat = EquipmentStat.Attack, amount = 3 },
-                        },
-                    },
-                },
-                RecipientKind = DevRecipientKind.FieldUnit,
-                RecipientUnit = Body("ordinary fighter", 2, 2),
-                RecipientLabel = "ordinary fighter",
-                BaseValue = 10f,
-            };
-
-            List<AxisDemand> demands = DemandLayer.Generate(
-                snapshot, new DesireBreakdown(),
-                System.Array.Empty<ReconObjective>(),
-                System.Array.Empty<AggressionObjective>(),
-                System.Array.Empty<MissionIntent>(), null, null,
-                devOpportunities: new[] { opportunity },
-                dirtyAxes: new HashSet<DesireAxis> { DesireAxis.Development });
-
-            Assert.That(demands.Any(d => d.Capability == CapabilityKind.CardUpgrade), Is.False);
-        }
-
-        [Test]
-        public void DevelopmentDemand_ReconEquipmentRequiresAndAcceptsReconWitness()
-        {
-            var host = new CardData(new CardDefinition
-            {
-                cardType = CardType.Unit,
-                grantedAbilities = new List<string> { "r1s0" },
-            });
-            var opportunity = new DevelopmentOpportunity
-            {
-                Card = new CardDefinition
-                {
-                    cardType = CardType.Equipment,
-                    equipment = new EquipmentGrant
-                    {
-                        addAbilities = new List<string> { "r2s1" },
-                    },
-                },
-                RecipientKind = DevRecipientKind.HandCard,
-                RecipientCard = host,
-                BaseValue = 10f,
-            };
-            var recon = new AxisDemand
-            {
-                RequestingAxis = DesireAxis.Recon,
-                Capability = CapabilityKind.ScoutCapability,
-            };
-
-            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
-                opportunity, new[] { recon },
-                System.Array.Empty<MissionIntent>(), null), Is.True);
-            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
-                opportunity, System.Array.Empty<AxisDemand>(),
-                System.Array.Empty<MissionIntent>(), null), Is.False);
-        }
-
-        [Test]
         public void EconomyDemand_IdleStrongHeroHasNoCombatPowerOpportunityCost()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.8f, 0.2f, actionable: true);
@@ -3029,26 +2956,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ProductionSupport_TracksWeakestEconomicConstraint()
-        {
-            var secure = new EconomyStanding
-            {
-                EconomicSecurity = 1f, BottleneckPressure = 0f, MaxDeficitScore = 0f,
-            };
-            var blocked = new EconomyStanding
-            {
-                EconomicSecurity = 0.2f, BottleneckPressure = 0.8f, MaxDeficitScore = 0.8f,
-            };
-
-            float high = DevelopmentReadiness.CalculateProductionSupport(secure, 1f);
-            float low = DevelopmentReadiness.CalculateProductionSupport(blocked, 1f);
-
-            Assert.That(high, Is.EqualTo(AiConfigV2.productionSupportMax).Within(0.001f));
-            Assert.That(low, Is.EqualTo(AiConfigV2.productionSupportMin).Within(0.001f));
-            Assert.That(low, Is.LessThan(high));
-        }
-
-        [Test]
         public void EconomyRecoveryTarget_ExcludesFacilityOnlyHex()
         {
             var player = new Game.Players.PlayerSetupData();
@@ -3397,50 +3304,6 @@ namespace Game.EditorTests
             snapshot.Economy.MeanDeficitScore = perType.Average(x => x.DeficitScore);
             snapshot.Economy.EconomicSecurity = 1f - snapshot.Economy.MaxDeficitScore;
             return snapshot;
-        }
-
-        [Test]
-        public void DevelopmentDemand_DefenseOnlyEquipmentDoesNotBorrowRapidReactionAsReconGain()
-        {
-            var host = new CardData(new CardDefinition
-            {
-                cardType = CardType.Unit,
-                activationApCost = 1,
-                grantedAbilities = new List<string>
-                {
-                    "r1s0",
-                    UnitAbilities.RapidReaction,
-                },
-            });
-            var opportunity = new DevelopmentOpportunity
-            {
-                Card = new CardDefinition
-                {
-                    cardType = CardType.Equipment,
-                    displayName = "Armor Plate",
-                    equipment = new EquipmentGrant
-                    {
-                        statChanges = new List<EquipmentStatChange>
-                        {
-                            new EquipmentStatChange
-                                { stat = EquipmentStat.Defense, amount = 1 },
-                        },
-                    },
-                },
-                RecipientKind = DevRecipientKind.HandCard,
-                RecipientCard = host,
-                BaseValue = 10f,
-            };
-            var recon = new AxisDemand
-            {
-                RequestingAxis = DesireAxis.Recon,
-                Capability = CapabilityKind.ScoutCapability,
-            };
-
-            Assert.That(DemandLayer.HasSupportedDevelopmentAxisDemand(
-                opportunity, new[] { recon },
-                System.Array.Empty<MissionIntent>(), null), Is.False,
-                "An ability already present on the carrier must be normalized on both sides.");
         }
 
         [Test]

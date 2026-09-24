@@ -59,8 +59,6 @@ namespace Game.Ai.V2
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
-            snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
-                snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
             LogSnapshot(player, snap);
             return snap;
@@ -90,8 +88,6 @@ namespace Game.Ai.V2
             // rebuilding MapKnowledge and keeps the sanctioned TrueWorld boundary explicit.
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
-            snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
-                snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             return snap;
@@ -121,8 +117,6 @@ namespace Game.Ai.V2
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
-            snap.Development.ProductionSupport = DevelopmentReadiness.CalculateProductionSupport(
-                snap.Economy, snap.Development.SurplusFraction);
             snap.Threat = BuildThreat(player, ctx, snap);
 
             return snap;
