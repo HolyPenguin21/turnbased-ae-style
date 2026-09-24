@@ -110,6 +110,8 @@ namespace Game.Ai.V2
                         rows.Add($"{k}:sup{i.Raid.SupportArmyId.Value}:{(int)i.Raid.Phase}");
                     if (i.Raid?.AirSupportArmyId != null)
                         rows.Add($"{k}:air{i.Raid.AirSupportArmyId.Value}:{(int)i.Raid.Phase}");
+                    if (i.Attack?.SupportArmyId != null)
+                        rows.Add($"{k}:asup{i.Attack.SupportArmyId.Value}:{(int)i.Attack.Phase}");
                     if (i.Economy?.BuilderArmyId != null)
                         rows.Add($"{k}:bld{i.Economy.BuilderArmyId.Value}");
                     if (i.Economy?.CollectorArmyId != null)
