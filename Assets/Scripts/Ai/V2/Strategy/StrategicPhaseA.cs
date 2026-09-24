@@ -542,8 +542,12 @@ namespace Game.Ai.V2
                                 state.Remaining = 0f;
                                 result.Reservation.ClaimedEconomyBuildCards.Remove(
                                     state.Demand.EconomyBuildCard);
-                                InfrastructureFulfillment.ClearDeferredEconomyResources(
-                                    player, ctx.TurnNumber);
+                                // Only THIS project's pending hold — other active builds were
+                                // protected earlier in this pass and stay protected.
+                                string suppressedOwner = state.Demand.EconomyHeroBuildOwner;
+                                if (suppressedOwner != null)
+                                    InfrastructureFulfillment.ClearDeferredEconomyResources(
+                                        player, ctx.TurnNumber, suppressedOwner);
                             }
                         }
                     }
@@ -674,7 +678,8 @@ namespace Game.Ai.V2
                 }
 
                 MaterializationResult play = MaterializationExecutor.Execute(
-                    snap, player, root, hand, ctx, plan, commitments);
+                    snap, player, root, hand, ctx, plan, commitments,
+                    chosenDemand.EconomyHeroBuildOwner);
                 int chainApAfter = root.ActionPoints;
                 chainAttempts++;
 

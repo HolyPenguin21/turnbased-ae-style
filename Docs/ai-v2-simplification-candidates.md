@@ -90,6 +90,24 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
 к минимуму: один писатель на owner из активных intent'ов + (если нужен) pending-hero.
 Документ-предыстория: `docs/ai-economy-mover-materialization-decision-tree.md`.
 
+**Анализ и правки 2026-09-24** (ветка `fix/c3-economy-reservation-writers`, НЕ проверено в Unity):
+писатели W1 ForActiveIntent, W2 first-sight, W5/W6 Completion, W7 downgrade — нужны (без каждого
+конкретный случай траты чужих H/E/M/T). «4 варианта PlanEconomyCompletion» = 2 рабочих + 2
+диагностических (вызывают тот же планировщик). Сделано:
+- C3-3: W4 (CapabilityDeliveryEvaluator) заменён на W1 для только что созданного intent — один
+  писатель Deferred для durable-строек.
+- C3-1 (баг): `reconsider-project` снимал `ClearDeferredEconomyResources(owner=null)` — резервы ВСЕХ
+  строек; теперь только своего проекта.
+- C3-2 (политика, вариант а): герой-строитель Hero-prerequisite может тратить отложенный резерв
+  СВОЕЙ стройки (`AxisDemand.EconomyHeroBuildOwner` → excludeOwner в Feasibility, PortfolioSolver,
+  MaterializationExecutor, ScorePlanA). Раньше герой ждал, пока доход покроет стройку+героя.
+
+**Новая задача (не сделано): готовый герой vs новый.** Сейчас существующий пригодный герой берётся
+всегда (Hero-prerequisite только если его нет). Если он далеко и стройка уходит в минус —
+сайт отбрасывается (`rejectedDeliveryValue`), вариант «выставить нового героя ближе» не
+рассматривается. Нужна оценка «новый герой» без выбора карты в Demand (правило: Demand не выбирает
+карты) — отдельное проектное решение.
+
 ### C4. Повторные проходы Phase A / DemandLayer.Generate внутри хода — риск средний
 
 Лог 2026-09-24: ~86 проходов Phase A на 15 ходов (~5.7 за ход), ~29 management rounds (~2 за ход).

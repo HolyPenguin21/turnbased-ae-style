@@ -141,18 +141,14 @@ namespace Game.Ai.V2
                     demand.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
                     // A physically deployed Hero is not a fulfilled Economy build demand
                     // unless Continuity successfully owns its destination lease.
-                    if (MissionContinuityLayer.BeginEconomyDelivery(
-                            player, demand, builderId, ctx.TurnNumber) == null)
+                    MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(
+                        player, demand, builderId, ctx.TurnNumber);
+                    if (delivery == null)
                         continue;
-                    InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
-                        InfrastructureFulfillment.EconomyReservationOwner(new AxisDemand
-                        {
-                            RequestingAxis = DesireAxis.Economy,
-                            Capability = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
-                                ? CapabilityKind.EconomicExpansionBase : CapabilityKind.EconomicInfrastructure,
-                            TargetHex = demand.TargetHex, EconomyResourceType = demand.EconomyResourceType,
-                        }), demand.EconomyBuildResourceCost, 0f,
-                        StrategicReservationReason.EconomyDeferredBuild);
+                    // The delivery is now a durable intent: protect it through the ONE deferred
+                    // writer for active builds, same owner key and rules as every later Phase A.
+                    InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
+                        player, ctx.TurnNumber, delivery);
                     delivered = 1f;
                     break;
                 }

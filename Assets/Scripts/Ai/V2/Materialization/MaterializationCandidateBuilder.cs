@@ -510,7 +510,8 @@ namespace Game.Ai.V2
             StrategicCardUseCandidate cand = StrategicCardEvaluator.ScoreForDemand(
                 p, demand, projected, inv, referenceMoveMax, hasCompetingHeroDemand, snap,
                 witnessedUsefulApDemand, projectedLegalFillers,
-                type => StrategicSpendability.SpendableAmount(player, root, ctx, type), player);
+                type => StrategicSpendability.SpendableAmount(player, root, ctx, type,
+                    demand?.EconomyHeroBuildOwner), player);
             p.QualityBreakdown = cand.QualityBreakdown;
             p.UseBreakdown = cand.Breakdown;
             p.UseRole = cand.IntendedRole;

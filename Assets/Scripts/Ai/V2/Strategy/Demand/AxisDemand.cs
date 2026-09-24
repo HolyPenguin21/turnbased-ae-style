@@ -103,6 +103,12 @@ namespace Game.Ai.V2
         public float RequiredCapabilityPower;
         public bool IsPersistenceDeferred;
 
+        // For an Economy Hero-prerequisite demand (the builder hero a pending build still needs):
+        // the reservation owner of THAT build, whose deferred hold the hero's own card may draw on —
+        // the hero is the build's first step, not a rival spend. Null for every other demand.
+        public string EconomyHeroBuildOwner =>
+            InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(this);
+
         // Delivery-shape constraint (see CapabilityDeliveryShape) and the EXACT
         // durable mission this capability is for. ConsumerIntentKey turns a generic
         // "FieldCombatPower please" into "FieldCombatPower for Raid #42", so Phase A can hand the

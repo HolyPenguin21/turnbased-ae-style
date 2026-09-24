@@ -326,18 +326,28 @@ namespace Game.Ai.V2
         internal static void ReserveDeferredEconomyResourcesForPendingHero(
             PlayerSetupData player, int turn, AxisDemand heroPrerequisiteDemand)
         {
-            string owner = EconomyReservationOwner(new AxisDemand
-            {
-                Capability = heroPrerequisiteDemand?.EconomyBuildCard?.Definition?.cardType
-                    == CardType.Base
-                        ? CapabilityKind.EconomicExpansionBase
-                        : CapabilityKind.EconomicInfrastructure,
-                TargetHex = heroPrerequisiteDemand?.TargetHex,
-                EconomyResourceType = heroPrerequisiteDemand?.EconomyResourceType,
-            });
+            string owner = EconomyHeroPrerequisiteOwner(heroPrerequisiteDemand);
             if (owner == null)
                 return;
             ReserveDeferredEconomyResourcesCore(player, turn, owner, heroPrerequisiteDemand);
+        }
+
+        // The build an Economy Hero-prerequisite demand serves, as its reservation owner key; null
+        // for any other demand. See AxisDemand.EconomyHeroBuildOwner.
+        internal static string EconomyHeroPrerequisiteOwner(AxisDemand demand)
+        {
+            if (demand == null || demand.RequestingAxis != DesireAxis.Economy
+                || demand.Capability != CapabilityKind.Hero || !demand.TargetHex.HasValue
+                || demand.EconomyBuildResourceCost == null)
+                return null;
+            return EconomyReservationOwner(new AxisDemand
+            {
+                Capability = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                    ? CapabilityKind.EconomicExpansionBase
+                    : CapabilityKind.EconomicInfrastructure,
+                TargetHex = demand.TargetHex,
+                EconomyResourceType = demand.EconomyResourceType,
+            });
         }
 
         private static void ReserveDeferredEconomyResourcesCore(
@@ -451,9 +461,12 @@ namespace Game.Ai.V2
             }
         }
 
-        internal static void ClearDeferredEconomyResources(PlayerSetupData player, int turn) =>
+        // owner == null is the whole-reason reset (no Economy obligation survived this pass); an
+        // explicit owner drops only that build's deferred rows and leaves every other build's hold.
+        internal static void ClearDeferredEconomyResources(PlayerSetupData player, int turn,
+            string owner = null) =>
             StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
-                StrategicReservationReason.EconomyDeferredBuild, null);
+                StrategicReservationReason.EconomyDeferredBuild, owner);
 
         // One canonical writer for direct, deferred and provisioned Economy build reservations.
         // Provisioning adds AP only when completion is reachable this turn; Phase A protects only

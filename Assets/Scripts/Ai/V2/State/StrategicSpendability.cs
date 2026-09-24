@@ -143,13 +143,15 @@ namespace Game.Ai.V2
         // must fit the SAME owner-aware spendable pool. Raw AP is not available to a discretionary
         // chain while another owner holds an explicit reaction/completion reservation. Callers
         // without a turn-scoped owner retain the historical raw-AP fallback.
+        // `excludeOwner` — see AxisDemand.EconomyHeroBuildOwner: a builder-hero chain may draw on its
+        // own pending build's hold.
         internal static bool ReservesOkAfterChain(PlayerRoot root, AiTurnContext ctx,
-            MaterializationPlan plan, PlayerSetupData player = null)
+            MaterializationPlan plan, PlayerSetupData player = null, string excludeOwner = null)
         {
             if (root == null || plan == null)
                 return false;
             float availableAp = player != null && ctx != null
-                ? SpendableAp(player, root, ctx)
+                ? SpendableAp(player, root, ctx, excludeOwner)
                 : root.ActionPoints;
             if (availableAp - plan.ApCost < 0f)
                 return false;
@@ -159,7 +161,7 @@ namespace Game.Ai.V2
                 return true;
 
             foreach (ResourceType t in ResourceBundle.All)
-                if (SpendableAmount(player, root, ctx, t) < Mathf.Max(0, cost.Get(t)))
+                if (SpendableAmount(player, root, ctx, t, excludeOwner) < Mathf.Max(0, cost.Get(t)))
                     return false;
             return true;
         }

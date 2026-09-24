@@ -152,7 +152,10 @@ namespace Game.Ai.V2
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps) return;
             if (root.ActionPoints - need - AiConfigV2.housekeepingApReserve < -eps) return;
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost)) return;
+            // A builder-hero chain may use its own pending build's deferred hold (see
+            // AxisDemand.EconomyHeroBuildOwner); every other owner's hold still counts.
+            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost,
+                    demand?.EconomyHeroBuildOwner)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;
             sink.Add((p, followupAp, p.ExpectedTraits));
         }
