@@ -402,18 +402,6 @@ namespace Game.Ai.V2
                     && c.Source == ContactSource.Honest && c.Position.HasValue);
                 if (contact?.Army == null)
                     continue;
-                AiMapMemory.KnownBuilding? interceptBuilding = snap.Known?.Buildings?
-                    .Where(b => b.Hex.Equals(objective.Target.LastKnownHex))
-                    .Select(b => (AiMapMemory.KnownBuilding?)b)
-                    .FirstOrDefault();
-                if (interceptBuilding.HasValue
-                    && interceptBuilding.Value.Owner != null
-                    && interceptBuilding.Value.Owner != player)
-                {
-                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
-                        + "decision=DEFER reason=enemy_on_known_foreign_structure_attack_owner_required");
-                    continue;
-                }
 
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind == MissionKind.ActiveDefence

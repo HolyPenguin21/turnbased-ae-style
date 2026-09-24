@@ -735,7 +735,14 @@ namespace Game.Ai.V2
                                     contact.Position.Value))
                                 <= -AiConfigV2.taskScoreProximityMax * 0.5f
                                     + AiConfigV2.allocatorSliceEpsilon;
-                        if (!ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
+                        // The enemy now stands on a known foreign structure: that fight is the
+                        // site's Attack objective (ActiveDefenceObjectiveEvaluator admission rule),
+                        // so the intercept ends here instead of pursuing without a proposal while
+                        // still claiming its actor away from every other lane.
+                        bool handedOffToAttack = contact != null
+                            && ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(
+                                snap, contact.Position.Value);
+                        if (!handedOffToAttack && !ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
                                 hasListedThreat: false, movingAway: movingAway,
                                 homeDistanceAtFullNegative: fullNegative,
                                 activeStillBeatsAlternative: false))
@@ -743,6 +750,9 @@ namespace Game.Ai.V2
                             active.Add(intent);
                             continue;
                         }
+                        if (handedOffToAttack)
+                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END "
+                                + $"enemy={defence.EnemyArmyId} reason=enemy_on_known_foreign_structure");
                         if (defence.SuspendedOffensiveIntentKey.HasValue
                             && state.TryGet(defence.SuspendedOffensiveIntentKey.Value,
                                 out MissionIntent suspendedOffensive)

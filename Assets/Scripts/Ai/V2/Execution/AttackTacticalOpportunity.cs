@@ -171,9 +171,10 @@ namespace Game.Ai.V2
             // not standing on the main objective — that is the assault, not a side strike (§11)
             if (s.Hex.Equals(mainTarget))
                 return false;
-            // not standing on ANY other known enemy Base/Citadel: taking that fight is a different
-            // strategic decision (a second Attack objective), never a tactical detour (§11).
-            if (OnKnownHostileStructure(player, snap, s.Hex))
+            // not standing on ANY other known hostile structure (Base/Citadel/Facility): winning there
+            // takes the structure, so that fight is a different strategic decision (a second Attack
+            // objective), never a tactical detour (§11/§26).
+            if (AttackObjectiveEvaluator.IsKnownHostileAttackSite(snap, player, s.Hex))
                 return false;
             // not already the objective of a live ActiveDefence response (§11): that lane owns the
             // answer to this army, and Attack must not race it for the same kill.
@@ -314,20 +315,6 @@ namespace Game.Ai.V2
                 if (bodies[i] != null)
                     profiles.Add(WorthIt.FromLiveUnit(bodies[i]));
             return profiles;
-        }
-
-        // Honest knowledge only: this observer's own remembered buildings, never BuildingRegistry.
-        private static bool OnKnownHostileStructure(PlayerSetupData player, WorldSnapshot snap,
-            HexCoord hex)
-        {
-            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings;
-            if (buildings == null)
-                return false;
-            for (int i = 0; i < buildings.Count; i++)
-                if (buildings[i].Hex.Equals(hex)
-                    && AttackObjectiveEvaluator.IsHostileStrategicStructure(buildings[i], player))
-                    return true;
-            return false;
         }
 
         // §11 "urgent ActiveDefence target", read off the one intent store rather than re-deriving

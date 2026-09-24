@@ -56,9 +56,12 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  ATK §19/§39 — ATTACK OBJECTIVE ENUMERATION.
     //
-    //  One objective per known hostile Base/Citadel, plus one per known hostile Facility (extractor,
-    //  lab, factory) while it is known UNDEFENDED — walking onto it destroys it and drops the
-    //  owner's income; a defended Facility is a field-army fight, not a structure objective.
+    //  One objective per known hostile Base/Citadel and one per known hostile Facility (extractor,
+    //  lab, factory), defended or not. Beating the last defender on a structure captures/destroys
+    //  it (BattleScreenUI.HandleBuildingOnArmyDefeat), so ANY fight on a hostile structure is a
+    //  structure operation owned here (IsHostileAttackStructure) — ActiveDefence never admits an
+    //  intercept on one (ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure). An undefended
+    //  Facility is simply the zero-defender case.
     //  This is an OBJECTIVE EVALUATOR sitting beside
     //  RaidObjectiveEvaluator and ActiveDefenceObjectiveEvaluator at the existing Strategy/Objectives
     //  level — deliberately not a new Manager, Layer or Service, and it owns no actor selection, no
@@ -114,10 +117,7 @@ namespace Game.Ai.V2
 
             foreach (AiMapMemory.KnownBuilding b in buildings)
             {
-                bool facility = IsHostileFacility(b, player);
-                if (!facility && !IsHostileStrategicStructure(b, player))
-                    continue;
-                if (facility && !KnownUndefendedSite(snap, b.Hex))
+                if (!IsHostileAttackStructure(b, player))
                     continue;
                 // A hex that is currently ours is never an Attack target, whatever memory says.
                 // Self.BaseHexes is the own-Base identity owner (§20); this is the one place the
@@ -160,7 +160,8 @@ namespace Game.Ai.V2
         //   owner is us now      -> SUCCESS (caller retires the intent as completed)
         //   structure gone       -> INVALIDATED for a Base/Citadel; SUCCESS for a Facility
         //                           (destroying it was the objective)
-        //   Facility now defended-> INVALIDATED (no longer a walk-in; a field fight instead)
+        //   defenders arrived    -> CONTINUE (the site is the same objective; the win-chance gate
+        //                           and Reinforcement/Recovery answer whether we can still take it)
         //   owner is someone else-> INVALIDATED (a fresh objective may appear for the new owner)
         //   still ExpectedOwner  -> CONTINUE
         public enum AttackTargetStatus { Continue, Captured, Invalidated }
@@ -178,18 +179,17 @@ namespace Game.Ai.V2
             AiMapMemory.KnownBuilding? remembered = null;
             foreach (AiMapMemory.KnownBuilding b in buildings)
                 if (b.Hex.Equals(target.Hex)) { remembered = b; break; }
-            return StatusFromMemory(target, remembered,
-                () => KnownUndefendedSite(snap, target.Hex));
+            return StatusFromMemory(target, remembered);
         }
 
         // The one memory-side rule both overloads share. AiMapMemory only drops a building record
         // when the hex was genuinely re-observed without it, so "no longer remembered" is honest:
         //   Base/Citadel target — gone means it is no longer the thing we set out to capture.
         //   Facility target     — gone IS the objective (it was destroyed), so it reads Captured
-        //                         (= achieved). It stays an objective only while it is still a
-        //                         non-Base structure of the expected owner and known undefended.
+        //                         (= achieved). It stays an objective while it is still a
+        //                         non-Base structure of the expected owner, defended or not.
         private static AttackTargetStatus StatusFromMemory(AttackTargetRef target,
-            AiMapMemory.KnownBuilding? remembered, Func<bool> knownUndefended)
+            AiMapMemory.KnownBuilding? remembered)
         {
             bool facility = target.Kind == AttackTargetKind.Facility;
             if (!remembered.HasValue)
@@ -199,8 +199,6 @@ namespace Game.Ai.V2
             if (facility == stronghold)
                 return AttackTargetStatus.Invalidated;
             if (b.Owner == null || b.Owner.ColorIndex != target.ExpectedOwnerId)
-                return AttackTargetStatus.Invalidated;
-            if (facility && !knownUndefended())
                 return AttackTargetStatus.Invalidated;
             return AttackTargetStatus.Continue;
         }
@@ -220,8 +218,7 @@ namespace Game.Ai.V2
             if (live != null && live.Owner == player && (live.IsBase || live.IsStartingCitadel))
                 return AttackTargetStatus.Captured;
 
-            return StatusFromMemory(target, AiMapMemory.KnownBuildingAt(player, target.Hex),
-                () => AiMapMemory.KnownUndefendedForeignStructureAt(player, target.Hex));
+            return StatusFromMemory(target, AiMapMemory.KnownBuildingAt(player, target.Hex));
         }
 
         // ---- site facts the mission layer needs (§30/§31) -------------------------------------
@@ -283,7 +280,8 @@ namespace Game.Ai.V2
         // ---- internals -------------------------------------------------------------------------
 
         // §19 — Owner != us, Owner != Neutral, owner not eliminated, and the structure is a Base or
-        // a starting Citadel. A Facility that is not a Base is explicitly NOT an Attack target.
+        // a starting Citadel (the stronghold half of IsHostileAttackStructure; Facilities are the
+        // other half, see IsHostileFacility).
         internal static bool IsHostileStrategicStructure(AiMapMemory.KnownBuilding b,
             PlayerSetupData player) =>
             b.Owner != null && b.Owner != player && !b.Owner.IsNeutral && !b.Owner.IsEliminated
@@ -296,18 +294,26 @@ namespace Game.Ai.V2
             b.Owner != null && b.Owner != player && !b.Owner.IsNeutral && !b.Owner.IsEliminated
             && !b.IsBase && !b.IsStartingCitadel;
 
-        // Snapshot mirror of AiMapMemory.KnownUndefendedForeignStructureAt's fogged branch: no
-        // remembered army (enemy or neutral) and no known guarded Hex Event on the hex. Unknown
-        // defence is never read as "undefended" — the building record itself is honest memory.
-        private static bool KnownUndefendedSite(WorldSnapshot snap, HexCoord hex)
+        // THE one answer to "does a fight on this structure's hex belong to the Attack lane": every
+        // structure Enumerate turns into an objective. ActiveDefence defers an enemy standing on
+        // one, and an Attack side strike never picks one as a detour — winning there takes the
+        // structure, which only the Attack operation aimed at it may do (§26/§27).
+        internal static bool IsHostileAttackStructure(AiMapMemory.KnownBuilding b,
+            PlayerSetupData player) =>
+            IsHostileStrategicStructure(b, player) || IsHostileFacility(b, player);
+
+        // Snapshot-side lookup of the same rule for a hex: is a structure this player remembers
+        // there an Attack site? Honest memory only (snap.Known.Buildings).
+        internal static bool IsKnownHostileAttackSite(WorldSnapshot snap, PlayerSetupData player,
+            HexCoord hex)
         {
-            if (snap?.Known == null)
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
+            if (buildings == null || player == null)
                 return false;
-            if (snap.Known.EnemySightings != null && snap.Known.EnemySightings.Any(s => s.Hex.Equals(hex)))
-                return false;
-            if (snap.Known.NeutralSightings != null && snap.Known.NeutralSightings.Any(s => s.Hex.Equals(hex)))
-                return false;
-            return snap.Known.EventGuardHexes == null || !snap.Known.EventGuardHexes.Contains(hex);
+            for (int i = 0; i < buildings.Count; i++)
+                if (buildings[i].Hex.Equals(hex) && IsHostileAttackStructure(buildings[i], player))
+                    return true;
+            return false;
         }
 
         // What the owner loses when this facility is destroyed, on the SAME asset-value scale the
