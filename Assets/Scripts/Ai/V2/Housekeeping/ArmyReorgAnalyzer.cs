@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -43,8 +43,17 @@ namespace Game.Ai.V2
                     + $"[{string.Join(",", added)}] through housekeeping (turn {turn})");
         }
 
-        public static bool IsLeased(PlayerSetupData player, int armyId) =>
-            player != null && ByPlayer.TryGetValue(player, out LeaseState state) && state.ArmyIds.Contains(armyId);
+        // The turn gate is part of the contract, not a convenience: Mark() rebuilds the state when
+        // the turn moves and Clear() only removes a state stamped with the turn being cleared, so a
+        // reader without the same gate can observe LAST turn's lease set. That matters because the
+        // readers are Phase A (MaterializationCandidateBuilder, at the START of a turn, before this
+        // turn's first Mark) and Housekeeping — a stale lease would silently protect an army that
+        // owns no operational role any more. Today HousekeepingManager.Clear happens to run at the
+        // end of every turn; this makes the invariant structural instead of a consequence of that
+        // call order.
+        public static bool IsLeased(PlayerSetupData player, int turn, int armyId) =>
+            player != null && ByPlayer.TryGetValue(player, out LeaseState state)
+            && state.Turn == turn && state.ArmyIds.Contains(armyId);
 
         public static void Clear(PlayerSetupData player, int turn)
         {
@@ -86,6 +95,9 @@ namespace Game.Ai.V2
 
             HexCoord citadelHex = AiTurnController.GarrisonHexFor(player);
             int nextKey = 0;
+            // The turn this analysis belongs to — the strategic capability lease is turn-local and
+            // is read below through the same gate Mark/Clear use.
+            int turn = snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0;
 
             var byHex = ArmyRegistry.AllForOwner(player)
                 .Where(a => a != null)
@@ -98,7 +110,7 @@ namespace Game.Ai.V2
                 foreach (ArmyData army in hexGroup.OrderBy(a => a.Id))
                 {
                     armyById[army.Id] = army;
-                    containers.Add(BuildContainer(player, army, commitments, citadelHex, unitByKey, ref nextKey));
+                    containers.Add(BuildContainer(player, turn, army, commitments, citadelHex, unitByKey, ref nextKey));
                 }
 
                 var groupHex = new HexCoord(hexGroup.Key.Q, hexGroup.Key.R);
@@ -118,7 +130,8 @@ namespace Game.Ai.V2
             return new ArmyReorgAnalysis { Groups = groups, UnitByKey = unitByKey, ArmyById = armyById };
         }
 
-        private static ReorgContainer BuildContainer(PlayerSetupData player, ArmyData army, ActorCommitments commitments,
+        private static ReorgContainer BuildContainer(PlayerSetupData player, int turn, ArmyData army,
+            ActorCommitments commitments,
             HexCoord citadelHex, Dictionary<int, UnitData> unitByKey, ref int nextKey)
         {
             // Preserve the canonical live roster order. ArmyData.ComputeCapacity uses the FIRST hero,
@@ -154,7 +167,7 @@ namespace Game.Ai.V2
                 });
             }
 
-            container.Role = ClassifyRole(player, army, commitments);
+            container.Role = ClassifyRole(player, turn, army, commitments);
 
             bool protectedOwner = container.Role == ReorgPhysicalRole.ProtectedMissionArmy;
             bool mutable = container.Role == ReorgPhysicalRole.NormalFieldArmy
@@ -283,7 +296,8 @@ namespace Game.Ai.V2
 
         private static int CeilDiv(int value, int divisor) => AiV2Util.CeilDiv(value, divisor);
 
-        private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, ArmyData army, ActorCommitments commitments)
+        private static ReorgPhysicalRole ClassifyRole(PlayerSetupData player, int turn, ArmyData army,
+            ActorCommitments commitments)
         {
             if (army.IsGarrison)
                 return ReorgPhysicalRole.Garrison;
@@ -292,7 +306,7 @@ namespace Game.Ai.V2
             if (AviationRules.IsAirfield(army) || AviationRules.IsAirArmy(army))
                 return ReorgPhysicalRole.Aviation;
             if ((commitments != null && commitments.IsArmyClaimed(army.Id))
-                || StrategicCapabilityLeaseRegistry.IsLeased(player, army.Id))
+                || StrategicCapabilityLeaseRegistry.IsLeased(player, turn, army.Id))
                 return ReorgPhysicalRole.ProtectedMissionArmy;
             // §P1 — the SoloRecce role protects a scout only while it actually has recon WORK: a
             // live ReconPatrolState (claim/lease already returned ProtectedMissionArmy above). An

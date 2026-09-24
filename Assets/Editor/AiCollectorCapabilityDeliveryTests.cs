@@ -1,4 +1,4 @@
-#if UNITY_INCLUDE_TESTS
+﻿#if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using Game.Ai;
 using Game.Ai.V2;
@@ -74,7 +74,7 @@ namespace Game.EditorTests
             Assert.That(completed, Is.True,
                 "collector supply must not be measured through the combat/scout-only inventory");
             Assert.That(delivered, Is.EqualTo(1f));
-            Assert.That(StrategicCapabilityLeaseRegistry.IsLeased(player, 19), Is.True,
+            Assert.That(StrategicCapabilityLeaseRegistry.IsLeased(player, ctx.TurnNumber, 19), Is.True,
                 "the new solo collector must survive same-turn housekeeping until mission admission");
         }
 

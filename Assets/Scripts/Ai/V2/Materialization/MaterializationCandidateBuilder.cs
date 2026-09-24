@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.HexGrid;
@@ -51,7 +51,7 @@ namespace Game.Ai.V2
 
                 ArmyData shell = ReusableArmySelector.FindReusableAt(player, hex, commitments);
                 if (shell != null && (!phaseBSurplus
-                    || !IsProtectedFromPhaseBSurplus(player, shell, commitments)))
+                    || !IsProtectedFromPhaseBSurplus(player, snap.TurnNumber, shell, commitments)))
                     opts.Add(new PlacementOption(hex, DeploymentKind.ReusableShell, shell));
                 opts.Add(new PlacementOption(hex, DeploymentKind.NewArmy, null));
 
@@ -70,7 +70,7 @@ namespace Game.Ai.V2
                         continue;
                     }
                     if (phaseBSurplus && IsProtectedFromPhaseBSurplus(
-                            player, a, commitments))
+                            player, snap.TurnNumber, a, commitments))
                         continue;
                     // Projected capacity, not pre-join HasRoom: a first hero may legally turn a
                     // full 2/2 body formation into 3/N and is exactly the placement a live Hero
@@ -96,10 +96,13 @@ namespace Game.Ai.V2
             return opts;
         }
 
-        internal static bool IsProtectedFromPhaseBSurplus(PlayerSetupData player,
+        // `turn` is required, not optional: the strategic capability lease is turn-local and this
+        // is the earliest reader in the turn (Phase A, before this turn's first Mark), so reading it
+        // without the turn gate can observe last turn's lease set.
+        internal static bool IsProtectedFromPhaseBSurplus(PlayerSetupData player, int turn,
             ArmyData army, ActorCommitments commitments) => army != null
             && ((commitments?.IsArmyClaimed(army.Id) ?? false)
-                || StrategicCapabilityLeaseRegistry.IsLeased(player, army.Id));
+                || StrategicCapabilityLeaseRegistry.IsLeased(player, turn, army.Id));
     }
 
     public sealed class MaterializationReservation

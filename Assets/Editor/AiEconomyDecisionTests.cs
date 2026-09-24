@@ -1,4 +1,4 @@
-#if UNITY_INCLUDE_TESTS
+﻿#if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
@@ -2410,7 +2410,7 @@ namespace Game.EditorTests
                     soloOnly: false, phaseBSurplus: true);
 
                 Assert.That(PlacementSelector.IsProtectedFromPhaseBSurplus(
-                    player, army, commitments), Is.True);
+                    player, snapshot.TurnNumber, army, commitments), Is.True);
                 Assert.That(options.Any(x => x.Army == army), Is.False);
             }
             finally
