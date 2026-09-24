@@ -29,9 +29,13 @@ namespace Game.Ai
         // times per turn, and most re-derivations conclude exactly what the previous one did. Call
         // sites that log a per-item, per-cycle status line (an objective ACCEPT, a commitment CLAIM,
         // an allocator pool dump, ...) use WriteDeduped instead of Write so an unchanged line prints
-        // once and only re-prints when the text actually differs — the raw trace still reflects
-        // every real change, it just stops repeating the same fact turn-cycle after turn-cycle.
+        // once per turn scope (see ResetDedupScope) and only re-prints when the text actually
+        // differs — the raw trace still reflects every real change, it just stops repeating the
+        // same fact cycle after cycle.
         private static readonly Dictionary<string, string> _dedupLastByKey = new Dictionary<string, string>();
+        // WriteDedupedWithId support — id-free content already printed this scope -> the trace id
+        // of the line that printed it in full.
+        private static readonly Dictionary<string, string> _firstIdByContent = new Dictionary<string, string>();
 
         // The file (Logs/AiDebug.log) is the actual trace anyone reads back after a run — the
         // Editor Console mirror was only ever a live convenience, and Debug.Log itself (console
@@ -51,7 +55,7 @@ namespace Game.Ai
             // Play sessions in the same process — close whatever the previous session left open
             // first, or re-opening the same path below can fail while the old handle lingers.
             CloseSession();
-            _dedupLastByKey.Clear();
+            ResetDedupScope();
             try
             {
                 // Application.dataPath is "<project>/Assets" in the Editor, "<build>_Data" in a
@@ -109,6 +113,40 @@ namespace Game.Ai
                 return;
             _dedupLastByKey[fullKey] = message;
             WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        // For a line that carries a per-pass correlation id (e.g. a demand's "[T4-P5-M-D39]"): the
+        // id changes every pass even when nothing else does, so WriteDeduped can never match it,
+        // and dropping the line would orphan every later line that references the id. Instead, a
+        // repeat of the same id-free content in the same scope prints one short line mapping the
+        // new id onto the id whose line already holds the full text.
+        public static void WriteDedupedWithId(string id, string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            if (string.IsNullOrEmpty(id))
+            {
+                WriteCore(message, callerFile, callerMember, callerLine);
+                return;
+            }
+            string contentKey = $"{callerFile}:{callerLine}|{message.Replace(id, "#")}";
+            if (_firstIdByContent.TryGetValue(contentKey, out string firstId))
+            {
+                WriteCore($"[AI][V2]   {id} = {firstId} (same line as earlier this turn)",
+                    callerFile, callerMember, callerLine);
+                return;
+            }
+            _firstIdByContent[contentKey] = id;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        // Dedup memory is scoped to one player's turn (called from AiV2Trace.BeginMain), so every
+        // turn's log is readable on its own and one player's line never suppresses another's.
+        public static void ResetDedupScope()
+        {
+            _dedupLastByKey.Clear();
+            _firstIdByContent.Clear();
         }
 
         private static void WriteCore(string message, string callerFile,

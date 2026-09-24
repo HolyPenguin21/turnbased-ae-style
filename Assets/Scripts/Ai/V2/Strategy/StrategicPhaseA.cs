@@ -149,7 +149,8 @@ namespace Game.Ai.V2
                 // not silently age through ReconcileAfterTurn's idle-stall path (IntentReapedIdle)
                 // for legitimately waiting on its own reserved resources. See MarkProtectedThisTurn.
                 MissionContinuityLayer.MarkProtectedThisTurn(player, active.IntentKey, ctx.TurnNumber);
-                AiDebugLog.Write($"[AI][V2]   strat.A economy hold — protected active "
+                AiDebugLog.WriteDeduped(active.IntentKey.ToString(),
+                    $"[AI][V2]   strat.A economy hold — protected active "
                     + $"{active.Economy.Kind} "
                     + $"@({active.Economy.TargetHex.Q},{active.Economy.TargetHex.R}) before card arbitration");
             }
@@ -234,7 +235,7 @@ namespace Game.Ai.V2
             if (ctx != null)
                 result.Reservation.GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber);
 
-            AiDebugLog.Write($"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
+            AiDebugLog.WriteDeduped("hand", $"[AI][V2]   strat.A — {player.Nickname} hand {AiCardLog.Hand(hand)}");
 
             var allStates = demands.Select((d, i) => new DemandState
                 {
@@ -421,7 +422,8 @@ namespace Game.Ai.V2
                     }
                     else
                     {
-                        AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
+                        AiDebugLog.WriteDedupedWithId(istate.Demand.TraceId,
+                            $"[AI][V2]   strat.A infra — {istate.Demand}: not built ({infra.Detail})");
                     }
                 }
             }
@@ -572,7 +574,7 @@ namespace Game.Ai.V2
                         }
                         string diag = MaterializationDiagnostics.ExplainNoChain(
                             snap, player, root, hand, ctx, d, ledger, commitments, reserved);
-                        AiDebugLog.Write($"[AI][V2]   strat.A — {d}: no feasible useful chain "
+                        AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A — {d}: no feasible useful chain "
                             + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(ledger.Balance())}, "
                             + $"discrete {F(ledger.DiscreteAdmissionBudget())}, "
                             + $"followup reserved {F(reserved)}); {diag}");

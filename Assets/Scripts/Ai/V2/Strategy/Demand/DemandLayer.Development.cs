@@ -103,10 +103,11 @@ namespace Game.Ai.V2
                 }
 
             if (emitted > 0)
-                AiDebugLog.Write($"[AI][V2][Demand][Development] decision=UPGRADE count={emitted} "
+                AiDebugLog.WriteDeduped("decision",
+                    $"[AI][V2][Demand][Development] decision=UPGRADE count={emitted} "
                     + "reason=facility_ready_scored_opportunities");
             else if (operatorPrerequisites == 0)
-                AiDebugLog.Write("[AI][V2][Demand][Development] decision=SATISFIED "
+                AiDebugLog.WriteDeduped("decision", "[AI][V2][Demand][Development] decision=SATISFIED "
                     + "reason=no_profitable_development_use");
         }
 

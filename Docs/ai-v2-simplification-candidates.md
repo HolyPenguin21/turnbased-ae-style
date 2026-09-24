@@ -105,6 +105,12 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
 `StrategicPhaseA.FulfillDemands` 513, `AiStrategyV2Pipeline.RunTurn` 512, `DemandLayer.Generate` 460.
 Убрать повторы идентичных строк между проходами одного хода (dedup по содержимому), не теряя
 информации для разбора.
+**Сделано 2026-09-24** (ветка `refactor/c6-log-dedup`): дедуп-память `AiDebugLog` сбрасывается на
+каждый ход игрока (`AiV2Trace.BeginMain` → `ResetDedupScope`; раньше `WriteDeduped` глушил строки
+между игроками и ходами); 16 повторяющихся строк Demand/Phase A/ReconAirCap переведены на
+`WriteDeduped`; строки с trace-id (`demand —`, `strat.A … no feasible chain`, `strat.A infra`) —
+на `WriteDedupedWithId`: повтор печатается как `Dnn = Dmm (same line as earlier this turn)`.
+Оценка по логу 24.09: −13…22% объёма. Не трогалось: `RunTurn` loop-строки (нужны для C4).
 
 ## Рекомендуемый порядок
 

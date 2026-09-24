@@ -1162,7 +1162,7 @@ namespace Game.Ai.V2
                     provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, chosenHex));
             }
 
-            AiDebugLog.Write($"[AI][V2][ReconAirCap] structuralObsLanes={airborneWitnessed + spareLaunchWitnessed} "
+            AiDebugLog.WriteDeduped("air-capacity", $"[AI][V2][ReconAirCap] structuralObsLanes={airborneWitnessed + spareLaunchWitnessed} "
                 + $"(airborne {airborneWitnessed}/{airborneProbed} stuck {airborneStuck} + "
                 + $"launch {spareLaunchWitnessed}/{launchProbed} rejected {launchRejected}) "
                 + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "

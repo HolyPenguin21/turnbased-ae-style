@@ -124,6 +124,7 @@ namespace Game.Ai.V2
 
         public static V2TraceScope BeginMain(PlayerSetupData player, int turn)
         {
+            AiDebugLog.ResetDedupScope();
             var scope = new V2TraceScope($"T{turn}-{PlayerTag(player)}-M");
             if (player != null) Scopes[player] = scope;
             return scope;

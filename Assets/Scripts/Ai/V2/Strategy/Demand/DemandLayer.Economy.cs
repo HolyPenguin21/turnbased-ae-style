@@ -222,7 +222,8 @@ namespace Game.Ai.V2
                 if (!demand.EconomyPreferredBuilderArmyId.HasValue
                     && HasActiveEconomyBuildIntent(activeIntents, demand))
                 {
-                    AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=continuity "
+                    AiDebugLog.WriteDeduped($"continuity|{demand.TargetHex}",
+                        $"[AI][V2][Economy][Demand] selected=continuity "
                         + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
                         + "reason=existing_target_specific_actor");
                     continue;
@@ -230,22 +231,24 @@ namespace Game.Ai.V2
                 AxisDemand emitted = demand.EconomyPreferredBuilderArmyId.HasValue
                     ? demand
                     : EconomyHeroPrerequisite(demand);
-                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected={emitted.Capability} "
+                AiDebugLog.WriteDeduped($"{emitted.Capability}|{emitted.TargetHex}",
+                    $"[AI][V2][Economy][Demand] selected={emitted.Capability} "
                     + $"resource={emitted.EconomyResourceType?.ToString() ?? "none"} "
                     + $"target=({emitted.TargetHex?.Q},{emitted.TargetHex?.R}) value={emitted.Value:0.##} "
                     + $"rejected={Mathf.Max(0, candidates.Count - selected.Count)}");
                 yield return emitted;
             }
 
-            AiDebugLog.Write($"[AI][V2][Economy][BaseCandidates] {baseSummary}");
+            AiDebugLog.WriteDeduped("base-summary", $"[AI][V2][Economy][BaseCandidates] {baseSummary}");
             int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback + rejectedSurplus
                 + rejectedStrategicValue + baseStrategicValue
                 + rejectedDeliveryValue + baseDeliveryValue + baseThreshold;
-            AiDebugLog.Write($"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
+            AiDebugLog.WriteDeduped("rejections", $"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
                 + $"payback={rejectedPayback} surplus={rejectedSurplus} strategic_value={rejectedStrategicValue + baseStrategicValue} "
                 + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} threshold={baseThreshold}");
             if (selected.Count == 0)
-                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
+                AiDebugLog.WriteDeduped("selected-none",
+                    $"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
                     + "reason=no_legal_valuable_site_or_base");
         }
 
@@ -361,7 +364,8 @@ namespace Game.Ai.V2
             // ClaimedEconomyBuildCards, not a count taken before the allocator ever sees the rest.
             foreach (AxisDemand demand in candidates.OrderByDescending(d => d.Value))
             {
-                AiDebugLog.Write($"[AI][V2][Economy][Demand] selected=CollectorCapability "
+                AiDebugLog.WriteDeduped($"collector|{demand.EconomyResourceType}|{demand.TargetHex}",
+                    $"[AI][V2][Economy][Demand] selected=CollectorCapability "
                     + $"resource={demand.EconomyResourceType} "
                     + $"target=({demand.TargetHex?.Q},{demand.TargetHex?.R}) value={demand.Value:0.##}");
                 yield return demand;
@@ -520,7 +524,8 @@ namespace Game.Ai.V2
                     if (extraction.Tier == ProvisioningManager.GarrisonExtractionTier.None)
                     {
                         choice.IneligibleReason = extraction.Reason ?? "no_garrison_extraction_container";
-                        AiDebugLog.Write($"[ECO][Builder] site=({target.Q},{target.R}) "
+                        AiDebugLog.WriteDeduped($"{target}|{army.ArmyId}",
+                            $"[ECO][Builder] site=({target.Q},{target.R}) "
                             + $"actor=#{army.ArmyId} source=Garrison route=VALID extraction=None "
                             + "decision=REJECT reason=" + choice.IneligibleReason);
                         return choice;
@@ -544,7 +549,8 @@ namespace Game.Ai.V2
                         projectedRoute, buildApCost, includeReturn);
                     choice.ProjectedActivationApCost = projectedRoute.ActivationApCost;
                     choice.ProjectedMaxMovement = route.MaxMovement;
-                    AiDebugLog.Write($"[ECO][Builder] site=({target.Q},{target.R}) "
+                    AiDebugLog.WriteDeduped($"{target}|{army.ArmyId}",
+                        $"[ECO][Builder] site=({target.Q},{target.R}) "
                         + $"actor=#{army.ArmyId} source=Garrison route=VALID "
                         + $"extraction={extraction.Tier} requiredAp={extraction.ApCost:0.##} "
                         + "decision=READY");
@@ -1150,7 +1156,10 @@ namespace Game.Ai.V2
 
                 output.Add(demand);
                 kept++;
-                AiDebugLog.Write($"[AI][V2][Economy][BaseCandidate] kept {demand.Explain}");
+                AiDebugLog.WriteDeduped(
+                    $"{demand.EconomyBuildCard?.Definition?.displayName}@{demand.TargetHex}",
+                    $"[AI][V2][Economy][BaseCandidate] kept @({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
+                    + demand.Explain);
                 if (best == null || demand.Value > best.Value)
                     best = demand;
             }

@@ -38,7 +38,8 @@ namespace Game.Ai.V2
                 var timer = System.Diagnostics.Stopwatch.StartNew();
                 demands.AddRange(EconomyDemands(snap, breakdown, player, ctx, root,
                     activeIntents, commitments));
-                AiDebugLog.Write($"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
+                AiDebugLog.WriteDeduped("economy-timing",
+                    $"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
             }
             if (GenerateAxis(DesireAxis.Development))
             {
@@ -63,7 +64,7 @@ namespace Game.Ai.V2
                 if (d != null && string.IsNullOrEmpty(d.TraceId))
                     d.TraceId = scope?.NextDemandId() ?? "?";
             foreach (AxisDemand d in demands)
-                AiDebugLog.Write($"[AI][V2]   demand — {d} | {d.Explain}");
+                AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   demand — {d} | {d.Explain}");
             return demands;
         }
     }
