@@ -17,7 +17,6 @@ namespace Game.Ai.V2
     //  A library of generic, name-free reads of "how much Energy is spoken for" that the single
     //  canonical sortie-reservation decision (AviationSortieReservationEvaluator, reached from
     //  ProvisioningManager.AirSortieReservationAdmission) consumes:
-    //    · CommittedAirActivationEnergy   — Energy other in-flight air wings still owe this turn
     //    · ProtectedHandEnergy            — Energy a currently-PLAYABLE high-value hand card needs
     //                                       (§41.2: largest such card in full + a fraction of the rest)
     //    · ProtectedNearTermDrawEnergy    — low-weight allowance for the turn's likely next draw (§44)
@@ -37,42 +36,8 @@ namespace Game.Ai.V2
         // NOTE — this policy no longer owns an admission decision (`Evaluate()` is retired). It is a
         // library of generic, name-free Energy-pressure MEASUREMENTS only; the single strategic
         // "is this sortie worth its Energy" decision lives in AviationSortieReservationEvaluator
-        // (reached from ProvisioningManager.AirSortieReservationAdmission), which calls the three
-        // helpers below.
-
-        // Energy that OTHER already-airborne air wings still owe on their own first activation this
-        // turn — both AirRecon and AirStrike sorties. V2 pays activation for real on the wing's
-        // first MoveArmy step, so an already-activated wing owes nothing; one still sitting
-        // un-activated after launch does, and a later spend must not eat it (spec §41.1
-        // "already committed/funded actions").
-        // Exposed (AviationSortieReservationEvaluator) — no hardcoded card names live here or in the
-        // caller; this stays the single source of "Energy other in-flight air wings still owe".
-        //
-        // alreadyAccountedArmyIds — actors whose Energy is ALREADY represented in a pass-local claim
-        // ledger (ProvisioningSession.EnergyClaimed). A continuing air wing provisioned earlier this
-        // pass sits in that ledger AND still shows up in this live scan (it has a live
-        // ReconPatrolState / AirSortie), so without this exclusion its first-activation Energy is
-        // counted twice — once here, once in the caller's extraCommittedEnergy/session claim.
-        internal static int CommittedAirActivationEnergy(PlayerSetupData player, int excludeArmyId,
-            ISet<int> alreadyAccountedArmyIds = null)
-        {
-            int total = 0;
-            foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
-            {
-                if (army == null || army.Id == excludeArmyId || army.HasActivatedThisTurn)
-                    continue;
-                if (alreadyAccountedArmyIds != null && alreadyAccountedArmyIds.Contains(army.Id))
-                    continue;
-                if (!AviationRules.IsValidAirArmy(army))
-                    continue;
-                bool inFlightSortie = ReconPatrolStateRegistry.TryGet(player, army.Id, out _)
-                    || AirSortieRegistry.ForArmy(player, army) != null;
-                if (!inFlightSortie)
-                    continue;
-                total += Mathf.Max(0, army.ActivationEnergyCost);
-            }
-            return total;
-        }
+        // (reached from ProvisioningManager.AirSortieReservationAdmission), which calls the two
+        // helpers below. What airborne wings still owe is StrategicSpendability's, not this type's.
 
         // §41.2 / §44 — Energy a currently-PLAYABLE, HIGH-VALUE hand card would need. "Playable" =
         // every non-Energy resource cost and the play-time AP cost are already satisfiable from the

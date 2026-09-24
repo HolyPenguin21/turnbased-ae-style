@@ -109,28 +109,21 @@ namespace Game.Ai.V2
         // launchApCost / launchEnergyCost — this candidate sortie's own first-activation cost.
         // reconInformationValue — the AIR-01 route score for this candidate (already the full
         // InformationGain + StaleIntelRefreshValue + EnemyInterest + ... composite, §3 of the spec).
-        // excludeArmyId — the actor being evaluated (so it never counts its own owed Energy as
-        // "committed"); negative for a not-yet-formed storage launch.
-        // extraCommittedAp / extraCommittedEnergy — AP/Energy already claimed by earlier candidates
-        // reserved in the SAME planning pass this turn (several sorties must not each evaluate
-        // against the full stockpile).
-        // alreadyAccountedArmyIds — actors whose Energy is ALREADY in extraCommittedEnergy (the
-        // pass-local claim ledger). Passed straight to CommittedAirActivationEnergy so its live scan
-        // does not add their first-activation Energy a second time.
+        // airSpendableEnergy — the Energy this sortie may draw on, as the caller's Provisioning gate
+        // measured it (ProvisioningManager.AirSpendableEnergyLeft: StrategicSpendability — ledger
+        // holds and unpaid mandatory air-recovery activation — minus earlier air claims this pass).
+        // The evaluator owns no second model of what in-flight wings owe.
+        // extraCommittedAp — AP already claimed by earlier candidates reserved in the SAME planning
+        // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            int excludeArmyId, int extraCommittedAp, int extraCommittedEnergy,
-            ISet<int> alreadyAccountedArmyIds = null)
+            float airSpendableEnergy, int extraCommittedAp)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
 
             // ---- Stage 1: Resource Outlook ----
-            int energyStock = Mathf.Max(0, root.GetResource(ResourceType.Energy));
-            int committedEnergy = ReconAirEnergyPolicy.CommittedAirActivationEnergy(
-                    player, excludeArmyId, alreadyAccountedArmyIds)
-                + Mathf.Max(0, extraCommittedEnergy);
-            int availableEnergy = Mathf.Max(0, energyStock - committedEnergy);
+            int availableEnergy = Mathf.Max(0, Mathf.FloorToInt(airSpendableEnergy + AiConfigV2.allocatorSliceEpsilon));
 
             float expectedEnergyIncome = map != null
                 ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map))

@@ -55,8 +55,9 @@
   − `session.EnergyClaimed`); оценщик вылета получает ledger-удержанную Energy в `extraCommittedEnergy`.
   Execution-гейты (`CanIssueMoveNow`/`CanAffordLaunch`) намеренно остались физическими. Мёртвые
   `protectedPhysicalEnergy`/`protectedAp` аллокатора удалены. Открыто: AP-аналог в `ProvisionAir`
-  (`root.ActionPoints − session.ApClaimed` не видит AP-строк ledger) → C2-B; две модели «долга»
-  авиации (`CommittedAirActivationEnergy` vs `OutstandingRecoveryActivation`) не слиты.
+  (`root.ActionPoints − session.ApClaimed` не видит AP-строк ledger) → C2-B. Две модели «долга»
+  авиации слиты: `CommittedAirActivationEnergy` удалён, оценщик вылета получает
+  `AirSpendableEnergyLeft` (единственная модель — `StrategicSpendability.OutstandingRecoveryActivation`).
 
 ### C2. `AxisBudgetLedger` — второй AP-пул с устаревшими аргументами — риск A: низкий, B: высокий
 

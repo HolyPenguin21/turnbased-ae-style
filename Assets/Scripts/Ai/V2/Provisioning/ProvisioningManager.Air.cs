@@ -211,25 +211,14 @@ namespace Game.Ai.V2
         // The Energy an air claim (Recon sortie, Raid AirSupport) may still take this pass. Air is
         // non-Economy spending, so it must fit StrategicSpendability — owner-aware ledger holds
         // (EconomyDeferredBuild/Completion, reaction envelope) and unpaid mandatory-recovery
-        // activation are off limits — minus session.EnergyClaimed: Provisioning never mutates world
+        // activation (the ONE model of what airborne wings owe) are off limits — minus
+        // session.EnergyClaimed: Provisioning never mutates world
         // resources, so sequential air claims in one pass would otherwise each see the same stock.
         // Only air missions set ClaimedEnergy, so this never double-counts an Economy ledger row.
         internal static float AirSpendableEnergyLeft(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session) =>
             StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
             - (session?.EnergyClaimed ?? 0f);
-
-        // Energy held by owner-aware ledger rows only. The sortie evaluator subtracts in-flight
-        // wings' owed activation itself (ReconAirEnergyPolicy.CommittedAirActivationEnergy), so the
-        // recovery part of StrategicSpendability must not be handed to it a second time.
-        private static float LedgerHeldEnergy(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
-        {
-            if (player == null || root == null || ctx == null)
-                return 0f;
-            float raw = Mathf.Max(0, root.GetResource(ResourceType.Energy));
-            return raw - StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber,
-                StrategicReservedResource.Energy, raw);
-        }
 
         private static ProvisionFailure? AirSortieReservationAdmission(
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ProvisioningSession session,
@@ -247,12 +236,8 @@ namespace Game.Ai.V2
                 Mathf.CeilToInt(Mathf.Max(0f, realAp)),
                 Mathf.CeilToInt(Mathf.Max(0f, realEnergy)),
                 exec.RouteScore,
-                existing ? moverArmyId : -1,
-                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
-                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed + LedgerHeldEnergy(player, root, ctx))),
-                // Actors already in session.EnergyClaimed (a continuing wing provisioned earlier
-                // this pass) — the evaluator's live scan must not re-count their owed Energy.
-                session.ClaimedArmyIds);
+                AirSpendableEnergyLeft(player, root, ctx, session),
+                Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)));
             AiDebugLog.Write(decision.ToLog(label));
 
             return decision.ShouldReserve
