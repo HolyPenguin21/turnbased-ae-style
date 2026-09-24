@@ -109,7 +109,7 @@ namespace Game.Ai.V2
             var stealthObsRunnable = stealthRunnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
             var stealthGroundRunnable = stealthRunnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
 
-            // RECON-AIR-02 (round 5) — DemandLayer's ONLY calls for Recon capacity, both ground and
+            // DemandLayer's ONLY calls for Recon capacity, both ground and
             // air, are to ReconAssignmentPlanner (the one canonical Assignment/capacity owner). The
             // air witness is measured first because ReconCapacitySnapshot.Build needs it as an INPUT
             // to size its own Desired/deficit fields (see MeasureAirCapacity's header comment).
@@ -230,7 +230,7 @@ namespace Game.Ai.V2
             // a physical visit, so it must produce scouts no matter how much air observation
             // capacity exists. Only the OBSERVATION portion is trimmed by the global useful-generic-
             // concurrency ceiling, and that ceiling is measured against GROUND capacity already in
-            // hand only — air is not interchangeable with a ground lane (review round 4, P0).
+            // hand only — air is not interchangeable with a ground lane.
             int usefulGenericRoom = Mathf.Max(0,
                 capacity.CombinedDesiredConcurrency - capacity.ExistingGroundUsableCapacity);
             int groundPart = groundNew;
@@ -238,7 +238,7 @@ namespace Game.Ai.V2
             int genericNew = Mathf.Min(groundPart + obsPart, Mathf.Max(0, roomForNew - stealthNew));
             // Split the materialised count back onto its two requirement classes (ground floor
             // first) so each emitted demand carries a TargetHex / ScoutContext / Value that
-            // actually matches the deficit it is being created for (review round 5).
+            // actually matches the deficit it is being created for.
             int matGround = Mathf.Min(groundPart, genericNew);
             int matObs = genericNew - matGround;
 

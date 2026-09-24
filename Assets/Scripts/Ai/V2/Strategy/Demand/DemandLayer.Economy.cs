@@ -261,13 +261,12 @@ namespace Game.Ai.V2
             Dictionary<ResourceType, EconomyResourceStanding> standings, PlayerSetupData player,
             IReadOnlyList<MissionIntent> activeIntents)
         {
-            // 2026-09-21 Block E — Demand answers ONLY "is an additional collector on this site
-            // worth having". It no longer requires a ready collector card in hand and no longer
-            // picks the physical card: MaterializationChainEnumerator owns Direct / AttachDeploy /
-            // GenerateDeploy / GenerateAttachDeploy for exactly this capability, so pre-selecting
-            // one hand card here both hid the generated and equipment-borne sources entirely
-            // (no eligible standalone card => no demand at all) and priced the demand off an
-            // arbitrary "cheapest printed AP" card. Cost is charged once, downstream, by
+            // Demand answers ONLY "is an additional collector on this site worth having". It does
+            // not require a ready collector card in hand and does not pick the physical card:
+            // MaterializationChainEnumerator owns Direct / AttachDeploy / GenerateDeploy /
+            // GenerateAttachDeploy for exactly this capability. Pre-selecting one hand card here
+            // would hide the generated and equipment-borne sources and price the demand off an
+            // arbitrary card. Cost is charged once, downstream, by
             // StrategicCardEvaluator.ResourceCost over the concrete chain.
             List<CardData> collectorCards = (s.Self?.Hand ?? System.Array.Empty<CardData>())
                 .Where(c => c?.Definition != null && !c.Definition.isAviation
@@ -498,22 +497,19 @@ namespace Game.Ai.V2
 
                 if (route.RequiresGarrisonExtraction)
                 {
-                    // P0-1, AI V2 economy audit 2026-09-21 — a structural route existing (the
-                    // garrison has a sparable hero and a safe path to `target`) is not the same
-                    // fact as a deliverable builder: nothing here previously checked whether that
-                    // hero could actually be extracted into a real field container. Demand then
-                    // trusted EconomyPreferredBuilderArmyId as "already provided" and skipped
-                    // EconomyHeroPrerequisite entirely (see EconomyDemands), even when no shell,
-                    // host or fresh army could ever take delivery of the hero — the root cause of
-                    // the AP getting spent (or not) on a phantom builder while extraction never
-                    // started. Reuse the SAME pure Shell -> Host -> Create resolver Provisioning and
-                    // Execution already share (ProvisioningManager.ResolveGarrisonExtractionCandidate)
-                    // instead of re-deriving a second copy of that decision here. An unbounded
-                    // envelope is intentional: Demand does not yet know this turn's AP budget (that
-                    // stays Provisioning's job) — this call only answers "does ANY legal container
-                    // exist, and what does the cheapest one cost", the StructuralCandidate +
-                    // DeliveryFeasible half of the contract; ExecutableNow is still decided later,
-                    // with live commitments/session, inside Provisioning.
+                    // A structural route (the garrison has a sparable hero and a safe path to
+                    // `target`) is not the same fact as a deliverable builder: the hero must also
+                    // be extractable into a real field container. Otherwise Demand would trust
+                    // EconomyPreferredBuilderArmyId as "already provided" and skip
+                    // EconomyHeroPrerequisite (see EconomyDemands) for a phantom builder no shell,
+                    // host or fresh army can ever take delivery of. Reuse the SAME pure Shell ->
+                    // Host -> Create resolver Provisioning and Execution share
+                    // (ProvisioningManager.ResolveGarrisonExtractionCandidate) instead of a second
+                    // copy of that decision. The unbounded envelope is intentional: Demand does not
+                    // know this turn's AP budget (Provisioning's job) — this call only answers
+                    // "does ANY legal container exist, and what does the cheapest one cost", the
+                    // StructuralCandidate + DeliveryFeasible half of the contract; ExecutableNow is
+                    // decided later, with live commitments/session, inside Provisioning.
                     ArmyData liveGarrison = ArmyRegistry.AllAt(army.Hex)
                         .FirstOrDefault(a => a != null && a.Id == army.ArmyId);
                     ProvisioningManager.GarrisonExtractionCandidate extraction = liveGarrison == null
@@ -532,14 +528,14 @@ namespace Game.Ai.V2
                     choice.Suitability = EconomyArmySuitability.Ready;
                     choice.IneligibleReason = null;
                     choice.MinimumEscortCount = 0;
-                    // P0-2 — the real minimum delivery AP now includes the container's own cost
-                    // (Shell/Host transfer activation, or CreateArmyApCost) on top of the hero's own
+                    // The real minimum delivery AP includes the container's own cost (Shell/Host
+                    // transfer activation, or CreateArmyApCost) on top of the hero's own
                     // reactivation. Fold it into a projected Route the same way every other branch
-                    // of this method already does, so TotalAssignmentApCost (builder ranking,
-                    // EconomyLoanAllowed, EconomyMissionOpportunityCost) and choice.Route.
-                    // ActivationApCost (what EconomyMissionPlanner.Requirements ultimately reads via
-                    // SelectEconomyBuilder) both see the identical real cost Provisioning will check
-                    // funds against — not just this struct's separate Projected* fields.
+                    // of this method does, so TotalAssignmentApCost (builder ranking,
+                    // EconomyLoanAllowed, EconomyMissionOpportunityCost) and
+                    // choice.Route.ActivationApCost (what EconomyMissionPlanner.Requirements reads
+                    // via SelectEconomyBuilder) both see the identical real cost Provisioning will
+                    // check funds against — not just this struct's separate Projected* fields.
                     EconomyBuilderRouteSnapshot projectedRoute = route;
                     projectedRoute.ActivationApCost = route.ActivationApCost
                         + Mathf.RoundToInt(extraction.ApCost);

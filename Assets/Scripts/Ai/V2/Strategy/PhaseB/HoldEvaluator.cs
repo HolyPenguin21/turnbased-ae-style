@@ -12,7 +12,7 @@ namespace Game.Ai.V2
     // pressure) — the arbiter enforces that by calling this only for non-card spends.
     internal static class HoldEvaluator
     {
-        // §P0 (round 4) — the H/E/M/T retention/opportunity-cost policy. NOT a global stop gate.
+        // The H/E/M/T retention/opportunity-cost policy. NOT a global stop gate.
         // For a concrete non-card spend, `onlyConsumed` is priced by StrategicCardEvaluator's
         // canonical exact-vector resource model. Passing null retains the whole-pool scarcity
         // indicator below, used only for the diagnostic line.

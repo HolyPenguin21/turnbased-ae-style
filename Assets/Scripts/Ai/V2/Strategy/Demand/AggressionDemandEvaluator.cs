@@ -8,7 +8,7 @@ using Game.Combat;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  AGGRESSION DEMAND EVALUATOR  (AI-MGR-02 round 8 — P1)
+    //  AGGRESSION DEMAND EVALUATOR
     // ===========================================================================================
     //  ONE canonical decision for "does the Aggression axis have a runnable capability shortage
     //  this pass, and if so which objective / which demand(s)". The whole admission contract lives
@@ -23,10 +23,10 @@ namespace Game.Ai.V2
     //      Readiness / Outcome; never mirrors the rules).
     //
     //  Build is a deterministic primitive: no yield, no trace ids, no logging as a side effect.
-    //  It only READS AiAllocatorStateRegistry for cooldowns. Every diagnostic line the pipeline
-    //  used to write inline is returned in `Diagnostics` for the caller to replay verbatim.
+    //  It only READS AiAllocatorStateRegistry for cooldowns. Every diagnostic line is returned in
+    //  `Diagnostics` for the caller to replay verbatim.
     //
-    //  AGG-RAID P1#1 — Build has NO exception to "no mutation": it is a pure snapshot read even
+    //  Build has NO exception to "no mutation": it is a pure snapshot read even
     //  for the weakened-primary reinforcement case. The Assault -> Reinforcement phase transition
     //  belongs to MissionContinuityLayer.AdvanceRaidPhase (it already independently re-verifies the
     //  primary's state every reconciliation pass); the RaidIntent.ReinforcementRequestedTurn dedup

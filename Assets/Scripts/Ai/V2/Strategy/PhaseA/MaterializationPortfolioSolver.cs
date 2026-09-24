@@ -191,10 +191,10 @@ namespace Game.Ai.V2
             float bestSum = float.NegativeInfinity;
             var acc = new Dictionary<DemandState, DemandCandidate>();
 
-            // round 9 (P0.2) / ARCH-02 §15/§57 — the shared JointFeasibility owns the physical
+            // ARCH-02 §15/§57 — the shared JointFeasibility owns the physical
             // hand-card / generation-source / AP / H-E-M-T bookkeeping AND the recipient/hero/hand-
             // slot side, so two individually-legal chains into ONE recipient with one free slot can
-            // no longer both land in a "jointly feasible" assignment.
+            // never both land in a "jointly feasible" assignment.
             var jf = new JointFeasibility(root, player, ctx, hand, genAttemptsRemaining,
                 options.Values.SelectMany(v => v).Select(c => c.Plan), enforceApPool: true);
 

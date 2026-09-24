@@ -110,22 +110,16 @@ namespace Game.Ai.V2
             // A target-specific Economy build may deliberately emit no repeated demand once
             // Continuity owns its builder. That active intent outranks every fresh build for its
             // own deferred-resource hold and must be protected before any early return.
-            // 2026-09-15 — split into one independent slot PER EconomyTaskKind (was a single shared
-            // slot ranked by raw BuildValue across both kinds — project owner's own audit found
-            // that a BuildExtraction's BuildValue is structurally an order of magnitude higher than
-            // a FoundBase's (extraction apCost~1 vs a Base's ~28), so the old shared slot meant a
-            // concurrently active extraction ALWAYS won it and a Base's build resources were never
-            // protected while any extraction was also walking — an artifact of the two kinds never
-            // being comparable on raw BuildValue, not an intended priority. Base now gets its own
-            // dedicated protection; it no longer competes with Extraction for one shared slot.
-            // P0-4, AI V2 economy audit 2026-09-21 — every ACTIVE Economy intent of a kind is a real,
-            // independent obligation (Continuity already supports several concurrent BuildExtraction/
-            // FoundBase deliveries, each keyed by its own target hex — see MissionIntentKey.For and
-            // MissionContinuityLayer.BeginEconomyDelivery's own reentry/handoff handling). A single
-            // FirstOrDefault here used to protect only the highest-ranked one and silently leave
-            // every other already-accepted delivery's resources unreserved and its idle clock
-            // running, even though StrategicResourceReservationLedger is per-owner and already
-            // supports holding several rows for the same reason at once.
+            //
+            // Protection is one independent slot PER EconomyTaskKind: a BuildExtraction's
+            // BuildValue is structurally an order of magnitude higher than a FoundBase's
+            // (extraction apCost~1 vs a Base's ~28), so the two kinds are not comparable on raw
+            // BuildValue and must not compete for one slot. Within a kind, every ACTIVE Economy
+            // intent is a real, independent obligation (Continuity supports several concurrent
+            // BuildExtraction/FoundBase deliveries, each keyed by its own target hex — see
+            // MissionIntentKey.For and MissionContinuityLayer.BeginEconomyDelivery), and
+            // StrategicResourceReservationLedger is per-owner, so each keeps its own reserved
+            // resources and idle clock.
             List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
                 .Where(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.Economy && i.Economy != null
@@ -204,7 +198,7 @@ namespace Game.Ai.V2
                 }
             }
             // Any OTHER concurrently active Base commitment beyond the one retarget-eligible slot
-            // above still owns real reserved resources and must not be left unprotected (P0-4).
+            // above still owns real reserved resources and must not be left unprotected.
             foreach (MissionIntent otherBase in protectedActiveBases.Skip(1))
                 ProtectActiveEconomyBuild(otherBase);
             bool anyProtectedActiveEconomyBuild =

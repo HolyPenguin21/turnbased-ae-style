@@ -50,7 +50,7 @@ namespace Game.Ai.V2
             result.Reservation.GenerationAttemptsUsed =
                 Mathf.Max(result.Reservation.GenerationAttemptsUsed, budget.GenerationAttemptsUsed);
 
-            // --- §7 (round 5) reaction reservation: a BOUNDED AP BUDGET + the persistent H/E/M/T
+            // --- §7 reaction reservation: a BOUNDED AP BUDGET + the persistent H/E/M/T
             //     ENVELOPE that a REAL feasibility probe proved is needed to keep at least one
             //     feasible reaction possible. The budget stays generic (the replan picks its own
             //     action) but is only created when the probe passes and the AP >= min feasible AP.
@@ -128,7 +128,7 @@ namespace Game.Ai.V2
 
                 float endU = cands.First(c => c.Kind == TempoKind.EndTurn).Utility;   // 0
 
-                // §P0 (round 4) — ONE comparable space, but HoldResources is NOT a global stop gate.
+                // ONE comparable space, but HoldResources is NOT a global stop gate.
                 //   · PlayCard (mat / non-combat): utility = StrategicCardEvaluator NetScore VERBATIM
                 //     (the evaluator already owns HoldValue / ResourcePressureBenefit).
                 //   · AP-only actions (Draw, AP-only Pressure): utility verbatim — keeping H/E/M/T is

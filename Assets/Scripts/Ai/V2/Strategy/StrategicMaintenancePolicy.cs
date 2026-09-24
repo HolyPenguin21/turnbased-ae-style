@@ -36,11 +36,9 @@ namespace Game.Ai.V2
             _upgradeTier = upgradeTier;
         }
 
-        // AI-MGR-02 follow-up (project owner's own 2026-09-21 call) — restores the V1 standalone
-        // "repair a wounded unit at its own Base" maintenance task (AiTaskKind.RepairUnit, dropped
-        // with AiTask.cs in ARCH-01 and never ported to V2), as an ordinary Phase-B tempo spend
-        // rather than something tied to any one mission. UnitRepair itself is unchanged — this is
-        // just the strategic candidate wrapper around it.
+        // The standalone "repair a wounded unit at its own Base" maintenance task, as an ordinary
+        // Phase-B tempo spend rather than something tied to any one mission. UnitRepair does the
+        // repair; this is just the strategic candidate wrapper around it.
         internal StrategicSpendCandidate(UnitData repairUnit, HexCoord repairHex)
         {
             _repairUnit = repairUnit;
@@ -99,14 +97,13 @@ namespace Game.Ai.V2
                 float restoredPower = unitPower * hpFraction;
                 float weighted = restoredPower * AiConfigV2.repairPowerValueWeight;
                 // Restored combat power on AiPower's own per-unit scale (AiPower.UnitPower — the
-                // same stat-line-times-ability-multiplier reading ForceGrowth/CombatBody already
-                // use), weighted onto the shared utility scale by repairPowerValueWeight — a
-                // first-cut constant (project owner's own 2026-09-21 call: repair should land
-                // roughly at "half the cost of replaying an equivalent body", not calibrated
-                // against a played log yet, unlike most other weights in this file).
+                // same stat-line-times-ability-multiplier reading ForceGrowth/CombatBody use),
+                // weighted onto the shared utility scale by repairPowerValueWeight (target: roughly
+                // "half the cost of replaying an equivalent body"; tune against the calibration
+                // line below).
                 float utility = weighted - apOpportunityCost;
                 ResourceCost resCost = UnitRepair.ResourceCost(unit);
-                // Calibration line (2026-09-21, project owner's own request): every repair
+                // Calibration line: every repair
                 // candidate considered this turn, not just the one the arbiter picks — so
                 // repairPowerValueWeight can be judged/retuned against real play instead of guessed.
                 AiDebugLog.Write($"[AI][V2][Maintenance][Repair] cand unit={unit.Name}(#{unit.RuntimeId}) "

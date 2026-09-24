@@ -241,23 +241,19 @@ namespace Game.Ai.V2
                 (int)kind, targetId, h.Q, h.R));
         }
 
-        // A selected infrastructure demand already has a valuable legal site and a snapshot-witnessed
-        // builder route. This is the FIRST-SIGHT gate only, called from StrategicPhaseA exclusively
-        // when no durable Economy intent exists yet for ANY target this turn (protectedActiveEconomyBuild
-        // == null short-circuits this entirely otherwise) — so it can never fire on a genuinely
-        // continuing multi-turn delivery. Once Provisioning binds a builder that cannot finish this
-        // turn, it hands the delivery to Continuity (MissionContinuityLayer.BeginEconomyDelivery,
-        // called from ProvisioningManager.ProvisionEconomy's direct-army path), and from the NEXT
-        // turn on StrategicPhaseA's protectedActiveEconomyBuild protects the full H/E/M/T vector
-        // unconditionally, regardless of remaining travel distance. Only WHILE that durable identity
-        // does not exist yet — i.e. exactly the turn a distant candidate is first scored — does this
-        // one-turn commitment horizon apply, so a merely-discovered distant site does not freeze
-        // resources other axes could still spend for however many turns it takes to become reachable.
-        // (2026-09-15 audit: an earlier version of this method dropped the horizon entirely because,
-        // before the durable-intent handoff above existed, THIS method was the only per-turn
-        // protection for an already-existing builder's whole multi-turn walk — removing the horizon
-        // then was the only way to avoid the walk's resources being spent out from under it turns
-        // before arrival. That gap is now closed by the handoff, so the horizon is safe to restore.)
+        // A selected infrastructure demand already has a valuable legal site and a
+        // snapshot-witnessed builder route. This is the FIRST-SIGHT gate only, called from
+        // StrategicPhaseA exclusively when no durable Economy intent exists yet for ANY target this
+        // turn (protectedActiveEconomyBuild == null short-circuits it otherwise), so it never fires
+        // on a continuing multi-turn delivery. Once Provisioning binds a builder that cannot finish
+        // this turn, it hands the delivery to Continuity
+        // (MissionContinuityLayer.BeginEconomyDelivery, called from
+        // ProvisioningManager.ProvisionEconomy's direct-army path), and from the NEXT turn on
+        // StrategicPhaseA's protectedActiveEconomyBuild protects the full H/E/M/T vector regardless
+        // of remaining travel. Only WHILE that durable identity does not exist yet — the turn a
+        // distant candidate is first scored — does this one-turn commitment horizon apply, so a
+        // merely-discovered distant site does not freeze resources other axes could still spend for
+        // however many turns it takes to become reachable.
         internal static bool ShouldReserveDeferredEconomyResources(
             WorldSnapshot snap, AxisDemand demand)
         {
@@ -300,17 +296,14 @@ namespace Game.Ai.V2
                 return;
 
             string owner = EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey);
-            // 2026-09-21 Block B — ACTUAL CONTRACT. An earlier (2026-09-15 round 18) comment here
-            // claimed this reserves a committed FoundBase's follow-up AP. It does not, and has not
-            // since the deferred stage was defined: StrategicResourceReservationLedger.Upsert
-            // clamps any EconomyDeferredBuild ActionPoints write to zero, and OwnerReasonMatches
-            // expects zero for the same reason. AP is turn-local execution capacity and has no
-            // legal deferred state; a build's AP is reserved only at EconomyBuildCompletion, after
-            // Provisioning has proved this concrete actor can finish the build THIS turn
-            // (ProvisioningManager → ReserveEconomyCost). The value below is therefore the build's
-            // declared follow-up envelope carried for idempotence comparison only, not a hold, and
-            // it is left computed FoundBase-only exactly as before so this comment repair changes
-            // no behaviour. Changing that policy needs its own reproduced defect.
+            // AP is turn-local execution capacity and has no legal deferred state:
+            // StrategicResourceReservationLedger.Upsert clamps any EconomyDeferredBuild
+            // ActionPoints write to zero, and OwnerReasonMatches expects zero for the same reason.
+            // A build's AP is reserved only at EconomyBuildCompletion, after Provisioning has
+            // proved this concrete actor can finish the build THIS turn (ProvisioningManager →
+            // ReserveEconomyCost). The value below is the build's declared follow-up envelope
+            // carried for idempotence comparison only, not a hold, and is computed FoundBase-only.
+            // Changing that policy needs its own reproduced defect.
             float followupAp = economy.Kind == EconomyTaskKind.FoundBase
                 ? UnityEngine.Mathf.Max(economy.BuildApCost, economy.MinimumFollowupAp)
                 : 0f;
@@ -350,16 +343,17 @@ namespace Game.Ai.V2
         private static void ReserveDeferredEconomyResourcesCore(
             PlayerSetupData player, int turn, string owner, AxisDemand demand, float buildAp = 0f)
         {
-            // 2026-09-21 Block B — every test here is OWNER-specific, and the completion test must
-            // run BEFORE the deferred replacement, not after it.
-            //   · This owner already holds a provisioned EconomyBuildCompletion envelope: that is
-            //     the stronger stage of the very same build (same H/E/M/T plus its completion AP).
-            //     Keep it; downgrading it here would drop the AP a provisioned builder is about to
-            //     spend. The old code asked the GLOBAL HasReason instead, so ANOTHER owner's
-            //     completion suppressed this owner's deferred hold entirely — the second build's
-            //     resources were left free for Phase B to spend.
-            //   · Asking after ReplaceReasonOwner(..., replaceOwnerRows: true) could not work
-            //     either: that call is exactly what deletes this owner's completion rows.
+            // Every test here is OWNER-specific, and the completion test must run BEFORE the
+            // deferred replacement:
+            //
+            // · If this owner already holds a provisioned EconomyBuildCompletion envelope, that is
+            // the stronger stage of the very same build (same H/E/M/T plus its completion AP). Keep
+            // it; downgrading it here would drop the AP a provisioned builder is about to spend.
+            // Asking the GLOBAL HasReason instead would let ANOTHER owner's completion suppress
+            // this owner's deferred hold and leave its resources free for Phase B.
+            //
+            // · Asking after ReplaceReasonOwner(..., replaceOwnerRows: true) cannot work: that call
+            // is exactly what deletes this owner's completion rows.
             if (StrategicResourceReservationLedger.HasOwnerReason(player, turn, owner,
                     StrategicReservationReason.EconomyBuildCompletion))
                 return;
@@ -473,8 +467,7 @@ namespace Game.Ai.V2
             if (reason == StrategicReservationReason.EconomyBuildCompletion)
             {
                 // This owner's own deferred hold is being promoted to completion — downgrade only
-                // ITS rows (P0-4: owner=null here used to wipe every other Economy build's still-
-                // legitimate deferred H/E/M/T hold the instant any ONE build proved completable).
+                // ITS rows; every other Economy build's deferred H/E/M/T hold stays.
                 StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
                     StrategicReservationReason.EconomyDeferredBuild, owner, replaceOwnerRows: true);
                 if (StrategicResourceReservationLedger.OwnerReasonMatches(player, turn, owner,

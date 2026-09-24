@@ -103,18 +103,14 @@ namespace Game.Ai.V2
 
         // ---- LIVE (revalidation / post-execution ledger pass) --------------------------------
 
-        // FIX-01 (2026-09-22) — the ONE honest completion check for an Intercept objective, and
-        // the live counterpart of Enumerate above. Why it exists at all: MissionRevalidator and
-        // MissionOutcomeLedger each used to answer "is this enemy still there" with a global
-        // `ArmyRegistry.AllOccupiedHexes().SelectMany(AllAt)` sweep — authoritative WORLD state.
-        // That let an intercept retire as StaleGoalMet because the army had genuinely moved/died
-        // somewhere we cannot see, while Enumerate (honest sightings) and ActiveDefenceProvisioner
-        // (AiMapMemory.AllKnownEnemySightings) still considered the very same enemy a live target —
-        // three stages of one mission applying contradictory knowledge rules, and a mission that
-        // could be recreated and instantly "completed" every pass with no new information.
-        // ARCH-02 canonical seams: strategic knowledge of an enemy army is AiMapMemory's, and
-        // "absent from the world" is never objective completion. Mirrors the shape
-        // RaidObjectiveEvaluator.IsObjectiveSatisfiedLive already uses for the Raid lane:
+        // The ONE honest completion check for an Intercept objective, and the live counterpart of
+        // Enumerate above. MissionRevalidator, MissionOutcomeLedger, Enumerate and
+        // ActiveDefenceProvisioner must all apply the same knowledge rule: strategic knowledge of
+        // an enemy army is AiMapMemory's (ARCH-02 canonical seams), and "absent from the world" is
+        // never objective completion — a global ArmyRegistry sweep would let an intercept retire
+        // because the army moved/died somewhere we cannot see, while the other stages still
+        // consider it a live target, recreating and instantly "completing" the mission every pass.
+        // Mirrors RaidObjectiveEvaluator.IsObjectiveSatisfiedLive:
         //  1) the tracked id is fielded by US now — positive confirmation of the outcome of an
         //     action we ourselves completed (the one ArmyRegistry read the seam allows);
         //  2) honest memory still tracks it as a hostile, non-neutral army — NOT satisfied. It is

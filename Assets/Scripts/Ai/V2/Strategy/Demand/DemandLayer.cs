@@ -45,7 +45,7 @@ namespace Game.Ai.V2
             }
             if (GenerateAxis(DesireAxis.Development))
             {
-                // 2026-09-21 Block D — Development is generated LAST precisely so the other axes'
+                // Development is generated LAST precisely so the other axes'
                 // needs already exist in `demands`. On a partial re-evaluation (dirtyAxes excludes
                 // Recon/Economy/Aggression) those axes are not regenerated here, but their demands
                 // from the carrying pass are still valid: the orchestrator hands them in so the
