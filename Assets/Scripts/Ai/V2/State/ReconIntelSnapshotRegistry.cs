@@ -5,9 +5,20 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Frozen strategic view of AiReconIntelMemory. Captured at the WorldAnalysis observation seam
-    // once per player/turn, before any downstream manager can mutate the world. Mission/evaluator
-    // code reads this copy only; live AiReconIntelMemory remains reserved for tactical execution.
+    // Strategic view of AiReconIntelMemory: the copy every objective/desire/continuity reader uses,
+    // so nothing strategic reads the live tactical memory directly.
+    //
+    // Captured at the WorldAnalysis observation seam — which runs at Scan AND at every
+    // RefreshStrategicKnowledge whose KnowledgeVersion moved, i.e. potentially several times inside
+    // one turn. This is deliberate and load-bearing, NOT an oversight: the readers below depend on
+    // it. ReconObjectiveEvaluator.RefreshAt / BuildRefreshObjectives drop a hex whose intel age fell
+    // under scoutSurveilStaleTurnsLo, and ScoutObjectiveEvaluator decides a durable Refresh intent
+    // is satisfied from the same age — so a scout that just re-observed its target hex must be
+    // visible here in the SAME turn, or the AI would keep re-proposing a job it already completed.
+    //
+    // The copy is therefore "per knowledge revision", not "per turn". What it does guarantee is
+    // isolation: strategic readers never observe a half-updated tactical store, and every read is
+    // gated on Turn == snapshot.TurnNumber so a previous turn's copy can never be served.
     internal static class ReconIntelSnapshotRegistry
     {
         private sealed class Entry
