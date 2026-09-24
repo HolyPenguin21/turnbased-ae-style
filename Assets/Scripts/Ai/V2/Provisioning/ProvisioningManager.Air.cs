@@ -128,7 +128,7 @@ namespace Game.Ai.V2
                 launchSubset = new List<UnitData>(exec.LaunchSubset);
             }
 
-            // RECON-AIR-01 — the real, actor-specific cost Assignment already resolved for THIS
+            // The real, actor-specific cost Assignment already resolved for THIS
             // exact candidate (see AppendAirCandidates: a live Pick/PickFromStorage against the
             // bound mission target, not a generic "some useful step exists" probe). Compare against
             // the envelope Funding granted; claim for real only if it fits.
@@ -152,7 +152,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: air actor #{moverArmyId} needs {N(realAp)}, {N(turnApLeft)} left after earlier claims"));
 
-            // RECON-AIR-03 — the cumulative, SEQUENTIAL check the funded-envelope comparison above
+            // The cumulative, SEQUENTIAL check the funded-envelope comparison above
             // cannot provide on its own: two separate AirLaunch (or AirExisting) missions provisioned
             // one after another THIS pass both see the SAME unmutated root.Energy (Provisioning never
             // mutates world resources — only Execution does), so each could pass its OWN envelope

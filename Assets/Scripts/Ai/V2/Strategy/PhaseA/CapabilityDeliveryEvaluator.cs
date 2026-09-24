@@ -170,7 +170,7 @@ namespace Game.Ai.V2
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)
                 return false;
 
-            // AGG-RAID §7 — an IndependentFieldArmy is delivered only when the SAME
+            // An IndependentFieldArmy is delivered only when the SAME
             // GroundCombat admission used by Demand/Missions/Provisioning accepts the concrete
             // post-deployment roster. A one-body shell is useful construction progress, but it
             // cannot spare a body without emptying its container and must not close the demand or
@@ -216,14 +216,14 @@ namespace Game.Ai.V2
                 && (demand.ConsumerMissionKind == MissionKind.Raid
                     || demand.ConsumerMissionKind == MissionKind.Attack);
 
-        // AGG-RAID §7 / ATK §46 — bind an IndependentFieldArmy delivery to the exact offensive
+        // Bind an IndependentFieldArmy delivery to the exact offensive
         // ground-combat intent that asked for it. Returns true when the support actor was handed to
         // Continuity.
-        // AGG-RAID P1#1 — this is also the single point that stamps the intent's
+        // This is also the single point that stamps the intent's
         // ReinforcementRequestedTurn: the demand is "accepted/funded" exactly when a materialization
         // for its ConsumerIntentKey actually delivered a concrete support army, never merely when
         // AggressionDemandEvaluator.Build (a pure read) proposed it.
-        // ATK §46 — Raid and Attack differ here in exactly two facts, which the small switch below
+        // Raid and Attack differ here in exactly two facts, which the small switch below
         // resolves once: which primary is being reinforced, and which defender package (plus its
         // site defence, §30) the admission is measured against. Everything after that — the one
         // GroundCombatAssemblyPlanner admission, the leased-army intersection, the deterministic

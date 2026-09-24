@@ -60,13 +60,13 @@ namespace Game.Ai.V2
     }
 
     // ===========================================================================================
-    //  STRATEGIC MAINTENANCE POLICY  (AI-MGR-02)
+    //  STRATEGIC MAINTENANCE POLICY
     // ===========================================================================================
     //  Non-card strategic actions live here: upgrading a Base/Citadel to unlock the next
     //  internal-Facility slot when a Facility already in hand is blocked SPECIFICALLY by slot
     //  capacity (not by affordability or by an already-open slot); and repairing a wounded unit at
-    //  its own Base (the V1 AiTaskKind.RepairUnit management task, restored as an ordinary Phase-B
-    //  tempo candidate — see StrategicSpendCandidate's own comment on the UnitData constructor).
+    //  its own Base (an ordinary Phase-B tempo candidate — see StrategicSpendCandidate's own
+    //  comment on the UnitData constructor).
     //
     //  Card execution remains with its existing owner. Research/Production facilities require a
     //  independent, profitable Development prerequisite; this policy unlocks their slot with the same
@@ -78,7 +78,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class StrategicMaintenancePolicy
     {
-        // AI-MGR-02 §1/§3 — every eligible non-card strategic spend as an independent candidate.
+        // Every eligible non-card strategic spend as an independent candidate.
         public static List<StrategicSpendCandidate> EnumerateCandidates(PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, WorldSnapshot snap,
             float? witnessedUsefulApDemand = null)

@@ -89,13 +89,12 @@ namespace Game.Ai.V2
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, commitments);
 
             // ===================================================================================
-            //  AGG-RAID §6 — THE MAIN FIX. An active Raid intent is NOT automatically "covered".
-            //  A claimed actor only proves an army is bound to the operation, not that it can
-            //  still WIN the next fight. The old code marked the target covered on that claim
-            //  alone, so a primary weakened by the previous battle produced no demand, was
-            //  re-proposed as incumbent anyway, was rejected by Provisioning as AssemblyInfeasible,
-            //  and the intent hung until stall/reap. Here the primary is re-tested against the
-            //  CURRENT (already re-oriented) target through the SAME gate Provisioning will use.
+            //  An active Raid intent is NOT automatically "covered". A claimed actor only proves
+            //  an army is bound to the operation, not that it can still WIN the next fight; a
+            //  primary weakened by the previous battle must produce a demand instead of being
+            //  re-proposed and rejected by Provisioning as AssemblyInfeasible. The primary is
+            //  re-tested against the CURRENT (already re-oriented) target through the SAME gate
+            //  Provisioning will use.
             // ===================================================================================
             var coveredTargets = new HashSet<RaidTargetRef>();
             var reinforcementDemands = new List<AxisDemand>();
@@ -150,7 +149,7 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    // AGG-RAID P0#1 — an EXISTING free army may already be able to serve as
+                    // An EXISTING free army may already be able to serve as
                     // reinforcement (no materialization needed at all). Only request a NEW
                     // IndependentFieldArmy when no such existing candidate is available; Missions /
                     // Provisioning pick the concrete actor through the normal ground-combat batch
@@ -183,7 +182,7 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    // AGG-RAID P1#1 — Build is a pure snapshot read; it never mutates the real
+                    // Build is a pure snapshot read; it never mutates the real
                     // RaidIntent. The Assault -> Reinforcement phase transition is
                     // MissionContinuityLayer.AdvanceRaidPhase's job (it independently re-verifies
                     // the primary's state every reconciliation pass); the ReinforcementRequestedTurn

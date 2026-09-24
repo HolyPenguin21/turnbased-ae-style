@@ -229,7 +229,7 @@ namespace Game.Ai.V2
                 (snap?.Self?.Hand ?? System.Array.Empty<CardData>()).Select(c => c?.Definition)
                     .Concat(snap?.Self?.Deck ?? System.Array.Empty<CardDefinition>()));
 
-            // AI-MGR-02 §P0 — one shared per-turn generation budget: a reaction-round Phase A must
+            // One shared per-turn generation budget: a reaction-round Phase A must
             // not reset the Challenge count a main-pass generation already spent.
             if (ctx != null)
                 result.Reservation.GenerationAttemptsUsed = StrategicTempoBudget.GenerationUsed(player, ctx.TurnNumber);
@@ -492,7 +492,7 @@ namespace Game.Ai.V2
                     witnessedUsefulApDemand = null;
                 }
 
-                // AI-MGR-01 review-r3 — TOP-K worthwhile chains per active demand (each carries its
+                // TOP-K worthwhile chains per active demand (each carries its
                 // own opportunity-adjusted DecisionScore), then a bounded max-total injective
                 // assignment: exactly one collision-free chain per demand (or none), so no hand
                 // card / generation source is ever double-counted as available capacity, and the
@@ -593,12 +593,12 @@ namespace Game.Ai.V2
                     break;
                 }
 
-                // AI-MGR-01 review-r4 finding 1 — the evaluator's opportunity-adjusted DecisionScore
-                // is the FINAL arbiter. The `feasible` set is already a JOINTLY feasible collision-
-                // free assignment (BestInjectiveAssignment now models the shared generation attempt +
-                // AP + H/E/M/T pools), so there is no longer a hidden hardcoded capability-priority
-                // layer deciding that a Hero chain "protects" resources from a higher-DecisionScore
-                // Field chain. Only deterministic tie-breakers follow the score.
+                // The evaluator's opportunity-adjusted DecisionScore is the FINAL arbiter. The
+                // `feasible` set is already a JOINTLY feasible collision-free assignment
+                // (BestInjectiveAssignment models the shared generation attempt + AP + H/E/M/T
+                // pools), so there is no hidden hardcoded capability-priority layer deciding that a
+                // Hero chain "protects" resources from a higher-DecisionScore Field chain. Only
+                // deterministic tie-breakers follow the score.
                 PhaseACandidate selected = feasible
                     .OrderByDescending(c => MaterializationPortfolioSolver.ArbitrationScore(c, radar))
                     .ThenByDescending(c => c.State.Demand.Value)

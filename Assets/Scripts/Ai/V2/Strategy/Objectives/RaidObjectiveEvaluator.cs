@@ -55,14 +55,13 @@ namespace Game.Ai.V2
                 // never re-acquires. An unstarted intent with no sighting is dropped.
                 return intent.OperationStarted;
 
-            // AGG-RAID P0#2 — Raid targets NEUTRALS ONLY (Active Defence, not yet built, owns enemy
-            // armies). A target that turned into ANY non-neutral player's army — ours included —
-            // ends this objective; the old check only ever asked "not ours", so a neutral that
-            // flipped to a THIRD player's ownership mid-Raid was silently accepted as still valid.
+            // Raid targets NEUTRALS ONLY (ActiveDefence and Attack own enemy armies). A target that
+            // turned into ANY non-neutral player's army — ours or a third player's — ends this
+            // objective.
             return IsNeutralRaidTarget(s.Value.Owner);
         }
 
-        // AGG-RAID P0#2 — the ONE canonical "is this still a legal Raid target" ownership check.
+        // The ONE canonical "is this still a legal Raid target" ownership check.
         // A null owner is an unclaimed neutral encounter army. Everything downstream (Provisioning,
         // Execution) must call THIS, not re-derive its own neutrality rule.
         public static bool IsNeutralRaidTarget(PlayerSetupData owner) => owner == null || owner.IsNeutral;

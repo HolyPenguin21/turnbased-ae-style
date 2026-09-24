@@ -29,7 +29,7 @@ namespace Game.Ai.V2
         public StrategicSpendCandidate Spend;   // non-card strategic spend — executed verbatim
     }
 
-    // AI-MGR-01 review-r4 finding 9a — the materialization-surplus lane's per-iteration decision.
+    // The materialization-surplus lane's per-iteration decision.
     internal struct MatSurplusDecision
     {
         public bool Admissible;

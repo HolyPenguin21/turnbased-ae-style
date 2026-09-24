@@ -173,13 +173,12 @@ namespace Game.Ai.V2
         // (or none) so no hand card / generation source is used twice, maximising the total
         // DecisionScore. Branching factor (K+1)^demandCount — trivial at K=3, count<=3.
         //
-        // AI-MGR-01 review-r4 finding 3 — the chosen portfolio must be JOINTLY feasible, not just
+        // The chosen portfolio must be JOINTLY feasible, not just
         // card-disjoint: the ONE per-turn generation attempt and the shared AP / H-E-M-T pools are
         // consumed by the whole accepted set. Two chains that are each individually affordable can be
         // un-runnable together (both want the last Tech; both want the single Challenge with
-        // different CardKeys). Without this the search returns a phantom portfolio and the downstream
-        // pick has to paper over it — which is exactly the hidden capability-priority layer finding 1
-        // removes.
+        // different CardKeys). Otherwise the search would return a phantom portfolio and the
+        // downstream pick would need a hidden capability-priority layer to paper over it.
         internal static Dictionary<DemandState, DemandCandidate>
             BestInjectiveAssignment(
                 Dictionary<DemandState, List<DemandCandidate>> options,

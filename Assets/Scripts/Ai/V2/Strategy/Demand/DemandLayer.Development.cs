@@ -170,7 +170,7 @@ namespace Game.Ai.V2
                 // The same defender-side structural bonus enters both immutable projections.
                 // Terrain is not present in the snapshot, so this is a marginal signal, never a
                 // substitute for the lane's final live WorthIt admission.
-                // FIX-05 — the target hex may well be fogged (that is the normal case for a
+                // The target hex may well be fogged (that is the normal case for a
                 // last-known position). WorthIt.HexDefenseBonus would read the live
                 // BuildingRegistry there and leak a structure we have not observed; AiMapMemory
                 // answers the same question from what this player actually knows.
@@ -489,10 +489,10 @@ namespace Game.Ai.V2
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = threat.Defenders;
                 if (defenders == null || defenders.Count == 0)
                     continue;
-                // FIX-05 — the threats themselves come honestly from
-                // WorldAnalysis.KnownThreatsAffectingEconomyRoute, so reading the hex's defence
-                // from the live BuildingRegistry broke the fog boundary on the second step of the
-                // very same chain. Same knowledge-scoped read as the ground-combat branch above.
+                // The threats themselves come honestly from
+                // WorldAnalysis.KnownThreatsAffectingEconomyRoute, so the hex's defence must be
+                // knowledge-scoped too (never the live BuildingRegistry) — the same read as the
+                // ground-combat branch above.
                 float hexBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx.Map, threat.Hex);
                 if (ImprovesGroundCombatOutcome(recipient, army.Members, grant, defenders, hexBonus))
                     return true;

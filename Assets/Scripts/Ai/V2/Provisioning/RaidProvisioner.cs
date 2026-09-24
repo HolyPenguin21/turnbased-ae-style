@@ -28,9 +28,9 @@ namespace Game.Ai.V2
             WorldSnapshot snap = session.Snapshot;
             float eps = AiConfigV2.allocatorSliceEpsilon;
 
-            // AGG-RAID §9/§SupportReturn — the Assault leg keeps the existing transactional
-            // same-hex assembly verbatim. Reinforcement, Return and SupportReturn are their own,
-            // much narrower provisioning shapes; Return and SupportReturn share one implementation
+            // The Assault leg uses the transactional same-hex assembly. Reinforcement, Return and
+            // SupportReturn are their own, much narrower provisioning shapes; Return and
+            // SupportReturn share one implementation
             // (mover = primary vs. mover = support), never re-picking the destination.
             if (target.Phase == RaidMissionPhase.AirSupport)
                 return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
@@ -78,7 +78,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         $"raid target #{raidTarget.ArmyId} has no current honest sighting; absence is not proof of destruction"));
                 }
-                // AGG-RAID P0#2 — defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget
+                // Defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget
                 // is the ONE canonical neutrality decision. Raid targets neutrals only, so ANY
                 // non-neutral owner ends the leg here — "now ours" (captured) is reported as
                 // satisfied, any other non-neutral owner (the target flipped to a different player
@@ -230,7 +230,7 @@ namespace Game.Ai.V2
         }
 
         // =====================================================================================
-        //  AGG-RAID §9/§SupportReturn — RETURN leg. Mover is the primary (Return) or the support
+        //  RETURN leg. Mover is the primary (Return) or the support
         //  (SupportReturn); the destination base was already chosen (and fixed) by Continuity.
         //  Provisioning re-validates the actor, the route and the AP envelope; it never re-picks
         //  the base, and never assumes the mover is the primary.
@@ -278,7 +278,7 @@ namespace Game.Ai.V2
         }
 
         // =====================================================================================
-        //  AGG-RAID §9 — REINFORCEMENT leg. Mover is the SEPARATE support army; the rendezvous is
+        //  REINFORCEMENT leg. Mover is the SEPARATE support army; the rendezvous is
         //  the primary's current hex. The primary itself does not move while support is in
         //  transit (it is never the mover of this mission and is claimed by continuity).
         // =====================================================================================
@@ -295,7 +295,7 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"raid reinforcement primary #{target.PrimaryArmyId.Value} is gone or no longer a field army"));
 
-            // AGG-RAID P0#1 — an UNPINNED leg (no materialization ever happened) has no
+            // An UNPINNED leg (no materialization ever happened) has no
             // target.SupportArmyId; the concrete actor comes straight out of the SAME
             // batch-assignment solve PrepareGroundCombatAssignments already runs for Assault.
             int supportArmyId;
@@ -356,9 +356,8 @@ namespace Game.Ai.V2
         internal static List<UnitData> SparableSupportBodies(ArmyData support) =>
             GroundCombatReinforcement.SparableSupportBodies(support);
 
-        // FIX-03 — was a private copy of what ActiveDefence also ran; both lanes now share the one
-        // GroundCombatAssemblyTransaction primitive so "did the world really change" is measured
-        // identically. Same behaviour, same log line shape.
+        // Both lanes share the one GroundCombatAssemblyTransaction primitive so "did the world
+        // really change" is measured identically.
         private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
             List<GroundCombatAssemblyTransfer> applied, AiTurnContext ctx) =>
             GroundCombatAssemblyTransaction.Rollback(player, host, applied, ctx, "raid");

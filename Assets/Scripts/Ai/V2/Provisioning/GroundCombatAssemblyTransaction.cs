@@ -15,9 +15,9 @@ using Game.Combat;
 
 namespace Game.Ai.V2
 {
-    // FIX-03 — the one same-hex ground-combat assembly rollback/accounting primitive. Raid and
-    // ActiveDefence ran two byte-similar private copies of this; a transaction that has to report
-    // honestly whether the world was left mutated must measure that the same way in both lanes.
+    // The one same-hex ground-combat assembly rollback/accounting primitive, shared by Raid and
+    // ActiveDefence: a transaction that has to report honestly whether the world was left mutated
+    // must measure that the same way in both lanes.
     // No state of its own: it is the undo half of the Provisioning-tier transaction, nothing more.
     internal static class GroundCombatAssemblyTransaction
     {

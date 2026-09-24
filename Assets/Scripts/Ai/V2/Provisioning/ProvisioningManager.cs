@@ -85,7 +85,7 @@ namespace Game.Ai.V2
             TentativeAllocation allocation, ActorCommitments durableCommitments)
         {
             var open = new List<FundedEntry>();
-            // AGG-RAID §8 / ATK §44 — ALL ground-combat proposals are decided in ONE pass, so one
+            // ALL ground-combat proposals are decided in ONE pass, so one
             // army can never simultaneously receive an Assault assignment and be pinned as another
             // mission's primary or reinforcement convoy. Every ground-combat MissionKind admitted
             // below shares this one solve; a new lane joins the batch, it does not get its own.
@@ -130,7 +130,7 @@ namespace Game.Ai.V2
                         || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue;
                     // Non-Assault legs normally already have their actor pinned by Continuity and
-                    // take no part in the assignment solve. AGG-RAID P0#1 — an UNPINNED
+                    // take no part in the assignment solve. An UNPINNED
                     // Reinforcement leg (no SupportArmyId yet, i.e. no prior materialization handoff
                     // assigned one) IS an actor-contention decision for an EXISTING free army and
                     // must join the same batch solve Assault uses.
@@ -399,7 +399,7 @@ namespace Game.Ai.V2
             // (the exact same coordinate-based primitive BuildCandidates already used to admit this
             // candidate — see ReconAssignmentPlanner.BuildCandidates' garrison-extraction branch).
             HexCoord fromHex = exec.RequiresGarrisonExtraction ? garrisonArmy.Hex : army.Hex;
-            // FIX-07 — ScoutExecutionSafety now admits a vantage on a foreign structure that
+            // ScoutExecutionSafety admits a vantage on a foreign structure that
             // knowledge says nobody is holding, so this preflight must ask the same question or
             // it would strand exactly the vantage the selector just approved.
             bool hasSafeApproach = exec.RequiresGarrisonExtraction

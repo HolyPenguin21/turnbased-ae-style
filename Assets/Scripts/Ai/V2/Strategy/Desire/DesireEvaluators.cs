@@ -330,7 +330,7 @@ namespace Game.Ai.V2
             breakdown.ReconRefreshPressure = refreshPressure;
         }
 
-        // AGG-RAID §3 — the Aggression counterpart of RefreshReconLanePressures. After a settled
+        // The Aggression counterpart of RefreshReconLanePressures. After a settled
         // combat/movement step, the frozen turn-start CombatOpportunityReport can describe a target
         // that is already dead (or a neutral that just became reachable). Rebuild ONLY the
         // operational Aggression facts from the fresh snapshot: the opportunity report, the

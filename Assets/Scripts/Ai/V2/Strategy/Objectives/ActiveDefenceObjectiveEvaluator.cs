@@ -141,10 +141,10 @@ namespace Game.Ai.V2
             !hasListedThreat && movingAway && homeDistanceAtFullNegative
             && !activeStillBeatsAlternative;
 
-        // `projectedActivationAp` (FIX-02) — the activation AP of the roster the assembly plan
-        // will really field, when the caller has that projection (GroundCombatAssemblyPlanner is
-        // its one owner). Null keeps the actor's own snapshot figure, i.e. every pre-existing
-        // call shape. The score must be folded from the same force the envelope is priced from.
+        // `projectedActivationAp` — the activation AP of the roster the assembly plan will really
+        // field, when the caller has that projection (GroundCombatAssemblyPlanner is its one
+        // owner). Null keeps the actor's own snapshot figure. The score must be folded from the
+        // same force the envelope is priced from.
         public static TaskScore WithResponse(ActiveDefenceObjective objective, ArmySnapshot actor,
             float winChance, int eta, float moverOpportunityCost = 0f,
             int? projectedActivationAp = null)

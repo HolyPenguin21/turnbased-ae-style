@@ -19,8 +19,8 @@ namespace Game.Ai.V2
     {
         public readonly WorldSnapshot Snapshot;
         public float ApClaimed { get; private set; }
-        // RECON-AIR-03 — the cumulative real Energy every AirLaunch mission provisioned so far
-        // THIS pass has claimed. Mirrors ApClaimed's role for AP: without this, two separate
+        // The cumulative real Energy every AirLaunch mission provisioned so far THIS pass has
+        // claimed. Mirrors ApClaimed's role for AP: without this, two separate
         // AirLaunch missions provisioned sequentially within the same pass each check affordability
         // against the SAME unmutated root Energy stock independently, so both can pass even though
         // launching both together would exceed it (ProvisioningManager.ProvisionAir checks against

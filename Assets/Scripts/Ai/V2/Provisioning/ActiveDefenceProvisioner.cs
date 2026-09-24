@@ -98,14 +98,11 @@ namespace Game.Ai.V2
                 || host.CurrentMovement <= 0 || session.ClaimedArmyIds.Contains(host.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"active defence actor #{actorId} is no longer available"));
-            // FIX-03 — the assembly is ONE transaction with explicit stages, the same shape the
-            // Raid lane already has: PREPARE / VALIDATE ALL TRANSFERS (every legality question
-            // asked before any mutation) -> APPLY -> RECONCILE -> COMMIT CLAIMS. Previously a
-            // donor was written into session.ClaimedArmyIds immediately after EACH successful
-            // transfer, so a later failure rolled the world back but left those donors claimed for
-            // the rest of the pass (a claim leak that silently starved Raid/Economy of actors),
-            // and the refusal always reported StateChanged=false — even when the rollback itself
-            // had been incomplete and the world really HAD changed.
+            // The assembly is ONE transaction with explicit stages, the same shape as the Raid
+            // lane: PREPARE / VALIDATE ALL TRANSFERS (every legality question asked before any
+            // mutation) -> APPLY -> RECONCILE -> COMMIT CLAIMS. Donors are claimed only at COMMIT,
+            // so a failure that rolls the world back leaves no donor claimed for the rest of the
+            // pass, and a refusal reports StateChanged honestly when the rollback was incomplete.
             float eps = AiConfigV2.allocatorSliceEpsilon;
             var transfers = new List<GroundCombatAssemblyTransfer>();
             var claimedDonors = new HashSet<int>();
@@ -161,12 +158,10 @@ namespace Game.Ai.V2
                 }
             }
 
-            // FIX-02 — every physical-executability check below is asked about `projectedUnits`,
-            // the roster this plan will actually march, and all of them still run BEFORE the first
-            // ArmyActions.TransferMember. The old code asked the UNTOUCHED host whether it could
-            // afford the activation and reach the target, then transferred bodies in — the exact
-            // shape AI-01 already removed from the Raid lane, where the assembled force turned out
-            // to cost more AP than was ever funded only after the world had been mutated.
+            // Every physical-executability check below is asked about `projectedUnits`, the roster
+            // this plan will actually march, and all of them run BEFORE the first
+            // ArmyActions.TransferMember — asking the UNTOUCHED host would let the assembled force
+            // turn out to cost more AP than was funded only after the world had been mutated.
             // Reachability too: a recruit slower than the host lowers the whole formation's shared
             // movement, so the first step is re-asked for the projected roster.
             if (SafeStepPathing.FindNextSafeStepForRoster(ctx.Map, host, sighting.Value.Hex,

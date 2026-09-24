@@ -32,7 +32,7 @@ namespace Game.Ai.V2
         public int RaidTargetArmyId => RaidTarget.Kind == RaidTargetKind.NeutralArmy ? RaidTarget.ArmyId : 0;
         public HexCoord RaidLastKnownHex;
         public bool RaidTargetIsNeutral;
-        // AGG-RAID §9 — which leg of the Raid this provisioned task is, and the concrete actors /
+        // Which leg of the Raid this provisioned task is, and the concrete actors /
         // destination it was provisioned for. Execution reads these and does NOT re-decide any of
         // them (no target re-pick, no base re-pick, no strategic re-scoring).
         public RaidMissionPhase RaidPhase = RaidMissionPhase.Assault;
@@ -90,7 +90,7 @@ namespace Game.Ai.V2
         // to apply. False (with EconomyExtractionGarrisonArmyId == -1) means the hero's roster is
         // already exactly right — nothing to defer, straight to movement.
         internal bool EconomyPreparationPending;
-        // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
+        // The REAL Energy this mission's bound actor needs to activate (0 for Ground,
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows
         // through the SAME generic ResourceAllocator accounting AP already uses (RegisterProvisionSuccess).
         public float ClaimedEnergy;

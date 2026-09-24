@@ -10,7 +10,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===================================================================================
-    //  END-OF-TURN TEMPO ARBITER  (AI-MGR-02)
+    //  END-OF-TURN TEMPO ARBITER
     // ===================================================================================
     //  The SINGLE late-turn spend entry. Every end-of-turn decision — PlayCard (materialization
     //  OR non-combat, scored ONLY by StrategicCardEvaluator), DrawCard, an existing strategic
@@ -25,7 +25,6 @@ namespace Game.Ai.V2
     //  ARCH-02 §8 — this class owns only the arbiter LOOP. Candidate construction + structural
     //  admission is TempoCandidateProvider; per-action execution is TempoActionExecutor; the
     //  persistent-resource retention policy is HoldEvaluator; spendability is StrategicSpendability.
-    //  Body is unchanged from the former StrategicManager.UseSurplus.
     //
     //  §5 single-count: a PlayCard candidate's utility is the StrategicCardEvaluator NetScore
     //  VERBATIM — the arbiter never re-adds hand pressure / resource pressure / hold. Those
@@ -41,11 +40,11 @@ namespace Game.Ai.V2
             if (player == null || root == null || hand == null || ctx == null)
                 yield break;
 
-            // AI-MGR-02 §P0.4 — ONE turn-scoped budget for every tempo action. Every hard cap
+            // ONE turn-scoped budget for every tempo action. Every hard cap
             // (total actions / surplus card plays / draws / generation attempts) is enforced
             // against this, so re-entering the arbiter (main Phase B, reaction round, reaction
             // follow-up, Housekeeping tempo re-run) cannot buy more than the per-turn limit. Keep
-            // MGR-01's internal generation counter in sync with the shared budget.
+            // the internal generation counter in sync with the shared budget.
             StrategicTempoBudget budget = StrategicTempoBudget.For(player, ctx.TurnNumber);
             result.Reservation.GenerationAttemptsUsed =
                 Mathf.Max(result.Reservation.GenerationAttemptsUsed, budget.GenerationAttemptsUsed);
