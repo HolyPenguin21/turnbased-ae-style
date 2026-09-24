@@ -150,8 +150,15 @@ namespace Game.Ai.V2
             }
             // Respect the same strategic + legacy persistent-resource reservations as every
             // materialization path. Raw gameplay affordability is still rechecked below.
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost,
-                    economyOwner))
+            // An Economy build here completes NOW, so it outranks other builds' deferred holds
+            // (StrategicSpendability.FitsSpendableForEconomyCompletion); DEV infrastructure has no
+            // economy owner and keeps respecting them like any other card spend.
+            bool resourcesFit = economyOwner != null
+                ? StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx,
+                    cand.ResCost, economyOwner)
+                : StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost,
+                    economyOwner);
+            if (!resourcesFit)
                 return InfraFulfillResult.No($"{demand.Capability}: reserved resources cannot cover {cand.Explain}");
 
             // --- live gameplay affordability (the executor re-checks; this keeps the demand open

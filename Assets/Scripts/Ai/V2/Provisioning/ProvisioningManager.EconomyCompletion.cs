@@ -138,7 +138,7 @@ namespace Game.Ai.V2
                 return EconomyCompletionPlan.No(ProvisionFailure.MoverContended("economy AP no longer available"));
 
             string owner = EconomyMissionPlanner.OwnerKey(key);
-            if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost, owner))
+            if (!StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx, stageCost, owner))
                 return EconomyCompletionPlan.No(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(realAp, CostVector(stageCost)),
                     "economy completion resources no longer spendable"));
