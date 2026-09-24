@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -49,7 +48,7 @@ namespace Game.Ai.V2
         }
 
         public static StepChoice? Pick(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn, WorldSnapshot snapshot, bool requiresStealth)
+            ReconPatrolState assignment, int turn, WorldSnapshot snapshot)
         {
             if (player == null || map == null || army == null || assignment == null
                 || army.CurrentMovement <= 0)
@@ -63,7 +62,7 @@ namespace Game.Ai.V2
             foreach (HexCoord h in HexGridMath.Neighbors(army.Hex))
             {
                 if (!TryScoreImmediate(player, map, army, assignment, turn, h, home,
-                        requiresStealth, out StepChoice baseChoice))
+                        out StepChoice baseChoice))
                     continue;
 
                 // Small bounded forecast: value unique useful continuation, but return only h.
@@ -71,7 +70,7 @@ namespace Game.Ai.V2
                 // transition this whole score is discarded and Pick() is called on LIVE state.
                 var seen = new HashSet<HexCoord> { army.Hex, h };
                 float lookahead = Lookahead(player, map, army, assignment, turn, h,
-                    depth - 1, army.CurrentMovement - baseChoice.MoveCost, seen, requiresStealth);
+                    depth - 1, army.CurrentMovement - baseChoice.MoveCost, seen);
                 float headingQuality = ReconDirectionModel.Sector(army.Hex, h)
                     == assignment.StrategicSector ? 1f : 0f;
                 float movementQuality = 1f / Mathf.Max(1, baseChoice.MoveCost);
@@ -167,7 +166,7 @@ namespace Game.Ai.V2
 
         private static bool TryScoreImmediate(PlayerSetupData player, HexMap map, ArmyData army,
             ReconPatrolState assignment, int turn, HexCoord h, HomePressure home,
-            bool requiresStealth, out StepChoice choice)
+            out StepChoice choice)
         {
             choice = default;
             if (!map.TryGetTerrainAt(h, out var terrain))
@@ -176,22 +175,14 @@ namespace Game.Ai.V2
             int moveCost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
             if (moveCost > army.CurrentMovement)
                 return false;
-            if (AiMapMemory.IsScoutDangerous(player, h)
-                || ScoutExecutionSafety.VantageBlockedNow(player, h, turn, requiresStealth))
-                return false;
-
             // Owner-facing stealth state. We deliberately do not ask whether some enemy has
-            // personally detected the scout here: that is observer-specific reaction state, not
-            // a property of whether this actor is itself currently in stealth.
-            bool hidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
-            ArmyData visibleOccupant = VisionSystem.IsVisible(player, h)
-                ? BattleInitiator.FindEnemyAt(h, player)
-                : null;
-            if (visibleOccupant != null && BattleInitiator.CanInitiateContact(army))
-                return false;
-
-            AiMapMemory.KnownEnemySighting? remembered = AiMapMemory.KnownEnemySightingAt(player, h);
-            if (remembered.HasValue && !hidden)
+            // personally detected the scout here: its owner does not know that (stealth design).
+            // Required stealth is already entered before Pick, so this is the state it moves in.
+            bool hidden = StealthSystem.IsArmyFullyHidden(army);
+            // The one Recon step rule — the same arrival rule the execution gate applies, so a
+            // step chosen here is never one the gate refuses (danger zone, a known army a visible
+            // scout would fight, a known undefended structure it would take over).
+            if (ScoutExecutionSafety.StepBlocked(player, h, hidden))
                 return false;
 
             float detectorRisk = DetectorRisk(player, h);
@@ -286,23 +277,19 @@ namespace Game.Ai.V2
 
         private static float Lookahead(PlayerSetupData player, HexMap map, ArmyData army,
             ReconPatrolState assignment, int turn, HexCoord from, int depth, int movementLeft,
-            HashSet<HexCoord> seen, bool requiresStealth)
+            HashSet<HexCoord> seen)
         {
             if (depth <= 0 || movementLeft <= 0)
                 return 0f;
 
-            bool hidden = army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
+            bool hidden = StealthSystem.IsArmyFullyHidden(army);
             float best = 0f;
             foreach (HexCoord h in HexGridMath.Neighbors(from))
             {
                 if (seen.Contains(h) || !map.TryGetTerrainAt(h, out var terrain))
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
-                if (cost > movementLeft
-                    || AiMapMemory.IsScoutDangerous(player, h)
-                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn, requiresStealth))
-                    continue;
-                if (!hidden && AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
+                if (cost > movementLeft || ScoutExecutionSafety.StepBlocked(player, h, hidden))
                     continue;
                 float detectorRisk = DetectorRisk(player, h);
                 if (hidden && detectorRisk >= 1f)
@@ -327,7 +314,7 @@ namespace Game.Ai.V2
 
                 seen.Add(h);
                 float continuation = Lookahead(player, map, army, assignment, turn, h,
-                    depth - 1, movementLeft - cost, seen, requiresStealth);
+                    depth - 1, movementLeft - cost, seen);
                 seen.Remove(h);
 
                 // Each future layer is deliberately discounted by its depth through division;

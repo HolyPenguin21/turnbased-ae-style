@@ -85,8 +85,9 @@ namespace Game.Ai.V2
         public int EtaToNearestBase;
         public IReadOnlyList<WorthIt.DefenderProfile> Members = Array.Empty<WorthIt.DefenderProfile>();
         // §Task4 — observer-specific projection: the friendly non-hero ReorgUnit.Key set this
-        // specific enemy can actually target right now (StealthSystem.IsHiddenFrom, computed once
-        // at Analyzer time off the live roster). A virtual transfer/swap moves a unit's Key into a
+        // specific enemy can actually target as far as WE know — every unit not in our own stealth
+        // (UnitData.IsHidden; enemy detection is unknown to the owner, so never IsHiddenFrom),
+        // computed once at Analyzer time off the live roster. A virtual transfer/swap moves a unit's Key into a
         // different container but never changes this fact, so contact selection during planning
         // stays honest about which enemy can see which unit. A container with none of its units in
         // this set is not a real contact candidate for this enemy.

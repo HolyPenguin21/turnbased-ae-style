@@ -26,9 +26,13 @@ namespace Game.Ai
                 return null;
             PlayerRouteCache cache = EnsureCacheState(map, army.Owner);
             // Execution still searches live with CurrentMovement and its own air/ground rule;
-            // only the equivalent remembered blocker membership is shared with planning.
+            // only the equivalent remembered blocker membership is shared with planning. A FULLY
+            // hidden army sets nothing off on arrival (AiMapMemory.KnownGroundArrival), so it
+            // may cross known armies/structures — only danger zones remain transit blocks for it.
+            HashSet<HexCoord> blockers = Game.Map.StealthSystem.IsArmyFullyHidden(army)
+                ? cache.HiddenBlockedHexes : cache.BlockedHexes;
             return AiTurnController.FindAffordableStep(map, army, targetHex,
-                SafeRouteBlocker(null, cache.BlockedHexes, targetHex, null),
+                SafeRouteBlocker(null, blockers, targetHex, null),
                 projectedCurrentMovement, projectedMaxMovement);
         }
 
@@ -129,7 +133,10 @@ namespace Game.Ai
             public readonly Dictionary<(HexCoord from, HexCoord target, int? maxMovement), HexPath> Routes = new Dictionary<(HexCoord, HexCoord, int?), HexPath>();
             public readonly Dictionary<HexCoord, Dictionary<HexCoord, int>> BaseCostFields = new Dictionary<HexCoord, Dictionary<HexCoord, int>>();
             public readonly Dictionary<int, ReturnCostField> ReturnCostFields = new Dictionary<int, ReturnCostField>();
+            // Planning (owner-only APIs) is conservative and routes as a VISIBLE mover; only a
+            // live, fully hidden army (FindNextSafeStep) uses HiddenBlockedHexes.
             public HashSet<HexCoord> BlockedHexes;
+            public HashSet<HexCoord> HiddenBlockedHexes;
             public long MemoryVersion;
             public void ClearPathsAndFields() { Routes.Clear(); BaseCostFields.Clear(); ReturnCostFields.Clear(); }
         }
@@ -137,19 +144,23 @@ namespace Game.Ai
         private static readonly Dictionary<PlayerSetupData, PlayerRouteCache> _playerCaches = new Dictionary<PlayerSetupData, PlayerRouteCache>();
         private static HexMap _cacheMap;
         private static int _cacheMapVersion = -1;
-        private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner)
+        // Transit blockers are derived from the ONE AI arrival rule (AiMapMemory.KnownGroundArrival)
+        // — never a parallel list: a hex is crossed only if arriving there sets nothing off for
+        // this kind of mover. Candidates are every hex this observer remembers holding an army or
+        // a foreign building (memory only, never live BuildingRegistry: a hidden ownership change
+        // cannot silently alter route policy), plus active scout-danger zones for every mover.
+        // The route's explicit destination remains separately exempt in SafeRouteBlocker; the
+        // mission's permission to fight/capture THAT endpoint is the execution gate's check.
+        private static HashSet<HexCoord> CaptureMemoryBlockers(HexMap map, PlayerSetupData owner, bool moverFullyHidden)
         {
             var blocked = new HashSet<HexCoord>();
-            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(owner)) blocked.Add(sighting.Hex);
-            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner)) blocked.Add(sighting.Hex);
-            // A known foreign building is a capture/destroy contact even without a defending
-            // army. Returning builders, collectors and scouts must not path THROUGH one and
-            // accidentally capture it. Read only this observer's last-seen memory, never live
-            // BuildingRegistry: a hidden ownership change cannot silently alter route policy.
-            // The route's explicit destination remains separately exempt in SafeRouteBlocker;
-            // the mission's permission to capture THAT endpoint is an independent check.
+            var candidates = new HashSet<HexCoord>();
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(owner)) candidates.Add(sighting.Hex);
+            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownNeutralSightings(owner)) candidates.Add(sighting.Hex);
             foreach (AiMapMemory.KnownBuilding building in AiMapMemory.AllKnownBuildings(owner))
-                if (building.Owner != owner) blocked.Add(building.Hex);
+                if (building.Owner != owner) candidates.Add(building.Hex);
+            foreach (HexCoord hex in candidates)
+                if (AiMapMemory.KnownGroundArrival(owner, hex, moverFullyHidden).HasOutcome) blocked.Add(hex);
             foreach ((HexCoord center, int radius) in AiMapMemory.ScoutDangerZoneRanges(owner))
                 foreach (HexCoord hex in HexGridMath.HexesInRange(center, radius)) blocked.Add(hex);
             return blocked;
@@ -160,14 +171,20 @@ namespace Game.Ai
             long memoryVersion = AiMapMemory.RouteMemoryVersionFor(owner);
             if (!_playerCaches.TryGetValue(owner, out PlayerRouteCache cache))
             {
-                cache = new PlayerRouteCache { BlockedHexes = CaptureMemoryBlockers(map, owner), MemoryVersion = memoryVersion };
+                cache = new PlayerRouteCache
+                {
+                    BlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: false),
+                    HiddenBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true),
+                    MemoryVersion = memoryVersion,
+                };
                 _playerCaches[owner] = cache;
             }
             else if (memoryVersion != cache.MemoryVersion)
             {
-                HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner);
+                HashSet<HexCoord> current = CaptureMemoryBlockers(map, owner, moverFullyHidden: false);
                 if (!cache.BlockedHexes.SetEquals(current)) cache.ClearPathsAndFields();
                 cache.BlockedHexes = current;
+                cache.HiddenBlockedHexes = CaptureMemoryBlockers(map, owner, moverFullyHidden: true);
                 cache.MemoryVersion = memoryVersion;
             }
             return cache;

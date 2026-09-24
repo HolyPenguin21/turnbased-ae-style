@@ -306,41 +306,27 @@ namespace Game.Ai
             int materials0 = root != null ? root.GetResource(ResourceType.Materials) : 0;
             int tech0 = root != null ? root.GetResource(ResourceType.Tech) : 0;
             // Deliberate contact/capture permission is evaluated only against this observer's
-            // knowledge. A fog-hidden army/building cannot veto or alter the order before the
-            // mover actually discovers it. Once a surprise hex is entered, IssueMoveOrder keeps
-            // the ordinary gameplay consequence (battle / automatic undefended takeover).
+            // knowledge, through the ONE arrival rule (AiMapMemory.KnownGroundArrival). A
+            // fog-hidden army/building cannot veto or alter the order before the mover actually
+            // discovers it. Once a surprise hex is entered, IssueMoveOrder keeps the ordinary
+            // gameplay consequence (battle / automatic undefended takeover).
             bool isGroundMove = !AviationRules.IsAirArmy(army);
-            bool knownContact = isGroundMove
-                && (AiMapMemory.KnownEnemySightingAt(player, destination).HasValue
-                    || AiMapMemory.KnownEventGuardStrengthAt(player, destination).HasValue);
-            bool knownTakeover = isGroundMove
-                && AiMapMemory.KnownUndefendedForeignStructureAt(player, destination);
-            if (isGroundMove && !IsKnownGroundOutcomeAuthorized(decision,
-                    knownContact, knownTakeover, out string authorizationReason))
-            {
-                if (trace != null)
-                {
-                    trace.AuthorizationRejected = true;
-                    trace.AuthorizationReason = authorizationReason;
-                    trace.MoveResult = MoveOrderResult.CannotMove;
-                    trace.EndHex = army.Hex;
-                }
-                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" move to "
-                    + $"({destination.Q},{destination.R}) rejected before issue — {authorizationReason}; "
-                    + $"authority={decision.GroundMoveAuthority}.");
-                yield break;
-            }
 
-            // A hidden unit can't deliberately take a known hex/base/facility (stealth design §5).
-            // Only an explicitly capture-authorized move reveals for a KNOWN undefended structure.
-            // No live BuildingRegistry read occurs here, so fog cannot make the AI reveal early.
-            bool wantsBuildingTakeover = knownTakeover && decision.AllowsStructureTakeover;
+            // What the destination holds, independent of this mover's stealth — the move's
+            // INTENT: a Combat move onto a known army means to fight it, a Capture move onto a
+            // known undefended structure means to take it. No live registry read, so fog cannot
+            // make the AI reveal early.
+            AiMapMemory.GroundArrival known = isGroundMove
+                ? AiMapMemory.KnownGroundArrival(player, destination, moverFullyHidden: false)
+                : default;
+            bool wantsBuildingTakeover = known.UndefendedStructure && decision.AllowsStructureTakeover;
+            bool wantsGroundCombat = known.KnownArmy && decision.AllowsGroundCombat;
 
             // Safe-first stealth rule (stealth design §8): a solo reconnaissance army whose
             // sole member carries Stealth4 slips into stealth before it moves, provided it still
             // has 1 AP to spend and isn't already committed to a job a hidden unit can't finish
             // (raid/defence/capture — those tasks are never IsSoloRecce anyway, but the Kind check
-            // keeps it explicit) and this specific move isn't a building takeover.
+            // keeps it explicit) and this specific move is neither a takeover nor a fight.
             //
             // Spec item 17 (2026-08-28 P1): NO LONGER unconditional. Stealth now costs its 1 AP
             // only when AiScoutStealthPolicy.MoveWarrantsStealth says this step carries a real
@@ -350,7 +336,7 @@ namespace Game.Ai
             // free. The rule is the shared, layer-neutral primitive both V1 (here) and V2
             // (ProvisioningManager / TaskExecutor) call — see AiScoutStealthPolicy's own comment.
             if (decision.AllowAutomaticStealth && !army.HasActivatedThisTurn
-                && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover
+                && AiArmyRoles.IsSoloRecce(army) && !wantsBuildingTakeover && !wantsGroundCombat
                 && root != null
                 && AiScoutStealthPolicy.MoveWarrantsStealth(player, army, destination))
             {
@@ -370,21 +356,45 @@ namespace Game.Ai
                         + "entry invalid or insufficient AP for activation + stealth.");
                 }
             }
-            // The mirror: this move ends on an undefended enemy/neutral building this army will
-            // take over — a hidden unit can't capture, so drop stealth on any hidden member now,
-            // immediately before the action, never earlier (stealth design §8). Free.
-            else if (wantsBuildingTakeover)
+            // The mirror: a hidden unit takes no action on arrival (stealth design), so a move
+            // that deliberately ends in a takeover or a fight drops stealth on every hidden member
+            // now, immediately before the action, never earlier (§8). Free. Without this a fully
+            // hidden army would walk onto its own target and nothing would happen.
+            else if (wantsBuildingTakeover || wantsGroundCombat)
             {
+                string exitReason = wantsBuildingTakeover ? "capture_or_destroy_building" : "ground_combat";
                 foreach (UnitData member in army.Members.ToList())
                     if (member.IsHidden)
                     {
-                        // §4 — the ONLY voluntary AI scout reveal path. Canonical ExitStealth,
-                        // only immediately before a takeover action. Tagged so a debug run can
-                        // prove why a hidden scout became visible; ordinary movement emits none.
+                        // Canonical ExitStealth, only immediately before the action. Tagged so a
+                        // debug run can prove why a hidden unit became visible; ordinary movement
+                        // emits none.
                         Game.Map.StealthSystem.ExitStealth(member);
                         AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" ScoutStealthExit "
-                            + "reason=capture_or_destroy_building (immediately before the action)");
+                            + $"reason={exitReason} (immediately before the action)");
                     }
+            }
+
+            // Authorization against the mover's stealth state AS IT WILL MOVE: a fully hidden
+            // army sets nothing off on arrival and may pass any known army/structure; a visible
+            // one may only arrive where its authority allows the fight/takeover it would cause.
+            AiMapMemory.GroundArrival arrival = isGroundMove
+                ? AiMapMemory.KnownGroundArrival(player, army, destination)
+                : default;
+            if (isGroundMove && !IsKnownGroundOutcomeAuthorized(decision,
+                    arrival.Contact, arrival.Takeover, out string authorizationReason))
+            {
+                if (trace != null)
+                {
+                    trace.AuthorizationRejected = true;
+                    trace.AuthorizationReason = authorizationReason;
+                    trace.MoveResult = MoveOrderResult.CannotMove;
+                    trace.EndHex = army.Hex;
+                }
+                AiDebugLog.Write($"[AI] {player.Nickname}: \"{army.Name}\" move to "
+                    + $"({destination.Q},{destination.R}) rejected before issue — {authorizationReason}; "
+                    + $"authority={decision.GroundMoveAuthority}.");
+                yield break;
             }
 
             // Hex Event seam (V2 TaskExecutor only). IssueMoveOrder calls back the instant THIS
@@ -396,7 +406,10 @@ namespace Game.Ai
             MoveOrderResult moveResult = ctx.HexSelection != null
                 ? ctx.HexSelection.IssueMoveOrder(army.Controller, destination,
                     trace != null ? new System.Action<HexCoord>(_ => trace.HexEventOccurred = true) : null,
-                    allowUndefendedBuildingTakeover: decision.AllowsStructureTakeover)
+                    allowUndefendedBuildingTakeover: decision.AllowsStructureTakeover,
+                    // A Hex Event met by a move that may not seek combat is always Skipped — the
+                    // mover keeps its stealth and remaining movement and walks on.
+                    allowAiEventExplore: decision.AllowsGroundCombat)
                 : MoveOrderResult.CannotMove;
             if (trace != null)
                 trace.MoveResult = moveResult;

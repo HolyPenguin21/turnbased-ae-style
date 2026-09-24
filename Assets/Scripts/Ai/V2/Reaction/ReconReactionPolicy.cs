@@ -58,7 +58,7 @@ namespace Game.Ai.V2
         private const float StrongEnemyFleeWinChance = AiConfigV2.scoutReactionFleeWinChance;
 
         public static ReconReactionDecision Evaluate(PlayerSetupData player, HexMap map, ArmyData army,
-            ReconPatrolState assignment, int turn, bool requiresStealth)
+            ReconPatrolState assignment)
         {
             if (player == null || map == null || army == null || assignment == null)
                 return new ReconReactionDecision(ReconReactionAction.StopAndReplan, null, null, 0f,
@@ -67,7 +67,7 @@ namespace Game.Ai.V2
                 return new ReconReactionDecision(ReconReactionAction.StopAndReplan, null, null, 0f,
                     "actor is no longer solo Recce");
 
-            bool inStealth = IsArmyInStealth(army);
+            bool inStealth = StealthSystem.IsArmyFullyHidden(army);
 
             ReconReactionDecision? flee = FindStrongExposedThreat(player, map, army, inStealth);
             if (flee.HasValue)
@@ -75,7 +75,7 @@ namespace Game.Ai.V2
 
             if (inStealth && CurrentDetectorRisk(player, army.Hex) > 0f)
             {
-                HexCoord? evade = PickLowerDetectorRiskStep(player, map, army, turn, requiresStealth);
+                HexCoord? evade = PickLowerDetectorRiskStep(player, map, army);
                 if (evade.HasValue)
                     return Log(army, assignment, new ReconReactionDecision(
                         ReconReactionAction.EvadeDetector, evade, null, 0f,
@@ -99,7 +99,9 @@ namespace Game.Ai.V2
             {
                 if (sighting.Owner == null || sighting.Owner.IsNeutral)
                     continue;
-                if (inStealth && StealthSystem.ArmyFullyHiddenFrom(army, sighting.Owner))
+                // Own stealth state only — whether this enemy has DETECTED the scout is unknown to
+                // its owner (stealth design), so it is never read here.
+                if (inStealth && StealthSystem.IsArmyFullyHidden(army))
                     continue;
 
                 // Do NOT call WorthIt.HexDefenseBonus on a stale/non-visible enemy position: that
@@ -141,7 +143,8 @@ namespace Game.Ai.V2
             {
                 if (h.Equals(army.Hex) || !map.TryGetTerrainAt(h, out _))
                     continue;
-                if (AiMapMemory.IsScoutDangerous(player, h) || AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
+                // The one Recon step rule, for the scout as it is now (a flee never enters stealth).
+                if (ScoutExecutionSafety.StepBlocked(player, army, h))
                     continue;
 
                 float fromThreat = HexGridMath.Distance(h, threatHex);
@@ -240,7 +243,7 @@ namespace Game.Ai.V2
         }
 
         private static HexCoord? PickLowerDetectorRiskStep(PlayerSetupData player, HexMap map,
-            ArmyData army, int turn, bool requiresStealth)
+            ArmyData army)
         {
             float current = CurrentDetectorRisk(player, army.Hex);
             HexCoord? bestHex = null;
@@ -253,12 +256,7 @@ namespace Game.Ai.V2
                     continue;
                 int cost = terrain != null ? Math.Max(1, terrain.moveCost) : 1;
                 if (cost > army.CurrentMovement
-                    || AiMapMemory.IsScoutDangerous(player, h)
-                    || ScoutExecutionSafety.VantageBlockedNow(player, h, turn, requiresStealth))
-                    continue;
-                if (AiMapMemory.KnownEnemySightingAt(player, h).HasValue)
-                    continue;
-                if (VisionSystem.IsVisible(player, h) && BattleInitiator.FindEnemyAt(h, army) != null)
+                    || ScoutExecutionSafety.StepBlocked(player, army, h))
                     continue;
 
                 float risk = CurrentDetectorRisk(player, h);
@@ -306,9 +304,6 @@ namespace Game.Ai.V2
         // remembered Base's last-observed Defense is used instead of silently dropping to terrain.
         private static float HonestHexDefenseBonus(PlayerSetupData player, HexMap map, HexCoord hex) =>
             AiMapMemory.KnownHexDefenseBonus(player, map, hex);
-
-        private static bool IsArmyInStealth(ArmyData army) =>
-            army != null && army.Members.Count > 0 && army.Members.All(m => m.IsHidden);
 
         private static ReconReactionDecision Log(ArmyData army, ReconPatrolState assignment,
             ReconReactionDecision decision)

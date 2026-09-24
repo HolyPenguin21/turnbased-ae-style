@@ -150,19 +150,35 @@ namespace Game.Ai.V2
             int total = all.Count;
 
             IReadOnlyList<HexCoord> baseHexes = snap.Self.BaseHexes;
-            var neutralHexes = new HashSet<HexCoord>(
-                (snap.Known.NeutralSightings ?? new List<AiMapMemory.KnownEnemySighting>()).Select(s => s.Hex));
+            // Hexes a VISIBLE ground mover may not arrive on — the one AI arrival rule
+            // (AiMapMemory.KnownGroundArrival) evaluated over every remembered army / foreign
+            // building hex, so this frozen planning set is the same rule the execution gate and
+            // the route blockers apply live. A fully hidden mover passes all of them.
+            var visibleArrivalBlocked = new HashSet<HexCoord>();
+            {
+                var candidates = new HashSet<HexCoord>();
+                foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings ?? new List<AiMapMemory.KnownEnemySighting>())
+                    candidates.Add(s.Hex);
+                foreach (AiMapMemory.KnownEnemySighting s in snap.Known.NeutralSightings ?? new List<AiMapMemory.KnownEnemySighting>())
+                    candidates.Add(s.Hex);
+                foreach (AiMapMemory.KnownBuilding b in snap.Known.Buildings ?? new List<AiMapMemory.KnownBuilding>())
+                    if (b.Owner != player) candidates.Add(b.Hex);
+                foreach (HexCoord h in candidates)
+                    if (AiMapMemory.KnownGroundArrival(player, h, moverFullyHidden: false).HasOutcome)
+                        visibleArrivalBlocked.Add(h);
+            }
             List<AiMapMemory.KnownEnemySighting> nonNeutral =
                 (snap.Known.EnemySightings ?? new List<AiMapMemory.KnownEnemySighting>()).ToList();
             int exposureR = AiConfigV2.frontierEnemyExposureRadius;
 
             bool OnMap(HexCoord h) => map.TryGetTerrainAt(h, out _);
-            // Spec §19 — neutral occupancy is NOT a universal hard block any more. It is
-            // actor-state-aware (a fully-hidden scout passes) and exported separately as
-            // NeutralOccupiedHexes. HardBlocked is now only what blocks EVERY scout.
+            // Spec §19 — arrival outcomes (a known army to fight, a known undefended structure to
+            // take over) are NOT a universal hard block. They are actor-state-aware (a fully-hidden
+            // scout passes) and exported separately as VisibleArrivalBlockedHexes. HardBlocked is
+            // only what blocks EVERY scout.
             bool HardBlocked(HexCoord h) =>
                 !OnMap(h) || AiMapMemory.IsScoutDangerous(player, h);
-            bool NeutralAt(HexCoord h) => neutralHexes.Contains(h);
+            bool VisibleArrivalBlocked(HexCoord h) => visibleArrivalBlocked.Contains(h);
             bool EnemyExposed(HexCoord h)
             {
                 foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
@@ -199,10 +215,10 @@ namespace Game.Ai.V2
             var raw = new List<FrontierHexSnapshot>();
             foreach (HexCoord c in all)
             {
-                // A frontier hex is a place a scout stands on next; keep neutral-occupied hexes out
-                // of that set (conservative for waypoint choice) even though the explorable flood
-                // below now flows THROUGH them for a hidden scout.
-                if (VisionSystem.IsVisited(player, c) || HardBlocked(c) || NeutralAt(c)) continue;
+                // A frontier hex is a place a scout stands on next; keep hexes a visible scout may
+                // not arrive on out of that set (conservative for waypoint choice) even though the
+                // explorable flood below now flows THROUGH them for a hidden scout.
+                if (VisionSystem.IsVisited(player, c) || HardBlocked(c) || VisibleArrivalBlocked(c)) continue;
                 bool touchesReachable = false;
                 int fresh = 0;
                 foreach (HexCoord n in HexGridMath.Neighbors(c))
@@ -265,7 +281,7 @@ namespace Game.Ai.V2
                 ExplorableUnknownFrac = total > 0 ? (float)explorable / total : 0f,
                 AllHexes = all,
                 ScoutHardBlockedHexes = new HashSet<HexCoord>(all.Where(HardBlocked)),
-                NeutralOccupiedHexes = new HashSet<HexCoord>(all.Where(NeutralAt)),
+                VisibleArrivalBlockedHexes = visibleArrivalBlocked,
                 VisitedHexSet = visitedSet,
                 EverSeenHexSet = everSeenSet,
             };

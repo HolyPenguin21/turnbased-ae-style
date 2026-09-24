@@ -37,7 +37,8 @@ namespace Game.Map
         // called synchronously from shouldStopEarly (mid-coroutine, before that re-keying), so a
         // popup showing or a battle opening here never sees the mover still registered at its
         // stale origin hex.
-        private void BeginCleanHexEvent(ArmyData mover, HexCoord hex, HexCoord finalDestination, ArmyController moverController)
+        private void BeginCleanHexEvent(ArmyData mover, HexCoord hex, HexCoord finalDestination, ArmyController moverController,
+            bool allowUndefendedBuildingTakeover = true, bool allowAiEventExplore = true)
         {
             HexEventRegistry.Entry entry = HexEventRegistry.FindAt(hex);
             if (entry == null || entry.Consumed)
@@ -55,7 +56,10 @@ namespace Game.Map
             // Return value unused here — this caller never Hide()s the battle screen itself
             // afterward, so it has no clobbered-callback risk to guard against (see
             // TriggerHexEventIfClear's own comment for the caller that does).
-            ShowEventChoice(mover, hex, entry, onSkip: () => ResolveEventSkip(mover, finalDestination, moverController));
+            ShowEventChoice(mover, hex, entry,
+                onSkip: () => ResolveEventSkip(mover, finalDestination, moverController,
+                    allowUndefendedBuildingTakeover, allowAiEventExplore),
+                allowAiExplore: allowAiEventExplore);
         }
 
         // Called once nothing hostile is left standing on `hex` at all — see ResolveHexAfterVictory
@@ -107,7 +111,11 @@ namespace Game.Map
         // now; the human branch always returns false since eventChoicePopup resolves asynchronously
         // (by the time a human clicks Explore, whatever battle triggered this has long since
         // Hide()-d safely on its own).
-        private bool ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip)
+        // allowAiExplore — the AI mover's own move authority (AiTurnController.MoveArmyRoutine):
+        // a move that may not seek combat always Skips, so a Transit/hidden mover keeps its
+        // stealth and remaining movement and walks on, exactly like a human choosing Skip.
+        private bool ShowEventChoice(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry, Action onSkip,
+            bool allowAiExplore = true)
         {
             if (mover.Owner != null && mover.Owner.IsHuman && eventChoicePopup != null)
             {
@@ -125,7 +133,7 @@ namespace Game.Map
                 // AI/Neutral mover — never shown a popup, matches battleContactPopup's own
                 // human-only gating a few lines above this call site (see the user's own
                 // explicit instruction: no popup ever renders/waits for an AI-only army).
-                bool shouldExplore = HexEventGuardEstimate.ShouldExplore(mover, entry);
+                bool shouldExplore = allowAiExplore && HexEventGuardEstimate.ShouldExplore(mover, entry);
                 AiDebugLog.Write($"[AI] {mover.Owner?.Nickname ?? "Neutral"}: {mover.Name} visited event '{entry.Definition.name}' at {hex} — {(shouldExplore ? "accepted" : "declined")}.");
                 if (shouldExplore)
                     return ResolveEventExplore(mover, hex, entry);
@@ -148,6 +156,10 @@ namespace Game.Map
         // branches never touch battleScreen at all, so false is always correct for them).
         private bool ResolveEventExplore(ArmyData mover, HexCoord hex, HexEventRegistry.Entry entry)
         {
+            // Exploring is an action: every hidden member of the mover leaves stealth, guarded or
+            // not (a guarded fight would also reveal through PrepareCommittedEncounter, but a
+            // guardless reward never reaches that boundary). Skip keeps stealth — see ShowEventChoice.
+            Game.Map.StealthSystem.RevealArmy(mover);
             foreach (UnitData member in mover.Members)
                 member.MoveCurrent = 0;
             entry.Triggered = true;
@@ -288,10 +300,14 @@ namespace Game.Map
         // so this simulates the same effect the way any other early-stopped move already requires
         // a fresh order to continue. A single manual-click move (already at its destination, or
         // out of movement) just leaves the army where it is, same as any other early stop today.
-        private void ResolveEventSkip(ArmyData mover, HexCoord finalDestination, ArmyController moverController)
+        // The continuation keeps the ORIGINAL order's permissions — a skipped event must never
+        // widen what the rest of the same move may do (takeover / event exploration).
+        private void ResolveEventSkip(ArmyData mover, HexCoord finalDestination, ArmyController moverController,
+            bool allowUndefendedBuildingTakeover = true, bool allowAiEventExplore = true)
         {
             if (!mover.Hex.Equals(finalDestination) && mover.CurrentMovement > 0)
-                IssueMoveOrder(moverController, finalDestination);
+                IssueMoveOrder(moverController, finalDestination, null,
+                    allowUndefendedBuildingTakeover, allowAiEventExplore);
         }
 
         // The one place a Hex Event's reward is ever actually paid out — called both for the

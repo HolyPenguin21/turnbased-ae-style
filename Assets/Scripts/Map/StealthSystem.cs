@@ -311,6 +311,21 @@ namespace Game.Map
             return false;
         }
 
+        // The army's OWN stealth state: every member (hero included) is in stealth. This is what
+        // the owner decides and knows — detection by an enemy never changes it (the owner does
+        // not know it was detected). A fully hidden army takes no action on arrival: it neither
+        // starts a fight nor captures/destroys a building (stealth design), and the contested
+        // round-end sweep never pulls it into one. A single visible member makes the army act.
+        public static bool IsArmyFullyHidden(ArmyData army)
+        {
+            if (army == null || army.Members.Count == 0)
+                return false;
+            foreach (UnitData member in army.Members)
+                if (!member.IsHidden)
+                    return false;
+            return true;
+        }
+
         // Every member hidden from `observer` — the army is entirely invisible to them, so it
         // can neither be contacted by them nor (as a mover) capture their building.
         public static bool ArmyFullyHiddenFrom(ArmyData army, PlayerSetupData observer)
