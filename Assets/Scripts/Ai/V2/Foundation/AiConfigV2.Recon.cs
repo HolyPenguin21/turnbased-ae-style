@@ -1,4 +1,4 @@
-namespace Game.Ai.V2
+﻿namespace Game.Ai.V2
 {
     // Part of AiConfigV2 (file-split Task 2, see Docs/ai-v2-file-split-refactor-tasks.md).
     // Recon — desire sub-block, mission planner, scout capability/stealth quality models, air recon (per-step scoring, boomerang routing, strategic anchor, energy pressure), aviation sortie reservation.
@@ -364,14 +364,13 @@ namespace Game.Ai.V2
         //     raised when AGG/RCN strategic chains keep failing for lack of a specific empty
         //     resource stock; consumed as ONE bounded Economy value bump on a known extraction
         //     site for that resource. Fast decay so it expires within a couple of quiet turns.
+        //     The pressure itself is consumed through TaskScoreEvaluator.ResourcePriority, which
+        //     folds it into the site's TaskScore like any other named slot — there is no separate
+        //     trigger threshold and no post-fold value bonus. (starvationEconomyTrigger,
+        //     starvationEconomyValueBonus and starvationResidualPreservationMax described that
+        //     older, pre-TaskScore design; they had no readers left and were removed.)
         public const float starvationHitGain = 0.34f;          // EWMA add per recorded block, clamp01
         public const float starvationDecayPerTurn = 0.6f;      // multiply each turn (once)
-        public const float starvationEconomyTrigger = 0.5f;    // below this -> no extra Economy demand
-        public const float starvationEconomyValueBonus = 35f;  // max added to the site's Value
-        // Phase-B card-resource opportunity cost for a CURRENT, exactly witnessed AGG/RCN
-        // capability block. This is a soft marginal term: urgency, affordability horizon and the
-        // fraction of required stock the candidate would consume all scale it below this ceiling.
-        public const float starvationResidualPreservationMax = 3.0f;
         // FutureUtility term values. AP/resource costs use the shared stratCard /
         // stratChain dynamic cost model; Phase B has no parallel cost weights.
         public const float surplusHeroVersatility = 0.35f;

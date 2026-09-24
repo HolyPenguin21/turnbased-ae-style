@@ -1,10 +1,12 @@
 # AI V2 — аудит кеша: кто пишет, кто читает, в каком порядке
 
-Аудит проведён по состоянию `master` = `375b5ce9` (рабочее дерево чистое), лог партии
+Аудит проведён по состоянию `master` = `375b5ce9`, лог партии
 `Logs/AiDebug.log` от 2026-09-23 (16 ходов × 2 ИИ). Привязка к именам классов и методов,
 без номеров строк — чтобы параллельные правки не ломали документ.
 
 Нормативная база — `Assets/Scripts/Ai/V2/ARCHITECTURE.md`.
+
+**Повторно сверено против `372dc253` (PR #108)** — см. раздел 7.
 
 ---
 
@@ -98,6 +100,9 @@ StrategicResourceReservationLedger
                             R: Active, Spendable*, HasReason, CompletionOwners
                             владелец: State/ ; пишут Strategy/PhaseA, Provisioning, Continuity
 ActorCommitments            W: FromIntents[T4,L3] (пересоздание), Claim
+                            #108: Attack-интент претендует на primary и support; рейд в фазе
+                            Return с CompletedTargetAwaitingFreshDecision НЕ претендует —
+                            актёр возвращается в общий пул сразу после закрытия цели
                             R: DemandLayer, CapabilityInventory, ReusableArmySelector,
                                Missions/AggressionMissionLayer, Housekeeping
 CapabilityInventory         W: Build (производная от snapshot + ActorCommitments)
@@ -147,6 +152,7 @@ ReconAirSortieRegistry / AirReconCoverageRegistry / AirSortieRegistry / ReconCap
 ResourceStarvationRegistry
                          W: RecordVerifiedBlock ← Diagnostics[T7,L4],
                             DecayOncePerTurn ← DemandLayer
+                         #108: AddPressureOncePerTurn — одна прибавка на (игрок, ресурс, ход)
                          R: Pressure ← WorldAnalysis.Economy, DemandLayer.Economy
                                        (через TaskScoreEvaluator.ResourcePriority)
 MissionIntentRegistry/State
@@ -238,7 +244,7 @@ InitiativeAnalyticsHistory  W: Record[T12]  R: Initiative/PreTurnCapacityAnalysi
 Инвариант I4 по этому узлу переоценён как ✅ выполненный: гейт по ходу на чтении есть,
 внутриходовая перезапись — часть контракта, а не его нарушение.
 
-### C-2 (P1, НЕ ТРОГАЛ — это F4 у параллельного агента). `ResourceStarvationRegistry` — давление растёт от числа раундов цикла, а не от дефицита
+### C-2 (P1) — ИСПРАВЛЕНО в #108. `ResourceStarvationRegistry` — давление растёт от числа раундов цикла, а не от дефицита
 
 ```
 StrategicPhaseA «no feasible useful chain»
@@ -260,13 +266,19 @@ StrategicPhaseA «no feasible useful chain»
 **Корень:** асимметрия жизненного цикла внутри одного узла — затухание идемпотентно по ходу,
 запись нет.
 
-**Где чинить:** `State/ResourceStarvationRegistry` — учёт один раз на `(игрок, ресурс, ход)`;
-повторные свидетельства в том же ходу только уточняют `CurrentBlocks` (побеждает более сильное,
-как сейчас), но не добавляют давление. `Diagnostics/` и `Strategy/` не трогаются.
+**Сделано в #108:** `AddPressure` заменён на `AddPressureOncePerTurn` с ключом
+`LastPressureHitTurn[resource]`: одна прибавка на `(игрок, ресурс, ход)`, повторные свидетельства
+того же хода только уточняют `CurrentBlocks` через `StrongerThan`. Ровно то, что предлагалось.
 
-**Побочно:** `starvationEconomyTrigger`, `starvationEconomyValueBonus` (+35 на шкале, где
-значения TaskScore 7–15) и `starvationResidualPreservationMax` — мёртвые константы, не читаются
-нигде. Их надо удалить, чтобы они не вернулись в расчёт «по инерции».
+Мелкое замечание на будущее: путь `RecordBlock` (не-verified) передаёт в качестве хода
+`s.LastDecayTurn`. Он совпадает с текущим ходом, потому что `DemandLayer.Generate` вызывает
+`DecayOncePerTurn` в начале каждого хода. Если этот вызов когда-нибудь уедет, дедупликация
+начнёт ключеваться по устаревшему номеру и подавит легитимную прибавку следующего хода.
+Продакшн-путь (`RecordVerifiedBlock`) получает настоящий `turn` и этой зависимости не имеет.
+
+**Побочно (сделано здесь же):** `starvationEconomyTrigger`, `starvationEconomyValueBonus`
+(+35 на шкале, где значения TaskScore 7–15) и `starvationResidualPreservationMax` удалены —
+читателей у них не было, они описывали до-TaskScore'овый дизайн.
 
 ### B-1 (P2, латентный) — ИСПРАВЛЕНО. `StrategicCapabilityLeaseRegistry.IsLeased` без гейта по ходу
 
@@ -374,10 +386,42 @@ StrategicResourceReservationLedger — его AP/ресурсы зарезерв
 
 ---
 
-## 7. Что перепроверить после возврата фиксов
+## 7. Повторная сверка после PR #108 (`372dc253`)
 
-| Узел | Почему |
-|---|---|
-| `ResourceStarvationRegistry` | дефект C-2 — фикс меняет семантику записи |
-| `MissionIntentRegistry` / `MissionContinuityLayer.AdvanceRaidPhase` | F1 меняет ре-ориентацию рейда |
-| `ActorCommitments` | F1 добавляет читателя со стороны Attack-деманда |
+Три помеченных узла проверены заново. Новых статических хранилищ PR не вводит, поэтому дерево
+разделов 2–3 остаётся в силе; изменились только отдельные рёбра.
+
+| Узел | Что изменилось | Вердикт |
+|---|---|---|
+| `ResourceStarvationRegistry` | `AddPressureOncePerTurn`, ключ `LastPressureHitTurn` | ✅ C-2 закрыт, I5 выполняется |
+| `MissionContinuityLayer.AdvanceRaidPhase` / `MissionIntentRegistry` | ре-ориентация на следующего нейтрала удалена; завершённая цель переводит интент в Return как fallback, ре-кей интента в этом пути исчез | ✅ W-рёбер стало меньше, churn ре-кея ушёл |
+| `ActorCommitments` | Attack претендует на primary/support; рейд в Return с `CompletedTargetAwaitingFreshDecision` актёра не удерживает | ✅ актёр возвращается в общий пул сразу |
+
+`StrategicCapabilityLeaseRegistry` (B-1) и `ReconIntelSnapshotRegistry` (C-1, контракт) правились
+в этой ветке и пережили rebase на #108 без конфликтов; других пересечений с PR нет.
+
+### Что осталось открытым после #108
+
+**1. Асимметрия деманда Attack против Raid (остаток F1).** `Strategy/Demand/AggressionDemandEvaluator`
+PR не трогал, и `AttackObjective` в нём по-прежнему не упоминается: цикл выбора `chosen` перебирает
+только рейдовые `objectives`. Для НЕсвязанной Attack-цели деманд на `FieldCombatPower` не создаётся,
+тогда как для рейдовой создаётся (`reason=free_field_power_below_requirement`).
+
+Главную половину F1 PR закрыл: актёры больше не заперты в рейдовой «беговой дорожке», и после
+каждой закрытой цели Attack честно конкурирует за освободившуюся армию через TaskScore. Но два
+случая остаются:
+* все рейды в полёте (цели не закрыты) несколько ходов подряд + ценная Attack-цель → `freePower=0`
+  → REJECT без деманда;
+* Attack-цели нужно БОЛЬШЕ силы, чем есть у любой свободной армии (защищённая база,
+  `requiredPower` ~18) → оценщик не проходит, деманда на добор дефицита нет.
+
+**2. Потолок разведки в проде упал с 3 до 2.** Это следствие снятия focus-режимов (F3), а не
+самостоятельное решение: раньше `Mode = ReconAggressionEconomyDevelopment` давал
+`IsFocusScoped == true`, и `ReconConcurrencyPolicy.HardCap` возвращал
+`reconConcurrencyReconOnlyHardCap = 3`. Теперь путь один — `maxConcurrentReconExecutions = 2`.
+
+Партия из лога шла как раз на трёх разведчиках и всё равно закончила 16-й ход с картой,
+тёмной на 46–60 % (Mordak 0.46, Orlan 0.60; frontier 12–18 гексов). На двух разведчиках
+исследование будет медленнее. Это вопрос баланса, а не корректности, и проверяется он только
+игрой: если тёмная доля к 16-му ходу вырастет, `maxConcurrentReconExecutions` — та самая ручка,
+которую надо поднимать осознанно, а не через возврат focus-режима.
