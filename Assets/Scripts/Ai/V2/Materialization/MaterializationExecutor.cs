@@ -28,8 +28,8 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class MaterializationExecutor
     {
-        // AI-MGR-01 review-r4 finding 9b — the Research/Production mint step, factored out so the
-        // Phase-B non-combat lane can generate → deploy an Aviation / Base / Facility card too
+        // The Research/Production mint step, shared so the Phase-B non-combat lane can
+        // generate → deploy an Aviation / Base / Facility card too
         // (NonCombatCardPlayer owns that deploy; MaterializationExecutor only bodies Unit/Hero
         // chains). Same rules: eligibility re-check, full AP/resource affordability, Research
         // reveal, probabilistic Challenge, and cap-exempt mint into hand on a win.

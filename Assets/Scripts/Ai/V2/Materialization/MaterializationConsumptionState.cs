@@ -6,7 +6,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  MATERIALIZATION CONSUMPTION STATE  (AI-MGR-02 round 9 — P0.2)
+    //  MATERIALIZATION CONSUMPTION STATE
     // ===========================================================================================
     //  ONE joint-consumption model for assembling a multi-chain materialization portfolio: the
     //  physical hand cards a chain consumes (base + equipment), the single per-turn generation

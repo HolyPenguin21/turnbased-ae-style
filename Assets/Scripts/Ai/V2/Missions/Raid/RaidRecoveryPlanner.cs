@@ -202,8 +202,8 @@ namespace Game.Ai.V2
 
                 // A wing with real endurance (helicopter-class TurnsWithoutRefuel) that reaches
                 // THIS turn can hold position unlanded overnight and strike again next turn before
-                // heading home, instead of every sortie being forced into a same-turn round trip
-                // (project owner's own 2026-09-21 call). Second strike is priced by simply
+                // heading home, instead of every sortie being forced into a same-turn round trip.
+                // Second strike is priced by simply
                 // extending eta by one turn — PlanScore's own DeliveryFromEta already charges
                 // exactly one extra recurring activation for that, the same real per-turn
                 // reactivation fee any other multi-turn move already pays.

@@ -12,152 +12,31 @@ using Game.Cards;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  AI STRATEGY V2 — PARALLEL PIPELINE  (design record, 2026-08-29)
+    //  AI STRATEGY V2 — TURN PIPELINE
     // ===========================================================================================
+    //  The single production path of the AI turn. The normative ownership map (folders, dependency
+    //  direction, canonical seams, mid-turn loop contract) is Assets/Scripts/Ai/V2/ARCHITECTURE.md;
+    //  this file only ORDERS the stages and never scores, prices or decides eligibility itself.
     //
-    //  WHY THIS EXISTS
+    //  INVARIANTS THE ORDERING PROTECTS
     //  --------------------------------------------------------------------------------------------
-    //  V1 (AiStrategyDirector + AiOperationPlanner + AiTurnController.Decide + the Level-1
-    //  planners) picks actions well enough, but its *state* keeps corrupting itself: half-reserved
-    //  armies, locked raid slots, orphaned field armies, reservation leaks, estimate-vs-execution
-    //  desync, oscillation between half-built plans. The project's AiDebug.log history is ~20
-    //  rounds of fixes plus follow-ups all against that same class of bug — evidence it is
-    //  ARCHITECTURAL, not incidental. V2's job is to make that class of bug impossible *by
-    //  construction*, not patchable.
-    //
-    //  WHAT "SOLID" MEANS HERE — and what it does NOT mean
-    //  --------------------------------------------------------------------------------------------
-    //  V2 is plumbing that cannot corrupt its own state and cannot thrash. It does NOT, on its
-    //  own, make the AI play better. Decision quality still lives entirely in the response curves
-    //  inside the evaluators and in mission Base Value scoring — those are ported from V1 and
-    //  tuned exactly as before. "Plays smarter" is separate work in the same evaluators.
-    //
-    //  THE SWITCH  (hard rule)
-    //  --------------------------------------------------------------------------------------------
-    //  V1 stays the shipping default. V2 is enabled only by AiConfig.aiStrategyV2Enabled. The two
-    //  NEVER both run in one AI turn — AiTurnController.RunTurn forks at the top: flag set => this
-    //  pipeline owns the whole turn and RunTurn returns immediately after it; flag clear => V1
-    //  runs untouched and this file is dead code. V1 is deliberately NOT deleted: its planners,
-    //  estimators and guards are ported into V2 one method at a time, adapted, never rewritten
-    //  from memory.
-    //
-    //  THE RADAR  (settled — do not re-litigate)
-    //  --------------------------------------------------------------------------------------------
-    //  Normalised: sum of all axes == 1. It is an *allocation vector* — each axis is "what share
-    //  of the shared resource pool goes here". Independent [0..1] axes were rejected: every action
-    //  draws on the same pool, so unbacked independent desires are a false model.
-    //    Final axes: Recon, Aggression, Economy, Development.  (DesireAxis enum below.) Active
-    //    Defence is not a separate axis — it is folded into Aggression.
-    //    Management is NOT an axis — there is no DesireAxis.Management and no ManagementEvaluator.
-    //    Card play + capability preparation is a SERVICE, split across two managers:
-    //      · StrategicManager (StrategicManager.cs) — the single owner of V2 Unit/Hero/Recce card
-    //        play. Axes expose AxisDemand[] ("what capability is missing"); StrategicManager decides
-    //        how (which card, where, reuse vs. create an army, whether it is worth it). Phase A
-    //        (FulfillDemands, before mission planning) is charged to demand.RequestingAxis via the
-    //        shared ApBudgetLedger — the axis that needs the capability pays. Phase B (UseSurplus,
-    //        after mission execution) spends only genuinely-remaining real AP/resources, no slice.
-    //      · HousekeepingManager (below) — the OFF-BUDGET post-mission army/garrison reorganisation
-    //        + cleanup pass, guaranteed minimum (housekeepingApReserve), same way garrison reorg
-    //        sits outside V1's arbiter. Never has to "win" priority against Aggression to happen.
-    //  Two ABSOLUTE scalars are kept OUTSIDE the simplex (DesireVector.MilitaryThreat /
-    //  .EconomicRunway): the normalised vector alone can't tell "calm, 40% to defence because
-    //  nothing else competed" from "existential threat, 40% is nowhere near enough". These two
-    //  scalars measure world state, are not a share of anything, and act as modifiers (widen
-    //  aggression thresholds, permit risky trades, force turtle). Nothing beyond these two.
-    //
-    //  RAW DESIRES -> NORMALIZER -> RADAR
-    //  --------------------------------------------------------------------------------------------
-    //  Evaluators produce an independent raw intensity per axis in [0..1] (interpretable,
-    //  per-axis-tunable). Normalisation to sum==1 happens ONCE, here, at the boundary into
-    //  allocation. Evaluators use RESPONSE CURVES (one curve per input factor -> contribution,
-    //  summed), the V1 AiStrategyDirector style. NOT fuzzy logic — fuzzy gives the same result but
-    //  is harder to tune (membership-function shapes, rule-conflict resolution).
-    //
-    //  THE FOUR MIDDLE-BAND RISKS  (must be designed in, never patched on later)
-    //  --------------------------------------------------------------------------------------------
-    //  1. Mission<->axis is MANY-TO-MANY. A raid on a neutral guarding a factory serves
-    //     Aggression + Economy + Development at once. Every MissionProposal carries an
-    //     AxisContribution vector, never a single category. The allocator cuts per-axis budget
-    //     SLICES from the radar first, then packs missions into slices, a multi-axis mission
-    //     drawing proportionally from several.
-    //  2. RE-ALLOCATE ON FAIL is a loop with a HARD BOUND. Provisioning FAIL -> release tentative
-    //     budget -> mark mission rejected-this-turn -> re-allocate remainder. Bounded by a max
-    //     iteration count + a per-mission rejected set + a cooldown (reuse the
-    //     raidPlanRejectCooldownTurns pattern). Without the bound this is the V1 stall-watchdog
-    //     bug class all over again.
-    //  3. ONE ESTIMATOR, TWO STAGES. MissionRequirements ("raid needs CombatPower >= X") and
-    //     Provisioning feasibility validation MUST call the same estimator module (WorthIt /
-    //     battle-estimate). Two different estimates => "allocator approves, provisioning can't
-    //     deliver" thrash (V1 hit this exact bug: raid diagnostics desynced from
-    //     raidMinimumWinChance).
-    //  4. COMMITMENT IS FIRST-CLASS. The pipeline recomputes everything each cycle; without a
-    //     commitment layer a half-assembled raid is dropped on a 0.05 radar wobble. In-flight
-    //     missions reach the allocator as "already funded, cancellation cost = reserved value +
-    //     sunk turns", their reservations are sticky, retarget hysteresis applies. Start simple:
-    //     commitments honoured to completion; add allocator-driven pre-emption later.
-    //
-    //  PROVISIONING MANAGER
-    //  --------------------------------------------------------------------------------------------
-    //  ONE entry point, ONE exit point, ATOMIC. Consumes the tentative allocation in priority
-    //  order, one mission at a time, so mission N sees the resources mission N-1 already claimed.
-    //  Per mission: Army/Card/Equipment logic -> Assembly Plan -> feasibility validation (same
-    //  estimator as risk 3) -> SUCCESS: reserve/claim/spend all-or-nothing, emit ProvisioningResult
-    //  / FAIL: change nothing, return FAIL. No partial-commit state can exist between the doors.
-    //  This is the single biggest reason V2 is worth building.
-    //
-    //  BUILD ORDER  (recon end-to-end first, aggression second)
-    //  --------------------------------------------------------------------------------------------
-    //   1. Contracts + walking skeleton (THIS FILE) — every stage a stub, full loop runs, zero
-    //      tasks, no throw, no game-state mutation. V1/V2 switch + fork.
-    //   2. WorldAnalysis — one shared scan (threat map, opportunity map, map knowledge, army /
-    //      garrison state, resource pool). Port V1 scans. Everything downstream reads only this.
-    //      DONE 2026-08-29 — WorldSnapshot.cs (types) + WorldAnalysis.cs (Scan) + AiPower.cs
-    //      (strength model, replaces WorthIt.AttackSum+DefenseSum) + AiConfigV2.cs. Layers:
-    //      Self / Known (honest) / TrueWorld (cheat) / MapKnowledge / EconomyStanding / ThreatModel.
-    //      Cheat/honest boundary is a type invariant on EnemyContactSnapshot (a Cheat contact
-    //      can't carry a Position). V1 CheatEstimateRaiderThreat SCOPE ported into the ThreatModel
-    //      cheat-contact loop; DynamicPatrolUrgencyScore dropped (-> continuous Severity + MissionLayer).
-    //      Frontier is still a stub until step 4.
-    //   3. Recon + Aggression evaluators -> raw desires -> Normalizer -> Radar. Response curves.
-    //      N-axis normalizer from the start even though only 2 axes are live.
-    //   4. Recon planner -> one Scout MissionProposal -> MissionRequirements. Establish the shared
-    //      Base Value scale (0..100) and the shared estimator module now.
-    //   5. ResourceAllocator — radar -> slices -> many-to-many packing -> ordered TentativeAllocation.
-    //      Bake in the iteration bound + rejected set + cooldown (risk 2).
-    //   6. ProvisioningManager (Scout needs no Army Logic — just atomic AP claim) + TaskExecutor.
-    //      >>> FIRST TEST STATE: AI actually scouts, end to end, in game. <<<
-    //   7. Mission Continuity — multi-turn recon survives radar noise.
-    //      DONE 2026-08-29 — MissionIntent.cs (MissionIntentKey / ScoutIntent / MissionIntent /
-    //      registry, CommitmentTier + IntentStatus, MissionOutcomeLedger, MissionTurnOutcome
-    //      registry, CommitmentTier + IntentStatus, MissionOutcomeLedger, MissionContinuityLayer:
-    //      ResolveActive / BindFunding / ReconcileAfterTurn) + ScoutObjectiveEvaluator.cs (the one
-    //      completion/validity home). INTENT (durable objective, drives retarget hysteresis in
-    //      MissionLayer) is split from COMMITMENT (a funding policy — Soft for a far Surveil that
-    //      has started moving; funded first, sticky, but Σ commitments <= real AP pool). Explore
-    //      keeps an intent with NO funding. Pre-emption is deferred: commitments honoured to
-    //      completion, ContinuationValue / SwitchingCost recorded but not yet weighed. Verified by
-    //      Tools/commitment-sim (22/22).
-    //   8. Manager — off-budget housekeeping (reservation cleanup, garrison reorg, last-defender
-    //      guard). Its safety-net half may land as early as step 6.
-    //   9. Aggression as the second mission type — Raid planner, CombatPower/Army/Hero
-    //      requirements via the shared estimator, Army Logic in provisioning (ready army ->
-    //      garrison detach -> assemble, with V1 preflight guards).
-    //      >>> TARGET TEST STATE: scout + raid concurrently, allocator splits the pool by radar,
-    //      20-turn run with no reservation leaks and no oscillation. <<<
-    //
-    //  GLOSSARY  (V2 term -> V1 type — they are similar-but-different; do not conflate on port)
-    //  --------------------------------------------------------------------------------------------
-    //    V2 "Planner"     : NOT AiScoutPlanner / AiAggressionPlanner / AiDevelopmentPlanner —
-    //                       those are V1 Level-1 category planners. V2 planners only emit
-    //                       MissionProposals; they never score cross-category or touch registries.
-    //    V2 "Task"        : NOT AiTaskKind / AiTaskRegistry — a V2 Task is the concrete executable
-    //                       step list produced AFTER provisioning succeeds.
-    //    V2 "Radar/axis"  : conceptually V1's AiStrategyAssessment, but normalised (sum==1) and
-    //                       without a Management axis.
-    //    Reused as-is     : AiResourcePool, WorthIt, AiMapMemory,
-    //                       VisionSystem, ArmyActions, HexSelectionController — V2 mutates game
-    //                       state only through the same player-agnostic paths V1 (and the human)
-    //                       already use.
+    //  · One shared WorldSnapshot per cycle (WorldAnalysis). Downstream stages read only it.
+    //  · Radar: raw per-axis desires (response curves) normalised ONCE to sum == 1. It scales
+    //    objective VALUE (EffectiveValue), never slices AP. Axes: Recon, Economy, Aggression,
+    //    Development; ActiveDefence and Attack live inside Aggression, there is no Management axis.
+    //  · Card play is a service: Phase A (StrategicPhaseA) fulfils AxisDemand capability gaps from
+    //    the one ApBudgetLedger pool; Phase B (UseSurplus) is the bounded end-of-turn tempo
+    //    arbiter over genuinely remaining AP/resources; Housekeeping is the zero-AP reorg pass.
+    //  · Mission<->axis is many-to-many: a MissionProposal carries an AxisContribution vector.
+    //  · Re-allocate on provisioning failure is a HARD-BOUNDED loop (iteration cap, per-mission
+    //    rejected set, cooldown).
+    //  · One estimator, two stages: mission requirements and provisioning feasibility call the
+    //    same estimator (WorthIt / AiPower), so the allocator never approves what provisioning
+    //    cannot deliver.
+    //  · Commitment is first-class: durable MissionIntents and funded commitments survive radar
+    //    noise; retarget hysteresis applies (Continuity).
+    //  · Provisioning is ATOMIC: one mission at a time in priority order, all-or-nothing claim,
+    //    no partial-commit state between its entry and exit.
     // ===========================================================================================
 
     // --- Stage 3a/3b types (DesireAxis / DesireAxes / DesireVector / Radar / AxisContribution)
@@ -172,8 +51,7 @@ namespace Game.Ai.V2
     //     AiAllocatorState / AllocationSession) live in ResourceAllocator.cs — the whole stage
     //     grew out of a stub into its own file (build-order step 5).
 
-    // --- Stage 6 output lives in Provisioning/ — the stage grew into its own folder (build-order
-    //     step 6a, split per type in round 2): ProvisionedMission.cs, ProvisioningResult.cs
+    // --- Stage 6 output lives in Provisioning/: ProvisionedMission.cs, ProvisioningResult.cs
     //     (ProvisionFailure + ProvisioningResult) and ProvisioningSession.cs, with the lane
     //     provisioners beside them. ProvisionFailureKind / ProvisionDisposition live in
     //     ResourceAllocator.cs beside the AllocationSession that consumes them. ExecutionResult /
@@ -216,7 +94,7 @@ namespace Game.Ai.V2
             // Reaction bucket from last turn can never leak into this turn's Total.
             V2TurnActivityTelemetry.Begin(player, ctx.TurnNumber);
             CapabilityPoolExhaustionRegistry.BeginTurn(player, ctx.TurnNumber);
-            // AI-MGR-02 §4 — fresh explicit strategic resource reservations for this turn.
+            // Fresh explicit strategic resource reservations for this turn.
             StrategicResourceReservationLedger.BeginTurn(player, ctx.TurnNumber);
 
             // Initiative AP telemetry — captured now (turn start) and written back at turn end.
@@ -252,15 +130,11 @@ namespace Game.Ai.V2
             //     and AggressionMissionLayer (build-order step 9).
             List<AggressionObjective> aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                 snapshot, assessment.Breakdown.OpportunityReport);
-            // 3e. 2026-09-21 Block D — Development opportunities are NO LONGER enumerated here.
-            //     Enumerate/BestEquipmentOpportunity keeps only ONE recipient per offering, so
-            //     picking that recipient before any demand or durable intent exists silently threw
-            //     away every other legal recipient: DemandLayer.Development then re-checked the
-            //     surviving recipient against the real need, found none, and dropped the whole
-            //     opportunity — although another recipient DID close a real need. Selection now
-            //     happens in DemandLayer.Development, the one place that holds the current
-            //     supported-need context, using the supportsNeed predicate Enumerate already takes.
-            //     (This also removes four hand-rolled copies of that predicate from this file.)
+            // 3e. Development opportunities are NOT enumerated here. Enumerate/
+            //     BestEquipmentOpportunity keeps only ONE recipient per offering, so picking it before
+            //     any demand or durable intent exists would discard every other legal recipient.
+            //     Selection happens in DemandLayer.Development, the one place that holds the current
+            //     supported-need context, using the supportsNeed predicate Enumerate takes.
 
             foreach (AggressionObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
@@ -282,10 +156,9 @@ namespace Game.Ai.V2
             ActorCommitments actorCommitments = ActorCommitments.FromIntents(activeIntents, snapshot, reconObjectives);
             AiFrameLog.MissionContinuity(activeIntents, actorCommitments);
 
-            // RECON-AIR-02 (round 5) — the old separate Recon Air Reservation Prepass stage is
-            //     gone: DemandLayer now measures air capacity itself via
-            //     ReconAssignmentPlanner.MeasureAirCapacity (the same canonical capacity owner
-            //     ground already uses), recomputed fresh every call — no cross-call registry.
+            // DemandLayer measures air capacity itself via ReconAssignmentPlanner.MeasureAirCapacity
+            //     (the same canonical capacity owner ground uses), recomputed fresh every call — no
+            //     cross-call registry.
 
             // S1. Demand Layer — capability SHORTAGES (no card selection). All real axes are live.
             var demandAxes = new HashSet<DesireAxis>(DesireAxes.All);
@@ -329,7 +202,7 @@ namespace Game.Ai.V2
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
                 // full Generate call.
-                // Block D — this call regenerates every axis, so DemandLayer.Development
+                // This call regenerates every axis, so DemandLayer.Development
                 // builds its own opportunities against this pass's complete need context.
                 demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
@@ -372,13 +245,11 @@ namespace Game.Ai.V2
                         .Where(a => a != null).OrderBy(a => a.ArmyId)
                         .Select(a => $"{a.ArmyId}:{a.Hex.Q},{a.Hex.R}:{a.MemberCount}:"
                             + $"{a.CurrentMovement}:{a.ActivationApCost}:{(a.HasHero ? 1 : 0)}"));
-                    // FIX-06 — the fingerprint's site facts are now produced by the SAME
-                    // WorldAnalysis.EconomyOpportunityRows the typed invalidation is derived
-                    // from. Previously it carried only ExtractionOpportunities' MarginalIncomeGain
-                    // — no CollectorSites, no MobileCollectionOpportunities, no actor-availability
-                    // — so a genuine "this known site became usable" event could be published and
-                    // then immediately suppressed here on an unchanged key. One producer, so the
-                    // trigger and the admission gate can no longer describe different worlds.
+                    // The fingerprint's site facts are produced by the SAME
+                    // WorldAnalysis.EconomyOpportunityRows the typed invalidation is derived from,
+                    // so a "this known site became usable" event is never published and then
+                    // suppressed here on an unchanged key: the trigger and the admission gate
+                    // describe the same world.
                     string economyFacts = axis == DesireAxis.Economy
                         ? "|sites=" + string.Join(";", WorldAnalysis.EconomyOpportunityRows(snapshot)
                             .OrderBy(kv => kv.Key, System.StringComparer.Ordinal)
@@ -443,13 +314,12 @@ namespace Game.Ai.V2
                 {
                     StrategicInvalidation pending =
                         StrategicInterruptRegistry.Peek(player, ctx.TurnNumber);
-                    // AGG-RAID §12/P1#2 — the OPERATIONAL mask is built from EVERY currently-enabled
-                    // mission axis, not only Recon. Without Aggression here, destroying a neutral
-                    // published a Contact invalidation that nothing consumed, so the bounded loop
-                    // never got a same-turn chance to refresh the objective list, complete the old
-                    // target, select the next one, or start a Return mission. Active Defence is
-                    // folded into Aggression (no separate axis/mission), so this mask needs no
-                    // extra case for it.
+                    // The OPERATIONAL mask is built from EVERY enabled mission axis, not only
+                    // Recon: destroying a neutral publishes a Contact invalidation Aggression must
+                    // consume, so the bounded loop gets a same-turn chance to refresh the objective
+                    // list, complete the old target, select the next one, or start a Return
+                    // mission. ActiveDefence is folded into Aggression, so this mask needs no extra
+                    // case for it.
                     StrategicInvalidationReason operationalMask =
                         AiStrategyV2Scope.OperationalInvalidationMask;
                     operationalReasons = pending.Reasons & operationalMask;
@@ -512,7 +382,7 @@ namespace Game.Ai.V2
                         player, snapshot, reconObjectives, aggressionObjectives);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
-                    // Block D — a PARTIAL re-evaluation does not regenerate the other axes, but
+                    // A PARTIAL re-evaluation does not regenerate the other axes, but
                     // their demands from the carrying pass are still valid need evidence. Hand
                     // them to DemandLayer as carried context so Development's recipient selection
                     // sees the same facts a full pass would, instead of an empty demand frame.
@@ -594,13 +464,12 @@ namespace Game.Ai.V2
 
                     // Perf: an AI turn can run dozens of settled steps back-to-back with no other
                     // yield in between (each step's own yields resolve synchronously — see the
-                    // profiler frame that motivated this), so the whole turn used to land in one
-                    // single-frame hitch (observed ~885ms / 15 FPS). Give a real frame back to the
+                    // profiler), so the whole turn could land in one single-frame hitch (observed
+                    // ~885ms / 15 FPS). Give a real frame back to the
                     // engine whenever the wall-clock budget since the last frame is exceeded, so the
                     // same total work is spread across several frames instead of freezing one.
-                    // Total AI-turn wall-clock time goes UP by roughly one frame per yield — that
-                    // tradeoff (smoother frame pacing over shorter total wait) is the project
-                    // owner's explicit call, 2026-09-20.
+                    // Total AI-turn wall-clock time goes UP by roughly one frame per yield — a
+                    // deliberate tradeoff: smoother frame pacing over shorter total wait.
                     const float yieldBudgetSeconds = 0.008f;
                     float lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
 
@@ -619,7 +488,7 @@ namespace Game.Ai.V2
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
+                        // Rebuild the operational Aggression facts from THIS
                         // settled snapshot before re-enumerating objectives, so a neutral destroyed
                         // during the previous step is gone from the report in the same turn.
                         StrategyLayer.RefreshAggressionLanePressures(
@@ -1208,7 +1077,7 @@ namespace Game.Ai.V2
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                 postCommitments = ActorCommitments.FromIntents(
                     MissionIntentRegistry.GetOrCreate(player).All, snapshot, reconObjectives);
-                // AI-MGR-02 — Phase B is now the single bounded end-of-turn tempo arbiter (coroutine).
+                // Phase B is the single bounded end-of-turn tempo arbiter (coroutine).
                 yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                     postCommitments, phaseA.Reservation, phaseB, reconObjectives);
                 if (phaseB.StateChanged)
@@ -1285,7 +1154,7 @@ namespace Game.Ai.V2
                 + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
             V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
 
-            // AI-MGR-02 §8 — no strategic resource reservation may survive turn end. Anything still
+            // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
             StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
                 StrategicReservationExpiry.EndOfTurn);
@@ -1307,7 +1176,7 @@ namespace Game.Ai.V2
             // earlier this same settled pass is reflected without Missions itself triggering
             // Strategy/Desire recomputation.
             StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
-            // AGG-RAID §3 — the same discipline for the Aggression lane: refresh only the
+            // The same discipline for the Aggression lane: refresh only the
             // operational opportunity facts from the current snapshot, never the radar.
             if (!aggressionPressureAlreadyRefreshed)
                 StrategyLayer.RefreshAggressionLanePressures(snapshot, breakdown);

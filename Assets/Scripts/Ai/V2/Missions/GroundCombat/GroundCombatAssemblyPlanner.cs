@@ -67,8 +67,8 @@ namespace Game.Ai.V2
         internal const float ContinuationWinChanceFloor = GroundCombatAdmissionPolicy.ContinuationWinChanceFloor;
     }
 
-    // AGG-RAID §1 — the generalized ground-combat assembly REQUEST. The kernel below is shared by
-    // Raid (Assault / Reinforcement) and by any future Active Defence lane; nothing Raid-specific
+    // The generalized ground-combat assembly REQUEST. The kernel below is shared by Raid,
+    // Attack and ActiveDefence; nothing Raid-specific
     // (target merit, phase transitions, cooldowns) lives inside it. Every field is an explicit
     // constraint the caller owns.
     public sealed class GroundCombatAssemblyRequest
@@ -202,7 +202,7 @@ namespace Game.Ai.V2
             return roster == null ? (int?)null : ArmyData.ComputeActivationApCost(roster);
         }
 
-        // FIX-02 — the travel speed of the roster this plan would produce. A recruit slower than
+        // The travel speed of the roster this plan would produce. A recruit slower than
         // the host lowers the WHOLE formation's shared movement (ArmyData.ComputeMaxMovement), so
         // an ETA derived from the untouched host is optimistic exactly when the plan needs
         // assembly. Same owner, same projection, same null-means-fall-back-to-your-existing-figure
@@ -232,7 +232,7 @@ namespace Game.Ai.V2
             return ProjectedRoster(host, plan);
         }
 
-        // AGG-RAID P0#1 — reinforcement support-actor candidates. An EXISTING free ground-combat
+        // Reinforcement support-actor candidates. An EXISTING free ground-combat
         // army (already on the map, needing no card play / materialization) qualifies as a
         // Reinforcement support actor when merging its roster into the primary's would improve the
         // primary's projected WorthIt win chance against the current defenders — the same economics
@@ -383,7 +383,7 @@ namespace Game.Ai.V2
             PlanForArmyAtThreshold(snap, defenders, armyId,
                 RaidAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
 
-        // AGG-RAID §6 — the exact gate the Aggression demand layer re-runs against the NEXT
+        // The exact gate the Aggression demand layer re-runs against the NEXT
         // objective before it may call an active Raid "covered". Threshold is explicit: a fresh
         // target is a fresh start decision even for an incumbent army.
         public static GroundCombatAssemblyPlan PlanForArmyAt(WorldSnapshot snap,

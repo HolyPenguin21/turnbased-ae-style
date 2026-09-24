@@ -91,7 +91,7 @@ namespace Game.Ai.V2
 
     // --- Stage 2 output: the single shared world scan (WorldSnapshot). Every later stage reads
     //     ONLY this, never raw game state. Types live in WorldSnapshot.cs; the scan that fills it
-    //     is WorldAnalysis.Scan in WorldAnalysis.cs (build-order step 2, done 2026-08-29).
+    //     is WorldAnalysis.Scan in WorldAnalysis.cs.
 
     // --- Stage 3a output: INDEPENDENT raw desire intensities in [0..1], one per axis, plus the
     //     two out-of-simplex absolute scalars. Not yet normalised.

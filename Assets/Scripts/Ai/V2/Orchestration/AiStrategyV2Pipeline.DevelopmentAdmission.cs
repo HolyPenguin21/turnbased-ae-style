@@ -113,7 +113,7 @@ namespace Game.Ai.V2
                     bool wantsComposition = wantsPosition || raidRelevantArmyIds.Contains(a.ArmyId);
                     if (!wantsComposition && !wantsPosition)
                         return a.ArmyId.ToString(CultureInfo.InvariantCulture);
-                    // FIX-04 — the ATTACKING side of the same proof needs the same precision as
+                    // The ATTACKING side of the same proof needs the same precision as
                     // the defending side: ImprovesGroundCombatOutcome builds `before`/`after` from
                     // this army's individual non-hero members (WorthIt.FromLiveUnit each) and
                     // replaces exactly one of them with the equipped projection. Aggregates alone
@@ -121,9 +121,8 @@ namespace Game.Ai.V2
                     // rosters whose per-unit coverage, abilities or initiative order differ, so a
                     // relevant recipient-side change could go unnoticed. `a.Members` is already the
                     // non-hero profile list this proof iterates — the same canonical serialization
-                    // as the defender side, no second representation.
-                    // StrategicCoverage now contributes its lossless bitmask instead of
-                    // GetHashCode(): a long-lived key must never rest on a hash.
+                    // as the defender side, no second representation. StrategicCoverage contributes
+                    // its lossless bitmask: a long-lived key must never rest on a hash.
                     string composition = wantsComposition
                         ? $":{a.MemberCount}:{(a.HasHero ? 1 : 0)}:"
                           + $"{a.AttackSum:0.###}:{a.DefenseSum:0.###}:"
@@ -220,7 +219,7 @@ namespace Game.Ai.V2
                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
                     .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R).ThenBy(x => x.ArmyId)
                     .Select(x => $"{x.Hex.Q},{x.Hex.R}:{DefenderFingerprint(x.Defenders)}"))
-                // FIX-05 — both combat proofs now take their hexBonus from remembered building
+                // Both combat proofs take their hexBonus from remembered building
                 // defence (AiMapMemory.KnownHexDefenseBonus), so a re-observed Base appearing,
                 // being upgraded, changing owner or being razed genuinely changes the cached
                 // answer and must invalidate it. Knowledge only: these are this player's own
@@ -332,19 +331,18 @@ namespace Game.Ai.V2
             return ids;
         }
 
-        // FIX-04 — EXACT, order-stable digest of a combat roster. It used to be Count plus four
-        // SUMS (Attack/Defense/HP/Initiative), which is strictly weaker than what the cached
-        // decision actually depends on: DemandLayer.Development.ImprovesGroundCombatOutcome runs
+        // EXACT, order-stable digest of a combat roster. Aggregates (Count plus Attack/Defense/HP/
+        // Initiative sums) are strictly weaker than what the cached decision depends on:
+        // DemandLayer.Development.ImprovesGroundCombatOutcome runs
         // WorthIt.CanDamageAll and WorthIt.Estimate, and those read each profile INDIVIDUALLY —
         // per-defender Defense, CeramicArmor, ability list, unit type tags, current AND max HP, and
         // Initiative (which sets the turn order, not a sum). Two genuinely different rosters can
         // therefore share every aggregate while giving different WorthIt answers (the canonical
         // example: one defender carrying CeramicArmor instead of none — identical sums, different
-        // coverage verdict), so the fingerprint failed to invalidate a decision that had changed.
+        // coverage verdict), so an aggregate fingerprint would fail to invalidate a changed decision.
         //
         // Every field WorthIt reads is emitted verbatim; nothing is hashed (a long-lived key must
-        // not be built on GetHashCode) and no new cache is introduced — this is the SAME key the
-        // pipeline already kept, simply made complete. Per-profile rows are sorted ordinally so a
+        // not be built on GetHashCode). Per-profile rows are sorted ordinally so a
         // pure REORDERING of the same roster keeps the same key: WorthIt orders combat by
         // Initiative, never by list position, so order carries no information here.
         private static string DefenderFingerprint(IReadOnlyList<Game.Combat.WorthIt.DefenderProfile> defenders)

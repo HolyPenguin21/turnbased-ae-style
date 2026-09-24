@@ -26,12 +26,10 @@ namespace Game.Ai.V2
             garrison != null && garrison.IsGarrison
             && garrison.Capacity - garrison.Members.Count > AiConfig.garrisonReservedSlots;
 
-        // AI-MGR-01 final closure §1 — pure FEASIBILITY query: "which owned airfield can this
-        // aviation card physically be deposited at right now?" Ported verbatim from V1
-        // AiManagementPlanner.FindAviationPlacement so the V2 non-combat lane no longer reaches into
-        // a V1 Level-1 planner for a placement decision. This is a query, not a decision — WHETHER
-        // an aviation card is worth playing stays entirely with StrategicCardEvaluator / Phase-B
-        // arbitration. Uses only canonical gameplay APIs: AiCardCost (thin wrapper over
+        // Pure FEASIBILITY query: "which owned airfield can this aviation card physically be
+        // deposited at right now?" A query, not a decision — WHETHER an aviation card is worth
+        // playing stays entirely with StrategicCardEvaluator / Phase-B arbitration. Uses only
+        // canonical gameplay APIs: CardCostRules (thin wrapper over
         // ArmyActions.EffectiveDeployApCost / card.EffectivePlayResourceCost), the shared
         // AiAirSortiePlanner.OwnedAirfieldHexes primitive (citadel + every airfield-capable Base, in
         // its own stable citadel-first order), and AviationRules.FreeAirfieldCapacity (the exact

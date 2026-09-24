@@ -53,7 +53,7 @@ namespace Game.Ai.V2
         public string UseKey;
         public string CardKey;             // UseKey + card, the exact "already attempted" identity
 
-        // AI-MGR-02 §P1.4 — the ResourceCost a won/lost Challenge actually charges pre-mint (the
+        // The ResourceCost a won/lost Challenge actually charges pre-mint (the
         // minted card's own EffectivePlayResourceCost is null once ResearchProductionCreated).
         public ResourceCost GenerationResourceCost => CardDef != null ? CardDef.resourceCost : null;
     }
@@ -74,7 +74,7 @@ namespace Game.Ai.V2
         // final capability has a quality profile (Scout today). Never persisted or fed back.
         public MaterializationQualityBreakdown QualityBreakdown;
 
-        // Diagnostic-only Card x IntendedUse decomposition from StrategicCardEvaluator (AI-MGR-01).
+        // Diagnostic-only Card x IntendedUse decomposition from StrategicCardEvaluator.
         // Populated during scoring for the winning candidate; never persisted or fed back — Score
         // stays the single authoritative number.
         public StrategicUseScoreBreakdown UseBreakdown;
@@ -121,7 +121,7 @@ namespace Game.Ai.V2
         public ResourceCost ResCost;              // generation + attach + deploy resourceCost summed; null == none
         public int HandSlotsNeededAtPeak;         // generated output is cap-exempt; currently 0
 
-        // AI-MGR-01 P1.4 — a plain field: the authoritative strategic score, set once by
+        // A plain field: the authoritative strategic score, set once by
         // StrategicCardEvaluator (which owns the Phase-B garrison-surplus correction via
         // SurplusPlacementBonus). No caller re-adjusts it on read.
         public float Score;

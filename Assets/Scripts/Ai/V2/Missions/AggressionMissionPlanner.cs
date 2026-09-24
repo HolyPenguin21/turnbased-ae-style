@@ -400,8 +400,8 @@ namespace Game.Ai.V2
                     continue;
                 }
                 int distance = HexGridMath.Distance(actor.Hex, objective.Target.LastKnownHex);
-                // FIX-02 — price and time the force this plan will ACTUALLY field, exactly as the
-                // Raid lane already does (AI-01). ActiveDefence shares GroundCombatAssemblyPlanner
+                // Price and time the force this plan will ACTUALLY field, exactly as the Raid lane
+                // does. ActiveDefence shares GroundCombatAssemblyPlanner
                 // with Raid, so its plan may recruit same-hex bodies too; costing the untouched
                 // host systematically underprices the intercept (the AP the allocator then funds)
                 // and over-states its speed (a slower recruit drags the whole formation down).

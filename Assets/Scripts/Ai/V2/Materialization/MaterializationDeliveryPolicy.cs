@@ -191,7 +191,7 @@ namespace Game.Ai.V2
                     if (p.Deploy.Kind == DeploymentKind.Garrison)
                         return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                             p.Deploy.Kind.ToString());
-                    // AGG-RAID §7 — an IndependentFieldArmy demand (Raid reinforcement) must
+                    // An IndependentFieldArmy demand (Raid reinforcement) must
                     // arrive as its OWN mobile container. FORBIDDEN: attaching onto the consumer's
                     // own (remote) primary army, any garrison deposit, and any actor already
                     // committed to another mission. ALLOWED: a free ready field army, a reusable
@@ -251,7 +251,7 @@ namespace Game.Ai.V2
                 : IsArmyOperationalForCapability(army, demand.Capability, demand.RequiredTraits);
         }
 
-        // AGG-RAID §7 — is this army the demand's own consumer primary, or an actor some other
+        // Is this army the demand's own consumer primary, or an actor some other
         // durable mission already owns? Either disqualifies it as an INDEPENDENT support actor.
         private static bool IsConsumerPrimaryOrCommitted(PlayerSetupData player, AxisDemand demand, int armyId)
         {

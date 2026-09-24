@@ -174,7 +174,7 @@ namespace Game.Ai.V2
         }
     }
 
-    // AI-MGR-01 review-r3 — one demand's scored, opportunity-adjusted chain. DecisionScore
+    // One demand's scored, opportunity-adjusted chain. DecisionScore
     // (Play - Hold + urgency) is computed ONCE here and carried all the way to the cross-demand
     // arbitration, so the manager never re-ranks on the raw play score again.
     public readonly struct DemandCandidate
@@ -201,7 +201,7 @@ namespace Game.Ai.V2
 
     internal static class MaterializationCandidateBuilder
     {
-        // AI-MGR-01 P1.3 — excludeCards / excludeGenKeys let the Phase A instance assignment ask
+        // excludeCards / excludeGenKeys let the Phase A instance assignment ask
         // for the chains that AVOID a hand card / generation source another demand has claimed, so
         // two demands never both count one physical card as available capacity.
         private static List<MaterializationPlan> RawForDemand(WorldSnapshot snap,
@@ -314,9 +314,9 @@ namespace Game.Ai.V2
                     player, root, ctx);
             }
 
-            // AI-MGR-01 P0 review-r3 — DecisionScore = Play - Hold + urgency, computed ONCE here.
-            // DemandUrgencyPolicy is the single scale adapter: migrated world tasks and legacy
-            // Development retain their own numeric bands without this layer knowing either one.
+            // DecisionScore = Play - Hold + urgency, computed ONCE here.
+            // DemandUrgencyPolicy is the single scale adapter: world tasks and Development keep
+            // their own numeric bands without this layer knowing either one.
             float urgency = DemandUrgencyPolicy.Bonus(demand);
             float Decide(MaterializationPlan p) =>
                 p.Score - (p.UseBreakdown?.HoldValue ?? 0f)
@@ -328,7 +328,7 @@ namespace Game.Ai.V2
                 .ThenBy(c => c.plan.StableKey, System.StringComparer.Ordinal)
                 .ToList();
 
-            // AI-MGR-01 review-r4 finding 2 — the top-K cut is taken over unique CONSUMPTION
+            // The top-K cut is taken over unique CONSUMPTION
             // SIGNATURES (base card instance + equipment card instance + generation source), NOT raw
             // MaterializationPlans. One physical card yields many plans (A@army1, A@army2,
             // A@garrison, …); without this dedup those clones eat every K slot and a fallback card B
@@ -360,7 +360,7 @@ namespace Game.Ai.V2
             return outList;
         }
 
-        // AI-MGR-01 review-r4 finding 2 — the physical resources a chain consumes, WITHOUT the
+        // The physical resources a chain consumes, WITHOUT the
         // deployment target. It is StableKey minus its trailing `Deploy.Key` segment: the leading
         // segments already encode chain kind, capability, base-card hand index, equipment hand index
         // and generation CardKey. Two placements of the same card share it; a different card copy or
@@ -399,10 +399,11 @@ namespace Game.Ai.V2
                 + $"{runner.Value.plan.Score.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)} [{bdR}]");
         }
 
-        // AI-MGR-02 round 6 — the full set of PREFLIGHTED surplus materialization plans (each one
-        // already passed CardPlayExecutor.Preflight + ReservesOkAfterChain). RankedSurplus returns the complete ordered set; the common arbiter picks the
-        // highest actionable DecisionScore; the reaction feasibility probe needs the WHOLE set so
-        // it can find the genuinely CHEAPEST feasible plan, not just the best-scored one.
+        // The full set of PREFLIGHTED surplus materialization plans (each one already passed
+        // CardPlayExecutor.Preflight + ReservesOkAfterChain). RankedSurplus returns the complete
+        // ordered set; the common arbiter picks the highest actionable DecisionScore; the reaction
+        // feasibility probe needs the WHOLE set so it can find the genuinely CHEAPEST feasible
+        // plan, not just the best-scored one.
 
         public static List<(MaterializationPlan plan, float utility)> RankedSurplus(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
@@ -498,9 +499,9 @@ namespace Game.Ai.V2
         // envelope (or any other explicit reservation) is respected here too, not just the legacy
         // recon-air pool.
 
-        // AI-MGR-01 — Phase A scoring is now the shared StrategicCardEvaluator (Card x IntendedUse,
-        // BaselineForceReadiness, no flat Hero bonus). This wrapper keeps the call signature and
-        // still carries the Scout capability-quality breakdown + the new use breakdown for logging.
+        // Phase A scoring is the shared StrategicCardEvaluator (Card x IntendedUse,
+        // BaselineForceReadiness, no flat Hero bonus). This wrapper carries the Scout
+        // capability-quality breakdown + the use breakdown for logging.
         private static float ScorePlanA(MaterializationPlan p, AxisDemand demand, TraitPreference projected,
             CapabilityInventory inv, int referenceMoveMax, bool hasCompetingHeroDemand, WorldSnapshot snap,
             float? witnessedUsefulApDemand, int projectedLegalFillers,
@@ -551,7 +552,7 @@ namespace Game.Ai.V2
         private static float GenerationChanceForDecision(MaterializationPlan p) =>
             p?.Generation != null ? Mathf.Clamp01(p.Generation.SuccessChance) : 1f;
 
-        // AI-MGR-01 — Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
+        // Phase B surplus scoring is the shared StrategicCardEvaluator too. It builds a
         // Card x IntendedRole candidate set and returns the best NetScore (play value minus the
         // separately scored HoldValue).
         private static float SurplusUtility(WorldSnapshot snap, PlayerSetupData player,
