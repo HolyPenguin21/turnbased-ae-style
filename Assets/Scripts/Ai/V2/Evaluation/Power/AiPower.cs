@@ -71,7 +71,7 @@ namespace Game.Ai.V2
             return new PowerUnit(p, c.unitTypeTags, c.range, isHero);
         }
 
-        // review-r4 (AI-MGR-01 finding 8.2 / P1 ARCH) — the ONE projected stat line for a not-yet-
+        // The ONE projected stat line for a not-yet-
         // played CardDefinition with an ALREADY-ATTACHED equipment grant folded in at the STATS
         // level (EquipmentSystem.Predict), not just its abilities. Used by readiness, role
         // derivation, RoleFit and the effect-context model so planning and execution score the SAME

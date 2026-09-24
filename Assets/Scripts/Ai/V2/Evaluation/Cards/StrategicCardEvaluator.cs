@@ -12,7 +12,7 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  STRATEGIC CARD EVALUATOR  (Strategy V2 — AI-MGR-01, the key manager task)
+    //  STRATEGIC CARD EVALUATOR
     // ===========================================================================================
     //  The ONE shared answer to "how useful is it to play this card now, for what purpose, or is
     //  it better held?". Both StrategicManager phases route through it:
@@ -22,23 +22,23 @@ namespace Game.Ai.V2
     //    Non-combat lane           — ScoreNonCombat: Aviation / Base / Facility / standalone
     //                                Equipment, same NetScore band, specialised executors.
     //
-    //  Review follow-up invariants (AI-MGR-01, 2026-09-04):
-    //   * P1.4 — the score is FINAL. Every factor (placement, AP/resource cost, extra-chain-step
+    //  Invariants:
+    //   * The score is FINAL. Every factor (placement, AP/resource cost, extra-chain-step
     //     penalty, generation probability, garrison-surplus correction) is applied EXACTLY ONCE,
     //     inside this file. Breakdown.Total == the ranked value; callers do not re-adjust it.
-    //   * P1.5 — one RoleFit path per role, called by both phases. The Hero card CLASS adds no flat
+    //   * One RoleFit path per role, called by both phases. The Hero card CLASS adds no flat
     //     bonus/penalty; "versatility" is derived from how many real viable roles the card has,
     //     not from being a Hero. Phase B Scout gets the SAME CapabilityQualityEvaluator profile as
     //     Phase A (via a neutral synthetic scout demand).
-    //   * P1.6 — AlternativeUseValue is the real opportunity cost of using the card HERE instead of
+    //   * AlternativeUseValue is the real opportunity cost of using the card HERE instead of
     //     its best other role / Hold. NearTermExpectedDemand is a real Hold term.
-    //   * P1.7 — BaselineForceReadiness.Need feeds ForceGrowthValue ONCE; it is not also folded
+    //   * BaselineForceReadiness.Need feeds ForceGrowthValue ONCE; it is not also folded
     //     into the demand's Value or CapabilityGapValue.
-    //   * P2.8 / review-r4 finding 5 — no SYNTHETIC armour, but the cheat path is live: AntiAir and
+    //   * No SYNTHETIC armour, but the cheat path is live: AntiAir and
     //     AntiArmor both take a directional ThreatResponseValue off omniscient TrueWorld composition
     //     (real IsAir / real Armored-tagged member). It never becomes normal AI intel.
     //
-    //  AGG-RAID "axis-principle" fix — BaselineForceReadiness.Need is radar-DEMAND-INDEPENDENT, but
+    //  Axis principle — BaselineForceReadiness.Need is radar-DEMAND-INDEPENDENT, but
     //  ForceGrowthValue itself is NOT: it is gated on BaselineForceReadiness.MilitaryWitnessed (a
     //  live neutral Raid target, or an asset threat at/above the reserved threatSeverityTrigger).
     //  Attack/Defence axes create demand; Production reinforces an already-justified demand — it
@@ -78,13 +78,10 @@ namespace Game.Ai.V2
         public float RoleFit;                 // how well the card's real characteristics fit this role
         public float ImmediateTempo;          // Phase A only now — placement fit + trait match (Phase B stopped assigning this, see ScoreSurplusRole/ScoreNonCombat)
         public float NextTurnPotential;       // Phase A only now — what the card practically opens next turn (Phase B stopped assigning this)
-        // Renamed from CapabilityGapValue (user call, 2026-09-21): Phase B narrowed this down to
-        // ONLY the AntiAir/AntiArmor enemy-composition matchup (Scout's own "0 scouts" case moved
-        // into RoleFit; the generic combat-body/mobile "gap" cases were removed as either
-        // non-specific or duplicating an existing RoleFit signal), so it is a threat-counter value
-        // now, not a capability gap. CAUTION — Phase A (ScoreForDemand) still writes its OLDER,
-        // broader "closes a Recon/Hero/combat-body capability the AI has ZERO of" meaning into this
-        // SAME field (that side was intentionally left untouched); the name fits Phase B only.
+        // Phase B: ONLY the AntiAir/AntiArmor enemy-composition matchup (Scout's "0 scouts" case
+        // lives in RoleFit), i.e. a threat-counter value. CAUTION — Phase A (ScoreForDemand) writes
+        // its broader "closes a Recon/Hero/combat-body capability the AI has ZERO of" meaning into
+        // this SAME field; the name fits Phase B only.
         public float ThreatCounterValue;
         public float ForceGrowthValue;        // contribution to standing force (radar-independent, scaled by BaselineForceReadiness.Need); zeroed for hero cards in both phases — a hero's own body already prices into HeroLeadershipFit
         public float ResourceEfficiency;      // negative — AP + resource cost + extra-chain-step penalty (the ONLY place these are charged)
@@ -122,7 +119,6 @@ namespace Game.Ai.V2
         }
     }
 
-    // Base removed (user call, 2026-09-21) — founding a Base is dead code here, see ScoreNonCombat.
     public enum NonCombatRole { Aviation, Facility, Equipment }
 
     public sealed class StrategicCardUseCandidate
@@ -159,13 +155,11 @@ namespace Game.Ai.V2
         public readonly RoleCoverage Coverage;
         public readonly int CombatActors;
         public readonly float FreeFieldPower;
-        // AGG-RAID "axis-principle" fix — Attack/Defence axes create demand -> Production
-        // reinforces an already-justified demand; Production must never self-originate a reason to
-        // spend. True only when a live snapshot fact PROVES a military witness exists: a known
-        // neutral Raid target (Aggression) or an asset threat at/above the shared reserved
-        // threatSeverityTrigger (the Defence seam, kept per the AGG-RAID Defence cleanup). Need is
-        // still computed above for its own sake, but ForceGrowthValue must not scale by it unless
-        // this is true.
+        // Attack/Defence axes create demand; Production reinforces an already-justified demand and
+        // must never self-originate a reason to spend. True only when a live snapshot fact PROVES a
+        // military witness exists: a known neutral Raid target (Aggression) or an asset threat
+        // at/above the shared threatSeverityTrigger. Need is still computed above for its own sake,
+        // but ForceGrowthValue must not scale by it unless this is true.
         public readonly bool MilitaryWitnessed;
 
         public bool HasAntiAir  => Coverage.Has(IntendedRole.AntiAir);
@@ -274,11 +268,10 @@ namespace Game.Ai.V2
                         + AiConfigV2.baselineReadinessCoverGapWeight * coverGap;
             float need = Mathf.Clamp01(raw) * Mathf.Lerp(1f, AiConfigV2.baselineReadinessSecureDamp, eco);
 
-            // AGG-RAID "axis-principle" fix — a real, live military witness: a known neutral Raid
-            // target (Aggression), or an asset threat at/above the shared reserved
-            // threatSeverityTrigger (the Defence seam). Neither requires durable intent state — both
-            // are snapshot facts already computed elsewhere for the same purpose (Aggression
-            // objective discovery / DemandLayer.Economy's own threat-severity gate).
+            // A real, live military witness: a known neutral Raid target (Aggression), or an asset
+            // threat at/above the shared threatSeverityTrigger. Neither requires durable intent
+            // state — both are snapshot facts already computed elsewhere for the same purpose
+            // (Aggression objective discovery / DemandLayer.Economy's threat-severity gate).
             bool militaryWitnessed =
                 (snap.Known?.NeutralSightings != null && snap.Known.NeutralSightings.Count > 0)
                 || (snap.Threat?.Threats != null && snap.Threat.Threats
@@ -381,9 +374,8 @@ namespace Game.Ai.V2
             // marginal power would double-count the same Attack/Defense/HP line a second time.
             bd.ForceGrowthValue = (heroCard ? 0f : ForceGrowthValue(plan, demand.Capability, baseline))
                 + ec.ForceGrowth + ec.GlobalForceGrowth;
-            // ThreatResponseValue folded in here (user call, 2026-09-21, same as Phase B) — the field
-            // was deleted; the AntiAir/AntiArmor ec.ThreatResponse contribution moves into this axis
-            // instead of being dropped.
+            // The AntiAir/AntiArmor ec.ThreatResponse contribution is folded into this axis (same
+            // as Phase B).
             bd.ThreatCounterValue = CapabilityGapValue(demand.Capability, inv, baseline, role, roleFitCore)
                 + ec.CapabilityGap + ec.GlobalCapabilityGap + ec.ThreatResponse + ec.GlobalThreatResponse;
 
@@ -395,8 +387,6 @@ namespace Game.Ai.V2
             bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
 
-            // AGG-RAID Defence cleanup — GarrisonSaturationPenalty only ever applied to a
-            // GarrisonCombatPower demand, which no longer exists.
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             // Phase A form of AlternativeUseValue: the scarcity opportunity cost of spending this
             // exact card body (a scarce hero on a non-hero demand, a unique stealth item on a
@@ -496,12 +486,11 @@ namespace Game.Ai.V2
             // card (e.g. it loses the contest and plays as CombatBody) still get ec.GlobalRoleFit as
             // before — this exclusion is scoped to the ResourceGain role only, not the ability.
             bd.RoleFit = roleFitCore + (role == IntendedRole.ResourceGain ? 0f : ec.RoleFit + ec.GlobalRoleFit);
-            // User call (2026-09-21) — Support and its Development facility are the same real thing
-            // (a Researcher/Assembler hero needs a Lab/Factory to man, on the SAME hex; one without
-            // the other does nothing), so Support's RoleFit is replaced with the SAME formula
-            // ScoreNonCombat uses for a Facility, instead of the old flat heroSupportFitValue: full
-            // value when a facility to operate actually exists (snap.Self.HasDevFacility), zero when
-            // it doesn't — a Support hero with no facility on the map is not a real play.
+            // Support and its Development facility are the same real thing (a Researcher/Assembler
+            // hero needs a Lab/Factory to man, on the SAME hex; one without the other does
+            // nothing), so Support's RoleFit uses the SAME formula ScoreNonCombat uses for a
+            // Facility: full value when a facility to operate actually exists
+            // (snap.Self.HasDevFacility), zero when it does not.
             if (role == IntendedRole.Support)
             {
                 float supportEco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
@@ -514,29 +503,26 @@ namespace Game.Ai.V2
                     + $"eco={supportEco.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"roleFit={bd.RoleFit.ToString("0.00", CultureInfo.InvariantCulture)}");
             }
-            // ImmediateTempo/NextTurnPotential removed from Phase B (user call, 2026-09-21): every
-            // Phase-B candidate is already immediately playable, so a "now vs later" axis and a flat
-            // "opens next turn" bonus added nothing that isn't better expressed as a type-specific
-            // attribute (RoleFit/ThreatCounterValue already carry that). Left at their class default
-            // (0) here; still live in Phase A's ScoreForDemand.
-            // ThreatCounterValue (was CapabilityGapValue): AntiAir/AntiArmor only now — Scout's own
-            // "0 scouts" case moved into RoleFitCore, and the generic combat-body/mobile "gap" cases
-            // were removed entirely (user call, 2026-09-21). ec.ThreatResponse folded in here rather
-            // than kept as a separate ThreatResponseValue field (deleted) — it fired on the exact
-            // same ThreatPresent condition as SurplusCapabilityGap's own AntiAir/AntiArmor case, a
-            // real double-count, not just a naming overlap. Unit-only: AntiAir/Hyperkinetic are unit
-            // abilities in practice; excluding hero makes that explicit instead of relying on no hero
-            // ever carrying the tag.
+            // ImmediateTempo/NextTurnPotential stay at their default (0) in Phase B: every Phase-B
+            // candidate is already immediately playable, so a "now vs later" axis adds nothing
+            // RoleFit/ThreatCounterValue do not already carry. They are live in Phase A's
+            // ScoreForDemand.
+            //
+            // ThreatCounterValue: AntiAir/AntiArmor only (Scout's "0 scouts" case lives in
+            // RoleFitCore). ec.ThreatResponse is folded in here rather than kept as a separate
+            // field — it fires on the exact same ThreatPresent condition, so a separate field would
+            // double-count. Unit-only: AntiAir/Hyperkinetic are unit abilities in practice;
+            // excluding hero makes that explicit.
             bd.ThreatCounterValue = (role == IntendedRole.Hold ? 0f
                 : SurplusThreatCounter(role, inv, baseline, snap, roleFitCore)) + ec.CapabilityGap + ec.GlobalCapabilityGap
                 + (hero ? 0f : ec.ThreatResponse + ec.GlobalThreatResponse);
-            // Zeroed for Scout/Hold/ResourceGain/Support: RoleFitCore is deliberately 0 or role-
-            // specific for those roles (P1.5), and ForceGrowthValue's own SurplusCombatReadinessUtility
-            // call ignores role — without this exclusion those roles would earn standing-force credit
-            // their own RoleFitCore says they shouldn't compete on. Additionally zeroed for ANY hero
-            // card regardless of role (user call, 2026-09-21): a hero's own Attack/Defense/HP line
-            // already prices into HeroLeadershipFit.combatPart inside RoleFitCore, so ForceGrowthValue
-            // would double-count the same stat line a second time.
+            // Zeroed for Scout/Hold/ResourceGain/Support: RoleFitCore is deliberately 0 or
+            // role-specific for those roles, and ForceGrowthValue's SurplusCombatReadinessUtility
+            // call ignores role — without this exclusion those roles would earn standing-force
+            // credit their own RoleFitCore says they should not compete on. Also zeroed for ANY
+            // hero card regardless of role: a hero's Attack/Defense/HP line already prices into
+            // HeroLeadershipFit.combatPart inside RoleFitCore, so ForceGrowthValue would
+            // double-count it.
             bd.ForceGrowthValue = (role == IntendedRole.Scout || role == IntendedRole.Hold
                 || role == IntendedRole.ResourceGain || role == IntendedRole.Support || hero
                 ? 0f : ForceGrowthValue(plan, plan.FinalCapability, baseline))
@@ -549,7 +535,6 @@ namespace Game.Ai.V2
             // Production support. Currently a no-op — see ScoreForDemand's comment.
             bd.ProductionSupportAdjustment = 0f;
             bd.ResourceEfficiency = -ResourceCost(plan, snap, spendableResource, player);
-            // ScarcityValue removed from Phase B (user call, 2026-09-21) — SurplusScarcity() deleted.
             bd.RedundancyPenalty = -ScoutOversupplyPenalty(role, inv);
             bd.AlternativeUseValue = -SurplusScarceBodyFloor(plan, role, inv, hero);
             bd.ResourcePressureBenefit = 0f;   // no caller-side surplus correction; NetScore is final
@@ -591,13 +576,11 @@ namespace Game.Ai.V2
                     float mult = CapabilityQualityEvaluator.QualityMultiplier(
                         plan, d, inv, referenceMoveMax, hasCompetingHeroDemand, out qbd);
                     float fit = AiConfigV2.scoutBaseRoleFit * mult;
-                    // Phase B only (demand == null — Phase A always passes a real AxisDemand). The
-                    // "AI currently has zero scouts at all" signal used to be a separate
-                    // SurplusCapabilityGap bonus in Phase B; folded directly into RoleFit here (user
-                    // call, 2026-09-21) since — unlike MobileCombat's case — it never duplicated an
-                    // existing signal. Phase A keeps its own separate CapabilityGapValue
-                    // (ScoutCapability) term unchanged. Same q-scaling as before: a weak scout
-                    // candidate gets proportionally less credit for closing the gap than a strong one.
+                    // Phase B only (demand == null — Phase A always passes a real AxisDemand): the
+                    // "AI currently has zero scouts at all" signal is part of RoleFit. Phase A
+                    // keeps its own separate CapabilityGapValue (ScoutCapability) term. q-scaled: a
+                    // weak scout candidate gets proportionally less credit for closing the gap than
+                    // a strong one.
                     if (demand == null && inv != null && inv.TotalScouts <= 0)
                         fit += AiConfigV2.capabilityGapValue * Mathf.Clamp01(mult);
                     return fit;
@@ -609,12 +592,11 @@ namespace Game.Ai.V2
                     // Assembler (for a Unit OR a Hero) exactly once. Core Support fit is 0.
                     return 0f;
                 case IntendedRole.ResourceGain:
-                    // User call (2026-09-21) — a ResourceGain hero's Command (extra battle slots it
-                    // unlocks elsewhere) is orthogonal to its recurring-resource specialty, so it is
-                    // still credited here. Only the COMMAND part, never combatPart: this role
-                    // deliberately does not compete on the hero's own body strength (see
-                    // ResourceGainRoleFit's comment — ForceGrowthValue/ScarcityValue/etc. are all
-                    // zeroed for the same reason).
+                    // A ResourceGain hero's Command (extra battle slots it unlocks elsewhere) is
+                    // orthogonal to its recurring-resource specialty, so it is credited here. Only
+                    // the COMMAND part, never combatPart: this role deliberately does not compete
+                    // on the hero's own body strength (see ResourceGainRoleFit — ForceGrowthValue
+                    // etc. are zeroed for the same reason).
                     return ResourceGainRoleFit(ectx)
                         + (hero ? HeroCommandMarginalValue(PlanBaseDef(plan), ectx, projectedLegalFillers,
                             out heroCmdDetail) : 0f);
@@ -660,13 +642,13 @@ namespace Game.Ai.V2
             => AiPower.ProjectMaterialization(plan).MoveMax;
 
         // -----------------------------------------------------------------------------------------
-        //  NON-COMBAT CARDS  (Aviation / Base / Facility / standalone Equipment) — AI-MGR-01 P0.1.
+        //  NON-COMBAT CARDS  (Aviation / Facility / standalone Equipment)
         // -----------------------------------------------------------------------------------------
-        // AI-MGR-01 review-r4 P1 — `generation` non-null: this play must first MINT its card through
-        // a Challenge. The evaluator, not the caller, is the single authoritative score: the
-        // generation ResourceCost (really paid by TryGenerate — the pre-mint stand-in's
-        // EffectivePlayResourceCost is null), the success-chance discount and the generation step
-        // penalty are all folded into the returned NetScore here. Callers do NOT post-multiply.
+        // `generation` non-null: this play must first MINT its card through a Challenge. The
+        // evaluator, not the caller, is the single authoritative score: the generation ResourceCost
+        // (really paid by TryGenerate — the pre-mint stand-in's EffectivePlayResourceCost is null),
+        // the success-chance discount and the generation step penalty are all folded into the
+        // returned NetScore here. Callers do NOT post-multiply.
         public static StrategicCardUseCandidate ScoreNonCombat(NonCombatRole kind, CardData card,
             WorldSnapshot snap, CapabilityInventory inv, AiHandData hand, float bestEquipmentUpgrade,
             GenerationStep generation = null, float? witnessedUsefulApDemand = null,
@@ -687,39 +669,32 @@ namespace Game.Ai.V2
             float eco = snap?.Economy != null ? Mathf.Clamp01(snap.Economy.EconomicSecurity) : 0.5f;
             bool hasAirCapacity = snap?.Self != null
                 && (snap.Self.AirborneReconWings + snap.Self.SpareAirObservationSorties) > 0;
-            // Calibration detail for the two gates added 2026-09-21 (Equipment devPipeline floor,
-            // Aviation upkeep penalty) — merged into bd.EffectDetail below so both are visible on the
-            // SAME strat.nonCombat AiDebug line as everything else, for tuning against a real game.
+            // Calibration detail for the Equipment devPipeline floor and the Aviation upkeep
+            // penalty — merged into bd.EffectDetail below so both are visible on the SAME
+            // strat.nonCombat AiDebug line, for tuning against a real game.
             string calibrationDetail = null;
 
             switch (kind)
             {
                 case NonCombatRole.Aviation:
                     role = IntendedRole.Aviation;
-                    // "No air observation capacity at all" folded directly into RoleFit (user call,
-                    // 2026-09-21) — ThreatCounterValue (renamed from CapabilityGapValue) is now
-                    // AntiAir/AntiArmor-only; this was never that kind of enemy-composition matchup,
-                    // it is a real coverage gap like Scout's "0 scouts" case, which got the same
-                    // treatment.
+                    // "No air observation capacity at all" is part of RoleFit: it is a real
+                    // coverage gap like Scout's "0 scouts" case, not an AntiAir/AntiArmor
+                    // enemy-composition matchup (ThreatCounterValue).
                     bd.RoleFit = AiConfigV2.nonCombatAviationBaseValue
                                  + (hasAirCapacity ? 0f : AiConfigV2.nonCombatAviationNoAirGap);
                     break;
-                // NonCombatRole.Base removed (user call, 2026-09-21) — it was dead code. Founding a
-                // Base is blocked earlier, in NonCombatCardPlayer's enumeration
-                // ("requires_economy_expansion_demand"): a CardType.Base card never reaches Score()
-                // with PlayKind.Base, so this branch was unreachable through the real call path.
                 case NonCombatRole.Facility:
                     role = FacilityRole(def);
                     bd.RoleFit = AiConfigV2.nonCombatFacilityValue
                                  + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
                     break;
                 default:
-                    // User call (2026-09-21) — Equipment's stat-delta value only shows through when
-                    // the Development pipeline that actually produces/sustains equipment (Assembler
-                    // facility MANNED by an operator hero, the same HasDevFacility/HasDevOperator
-                    // pair Support and the Development axis already gate on) is live; without it, a
-                    // found/one-off item is capped at the floor regardless of how strong its stat
-                    // delta looks, since there is no supporting infrastructure behind it.
+                    // Equipment's stat-delta value only shows through when the Development pipeline
+                    // that produces/sustains equipment (Assembler facility MANNED by an operator
+                    // hero, the same HasDevFacility/HasDevOperator pair Support and the Development
+                    // axis gate on) is live; without it, a found/one-off item is capped at the
+                    // floor regardless of how strong its stat delta looks.
                     role = IntendedRole.EquipmentUpgrade;
                     bool devPipelineLive = snap?.Self != null
                         && snap.Self.HasDevFacility && snap.Self.HasDevOperator;
@@ -741,13 +716,12 @@ namespace Game.Ai.V2
             var ncCtx = new EffectEvaluationContext(snap, witnessedUsefulApDemand);
             EffectContribution ncEc = StrategicEffectRegistry.Contributions(
                 role, ncAbilities, def != null ? def.moveMax : 0, ncCtx, out string ncEffDetail);
-            // No target-fit multiplier in the non-combat lane — local and PlayerGlobal (ncEc.Global*)
-            // add into the same axis, each routed by its descriptor's EffectField.
-            // ImmediateTempo removed from Phase B (user call, 2026-09-21) — see ScoreSurplusRole.
-            // ThreatCounterValue no longer used in the non-combat lane at all (user call): Aviation/
-            // Facility/Equipment are never AntiAir/AntiArmor counters, so ncEc.CapabilityGap/
-            // ncEc.ThreatResponse (both always 0 today — no registry row targets them for a
-            // non-combat card) fold into RoleFit instead, the same as everything else here.
+            // No target-fit multiplier in the non-combat lane — local and PlayerGlobal
+            // (ncEc.Global*) add into the same axis, each routed by its descriptor's EffectField.
+            // ImmediateTempo is not used in Phase B (see ScoreSurplusRole). ThreatCounterValue is
+            // not used in the non-combat lane: Aviation/Facility/Equipment are never
+            // AntiAir/AntiArmor counters, so ncEc.CapabilityGap/ncEc.ThreatResponse fold into
+            // RoleFit instead.
             bd.RoleFit += ncEc.RoleFit + ncEc.GlobalRoleFit
                 + ncEc.CapabilityGap + ncEc.GlobalCapabilityGap
                 + ncEc.ThreatResponse + ncEc.GlobalThreatResponse;
@@ -762,15 +736,14 @@ namespace Game.Ai.V2
             bd.OperationalTaskValue = operationalTask?.Value ?? 0f;
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             float genStepPenalty = generation != null ? AiConfigV2.stratChainGenerationStepPenalty : 0f;
-            // Aviation sortie-upkeep penalty (user call, 2026-09-21) — a new wing does not just cost
-            // its own AP/resources to deploy, it keeps drawing apAirSortieApProxy AP/turn to actually
-            // fly afterwards. Dynamic, not flat: scaled by ncCtx.EffectiveMarginalApUtility (the SAME
-            // [0..1] "is AP already the binding constraint right now" ramp every other dynamic effect
-            // in this file uses, from real ApEconomy state) and by effectRecurringHorizonTurns (the
-            // SAME bounded pay-back horizon the ApBonus/Produce recurring model uses) since the
-            // upkeep, like a recurring income, recurs every future turn, not once. At full AP
-            // pressure this can fully offset nonCombatAviationNoAirGap — a wing you cannot afford to
-            // fly is not a real capability gain.
+            // Aviation sortie-upkeep penalty — a new wing does not just cost its own AP/resources
+            // to deploy, it keeps drawing apAirSortieApProxy AP/turn to actually fly afterwards.
+            // Dynamic, not flat: scaled by ncCtx.EffectiveMarginalApUtility (the SAME [0..1] "is AP
+            // already the binding constraint right now" ramp every other dynamic effect in this
+            // file uses) and by effectRecurringHorizonTurns (the SAME bounded pay-back horizon the
+            // ApBonus/Produce recurring model uses), since upkeep recurs every future turn. At full
+            // AP pressure this can fully offset nonCombatAviationNoAirGap — a wing you cannot
+            // afford to fly is not a real capability gain.
             float aviationUpkeepPenalty = kind == NonCombatRole.Aviation
                 ? AiConfigV2.apAirSortieApProxy * AiConfigV2.effectRecurringHorizonTurns
                   * AiConfigV2.stratCardApCostWeight * ncCtx.EffectiveMarginalApUtility
@@ -862,10 +835,9 @@ namespace Game.Ai.V2
         {
             if (cap != CapabilityKind.FieldCombatPower && cap != CapabilityKind.Hero)
                 return 0f;
-            // AGG-RAID "axis-principle" fix — Attack/Defence axes create demand; Production
-            // reinforces an already-justified demand. Without a live military witness (see
-            // BaselineForceReadiness.MilitaryWitnessed), standing-force Need must not self-originate
-            // a reason to build combat mass with no Raid/Defence/other military witness at all.
+            // Attack/Defence axes create demand; Production reinforces an already-justified demand.
+            // Without a live military witness (see BaselineForceReadiness.MilitaryWitnessed),
+            // standing-force Need must not self-originate a reason to build combat mass.
             if (!baseline.MilitaryWitnessed)
                 return 0f;
             float marginal = SurplusCombatReadinessUtility(plan);
@@ -920,10 +892,9 @@ namespace Game.Ai.V2
             }
         }
 
-        // P1.7 review-r3 — an AA/AT counter only counts when the matching enemy threat is actually
-        // present (scaled by GapQualityFraction). Renamed from SurplusCapabilityGap (user call,
-        // 2026-09-21) — Scout's own "0 scouts" case moved to RoleFitCore (see ResourceGainRoleFit's
-        // neighbour, the Scout case), so this is AntiAir/AntiArmor only now.
+        // An AA/AT counter only counts when the matching enemy threat is actually present (scaled
+        // by GapQualityFraction). AntiAir/AntiArmor only — Scout's "0 scouts" case lives in
+        // RoleFitCore.
         private static float SurplusThreatCounter(IntendedRole role, CapabilityInventory inv,
             BaselineForceReadiness baseline, WorldSnapshot snap, float roleFitCore)
         {
@@ -940,11 +911,10 @@ namespace Game.Ai.V2
                     // No ability-independent RoleFitCore to scale by (it's 0 for Support, P1.5) —
                     // Support's real demand gate lives in the Development axis (Phase A).
                     return 0f;
-                // MobileCombat's case removed entirely (user call, 2026-09-21): mobility already has
-                // its own RoleFit signal — StrategicEffectRegistry.Roles adds effectMobileBaseFit
-                // (0.20) to RoleFit for any fast (moveMax>=5) non-Recce body, unconditionally. A
-                // second "the AI has none yet" gap bonus on top was a pure duplicate of that existing
-                // signal, same problem as the removed CombatBody/ForceGrowth "!HasFieldBody" case.
+                // No MobileCombat case: mobility already has its own RoleFit signal —
+                // StrategicEffectRegistry.Roles adds effectMobileBaseFit (0.20) to RoleFit for any
+                // fast (moveMax>=5) non-Recce body, so a "the AI has none yet" gap bonus would
+                // duplicate it.
                 default:
                     return 0f;
             }
@@ -1316,11 +1286,10 @@ namespace Game.Ai.V2
             CapabilityInventory inv, bool hero)
         {
             float cost = 0f;
-            // User call (2026-09-21): CombatBody/ForceGrowth/MobileCombat/AntiArmor/AntiAir/Scout/
-            // ResourceGain are a hero's UNIVERSAL uses — a scarce hero playing any of them is not
-            // "misuse". Support is the one genuinely NARROW specialisation, so it is the only role
-            // that pays the scarce-hero floor (was the inverse before this call: only Support/Scout/
-            // ResourceGain were EXEMPT and every combat role paid it).
+            // CombatBody/ForceGrowth/MobileCombat/AntiArmor/AntiAir/Scout/ResourceGain are a hero's
+            // UNIVERSAL uses — a scarce hero playing any of them is not "misuse". Support is the
+            // one genuinely NARROW specialisation, so it is the only role that pays the scarce-hero
+            // floor.
             if (hero && role == IntendedRole.Support
                 && inv != null && inv.AvailableHeroes <= AiConfigV2.stratChainHeroScarceAt)
                 cost += AiConfigV2.stratChainHeroScarcityPenalty;

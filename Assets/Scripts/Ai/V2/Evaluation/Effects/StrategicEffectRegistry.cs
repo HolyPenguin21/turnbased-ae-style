@@ -12,14 +12,11 @@ using Game.Combat;
 namespace Game.Ai.V2
 {
     // ===========================================================================================
-    //  STRATEGIC EFFECT REGISTRY  (Strategy V2 — AI-MGR-01 review-r4 P1 ARCH)
+    //  STRATEGIC EFFECT REGISTRY
     // ===========================================================================================
     //  The ONE place "this ability / stat feature is worth X toward strategic role Y" knowledge
-    //  lives. Before this, DeriveRoles / SupportRoleFit / SurplusCapabilityGap / ThreatResponse /
-    //  the BaselineForceReadiness + WorldAnalysis coverage vector each hard-coded
-    //  `Contains(UnitAbilities.AntiAir | Hyperkinetic | ApBonus | Researcher | Assembler)`, so a new
-    //  mechanic (Splash/AoE, Regeneration, army aura, temporary Summon, …) could not influence
-    //  strategic scoring without another `Contains(UnitAbilities.X)` edit in the evaluator.
+    //  lives, so a new mechanic (Splash/AoE, Regeneration, army aura, temporary Summon, …)
+    //  influences strategic scoring without a `Contains(UnitAbilities.X)` edit in any evaluator.
     //
     //  Pipeline:  Skill/ability -> StrategicEffect(s) -> Capability/role + Contextual value ->
     //             RoleFit / RoleCoverage / DeriveRoles.
@@ -29,7 +26,7 @@ namespace Game.Ai.V2
     //  StrategicCardEvaluator role switch.
     //
     //  Recce/Stealth deliberately stay direct `AbilityParams` helpers (concrete gameplay
-    //  capabilities, like they already were), and the Research/Production "operator vocation" stays
+    //  capabilities), and the Research/Production "operator vocation" stays
     //  a direct ability check — those are not the strategic-scoring switch this layer replaces.
     // ===========================================================================================
 
@@ -238,7 +235,7 @@ namespace Game.Ai.V2
         public RoleCoverage With(IntendedRole r) => new RoleCoverage(_bits | (1 << (int)r));
         public RoleCoverage Union(RoleCoverage other) => new RoleCoverage(_bits | other._bits);
         public bool Any => _bits != 0;
-        // The lossless bit pattern itself. Exposed (FIX-04) so a long-lived invalidation key can
+        // The lossless bit pattern itself. Exposed so a long-lived invalidation key can
         // carry the exact coverage set instead of resting on GetHashCode(), which is a hash by
         // contract even where an implementation happens to be injective today.
         public int Bits => _bits;

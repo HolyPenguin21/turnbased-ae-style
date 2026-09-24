@@ -40,16 +40,16 @@ namespace Game.Ai.V2
             public ResourceCost ResCost;
             public string StableKey;
             public string Explain;
-            // AI-MGR-01 review-r4 finding 9b — set when this play must first MINT its card through a
+            // Set when this play must first MINT its card through a
             // Research/Production Challenge (Card is then a throwaway pre-mint stand-in; Execute
             // re-resolves the placement against the real minted instance). null => Card is a real
             // hand card.
             public GenerationStep Generation;
         }
 
-        // AI-MGR-01 P0.1 — every non-combat card is scored through the shared StrategicCardEvaluator
-        // (same breakdown / NetScore band as a Unit/Hero chain), so Phase B can compare the two
-        // lanes directly instead of the old incomparable 55/45/40/24 fixed scale.
+        // Every non-combat card is scored through the shared StrategicCardEvaluator (same
+        // breakdown / NetScore band as a Unit/Hero chain), so Phase B can compare the two lanes
+        // directly.
         // PlayKind.Base has no arm — CardType.Base is blocked earlier in enumeration
         // (requires_economy_expansion_demand, see below) and never reaches this call.
         private static NonCombatRole RoleOf(PlayKind k) => k switch
@@ -172,7 +172,7 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // AI-MGR-02 round 6 — every LEGAL non-combat play for the current hand (each already
+        // Every LEGAL non-combat play for the current hand (each already
         // resolved to a real placement / host / airfield slot / base slot by BuildPlayFor).
         // BestPlay is a convenience caller; Phase-B arbitration and reaction probes consume the whole set
         // so it can find the genuinely CHEAPEST feasible reaction, not the best-scored card.
@@ -216,7 +216,7 @@ namespace Game.Ai.V2
                     yield return p;
             }
 
-            // AI-MGR-01 review-r4 finding 9b — generated non-combat cards. A Research/Production
+            // Generated non-combat cards. A Research/Production
             // Challenge whose minted card is an Aviation / Base / Facility is scored on the SAME
             // NetScore band (throwaway pre-mint stand-in), discounted by the Challenge success
             // chance + the generation step penalty; Execute mints then deploys via the canonical
@@ -252,9 +252,9 @@ namespace Game.Ai.V2
             }
         }
 
-        // AI-MGR-01 review-r4 finding 9b — one non-combat play for one card (real hand card, or a
-        // pre-mint stand-in when `generation` is set). Extracted from BestPlay's per-card loop so
-        // the generated path reuses the exact same placement resolution + scoring.
+        // One non-combat play for one card (real hand card, or a pre-mint stand-in when
+        // `generation` is set), so the generated path reuses the exact same placement resolution +
+        // scoring.
         private static NonCombatPlay BuildPlayFor(CardData card, GenerationStep generation,
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, List<HexCoord> ownBaseHexes, List<string> blocked,
@@ -539,7 +539,7 @@ namespace Game.Ai.V2
             supportedNeedValue: s.SupportedNeedValue);
         }
 
-        // AI-MGR-01 review-r4 P1 — a structured result. A generated non-combat play is NOT atomic
+        // A structured result. A generated non-combat play is NOT atomic
         // (mint then deploy), so a partial failure — Challenge lost after resources were spent /
         // the Researcher was revealed, OR a mint that then can't be deployed — really changes state
         // and consumes the turn's generation attempt. The caller must see that, not just `false`.
