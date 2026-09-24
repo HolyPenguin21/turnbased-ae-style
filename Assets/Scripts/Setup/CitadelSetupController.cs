@@ -156,6 +156,7 @@ namespace Game.Setup
             Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history
             Game.Ai.V2.ScoutTrailRegistry.ClearAll(); // Strategy V2 bounded per-scout backtrack trail (spec §5)
             Game.Ai.V2.ResourceStarvationRegistry.Clear(); // Strategy V2 decaying resource-starvation economic feedback (spec §17)
+            Game.Ai.V2.DevelopmentInvestmentGate.Clear();  // Strategy V2 Research/Production investment-window streak
             Game.Ai.V2.AiAllocatorStateRegistry.Clear(); // Strategy V2 per-player allocator reject-cooldown map
             Game.Ai.V2.MissionIntentRegistry.Clear();    // Strategy V2 per-player durable mission-intent store (step 7)
             Game.Ai.V2.CapabilityPoolExhaustionRegistry.Clear(); // Strategy V2 per-turn capability-pool exhaustion scope

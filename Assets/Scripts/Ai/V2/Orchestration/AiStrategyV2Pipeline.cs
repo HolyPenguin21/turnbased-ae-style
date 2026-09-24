@@ -130,11 +130,8 @@ namespace Game.Ai.V2
             //     and AggressionMissionLayer (build-order step 9).
             List<AggressionObjective> aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                 snapshot, assessment.Breakdown.OpportunityReport);
-            // 3e. Development opportunities are NOT enumerated here. Enumerate/
-            //     BestEquipmentOpportunity keeps only ONE recipient per offering, so picking it before
-            //     any demand or durable intent exists would discard every other legal recipient.
-            //     Selection happens in DemandLayer.Development, the one place that holds the current
-            //     supported-need context, using the supportsNeed predicate Enumerate takes.
+            // 3e. Development opportunities are NOT enumerated here: DemandLayer.Development calls
+            //     DevelopmentOpportunityEvaluator.Enumerate against the settled state of each pass.
 
             foreach (AggressionObjective ao in aggressionObjectives)
                 AiDebugLog.Write($"[AI][V2]   aggObjective — {ao.ObjectiveId} @{ao.LastKnownHex.Q},{ao.LastKnownHex.R} "
@@ -164,7 +161,7 @@ namespace Game.Ai.V2
             var demandAxes = new HashSet<DesireAxis>(DesireAxes.All);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                null, demandAxes);
+                demandAxes);
 
             // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
             //     HousekeepingManager reserve). Radar scales objective value only; Strategic Manager
@@ -206,7 +203,7 @@ namespace Game.Ai.V2
                 // builds its own opportunities against this pass's complete need context.
                 demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
-                    player, ctx, root, null, demandAxes);
+                    player, ctx, root, demandAxes);
             }
 
             List<MissionProposal> missions;
@@ -239,7 +236,7 @@ namespace Game.Ai.V2
                             CultureInfo.InvariantCulture)));
                     if (axis == DesireAxis.Development)
                         return DevelopmentAdmissionFingerprint(snapshot, activeIntents,
-                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand);
+                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand, player);
                     // Economy only from here on (Development returned above). The key carries what
                     // Economy's decision reads and nothing that ticks on every executed step: no
                     // global state version, and position/movement/activation only for armies the
@@ -406,16 +403,9 @@ namespace Game.Ai.V2
                         player, snapshot, reconObjectives, aggressionObjectives);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
-                    // A PARTIAL re-evaluation does not regenerate the other axes, but
-                    // their demands from the carrying pass are still valid need evidence. Hand
-                    // them to DemandLayer as carried context so Development's recipient selection
-                    // sees the same facts a full pass would, instead of an empty demand frame.
-                    List<AxisDemand> carriedForDevelopment = demands.Where(d => d != null
-                        && !dirtyAxes.Contains(d.RequestingAxis)).ToList();
                     List<AxisDemand> regenerated = DemandLayer.Generate(snapshot, assessment.Breakdown,
                         reconObjectives, aggressionObjectives, activeIntents,
-                        actorCommitments, player, ctx, root, null,
-                        dirtyAxes, carriedForDevelopment);
+                        actorCommitments, player, ctx, root, dirtyAxes);
                     List<AxisDemand> dirtyDemands = regenerated;
                     demands = demands.Where(d => d != null
                             && !dirtyAxes.Contains(d.RequestingAxis))
@@ -1029,7 +1019,7 @@ namespace Game.Ai.V2
                         activeIntents, snapshot, reconObjectives);
                     List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
-                            actorCommitments, player, ctx, root, null, demandAxes)
+                            actorCommitments, player, ctx, root, demandAxes)
                         .Where(d => d != null && coldAxes.Contains(d.RequestingAxis)).ToList();
                     if (coldDemands.Count > 0)
                     {
@@ -1069,7 +1059,7 @@ namespace Game.Ai.V2
                             demands = DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
                                 aggressionObjectives, activeIntents, actorCommitments,
-                                player, ctx, root, null, demandAxes);
+                                player, ctx, root, demandAxes);
                             ownershipFreshAfterPhaseA = true;
                             yield return RunTypedAdmissions();
                         }
@@ -1250,6 +1240,46 @@ namespace Game.Ai.V2
                     actionableAtStart, unactivatedActionable, hadPotentialWork));
         }
 
+        // Armies whose POSITION/movement/activation can change an Economy decision (the Economy
+        // admission fingerprint above): every Economy intent's mover/builder/collector plus every
+        // army the Economy analysis advertises as a possible builder/collector.
+        internal static HashSet<int> EconomyRelevantArmyIds(WorldSnapshot snapshot,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            var ids = new HashSet<int>();
+            foreach (MissionIntent i in activeIntents ?? new List<MissionIntent>())
+            {
+                if (i == null || i.Status != IntentStatus.Active || i.Kind != MissionKind.Economy
+                    || i.Economy == null)
+                    continue;
+                if (i.PreferredMoverArmyId.HasValue) ids.Add(i.PreferredMoverArmyId.Value);
+                if (i.Economy.BuilderArmyId != null) ids.Add(i.Economy.BuilderArmyId.Value);
+                if (i.Economy.CollectorArmyId != null) ids.Add(i.Economy.CollectorArmyId.Value);
+            }
+            EconomyStanding eco = snapshot?.Economy;
+            if (eco != null)
+            {
+                void AddRoutes(IReadOnlyList<EconomyBuilderRouteSnapshot> routes)
+                {
+                    foreach (EconomyBuilderRouteSnapshot r in routes
+                                 ?? System.Array.Empty<EconomyBuilderRouteSnapshot>())
+                        ids.Add(r.ArmyId);
+                }
+                foreach (EconomyExtractionOpportunity x in eco.ExtractionOpportunities
+                             ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                    AddRoutes(x.BuilderRoutes);
+                foreach (EconomyExtractionOpportunity x in eco.CollectorSites
+                             ?? System.Array.Empty<EconomyExtractionOpportunity>())
+                    AddRoutes(x.BuilderRoutes);
+                foreach (EconomyBaseOpportunity x in eco.BaseOpportunities
+                             ?? System.Array.Empty<EconomyBaseOpportunity>())
+                    AddRoutes(x.BuilderRoutes);
+                foreach (MobileCollectionOpportunity x in eco.MobileCollectionOpportunities
+                             ?? System.Array.Empty<MobileCollectionOpportunity>())
+                    ids.Add(x.CollectorArmyId);
+            }
+            return ids;
+        }
     }
 
     // ---- Stage stubs. Each grows real logic in its build-order step, then splits into its own

@@ -458,28 +458,6 @@ namespace Game.EditorTests
                     AttackIntent(AttackMissionPhase.Assault, 7)), Is.True);
         }
 
-        // ---- §78 the equipment witness ---------------------------------------------------
-
-        [Test]
-        public void EquipmentWitness_OnlyABoundAttackPrimaryInAFightingPhaseCounts()
-        {
-            WorldSnapshot snap = DefendedSite(new[] { Army(7, EnRoute, Strong()) },
-                new[] { OurBase });
-
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    AttackIntent(AttackMissionPhase.Assault, 7), 7, snap,
-                    out _, out HexCoord fightHex), Is.True);
-            Assert.That(fightHex, Is.EqualTo(RedBase));
-
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    AttackIntent(AttackMissionPhase.RecoveryReturn, 7, recoveryBase: OurBase),
-                    7, snap, out _, out _),
-                Is.False, "a withdrawing operation is not a fight");
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    AttackIntent(AttackMissionPhase.Assault, 7), 8, snap, out _, out _),
-                Is.False, "only the bound primary is witnessed");
-        }
-
         // ---- ATK review P0-1 — the per-cycle provisioning key is per OPERATION ------------
 
         // Every Attack proposal used to fall through StableMissionKey.For onto one fallback key.

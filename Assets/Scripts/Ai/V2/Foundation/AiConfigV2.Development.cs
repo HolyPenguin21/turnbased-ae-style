@@ -1,7 +1,7 @@
 namespace Game.Ai.V2
 {
     // Part of AiConfigV2 (file-split Task 2, see Docs/ai-v2-file-split-refactor-tasks.md).
-    // Development — desire sub-block (rawDev / production support / DevelopmentOpportunityEvaluator EV model).
+    // Development — desire sub-block (rawDev / investment window / DevelopmentOpportunityEvaluator EV model).
     public static partial class AiConfigV2
     {
         // Development desire (radar). rawDev = surplusRamp * quality * gain, where
@@ -22,19 +22,16 @@ namespace Game.Ai.V2
         // a bare "I have units worth improving" appetite. Only applies when DevPathViable.
         public const float devLatentPotential = 0.5f;
 
-        // Production is an amplifier: Economy creates the spendable runway and Attack/Defence
-        // provide the reason to mint. Optional Production stays weak below the readiness ramp;
-        // a concrete high-value demand may lift it only to the emergency floor, never erase cost.
-        public const float productionSupportReadinessLo = 0.25f;
-        public const float productionSupportReadinessHi = 0.75f;
-        public const float productionSupportMin = 0.30f;
-        public const float productionSupportMax = 1.15f;
-        public const float productionSupportEmergencyFloor = 0.70f;
+        // Investment window (DevelopmentInvestmentGate). Laboratory / Factory are a late resource
+        // sink that must not compete with the main deck: they may spend only after the coarse
+        // four-resource headroom (spendable / 2x income, weakest resource) has stayed at or above
+        // the threshold for this many consecutive turns. The threshold is the radar's own "full
+        // surplus" point, so the radar and the gate describe the same economy.
+        public const float devInvestmentSurplusThreshold = devSurplusRampHi;
+        public const int devInvestmentSurplusTurns = 2;
 
-        // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). Tuned against
-        // AiDebug.log: with apValue 3, margin 0.5 and full alt-cost a p=0.77 offering scored
-        // EV = 0.77*G - ~8 - 3, so equipment upgrades (single-item G ~2..10) could never clear the
-        // margin and Enumerate returned 0 objectives every turn.
+        // Development OPPORTUNITY EV model (DevelopmentOpportunityEvaluator). One investment EV per
+        // opportunity: expected output value minus Challenge and prerequisite costs.
         public const float devEvToBaseValue = 2.5f;    // EV (AiPower units) -> 0..100 BaseValue
         public const float devEvMargin = 0.05f;        // keep an opportunity only if EV exceeds this
         public const float devApValue = 1f;            // value of 1 AP, for the EV apCost term
@@ -42,9 +39,5 @@ namespace Game.Ai.V2
         // Applied only to the equipment power delta at Development's EV boundary; AiPower remains
         // a canonical current-force scalar and is not inflated globally.
         public const float devEquipmentPersistenceMultiplier = 3f;
-        // The "I could play a fresh Unit with the same resources" alternative is a SOFT opportunity
-        // cost, not a 1:1 trade (the unit is usually still played a later turn) — weight it down.
-        public const float devAlternativeWeight = 0.5f;
-        public const float devEquipGainFraction = 0.25f; // on-map unit FALLBACK when OriginatingCard is null: equipment adds ~this * UnitPower
     }
 }

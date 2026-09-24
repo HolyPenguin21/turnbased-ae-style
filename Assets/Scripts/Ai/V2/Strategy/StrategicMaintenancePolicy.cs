@@ -203,10 +203,12 @@ namespace Game.Ai.V2
             if (bases.Count == 0)
                 yield break;
 
+            // Research/Production facilities unlock only through the SAME admitted preparation
+            // Development itself would act on (investment window + EV), never a looser predicate.
             var intents = MissionIntentRegistry.GetOrCreate(player).All.ToList();
-            List<DevelopmentOpportunity> preparation = DevelopmentOpportunityEvaluator.EnumeratePreparation(
-                snap, player, root, hand, ctx,
-                op => op != null && op.ExpectedGain > 0f, intents);
+            List<DevelopmentOpportunity> preparation = DevelopmentOpportunityEvaluator.Enumerate(
+                    snap, player, root, hand, ctx, intents)
+                .Where(op => op.IsPreparation && op.PreparationFacilityCard != null).ToList();
             bool NeedsDevelopment(CardData card) => card?.Definition?.grantedAbilities != null
                 && (card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Research))
                     || card.Definition.grantedAbilities.Contains(ResearchProductionSystem.FacilityAbility(ResearchProductionMode.Production)));

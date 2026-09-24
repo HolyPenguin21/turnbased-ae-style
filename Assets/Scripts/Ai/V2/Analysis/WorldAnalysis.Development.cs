@@ -84,7 +84,7 @@ namespace Game.Ai.V2
 
             if (catalog != null)
                 foreach (GenerationStep g in GenerationSource.Enumerate(
-                    player, root, ctx, hand, null, null, includeContested: true))
+                    player, root, ctx, hand, null, null, analysisView: true))
                 {
                     var stake = new ResourceBundle();
                     ResourceCost cost = g.CardDef?.resourceCost;
@@ -137,15 +137,12 @@ namespace Game.Ai.V2
             rd.BestSuccessChance = offerings.Count > 0 ? offerings.Max(o => o.SuccessChance) : 0f;
 
             // Operational generation is priced from the concrete chain by StrategicCardEvaluator /
-            // StrategicSpendability. Do not reintroduce a global weakest-resource multiplier here.
-            // Keeping this explicit makes every runtime snapshot neutral even while the legacy
-            // diagnostic field remains on DevelopmentReadiness for old tests/snapshots.
-            rd.ProductionSupport = 1f;
-
-            float investmentSurplus = SurplusFraction(player, root, ctx);
+            // StrategicSpendability. WHEN Development may spend at all is the investment window
+            // (DevelopmentInvestmentGate over InvestmentSurplus), not a multiplier on its value.
+            rd.InvestmentSurplus = SurplusFraction(player, root, ctx);
             bool hasExecutableOffering = offerings.Any(o => facilities.Any(f =>
                 f.Mode == o.Mode && f.Hex.Equals(o.FacilityHex) && f.HasHero && !f.Contested));
-            rd.SurplusFraction = DevelopmentRadarSurplus(investmentSurplus, hasExecutableOffering);
+            rd.SurplusFraction = DevelopmentRadarSurplus(rd.InvestmentSurplus, hasExecutableOffering);
             return rd;
         }
 
@@ -171,11 +168,41 @@ namespace Game.Ai.V2
             foreach (ResourceType t in ResourceBundle.All)
             {
                 float spendable = Mathf.Max(0f,
-                    StrategicSpendability.SpendableAmount(player, root, ctx, t));
+                    StrategicSpendability.SpendableAmount(player, root, ctx, t)
+                    - OutstandingEconomyCommitment(player, ctx, t));
                 float income = Mathf.Max(1f, IncomeProjection.IncomeFor(player, t, ctx?.Map));
                 worst = Mathf.Min(worst, Mathf.Clamp01(spendable / (income * 2f)));
             }
             return worst;
+        }
+
+        // H/E/M/T an ACTIVE Economy build intent is already committed to but that the turn-scoped
+        // reservation ledger does not hold yet: at turn start the ledger is empty and Phase A
+        // re-writes each build's hold only later (StrategicPhaseA.ProtectActiveEconomyBuild).
+        // Resources Economy is deliberately saving are absorbed, not surplus. Whatever the ledger
+        // already reserves under the two Economy reasons is subtracted first, so a mid-turn
+        // snapshot never counts the same build twice.
+        private static float OutstandingEconomyCommitment(PlayerSetupData player,
+            AiTurnContext ctx, ResourceType t)
+        {
+            if (player == null || ctx == null)
+                return 0f;
+            int committed = 0;
+            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+                if (i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
+                    && i.Economy != null
+                    && (i.Economy.Kind == EconomyTaskKind.BuildExtraction
+                        || i.Economy.Kind == EconomyTaskKind.FoundBase))
+                    committed += Mathf.Max(0, i.Economy.BuildResourceCost?.Get(t) ?? 0);
+            if (committed <= 0)
+                return 0f;
+            StrategicReservedResource res = StrategicResourceReservationLedger.Map(t);
+            float all = StrategicResourceReservationLedger.Active(player, ctx.TurnNumber, res);
+            float held = all - StrategicResourceReservationLedger.Active(player, ctx.TurnNumber, res,
+                    null, StrategicReservationReason.EconomyDeferredBuild)
+                + all - StrategicResourceReservationLedger.Active(player, ctx.TurnNumber, res,
+                    null, StrategicReservationReason.EconomyBuildCompletion);
+            return Mathf.Max(0f, committed - held);
         }
 
     }

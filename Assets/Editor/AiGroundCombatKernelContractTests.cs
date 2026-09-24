@@ -240,55 +240,6 @@ namespace Game.EditorTests
             Assert.That(stamped.Defense, Is.EqualTo(5f));
         }
 
-        // ---- §42 ONE equipment combat witness, shared by every ground lane --------------------
-
-        [Test]
-        public void BoundGroundCombatFight_RaidAssaultAndDefenceInterceptBothWitness()
-        {
-            WorldSnapshot snap = SightingSnapshot(31, new HexCoord(9, 1), Defenders());
-
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    RaidIntentFor(5, 31, RaidMissionPhase.Assault), 5, snap, out _, out HexCoord raidHex),
-                Is.True, "a Raid primary in Assault is a real bound fight");
-            Assert.That(raidHex, Is.EqualTo(new HexCoord(9, 1)));
-
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    DefenceIntentFor(5, 31, ActiveDefencePhase.Intercept), 5, snap, out _, out HexCoord defHex),
-                Is.True, "ATK §42 — ActiveDefence's own intercept is the same kind of proof");
-            Assert.That(defHex, Is.EqualTo(new HexCoord(9, 1)));
-        }
-
-        [Test]
-        public void BoundGroundCombatFight_ReturnLegsAndForeignActorsWitnessNothing()
-        {
-            WorldSnapshot snap = SightingSnapshot(31, new HexCoord(9, 1), Defenders());
-
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    RaidIntentFor(5, 31, RaidMissionPhase.Return), 5, snap, out _, out _),
-                Is.False, "an army walking home is not fighting anyone");
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    DefenceIntentFor(5, 31, ActiveDefencePhase.Return), 5, snap, out _, out _),
-                Is.False);
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    RaidIntentFor(5, 31, RaidMissionPhase.Assault), 6, snap, out _, out _),
-                Is.False, "only the bound primary itself may be witnessed");
-
-            MissionIntent suspended = RaidIntentFor(5, 31, RaidMissionPhase.Assault);
-            suspended.Status = IntentStatus.Suspended;
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(suspended, 5, snap, out _, out _),
-                Is.False, "a suspended operation is not a live obligation");
-        }
-
-        [Test]
-        public void BoundGroundCombatFight_UnknownDefendersAreNoProof()
-        {
-            WorldSnapshot snap = SightingSnapshot(99, new HexCoord(9, 1), Defenders());
-
-            Assert.That(DemandLayer.TryBoundGroundCombatFight(
-                    RaidIntentFor(5, 31, RaidMissionPhase.Assault), 5, snap, out _, out _),
-                Is.False, "no remembered roster for the target means nothing to improve against");
-        }
-
         // ---- §54/§55 a Base change wakes Recon and Aggression --------------------------------
 
         [Test]

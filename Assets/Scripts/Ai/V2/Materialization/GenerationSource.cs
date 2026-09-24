@@ -19,12 +19,11 @@ namespace Game.Ai.V2
     //  hex this turn. Step 8B adds NO hero positioning and NO multi-turn planning: "MoveArmy ->
     //  Facility -> Generate" is out of scope.
     //
-    //  This class owns SOURCE validity only: gameplay eligibility, exact-combination retry guard
-    //  and reservation-aware affordability. Success probability is a soft value input, never a
-    //  source-validity gate. It deliberately does NOT apply V1 AiDevelopmentPlanner's
-    //  developmentMinResourceKeep investment policy. Phase A generation may be a necessary way to
-    //  satisfy another axis's hard demand; Phase B applies its own surplus reserve policy when the
-    //  complete MaterializationPlan is evaluated.
+    //  This class owns SOURCE validity only: the investment window (DevelopmentInvestmentGate),
+    //  gameplay eligibility, exact-combination retry guard and reservation-aware affordability.
+    //  Success probability is a soft value input, never a source-validity gate. Once the window is
+    //  open, every consumer still prices the complete MaterializationPlan through the one card
+    //  scorer.
     //
     //  This is NOT a separate generation manager: it only exposes options. StrategicManager
     //  decides whether generating anything is worth it, compares generation chains against direct
@@ -50,15 +49,20 @@ namespace Game.Ai.V2
 
         // Every (hero-on-Facility, offered card) combination usable RIGHT NOW, in deterministic
         // order. `triedCardKeys` is the actual retry guard: gameplay defines the spent attempt as
-        // (hero, mode, authored card key), not "this hero may only Challenge once". includeContested
-        // is used only by Analysis to retain temporarily blocked opportunities in its snapshot;
-        // executable Materialization callers keep the default false.
+        // (hero, mode, authored card key), not "this hero may only Challenge once".
+        // Every executable caller (materialization chains, generated non-combat plays, Development
+        // upgrades, operator minting) receives nothing while DevelopmentInvestmentGate is closed:
+        // Research/Production is a late resource sink and never competes with the main deck.
+        // `analysisView` is used only by Analysis to DESCRIBE readiness in its snapshot: it keeps
+        // temporarily contested facilities and ignores the investment window.
         public static List<GenerationStep> Enumerate(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             AiHandData hand, ISet<string> claimedUseKeys, ISet<string> triedCardKeys,
-            bool includeContested = false)
+            bool analysisView = false)
         {
             var result = new List<GenerationStep>();
             if (player == null || root == null || ctx?.ResearchProductionCatalog == null || hand == null)
+                return result;
+            if (!analysisView && !DevelopmentInvestmentGate.IsOpen(player, ctx.TurnNumber))
                 return result;
 
             List<BuildingData> ownBuildings = BuildingRegistry.AllBuildings()
@@ -72,7 +76,7 @@ namespace Game.Ai.V2
                 {
                     if (!b.HasFacilityWithAbility(ResearchProductionSystem.FacilityAbility(mode)))
                         continue;
-                    if (!includeContested
+                    if (!analysisView
                         && !ResearchProductionSystem.IsEligible(player, b.Hex, mode, out _))
                         continue;
 
