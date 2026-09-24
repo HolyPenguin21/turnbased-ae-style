@@ -5,6 +5,7 @@ using Game.Ai;
 using Game.Ai.V2;
 using Game.Combat;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using Game.Units;
 using NUnit.Framework;
