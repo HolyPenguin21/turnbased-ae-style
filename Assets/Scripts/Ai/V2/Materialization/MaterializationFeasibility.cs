@@ -169,8 +169,12 @@ namespace Game.Ai.V2
             TraitPreference projTraits = MaterializationChainMatching.TraitsOf(projectedAbilities);
             // See MaterializationReservation.BestUnresolvedDemandFor — a still-deferred persistence
             // demand must not grant the strategic-claim ap/resource affordability relaxation either.
+            // Nor does an Economy new-hero alternative claim a card: its build either stays with
+            // the ready hero or, without the alternative, would not be offered at all — a card
+            // none of whose placements beats that ready hero must stay spendable.
             return reservation.UnresolvedDemands
-                .Where(d => d != null && !d.IsPersistenceDeferred && d.DesiredAmount > 0f && d.Capability == cap
+                .Where(d => d != null && !d.IsPersistenceDeferred && !d.IsEconomyNewHeroAlternative
+                    && d.DesiredAmount > 0f && d.Capability == cap
                     && (projTraits & d.RequiredTraits) == d.RequiredTraits)
                 .OrderByDescending(d => d.Value)
                 .ThenBy(d => (int)d.RequestingAxis)

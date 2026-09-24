@@ -33,6 +33,8 @@ namespace Game.Ai.V2
             RecipientAlreadyHasHero,
             NoSafeRoute,
             InsufficientSafeEscort,
+            DeliveryExceedsSiteValue,
+            NotCheaperThanReadyHero,
         }
 
         internal readonly struct DeliveryAssessment
@@ -175,11 +177,11 @@ namespace Game.Ai.V2
                             demand.EconomyBuildApCost,
                             includeReturn: demand.EconomyBuildCard?.Definition?.cardType
                                 != CardType.Base);
-                        return choice.Suitability != DemandLayer.EconomyArmySuitability.Ineligible
-                            ? DeliveryAssessment.Ok
-                            : DeliveryAssessment.No(
+                        if (choice.Suitability == DemandLayer.EconomyArmySuitability.Ineligible)
+                            return DeliveryAssessment.No(
                                 DeliveryFailureReason.InsufficientSafeEscort,
                                 choice.IneligibleReason);
+                        return EconomyNewHeroWorthIt(p, demand, choice);
                     }
                     return p.Deploy.Kind == DeploymentKind.ExistingArmy
                         && p.Deploy.Army != null
@@ -267,6 +269,44 @@ namespace Game.Ai.V2
                     return true;
             }
             return false;
+        }
+
+        // Is delivering this build with THIS new hero worth it? Priced in the same TaskScore units
+        // Demand prices a ready hero with: delivery = extra activation AP beyond the build card.
+        //  · the new hero's own delivery must stay under the site's value (no loss-making walk);
+        //  · for a new-hero alternative (demand.EconomyReadyDeliveryCost set), the chain's card
+        //    price plus that delivery must be lower than the ready hero's cost — a tie keeps the
+        //    ready hero, which spends no card.
+        private static DeliveryAssessment EconomyNewHeroWorthIt(MaterializationPlan p,
+            AxisDemand demand, DemandLayer.EconomyBuilderChoice choice)
+        {
+            float newDelivery = Mathf.Max(0f,
+                    choice.TotalAssignmentApCost - demand.EconomyBuildApCost)
+                * AiConfigV2.taskScoreReactivationApWeight;
+            string card = p.BaseCardInHand?.Definition?.displayName
+                ?? p.GeneratedBaseDef?.displayName ?? "?";
+            if (demand.EconomySiteValue > AiConfigV2.allocatorSliceEpsilon
+                && newDelivery >= demand.EconomySiteValue)
+                return Decide(false, DeliveryFailureReason.DeliveryExceedsSiteValue,
+                    $"delivery={newDelivery:0.##} site={demand.EconomySiteValue:0.##}");
+            if (!demand.EconomyReadyDeliveryCost.HasValue)
+                return DeliveryAssessment.Ok;
+            float newCost = TaskScoreEvaluator.CardPrice(p.ApCost,
+                    StrategicCardEvaluator.ResourceCostSum(p.ResCost))
+                + newDelivery;
+            return Decide(newCost + AiConfigV2.allocatorSliceEpsilon
+                    < demand.EconomyReadyDeliveryCost.Value,
+                DeliveryFailureReason.NotCheaperThanReadyHero,
+                $"new={newCost:0.##} ready={demand.EconomyReadyDeliveryCost.Value:0.##}");
+
+            DeliveryAssessment Decide(bool ok, DeliveryFailureReason reason, string detail)
+            {
+                AiDebugLog.WriteDeduped($"hero-vs-ready|{demand.TargetHex}|{card}|{p.Deploy.Hex}",
+                    $"[ECO][HeroVsReady] site=({demand.TargetHex?.Q},{demand.TargetHex?.R}) "
+                    + $"card={card} deploy=({p.Deploy.Hex.Q},{p.Deploy.Hex.R}) {detail} "
+                    + $"decision={(ok ? "NEW_HERO" : reason.ToString())}");
+                return ok ? DeliveryAssessment.Ok : DeliveryAssessment.No(reason, detail);
+            }
         }
 
         internal static bool IsEconomyHeroDemand(AxisDemand demand)

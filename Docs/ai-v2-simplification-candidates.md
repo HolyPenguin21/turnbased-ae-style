@@ -117,6 +117,15 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
 сайт отбрасывается (`rejectedDeliveryValue`), вариант «выставить нового героя ближе» не
 рассматривается. Нужна оценка «новый герой» без выбора карты в Demand (правило: Demand не выбирает
 карты) — отдельное проектное решение.
+**Сделано 2026-09-24 (вариант 1).** Demand: при готовом герое в плюс и не на цели рядом с обычным
+demand выдаётся Hero-альтернатива `PairedNewHeroAlternative` с `EconomyReadyDeliveryCost`; если
+готовый герой делает сайт убыточным — сайт не отбрасывается, а выдаётся без builder (fallback).
+Materialization (`MaterializationDeliveryPolicy.EconomyNewHeroWorthIt`, конкретная карта): доставка
+нового героя должна быть < ценности сайта (для всех Economy Hero, закрывает «доставка = 0»), а для
+альтернативы — CardPrice(цепочка) + доставка < цены готового; равенство — готовый. Лог
+`[ECO][HeroVsReady]`, в `[Economy][Rejections]` счётчики `new_hero_fallback/new_hero_paired`.
+Альтернативы не берут резерв ресурсов стройки, не идут в delivery-block Base и не «претендуют» на
+карты в Phase B.
 
 ### C4. Повторные проходы Phase A / DemandLayer.Generate внутри хода — риск средний
 

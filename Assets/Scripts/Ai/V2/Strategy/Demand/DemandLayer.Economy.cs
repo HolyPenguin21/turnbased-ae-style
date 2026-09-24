@@ -29,6 +29,8 @@ namespace Game.Ai.V2
             int rejectedSurplus = 0;
             int rejectedStrategicValue = 0;
             int rejectedDeliveryValue = 0;
+            int newHeroFallback = 0;
+            int newHeroPaired = 0;
 
             foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities
                 ?? System.Array.Empty<EconomyExtractionOpportunity>())
@@ -110,12 +112,20 @@ namespace Game.Ai.V2
                     rejectedStrategicValue++;
                     continue;
                 }
-                if (value <= AiConfigV2.allocatorSliceEpsilon)
+                // The ready hero makes this site a loss. Unless Continuity already owns that hero
+                // for it, offer the site builder-less instead: Materialization may still deliver it
+                // with a NEW hero, but only when that is cheaper than the ready one and the new
+                // hero's own delivery stays under the site's value.
+                bool readyLossToNewHero = value <= AiConfigV2.allocatorSliceEpsilon
+                    && builder != null && pinnedExtraction == null;
+                if (value <= AiConfigV2.allocatorSliceEpsilon && !readyLossToNewHero)
                 {
                     if (builder == null) rejectedNoBuilder++;
                     else rejectedDeliveryValue++;
                     continue;
                 }
+                if (readyLossToNewHero)
+                    newHeroFallback++;
 
                 candidates.Add(new AxisDemand
                 {
@@ -131,18 +141,26 @@ namespace Game.Ai.V2
                     EconomySiteValue = siteOnlyScore.Value,
                     EconomyTravelCost = travel,
                     EconomyThreatExposure = exposure,
-                    EconomyHeroOpportunityCost = opportunity,
-                    EconomyAssignmentApCost = assignmentAp,
+                    EconomyHeroOpportunityCost = readyLossToNewHero ? 0f : opportunity,
+                    EconomyAssignmentApCost = readyLossToNewHero ? cardAp : assignmentAp,
                     EconomyPaybackTurns = payback,
-                    EconomyPreferredBuilderArmyId = builder?.Army.ArmyId,
-                    EconomyProjectedActivationApCost = builder?.ProjectedActivationApCost ?? 0,
-                    EconomyProjectedMaxMovement = builder?.ProjectedMaxMovement ?? 0,
+                    EconomyPreferredBuilderArmyId = readyLossToNewHero
+                        ? null : builder?.Army.ArmyId,
+                    EconomyProjectedActivationApCost = readyLossToNewHero ? 0
+                        : builder?.ProjectedActivationApCost ?? 0,
+                    EconomyProjectedMaxMovement = readyLossToNewHero ? 0
+                        : builder?.ProjectedMaxMovement ?? 0,
+                    EconomyReadyDeliveryCost = readyLossToNewHero
+                        ? ReadyDeliveryCost(extraAp, opportunity) : (float?)null,
                     EconomyBuilderRoutes = site.BuilderRoutes,
-                    WorldTaskScore = score,
-                    Value = score.Value,
+                    WorldTaskScore = readyLossToNewHero ? siteOnlyScore : score,
+                    Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,
                     Explain = $"{site.ResourceType} task={score.Value:0.##} priority={resourcePriority:0.##} "
                         + $"marginalGain={gain:0.##} usefulGain={usefulGain:0.##} payback={payback:0.##} "
-                        + $"travel={travel:0.##} exposure={exposure:0.##} moverOpp={opportunity:0.##}",
+                        + $"travel={travel:0.##} exposure={exposure:0.##} "
+                        + $"moverOpp={opportunity:0.##}"
+                        + (readyLossToNewHero
+                            ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
                 });
             }
 
@@ -153,7 +171,7 @@ namespace Game.Ai.V2
             string baseSummary = AddBaseCandidates(
                 s, candidates, player, ctx, activeIntents, commitments,
                 out int baseNoBuilder, out int baseStrategicValue,
-                out int baseDeliveryValue, out int baseThreshold);
+                out int baseDeliveryValue, out int baseThreshold, out int baseNewHeroFallback);
 
             IOrderedEnumerable<AxisDemand> extractionRanked = candidates
                 .Where(x => x.Capability == CapabilityKind.EconomicInfrastructure
@@ -237,6 +255,18 @@ namespace Game.Ai.V2
                     + $"target=({emitted.TargetHex?.Q},{emitted.TargetHex?.R}) value={emitted.Value:0.##} "
                     + $"rejected={Mathf.Max(0, candidates.Count - selected.Count)}");
                 yield return emitted;
+
+                AxisDemand alternative = PairedNewHeroAlternative(demand, activeIntents);
+                if (alternative != null)
+                {
+                    newHeroPaired++;
+                    AiDebugLog.WriteDeduped($"new-hero-alt|{alternative.TargetHex}",
+                        $"[AI][V2][Economy][Demand] selected=Hero alternative=new_hero "
+                        + $"target=({alternative.TargetHex?.Q},{alternative.TargetHex?.R}) "
+                        + $"ready#{demand.EconomyPreferredBuilderArmyId} "
+                        + $"readyDelivery={alternative.EconomyReadyDeliveryCost:0.##}");
+                    yield return alternative;
+                }
             }
 
             AiDebugLog.WriteDeduped("base-summary", $"[AI][V2][Economy][BaseCandidates] {baseSummary}");
@@ -245,7 +275,10 @@ namespace Game.Ai.V2
                 + rejectedDeliveryValue + baseDeliveryValue + baseThreshold;
             AiDebugLog.WriteDeduped("rejections", $"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
                 + $"payback={rejectedPayback} surplus={rejectedSurplus} strategic_value={rejectedStrategicValue + baseStrategicValue} "
-                + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} threshold={baseThreshold}");
+                + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} "
+                + $"threshold={baseThreshold} "
+                + $"new_hero_fallback={newHeroFallback + baseNewHeroFallback} "
+                + $"new_hero_paired={newHeroPaired}");
             if (selected.Count == 0)
                 AiDebugLog.WriteDeduped("selected-none",
                     $"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
@@ -393,11 +426,53 @@ namespace Game.Ai.V2
             EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
             EconomyProjectedActivationApCost = source.EconomyProjectedActivationApCost,
             EconomyProjectedMaxMovement = source.EconomyProjectedMaxMovement,
+            EconomyReadyDeliveryCost = source.EconomyReadyDeliveryCost,
             EconomyBuilderRoutes = source.EconomyBuilderRoutes,
             WorldTaskScore = source.WorldTaskScore,
             Value = source.Value,
             Explain = source.Explain + "; prerequisite=mobile_hero",
         };
+
+        // What delivering a build with its READY hero costs in TaskScore units: the same
+        // delivery (extra activation AP) and mover-opportunity slots the ready demand is scored
+        // with. The ready path also pays the build card, as would a new hero, so it cancels out.
+        private static float ReadyDeliveryCost(float extraAp, float moverOpportunityCost) =>
+            Mathf.Max(0f, extraAp) * AiConfigV2.taskScoreReactivationApWeight
+            + Mathf.Max(0f, moverOpportunityCost);
+
+        // "Ready hero vs new hero" for a build a ready hero can serve at positive value. Emitted
+        // next to the ready demand as a Hero prerequisite that carries the ready cost;
+        // Materialization (MaterializationDeliveryPolicy) admits a new-hero chain only when its
+        // card price plus its own delivery is lower. Demand never picks the card. No alternative
+        // when the ready hero is already on target (nothing to save) or Continuity already runs
+        // this build.
+        private static AxisDemand PairedNewHeroAlternative(AxisDemand ready,
+            IReadOnlyList<MissionIntent> activeIntents)
+        {
+            if (ready == null || !ready.EconomyPreferredBuilderArmyId.HasValue
+                || !ready.TargetHex.HasValue
+                || HasActiveEconomyBuildIntent(activeIntents, ready)
+                || (ready.Capability == CapabilityKind.EconomicExpansionBase
+                    && IsActiveBaseCommitment(activeIntents, ready.TargetHex,
+                        ready.EconomyBuildCard)))
+                return null;
+            float readyCost = ReadyDeliveryCost(
+                ready.EconomyAssignmentApCost - ready.EconomyBuildApCost,
+                ready.EconomyHeroOpportunityCost);
+            if (readyCost <= AiConfigV2.allocatorSliceEpsilon)
+                return null;
+            AxisDemand alternative = EconomyHeroPrerequisite(ready);
+            alternative.EconomyPreferredBuilderArmyId = null;
+            alternative.EconomyProjectedActivationApCost = 0;
+            alternative.EconomyProjectedMaxMovement = 0;
+            alternative.EconomyAssignmentApCost = ready.EconomyBuildApCost;
+            alternative.EconomyHeroOpportunityCost = 0f;
+            alternative.EconomyReadyDeliveryCost = readyCost;
+            alternative.Value = ready.EconomySiteValue;
+            alternative.Explain +=
+                $"; alternative=new_hero ready#{ready.EconomyPreferredBuilderArmyId}";
+            return alternative;
+        }
 
         internal sealed class EconomyBuilderChoice
         {
@@ -927,12 +1002,13 @@ namespace Game.Ai.V2
             PlayerSetupData player, AiTurnContext ctx,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             out int noBuilder, out int strategicValueRejected,
-            out int deliveryValueRejected, out int thresholdRejected)
+            out int deliveryValueRejected, out int thresholdRejected, out int newHeroFallback)
         {
             noBuilder = 0;
             strategicValueRejected = 0;
             deliveryValueRejected = 0;
             thresholdRejected = 0;
+            newHeroFallback = 0;
             List<CardData> baseCards = (s.Self.Hand ?? System.Array.Empty<CardData>())
                 .Where(c => c?.Definition?.cardType == CardType.Base)
                 .OrderBy(c => c.Definition.authoredKey ?? c.Definition.displayName)
@@ -1093,6 +1169,13 @@ namespace Game.Ai.V2
                         hexThreatRisk: risk,
                         economicExpansionValue: expansion);
                     float value = score.Value;
+                    // Same rule as extraction: a ready hero that turns a fresh Base into a loss
+                    // leaves it to a possible NEW hero (Materialization prices that path).
+                    bool readyLossToNewHero = builder != null && pinnedBase == null
+                        && value <= AiConfigV2.allocatorSliceEpsilon
+                        && siteOnlyScore.Value > AiConfigV2.allocatorSliceEpsilon;
+                    if (readyLossToNewHero)
+                        newHeroFallback++;
 
                     meaningfulDemands.Add(new AxisDemand
                     {
@@ -1108,22 +1191,30 @@ namespace Game.Ai.V2
                         EconomySiteValue = siteOnlyScore.Value,
                         EconomyTravelCost = travel,
                         EconomyThreatExposure = facts.Exposure,
-                        EconomyHeroOpportunityCost = heroCost,
-                        EconomyAssignmentApCost = assignmentAp,
+                        EconomyHeroOpportunityCost = readyLossToNewHero ? 0f : heroCost,
+                        EconomyAssignmentApCost = readyLossToNewHero
+                            ? card.EffectivePlayApCost : assignmentAp,
                         EconomyPaybackTurns = paybackTurns,
-                        EconomyPreferredBuilderArmyId = builder?.Army.ArmyId,
-                        EconomyProjectedActivationApCost = builder?.ProjectedActivationApCost ?? 0,
-                        EconomyProjectedMaxMovement = builder?.ProjectedMaxMovement ?? 0,
+                        EconomyPreferredBuilderArmyId = readyLossToNewHero
+                            ? null : builder?.Army.ArmyId,
+                        EconomyProjectedActivationApCost = readyLossToNewHero ? 0
+                            : builder?.ProjectedActivationApCost ?? 0,
+                        EconomyProjectedMaxMovement = readyLossToNewHero ? 0
+                            : builder?.ProjectedMaxMovement ?? 0,
+                        EconomyReadyDeliveryCost = readyLossToNewHero
+                            ? ReadyDeliveryCost(extraAp, heroCost) : (float?)null,
                         EconomyBuilderRoutes = site.BuilderRoutes,
-                        WorldTaskScore = score,
-                        Value = score.Value,
+                        WorldTaskScore = readyLossToNewHero ? siteOnlyScore : score,
+                        Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,
                         Explain = $"Base task={score.Value:0.##} economic={economic:0.##} "
                             + $"payback={payback:0.##} expansion={expansion:0.##} "
                             + $"airfield={airfield:0.##} global={global:0.##} "
                             + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
                             + $"defense={defense:0.##} "
                             + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
-                            + $"moverOpp={heroCost:0.##} risk={risk:0.##}",
+                            + $"moverOpp={heroCost:0.##} risk={risk:0.##}"
+                            + (readyLossToNewHero
+                                ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
                     });
                 }
 

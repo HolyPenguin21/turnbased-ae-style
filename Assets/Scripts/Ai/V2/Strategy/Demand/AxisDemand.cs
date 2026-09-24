@@ -88,6 +88,12 @@ namespace Game.Ai.V2
         // Only non-null for the ONE selected challenger; never substitute site-only BuildValue.
         public float? EconomySwitchIncumbentValue;
         public int? EconomyPreferredBuilderArmyId;
+        // Set only on an Economy "new hero" alternative (DemandLayer.PairedNewHeroAlternative and
+        // the ready-loss fallback): what delivering this same build with the best READY hero costs,
+        // in TaskScore units (delivery + mover opportunity). A new-hero chain is admitted only when
+        // its own card price plus delivery is lower. Null — no ready hero to compare against.
+        public float? EconomyReadyDeliveryCost;
+        public bool IsEconomyNewHeroAlternative => EconomyReadyDeliveryCost.HasValue;
         public int EconomyProjectedActivationApCost;
         public int EconomyProjectedMaxMovement;
         // Analysis-owned structural routes for the selected site. Demand applies intent/commitment

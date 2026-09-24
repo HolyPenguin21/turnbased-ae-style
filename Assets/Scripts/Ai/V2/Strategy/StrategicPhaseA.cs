@@ -290,6 +290,7 @@ namespace Game.Ai.V2
                         .Where(s => s.Demand != null && !coldStates.Contains(s)
                             && s.Demand.RequestingAxis == DesireAxis.Economy
                             && s.Demand.Capability == CapabilityKind.Hero
+                            && !s.Demand.IsEconomyNewHeroAlternative
                             && s.Demand.TargetHex.HasValue
                             && s.Demand.EconomyBuildResourceCost != null)
                         .Select(s => s.Demand))
@@ -516,8 +517,12 @@ namespace Game.Ai.V2
                     {
                         options[state] = top;
                     }
+                    // A new-hero alternative (IsEconomyNewHeroAlternative) is never a delivery
+                    // block: its chains are refused by price against the ready hero, and the
+                    // project itself stays with that hero — it must not be suppressed here.
                     else if (state.Demand.RequestingAxis == DesireAxis.Economy
                         && state.Demand.Capability == CapabilityKind.Hero
+                        && !state.Demand.IsEconomyNewHeroAlternative
                         && state.Demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
                         && state.Demand.TargetHex.HasValue)
                     {
@@ -861,6 +866,7 @@ namespace Game.Ai.V2
                 EconomyAssignmentApCost = d.EconomyAssignmentApCost,
                 EconomyPaybackTurns = d.EconomyPaybackTurns,
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
+                EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
                 EconomyProjectedActivationApCost = d.EconomyProjectedActivationApCost,
                 EconomyProjectedMaxMovement = d.EconomyProjectedMaxMovement,
