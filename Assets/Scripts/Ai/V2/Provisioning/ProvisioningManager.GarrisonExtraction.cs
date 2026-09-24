@@ -22,15 +22,14 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
-        // 2026-09-14 review round 4 — Economy garrison-extraction no longer materializes during
-        // Provisioning at all. ResolveGarrisonExtractionCandidate (pure, unchanged since round 2)
-        // decides the tier here only to produce a conservative pre-mutation cost ESTIMATE for the
-        // funding envelope; the actual ArmyActions.CreateArmy/TransferMember mutation
-        // (ApplyGarrisonExtraction, also unchanged) now runs from
-        // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own beforeStep/
-        // afterStep observation window — mirroring the synthetic-actor-id pattern
-        // ScoutExecutorKind.AirLaunch already established (see SyntheticGarrisonExtractionActorId
-        // below and MoverArmyId's own field comment on ProvisionedMission).
+        // Economy garrison-extraction never materializes during Provisioning.
+        // ResolveGarrisonExtractionCandidate (pure) decides the tier here only to produce a
+        // conservative pre-mutation cost ESTIMATE for the funding envelope; the actual
+        // ArmyActions.CreateArmy/ TransferMember mutation (ApplyGarrisonExtraction) runs from
+        // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own
+        // beforeStep/afterStep observation window — the same synthetic-actor-id pattern as
+        // ScoutExecutorKind.AirLaunch (see SyntheticGarrisonExtractionActorId below and
+        // MoverArmyId's field comment on ProvisionedMission).
         internal static int SyntheticGarrisonExtractionActorId(int garrisonArmyId) =>
             -(3_000_000 + (garrisonArmyId & 0xFFFFFF));
 
@@ -50,11 +49,10 @@ namespace Game.Ai.V2
             public readonly UnitData Hero;         // the EXACT UnitData that would be extracted
             public readonly ArmyData Container;    // existing shell/host; null for Create (nothing exists yet)
             // Shell/Host: TransferMember's activation charge, if any. Create: CreateArmyApCost.
-            // P0-2, AI V2 economy audit 2026-09-21 — for Tier == None this is now the cheapest
-            // structurally-legal tier's AP cost when one exists but exceeded the envelope (0f only
-            // when truly nothing exists, e.g. no sparable hero at all). Callers that only cared
-            // about Tier are unaffected; a caller that wants the real shortfall reads this instead
-            // of falling back to a generic NoMoverExists with no price.
+            // For Tier == None this is the cheapest structurally-legal tier's AP cost when one
+            // exists but exceeded the envelope (0f only when nothing exists, e.g. no sparable hero
+            // at all), so a caller can report the real shortfall instead of a generic NoMoverExists
+            // with no price.
             public readonly float ApCost;
             public readonly string Reason;          // set only when Tier == None
 
@@ -99,12 +97,11 @@ namespace Game.Ai.V2
                 apCost <= ecoApEnvelopeRemaining + AiConfigV2.allocatorSliceEpsilon
                 && (root == null || root.CanSpendActionPoints(Mathf.CeilToInt(apCost)));
 
-            // P0-2, AI V2 economy audit 2026-09-21 — track the cheapest structurally-legal tier's
-            // cost even when it is rejected for being unaffordable THIS turn, so a caller with the
-            // real envelope can report EnvelopeTooSmall(requiredAp) instead of a generic NoMoverExists
-            // whenever a container genuinely exists and only the budget was too small. The Shell ->
-            // Host -> Create try-in-order and every existing eligibility/CanTransferMembers gate are
-            // unchanged; this only adds bookkeeping on the already-rejected path.
+            // Track the cheapest structurally-legal tier's cost even when it is rejected as
+            // unaffordable THIS turn, so a caller with the real envelope can report
+            // EnvelopeTooSmall(requiredAp) instead of a generic NoMoverExists whenever a container
+            // exists and only the budget was too small. Bookkeeping only; it does not change the
+            // Shell -> Host -> Create order or any gate.
             float? cheapestUnaffordable = null;
             void TrackUnaffordable(float apCost) => cheapestUnaffordable =
                 cheapestUnaffordable.HasValue ? Mathf.Min(cheapestUnaffordable.Value, apCost) : apCost;
@@ -143,14 +140,13 @@ namespace Game.Ai.V2
                 cheapestUnaffordable ?? ArmyActions.CreateArmyApCost);
         }
 
-        // 2026-09-14 review round 8 (P0) — builds a READ-ONLY preview of what the deferred
-        // garrison-extraction container will look like immediately after the (real) hero transfer,
-        // so PlanEconomyCompletion can compute the FULL composition/donor/AP decision at
-        // Provisioning time against ArmyData's own real Members/MaxMovement/CurrentMovement/
-        // HasActivatedThisTurn projections — no duplicated math, no live mutation.
-        // ArmyData.CreateVisualSnapshot() never touches ArmyRegistry or burns a real Id (Id stays
-        // -1), which is exactly what a caller must use `identityArmyId` for instead (see
-        // PlanEconomyArmyLightening's own comment on that parameter).
+        // Builds a READ-ONLY preview of what the deferred garrison-extraction container will look
+        // like immediately after the (real) hero transfer, so PlanEconomyCompletion can compute the
+        // FULL composition/donor/AP decision at Provisioning time against ArmyData's own real
+        // Members/MaxMovement/CurrentMovement/HasActivatedThisTurn projections — no duplicated
+        // math, no live mutation. ArmyData.CreateVisualSnapshot() never touches ArmyRegistry or
+        // burns a real Id (Id stays -1), which is why callers pass `identityArmyId` instead (see
+        // PlanEconomyArmyLightening).
         private static ArmyData BuildGarrisonExtractionPreview(
             PlayerSetupData player, ArmyData garrison, GarrisonExtractionCandidate plan)
         {
@@ -226,14 +222,5 @@ namespace Game.Ai.V2
                 .OrderBy(a => a.Members.Count)
                 .ThenBy(a => a.Id);
         }
-
-        // 2026-09-14 (garrison recon materialization consistency, Task 2/3) — the old
-        // TryExtractGarrisonRecceForScouting re-searched ReusableArmySelector.FindReusableAt itself
-        // at commit time, a SECOND container search independent of the one
-        // ReconAssignmentPlanner.BuildCandidates already ran to admit the candidate in the first
-        // place — the exact "two owners can silently disagree" gap this pass closes. Provision's
-        // Scout/Ground branch below now resolves the pinned (source garrison, destination shell)
-        // pair Assignment already chose and commits/rolls back that EXACT pair inline; there is no
-        // longer a separate extraction primitive to call.
     }
 }

@@ -22,18 +22,17 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
-        // 2026-09-14 review round 8 (P0) — the pure DECISION half of what FinishEconomyBuilder used
-        // to compute inline: donor loan, route, lightening/reinforcement composition, AP/resource
-        // feasibility. Split out so Provisioning can compute and PIN this exact decision against a
-        // read-only preview (see BuildGarrisonExtractionPreview) for a deferred garrison-extraction
-        // candidate — Execution then only re-validates the volatile parts (AP, resources) and
-        // APPLIES the pinned Unload/Reinforcement, never re-deriving them. The direct-army path
-        // (FinishEconomyBuilder, below) calls this with the REAL live hero — identical behaviour to
-        // before this split, since every read here (Hex/Members/MaxMovement/CurrentMovement/
-        // HasActivatedThisTurn) is satisfied the same way by a real ArmyData or by the preview.
-        // `identityArmyId` is `hero.Id` for the direct-army path; for a preview it is the REAL
-        // container id when one already exists (Shell/Host) or -1 for Create (nothing could already
-        // be bound to an army that does not exist yet).
+        // The pure DECISION half of FinishEconomyBuilder: donor loan, route,
+        // lightening/reinforcement composition, AP/resource feasibility. Kept separate so
+        // Provisioning can compute and PIN this exact decision against a read-only preview (see
+        // BuildGarrisonExtractionPreview) for a deferred garrison-extraction candidate — Execution
+        // then only re-validates the volatile parts (AP, resources) and APPLIES the pinned
+        // Unload/Reinforcement, never re-deriving them. The direct-army path (FinishEconomyBuilder,
+        // below) calls this with the REAL live hero; every read here
+        // (Hex/Members/MaxMovement/CurrentMovement/HasActivatedThisTurn) is satisfied the same way
+        // by a real ArmyData or by the preview. `identityArmyId` is `hero.Id` for the direct-army
+        // path; for a preview it is the REAL container id when one already exists (Shell/Host) or
+        // -1 for Create (nothing can be bound to an army that does not exist yet).
         internal readonly struct EconomyCompletionPlan
         {
             public readonly bool Feasible;
@@ -69,15 +68,13 @@ namespace Game.Ai.V2
                     travelNeeded, completionThisTurn, stageCost, realAp, ownerKey);
         }
 
-        // 2026-09-14 review round 10 (P0) — `alreadyCommittedApCost` is the extraction AP a deferred
-        // garrison-extraction candidate's OWN GarrisonExtractionCandidate.ApCost already accounts
-        // for (CreateArmy, or a hero joining an already-activated Shell/Host) — a cost
-        // EconomyMissionClaimedAp (inside this function) has no way to know about, since it only
-        // ever reads the projected roster's own ActivationApCost sum, never a separate container-
-        // creation/late-join charge. Subtracted from the envelope/pool BEFORE any feasibility check
-        // here, so a candidate whose extraction cost alone would blow the budget is correctly
-        // rejected (rather than accepted on a budget that silently excluded a cost the caller must
-        // still pay). The direct-army path (hero already real, no extraction) passes the default 0.
+        // `alreadyCommittedApCost` is the extraction AP a deferred garrison-extraction candidate's
+        // OWN GarrisonExtractionCandidate.ApCost already accounts for (CreateArmy, or a hero
+        // joining an already-activated Shell/Host) — a cost EconomyMissionClaimedAp cannot see,
+        // since it only reads the projected roster's ActivationApCost sum. It is subtracted from
+        // the envelope/pool BEFORE any feasibility check, so a candidate whose extraction cost
+        // alone would blow the budget is rejected. The direct-army path (hero already real, no
+        // extraction) passes the default 0.
         internal static EconomyCompletionPlan PlanEconomyCompletion(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> standingIntents, StableMissionKey key,
@@ -172,13 +169,12 @@ namespace Game.Ai.V2
             => PlanEconomyArmyLightening(player, builder, builder?.Id ?? -1, target, snapshot, ctx,
                 minimumEscort, out garrison, out reinforcement);
 
-        // 2026-09-14 review round 8 (P0) — `identityArmyId` decouples the loan-protection intent
-        // check from `builder.Id` so a Provisioning-time READ-ONLY PREVIEW of a not-yet-real
-        // garrison-extraction container (ArmyData.CreateVisualSnapshot(), Id always -1) can still be
-        // checked against the REAL container id it stands in for when one already exists (Shell/Host
-        // tier) — using the preview's own -1 id would silently skip this protection for those tiers.
-        // Both existing callers (the overload above, TryLightenEconomyArmy) keep passing `builder.Id`
-        // — unchanged behaviour for every live-army caller.
+        // `identityArmyId` decouples the loan-protection intent check from `builder.Id` so a
+        // Provisioning-time READ-ONLY PREVIEW of a not-yet-real garrison-extraction container
+        // (ArmyData.CreateVisualSnapshot(), Id always -1) is still checked against the REAL
+        // container id it stands in for when one exists (Shell/Host tier) — the preview's own -1 id
+        // would silently skip this protection. Live-army callers (the overload above,
+        // TryLightenEconomyArmy) pass `builder.Id`.
         private static List<UnitData> PlanEconomyArmyLightening(PlayerSetupData player,
             ArmyData builder, int identityArmyId, HexCoord target, WorldSnapshot snapshot,
             AiTurnContext ctx, int minimumEscort, out ArmyData garrison,
@@ -280,12 +276,11 @@ namespace Game.Ai.V2
             if (reinforcement.Count > 0 && !ArmyActions.TransferMembersAtomic(
                     reinforcement, garrison, builder, ctx.HexSelection, out string whyAdd))
             {
-                // 2026-09-14 review round 6 (P0) — unload+reinforce is ONE canonical composition
-                // change, not two independent ones: a reinforcement failure must not leave an
-                // already-applied unload silently uncommitted-for (caller reported failure while the
-                // unload stayed real). The current planner never actually produces both non-empty at
-                // once, but this must not depend on that as an unstated invariant. Roll the unload
-                // back so this call is honestly all-or-nothing.
+                // Unload+reinforce is ONE canonical composition change: a reinforcement failure
+                // must not leave an already-applied unload in place while the caller reports
+                // failure. The planner does not currently produce both non-empty at once, but this
+                // must not depend on that as an unstated invariant. Roll the unload back so this
+                // call is all-or-nothing.
                 if (unloadApplied && !ArmyActions.TransferMembersAtomic(
                         unload, garrison, builder, ctx.HexSelection, out string whyRollback))
                     AiDebugLog.Write($"[AI][V2][Economy][WARN] lighten rollback failed for builder "

@@ -20,18 +20,17 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
-        // RECON-AIR-01 (round 5) — claim the air actor/subset Assignment already picked, THROUGH
-        // THE SAME generic funding/provisioning accounting Ground uses: the real AP/Energy Assignment
-        // resolved for this exact actor/subset (ScoutExecutionCandidate.RequiredAp/RequiredEnergy —
-        // see ReconAssignmentPlanner.AppendAirCandidates) is checked against the envelope Funding
-        // granted (funded.Tentative.Ap / funded.PhysicalDraw.Energy) and, if it fits, claimed for
-        // real — ClaimedAp/ClaimedEnergy are no longer hard-coded 0. If it does not fit, this returns
-        // the ordinary EnvelopeTooSmall failure and lets the existing repack/reprice loop
-        // (ResourceAllocator.RegisterProvisionFailure) handle it exactly like ground already does —
-        // no separate air ledger. The terminal air execution stage still re-checks LIVE HARD gates
-        // (AiAirSortiePlanner.CanAffordLaunch / CanIssueMoveNow / AA / safe return) against the
-        // post-ground-movement world state before actually spending anything — but it no longer
-        // re-runs any strategic hand/deck/income economics: that decision is made once, here, by
+        // Claim the air actor/subset Assignment already picked, THROUGH THE SAME generic
+        // funding/provisioning accounting Ground uses: the real AP/Energy Assignment resolved for
+        // this exact actor/subset (ScoutExecutionCandidate.RequiredAp/RequiredEnergy — see
+        // ReconAssignmentPlanner.AppendAirCandidates) is checked against the envelope Funding
+        // granted (funded.Tentative.Ap / funded.PhysicalDraw.Energy) and, if it fits, claimed as
+        // ClaimedAp/ClaimedEnergy. If it does not fit, this returns the ordinary EnvelopeTooSmall
+        // failure and the repack/reprice loop (ResourceAllocator.RegisterProvisionFailure) handles
+        // it exactly like ground — no separate air ledger. The terminal air execution stage still
+        // re-checks LIVE HARD gates (AiAirSortiePlanner.CanAffordLaunch / CanIssueMoveNow / AA /
+        // safe return) against the post-ground-movement world before spending anything, but never
+        // re-runs strategic hand/deck/income economics: that decision is made once, here, by
         // AirSortieReservationAdmission.
         private static ProvisioningResult ProvisionAir(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ProvisioningSession session, FundedEntry funded, ScoutExecutionCandidate exec,

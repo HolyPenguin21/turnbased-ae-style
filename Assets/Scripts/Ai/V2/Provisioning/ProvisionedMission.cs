@@ -60,39 +60,35 @@ namespace Game.Ai.V2
         public ResourceVector ClaimedPhysical;
         // AP still needed for EXECUTION to carry this mission out (e.g. Economy travel/build cost).
         public float ClaimedAp;
-        // 2026-09-14 review round 4 — Economy garrison-extraction no longer mutates anything during
-        // Provisioning at all (see MaterializeEconomyGarrisonBuilder in TaskExecutor.cs): the round-3
-        // ProvisioningApSpent field this comment used to describe is gone because there is nothing
-        // for it to carry any more — Provisioning only estimates and defers, Execution spends for
-        // real inside its own beforeStep/afterStep window. EconomyExtractionGarrisonArmyId (below) is
-        // the deferred-materialization marker that replaced it.
+        // Economy garrison-extraction never mutates during Provisioning: Provisioning only
+        // estimates and defers, Execution spends for real inside its own beforeStep/afterStep
+        // window (see MaterializeEconomyGarrisonBuilder in TaskExecutor.cs).
         //
         // >= 0 marks this ProvisionedMission as NOT YET a real mover: MoverArmyId is a synthetic
         // negative id (SyntheticGarrisonExtractionActorId), and this field names the garrison
-        // TaskExecutor.RunEconomyStep must extract a hero from — mirroring the pattern AirLaunch
-        // already established (ScoutExecutorKind.AirLaunch's synthetic ActorKey + AirfieldHex/
-        // LaunchSubset below materialize the same way, inside ReconAirExecutor). -1 (default) means
-        // MoverArmyId is already a real, resolvable army — the common case, unchanged.
+        // TaskExecutor.RunEconomyStep must extract a hero from — the same pattern as AirLaunch
+        // (ScoutExecutorKind.AirLaunch's synthetic ActorKey + AirfieldHex/LaunchSubset below
+        // materialize inside ReconAirExecutor). -1 (default) means MoverArmyId is already a real,
+        // resolvable army.
         public int EconomyExtractionGarrisonArmyId = -1;
-        // 2026-09-14 review round 5 — the EXACT resolved plan (tier/hero/container/AP) Provisioning
-        // chose, pinned so Execution materializes precisely that plan instead of re-running
-        // ResolveGarrisonExtractionCandidate with weaker inputs (commitments:null, session:null),
-        // which could legally pick a different — or already-claimed-by-someone-else — actor. Default
-        // (Tier == None) whenever EconomyExtractionGarrisonArmyId is -1 (nothing deferred).
+        // The EXACT resolved plan (tier/hero/container/AP) Provisioning chose, pinned so Execution
+        // materializes precisely that plan instead of re-running ResolveGarrisonExtractionCandidate
+        // with weaker inputs (commitments:null, session:null), which could legally pick a different
+        // — or already-claimed — actor. Default (Tier == None) whenever
+        // EconomyExtractionGarrisonArmyId is -1 (nothing deferred).
         internal ProvisioningManager.GarrisonExtractionCandidate EconomyExtractionPlan;
-        // 2026-09-14 review round 8 — the FULL preparation decision (composition, donor, real AP,
-        // resource stage cost) PlanEconomyCompletion computed against a read-only preview of the
-        // not-yet-real container. Execution applies this pinned plan directly — see
-        // TaskExecutor.MaterializeEconomyGarrisonBuilder — never re-deriving it. Default
-        // (Feasible == false) whenever EconomyExtractionGarrisonArmyId is -1.
+        // The FULL preparation decision (composition, donor, real AP, resource stage cost)
+        // PlanEconomyCompletion computed against a read-only preview of the not-yet-real container.
+        // Execution applies this pinned plan directly — see
+        // TaskExecutor.MaterializeEconomyGarrisonBuilder — never re-deriving it. Default (Feasible
+        // == false) whenever EconomyExtractionGarrisonArmyId is -1.
         internal ProvisioningManager.EconomyCompletionPlan EconomyExtractionPreparation;
-        // 2026-09-14 review round 10 (P0) — true whenever EconomyExtractionPreparation has been
-        // pinned by Provisioning but not yet APPLIED — for a garrison-extraction candidate (always,
-        // alongside EconomyExtractionGarrisonArmyId >= 0) AND for a direct-army candidate whose hero
-        // is already real but whose composition change and/or donor-loan suspend Provisioning left
-        // for Execution to apply, never itself. False (with EconomyExtractionGarrisonArmyId == -1)
-        // means this hero's roster is already exactly right — nothing to defer, straight to
-        // movement, same as always.
+        // True whenever EconomyExtractionPreparation has been pinned by Provisioning but not yet
+        // APPLIED — for a garrison-extraction candidate (always, alongside
+        // EconomyExtractionGarrisonArmyId >= 0) AND for a direct-army candidate whose hero is
+        // already real but whose composition change and/or donor-loan suspend is left for Execution
+        // to apply. False (with EconomyExtractionGarrisonArmyId == -1) means the hero's roster is
+        // already exactly right — nothing to defer, straight to movement.
         internal bool EconomyPreparationPending;
         // RECON-AIR-01 — the REAL Energy this mission's bound actor needs to activate (0 for Ground,
         // which never spends Energy to activate). Folded into ClaimedPhysical.Energy so it flows

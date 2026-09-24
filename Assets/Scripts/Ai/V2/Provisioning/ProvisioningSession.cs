@@ -61,10 +61,10 @@ namespace Game.Ai.V2
             ApClaimed += m.ClaimedAp;
             EnergyClaimed += m.ClaimedEnergy;
             ClaimedArmyIds.Add(m.MoverArmyId);
-            // 2026-09-14 review round 5 — a deferred garrison-extraction mission's MoverArmyId is a
-            // synthetic negative id; the garrison and the chosen container (if one already exists —
-            // Shell/Host tiers) are the REAL armies this mission has committed to and must not be
-            // handed to a second mission later in the same batch pass.
+            // A deferred garrison-extraction mission's MoverArmyId is a synthetic negative id; the
+            // garrison and the chosen container (if one already exists — Shell/Host tiers) are the
+            // REAL armies this mission has committed to and must not be handed to a second mission
+            // later in the same batch pass.
             if (m.EconomyExtractionGarrisonArmyId >= 0)
                 ClaimedArmyIds.Add(m.EconomyExtractionGarrisonArmyId);
             if (m.EconomyExtractionPlan.Container != null)

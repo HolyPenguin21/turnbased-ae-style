@@ -39,17 +39,14 @@ namespace Game.Ai.V2
             if (!sighting.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence enemy #{target.EnemyArmyId} has no honest sighting"));
-            // P0-5, AI V2 economy/aggression audit 2026-09-21 — AiMapMemory.OnVisibilityChanged is
-            // already the single canonical, fog-honest writer for EnemySightings: it removes a
-            // stale entry the instant its hex is genuinely re-observed and found empty ("corrected
-            // (gone on re-observation)"), and otherwise leaves a last-known sighting untouched while
-            // that hex stays fogged. `sighting.HasValue` above is therefore already the complete,
-            // correct answer to "is this enemy still a live threat, per what we honestly know" — a
-            // second true-world ArmyRegistry.AllAt(sighting.Value.Hex) read here used to re-derive
-            // the same fact from ground truth instead of memory, and disagreed with it exactly when
-            // the sighting was stale-but-unobserved (enemy moved off an unwatched hex): that false
-            // "gone" produced TargetSatisfied → the objective was re-created and immediately
-            // re-satisfied every subsequent pass with no new information (18x on #13, T9-T10).
+            // AiMapMemory.OnVisibilityChanged is the single canonical, fog-honest writer for
+            // EnemySightings: it removes an entry the instant its hex is re-observed empty and
+            // otherwise leaves a last-known sighting untouched while the hex stays fogged.
+            // `sighting.HasValue` above is therefore the complete answer to "is this enemy still a
+            // live threat, per what we honestly know". Do not re-derive it from a true-world
+            // ArmyRegistry read: that disagrees with memory exactly when the sighting is
+            // stale-but-unobserved, and the false "gone" makes the objective re-create and
+            // re-satisfy every pass with no new information.
             bool hexVisibleNow = VisionSystem.IsVisible(player, sighting.Value.Hex);
             AiDebugLog.Write($"[AGG][ActiveDefence] enemy=#{target.EnemyArmyId} "
                 + $"contact={(hexVisibleNow ? "LIVE" : "LAST_KNOWN")} "
@@ -67,14 +64,14 @@ namespace Game.Ai.V2
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders = sighting.Value.Defenders
                 ?? Array.Empty<WorthIt.DefenderProfile>();
-            // 2026-09-21 Block C2 — re-checking an admitted mission must re-apply the SAME
-            // admission threshold it was legitimately admitted under, otherwise Missions accepts a
-            // continuation at ContinuationWinChanceFloor, the allocator funds it, and Provisioning
-            // then rejects the identical facts at FreshStartWinChanceGate every single turn.
-            // GroundCombatAdmissionPolicy stays the sole owner of both numbers; this only selects
-            // between them with the same predicate Missions and GroundCombatAdmissionRegistry use
-            // (`FromDurableIntent`), additionally confirming that the actor actually bound here is
-            // the pinned incumbent — a different actor is a fresh intercept and keeps the fresh gate.
+            // Re-checking an admitted mission must re-apply the SAME admission threshold it was
+            // admitted under; otherwise Missions accepts a continuation at
+            // ContinuationWinChanceFloor, the allocator funds it, and Provisioning rejects the
+            // identical facts at FreshStartWinChanceGate. GroundCombatAdmissionPolicy stays the
+            // sole owner of both numbers; this only selects between them with the same predicate
+            // Missions and GroundCombatAdmissionRegistry use (`FromDurableIntent`), additionally
+            // confirming that the actor bound here is the pinned incumbent — a different actor is a
+            // fresh intercept and keeps the fresh gate.
             MissionIntent interceptIncumbent = MissionIntentRegistry.GetOrCreate(player).All
                 .FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                     && i.Kind == MissionKind.ActiveDefence

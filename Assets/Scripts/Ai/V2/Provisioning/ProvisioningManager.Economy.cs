@@ -71,11 +71,9 @@ namespace Game.Ai.V2
                 eligibleBuilders = eligibleBuilders.Where(
                     x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
 
-            // DIAGNOSTIC (kept for FoundBase only, per project owner's request 2026-09-13 — the
-            // BuildExtraction stuck-builder case is resolved and no longer needs this) — traces
-            // which single eligibility clause below rejects a durable intent's committed mover,
-            // since the FirstOrDefault predicate normally swallows all of them into one
-            // MoverContended result.
+            // DIAGNOSTIC (FoundBase only) — traces which single eligibility clause below rejects a
+            // durable intent's committed mover, since the FirstOrDefault predicate normally
+            // swallows all of them into one MoverContended result.
             if (target.Kind == EconomyTaskKind.FoundBase
                 && m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
             {
@@ -183,20 +181,13 @@ namespace Game.Ai.V2
                             ctx.Map, a, target.TargetHex).HasValue));
             }
 
-            // Fallthrough fix (2026-09-13, found via the stuck-builder TRACE below): a
-            // garrison-extraction candidate can pass IsCandidateEligible (a sparable hero exists)
-            // yet still fail to materialize into an actual mover, because
-            // TryExtractGarrisonHeroForEconomy separately needs a free reusable army shell
-            // (ReusableArmySelector.FindReusableAt) at that hex — a resource this predicate never
-            // checks. The old code picked exactly one candidate (FirstOrDefault) and gave up the
-            // whole provisioning attempt if THAT ONE couldn't materialize, even when other
-            // eligible, non-garrison candidates were sitting right there in the same ranked list.
-            // Walk the ranked list in order and keep trying until one actually produces a hero.
-            // 2026-09-14 review round 4 — garrison extraction no longer mutates here at all. This
-            // loop either finds a hero that ALREADY exists as a real field mover (direct-army
-            // candidates, unchanged from before) or, for a garrison candidate, a viable
-            // GarrisonExtractionCandidate PLAN plus a conservative pre-mutation cost estimate —
-            // never both an army and a plan. The plan's real materialization
+            // A garrison-extraction candidate can pass IsCandidateEligible (a sparable hero exists)
+            // yet still have no viable container, so walk the ranked list in order and keep trying
+            // until one candidate actually produces a builder — never give up on the first
+            // candidate while other eligible ones remain. No mutation happens here. The loop finds
+            // either a hero that ALREADY exists as a real field mover (direct-army candidates) or,
+            // for a garrison candidate, a viable GarrisonExtractionCandidate PLAN plus a
+            // conservative pre-mutation cost estimate — never both. The plan's real materialization
             // (ArmyActions.CreateArmy/TransferMember) happens later, in
             // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own
             // beforeStep/afterStep window — see the synthetic-MoverArmyId return further down.
@@ -208,11 +199,11 @@ namespace Game.Ai.V2
             float ecoApEnvelopeRemaining = funded.Tentative.Ap;
             float rawApRemaining = root.ActionPoints - session.ApClaimed;
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            // P0-2, AI V2 economy audit 2026-09-21 — the cheapest garrison-extraction cost seen
-            // across every candidate that was structurally legal but rejected only for exceeding
-            // the AP envelope/pool. If the loop ends with no builder AND this is set, the real
-            // failure is a funding shortfall, not "no legal way to get a builder" — the caller
-            // below reports EnvelopeTooSmall(requiredAp) instead of a generic NoMoverExists.
+            // The cheapest garrison-extraction cost seen across every candidate that was
+            // structurally legal but rejected only for exceeding the AP envelope/pool. If the loop
+            // ends with no builder AND this is set, the failure is a funding shortfall, not "no
+            // legal way to get a builder" — the caller below reports EnvelopeTooSmall(requiredAp)
+            // instead of a generic NoMoverExists.
             float? economyBuilderShortfallAp = null;
             void TrackEconomyShortfall(float requiredAp) => economyBuilderShortfallAp =
                 economyBuilderShortfallAp.HasValue
@@ -238,14 +229,14 @@ namespace Game.Ai.V2
                             TrackEconomyShortfall(plan.ApCost);
                         continue;
                     }
-                    // 2026-09-14 review round 10 (P1) — cheap pre-check before paying for a full
-                    // composition search: ONLY the one cost that is unconditionally real regardless
-                    // of hex/turn specifics (creating the container, or the hero's own late-join
-                    // charge into an already-activated Shell/Host). The old estimate also added
-                    // Hero.ActivationApCost and the build/followup cost unconditionally — both can
-                    // be zero in the real plan (no travel needed, or the build can't complete this
-                    // stage), so that estimate was not a true lower bound and could reject a
-                    // genuinely affordable candidate before PlanEconomyCompletion ever got to look.
+                    // Cheap pre-check before paying for a full composition search: ONLY the one
+                    // cost that is unconditionally real regardless of hex/turn specifics (creating
+                    // the container, or the hero's own late-join charge into an already-activated
+                    // Shell/Host). Hero.ActivationApCost and the build/followup cost are
+                    // deliberately NOT added — both can be zero in the real plan (no travel, or the
+                    // build cannot complete this stage), so adding them would stop this being a
+                    // true lower bound and could reject an affordable candidate before
+                    // PlanEconomyCompletion looks at it.
                     float roughEstimate = plan.ApCost;
                     if (roughEstimate > ecoApEnvelopeRemaining + eps
                         || roughEstimate > rawApRemaining + eps)
@@ -258,14 +249,14 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    // 2026-09-14 review round 8 (P0) — compute and PIN the FULL preparation plan
-                    // (composition, donor, authoritative AP, resource stage cost) here, against a
-                    // read-only preview of the not-yet-real container (BuildGarrisonExtractionPreview)
-                    // — the SAME PlanEconomyCompletion the direct-army path uses below, so Execution
-                    // never re-plans, only re-validates this exact decision and applies it.
-                    // `plan.ApCost` is passed as `alreadyCommittedApCost` (round 10, P0) so the
-                    // feasibility checks inside see the budget correctly reduced by the extraction
-                    // cost this candidate will ALSO have to pay — see that parameter's own comment.
+                    // Compute and PIN the FULL preparation plan (composition, donor, authoritative
+                    // AP, resource stage cost) here, against a read-only preview of the
+                    // not-yet-real container (BuildGarrisonExtractionPreview) — the SAME
+                    // PlanEconomyCompletion the direct-army path uses below, so Execution never
+                    // re-plans, only re-validates this exact decision and applies it. `plan.ApCost`
+                    // is passed as `alreadyCommittedApCost` so the feasibility checks inside see
+                    // the budget reduced by the extraction cost this candidate will ALSO pay — see
+                    // that parameter.
                     ArmyData preview = BuildGarrisonExtractionPreview(player, candidateGarrison, plan);
                     int identityArmyId = plan.Container?.Id ?? -1;
                     EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
@@ -298,15 +289,12 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         "economy build site already leased by another active project"));
 
-                // 2026-09-14 review round 10 (P1) — reserve the physical build-stage resources NOW,
-                // at the moment this mission commits to being deferred, not only after it
-                // materializes in Execution. Until this round `ClaimedPhysical`/`ReservationOwner`
-                // stayed default (zero/null) for the whole deferred window, so a SECOND Economy
-                // mission provisioned later in the same batch pass could see the pool as still fully
-                // free and claim the exact same resources StrategicSpendability.FitsSpendableResources
-                // had already approved for this one. A later stale/failure in Execution already
-                // routes through the existing ReleaseEconomyReservation — no new release lifecycle
-                // needed, it just needs ReservationOwner to actually be set from here on.
+                // Reserve the physical build-stage resources NOW, when this mission commits to
+                // being deferred, not only after it materializes in Execution: otherwise a SECOND
+                // Economy mission provisioned later in the same batch pass sees the pool as still
+                // free and claims the same resources StrategicSpendability.FitsSpendableResources
+                // already approved for this one. A later stale/failure in Execution releases them
+                // through ReleaseEconomyReservation via ReservationOwner.
                 if (deferredPreparation.CompletionThisTurn)
                     InfrastructureFulfillment.ReserveEconomyCost(player, ctx.TurnNumber,
                         deferredPreparation.OwnerKey, target.BuildResourceCost, target.BuildApCost);
@@ -326,12 +314,11 @@ namespace Game.Ai.V2
                     EconomyPreparationPending = true,
                     FocusHex = target.TargetHex, ExecutionHex = deferredGarrison.Hex,
                     EconomyTarget = target,
-                    // 2026-09-14 review round 10 (P0) — ClaimedAp is the TOTAL funded amount now:
-                    // deferredPlan.ApCost (CreateArmy, or the hero's own late-join charge into an
-                    // already-activated Shell/Host) was previously dropped entirely from this figure,
-                    // so a Create-tier extraction's own 2 AP silently vanished from the envelope
-                    // Execution re-validates against — see PlanEconomyCompletion's own comment on
-                    // `alreadyCommittedApCost` for why that AP is real and separate from RealAp.
+                    // ClaimedAp is the TOTAL funded amount: deferredPlan.ApCost (CreateArmy, or the
+                    // hero's own late-join charge into an already-activated Shell/Host) plus the
+                    // preparation's RealAp, so the envelope Execution re-validates against includes
+                    // the extraction AP — see PlanEconomyCompletion's `alreadyCommittedApCost` for
+                    // why that AP is real and separate.
                     ClaimedAp = deferredPlan.ApCost + deferredPreparation.RealAp,
                     ClaimedPhysical = CostVector(deferredPreparation.StageCost),
                     ReservationOwner = deferredPreparation.OwnerKey,
@@ -364,12 +351,11 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"committed economy builder #{preferredId} cannot advance this turn"));
                 }
-                // DIAGNOSTIC (kept for FoundBase only, per project owner's request 2026-09-13 — the
-                // BuildExtraction stuck-builder case is resolved and no longer needs this) — the
-                // durable-mover trace above never fires here: this is reached only once a fresh
-                // Economy mission's FirstOrDefault predicate rejected every ranked candidate (or
-                // rankedBuilders was empty to begin with). Replicate that exact predicate per
-                // candidate, read-only, so the single clause eating each one is visible.
+                // DIAGNOSTIC (FoundBase only) — the durable-mover trace above never fires here:
+                // this is reached only once a fresh Economy mission's FirstOrDefault predicate
+                // rejected every ranked candidate (or rankedBuilders was empty). Replicate that
+                // exact predicate per candidate, read-only, so the single clause eating each one is
+                // visible.
                 if (target.Kind == EconomyTaskKind.FoundBase)
                 {
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
@@ -388,12 +374,10 @@ namespace Game.Ai.V2
                             bool cPathG = g != null && sparable != null && (g.Hex.Equals(target.TargetHex)
                                 || SafeStepPathing.FindSafePathCost(
                                     ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax) != int.MaxValue);
-                            // 2026-09-14 review round 2 — the trace used to keep its own copy of the
-                            // container search (which shell/host/create tier would apply), and that
-                            // copy drifted out of sync with the real one more than once. It now
-                            // calls the SAME pure resolver the real extraction path
-                            // (ResolveGarrisonExtractionCandidate + ApplyGarrisonExtraction) uses —
-                            // single owner, no second implementation to keep in sync.
+                            // Calls the SAME pure resolver the real extraction path uses
+                            // (ResolveGarrisonExtractionCandidate + ApplyGarrisonExtraction) — the
+                            // trace must never keep its own copy of the container search, which
+                            // would drift out of sync.
                             GarrisonExtractionCandidate containerPlan = g == null
                                 ? GarrisonExtractionCandidate.No("garrison not resolved")
                                 : ResolveGarrisonExtractionCandidate(player, g, actorCommitments,
@@ -401,18 +385,16 @@ namespace Game.Ai.V2
                             bool cContainerG = containerPlan.Tier != GarrisonExtractionTier.None;
                             bool shallowEligibleG = g != null && sparable != null && cThreatG
                                 && cClaimedG && cPathG && cContainerG;
-                            // 2026-09-15 — the shallow gates above (mirrored from the real loop's
-                            // IsCandidateEligible + ResolveGarrisonExtractionCandidate) are NOT the
-                            // whole real gate any more: since review round 8/9/10 the real loop also
-                            // runs the roughEstimate AP pre-check and the full PlanEconomyCompletion
-                            // (donor loan, real path for the PREVIEW army, composition/lightening,
-                            // authoritative AP, StrategicSpendability) before accepting a candidate —
-                            // see line ~1122-1141 above. "ELIGIBLE=True" here used to mean nothing
-                            // beyond "a container tier exists", which is exactly the stale-diagnostic
-                            // trap this same file's history (see docs/ai-economy-mover-materialization-
-                            // decision-tree.md, "Known trap") already burned us on once. Replicate the
-                            // SAME two downstream checks, read-only, so the real rejection reason is
-                            // visible instead of falling through to the generic NoMoverExists below.
+                            // The shallow gates above (mirrored from IsCandidateEligible +
+                            // ResolveGarrisonExtractionCandidate) are NOT the whole real gate: the
+                            // real loop also runs the roughEstimate AP pre-check and the full
+                            // PlanEconomyCompletion (donor loan, real path for the PREVIEW army,
+                            // composition/lightening, authoritative AP, StrategicSpendability)
+                            // before accepting a candidate. Replicate the SAME two downstream
+                            // checks, read-only, so the real rejection reason is visible instead of
+                            // falling through to the generic NoMoverExists below (see
+                            // docs/ai-economy-mover-materialization-decision-tree.md, "Known
+                            // trap").
                             string prepDetailG = "n/a";
                             bool prepFeasibleG = false;
                             if (shallowEligibleG)
@@ -465,12 +447,12 @@ namespace Game.Ai.V2
                             : SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex);
                         bool cPath = atTarget || (a.CurrentMovement > 0 && nextStep.HasValue);
                         bool shallowEligible = cMobile && cThreat && cClaimed && cDonorConflict && cPath;
-                        // 2026-09-15 — same reasoning as the garrison-extraction branch above: the
-                        // shallow checks here are only a mirror of IsCandidateEligible, not of the
-                        // full PlanEconomyCompletion the real loop (line ~1305) runs against this
-                        // exact army once selected. Replicate that final gate too so a direct-army
-                        // candidate that looks ELIGIBLE here but fails on donor loan / AP / spendable
-                        // resources shows its real reason instead of the generic NoMoverExists below.
+                        // Same reasoning as the garrison-extraction branch above: the shallow
+                        // checks here mirror only IsCandidateEligible, not the full
+                        // PlanEconomyCompletion the real loop runs against this army once selected.
+                        // Replicate that final gate too so a direct-army candidate that looks
+                        // ELIGIBLE here but fails on donor loan / AP / spendable resources shows
+                        // its real reason.
                         string prepDetail = "n/a";
                         bool prepFeasible = false;
                         if (shallowEligible)
@@ -493,11 +475,11 @@ namespace Game.Ai.V2
                             + $"=> ELIGIBLE={shallowEligible && prepFeasible}");
                     }
                 }
-                // P0-2 — a structurally legal container existed (Shell/Host/Create) for at least one
-                // candidate this pass and was rejected only for exceeding the AP envelope/pool: that
-                // is a repriceable funding shortfall, not a genuine absence of any way to get a
-                // builder. RepriceThisTurn lets the allocator fund it properly instead of the
-                // candidate quietly retrying next turn under RetryNextTurn with no larger envelope.
+                // A structurally legal container existed (Shell/Host/Create) for at least one
+                // candidate this pass and was rejected only for exceeding the AP envelope/pool:
+                // that is a repriceable funding shortfall, not a genuine absence of any way to get
+                // a builder. RepriceThisTurn lets the allocator fund it instead of the candidate
+                // retrying next turn under RetryNextTurn with no larger envelope.
                 if (economyBuilderShortfallAp.HasValue)
                     return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
                         economyBuilderShortfallAp.Value,
@@ -507,12 +489,12 @@ namespace Game.Ai.V2
                     "no free hero can advance toward economy site"));
             }
 
-            // 2026-09-14 review round 10 (P0) — the direct-army path (hero already a real, live
-            // field army) no longer applies its own composition change inside Provisioning either:
-            // PlanEconomyCompletion (pure) decides, and the SAME Execution apply path the
-            // garrison-extraction candidate already uses (TaskExecutor.ApplyEconomyPreparation)
-            // commits it — no live-army mutation happens inside Provisioning for ANY Economy actor
-            // any more, extracted or not. `identityArmyId = hero.Id` since the hero is already real.
+            // The direct-army path (hero already a real, live field army) applies no composition
+            // change inside Provisioning either: PlanEconomyCompletion (pure) decides, and the SAME
+            // Execution apply path the garrison-extraction candidate uses
+            // (TaskExecutor.ApplyEconomyPreparation) commits it — no live-army mutation happens
+            // inside Provisioning for ANY Economy actor. `identityArmyId = hero.Id` since the hero
+            // is already real.
             EconomyCompletionPlan directPrep = PlanEconomyCompletion(player, root, ctx,
                 session.Snapshot, standingIntents, key, target, builderChoice, hero, hero.Id,
                 funded.Tentative.Ap, root.ActionPoints - session.ApClaimed);
@@ -532,14 +514,14 @@ namespace Game.Ai.V2
                     directPrep.OwnerKey, target.BuildResourceCost, target.BuildApCost);
             else
             {
-                // AI economy commitment/recovery audit (2026-09-15) — this hero cannot finish the
-                // build this turn, so it is genuinely a multi-turn delivery starting or continuing.
-                // Give Continuity a durable identity for it (mirrors the Hero-materialization path
-                // in CapabilityDeliveryEvaluator) so StrategicPhaseA's protectedActiveEconomyBuild
-                // protects the full H/E/M/T vector every later turn regardless of remaining travel —
-                // without this, InfrastructureFulfillment.ShouldReserveDeferredEconomyResources'
-                // one-turn horizon would have to (and used to) protect unconditionally on every turn
-                // of the walk, freezing resources far earlier than necessary on the very first turn.
+                // This hero cannot finish the build this turn, so it is a multi-turn delivery
+                // starting or continuing. Give Continuity a durable identity for it (mirrors the
+                // Hero-materialization path in CapabilityDeliveryEvaluator) so StrategicPhaseA's
+                // protectedActiveEconomyBuild protects the full H/E/M/T vector every later turn
+                // regardless of remaining travel — rather than
+                // InfrastructureFulfillment.ShouldReserveDeferredEconomyResources' one-turn horizon
+                // protecting unconditionally on every turn of the walk and freezing resources too
+                // early.
                 MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(player, new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Economy,

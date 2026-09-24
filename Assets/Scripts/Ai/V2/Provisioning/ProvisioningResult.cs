@@ -79,12 +79,11 @@ namespace Game.Ai.V2
         public int StateVersionAfter = -1;
         public int TransferredMemberCount;
 
-        // 2026-09-14 review round 6 (P0) — `bumpVersion` lets a caller that is itself the SOLE
-        // version-bump owner for its own execution result (TaskExecutor.StampVersion, during the
-        // deferred garrison-extraction Execution step) suppress this constructor's own bump so
-        // V2StateVersion is bumped exactly once per real mutation, not twice. Every other caller
-        // (Provisioning's own direct-army path, which has no separate StampVersion call for this
-        // mutation) keeps the default `true` — unchanged behaviour.
+        // `bumpVersion` lets a caller that is itself the SOLE version-bump owner for its own
+        // execution result (TaskExecutor.StampVersion, during the deferred garrison-extraction
+        // Execution step) suppress this constructor's bump so V2StateVersion is bumped exactly once
+        // per real mutation. Every other caller (Provisioning's direct-army path, which has no
+        // separate StampVersion call for this mutation) keeps the default `true`.
         public static ProvisioningResult Ok(ProvisionedMission m, int transferredMemberCount = 0,
             bool bumpVersion = true)
         {

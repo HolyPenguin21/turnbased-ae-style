@@ -297,13 +297,12 @@ namespace Game.Ai.V2
             if (exec.ExecutorKind != ScoutExecutorKind.Ground)
                 return ProvisionAir(player, root, ctx, session, funded, exec, target, key);
 
-            // Task 1/2/3 (2026-09-14, garrison recon materialization consistency) — identity uses
-            // the destination SHELL from the start for a garrison candidate (Task 3: the source
-            // garrison id must never leak into MoverArmyId / claims / durable intent), and the pair
-            // Assignment already pinned (BuildCandidates: source garrison + a then-free
-            // ReusableArmySelector shell) is re-resolved here as a pure PREFLIGHT probe — Provisioning
-            // must never re-search for "any" shell, or two funded missions in the same pass could
-            // silently agree on a container Assignment never actually reserved for both (Task 2).
+            // Identity uses the destination SHELL from the start for a garrison candidate: the
+            // source garrison id must never leak into MoverArmyId / claims / durable intent. The
+            // pair Assignment already pinned (BuildCandidates: source garrison + a then-free
+            // ReusableArmySelector shell) is re-resolved here as a pure PREFLIGHT probe —
+            // Provisioning must never re-search for "any" shell, or two funded missions in the same
+            // pass could silently agree on a container Assignment never reserved for both.
             int moverArmyId = exec.RequiresGarrisonExtraction ? exec.MaterializationArmyId : exec.Army.ArmyId;
             ArmyData garrisonArmy = null;
             ArmyData destinationShell = null;
@@ -316,17 +315,16 @@ namespace Game.Ai.V2
                 plannedExtractUnit = garrisonArmy == null
                     ? null : AiArmyRoles.BestSparableGarrisonRecce(player, garrisonArmy);
                 destinationShell = ResolveArmy(player, exec.MaterializationArmyId);
-                // Review round (2026-09-14) items 4/5 — the live re-check now goes through the SAME
-                // canonical ReusableArmySelector.IsReusableShell predicate Assignment's own shell
-                // search is built on (owner/controller/prison/garrison/aviation/commitment-claim),
-                // not a hand-rolled `Members.Count == 0` check that misses all of those. Also
-                // rejects a shell claimed earlier THIS session (another mission's MoverArmyId already)
-                // and one that already activated this turn (item 4) — ArmyActions.TransferMember
-                // would otherwise charge the incoming unit's ActivationApCost immediately, live,
-                // against root.ActionPoints, an AP spend this pass's ClaimedAp/
-                // ProvisioningSession.ApClaimed accounting has no channel to report without double-
-                // subtracting it. ActorCommitments here mirrors the exact construction
-                // ReconAssignmentPlanner.AssignFunded already used to admit this same pair.
+                // The live re-check goes through the SAME canonical
+                // ReusableArmySelector.IsReusableShell predicate Assignment's own shell search is
+                // built on (owner/controller/prison/garrison/ aviation/commitment-claim). It also
+                // rejects a shell claimed earlier THIS session (another mission's MoverArmyId) and
+                // one that already activated this turn — ArmyActions.TransferMember would otherwise
+                // charge the incoming unit's ActivationApCost immediately against
+                // root.ActionPoints, an AP spend this pass's ClaimedAp /
+                // ProvisioningSession.ApClaimed accounting has no channel to report without
+                // double-subtracting it. ActorCommitments here mirrors the exact construction
+                // ReconAssignmentPlanner.AssignFunded used to admit this pair.
                 ActorCommitments commitments = ActorCommitments.FromIntents(
                     MissionIntentRegistry.GetOrCreate(player).All
                         .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
