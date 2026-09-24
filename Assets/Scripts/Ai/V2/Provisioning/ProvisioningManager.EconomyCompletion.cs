@@ -22,13 +22,13 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
-        // The pure DECISION half of FinishEconomyBuilder: donor loan, route,
+        // The pure Economy completion DECISION: donor loan, route,
         // lightening/reinforcement composition, AP/resource feasibility. Kept separate so
         // Provisioning can compute and PIN this exact decision against a read-only preview (see
         // BuildGarrisonExtractionPreview) for a deferred garrison-extraction candidate — Execution
         // then only re-validates the volatile parts (AP, resources) and APPLIES the pinned
-        // Unload/Reinforcement, never re-deriving them. The direct-army path (FinishEconomyBuilder,
-        // below) calls this with the REAL live hero; every read here
+        // Unload/Reinforcement, never re-deriving them. The direct-army path (ProvisionEconomy)
+        // calls this with the REAL live hero; every read here
         // (Hex/Members/MaxMovement/CurrentMovement/HasActivatedThisTurn) is satisfied the same way
         // by a real ArmyData or by the preview. `identityArmyId` is `hero.Id` for the direct-army
         // path; for a preview it is the REAL container id when one already exists (Shell/Host) or

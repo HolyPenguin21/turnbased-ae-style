@@ -30,10 +30,9 @@ namespace Game.Ai.V2
             if (!CanCycle(root, hand, ctx))
                 return false;
 
-            // AI-MGR-02 §1 — no "preserve AP for maintenance/pressure" gate here any more. Draw is a
-            // first-class candidate in the end-of-turn tempo arbiter and is only chosen when its
-            // utility already beats the maintenance / pressure / Hold candidates. This stays a pure
-            // executor.
+            // No "preserve AP for maintenance/pressure" gate here: Draw is a first-class candidate
+            // in the end-of-turn tempo arbiter and is only chosen when its utility already beats
+            // the maintenance / pressure / Hold candidates. This stays a pure executor.
             CardData card = hand.DrawOne();
             if (card == null)
                 return false;

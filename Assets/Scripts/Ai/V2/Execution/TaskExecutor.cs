@@ -75,7 +75,7 @@ namespace Game.Ai.V2
         // Provisioned mission that produced this execution ledger row.
         public ProvisionedMission Source;
 
-        // RECON-AIR-06 — the REAL ArmyId this mission's actor resolved to, when it can differ from
+        // The REAL ArmyId this mission's actor resolved to, when it can differ from
         // ProvisionedMission.MoverArmyId. Ground matches the provisioned id; Raid stamps that
         // same real id when the operation starts. Air's AirLaunch is the one case that DOES differ:
         // Assignment bound the mission to a synthetic per-airfield negative id (no
@@ -122,10 +122,9 @@ namespace Game.Ai.V2
             get
             {
                 bool moved = StepsMoved > 0;
-                // 2026-09-14 review round 6 (P2) — a successful hero extraction IS a genuine
-                // successful action, not merely a state change; it used to report
-                // StateChanged=true/Succeeded=false, which telemetry/WasGenuineExecution read as a
-                // contradiction.
+                // A successful hero extraction IS a genuine successful action, not merely a state
+                // change (StateChanged=true/Succeeded=false would read as a contradiction to
+                // telemetry/WasGenuineExecution).
                 bool succeeded = ReachedGoal || moved || InfrastructureChanged || CombatChanged
                     || ActorMaterialized || EconomyPrepared;
                 bool changed = moved || EnteredStealth || StealthChanged
@@ -144,20 +143,16 @@ namespace Game.Ai.V2
 
     internal static class TaskExecutor
     {
-        // 2026-09-14 review round 7 (P1 — two execution lifecycles) — three helpers factor out
-        // logic Execute() and ExecuteStep() each independently re-implemented: the stale-plan
-        // short-circuit, the mover-resolve-failed short-circuit, and the MissionRevalidator
-        // stale-goal short-circuit. Each is parameterized to reproduce EXACTLY the per-caller
-        // behavior the two loops already had (Execute's batch model never signals NeedsReplan on a
-        // stale mover/goal and logs a "mover gone"/revalidation line ExecuteStep's incremental model
-        // doesn't; ExecuteStep does the opposite) — unifying an unexplained observable difference
-        // silently would risk changing AI behavior for whichever caller didn't have it, so those
-        // differences are preserved as explicit parameters rather than erased.
+        // Shared short-circuits of Execute() and ExecuteStep(): stale plan, mover-resolve failure
+        // and MissionRevalidator stale goal. The two callers differ observably (Execute's batch
+        // model never signals NeedsReplan on a stale mover/goal and logs a "mover
+        // gone"/revalidation line; ExecuteStep does the opposite), so those differences are
+        // explicit parameters.
         //
-        // Scout dispatch itself (ReconGroundExecutor.Run vs RunStep) stays UNMERGED on purpose —
-        // see docs/ai-economy-mover-materialization-decision-tree.md, "Review round 6", for why:
-        // Execute's multi-step lookahead and ExecuteStep's single-atomic-step contract are two
-        // different behaviors, not two copies of the same one.
+        // Scout dispatch itself (ReconGroundExecutor.Run vs RunStep) stays UNMERGED on purpose (see
+        // docs/ai-economy-mover-materialization-decision-tree.md): Execute's multi-step lookahead
+        // and ExecuteStep's single-atomic-step contract are two different behaviors, not two copies
+        // of the same one.
         private static bool TryHandleStalePlan(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
             List<ExecutionResult> results, bool enforceFreshPlan, bool logStalePlan)
@@ -250,19 +245,17 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // 2026-09-14 review round 9 (P1 — two execution lifecycles, final) — the ONE per-mission
-        // step lifecycle: stale-plan check, deferred-Economy materialization, mover resolve, stale-
-        // goal revalidation, kind dispatch, AP/version/resource stamping, result recording,
-        // reservation release. Both Execute() (batch adapter, `singleStepOnly: false`) and
-        // ExecuteStep() (`singleStepOnly: true`) call this and NOTHING ELSE per mission — neither
-        // re-implements any of it. `singleStepOnly` is an execution-STRATEGY switch, not a second
-        // lifecycle: it picks which of Recon/Raid's own two execution modes applies (continuous
-        // multi-step lookahead — Run/RunRaid — vs one atomic step — RunStep/RunRaidStep, the
-        // pre-existing difference those subsystems already expose), and reproduces the two small,
-        // pre-existing observable differences between the old duplicated bodies (Execute's batch
-        // model never sets NeedsReplan on a lost/stale mover or an unsupported kind, and logs where
-        // ExecuteStep's incremental model doesn't; ExecuteStep does the reverse) — preserved
-        // explicitly rather than silently unified, since neither was ever explained as a bug.
+        // The ONE per-mission step lifecycle: stale-plan check, deferred-Economy materialization,
+        // mover resolve, stale- goal revalidation, kind dispatch, AP/version/resource stamping,
+        // result recording, reservation release. Both Execute() (batch adapter, `singleStepOnly:
+        // false`) and ExecuteStep() (`singleStepOnly: true`) call this and NOTHING ELSE per mission
+        // — neither re-implements any of it. `singleStepOnly` is an execution-STRATEGY switch, not
+        // a second lifecycle: it picks which of Recon/Raid's own two execution modes applies
+        // (continuous multi-step lookahead — Run/RunRaid — vs one atomic step —
+        // RunStep/RunRaidStep, the difference those subsystems expose), and the two callers'
+        // observable differences (Execute's batch model never sets NeedsReplan on a lost/stale
+        // mover or an unsupported kind, and logs where ExecuteStep doesn't; ExecuteStep does the
+        // reverse).
         private static IEnumerator ExecuteMissionCore(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
             List<ExecutionResult> results, bool enforceFreshPlan, WorldSnapshot snapshot,
@@ -273,7 +266,7 @@ namespace Game.Ai.V2
                 yield break;
 
             int apBefore = root != null ? root.ActionPoints : 0;
-            // 2026-09-14 review round 5 (P1) — a deferred Economy garrison-extraction mission
+            // A deferred Economy garrison-extraction mission
             // carries a SYNTHETIC negative MoverArmyId (ProvisioningManager.
             // SyntheticGarrisonExtractionActorId) — the same "actor does not exist yet" pattern
             // ScoutExecutorKind.AirLaunch already uses. Materialization happens HERE, first, before
@@ -590,11 +583,10 @@ namespace Game.Ai.V2
             }
 
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
-            // 2026-09-21 Block C1 — the canonical sighting store below is the ONLY admissible
-            // source of strategic knowledge about this enemy. A global ArmyRegistry sweep used to
-            // stand here and declared ReachedGoal whenever the army was absent from the WORLD, so
-            // an enemy destroyed somewhere the player has never observed silently "completed" the
-            // interception. Absence of honest knowledge is TargetInvalidated (a lifecycle question
+            // The canonical sighting store below is the ONLY admissible source of strategic
+            // knowledge about this enemy — never a global ArmyRegistry sweep, which would let an
+            // enemy destroyed somewhere the player never observed "complete" the interception.
+            // Absence of honest knowledge is TargetInvalidated (a lifecycle question
             // Continuity answers), never a confirmed objective.
             AiMapMemory.KnownEnemySighting? witness = AiMapMemory.AllKnownEnemySightings(player)
                 .Where(s => s.ArmyId == enemyId && s.Owner != null && s.Owner != player
@@ -641,7 +633,7 @@ namespace Game.Ai.V2
             result.ActualActorArmyId = pm.MoverArmyId;
             result.CombatChanged |= trace.BattleOccurred;
 
-            // 2026-09-21 Block C1 — objective completion may only be read from the outcome of the
+            // Objective completion may only be read from the outcome of the
             // canonical gameplay operation this step just performed. The encounter-resolved
             // trace supplies BOTH the specific participant identity and its terminal fate;
             // a global registry sweep cannot prove either one, even if some battle occurred.
@@ -704,7 +696,7 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // AGG-RAID §10/§SupportReturn — four atomic legs. Execution never picks a different
+            // Four atomic legs. Execution never picks a different
             // target, a different base, re-scores anything, or creates a replacement mission: it
             // carries out exactly the plan Provisioning pinned onto `pm`.
             if (pm.RaidPhase == RaidMissionPhase.Return || pm.RaidPhase == RaidMissionPhase.SupportReturn
@@ -759,7 +751,7 @@ namespace Game.Ai.V2
                 targetHex = target.Value.Hex;
                 targetIsNeutral = target.Value.Owner != null && target.Value.Owner.IsNeutral;
 
-                // AGG-RAID P0#2 — defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget
+                // Defensive re-check only; RaidObjectiveEvaluator.IsNeutralRaidTarget
                 // is the ONE canonical neutrality decision, already applied by Provisioning before
                 // this step was ever scheduled. A target that flips to a non-neutral owner between
                 // provisioning and this execution step (e.g. another AI player claimed it mid-turn)
@@ -950,7 +942,7 @@ namespace Game.Ai.V2
         }
 
         // =====================================================================================
-        //  AGG-RAID §10/§SupportReturn — RETURN leg: at most ONE step of the mover (primary for
+        //  RETURN leg: at most ONE step of the mover (primary for
         //  Return, support for SupportReturn) toward the already-chosen base. The base is never
         //  re-selected here. On SupportReturn arrival, the support's completion is handed straight
         //  to Continuity (mirrors CompleteRaidReinforcement's direct-call pattern) and the step is
@@ -1040,7 +1032,7 @@ namespace Game.Ai.V2
         }
 
         // =====================================================================================
-        //  AGG-RAID §10 — REINFORCEMENT leg. Either exactly ONE transit step of the SUPPORT army,
+        //  REINFORCEMENT leg. Either exactly ONE transit step of the SUPPORT army,
         //  or (once it stands on the primary's hex) exactly ONE atomic transfer/swap transaction
         //  with NO movement in the same step. The primary never moves in this leg.
         // =====================================================================================
@@ -1121,7 +1113,7 @@ namespace Game.Ai.V2
                     actorIds: new[] { primary.Id, support.Id });
             }
 
-            // AGG-RAID §SupportReturn — a full/full swap displaced a primary member into support:
+            // A full/full swap displaced a primary member into support:
             // the whole support army now walks itself home instead of rejoining the fight. Hand
             // this off to Continuity right here, same direct-call pattern as CompleteRaidReinforcement
             // below, and skip the ordinary Assault-verification/CompleteRaidReinforcement path for
@@ -1199,7 +1191,7 @@ namespace Game.Ai.V2
 
             // Primary is full — trade out its most critically wounded member for the best fresh
             // body the support can spare (a straight swap needs no free slot on either side). A
-            // successful swap here is the AGG-RAID §SupportReturn trigger: the displaced unit only
+            // successful swap here is the SupportReturn trigger: the displaced unit only
             // exists in support now, so the whole support army must walk itself home afterward.
             UnitData weakest = primary.Members
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
@@ -1262,42 +1254,27 @@ namespace Game.Ai.V2
             return null;
         }
 
-        // 2026-09-14 review round 5 — the one real mutation site for a deferred Economy
-        // garrison-extraction mission. Applies the EXACT GarrisonExtractionCandidate pinned onto
-        // `pm` by Provisioning (pm.EconomyExtractionPlan — no re-resolve, see the plan field's own
-        // comment on ProvisionedMission) for real (ProvisioningManager.ApplyGarrisonExtraction —
-        // ArmyActions.CreateArmy/TransferMember, the one owner of this mutation, unchanged since
-        // round 2), then runs the SAME FinishEconomyBuilder tail the direct-army path already uses,
-        // now against the real live hero. `pm` is mutated in place — MoverArmyId flips from
-        // synthetic to real — so every caller downstream of this one (ExecuteStep's own Resolve just
-        // below, MissionContinuity, etc.) sees an ordinary, already-real mover from here on. Callers
-        // must NOT fall through to movement in the same step afterwards (see ExecuteStep/Execute) —
-        // this call alone is already CreateArmy + TransferMember + lightening/reinforcement, one
-        // canonical batch; a move is a separate step.
-        // 2026-09-14 review round 5 (P0 #2, P1 #6) — shared by both execution doors (the batch
-        // Execute() and the incremental ExecuteStep()) so a deferred Economy garrison-extraction
-        // mission is handled identically no matter which one runs it. Fully populates `result` and
-        // returns true when there was something deferred to handle at all (materialization attempted
-        // — success or failure, the caller must add `result` and stop this mission for this call);
-        // returns false when nothing was deferred, so the caller proceeds with its normal
-        // Resolve/mission-kind dispatch untouched.
+        // The one real mutation site for deferred pending work, shared by both execution doors
+        // (batch Execute() and incremental ExecuteStep()) so it is handled identically either way.
+        // Development: applies the pinned garrison extraction (pm.EconomyExtractionPlan) via
+        // ProvisioningManager.ApplyGarrisonExtraction. Economy: ApplyEconomyPreparation applies the
+        // pinned extraction (if any) and composition change — never a re-resolve. Fully populates
+        // `result` and returns true when there was something deferred to handle (success or failure
+        // — the caller must add `result` and stop this mission for this call); returns false when
+        // nothing was deferred, so the caller proceeds with its normal Resolve/mission-kind
+        // dispatch.
         //
-        // On success this is DELIBERATELY a terminal step of its own — it does not fall through to
-        // movement in the same call. MaterializeEconomyGarrisonBuilder alone is already
-        // CreateArmy + TransferMember + lightening/reinforcement (one canonical batch, mirroring the
-        // granularity FinishEconomyBuilder already used for the pre-existing direct-army path);
-        // bundling a MoveArmyRoutine on top of that in the same step would violate the one-mutation-
-        // per-step contract. `pm.MoverArmyId` is flipped from synthetic to real in place, so the
-        // NEXT admission pass finds this mission an ordinary, already-real direct-army mover — ready
-        // to move on its own step, exactly like any in-progress Economy mission already is.
+        // On success this is DELIBERATELY a terminal step: CreateArmy + TransferMember +
+        // lightening/reinforcement is already one canonical batch, and a move on top would violate
+        // the one-mutation-per-step contract. `pm.MoverArmyId` is flipped from synthetic to real in
+        // place, so the NEXT admission pass sees an ordinary, already-real mover.
         private static bool TryHandleDeferredEconomyMaterialization(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result,
             int apBefore)
         {
-            // 2026-09-14 review round 10 (P0) — this door now also covers a DIRECT-army Economy
-            // mission (hero already real) whose composition change and/or donor-loan suspend
-            // Provisioning left pinned but unapplied (pm.EconomyPreparationPending), not only a
-            // garrison-extraction candidate — see ApplyEconomyPreparation's own comment.
+            // This door also covers a DIRECT-army Economy mission (hero already real) whose
+            // composition change and/or donor-loan suspend Provisioning left pinned but unapplied
+            // (pm.EconomyPreparationPending) — see ApplyEconomyPreparation.
             if (pm.Kind != MissionKind.Economy && pm.Kind != MissionKind.Development)
                 return false;
             if (pm.Kind == MissionKind.Development)
@@ -1357,19 +1334,16 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // 2026-09-14 review round 10 (P0) — this is now the SOLE apply site for
-        // pm.EconomyExtractionPreparation, for BOTH shapes of pending Economy work: a
-        // garrison-extraction candidate (hero not yet real — EconomyExtractionGarrisonArmyId >= 0)
-        // AND a direct-army candidate whose hero was ALREADY real but whose composition change/
-        // donor-loan suspend Provisioning still left pinned rather than applying itself (round 10 —
-        // the direct-army path used to apply this synchronously inside Provisioning via the now-
-        // deleted FinishEconomyBuilder; no Economy actor is ever mutated inside Provisioning any
-        // more, extracted or not). Execution never re-plans here — Provisioning already computed and
-        // pinned the FULL decision (ProvisioningManager.PlanEconomyCompletion, run against a
-        // read-only preview for the extraction case, the real live hero for the direct case) — this
-        // function only APPLIES the pinned hero extraction (if any) and cheaply re-validates the two
-        // facts that can actually have shifted since Provisioning within the same batch pass (AP,
-        // resource spendability — never composition/donor/route, which are not re-derived).
+        // The SOLE apply site for pm.EconomyExtractionPreparation, for BOTH shapes of pending
+        // Economy work: a garrison-extraction candidate (hero not yet real —
+        // EconomyExtractionGarrisonArmyId >= 0) AND a direct-army candidate whose hero is already
+        // real but whose composition change/donor-loan suspend Provisioning left pinned. No Economy
+        // actor is ever mutated inside Provisioning. Execution never re-plans here — Provisioning
+        // already computed and pinned the FULL decision (ProvisioningManager.PlanEconomyCompletion,
+        // against a read-only preview for the extraction case, the real live hero for the direct
+        // case); this only APPLIES the pinned hero extraction (if any) and cheaply re-validates the
+        // two facts that can shift within the same batch pass (AP, resource spendability — never
+        // composition/donor/route).
         private static bool ApplyEconomyPreparation(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, int apBefore)
         {
@@ -1384,7 +1358,7 @@ namespace Game.Ai.V2
                 ArmyData garrison = Resolve(player, pm.EconomyExtractionGarrisonArmyId);
                 if (garrison == null)
                     return false;
-                // 2026-09-14 review round 5 — materialize the EXACT plan Provisioning already chose
+                // Materialize the EXACT plan Provisioning already chose
                 // and funded (pm.EconomyExtractionPlan), never a fresh re-resolve: a re-resolve with
                 // commitments:null/session:null runs under weaker constraints than the original
                 // choice and can legally pick a different — or already-claimed — hero/container/tier.
@@ -1417,10 +1391,9 @@ namespace Game.Ai.V2
             }
 
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            // 2026-09-14 review round 5/8 — the envelope is what Provisioning actually funded THIS
-            // mission (pm.ClaimedAp, now the AUTHORITATIVE PlanEconomyCompletion figure, not a coarse
-            // pre-composition estimate), minus whatever the hero extraction itself just spent — never
-            // the player's entire current AP pool.
+            // The envelope is what Provisioning actually funded THIS mission (pm.ClaimedAp, the
+            // AUTHORITATIVE PlanEconomyCompletion figure), minus whatever the hero extraction
+            // itself just spent — never the player's entire current AP pool.
             float spentSoFar = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
             float remainingEnvelope = Mathf.Max(0f, pm.ClaimedAp - spentSoFar);
             if (prep.RealAp > remainingEnvelope + eps
@@ -1472,11 +1445,11 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.TargetInvalidated;
                 return false;
             }
-            // 2026-09-14 review round 10 (P1) — no InfrastructureFulfillment.ReserveEconomyCost call
-            // here any more: Provisioning already reserved it (see the deferred branch of
-            // ProvisionEconomy) the moment this mission committed to being deferred, so the resource
-            // pool is honestly reduced for any OTHER Economy mission provisioned later in the same
-            // batch pass. Reserving again here would double-charge the ledger for one build.
+            // No InfrastructureFulfillment.ReserveEconomyCost call here: Provisioning already
+            // reserved it (see the deferred branch of ProvisionEconomy) the moment this mission
+            // committed to being deferred, so the resource pool is honestly reduced for any OTHER
+            // Economy mission provisioned later in the same batch pass. Reserving again here would
+            // double-charge the ledger for one build.
             if (prep.Donor != null)
             {
                 prep.Donor.Status = IntentStatus.Suspended;
@@ -1509,10 +1482,8 @@ namespace Game.Ai.V2
                 result.NeedsReplan = true;
                 yield break;
             }
-            // 2026-09-14 review round 4 — was left null for every Ground Economy mission (only
-            // Air/Raid stamped it). WorldAnalysis.Observation.PublishStepObservationDelta's
-            // EconomyDeliveryReady branch passes this straight through as the Actor-invalidation id
-            // — without it, that mark carried no actor at all, wasting half its own signal.
+            // WorldAnalysis.Observation.PublishStepObservationDelta's EconomyDeliveryReady branch
+            // passes this straight through as the Actor-invalidation id.
             result.ActualActorArmyId = army.Id;
             EconomyMissionTarget target = pm.EconomyTarget;
             if (army.Hex.Equals(target.TargetHex))
@@ -1524,8 +1495,7 @@ namespace Game.Ai.V2
                     : ExecutionStopReason.StepCompleted;
                 result.NeedsReplan = false;
                 result.FinalHex = army.Hex;
-                // 2026-09-14 review round 4 — was hardcoded 0f, which was honest before this step
-                // could ever spend AP without moving. A deferred mission that materializes directly
+                // A deferred mission that materializes directly
                 // onto its target hex (garrison.Hex == target.TargetHex — e.g. an in-place base)
                 // reaches this branch having already spent real AP (CreateArmy / an activation
                 // charge / lightening) with zero StepsMoved; ApCheck's live-pool-delta invariant
@@ -1682,10 +1652,9 @@ namespace Game.Ai.V2
         private static void StampVersion(ExecutionResult result)
         {
             if (result == null) return;
-            // 2026-09-14 review round 5 (P0 #3) — ActorMaterialized (a garrison-extraction
-            // CreateArmy/TransferMember) is a real world mutation with no movement/stealth/
-            // infrastructure/combat signal of its own to piggyback a bump on; it used to leave
-            // V2StateVersion stale despite Outcome.StateChanged already reporting true for it.
+            // ActorMaterialized (a garrison-extraction CreateArmy/TransferMember) is a real world
+            // mutation with no movement/stealth/infrastructure/combat signal of its own, so it
+            // bumps V2StateVersion explicitly.
             if (result.StepsMoved > 0 || result.EnteredStealth || result.StealthChanged
                 || result.InfrastructureChanged || result.CombatChanged || result.ActorMaterialized
                 || result.EconomyPrepared)

@@ -39,16 +39,14 @@ namespace Game.Ai.V2
             failReason: Mutated ? null : "air recon pass changed nothing");
     }
 
-    // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (round 4: actor/airfield/subset WHO
-    // is now picked by ReconAssignmentPlanner/ProvisioningManager, the same single owner Ground has;
+    // ARCH-02 §35 — EXECUTION ONLY. It receives an AirReconPlan (actor/airfield/subset WHO is
+    // picked by ReconAssignmentPlanner/ProvisioningManager, the same single owner Ground has;
     // AirReconPlanner only turns that binding, plus continuing wings, into this plan's shape — mode,
     // first-step gate and energy policy re-derived fresh as execution-input assembly, never a second
     // actor selection) and, for each airborne actor, asks AirReconStepDirector for the next tactical
     // decision and issues exactly the canonical Move / Strike / assignment-bookkeeping call it names.
     // It never chooses a mode, a step, a landing, a phase transition or whether a strike is
     // worthwhile — that all lives in the director, which is free to replan live on every call.
-    //
-    // AiTaskKind.AirRecon is retained only as the EXISTING landing-slot reservation primitive.
     internal static class ReconAirExecutor
     {
         internal sealed class ActorStepControl
@@ -66,13 +64,11 @@ namespace Game.Ai.V2
             }
         }
 
-        // RECON-AIR-06 (round 5) — `perMissionResults` collects one ExecutionResult PER air-executed
+        // `perMissionResults` collects one ExecutionResult PER air-executed
         // ProvisionedMission this pass, the SAME shape Ground's TaskExecutor produces, so each one
         // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like Ground's
-        // do. The aggregate `result` (AirReconExecutionResult) remains — it is still what the
-        // orchestrator logs as a pass-wide telemetry rollup — but it is no longer the ONLY thing
-        // produced; a caller that omits `perMissionResults` (older call sites / tests) still gets the
-        // aggregate only, exactly the previous behaviour.
+        // do. The aggregate `result` (AirReconExecutionResult) is the orchestrator's pass-wide
+        // telemetry rollup; a caller that omits `perMissionResults` gets the aggregate only.
         public static IEnumerator Execute(AirReconPlan plan, PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, WorldSnapshot snapshot, AirReconExecutionResult result = null,
             List<ExecutionResult> perMissionResults = null)
@@ -277,7 +273,7 @@ namespace Game.Ai.V2
         // an earlier sortie this pass consumed the AP/Energy, this launch is skipped and reported —
         // the executor does NOT re-plan a different subset or airfield.
         //
-        // RECON-AIR-06 — every exit path (including the early "skip, no replan" ones) reports a
+        // Every exit path (including the early "skip, no replan" ones) reports a
         // per-mission ExecutionResult when lp.Mission is set, so a ProvisionedMission that never
         // actually launched still gets a real ledger row (StepsMoved=0, an honest StopReason)
         // instead of silently vanishing from MissionOutcomeLedger/MissionContinuity.
@@ -432,10 +428,10 @@ namespace Game.Ai.V2
                 reservationTask.LandingHex = lp.LandingHex;
             }
 
-            // RECON-AIR-06 (round 6 / Bug A) — seed StrategicAnchor from the Assignment-bound
-            // mission target (pm.FocusHex), NOT the tactical first step. lp.FirstStepHex is where
-            // the wing is headed THIS step, not what it is flying FOR; feeding it in here is what
-            // let the anchor drift into a moving tactical waypoint. Mirrors Ground's pattern
+            // Seed StrategicAnchor from the Assignment-bound mission target (pm.FocusHex), NOT the
+            // tactical first step. lp.FirstStepHex is where the wing is headed THIS step, not what
+            // it is flying FOR; using it would let the anchor drift into a moving tactical
+            // waypoint. Mirrors Ground's pattern
             // (ReconGroundExecutor's `strategicAnchor` local = pm.FocusHex/ExecutionHex, re-affirmed
             // identically every call) — fall back to the tactical step only when no mission is
             // bound (should not normally happen for a fresh launch).
@@ -458,7 +454,7 @@ namespace Game.Ai.V2
                 + $"launch=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
                 + $"mode={assignment.Mode}; V1 task retained only as landing-slot reservation");
 
-            // RECON-AIR-06 — the real ArmyId now exists. From here, the synthetic negative ActorKey
+            // The real ArmyId now exists. From here, the synthetic negative ActorKey
             // Assignment used to hold the airfield's uniqueness claim is resolved to the real
             // ArmyId — that real id is what the per-mission result (and, through it, Continuity)
             // carries from now on, never the synthetic key.
@@ -472,7 +468,7 @@ namespace Game.Ai.V2
 
             if (continueAfterLaunch && launched.Controller != null && launched.CurrentMovement > 0
                 && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
-                // RECON-AIR-05 — anchor further live replanning at the SAME Refresh target this
+                // Anchor further live replanning at the SAME Refresh target this
                 // launch was bound to (lp.Mission.FocusHex), not a fresh pick.
                 yield return RunActor(player, root, ctx, snapshot, launched, result,
                     arrivalStrikeCheckPending: true, missionFocusHex: pm?.FocusHex, perMissionResult: perMission);
@@ -494,7 +490,7 @@ namespace Game.Ai.V2
             }
         }
 
-        // RECON-AIR-06 — shared per-mission ExecutionResult scaffold, mirroring how
+        // Shared per-mission ExecutionResult scaffold, mirroring how
         // TaskExecutor/ReconGroundExecutor seed one: Key/Source/StartHex from the ProvisionedMission,
         // ActualActorArmyId the REAL army id (>=0) once known (-1 = none yet / never materialised).
         private static ExecutionResult NewPerMissionResult(ProvisionedMission pm, HexCoord startHex, int actorArmyId) =>
@@ -508,7 +504,7 @@ namespace Game.Ai.V2
                 PlannedAtStateVersion = pm.PlannedAtStateVersion,
             };
 
-        // RECON-AIR-06 — the same "is the bound objective satisfied" question Ground's
+        // The same "is the bound objective satisfied" question Ground's
         // RefreshObjectiveSatisfied asks, reused verbatim here so Air's per-mission result carries
         // the SAME ReachedGoal/ObjectiveSatisfied semantics Ground's does.
         private static void FinalizePerMissionResult(PlayerSetupData player, ProvisionedMission pm, ExecutionResult er)
@@ -548,7 +544,7 @@ namespace Game.Ai.V2
         // resolves live liveness (lost / battle / landed / out of MP) and then issues the canonical
         // gameplay call the decision names.
         //
-        // RECON-AIR-05/06 — `missionFocusHex` is forwarded to every PlanStep call so the tactical
+        // `missionFocusHex` is forwarded to every PlanStep call so the tactical
         // planner's live replanning stays anchored at the bound target; `perMissionResult`, when
         // given, accumulates this actor's StepsMoved/FinalHex/StopReason for its ONE provisioned
         // mission this pass (a continuing wing with no fresh mission passes null — see Execute).
