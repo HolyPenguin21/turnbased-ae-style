@@ -89,7 +89,8 @@ namespace Game.Ai.V2
 
         // The canonical primitive: how much of resource `t` may actually be spent this turn.
         internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ResourceType t, string excludeOwner = null)
+            ResourceType t, string excludeOwner = null,
+            StrategicReservationReason? ignoreReason = null)
         {
             if (root == null)
                 return 0f;
@@ -97,10 +98,10 @@ namespace Game.Ai.V2
             if (player == null || ctx == null)
                 return legacy;
             StrategicReservedResource srr = StrategicResourceReservationLedger.Map(t);
-            float strategic = excludeOwner == null
+            float strategic = excludeOwner == null && ignoreReason == null
                 ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber, srr, root.GetResource(t))
                 : StrategicResourceReservationLedger.SpendableExcludingOwner(
-                    player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner);
+                    player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner, ignoreReason);
             float recovery = t == ResourceType.Energy
                 ? OutstandingRecoveryActivation(player, root, ctx).Energy : 0f;
             return SpendableWithRecovery(strategic, legacy, recovery);
@@ -112,6 +113,23 @@ namespace Game.Ai.V2
         // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
+            => FitsSpendable(player, root, ctx, cost, excludeOwner, ignoreReason: null);
+
+        // The Economy-completion gate: an Economy build that finishes THIS turn (Provisioning's
+        // completion stage, its Execution re-check, or a Phase A on-hex build). Every other
+        // owner's EconomyDeferredBuild hold is ignored — by contract such a hold belongs to a
+        // build that cannot complete this turn and only shields H/E/M/T from non-Economy spending
+        // (cards, Phase B, reactions), which keep using FitsSpendableResources. Reaction holds,
+        // other builds' proven EconomyBuildCompletion rows and the legacy recon-air pool still
+        // count, so two builds completing in the same turn are ordered by whoever claims first.
+        internal static bool FitsSpendableForEconomyCompletion(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, ResourceCost cost, string owner)
+            => FitsSpendable(player, root, ctx, cost, owner,
+                StrategicReservationReason.EconomyDeferredBuild);
+
+        private static bool FitsSpendable(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ResourceCost cost, string excludeOwner,
+            StrategicReservationReason? ignoreReason)
         {
             if (cost == null)
                 return true;
@@ -120,7 +138,8 @@ namespace Game.Ai.V2
                 int need = cost.Get(t);
                 if (need <= 0)
                     continue;
-                if (SpendableAmount(player, root, ctx, t, excludeOwner) + AiConfigV2.allocatorSliceEpsilon < need)
+                if (SpendableAmount(player, root, ctx, t, excludeOwner, ignoreReason)
+                    + AiConfigV2.allocatorSliceEpsilon < need)
                     return false;
             }
             return true;

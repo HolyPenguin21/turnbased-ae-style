@@ -127,14 +127,19 @@ namespace Game.Ai.V2
         // another action grab the freed resource), AND two reaction owners that share
         // Reason=StrategicReactionPass cannot shadow each other's revalidation. Used by the reaction
         // feasibility probe / re-probe (StrategicReactionPass §P1).
+        // `ignoreReason` additionally drops every row of that reason, whoever owns it. Its one
+        // legitimate use is StrategicSpendability.FitsSpendableForEconomyCompletion: a build that
+        // completes NOW is senior to other builds' EconomyDeferredBuild holds, which by definition
+        // cannot complete this turn and exist only to shield H/E/M/T from non-Economy spending.
         public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res,
-            string ignoreOwner)
+            string ignoreOwner, StrategicReservationReason? ignoreReason = null)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return 0f;
             float sum = 0f;
             foreach (StrategicResourceReservation r in e.Reservations)
-                if (r.Resource == res && (ignoreOwner == null || r.Owner != ignoreOwner))
+                if (r.Resource == res && (ignoreOwner == null || r.Owner != ignoreOwner)
+                    && (ignoreReason == null || r.Reason != ignoreReason.Value))
                     sum += Mathf.Max(0f, r.Amount);
             return sum;
         }
@@ -147,8 +152,8 @@ namespace Game.Ai.V2
         // As Spendable, but excluding the caller's own reservation by its EXACT Owner key (P1).
         // See Active(…, ignoreOwner).
         public static float SpendableExcludingOwner(PlayerSetupData player, int turn, StrategicReservedResource res,
-            float total, string ignoreOwner)
-            => Mathf.Max(0f, total - Active(player, turn, res, ignoreOwner));
+            float total, string ignoreOwner, StrategicReservationReason? ignoreReason = null)
+            => Mathf.Max(0f, total - Active(player, turn, res, ignoreOwner, ignoreReason));
 
         public static float SpendableAp(PlayerSetupData player, int turn, float totalAp) =>
             Spendable(player, turn, StrategicReservedResource.ActionPoints, totalAp);
