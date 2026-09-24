@@ -225,6 +225,42 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void LostAttackSupport_WeakPrimaryStaysRequestableForTheCurrentPass()
+        {
+            var primary = new ArmyData { Owner = Us, Hex = EnRoute };
+            primary.Members.Add(new UnitData { Owner = Us });
+            ArmyRegistry.Register(primary);
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement,
+                primary.Id, supportId: 9999);
+            intent.Attack.ReinforcementRequestedTurn = 5;
+            WorldSnapshot snap = DefendedSite(
+                new[] { Army(primary.Id, EnRoute, Weak()) }, new[] { OurBase });
+
+            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent,
+                intent.Attack, out _);
+
+            Assert.That(keep, Is.True);
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+            Assert.That(intent.Attack.ReinforcementRequestedTurn, Is.EqualTo(-1));
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
+
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                new[] { intent }, snap, null);
+            var inventory = new CapabilityInventory
+            {
+                ReusableEmptyArmies = new[] { new ArmyData { Owner = Us, Hex = OurBase } },
+            };
+            var demands = new List<AxisDemand>();
+            AggressionDemandEvaluator.AppendAttackDemands(snap, new[] { intent }, commitments,
+                inventory, new List<string>(), demands);
+
+            Assert.That(demands, Has.Count.EqualTo(1));
+            Assert.That(demands[0].Capability, Is.EqualTo(CapabilityKind.FieldCombatPower));
+            Assert.That(demands[0].ConsumerMissionKind, Is.EqualTo(MissionKind.Attack));
+            Assert.That(demands[0].ConsumerIntentKey, Is.EqualTo(intent.IntentKey));
+        }
+
+        [Test]
         public void SuccessfulAttackSupportDelivery_BindsActorAndStampsDeliveryTurn()
         {
             MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7);

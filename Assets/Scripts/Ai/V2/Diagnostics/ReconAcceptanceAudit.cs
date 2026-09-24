@@ -5,10 +5,10 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // Runtime acceptance collector for the Ground-Recon deep rework. The project does not have a
-    // V2 Unity-test harness, so acceptance is deliberately evidence-based: a scenario is PASS/FAIL
-    // only after the corresponding live situation actually occurred. Everything else is reported
-    // as NOT_OBSERVED at the end of the execution batch instead of being treated as success.
+    // Runtime acceptance collector for the Ground-Recon deep rework. It supplements EditMode
+    // structural tests with gameplay evidence: a runtime scenario is PASS/FAIL only after the
+    // corresponding live situation actually occurred. Everything else is reported as NOT_OBSERVED
+    // at the end of the execution batch instead of being treated as success.
     internal static class ReconAcceptanceAudit
     {
         private const string WeakRecceAttack = "weak-recce-opportunistic-attack";

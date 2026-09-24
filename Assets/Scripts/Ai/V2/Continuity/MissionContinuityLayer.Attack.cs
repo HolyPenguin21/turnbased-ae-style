@@ -61,6 +61,7 @@ namespace Game.Ai.V2
                 }
             }
 
+            bool supportLostThisPass = false;
             if (a.SupportArmyId.HasValue
                 && (a.Phase == AttackMissionPhase.Reinforcement
                     || a.Phase == AttackMissionPhase.SupportReturn)
@@ -70,6 +71,7 @@ namespace Game.Ai.V2
                 a.SupportArmyId = null;
                 a.SupportReturnHex = null;
                 a.ReinforcementRequestedTurn = -1;
+                supportLostThisPass = true;
                 if (a.Phase == AttackMissionPhase.SupportReturn)
                     a.Phase = AttackMissionPhase.Assault;
                 AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support #{lostSupportId} "
@@ -181,6 +183,14 @@ namespace Game.Ai.V2
             bool reinforcementPossible = a.SupportArmyId.HasValue
                 || AttackSupportCandidateExists(snap, a);
             if (reinforcementPossible)
+                return true;
+
+            // A vanished support is fresh shortage evidence. Keep this operation in
+            // Reinforcement for the rest of the current settle pass so Demand can re-emit the
+            // existing FieldCombatPower request. On the next reconciliation, if neither delivery
+            // nor an existing support candidate appeared, the ordinary RecoveryReturn fallback
+            // below remains authoritative.
+            if (supportLostThisPass)
                 return true;
 
             if (!a.OperationStarted)

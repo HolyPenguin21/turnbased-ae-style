@@ -7,6 +7,7 @@ using Game.Combat;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -54,7 +55,11 @@ namespace Game.EditorTests
         public void StarvationPressure_OneResourceTurnAddsOneHitAndKeepsStrongestEvidence()
         {
             var player = new PlayerSetupData { Nickname = "StarvationIdempotence" };
+            ResourceStarvationRegistry.DecayOncePerTurn(player, 7);
+            ResourceStarvationRegistry.RecordVerifiedBlock(player, ResourceType.Energy,
+                3f, 1f, 0f, 4f, 7);
             ResourceStarvationRegistry.DecayOncePerTurn(player, 8);
+            float before = ResourceStarvationRegistry.Pressure(player, ResourceType.Energy);
             ResourceStarvationRegistry.RecordVerifiedBlock(player, ResourceType.Energy,
                 5f, 1f, 0f, 6f, 8);
             ResourceStarvationRegistry.RecordVerifiedBlock(player, ResourceType.Energy,
@@ -63,7 +68,7 @@ namespace Game.EditorTests
                 7f, 1f, 0f, 8f, 8);
 
             Assert.That(ResourceStarvationRegistry.Pressure(player, ResourceType.Energy),
-                Is.EqualTo(AiConfigV2.starvationHitGain).Within(0.0001f));
+                Is.EqualTo(before + AiConfigV2.starvationHitGain).Within(0.0001f));
             Assert.That(ResourceStarvationRegistry.TryGetCurrentBlock(player, ResourceType.Energy,
                 8, out ResourceBlockEvidence evidence), Is.True);
             Assert.That(evidence.DemandValue, Is.EqualTo(11f));
@@ -79,6 +84,29 @@ namespace Game.EditorTests
             GroundCombatAdmissionRegistry.RecordEligibleForTest(raid, new[] { 1, 2 });
             GroundCombatAdmissionRegistry.RecordEligibleForTest(attack, new[] { 1, 2 });
             Assert.That(MissionAdmissionPolicy.Conflicts(raid, attack), Is.False);
+        }
+
+        [Test]
+        public void GroundCombatAdmission_TwoRaidsUseProvenAlternativeActors()
+        {
+            MissionProposal a = Raid(101, 1);
+            MissionProposal b = Raid(102, 1);
+            GroundCombatAdmissionRegistry.RecordEligibleForTest(a, new[] { 1, 2 });
+            GroundCombatAdmissionRegistry.RecordEligibleForTest(b, new[] { 1, 2 });
+
+            Assert.That(MissionAdmissionPolicy.Conflicts(a, b), Is.False);
+        }
+
+        [Test]
+        public void GroundCombatAdmission_TwoAttacksUseProvenAlternativeActors()
+        {
+            var owner = new PlayerSetupData { Nickname = "Enemy", ColorIndex = 2 };
+            MissionProposal a = Attack(owner, new HexCoord(5, 0), 1);
+            MissionProposal b = Attack(owner, new HexCoord(6, 0), 1);
+            GroundCombatAdmissionRegistry.RecordEligibleForTest(a, new[] { 1, 2 });
+            GroundCombatAdmissionRegistry.RecordEligibleForTest(b, new[] { 1, 2 });
+
+            Assert.That(MissionAdmissionPolicy.Conflicts(a, b), Is.False);
         }
 
         [Test]
@@ -138,6 +166,12 @@ namespace Game.EditorTests
             Assert.That(AttackTacticalOpportunity.RawCombatBodyStrength(new[] { scout }), Is.Zero);
             Assert.That(AttackTacticalOpportunity.RawCombatBodyStrength(new[] { scout, combat }),
                 Is.EqualTo(10f));
+
+            var ownScout = new UnitData { Attack = 40, Defense = 40 };
+            ownScout.Abilities.Add("r1s4");
+            var ownCombat = new UnitData { Attack = 6, Defense = 4 };
+            Assert.That(AiArmyRoles.IsGroundCombatBody(ownScout), Is.False);
+            Assert.That(AiArmyRoles.IsGroundCombatBody(ownCombat), Is.True);
         }
 
         private static ReconObjective Recon(float value) => new ReconObjective

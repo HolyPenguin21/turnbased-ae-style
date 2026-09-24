@@ -205,9 +205,9 @@ namespace Game.Ai.V2
             breakdown.ReconRefreshPressure = refreshPressure;
 
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
-            // AGG-RAID §3 — Aggression desire is computed ONLY from NEUTRAL targets. An ordinary
-            // enemy army must no longer by itself create Raid pressure; that is future Active
-            // Defence work within this same Aggression axis, not yet built.
+            // Raid opportunity is computed only from neutral targets. Hostile field armies do not
+            // manufacture Raid pressure; their honest threat severity feeds ActiveDefence below,
+            // within this same Aggression axis.
             float opportunity = opp.BestNeutralOpportunity.HasTarget
                 ? opp.BestNeutralOpportunity.OpportunityScore : 0f;
 
