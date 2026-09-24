@@ -23,10 +23,10 @@ namespace Game.Ai.V2
         public const float devLatentPotential = 0.5f;
 
         // Investment window (DevelopmentInvestmentGate). Laboratory / Factory are a late resource
-        // sink that must not compete with the main deck: they may spend only after the coarse
-        // four-resource headroom (spendable / 2x income, weakest resource) has stayed at or above
-        // the threshold for this many consecutive turns. The threshold is the radar's own "full
-        // surplus" point, so the radar and the gate describe the same economy.
+        // sink that must not compete with the main deck: a spend is allowed only when EVERY resource
+        // it consumes has kept its headroom (spendable / 2x income) at or above the threshold for
+        // this many consecutive turns. Resources it does not consume never matter. The threshold is
+        // the radar's own "full surplus" point, so the radar and the gate describe the same economy.
         public const float devInvestmentSurplusThreshold = devSurplusRampHi;
         public const int devInvestmentSurplusTurns = 2;
 

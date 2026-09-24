@@ -25,12 +25,6 @@ namespace Game.Ai.V2
             }
 
             AiHandData hand = AiHandRegistry.Peek(player);
-            if (!DevelopmentInvestmentGate.IsOpen(player, s.TurnNumber))
-            {
-                AiDebugLog.WriteDeduped("decision", "[AI][V2][Demand][Development] decision=HOLD "
-                    + "reason=investment_window_closed");
-                yield break;
-            }
             List<DevelopmentOpportunity> opportunities = DevelopmentOpportunityEvaluator.Enumerate(
                 s, player, root, hand, ctx, activeIntents);
 

@@ -13,7 +13,8 @@ namespace Game.Ai.V2
     //
     // The key carries exactly what DevelopmentOpportunityEvaluator.Enumerate reads, so an
     // unchanged key provably cannot change a Development decision:
-    //   * the investment window (DevelopmentInvestmentGate) — fixed for the turn once observed;
+    //   * which resources are inside the investment window (DevelopmentInvestmentGate) —
+    //     fixed for the turn once observed;
     //   * AP thresholds, resources and hand version;
     //   * facilities, offerings and bases;
     //   * every own army's composition (any unit may be the best Equipment recipient) and, for
@@ -30,7 +31,7 @@ namespace Game.Ai.V2
             IReadOnlyList<MissionIntent> activeIntents, int actionPoints,
             string resources, int handVersion, AiHandData hand = null, PlayerSetupData player = null) =>
             $"axis={DesireAxis.Development}"
-            + $"|window={(player != null && snapshot != null && DevelopmentInvestmentGate.IsOpen(player, snapshot.TurnNumber) ? 1 : 0)}"
+            + $"|window={(snapshot != null ? DevelopmentInvestmentGate.OpenMask(player, snapshot.TurnNumber) : "----")}"
             + $"|apfit={DevelopmentApAffordability(snapshot, hand, actionPoints)}"
             + $"|res={resources}"
             + $"|hand={handVersion}|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
