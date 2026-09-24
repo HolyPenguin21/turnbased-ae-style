@@ -73,6 +73,16 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
 - **C2-A сделано 2026-09-24** (ветка `refactor/c2a-axis-ledger-drop-axis-args`): оси убраны,
   удалены мёртвые `Initial`/`CommitDiscreteFollowupBorrow`/`ApDebited`, класс переименован
   `AxisBudgetLedger` → `ApBudgetLedger` (исторические docs не правились).
+- **C2-B анализ 2026-09-24 — сводить не нужно.** AP-учёты за ход: `PlayerRoot.ActionPoints`
+  (физика); `ApBudgetLedger` (ход: Phase A списывает, аллокатор берёт `Balance()` как потолок);
+  `_lockedClaims` аллокатора и `ProvisioningSession.ApClaimed` (один цикл admission); AP-строки
+  ledger — `EconomyBuildCompletion` (пишет Provisioning Economy, потребляет Phase A на следующей
+  re-admission) и `StrategicReactionPass` (Phase B → reaction round). Строки читают только Phase A/B
+  (`SpendableAp`); аллокатор и provisioner'ы (все, не только ProvisionAir) — `AP − ApClaimed`. Это
+  безопасно: completion-AP входит в `ClaimedAp` своей миссии в том же цикле, а стройка происходит
+  в re-admission сразу после шага (лог 14:03: 5/5 строк → построено), reaction-строка пишется после
+  цикла миссий. У учётов разные времена жизни (ход / цикл / фаза), слияние — высокий риск без
+  выявленной ошибки.
 
 ### C3. Жизненный цикл резерва экономической стройки — риск средний/высокий
 
