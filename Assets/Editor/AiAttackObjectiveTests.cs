@@ -146,7 +146,7 @@ namespace Game.EditorTests
         // ---- §83 B/J: fog of war and owner changes ---------------------------------------
 
         [Test]
-        public void Enumerate_EnemyFacility_IsTargetOnlyWhileKnownUndefended()
+        public void Enumerate_EnemyFacility_IsTargetDefendedOrNot()
         {
             var site = new HexCoord(4, 0);
             List<AttackObjective> open = AttackObjectiveEvaluator.Enumerate(
@@ -155,10 +155,14 @@ namespace Game.EditorTests
                 "an undefended enemy Facility is a destroy-it objective (drops the owner's income)");
             Assert.That(open[0].Target.Kind, Is.EqualTo(AttackTargetKind.Facility));
 
-            Assert.That(AttackObjectiveEvaluator.Enumerate(
-                    Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
-                        new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) })),
-                Is.Empty, "a defended Facility is a field-army fight, not a structure objective");
+            List<AttackObjective> defended = AttackObjectiveEvaluator.Enumerate(
+                Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
+                    new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) }));
+            Assert.That(defended, Has.Count.EqualTo(1),
+                "a defended Facility stays an Attack objective: winning there destroys it, and "
+                + "ActiveDefence defers that fight to Attack");
+            Assert.That(defended[0].DefenderCount, Is.EqualTo(1),
+                "its garrison/army is the objective's one defender package (§31)");
         }
 
         [Test]
@@ -177,8 +181,8 @@ namespace Game.EditorTests
             Assert.That(AttackObjectiveEvaluator.EvaluateTarget(
                     Snap(new[] { B(site, Red, isBase: false) }, new[] { OurBase },
                         new[] { Sighting(77, site, Red, Body(2f, 2f, 3f, 1)) }), target),
-                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Invalidated),
-                "a defender arriving turns the walk-in into a different operation");
+                Is.EqualTo(AttackObjectiveEvaluator.AttackTargetStatus.Continue),
+                "a defender arriving is the same objective; the win-chance gate decides the rest");
         }
 
         [Test]

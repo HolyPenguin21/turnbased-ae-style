@@ -8,7 +8,7 @@ namespace Game.Ai.V2
     // Metadata, not identity: see AttackTargetRef.Equals below.
     // Facility — a hostile non-Base structure (extractor, lab, factory). Walking onto it
     // undefended DESTROYS it (BuildingRegistry.CaptureOrDestroy), denying the owner its output;
-    // it is only ever an objective while known undefended (AttackObjectiveEvaluator.Enumerate).
+    // it is an objective whether defended or not (AttackObjectiveEvaluator.Enumerate).
     public enum AttackTargetKind { Base, Citadel, Facility }
 
     // ===========================================================================================

@@ -73,6 +73,13 @@ namespace Game.Ai.V2
                     .ThenBy(x => x.Threat.EnemyEta ?? int.MaxValue)
                     .ThenBy(x => x.Threat.Asset.Hex.Q).ThenBy(x => x.Threat.Asset.Hex.R)
                     .Select(x => x.Threat).First();
+                if (OnKnownForeignStructure(snap, chosen.Contact.Position.Value))
+                {
+                    AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
+                        $"[AI][V2][ActiveDefence][Objective] decision=DEFER enemy={group.Key} "
+                        + "reason=enemy_on_known_foreign_structure attack_owner_required");
+                    continue;
+                }
                 TaskScore score = ScoreThreat(snap, chosen);
                 var target = new ActiveDefenceMissionTarget
                 {
@@ -96,6 +103,25 @@ namespace Game.Ai.V2
 
             return result.OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.Target.EnemyArmyId).ToList();
+        }
+
+        // An enemy standing on a structure this player remembers as someone else's is never an
+        // intercept. Winning a fight on a hostile structure captures/destroys it — that is the
+        // Attack objective for the site (AttackObjectiveEvaluator.IsHostileAttackStructure, which
+        // takes the enemy as part of the site's one defender package, §31). Any other foreign
+        // owner is refused by the ground-move gate for a Combat step anyway (the structure reads
+        // as an undefended foreign takeover). Deciding it here, at admission, keeps the planner,
+        // Demand and Continuity on one answer: no objective, no shortage, no pursuit.
+        internal static bool OnKnownForeignStructure(WorldSnapshot snap, HexCoord hex)
+        {
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
+            if (buildings == null || snap.Observer == null)
+                return false;
+            for (int i = 0; i < buildings.Count; i++)
+                if (buildings[i].Hex.Equals(hex) && buildings[i].Owner != null
+                    && buildings[i].Owner != snap.Observer)
+                    return true;
+            return false;
         }
 
         public static ActiveDefenceObjective ForTrackedEnemy(WorldSnapshot snap, int enemyArmyId) =>
