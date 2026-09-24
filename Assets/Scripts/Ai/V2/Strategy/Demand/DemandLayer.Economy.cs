@@ -188,7 +188,7 @@ namespace Game.Ai.V2
                 ? SelectBaseDemandsForCurrentCommitment(baseRanked.ToList(), activeIntents)
                 : new List<AxisDemand>();
             // No local count cap: MissionAdmissionPolicy.Capacity(ExecutionLane.Economy) is already
-            // int.MaxValue downstream, and AxisBudgetLedger/MaterializationReservation/ResourceAllocator
+            // int.MaxValue downstream, and ApBudgetLedger/MaterializationReservation/ResourceAllocator
             // are the real, single owners of how many of these candidates can actually execute this
             // turn. A `.Take(N)` here duplicated that arbitration one layer too early and silently
             // discarded candidates the real allocator would have happily funded (see rejected=1/2 on

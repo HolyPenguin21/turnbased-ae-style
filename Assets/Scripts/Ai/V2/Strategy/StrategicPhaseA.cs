@@ -67,7 +67,7 @@ namespace Game.Ai.V2
     // MaterializationCandidateBuilder (candidate chains), MaterializationPortfolioSolver (jointly
     // feasible set), MaterializationExecutor (play), CapabilityDeliveryEvaluator (delivered amount
     // + lease), InfrastructureFulfillment (build lane). Charged to the requesting axis through the
-    // shared AxisBudgetLedger. Body is unchanged from the former StrategicManager.FulfillDemands.
+    // shared ApBudgetLedger. Body is unchanged from the former StrategicManager.FulfillDemands.
     public static class StrategicPhaseA
     {
         // economyAxisAuthoritative — true when `demands` reflects Economy's COMPLETE current view
@@ -78,7 +78,7 @@ namespace Game.Ai.V2
         // Economy demand means "not looked at", not "resolved", and must never be read as license
         // to drop the deferred-build hold. Defaults to true: both full-list callers rely on it.
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ApBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
@@ -705,7 +705,7 @@ namespace Game.Ai.V2
                 if (play.StateChanged)
                     result.StateChanged = true;
 
-                // §2.3 — measure the REAL AxisBudgetLedger balance drop around Debit so the check
+                // §2.3 — measure the REAL ApBudgetLedger balance drop around Debit so the check
                 // has three independently sourced facts: physical AP delta, the chain's reported
                 // ApSpent, and the actual ledger debit (catches a missing / wrong-amount Debit).
                 float chainLedgerBefore = ledger.Balance();
@@ -921,7 +921,7 @@ namespace Game.Ai.V2
         // capacity facts — those were already established once by the emitting axis (DemandLayer).
         private static bool TryPromotePersistenceDeferred(List<DemandState> states,
             List<DemandState> deferredStates, WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger, ActorCommitments commitments,
+            AiHandData hand, AiTurnContext ctx, ApBudgetLedger ledger, ActorCommitments commitments,
             MaterializationReservation reservation, float? witnessedUsefulApDemand)
         {
             if (deferredStates.Count == 0)

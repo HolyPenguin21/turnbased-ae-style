@@ -105,7 +105,7 @@ namespace Game.Ai.V2
                 devOpportunities: null);
             result.Demands += demands.Count;
 
-            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
+            ApBudgetLedger apLedger = ApBudgetLedger.Create(
                 UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);

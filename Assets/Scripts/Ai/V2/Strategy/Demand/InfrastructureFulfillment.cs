@@ -15,7 +15,7 @@ namespace Game.Ai.V2
     //  demands, BEFORE the Unit/Hero MaterializationCandidateBuilder loop.
     //
     //  ADMISSION ORDER (spec §1): build a candidate WITHOUT touching game state -> compute its
-    //  complete cost -> check the one shared AxisBudgetLedger AP pool -> check live
+    //  complete cost -> check the one shared ApBudgetLedger AP pool -> check live
     //  gameplay affordability -> ONLY THEN run the authoritative BuildingPlayExecutor transaction
     //  -> the caller debits the actual confirmed AP. A budget or affordability shortfall means the
     //  demand stays OPEN (nothing played, nothing spent) — Debit() is never used as after-the-fact
@@ -117,7 +117,7 @@ namespace Game.Ai.V2
 
         public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            AxisBudgetLedger ledger, MaterializationReservation reservation = null)
+            ApBudgetLedger ledger, MaterializationReservation reservation = null)
         {
             if (demand == null || ctx == null || root == null || player == null)
                 return InfraFulfillResult.No("missing args");

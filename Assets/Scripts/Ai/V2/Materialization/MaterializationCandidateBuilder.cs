@@ -240,7 +240,7 @@ namespace Game.Ai.V2
 
         public static List<DemandCandidate> TopForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
+            ApBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
             MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand,
             int k = 3,
             System.Collections.Generic.ISet<CardData> excludeCards = null,
@@ -525,7 +525,7 @@ namespace Game.Ai.V2
         // against the real workload.
         public static List<(MaterializationPlan plan, float followupAp)> AllFeasiblePlansForDemand(
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            AxisDemand demand, AxisBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
+            AxisDemand demand, ApBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
             MaterializationReservation reservation)
         {
             var raw = RawForDemand(

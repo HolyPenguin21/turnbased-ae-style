@@ -372,7 +372,7 @@ namespace Game.Ai.V2
 
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
-            AxisBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
+            ApBudgetLedger ledger = null, float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
@@ -388,7 +388,7 @@ namespace Game.Ai.V2
         private readonly List<MissionProposal> _missions;
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
-        private readonly AxisBudgetLedger _ledger;
+        private readonly ApBudgetLedger _ledger;
         private readonly float _protectedAp;
         private readonly float _protectedPhysicalEnergy;
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
@@ -439,7 +439,7 @@ namespace Game.Ai.V2
         public bool Converged { get; private set; }
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, AiAllocatorState state, AxisBudgetLedger ledger = null,
+            List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null,
             float protectedPhysicalEnergy = 0f, float protectedAp = 0f)
         {
             _snap = snap;

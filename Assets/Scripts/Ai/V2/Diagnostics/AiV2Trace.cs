@@ -330,10 +330,10 @@ namespace Game.Ai.V2
 
         // §2.3 — a committed Phase-A action: three INDEPENDENTLY sourced facts must agree —
         //  physicalDelta (root AP before/after), reportedSpend (the action's own ApSpent), and
-        //  axisDebit (the REAL shared AxisBudgetLedger.Balance drop, labelled with the requesting axis,
+        //  axisDebit (the REAL shared ApBudgetLedger.Balance drop, labelled with the requesting axis,
         //  the caller around ledger.Debit and BEFORE any discrete follow-up borrow). Catches a
         //  missing Debit, a Debit to the wrong axis, or a Debit of the wrong amount.
-        //  AxisBudgetLedger owns Phase-A shared-pool spend only; this is NOT compared against any
+        //  ApBudgetLedger owns Phase-A shared-pool spend only; this is NOT compared against any
         //  later mission execution spend (that is ResourceAllocator / _lockedClaims territory).
         public static void CheckPhaseAAp(string demandTraceId, DesireAxis axis,
             float physicalDelta, float reportedSpend, float axisDebit,

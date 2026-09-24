@@ -70,7 +70,7 @@ namespace Game.Ai.V2
         //  Raid is the first Aggression Objective type. Objective discovery reuses the shared
         //  CombatOpportunityAnalyzer (snapshot tier); the numbers below only shape Raid-LOCAL
         //  admission ordering, the resource envelope and the assembly/continuity guards. Cross-lane
-        //  ordering stays on BaseValue, AP budget stays on the radar / AxisBudgetLedger.
+        //  ordering stays on BaseValue, AP budget stays on the radar / ApBudgetLedger.
         // =======================================================================================
         // A known neutral target becomes a Raid AggressionObjective only if its canonical TaskScore
         // has some real strategic merit. This threshold is on the unified TaskScore scale (where

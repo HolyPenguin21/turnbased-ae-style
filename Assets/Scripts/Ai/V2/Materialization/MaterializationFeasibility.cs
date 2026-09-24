@@ -36,7 +36,7 @@ namespace Game.Ai.V2
         // (plan, followupAp, projected traits).
         internal static List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> FilterForDemand(
             IReadOnlyList<MaterializationPlan> raw, PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, AxisDemand demand, AxisBudgetLedger ledger, float reservedFollowupAp,
+            AiTurnContext ctx, AxisDemand demand, ApBudgetLedger ledger, float reservedFollowupAp,
             WorldSnapshot snapshot = null)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;

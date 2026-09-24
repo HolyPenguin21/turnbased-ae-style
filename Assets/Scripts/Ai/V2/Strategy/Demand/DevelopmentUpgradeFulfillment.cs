@@ -39,7 +39,7 @@ namespace Game.Ai.V2
 
         public static DevUpgradeResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            MaterializationPlan plan, AxisBudgetLedger ledger)
+            MaterializationPlan plan, ApBudgetLedger ledger)
         {
             DevelopmentOpportunity op = plan?.DevelopmentUpgrade ?? demand?.DevOpportunity;
             GenerationStep generation = plan?.Generation ?? op?.Generation;

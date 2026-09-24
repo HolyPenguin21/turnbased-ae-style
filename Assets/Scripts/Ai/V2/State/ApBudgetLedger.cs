@@ -23,17 +23,17 @@ namespace Game.Ai.V2
     //  lifecycle via its own _lockedClaims. Do NOT also call Debit() from RegisterProvisionSuccess.
     //  Phase B never reads it (it works off real remaining PlayerRoot resources).
     // ===========================================================================================
-    public sealed class AxisBudgetLedger
+    public sealed class ApBudgetLedger
     {
         private float _pool;
         private float _initialPool;
         private float _followupReserved;
 
-        public static AxisBudgetLedger Create(float realActionPoints)
+        public static ApBudgetLedger Create(float realActionPoints)
         {
             float allocatable = Mathf.Max(0f,
                 realActionPoints - Mathf.Max(0f, AiConfigV2.housekeepingApReserve));
-            return new AxisBudgetLedger
+            return new ApBudgetLedger
             {
                 _initialPool = allocatable,
                 _pool = allocatable,

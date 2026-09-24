@@ -182,7 +182,7 @@ reactivate when important contact becomes stale or blind again.
 | Strategic spendability ("does this cost fit spendable resources") | `State/StrategicSpendability` |
 | Actor occupancy truth | `State/ActorCommitments` |
 | Explicit resource reservations (owner-aware) | `StrategicResourceReservationLedger` (`State/StrategicResourceReservation.cs`) |
-| AP entitlement split | `State/AxisBudgetLedger` (AP-only) |
+| Phase-A AP pool (one scalar pool + follow-up reserve; the axis is a log label only) | `State/ApBudgetLedger` (AP-only) |
 | Turn tempo budget | `State/StrategicTempoBudget` |
 | Persistent-resource hold policy | `Strategy/PhaseB/HoldEvaluator` |
 | Raid actor eligibility | `IsStructuralRaidActor` field on the army snapshot in `WorldSnapshot`, computed by `Analysis/WorldAnalysis.Self.cs` (no separate `RaidActorEligibility` type any more — no "Ready" alias) |

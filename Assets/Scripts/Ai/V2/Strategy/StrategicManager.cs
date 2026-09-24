@@ -21,7 +21,7 @@ namespace Game.Ai.V2
     public static class StrategicManager
     {
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisBudgetLedger ledger,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ApBudgetLedger ledger,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,

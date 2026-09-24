@@ -8,7 +8,7 @@ namespace Game.Ai.V2
         //  STRATEGIC MANAGER  (Strategy V2 — centralized card play + capability preparation)
         //  NOT a DesireAxis and NOT radar-sliced. Two phases:
         //    Phase A — FulfillDemands: before mission planning, satisfies AxisDemands with cards.
-        //              AP is charged to demand.RequestingAxis via the shared AxisBudgetLedger.
+        //              AP is charged to demand.RequestingAxis via the shared ApBudgetLedger.
         //    Phase B — UseSurplus: after mission execution, spends GENUINELY remaining real
         //              AP/resources on proactive preparation + hand cycling. No radar slice.
         //  Both play cards ONLY through V2 CardPlayExecutor (the single authoritative V2 path).

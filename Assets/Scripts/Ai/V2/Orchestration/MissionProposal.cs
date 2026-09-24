@@ -81,7 +81,7 @@ namespace Game.Ai.V2
         // the real pool — the allocator must not count it again). For a Scout, and for many Raids,
         // H/M/T are all 0; a resource dimension existing in the shared contract does not oblige a
         // mission to spend from it. Checked GLOBALLY by ResourceAllocator against one post-Phase-A
-        // physical pool — never radar-sliced (AxisBudgetLedger stays AP-only, spec §18).
+        // physical pool — never radar-sliced (ApBudgetLedger stays AP-only, spec §18).
         public float HumanMinimum, HumanDesired, HumanMaximum;
         public float MaterialsMinimum, MaterialsDesired, MaterialsMaximum;
         public float TechMinimum, TechDesired, TechMaximum;

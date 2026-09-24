@@ -61,6 +61,9 @@ Reaction/EconomyBuildCompletion) и в `ClaimedAp` Provisioning.
   `DiscreteAdmissionBudget`×3, `Debit`×3, …), логи оставить с осью как телеметрией.
 - **B (только анализ сначала):** карта всех AP-учётов за ход и можно ли свести к одному пулу +
   ledger. Реализация — отдельным решением пользователя.
+- **C2-A сделано 2026-09-24** (ветка `refactor/c2a-axis-ledger-drop-axis-args`): оси убраны,
+  удалены мёртвые `Initial`/`CommitDiscreteFollowupBorrow`/`ApDebited`, класс переименован
+  `AxisBudgetLedger` → `ApBudgetLedger` (исторические docs не правились).
 
 ### C3. Жизненный цикл резерва экономической стройки — риск средний/высокий
 

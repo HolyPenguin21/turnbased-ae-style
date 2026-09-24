@@ -26,7 +26,7 @@ namespace Game.Ai.V2
         // Plain on/off switch for Base origination (0 disables it), not a count — DemandLayer.Economy
         // no longer caps how many extraction/collector/Base demands it emits per turn; that arbitration
         // belongs to MissionAdmissionPolicy.Capacity (already int.MaxValue for Economy) and the real
-        // downstream owners (AxisBudgetLedger, MaterializationReservation, ResourceAllocator). The old
+        // downstream owners (ApBudgetLedger, MaterializationReservation, ResourceAllocator). The old
         // per-family `.Take(1)` here duplicated that admission one layer too early and silently dropped
         // legal candidates the allocator would have funded (2026-09-21 fix).
         public const int economyMaxExpansionBaseDemandsPerTurn = 1;

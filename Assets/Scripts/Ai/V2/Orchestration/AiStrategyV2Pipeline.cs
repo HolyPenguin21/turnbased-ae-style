@@ -54,7 +54,7 @@ namespace Game.Ai.V2
     //        play. Axes expose AxisDemand[] ("what capability is missing"); StrategicManager decides
     //        how (which card, where, reuse vs. create an army, whether it is worth it). Phase A
     //        (FulfillDemands, before mission planning) is charged to demand.RequestingAxis via the
-    //        shared AxisBudgetLedger — the axis that needs the capability pays. Phase B (UseSurplus,
+    //        shared ApBudgetLedger — the axis that needs the capability pays. Phase B (UseSurplus,
     //        after mission execution) spends only genuinely-remaining real AP/resources, no slice.
     //      · HousekeepingManager (below) — the OFF-BUDGET post-mission army/garrison reorganisation
     //        + cleanup pass, guaranteed minimum (housekeepingApReserve), same way garrison reorg
@@ -297,7 +297,7 @@ namespace Game.Ai.V2
             //     HousekeepingManager reserve). Radar scales objective value only; Strategic Manager
             //     Phase A and the mission allocator spend the same scalar ledger. Round 3 — no recon-air AP carve-out any
             //     more: Recon Air no longer gets a pre-funding reservation Phase A can't touch.
-            AxisBudgetLedger apLedger = AxisBudgetLedger.Create(
+            ApBudgetLedger apLedger = ApBudgetLedger.Create(
                 UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
 

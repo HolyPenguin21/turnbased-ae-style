@@ -14,7 +14,7 @@ namespace Game.Ai.V2
     internal static class MaterializationDiagnostics
     {
         public static string ExplainNoChain(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, AxisDemand demand, AxisBudgetLedger ledger,
+            AiHandData hand, AiTurnContext ctx, AxisDemand demand, ApBudgetLedger ledger,
             ActorCommitments commitments, float reservedFollowup)
         {
             if (demand == null || hand == null)

@@ -25,7 +25,7 @@ namespace Game.Ai.V2
     //       there ANY usable actor for" without Demand itself knowing how matching works.
     //
     //  This is deliberately NOT a pre-funding reservation subsystem: it owns no cross-call mutable
-    //  room/ledger state, mirrors no allocator deferrals, and never runs before AxisBudgetLedger /
+    //  room/ledger state, mirrors no allocator deferrals, and never runs before ApBudgetLedger /
     //  ResourceAllocator have funded a mission. Assignment begins for real only after generic
     //  funding (ResourceAllocator.Pack) has picked a mission — see ProvisioningManager.
     // ===========================================================================================

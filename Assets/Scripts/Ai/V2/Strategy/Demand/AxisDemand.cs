@@ -16,7 +16,7 @@ namespace Game.Ai.V2
     //  TraitPreference values are added as later axes need them, without reshaping this contract.
     //
     //  Strategic Manager is NOT a DesireAxis and gets NO radar slice. A demand-driven card play
-    //  spends the shared AxisBudgetLedger AP pool. RequestingAxis affects value/priority and is
+    //  spends the shared ApBudgetLedger AP pool. RequestingAxis affects value/priority and is
     //  retained in spend telemetry; it does not own a separate AP or H/E/M/T wallet.
     // ===========================================================================================
 
