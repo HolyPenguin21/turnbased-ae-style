@@ -301,24 +301,41 @@ namespace Game.UI
                 // gated while it's active, but the turn can also change by other means.
                 turnController.TurnChanging += CancelAttachMode;
             }
-            RefreshDeckCountText();
-            RefreshHandCountText();
+            // BattleScreenUI Hide()/Show()s this panel mid-AI-turn. The debug view's
+            // HandChanged subscription survives that (see OnDisable), but the AI hand may have
+            // changed while hidden, and the human-side refreshes below would clobber the AI's
+            // deck counter with the human's own (0 in spectator mode) — so re-render instead.
+            if (_showingDebugHand)
+                RenderDebugHand(_debugHand);
+            else
+            {
+                RefreshDeckCountText();
+                RefreshHandCountText();
+            }
             RefreshDrawButtonInteractable();
         }
 
+        // _debugHand's HandChanged subscription is deliberately NOT dropped here: a battle
+        // Hide()/Show() cycle mid-AI-turn used to null it, leaving the debug hand and both
+        // counters frozen for the rest of that player's turn. Released in HideAiHandDebug /
+        // OnDestroy / the next ShowAiHandDebug instead.
         private void OnDisable()
         {
             if (_humanRoot != null)
                 _humanRoot.ResourcesChanged -= RefreshDrawButtonInteractable;
-            if (_debugHand != null)
-                _debugHand.HandChanged -= OnDebugHandChanged;
-            _debugHand = null;
             if (turnController != null)
             {
                 turnController.CardDraggingBlockedChanged -= OnCardDraggingBlockedChanged;
                 turnController.TurnStateChanged -= RefreshDrawButtonInteractable;
                 turnController.TurnChanging -= CancelAttachMode;
             }
+        }
+
+        private void OnDestroy()
+        {
+            if (_debugHand != null)
+                _debugHand.HandChanged -= OnDebugHandChanged;
+            _debugHand = null;
         }
 
         private void OnCardDraggingBlockedChanged(bool _) => RefreshDrawButtonInteractable();
