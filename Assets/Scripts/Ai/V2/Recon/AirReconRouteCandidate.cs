@@ -76,12 +76,12 @@ namespace Game.Ai.V2
             new Dictionary<ReconSector, float>();
         public ReconSector? CitadelSector;
         public float CitadelConfidence;   // 1.0 formally known, < 1 hidden directional bias only
-        // round 6 (Bug B) — the Assignment-bound mission target's sector, kept OUT of SectorPressure/
-        // AddPressure deliberately: it gets its own additive scorer term (mirroring CitadelSector)
-        // instead of being funnelled through the shared Clamp01 enemyInterest bucket, which is what
-        // let Citadel's separate additive term (airReconCitadelDirectionWeight, uncapped) outweigh a
-        // bound mission's realized contribution despite mission focus having the higher configured
-        // weight. See AirReconRouteScorer.Score's missionFocusDir term for the max-value proof.
+        // The Assignment-bound mission target's sector, kept OUT of SectorPressure/AddPressure
+        // deliberately: it gets its own additive scorer term (mirroring CitadelSector) instead of
+        // the shared Clamp01 enemyInterest bucket, which would cap it below Citadel's separate
+        // uncapped term (airReconCitadelDirectionWeight) despite mission focus having the higher
+        // configured weight. See AirReconRouteScorer.Score's missionFocusDir term for the max-value
+        // proof.
         public ReconSector? MissionFocusSector;
         // Own facility perimeter hexes whose intel has gone stale — a route that sweeps near one
         // earns FriendlyFacilityCoverValue.
@@ -93,13 +93,13 @@ namespace Game.Ai.V2
 
     internal static class AirReconAnchorModel
     {
-        // RECON-AIR-05 (round 5) — `missionFocusHex` is the SPECIFIC Refresh/Surveil target
+        // `missionFocusHex` is the SPECIFIC Refresh/Surveil target
         // Assignment already bound this actor to (ReconAssignmentPlanner.AppendAirCandidates) or
         // the durable ReconPatrolState.StrategicAnchor a continuing sortie was launched for
         // (ReconAirExecutor). It is folded in as ONE MORE strategic anchor/pressure source — the
         // SAME AddPressure pattern every other anchor already uses — rather than turning the route
         // scorer into a literal path-follower: the tactical planner still re-picks its immediate
-        // step live every turn, but that replanning now happens with the bound objective as part of
+        // step live every turn, but that replanning happens with the bound objective as part of
         // its own strategic pull, so it drifts toward it instead of ever picking an unrelated one.
         public static AirReconAnchorSet Build(WorldSnapshot snapshot, PlayerSetupData self, int turn,
             HexCoord? missionFocusHex = null)
@@ -122,7 +122,7 @@ namespace Game.Ai.V2
             // --- 0. Bound mission objective — the STRONGEST anchor when present: Assignment/
             //     Continuity already committed this actor to a specific Refresh/Surveil target, and
             //     the tactical planner must never independently drift toward a different one. ------
-            // round 6 (Bug B) — deliberately NOT routed through AddPressure/SectorPressure: that
+            // Deliberately NOT routed through AddPressure/SectorPressure: that
             // bucket feeds AirReconRouteScorer's `enemyInterest` term, which is Clamp01-capped
             // BEFORE airReconDirectionWeight is applied, so no configured weight here could ever
             // make its realized contribution exceed airReconDirectionWeight (0.65) — less than
@@ -479,12 +479,11 @@ namespace Game.Ai.V2
             float sectorPressure = x.Anchors != null ? x.Anchors.PressureFor(stepSector) : 0f;
             float enemyInterest = AiConfigV2.airReconDirectionWeight * Mathf.Clamp01(sectorPressure);
 
-            // --- MissionFocusDirectionValue — round 6 (Bug B) fix. The Assignment-bound mission
-            // target gets its OWN additive term, exactly like Citadel below, instead of being
-            // funnelled through the shared Clamp01(sectorPressure) bucket above (enemyInterest maxes
-            // at airReconDirectionWeight=0.65 no matter the anchor's configured weight — feeding
-            // mission focus through it made a bound commitment realize LESS pull than Citadel's own
-            // separate uncapped term). Max-value proof mission focus dominates Citadel when both
+            // --- MissionFocusDirectionValue. The Assignment-bound mission target gets its OWN
+            // additive term, exactly like Citadel below, instead of the shared
+            // Clamp01(sectorPressure) bucket above (enemyInterest maxes at
+            // airReconDirectionWeight=0.65 no matter the anchor's configured weight, which would
+            // give a bound commitment LESS pull than Citadel's separate uncapped term). Max-value proof mission focus dominates Citadel when both
             // point at the same step:
             //   missionFocusDir_max = airReconMissionFocusWeight            = 0.90
             //   citadelDir_max      = airReconCitadelDirectionWeight * 1.0  = 0.70

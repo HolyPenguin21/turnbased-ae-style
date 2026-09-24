@@ -68,9 +68,9 @@ namespace Game.Ai.V2
                 return null;
 
             HexMap map = ctx.Map;
-            // AI-AIR-01 — form the strategic direction FIRST from landmarks (enemy concentration,
+            // Form the strategic direction FIRST from landmarks (enemy concentration,
             // Citadel, own facility perimeters, corridors, frontier last). Supersedes the raw
-            // ReconDirectionModel enemy-sector read; cheat feeds DIRECTION only. RECON-AIR-05 —
+            // ReconDirectionModel enemy-sector read; cheat feeds DIRECTION only.
             // `missionFocusHex` folds the bound Recon mission's target in as one more anchor.
             AirReconAnchorSet anchors = AirReconAnchorModel.Build(snapshot, player, turn, missionFocusHex);
             // Live, not frozen. A wing launched from storage did not exist in the turn-start

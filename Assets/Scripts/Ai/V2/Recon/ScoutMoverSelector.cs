@@ -56,7 +56,7 @@ namespace Game.Ai.V2
         public readonly int StandOff;          // Distance(ExecutionHex, FocusHex); 0 for Explore
         public readonly bool AlreadyHidden;
         public readonly float RequiredAp;      // EffActivationAp + (stealth transition if Required && !hidden)
-        // RECON-AIR-01 — the concrete, actor-specific Energy this candidate's first activation
+        // The concrete, actor-specific Energy this candidate's first activation
         // needs. 0 for every Ground candidate (ground scouts never spend Energy to activate); a real
         // figure for AirExisting (the wing's own ActivationEnergyCost) / AirLaunch (Σ the launch
         // subset's LaunchEnergyCost), the SAME role RequiredAp already plays for AP.
@@ -77,11 +77,10 @@ namespace Game.Ai.V2
         public readonly HexCoord AirfieldHex;                    // AirLaunch only
         public readonly IReadOnlyList<UnitData> LaunchSubset;    // AirLaunch only
 
-        // Task 1 (2026-09-14, garrison-extraction materialization consistency) — a garrison
-        // candidate's identity is a PAIR: the garrison it would be pulled FROM, and the concrete,
-        // already-resolved empty shell it would be materialized INTO (resolved once by
-        // ReconAssignmentPlanner before this candidate is ever built — see BuildCandidates).
-        // Both ids may legitimately be 0. Whether this is a garrison-extraction candidate is the
+        // A garrison candidate's identity is a PAIR: the garrison it would be pulled FROM, and the
+        // concrete, already-resolved empty shell it would be materialized INTO (resolved once by
+        // ReconAssignmentPlanner before this candidate is ever built — see BuildCandidates). Both
+        // ids may legitimately be 0. Whether this is a garrison-extraction candidate is the
         // existing ArmySnapshot.RequiresGarrisonExtraction fact, never a numeric sentinel.
         public readonly int SourceGarrisonArmyId;
         public readonly int MaterializationArmyId;
@@ -191,13 +190,12 @@ namespace Game.Ai.V2
         // A Recce-capable unit/hero idle in the local Garrison is a legitimate ground mover too —
         // synthesized here as a single-member ArmySnapshot (ArmyId = the GARRISON's own id, flagged
         // RequiresGarrisonExtraction) so ScoutCostModel.PairCost prices it exactly like any other
-        // solo Recce, without a second cost model (project owner's own follow-up report, 2026-09-13
-        // — the same "idle capacity in Garrison is invisible" gap Economy's BestSparableEconomyHero
-        // fix already closed). Ground Explore/Refresh only — never Surveil, never air: those need
-        // vantage/route machinery this extraction path does not attempt to reproduce; a garrisoned
-        // Recce competing for Surveil/Air duty stays a separate, later task. AiArmyRoles.
-        // CanSpareGarrisonMember (the same predicate Raid's donor path and Economy's own extraction
-        // already trust) gates which unit, if any, is even considered.
+        // solo Recce, without a second cost model (the same idle-garrison capacity Economy's
+        // BestSparableEconomyHero uses). Ground Explore/Refresh only — never Surveil, never air:
+        // those need vantage/route machinery this extraction path does not attempt to reproduce; a
+        // garrisoned Recce competing for Surveil/Air duty stays a separate, later task.
+        // AiArmyRoles. CanSpareGarrisonMember (the same predicate Raid's donor path and Economy's
+        // own extraction already trust) gates which unit, if any, is even considered.
         public static List<ArmySnapshot> EligibleGarrisonExtraction(WorldSnapshot snap,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
         {

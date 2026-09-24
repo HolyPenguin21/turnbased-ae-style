@@ -20,10 +20,10 @@ namespace Game.Ai.V2
         public HexCoord LandingHex;
         public float Score;
         public string Reason;
-        // RECON-AIR-05/06 — the ProvisionedMission Assignment bound this launch to. Threaded down so
-        // the executor can (a) anchor the tactical planner's live replanning at the bound target
-        // (RECON-AIR-05) and (b) produce a per-mission ExecutionResult once the real ArmyId exists
-        // (RECON-AIR-06), instead of only the pass-wide aggregate.
+        // The ProvisionedMission Assignment bound this launch to. Threaded down so the executor can
+        // (a) anchor the tactical planner's live replanning at the bound target and (b) produce a
+        // per-mission ExecutionResult once the real ArmyId exists, instead of only the pass-wide
+        // aggregate.
         public ProvisionedMission Mission;
     }
 
@@ -42,7 +42,7 @@ namespace Game.Ai.V2
         // A provisioned air mission must always reach the outcome ledger, even when live plan
         // assembly rejects it before an actor can execute.
         public readonly List<AirReconSkippedMission> SkippedMissions = new List<AirReconSkippedMission>();
-        // RECON-AIR-05/06 — the ProvisionedMission a ReadyActorIds entry is bound to (AirExisting).
+        // The ProvisionedMission a ReadyActorIds entry is bound to (AirExisting).
         public readonly Dictionary<int, ProvisionedMission> ReadyMissionByActorId = new Dictionary<int, ProvisionedMission>();
         public string Summary;
 
@@ -144,7 +144,7 @@ namespace Game.Ai.V2
                 }
 
                 var launchCandidate = new AirLaunchCandidate(pm.AirfieldHex, null, pm.LaunchSubset);
-                // RECON-AIR-05 — anchor at the bound Refresh target Assignment already committed
+                // Anchor at the bound Refresh target Assignment already committed
                 // this launch to, so the live replan happens AROUND that objective, not a fresh one.
                 ReconAirStepPlanner.StepChoice? first = ReconAirStepPlanner.PickFromStorage(
                     player, ctx, launchCandidate, snapshot, mode, ctx.TurnNumber,

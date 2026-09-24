@@ -54,27 +54,23 @@ namespace Game.Ai.V2
                 .Select(building => building.Hex)
                 .Distinct();
 
-        // Coarse route-risk read — every known-AA-tagged enemy sighting (AiMapMemory.
-        // KnownEnemySighting.HasAntiAir, see that field's own comment) within raidThreatRadius of
-        // ANY hex the given leg crosses. Deliberately approximate (no per-unit AA radius is kept in
-        // memory, only the bool flag) — good enough to rank routes relative to each other, never
-        // meant as an exact prediction of what will actually react (that stays AntiAirRules' own
-        // live, honest-fog job at execution time). Moved here from AirStrikeTask (2026-08-26,
-        // project owner's own AirRecon-AA spec point 2) so AirReconTask's own route ranking reads
-        // the exact same route-risk number instead of a second, separately-drifting copy — same
-        // "one shared place" role this class already plays for TryPlanSortie/FreeLandingCapacity.
+        // Coarse route-risk read — every known-AA-tagged enemy sighting
+        // (AiMapMemory.KnownEnemySighting.HasAntiAir, see that field's own comment) within
+        // raidThreatRadius of ANY hex the given leg crosses. Deliberately approximate (no per-unit
+        // AA radius is kept in memory, only the bool flag) — good enough to rank routes relative to
+        // each other, never meant as an exact prediction of what will actually react (that stays
+        // AntiAirRules' own live, honest-fog job at execution time). The one shared route-risk
+        // number for every sortie kind.
         public static int KnownAaExposure(PlayerSetupData actor, HexPath leg) =>
             leg == null ? 0 : KnownAaExposureOver(actor, leg.Hexes);
 
         // Exposure already unavoidable given where the army is standing RIGHT NOW — e.g. AA that
         // was only revealed once the strike itself landed on this hex. Used exclusively by the
         // emergency-return searches below (TryReplan/TryReplanMultiTurnReturn) as a baseline: a
-        // route home necessarily starts inside whatever's already covering the current hex, so
-        // that part of its exposure was never an avoidable choice and must not disqualify the
-        // route the way a genuinely NEW zone should (2026-08-26 fix, project owner's own report —
-        // an aircraft that discovers AA only on arrival at its target had every route home
-        // hard-rejected forever after, since KnownAaExposure(path) sees the same already-standing-
-        // in-it sighting on literally every candidate path).
+        // route home necessarily starts inside whatever already covers the current hex, so that
+        // part of its exposure was never an avoidable choice and must not disqualify the route the
+        // way a genuinely NEW zone should — otherwise an aircraft that discovers AA only on arrival
+        // would have every route home rejected.
         public static int KnownAaExposureAt(PlayerSetupData actor, HexCoord hex) =>
             KnownAaExposureOver(actor, new[] { hex });
 
@@ -92,18 +88,18 @@ namespace Game.Ai.V2
         }
 
         // How many MORE aircraft `hex` can actually receive right now. The engine itself only
-        // capacity-checks the STORED container (new card deployment, see AviationRules.
-        // FreeAirfieldCapacity/ArmyActions.DeployUnitFromCard) — a landed, already-launched air
-        // army is a separate ArmyData the move layer never caps. This is deliberately MORE
-        // conservative than the engine strictly requires: it also counts every other already-
-        // landed air army's own aircraft against the same capacity, so the AI never voluntarily
-        // stacks more aircraft onto one airfield hex than its stated capacity, even though nothing
-        // stops it from doing so. Also subtracts every OTHER active sortie's own claim on this
-        // landing hex via ReservedLandingSlots below (2026-08-26 fix) — an in-flight sortie is
-        // just as real a claim on the slot it's headed for as an aircraft already sitting there.
+        // capacity-checks the STORED container (new card deployment, see
+        // AviationRules.FreeAirfieldCapacity/ArmyActions.DeployUnitFromCard) — a landed,
+        // already-launched air army is a separate ArmyData the move layer never caps. This is
+        // deliberately MORE conservative than the engine: it also counts every other already-landed
+        // air army's aircraft against the same capacity, so the AI never voluntarily stacks more
+        // aircraft onto one airfield hex than its stated capacity. It also subtracts every OTHER
+        // active sortie's claim on this landing hex via ReservedLandingSlots below — an in-flight
+        // sortie is as real a claim on its slot as an aircraft already sitting there.
+        //
         // `excluding` — the mover's own air army, so a sortie re-checking its ALREADY-chosen
-        // landing hex mid-flight doesn't count itself against its own capacity (both as a landed
-        // army and, via its own AiTask, as a reservation).
+        // landing hex mid-flight does not count itself against its own capacity (as a landed army
+        // or, via its own AirSortie, as a reservation).
         public static int FreeLandingCapacity(HexCoord hex, PlayerSetupData owner, ArmyData excluding = null)
         {
             int capacity = AviationRules.AirfieldCapacityAt(hex, owner);
@@ -118,18 +114,15 @@ namespace Game.Ai.V2
             return Mathf.Max(0, capacity - used);
         }
 
-        // How many of `hex`'s own free slots are already spoken for by OTHER active AirStrike/
-        // AirRecon/Rebase flights committed to land there but not physically there yet (still outbound,
-        // or inbound but not yet arrived — see AiTask.LandingHex's own comment). Landed aircraft
-        // are deliberately NOT counted again here — FreeLandingCapacity's own ArmyRegistry loop
-        // above already counts anything physically sitting on `hex` right now, landed or not;
-        // double-counting a task whose army has already arrived would undercount capacity for
-        // nothing. `excludingTask` lets a sortie re-checking its OWN already-chosen landing hex
-        // exclude its own prior claim, the same role FreeLandingCapacity's own `excluding`
-        // ArmyData param already plays against the ArmyRegistry loop (2026-08-26 fix, project
-        // owner's own report: two independently-launched 2-aircraft groups could otherwise both
-        // claim the same single free slot on a 2-capacity base, since neither's outbound flight
-        // was ever visible to the other's own capacity check until it actually landed).
+        // How many of `hex`'s free slots are already spoken for by OTHER active Strike/Recon/Rebase
+        // sorties committed to land there but not physically there yet (still outbound, or inbound
+        // but not yet arrived — see AirSortie.LandingHex). Landed aircraft are NOT counted again
+        // here — FreeLandingCapacity's own ArmyRegistry loop already counts anything physically
+        // sitting on `hex`. `excludingTask` lets a sortie re-checking its OWN already-chosen
+        // landing hex exclude its own prior claim, the same role FreeLandingCapacity's `excluding`
+        // plays against the ArmyRegistry loop. Without this, two independently-launched groups
+        // could both claim the same single free slot, since neither outbound flight is visible to
+        // the other's capacity check until it lands.
         private static int ReservedLandingSlots(HexCoord hex, PlayerSetupData owner, AirSortie excludingTask)
         {
             int reserved = 0;
@@ -290,35 +283,24 @@ namespace Game.Ai.V2
             knownAaExposure <= 0;
 
         // requiredSlots: how many aircraft need a free landing slot together — the WHOLE group
-        // lands as one stack, so a landing hex with fewer free slots than that must be rejected
-        // outright, not just "at least one" (2026-08-26 fix, project owner's own report — two
-        // aircraft could otherwise both plan to land on a base with only 1 free slot). vacatingAtStart:
-        // for a still-STORED group (TryPlanSortieFromStorage), these exact aircraft are themselves
-        // counted in FindAirfieldAt(startHex)'s own Members.Count right now, even though they're
-        // about to launch and free that many slots up — so a fully-packed airfield can still plan a
-        // round-trip sortie back to itself (the other 2026-08-26 edge case: without this, the sole
-        // airfield being full would make the AI think it could never fly a sortie that returns
-        // there, even though take-off itself vacates the slots this same sortie needs to land).
-        // Zero for an already-airborne army (TryPlanSortie/TryReplan) — it was never part of any
-        // airfield's stored container, so no double-count to undo.
-        // Landing choice rewritten 2026-08-26 (project owner's own follow-up spec, item 1+2 —
-        // "ПВО единым жёстким фильтром" / "не выбирать единственный самый дешёвый landing до
-        // расчёта score цели"). Two things used to be wrong together here: (a) a route crossing
-        // known AA was still a valid candidate, only ever losing a tie-break it could still win
-        // against an equally-cheap safe one, and (b) EVERY reachable owned airfield is now actually
-        // weighed against each other by safety-then-forwardness-then-cost, not just by raw total
-        // path cost — so AirStrikeTask.FindTarget/AirReconTask.FindReconHex, which both call this
-        // (via TryPlanSortie/TryPlanSortieFromStorage) once per candidate TARGET, get back the one
-        // truly best target+landing pairing for that target instead of a cheapest-path landing that
-        // happened to lock in before the target's own score (which leans on this Sortie's forward-
-        // landing bonus, see AirReconTask.FindReconHex) was ever computed. A landing whose route
-        // (either leg) carries ANY known AA exposure is dropped outright whenever the AA-free set is
-        // non-empty — never merely ranked down — matching TryReplan/TryPlanSortiePreferForwardLanding
-        // below. Returns null when no AA-free candidate reaches within the mover's own movement
-        // budget this turn — callers (LaunchAirStrike/LaunchAirRecon candidate search) must simply
-        // not offer that target as a launch option, per spec's own "cancel the voluntary task/don't
-        // launch" — there is deliberately no "fly the unsafe route anyway" fallback for a launch
-        // that hasn't happened yet.
+        // lands as one stack, so a landing hex with fewer free slots than that is rejected
+        // outright, not just "at least one".
+        //
+        // vacatingAtStart: for a still-STORED group (TryPlanSortieFromStorage), these exact
+        // aircraft are counted in FindAirfieldAt(startHex)'s Members.Count right now even though
+        // launching frees that many slots — so a fully-packed airfield can still plan a round-trip
+        // sortie back to itself. Zero for an already-airborne army (TryPlanSortie/TryReplan) — it
+        // was never part of any airfield's stored container.
+        //
+        // Landing choice: known AA is ONE hard filter, and every reachable owned airfield is
+        // weighed by safety-then-forwardness-then-cost before the caller computes the target's own
+        // score, so each candidate TARGET gets back its truly best target+landing pairing (not a
+        // cheapest-path landing locked in early). A landing whose route (either leg) carries ANY
+        // known AA exposure is dropped outright whenever the AA-free set is non-empty — never
+        // merely ranked down — matching TryPlanSortiePreferForwardLanding below. Returns null when
+        // no AA-free candidate reaches within the mover's movement budget this turn — callers must
+        // not offer that target as a launch option; there is deliberately no "fly the unsafe route
+        // anyway" fallback for a launch that has not happened yet.
         private static Sortie? PlanSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             System.Func<ArmyData, int> movementBudget, System.Func<HexPath, int> pathCost,
             int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
@@ -449,17 +431,14 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Repeat-strike spec (2026-08-26 follow-up) — can this army, PARKED at currentHex (no MP
-        // spent getting there — a repeat strike never moves the army, see AviationCombatPresenter.
-        // ResolveAirStrikeAtCurrentHex), still reach a safe owned airfield NEXT turn, once its own
-        // movement refreshes? Deliberately uses each aircraft's fresh EffectiveMoveMax (spec point 3:
-        // "движение, которое будет восстановлено на следующем ходу"), never the army's current,
-        // already-spent CurrentMovement — this is a forward-looking check for a turn that hasn't
-        // started yet. The repeat strike itself never costs its own MP (mirrors the live rule: a
-        // strike has never charged movement of its own, see AviationCombatPresenter.RunAirStrike —
-        // "repeat" reuses the exact same free mechanic), so no cost is deducted here beyond the
-        // return path itself. Same capacity/AA-hard-filter/forward-then-cost ranking every other
-        // landing search in this class already applies — one shared rule, never a second copy.
+        // Can this army, PARKED at currentHex (a repeat strike never moves the army, see
+        // AviationCombatPresenter.ResolveAirStrikeAtCurrentHex), still reach a safe owned airfield
+        // NEXT turn, once its movement refreshes? Uses each aircraft's fresh EffectiveMoveMax — the
+        // movement restored next turn — never the army's current, already-spent CurrentMovement.
+        // The repeat strike itself never costs MP (a strike never charges movement, see
+        // AviationCombatPresenter.RunAirStrike), so no cost is deducted beyond the return path
+        // itself. Same capacity/AA-hard-filter/forward-then-cost ranking as every other landing
+        // search in this class.
         public static bool CanStrikeNextTurnAndLand(ArmyData airArmy, HexCoord currentHex, HexMap map, PlayerSetupData owner,
             out HexCoord landingHex)
         {
@@ -471,21 +450,16 @@ namespace Game.Ai.V2
             return CanStrikeNextTurnAndLandCore(airArmy.Members, airArmy, currentHex, default, 0, map, owner, out landingHex);
         }
 
-        // Estimate-time overload (AiAggressionPlanner.EvaluateRaidSupport's raid-support scoring) —
-        // the launch candidate hasn't flown yet, so there's no ArmyData to validate/exclude from
-        // landing capacity, only the raw aircraft list a launch would use. Same rule otherwise; a
-        // candidate can only ever be "estimated eligible" here, real eligibility is still
-        // re-verified live once the army is actually sitting on the hex (TryEnterLoiterAtTarget/
-        // CanStrikeNextTurnAndLand(ArmyData, ...) above).
+        // Estimate-time overload for raid-support scoring — the launch candidate has not flown yet,
+        // so there is no ArmyData to validate/exclude from landing capacity, only the raw aircraft
+        // list a launch would use. Same rule otherwise; real eligibility is re-verified live once
+        // the army is actually sitting on the hex (CanStrikeNextTurnAndLand(ArmyData, ...) above).
         //
-        // launchAirfieldHex (2026-08-26 fix, project owner's own report): these aircraft are still
-        // physically sitting in THAT airfield's own stored container right now — the very launch
-        // this estimate is scoring is what will vacate their slots there. Same vacatingAtStart idea
-        // TryPlanSortieFromStorage/PlanMultiTurnSortieCore already apply for the outbound leg — here
-        // it's the second-strike LANDING leg that can otherwise wrongly see the home field as full
-        // of aircraft that, by the time a second strike would land, will already have left. Applies
-        // ONLY to that one specific airfield hex, never to any other owned airfield the search
-        // considers — those are unaffected by this launch either way.
+        // launchAirfieldHex: these aircraft are still physically in THAT airfield's stored
+        // container — the launch this estimate scores is what vacates their slots. Same
+        // vacatingAtStart idea TryPlanSortieFromStorage/PlanMultiTurnSortieCore apply for the
+        // outbound leg, here for the second-strike LANDING leg. Applies ONLY to that one airfield
+        // hex.
         public static bool CanStrikeNextTurnAndLand(IReadOnlyList<UnitData> aircraft, HexCoord currentHex,
             HexCoord launchAirfieldHex, HexMap map, PlayerSetupData owner, out HexCoord landingHex)
         {
@@ -539,16 +513,15 @@ namespace Game.Ai.V2
             return true;
         }
 
-        // The multi-turn analogue of TryReplan — an emergency (or merely "no same-turn route
-        // exists any more") return-to-base search for an army with a genuine safe-unlanded-ends
-        // margin left. Returns null the instant that margin is already zero — a fuel-exhausted
-        // group has no multi-turn safety net at all, TryReplan's own single-turn search (or holding
-        // position) is the only honest option left for it, exactly as before this feature existed.
+        // The multi-turn analogue of TryReplan — an emergency (or merely "no same-turn route exists
+        // any more") return-to-base search for an army with a genuine safe-unlanded-ends margin
+        // left. Returns null the instant that margin is zero — a fuel-exhausted group has no
+        // multi-turn safety net; TryReplan's single-turn search (or holding position) is the only
+        // honest option left for it.
         //
-        // AA handling softened to match TryReplan below (2026-08-26 P0 fix) — see that method's own
-        // comment for the full rationale. Only exposure a candidate route adds BEYOND
-        // KnownAaExposureAt(current hex) can disqualify or rank it down; exposure the army is
-        // already standing in is never held against any route, since every route starts there.
+        // AA handling matches TryReplan below: only exposure a candidate route adds BEYOND
+        // KnownAaExposureAt(current hex) can disqualify or rank it down; exposure the army already
+        // stands in is never held against any route, since every route starts there.
         public static MultiTurnSortie? TryReplanMultiTurnReturn(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
@@ -597,35 +570,24 @@ namespace Game.Ai.V2
 
 
 
-        // The "plan became invalid" fallback (target disappeared, landing base captured/destroyed/
-        // full, path became impossible, or the army lost effective MP) — prefers a newly reachable
-        // OWNED airfield over giving up outright. Tries the army's own CURRENT hex as the "action
-        // hex" (i.e. "can I still just fly straight home from here") first since that's always the
-        // cheapest possible sortie, then falls back to searching every owned airfield directly.
-        // Null means nothing is reachable THIS turn — callers must stop proposing voluntary
-        // aviation movement rather than strand the aircraft on a doomed order (per spec).
+        // The "plan became invalid" fallback (target disappeared, landing base
+        // captured/destroyed/full, path became impossible, or the army lost effective MP) — prefers
+        // a newly reachable OWNED airfield over giving up. Tries the army's own CURRENT hex as the
+        // "action hex" ("can I still fly straight home from here") first since that is always the
+        // cheapest sortie, then searches every owned airfield directly. Null means nothing is
+        // reachable THIS turn — callers must stop proposing voluntary aviation movement rather than
+        // strand the aircraft on a doomed order.
         //
-        // Ranking rewritten 2026-08-26 (project owner's own spec item 2 — "заново выбирать лучший
-        // достижимый аэродром... приоритет: достижимость и безопасность посадки, меньшая дистанция
-        // до текущей позиции, полезность как передовой база"), then AA handling hardened the same
-        // day in a follow-up spec (item 1 — "ПВО единым жёстким фильтром... не трактовать ПВО как
-        // простой штраф") — and then softened again the same day once that hard filter turned out
-        // to have its own P0 bug (project owner's own report): a strike that discovers AA only on
-        // ARRIVAL at its target had every route home rejected forever after, since the just-
-        // revealed sighting sits within raidThreatRadius of the army's own current hex and so
-        // covers literally every candidate path, safe ones included — ContinueSortie logged
-        // "no reachable owned airfield" every single step and the aircraft never moved again.
-        // TryReplan is ONLY ever called from ContinueSortie's own two "heading home" branches (see
-        // that method) — never from the voluntary launch/outbound path, which keeps its own
-        // separate absolute AA-free hard filter in PlanSortieCore/TryPlanSortiePreferForwardLanding
-        // untouched. So here, exposure already unavoidable from the army's CURRENT hex
-        // (KnownAaExposureAt) is no longer held against any candidate — every route necessarily
-        // starts inside it, so it was never an avoidable choice. Only exposure a route adds BEYOND
-        // that baseline still ranks it down (fewest-extra-exposure first), then shorter path cost,
-        // then forward usefulness — never an outright rejection, so a genuinely reachable airfield
-        // (capacity/movement permitting) always wins over holding position. Null still means no
-        // owned airfield is reachable at all this turn (capacity/movement), never "reachable but
-        // through AA."
+        // TryReplan is ONLY called from ContinueSortie's two "heading home" branches — never from
+        // the voluntary launch/outbound path, which keeps its own absolute AA-free hard filter in
+        // PlanSortieCore/TryPlanSortiePreferForwardLanding. Here, exposure already unavoidable from
+        // the army's CURRENT hex (KnownAaExposureAt) is not held against any candidate: a sighting
+        // revealed on arrival covers every path home, and treating it as a hard filter would ground
+        // the aircraft forever. Only exposure a route adds BEYOND that baseline ranks it down
+        // (fewest-extra-exposure first), then shorter path cost, then forward usefulness — never an
+        // outright rejection, so a reachable airfield (capacity/movement permitting) always wins
+        // over holding position. Null means no owned airfield is reachable at all this turn
+        // (capacity/movement), never "reachable but through AA".
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null)
@@ -663,31 +625,19 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Same reachability math TryPlanSortie/PlanSortieCore already apply for an already-airborne
-        // army (full round trip current hex -> actionHex -> a landing hex, all within
-        // airArmy.CurrentMovement) — used ONLY by ContinueSortie's own outbound-leg re-evaluation
-        // (2026-08-26, project owner's own spec item 2), which used to pin the search to the task's
-        // own already-chosen LandingHex and only widen to a full search once that one specific hex
-        // stopped working. Now every owned airfield is re-considered fresh on every step, so a
-        // safer/more-forward base can win at any point during the outbound leg, not just once the
-        // original choice breaks outright.
+        // Same reachability math TryPlanSortie/PlanSortieCore apply for an already-airborne army
+        // (full round trip current hex -> actionHex -> a landing hex, all within
+        // airArmy.CurrentMovement) — used ONLY by ContinueSortie's outbound-leg re-evaluation.
+        // Every owned airfield is re-considered fresh on every step, so a safer/more-forward base
+        // can win at any point during the outbound leg, not only once the original choice breaks.
         //
-        // Priority order corrected 2026-08-26 (project owner's own follow-up spec, item 1+3 — the
-        // old order was "ПВО → близость к текущей позиции → передовость", which meant a nearby
-        // REARWARD base almost always beat a genuinely useful forward one on the middle tier before
-        // forwardness ever got a say). Now: (1) known-AA route exposure is a hard filter, not a
-        // ranking tier at all — a landing whose route (either leg) carries ANY exposure is dropped
-        // outright whenever an AA-free candidate also completes the round trip, never merely ranked
-        // behind one (per spec's own "не трактовать ПВО как простой штраф"); (2) among the AA-free
-        // survivors, more useful as a forward base (NearestKnownEnemyDistance, shared with
-        // TryReplan's own tie-break so "more forward" always means the same thing everywhere) now
-        // outranks (3) lower total round-trip cost — the old straight-line "distance from current
-        // position" tie-break is gone entirely, folded into this same final cost tier via the
-        // route's own real totalCost, which already measures it more precisely. Returns null
-        // whenever no AA-free owned airfield offers a real round trip at all — the caller's own
-        // existing TryReplan fallback (abandon the target, fly straight home) already covers that
-        // per spec's "если не может закончить... идти к ближайшему безопасному аэродрому" — no
-        // separate handling needed here.
+        // Priority: (1) known-AA route exposure is a hard filter, not a ranking tier — a landing
+        // whose route (either leg) carries ANY exposure is dropped whenever an AA-free candidate
+        // also completes the round trip; (2) among the AA-free survivors, more useful as a forward
+        // base (NearestKnownEnemyDistance, shared with TryReplan's tie-break so "more forward"
+        // means the same thing everywhere) outranks (3) lower total round-trip cost. Returns null
+        // whenever no AA-free owned airfield offers a real round trip — the caller's TryReplan
+        // fallback (abandon the target, fly straight home) covers that.
         public static Sortie? TryPlanSortiePreferForwardLanding(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner || map == null)
@@ -732,10 +682,9 @@ namespace Game.Ai.V2
 
         // How close `hex` is to the nearest known enemy reference — the enemy citadel if known,
         // else the nearest known enemy army sighting, whichever is closer (int.MaxValue if neither
-        // is known at all). Shared "how forward is this base" yardstick for TryReplan/
-        // TryPlanSortiePreferForwardLanding's own tie-break (2026-08-26, spec item 2) AND
-        // AirReconTask.FindReconHex's own forward-landing scoring bonus (spec item 3) — one place so
-        // the two "which base counts as more forward" reads can never quietly disagree.
+        // is known). The one shared "how forward is this base" yardstick for
+        // TryReplan/TryPlanSortiePreferForwardLanding's tie-break and forward-landing scoring, so
+        // the reads can never quietly disagree.
         public static int NearestKnownEnemyDistance(PlayerSetupData owner, HexCoord hex)
         {
             int best = int.MaxValue;
@@ -747,30 +696,19 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Shared continuation logic for BOTH AirStrike and AirRecon — identical shape for either
-        // Kind (advance the outbound leg, flip to the return leg once the objective hex is reached,
-        // advance the return leg, complete on landing), so this exists exactly once instead of once
-        // per category, per the spec's own "small shared AI aviation helper if it prevents
-        // duplicate route/capacity logic" ask. AiAggressionPlanner.TryContinueAirStrikeTask/
-        // AiScoutPlanner.TryContinueAirReconTask are both thin wrappers around this.
+        // Shared continuation logic for every sortie kind — advance the outbound leg, flip to the
+        // return leg once the objective hex is reached, advance the return leg, complete on landing
+        // — so route/capacity logic exists exactly once.
         //
-        // Re-validates the plan fresh every call (per spec: must recheck before it launches OR
-        // moves) — 2026-08-26 rewrite (project owner's own spec item 2): the outbound leg no longer
-        // preferentially sticks to the task's own already-chosen LandingHex, it re-searches every
-        // owned airfield fresh via TryPlanSortiePreferForwardLanding on every single step, the same
-        // "never held onto, always re-derived" treatment the return leg's own TryReplan call already
-        // got. Both legs hard-filter to known-AA-free candidates first (2026-08-26 follow-up spec,
-        // item 1); the outbound leg then prefers forward usefulness over cost (TryPlanSortie
-        // PreferForwardLanding's own comment, spec item 3 — it's actively choosing where to base
-        // next), while the return leg still prefers lower cost over forward usefulness (TryReplan's
-        // own comment — it's just going home). Whenever NEITHER leg can find a complete safe round
-        // trip any more, the existing "turn for home NOW, abandon further progress toward the
-        // target" fallback below already does exactly what the spec asks ("если не может закончить
-        // текущий или следующий ход на безопасном
-        // аэродроме... идти к ближайшему безопасному аэродрому") — nothing about that fallback
-        // shape needed to change, only which landing hex wins when a plan DOES still exist. Returns
-        // null (propose nothing this step) whenever nothing reachable exists at all — callers must
-        // never strand the aircraft on a doomed order, per spec.
+        // Re-validates the plan fresh every call (must recheck before it launches OR moves): the
+        // outbound leg re-searches every owned airfield via TryPlanSortiePreferForwardLanding on
+        // every step, the same "always re-derived" treatment the return leg gets via TryReplan.
+        // Both legs hard-filter to known-AA-free candidates first; the outbound leg then prefers
+        // forward usefulness over cost (it is choosing where to base next), while the return leg
+        // prefers lower cost (it is just going home). Whenever NEITHER leg can find a complete safe
+        // round trip, the "turn for home NOW, abandon further progress toward the target" fallback
+        // below applies. Returns null (propose nothing this step) whenever nothing reachable exists
+        // at all — callers must never strand the aircraft on a doomed order.
         public static AiDecision ContinueSortie(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, AirSortie task,
             string logLabel, string outboundReason, float continuationScore)
         {
@@ -790,13 +728,12 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // Anti-loop memory (project owner's own spec — "AirRecon не должен бесконечно летать в
-            // один stale-гекс"): once a recon sortie is underway toward a hex, stamp it so
-            // AirReconTask.FindReconHex won't send another sortie to the same hex for
-            // AiConfig.airReconTargetCooldownTurns turns after this one ends (unless live enemy
-            // intel turns up on it). Re-stamped every outbound step — including the step that
+            // Anti-loop memory — AirRecon must not fly endlessly into one stale hex: once a recon
+            // sortie is underway toward a hex, stamp it so another sortie is not sent to the same
+            // hex for AiConfig.airReconTargetCooldownTurns turns after this one ends (unless live
+            // enemy intel turns up on it). Re-stamped every outbound step — including the step that
             // reaches it — so the cooldown counts from the sortie's last real progress. Recon only:
-            // AirStrike has its own targeting and no such loop to guard against.
+            // Strike has its own targeting and no such loop to guard against.
             if (task.Kind == AirSortieKind.Recon && task.Outbound)
                 AiMapMemory.RecordAirReconTarget(player, task.TargetHex, ctx.TurnNumber);
 
@@ -817,12 +754,9 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // 2026-09-21 — definite assignment. The Rebase branch below assigns `destination`
-            // either inside the exact-continuation case or inside the `!exactRebaseReady` replan
-            // (both of whose sub-branches assign or return), but the compiler cannot correlate the
-            // two `exactRebaseReady` tests, so the bare declaration left this method unbuildable
-            // (CS0165) after the multi-turn rebase work. Seed it with the task's current target —
-            // every reachable path still overwrites it before use, so behaviour is unchanged.
+            // Definite assignment: the Rebase branch below assigns `destination` in both
+            // exactRebaseReady cases, but the compiler cannot correlate the two tests (CS0165).
+            // Seeded with the task's current target; every reachable path overwrites it before use.
             HexCoord destination = task.TargetHex;
             if (task.Outbound)
             {

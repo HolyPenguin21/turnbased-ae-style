@@ -151,19 +151,14 @@ namespace Game.Ai.V2
             ArmySnapshot mover, ScoutMissionTarget target) =>
             EvaluateCandidate(ctx, player, snap, mover, target).Feasible;
 
-        // =======================================================================================
-        //  ELIGIBILITY FACADE — round 3 (Problem 3): the raw eligible-actor enumeration primitives
-        //  (EligibleMovers/CountEligibleMovers/StructuralCandidates/HasStructuralCandidate) are now
-        //  PRIVATE — internal building blocks BuildCandidates/MeasureCapacity/the assignment
-        //  diagnosis below are built on, never a second "how much capacity" answer another layer
-        //  could reach for instead of MeasureCapacity. Every non-Assignment caller gets exactly TWO
-        //  narrow, purpose-built doors instead:
-        //    · MeasureCapacity — the ONE aggregate "how much capacity" witness (Demand).
-        //    · HasEligibleMover — a single boolean "does ANY usable actor exist at all right now"
-        //      (CapabilityPoolExhaustionRegistry's pool-empty check — a structurally different
-        //      question from a witnessed capacity SIZE, so it keeps its own name instead of
-        //      overloading MeasureCapacity's contract).
-        // =======================================================================================
+        // ELIGIBILITY FACADE: the raw eligible-actor enumeration primitives
+        // (EligibleMovers/CountEligibleMovers/StructuralCandidates/HasStructuralCandidate) are
+        // PRIVATE — building blocks for BuildCandidates/MeasureCapacity/the assignment diagnosis
+        // below, never a second "how much capacity" answer another layer could reach for. Every
+        // non-Assignment caller gets exactly TWO narrow doors: MeasureCapacity — the ONE aggregate
+        // "how much capacity" witness (Demand); HasEligibleMover — a single boolean "does ANY
+        // usable actor exist at all right now" (CapabilityPoolExhaustionRegistry's pool-empty
+        // check, a structurally different question from a witnessed capacity SIZE).
         private static List<ArmySnapshot> EligibleMovers(WorldSnapshot snap, ScoutMissionTarget target,
             ISet<int> excludeArmyIds) => ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
 
@@ -189,17 +184,13 @@ namespace Game.Ai.V2
             return vantages.Count > 0 ? vantages[0].ExecutionHex : target.FocusHex;
         }
 
-        // =======================================================================================
-        //  B/D. BuildCandidates / AssignFunded — real Provisioning-time assignment. Only FUNDED
-        //     missions participate (moved here verbatim from ProvisioningManager, spec §14 — the
-        //     one-to-one solver + its scoring stay behaviourally identical, only the owner moves).
-        // =======================================================================================
-        // =======================================================================================
-        //  GARRISON GROUND ACTOR RESOLUTION — review round (2026-09-14), items 2/3/4. The ONE
-        //  materializable-garrison-candidate primitive both BuildCandidates (real funded assignment)
-        //  and MeasureCapacity (witnessed capacity / stealth witness) build on, so the two can never
-        //  drift into disagreeing about which garrison Recce is usable for which job class again.
-        // =======================================================================================
+        // B/D. BuildCandidates / AssignFunded — real Provisioning-time assignment. Only FUNDED
+        // missions participate (spec §14).
+        //
+        // GARRISON GROUND ACTOR RESOLUTION — the ONE materializable-garrison-candidate primitive
+        // both BuildCandidates (real funded assignment) and MeasureCapacity (witnessed capacity /
+        // stealth witness) build on, so the two never disagree about which garrison Recce is usable
+        // for which job class.
         private readonly struct GarrisonGroundActor
         {
             public readonly ArmySnapshot Mover;
@@ -300,16 +291,16 @@ namespace Game.Ai.V2
             // (see ScoutMoverSelector.EligibleGarrisonExtraction); the actual extraction happens
             // later, transactionally, in ProvisioningManager.Provision if this candidate wins.
             //
-            // Task 1 (2026-09-14) — a garrison Recce is only ever promised here if a concrete,
-            // currently-free, not-yet-activated destination shell already exists AT the garrison's
-            // own hex (MaterializableGarrisonActors — the SAME primitive MeasureCapacity's witness
-            // uses, item 2). Assignment must never fund a candidate Provisioning has no container to
-            // materialize into; `excludeArmyIds` doubles as the container exclusion set too, since a
-            // shell that wins a mission this pass becomes that mission's MoverArmyId (Task 3) and is
-            // folded into the caller's claimed-ids set for every subsequent mission. `reservedShellIds`
-            // is scoped to this one BuildCandidates call so two garrisons sharing a hex within the
-            // SAME mission's candidate list compete for distinct shells (item 3) — cross-mission
-            // dedup for the same shell is the batch solver's ActorKey uniqueness, unchanged.
+            // A garrison Recce is only promised here if a concrete, currently-free,
+            // not-yet-activated destination shell already exists AT the garrison's own hex
+            // (MaterializableGarrisonActors — the SAME primitive MeasureCapacity's witness uses).
+            // Assignment must never fund a candidate Provisioning has no container to materialize
+            // into; `excludeArmyIds` doubles as the container exclusion set, since a shell that
+            // wins a mission this pass becomes that mission's MoverArmyId and is folded into the
+            // caller's claimed-ids set for every subsequent mission. `reservedShellIds` is scoped
+            // to this one BuildCandidates call so two garrisons sharing a hex within the SAME
+            // mission's candidate list compete for distinct shells — cross-mission dedup for the
+            // same shell is the batch solver's ActorKey uniqueness.
             if (!surveil)
             {
                 var reservedShellIds = new HashSet<int>();
@@ -330,36 +321,29 @@ namespace Game.Ai.V2
             return list;
         }
 
-        // =======================================================================================
-        //  ROUND 4/5 — AIR CANDIDATES. Fuses WHICH air actor/airfield executes a funded Observation
-        //  mission into the SAME Assignment owner as Ground, instead of AirReconPlanner picking
-        //  independently and late. Preserves the hard invariant air never satisfies
-        //  Explore/GroundTraversal (never reached — caller filters), and never a stealth-Required /
-        //  positive-DetectionRisk mission (air cannot go hidden). `airPool` is the SAME ordered,
-        //  per-pass-capped candidate pool (ready standalone wings, then one hangar launch subset per
-        //  owned airfield, capped to ReconAirCapacityPolicy.MaxAirReconActorsPerTurn minus wings
-        //  already continuing a prior sortie) AssignFunded computes ONCE for the whole batch via
-        //  ReconAirCapacityPolicy.EvaluateDetailed — the same primitive ReconAirReservationPrepass
-        //  uses for sizing, so the actor pool Assignment considers can never diverge from what the
-        //  capacity signal promised Demand.
+        // AIR CANDIDATES. WHICH air actor/airfield executes a funded Observation mission is decided
+        // by the SAME Assignment owner as Ground. Hard invariants: air never satisfies
+        // Explore/GroundTraversal (never reached — caller filters) and never a stealth-Required /
+        // positive-DetectionRisk mission (air cannot go hidden). `airPool` is the SAME ordered,
+        // per-pass-capped candidate pool (ready standalone wings, then one hangar launch subset per
+        // owned airfield, capped to ReconAirCapacityPolicy.MaxAirReconActorsPerTurn minus wings
+        // already continuing a prior sortie) AssignFunded computes ONCE for the whole batch via
+        // ReconAirCapacityPolicy.EvaluateDetailed — the same primitive capacity sizing uses, so the
+        // pool Assignment considers can never diverge from what the capacity signal promised
+        // Demand.
         //
-        //  RECON-AIR-04 (round 5) — feasibility here is no longer the generic "can THIS actor fly
-        //  SOME useful step somewhere" SlotWouldFly probe (that check stays correct for RECON-AIR-02
-        //  capacity SIZING, a structural "can anything useful happen" question, but is not proof of
-        //  fitness for a SPECIFIC mission). Instead each candidate is proven against THIS mission's
-        //  actual target: Pick/PickFromStorage is called with the mission's FocusHex (Refresh) or
-        //  best reachable vantage (Surveil, AirExisting only — see round-4 scope note below) as the
-        //  RECON-AIR-05 mission-focus anchor, and the resulting step must make GENUINE progress
-        //  toward that target (strictly closer, or the target already falls within the resulting
-        //  vision) — not just clear MinimumUsefulScore somewhere unrelated. RequiredEnergy is now
-        //  populated from the SAME real Pick result (RECON-AIR-01), instead of being left at 0.
+        // Feasibility is proven against THIS mission's actual target, not the generic SlotWouldFly
+        // probe (that stays correct for capacity SIZING, a structural "can anything useful happen"
+        // question): Pick/PickFromStorage is called with the mission's FocusHex (Refresh) or best
+        // reachable vantage (Surveil, AirExisting only) as the mission-focus anchor, and the
+        // resulting step must make GENUINE progress toward that target (strictly closer, or the
+        // target already falls within the resulting vision). RequiredEnergy is populated from the
+        // SAME Pick result.
         //
-        //  Round-4 scope note (kept): an AirLaunch candidate (no live ArmyData yet) is restricted to
-        //  Refresh-kind targets — FocusHex is used directly, no vantage computation needed. Surveil
-        //  vantage selection (SurveilVantageSelector.Rank) needs a real ArmySnapshot position/vision,
-        //  which only AirExisting (an already-existing ready wing) has; extending vantage ranking to
-        //  a not-yet-launched hangar subset was judged out of this round's safe scope.
-        // =======================================================================================
+        // Scope: an AirLaunch candidate (no live ArmyData yet) is restricted to Refresh-kind
+        // targets — FocusHex is used directly. Surveil vantage selection
+        // (SurveilVantageSelector.Rank) needs a real ArmySnapshot position/vision, which only
+        // AirExisting has.
         private static void AppendAirCandidates(List<ScoutExecutionCandidate> list, WorldSnapshot snap,
             AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, ScoutMissionTarget target,
             ISet<int> excludeArmyIds, IReadOnlyList<AirObservationSlot> airPool)
@@ -440,11 +424,11 @@ namespace Game.Ai.V2
             }
         }
 
-        // RECON-AIR-04 — "makes genuine progress toward THIS target": the candidate step lands
-        // strictly closer to the mission's bound target than the actor's current position, OR the
-        // target already falls within the resulting vision footprint (so the step itself completes
-        // the observation). Proving MinimumUsefulScore alone (the old check) only proved SOME useful
-        // step exists somewhere — never that this one serves the mission it is about to be bound to.
+        // "Makes genuine progress toward THIS target": the candidate step lands strictly closer to
+        // the mission's bound target than the actor's current position, OR the target already falls
+        // within the resulting vision footprint (the step itself completes the observation).
+        // MinimumUsefulScore alone only proves SOME useful step exists somewhere, never that this
+        // one serves the mission it is about to be bound to.
         private static bool MakesGenuineProgress(HexCoord from, HexCoord candidateHex, HexCoord missionTarget, int vision)
         {
             int before = HexGridMath.Distance(from, missionTarget);
@@ -454,10 +438,10 @@ namespace Game.Ai.V2
 
         // AssignFunded — best one-to-one actor/execution-candidate assignment across every OPEN
         // funded Scout mission at once (bounded exhaustive search + lexicographic scoring; the
-        // portfolio is always small — a handful of funded Recon missions per pass). Returns the
-        // chosen ScoutExecutionCandidate per mission key, PLUS (round 3 / Problem 2) a structured
-        // rejection reason for every mission that got none — computed from the SAME cands[i] list
-        // the batch solve itself used, so Provisioning's classifier never re-derives eligibility.
+        // portfolio is always small). Returns the chosen ScoutExecutionCandidate per mission key,
+        // PLUS a structured rejection reason for every mission that got none — computed from the
+        // SAME cands[i] list the batch solve used, so Provisioning's classifier never re-derives
+        // eligibility.
         public static ReconAssignmentResult AssignFunded(
             WorldSnapshot snap, AiTurnContext ctx, PlayerSetupData player,
             List<FundedEntry> open, ISet<int> alreadyClaimedArmyIds, PlayerRoot root = null,
@@ -468,10 +452,10 @@ namespace Game.Ai.V2
             if (open == null || open.Count == 0)
                 return result;
 
-            // Task 1 (2026-09-14) — one ActorCommitments instance for the whole batch, built the
-            // same way Provisioning itself builds one, so Assignment's shell-freeness check
-            // (ReusableArmySelector.FindReusableAt, inside BuildCandidates) can never see a shell as
-            // free that Provisioning would then see as durably claimed by some OTHER active intent.
+            // One ActorCommitments instance for the whole batch, built the same way Provisioning
+            // builds one, so Assignment's shell-freeness check
+            // (ReusableArmySelector.FindReusableAt, inside BuildCandidates) can never see a shell
+            // as free that Provisioning would see as durably claimed by some OTHER active intent.
             ActorCommitments commitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
@@ -502,18 +486,15 @@ namespace Game.Ai.V2
                 return excluded;
             }
 
-            // Round 4/5 — the SAME ordered, per-pass-capped air-actor pool for every mission in this
-            // batch. Continuing airborne Recon wings participate in the same funded Assignment pool
-            // as ready wings (they are ordered FIRST, and ScoreScoutAssignment gives the incumbent a
-            // continuity PREFERENCE) — not an execution entitlement outside this solve. Computed once
-            // so the MaxAirReconActorsPerTurn ceiling is a property of the WHOLE batch, not silently
-            // re-granted per mission.
+            // The SAME ordered, per-pass-capped air-actor pool for every mission in this batch.
+            // Continuing airborne Recon wings participate in the same funded Assignment pool as
+            // ready wings (ordered FIRST; ScoreScoutAssignment gives the incumbent a continuity
+            // PREFERENCE) — not an execution entitlement outside this solve. Computed once so the
+            // MaxAirReconActorsPerTurn ceiling is a property of the WHOLE batch.
             //
-            // RECON-AIR-03 (Problem: filter-before-take) — feasibility (EvaluateAirStructuralFeasibility)
-            // MUST run BEFORE `.Take(remaining)`, never after: taking first and filtering second lets an
-            // early infeasible candidate silently consume one of the `remaining` slots that a later,
-            // genuinely valid candidate needed — the later candidate is truncated off the list
-            // before its feasibility is ever checked. `BuildFeasibleAirPool` is `.Where(...).Take(...)`.
+            // Feasibility (EvaluateAirStructuralFeasibility) MUST run BEFORE `.Take(remaining)`:
+            // taking first would let an early infeasible candidate consume a slot a later valid
+            // candidate needed. `BuildFeasibleAirPool` is `.Where(...).Take(...)`.
             List<AirObservationSlot> airPool = null;
             int airEnergyBudget = 0;
             int airActorCap = 0;
@@ -663,7 +644,7 @@ namespace Game.Ai.V2
                 : ScoutAssignmentFailureReason.MoverContended;
         }
 
-        // RECON-AIR-03 — the batch solve's CUMULATIVE air constraints, enforced HERE (not just as a
+        // The batch solve's CUMULATIVE air constraints, enforced HERE (not just as a
         // per-pool sizing cap) so no combination the solver could pick ever exceeds what a shared
         // physical resource can actually support across the WHOLE batch at once:
         //   · one actor/subset -> at most one mission (usedArmyIds — pre-existing, ActorKey already
@@ -677,8 +658,8 @@ namespace Game.Ai.V2
         //     independent of pool construction.
         //   · airEnergyBudget — the cumulative Energy TWO OR MORE AirLaunch candidates would consume
         //     together is checked against ONE shared budget, not against the full stockpile
-        //     independently per mission (the bug: two launches each individually affordable, but not
-        //     jointly). This is a SOFT, best-effort guard — Provisioning + Generic Funding remain the
+        //     independently per mission (two launches can be individually but not jointly
+        //     affordable). This is a SOFT, best-effort guard — Provisioning + Generic Funding remain the
         //     real resource authority (ProvisioningManager.ProvisionAir / ProvisioningSession.
         //     EnergyClaimed do the authoritative, sequential real check) — this only stops Assignment
         //     from greedily proposing a combination Provisioning is certain to reject.
@@ -708,19 +689,12 @@ namespace Game.Ai.V2
             {
                 ScoutExecutionCandidate cand = cands[i][c];
                 int aid = cand.ActorKey;
-                // Review round (2026-09-14) — a garrison-extraction candidate's ActorKey is the
-                // DESTINATION SHELL, which is enough to stop two missions claiming the same shell,
-                // but NOT enough to stop two missions each claiming a DIFFERENT free shell at the
-                // same garrison's hex for the SAME single sparable Recce (garrison #10 + shell #20
-                // for mission A, garrison #10 + shell #21 for mission B — distinct ActorKeys, same
-                // source unit). The source garrison is a second exclusive resource the solver must
-                // reserve alongside the shell.
-                // A garrison id of 0 is a real, valid identity (the game's very first garrison),
-                // not "no source garrison" — gating the source reservation on sourceId > 0 let two
-                // candidates that both extract from garrison #0 into two DIFFERENT free shells
-                // dodge the exclusivity check entirely. RequiresGarrisonExtraction is the existing
-                // fact that says "this candidate has a second exclusive resource to reserve";
-                // whether that resource's id happens to be 0 is irrelevant.
+                // A garrison-extraction candidate's ActorKey is the DESTINATION SHELL, which stops
+                // two missions claiming the same shell but NOT two missions each claiming a
+                // DIFFERENT free shell at the same garrison's hex for the SAME single sparable
+                // Recce. The source garrison is a second exclusive resource the solver must reserve
+                // alongside the shell. A garrison id of 0 is a real, valid identity, so the
+                // reservation is gated on RequiresGarrisonExtraction, never on sourceId > 0.
                 int sourceId = cand.SourceGarrisonArmyId;
                 bool hasGarrisonSource = cand.RequiresGarrisonExtraction;
                 if (usedArmyIds.Contains(aid)
@@ -781,10 +755,10 @@ namespace Game.Ai.V2
             chosen[i] = -1;
         }
 
-        // RECON-AIR-03 — real batch-solve entry point over ALREADY-BUILT candidate lists (the exact
-        // production `cands` AssignFunded builds via BuildCandidates/AppendAirCandidates), separated
-        // out so both AssignFunded and a focused test can drive the SAME solver/scoring/cumulative-
-        // constraint code without re-deriving live-world candidate generation.
+        // Real batch-solve entry point over ALREADY-BUILT candidate lists (the production `cands`
+        // AssignFunded builds via BuildCandidates/AppendAirCandidates), separate so both
+        // AssignFunded and a focused test drive the SAME solver/scoring/cumulative-constraint code
+        // without re-deriving live-world candidate generation.
         internal static ReconAssignmentResult AssignFromCandidates(List<FundedEntry> open,
             List<List<ScoutExecutionCandidate>> cands, float airEnergyBudget, int airActorCap)
         {
@@ -813,8 +787,8 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // RECON-AIR-03 — filter-THEN-take, never the reverse (see AssignFunded's call site comment
-        // for why the ordering itself was the bug). A small, independently-testable pure function.
+        // Filter-THEN-take, never the reverse (see AssignFunded's call site comment). A small,
+        // independently-testable pure function.
         internal static List<AirObservationSlot> BuildFeasibleAirPool(IEnumerable<AirObservationSlot> ordered,
             int take, System.Func<AirObservationSlot, bool> feasible)
         {
@@ -999,13 +973,13 @@ namespace Game.Ai.V2
             int obsLaneWitnessed = RevalidateLane(capacity.GenericObservationLaneActors);
 
             var idleActors = armies.Where(a => a != null && capacity.IdleGroundScouts.Contains(a.ArmyId)).ToList();
-            // Task 1 (2026-09-14) — a garrison Recce with a real, resolvable destination shell is
-            // witnessed capacity too, not just a funded-assignment candidate (BuildCandidates): the
-            // SAME materializable-actor model both must agree on, or Demand keeps requesting a fresh
-            // scout that a garrison could already supply. `claimed` folds in commitments (durable
-            // intents) AND every generic lane actor already claimed above, mirroring
-            // ScoutMoverSelector.EligibleGarrisonExtraction's own excludeArmyIds contract; a probe
-            // target with no stealth/Surveil requirement matches IdleGroundScouts' own generic scope.
+            // A garrison Recce with a real, resolvable destination shell is witnessed capacity too,
+            // not just a funded-assignment candidate (BuildCandidates): both must agree on the SAME
+            // materializable-actor model, or Demand keeps requesting a fresh scout that a garrison
+            // could already supply. `claimed` folds in commitments (durable intents) AND every
+            // generic lane actor already claimed above, mirroring
+            // ScoutMoverSelector.EligibleGarrisonExtraction's excludeArmyIds contract; a probe
+            // target with no stealth/Surveil requirement matches IdleGroundScouts' generic scope.
             HashSet<int> claimedForGarrison = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
             claimedForGarrison.UnionWith(capacity.GenericGroundLaneActors);
             claimedForGarrison.UnionWith(capacity.GenericObservationLaneActors);
@@ -1064,23 +1038,18 @@ namespace Game.Ai.V2
                 obsIdleWitnessed, stealthGroundWitnessed, stealthObsWitnessed);
         }
 
-        // =======================================================================================
-        //  RECON-AIR-02 (round 5) — the AIR half of Demand's "how much capacity" witness, folded
-        //  into the SAME canonical Assignment/capacity owner as MeasureCapacity's ground numbers
-        //  (moved here verbatim from the old ReconAirReservationPrepass.Run — a separate
-        //  orchestrated capacity-sizing stage with its own per-turn registry). Recomputed fresh on
-        //  every call, exactly like MeasureCapacity's own SolveReconFlow passes — no cross-call
-        //  state, no registry. Answers the SAME structural question MeasureCapacity answers for
-        //  ground: "does a usable actor structurally exist" (SlotWouldFly proves a route/energy-
-        //  opportunity exists RIGHT NOW), never "is it funded" — funding is Generic Funding's job.
+        // The AIR half of Demand's "how much capacity" witness, on the SAME canonical
+        // Assignment/capacity owner as MeasureCapacity's ground numbers. Recomputed fresh on every
+        // call, like MeasureCapacity's SolveReconFlow passes — no cross-call state, no registry.
+        // Answers the SAME structural question MeasureCapacity answers for ground: "does a usable
+        // actor structurally exist" (SlotWouldFly proves a route/energy opportunity exists RIGHT
+        // NOW), never "is it funded" — funding is Generic Funding's job.
         //
-        //  Two call sites (DemandLayer.ReconDemands calls this, then MeasureCapacity) rather than
-        //  one because ReconCapacitySnapshot.Build needs these numbers as an INPUT to size its own
-        //  Desired/deficit fields, which MeasureCapacity's ground witness then reads back out of the
-        //  built snapshot (capacity.AirborneReconLanes / SpareAirObservationSorties) — a genuine
-        //  ordering dependency, not a second capacity authority: both calls live on this one class,
-        //  and DemandLayer never talks to a separate air-specific class for capacity any more.
-        // =======================================================================================
+        // Two call sites (DemandLayer.ReconDemands calls this, then MeasureCapacity) because
+        // ReconCapacitySnapshot.Build needs these numbers as an INPUT to size its Desired/deficit
+        // fields, which MeasureCapacity's ground witness then reads back
+        // (capacity.AirborneReconLanes / SpareAirObservationSorties) — an ordering dependency, not
+        // a second capacity authority.
         public static (int AirborneWitnessed, int SpareLaunchWitnessed) MeasureAirCapacity(
             AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, WorldSnapshot snap,
             IReadOnlyList<ReconObjective> reconObjectives, IReadOnlyList<MissionIntent> activeIntents,
@@ -1324,19 +1293,17 @@ namespace Game.Ai.V2
                 AddFlowEdge(graph, groundAgg, sink, groundCap);
             if (obsCap > 0)
                 AddFlowEdge(graph, obsAgg, sink, obsCap);
-            // Task 1 (2026-09-14) — a garrison-extraction ArmySnapshot's ArmyId is the GARRISON's own
-            // id (ResolveArmy(a.ArmyId) would resolve the live garrison, not the not-yet-extracted
-            // unit), so it cannot go through the generic CanExecute/EvaluateCandidate live-army path.
-            // Mirrors BuildCandidates' own garrison-extraction check exactly: coordinate-based
+            // A garrison-extraction ArmySnapshot's ArmyId is the GARRISON's own id
+            // (ResolveArmy(a.ArmyId) would resolve the live garrison, not the not-yet-extracted
+            // unit), so it cannot go through the generic CanExecute/EvaluateCandidate live-army
+            // path. Mirrors BuildCandidates' garrison-extraction check exactly: coordinate-based
             // SafeStepPathing off the synthetic snapshot's own Hex/MaxMovement.
             //
-            // Review round (2026-09-14, item 2) — the gate is on the JOB's own kind (never Surveil —
-            // matches ScoutMoverSelector.EligibleGarrisonExtraction's exclusion, since a not-yet-
-            // extracted Recce cannot serve Surveil vantage machinery), NOT on which of the two lists
-            // (groundJobs/obsJobs) it came from. `observationRunnable` is Refresh AND Surveil
-            // objectives together — the old `ground`-bool gate blocked a garrison Recce from ever
-            // witnessing a Refresh job just because Refresh lives in the "obs" list, even though
-            // BuildCandidates (real Assignment) already fully supports Refresh for the same actor.
+            // The gate is on the JOB's own kind (never Surveil — matches
+            // ScoutMoverSelector.EligibleGarrisonExtraction's exclusion, since a not-yet-extracted
+            // Recce cannot serve Surveil vantage machinery), NOT on which list (groundJobs/obsJobs)
+            // it came from: `observationRunnable` covers Refresh AND Surveil, and BuildCandidates
+            // fully supports Refresh for the same actor.
             bool CanRun(ArmySnapshot a, ReconObjective job)
             {
                 if (!a.RequiresGarrisonExtraction)
