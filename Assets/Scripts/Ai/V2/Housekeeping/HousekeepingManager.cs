@@ -16,7 +16,7 @@ namespace Game.Ai.V2
     //  Executor. It never chooses an objective or mission, moves an army between hexes, plays a
     //  card, or spends AP/resources. The invariant below protects that zero-cost boundary.
     //
-    //  Strategic pressure and maintenance are Phase-B tempo candidates. ReconOnly Air Recon stays
+    //  Strategic pressure and maintenance are Phase-B tempo candidates. Air Recon stays
     //  terminally inside TaskExecutor. Neither is a second Housekeeping lane.
     // ===========================================================================================
     public sealed class HousekeepingResult
@@ -66,8 +66,8 @@ namespace Game.Ai.V2
             }
 
             // AI-MGR-02 §4/§P0 — if the reaction held back AP and that reservation is now gone
-            // (the pass ran and released it, its EndOfReaction expiry fired, or the pass never ran
-            // and was scope-suppressed), the freed AP MUST re-enter arbitration THIS turn — never
+            // (the pass ran and released it or its EndOfReaction expiry fired), the freed AP MUST
+            // re-enter arbitration THIS turn — never
             // stranded to EndTurn. This is independent of whether the reaction ran.
             if (hand != null && player != null && root != null && ctx != null
                 && apReservedForReactionBefore > 0f)

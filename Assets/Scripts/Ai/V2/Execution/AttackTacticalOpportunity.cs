@@ -63,8 +63,8 @@ namespace Game.Ai.V2
     //            file structurally cannot — it produces no proposal and no requirement, only a
     //            waypoint for the step that is already funded and already moving.
     //    §12     not an importance model. CompositionQuality, ability synergies, Hero skills,
-    //            Recce, equipment effects and AiPower.EffectiveArmyPower are all deliberately
-    //            unused; significance is the crude raw Attack+Defense scalar and nothing else.
+    //            equipment effects and AiPower.EffectiveArmyPower are all deliberately unused;
+    //            significance is the crude raw Attack+Defense scalar of combat bodies only.
     //
     //  It lives beside AttackExecutor because §9 makes it a tactical decision of the CURRENT step,
     //  re-taken from a fresh world every step, and not a planning-tier or continuity-tier concept.
@@ -101,7 +101,7 @@ namespace Game.Ai.V2
             float ownRaw = 0f;
             foreach (UnitData u in army.Members)
             {
-                if (u == null || u.IsHero || u.IsAviation)
+                if (!AiArmyRoles.IsGroundCombatBody(u))
                     continue;
                 ownBodies.Add(u);
                 ownRaw += u.Attack + u.Defense;
@@ -179,7 +179,7 @@ namespace Game.Ai.V2
                 return false;
 
             // §12 — significance, on the crude raw scalar and nothing else.
-            float enemyRaw = s.AttackSum + s.DefenseSum;
+            float enemyRaw = RawCombatBodyStrength(s.Defenders);
             if (enemyRaw < significanceFloor)
                 return Reject(s, target, "not_significant", enemyRaw);
             // weaker than the Attack army, on the same scalar
@@ -222,6 +222,18 @@ namespace Game.Ai.V2
         internal static float SignificanceFloor(float ownRaw) => Mathf.Max(
             AiConfigV2.attackTacticalOpportunityMinRawStrength,
             ownRaw * AiConfigV2.attackTacticalOpportunityMinStrengthShare);
+
+        internal static float RawCombatBodyStrength(
+            IReadOnlyList<WorthIt.DefenderProfile> roster)
+        {
+            float raw = 0f;
+            if (roster == null)
+                return raw;
+            for (int i = 0; i < roster.Count; i++)
+                if (AiArmyRoles.IsGroundCombatBody(roster[i]))
+                    raw += roster[i].Attack + roster[i].Defense;
+            return raw;
+        }
 
         // ---- §15 route economics ---------------------------------------------------------------
 

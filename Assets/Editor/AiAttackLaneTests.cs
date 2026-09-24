@@ -6,6 +6,7 @@ using Game.Ai.V2;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
@@ -37,6 +38,20 @@ namespace Game.EditorTests
         private static readonly HexCoord AltBase = new HexCoord(2, 0);
         private static readonly HexCoord RedBase = new HexCoord(6, 0);
         private static readonly HexCoord EnRoute = new HexCoord(4, 0);
+
+        [SetUp]
+        public void SetUp()
+        {
+            ArmyRegistry.Clear();
+            MissionIntentRegistry.Clear();
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            ArmyRegistry.Clear();
+            MissionIntentRegistry.Clear();
+        }
 
         // A roster that comfortably beats SiteDefenders, and one that cannot.
         private static List<WorthIt.DefenderProfile> Strong() => new List<WorthIt.DefenderProfile>
@@ -165,6 +180,73 @@ namespace Game.EditorTests
                     new[] { OurBase }),
                 needsHelp, needsHelp.Attack, out _);
             Assert.That(needsHelp.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
+            Assert.That(needsHelp.Attack.ReinforcementRequestedTurn, Is.EqualTo(-1));
+        }
+
+        [TestCase(AttackMissionPhase.Assault)]
+        [TestCase(AttackMissionPhase.Reinforcement)]
+        [TestCase(AttackMissionPhase.SupportReturn)]
+        [TestCase(AttackMissionPhase.RecoveryReturn)]
+        public void ActorCommitments_ClaimsAttackPrimaryAndBoundSupport(AttackMissionPhase phase)
+        {
+            var primary = new ArmyData { Owner = Us, Hex = EnRoute };
+            primary.Members.Add(new UnitData { Owner = Us });
+            var support = new ArmyData { Owner = Us, Hex = EnRoute };
+            support.Members.Add(new UnitData { Owner = Us });
+            ArmyRegistry.Register(primary);
+            ArmyRegistry.Register(support);
+            MissionIntent intent = AttackIntent(phase, primary.Id, supportId: support.Id);
+            WorldSnapshot snap = DefendedSite(
+                new[] { Army(primary.Id, EnRoute, Strong()), Army(support.Id, EnRoute, Strong()) },
+                new[] { OurBase });
+
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                new[] { intent }, snap, null);
+
+            Assert.That(commitments.IsArmyClaimed(primary.Id), Is.True);
+            bool supportLeg = phase == AttackMissionPhase.Reinforcement
+                || phase == AttackMissionPhase.SupportReturn;
+            Assert.That(commitments.IsArmyClaimed(support.Id), Is.EqualTo(supportLeg));
+        }
+
+        [Test]
+        public void LostAttackSupport_IsClearedAndPrimaryIsReevaluated()
+        {
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7, supportId: 8);
+            intent.Attack.SupportReturnHex = OurBase;
+            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us,
+                DefendedSite(new[] { Army(7, EnRoute, Strong()) }, new[] { OurBase }),
+                intent, intent.Attack, out _);
+
+            Assert.That(keep, Is.True);
+            Assert.That(intent.Attack.SupportArmyId, Is.Null);
+            Assert.That(intent.Attack.SupportReturnHex, Is.Null);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
+        }
+
+        [Test]
+        public void SuccessfulAttackSupportDelivery_BindsActorAndStampsDeliveryTurn()
+        {
+            MissionIntent intent = AttackIntent(AttackMissionPhase.Reinforcement, 7);
+            MissionIntentRegistry.GetOrCreate(Us).Put(intent);
+            WorldSnapshot snap = DefendedSite(
+                new[] { Army(7, EnRoute, Weak()), Army(8, EnRoute, Strong()) },
+                new[] { OurBase });
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
+                ConsumerIntentKey = intent.IntentKey,
+                ConsumerMissionKind = MissionKind.Attack,
+            };
+
+            bool handedOff = CapabilityDeliveryEvaluator.TryHandoffGroundCombatSupport(
+                Us, snap, demand, new[] { 8 }, turnNumber: 6);
+
+            Assert.That(handedOff, Is.True);
+            Assert.That(intent.Attack.SupportArmyId, Is.EqualTo(8));
+            Assert.That(intent.Attack.ReinforcementRequestedTurn, Is.EqualTo(6));
         }
 
         [Test]

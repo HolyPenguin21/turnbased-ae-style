@@ -76,6 +76,13 @@ namespace Game.Ai.V2
                     AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
                         + $"support={raid.SupportArmyId.Value} phase={raid.Phase} reason=support_actor_en_route");
                 }
+
+                AttackIntent attack = i?.Attack;
+                if (attack != null && attack.SupportArmyId.HasValue
+                    && (attack.Phase == AttackMissionPhase.Reinforcement
+                        || attack.Phase == AttackMissionPhase.SupportReturn)
+                    && GroundContainerStillValid(attack.SupportArmyId.Value, snap))
+                    c.Claim(attack.SupportArmyId.Value);
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 
@@ -109,6 +116,9 @@ namespace Game.Ai.V2
                     if (raid != null && (raid.Phase == RaidMissionPhase.Return
                             || raid.Phase == RaidMissionPhase.RecoveryReturn))
                     {
+                        if (raid.Phase == RaidMissionPhase.Return
+                            && raid.CompletedTargetAwaitingFreshDecision)
+                            continue;
                         ArmySnapshot returningPrimary = snap.Self.Armies.FirstOrDefault(a => a != null
                             && a.ArmyId == actorId && !a.IsPrison && !a.IsAir && a.MemberCount > 0);
                         if (returningPrimary != null)
@@ -127,7 +137,7 @@ namespace Game.Ai.V2
                         continue;
                     }
 
-                    if (RaidActorStillValid(actorId, snap, out string reason))
+                    if (GroundCombatActorStillValid(actorId, snap, out string reason))
                     {
                         c.Claim(actorId);
                         AiDebugLog.WriteDeduped(i.IntentKey.ToString(),
@@ -143,10 +153,21 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                if (i.Kind == MissionKind.Attack)
+                {
+                    int actorId = i.PreferredMoverArmyId.Value;
+                    bool valid = attack != null && (attack.Phase == AttackMissionPhase.RecoveryReturn
+                        ? GroundContainerStillValid(actorId, snap)
+                        : GroundCombatActorStillValid(actorId, snap, out _));
+                    if (valid)
+                        c.Claim(actorId);
+                    continue;
+                }
+
                 if (i.Kind == MissionKind.ActiveDefence)
                 {
                     int actorId = i.PreferredMoverArmyId.Value;
-                    if (RaidActorStillValid(actorId, snap, out _))
+                    if (GroundCombatActorStillValid(actorId, snap, out _))
                         c.Claim(actorId);
                     continue;
                 }
@@ -192,7 +213,7 @@ namespace Game.Ai.V2
             return c;
         }
 
-        private static bool RaidActorStillValid(int armyId, WorldSnapshot snap, out string reason)
+        private static bool GroundCombatActorStillValid(int armyId, WorldSnapshot snap, out string reason)
         {
             reason = null;
             if (snap?.Self?.Armies == null)
@@ -244,6 +265,13 @@ namespace Game.Ai.V2
                 return false;
             }
             return true;
+        }
+
+        private static bool GroundContainerStillValid(int armyId, WorldSnapshot snap)
+        {
+            ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == armyId);
+            return actor != null && !actor.IsPrison && !actor.IsAir && actor.MemberCount > 0;
         }
 
         // Is the intent's committed mover structurally able to continue the role? Ground uses the

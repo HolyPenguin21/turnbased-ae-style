@@ -19,7 +19,6 @@ namespace Game.Ai.V2
         private const string CoarseDirectionBoundary = "coarse-direction-boundary";
         private const string HiddenConcentrationCoarse = "hidden-concentration-coarse-only";
         private const string CoarseDirectionInfluence = "coarse-direction-influences-refresh";
-        private const string ThreeScoutDeconflict = "three-scout-deconflict";
         private const string NoAbabLoop = "no-abab-loop";
         private const string PerStepReplan = "per-step-live-replan";
         private const string PerStepIntelRefresh = "per-step-intel-refresh";
@@ -34,7 +33,6 @@ namespace Game.Ai.V2
             CoarseDirectionBoundary,
             HiddenConcentrationCoarse,
             CoarseDirectionInfluence,
-            ThreeScoutDeconflict,
             NoAbabLoop,
             PerStepReplan,
             PerStepIntelRefresh,
@@ -70,56 +68,6 @@ namespace Game.Ai.V2
         public static void BeginTurn(PlayerSetupData player, int turn)
         {
             StateFor(player, turn);
-        }
-
-        public static void RecordThreeScoutBatch(PlayerSetupData player, int turn,
-            IReadOnlyList<ProvisionedMission> queue)
-        {
-            if (player == null || queue == null || !AiStrategyV2Scope.IsFocusScoped)
-                return;
-
-            List<ProvisionedMission> scouts = queue
-                .Where(m => m != null && m.Kind == MissionKind.Scout)
-                .ToList();
-            if (scouts.Count < ReconConcurrencyPolicy.ReconOnlyHardCap)
-                return;
-
-            int actors = scouts.Select(m => m.MoverArmyId).Distinct().Count();
-            int spatialConflicts = 0;
-            int groundMinDistance = int.MaxValue;
-            for (int i = 0; i < scouts.Count; i++)
-            {
-                for (int j = i + 1; j < scouts.Count; j++)
-                {
-                    ProvisionedMission a = scouts[i];
-                    ProvisionedMission b = scouts[j];
-                    if (a.FocusHex.Equals(b.FocusHex))
-                    {
-                        spatialConflicts++;
-                        continue;
-                    }
-
-                    // Mirror MissionAdmissionPolicy exactly: the minimum target separation applies
-                    // only to two ground Recon missions. Surveil focus points may be close because
-                    // provisioning supplies their safe observation vantages separately.
-                    bool bothGround = ReconScoutKinds.IsGround(a.ScoutKind)
-                        && ReconScoutKinds.IsGround(b.ScoutKind);
-                    if (!bothGround)
-                        continue;
-
-                    int d = HexGridMath.Distance(a.FocusHex, b.FocusHex);
-                    if (d < groundMinDistance)
-                        groundMinDistance = d;
-                    if (d < AiConfigV2.scoutTargetMinSeparation)
-                        spatialConflicts++;
-                }
-            }
-
-            bool pass = actors == scouts.Count && spatialConflicts == 0;
-            string minGround = groundMinDistance == int.MaxValue ? "n/a" : groundMinDistance.ToString();
-            Record(player, turn, ThreeScoutDeconflict, pass,
-                $"missions={scouts.Count} actors={actors} spatialConflicts={spatialConflicts} "
-                + $"groundMinDist={minGround} required={AiConfigV2.scoutTargetMinSeparation}");
         }
 
         public static void RecordDecision(PlayerSetupData player, int turn, int armyId,

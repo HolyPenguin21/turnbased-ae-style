@@ -222,6 +222,14 @@ namespace Game.Ai.V2
             return false;
         }
 
+#if UNITY_INCLUDE_TESTS
+        internal static void RecordEligibleForTest(MissionProposal proposal, IEnumerable<int> ids)
+        {
+            ByProposal.Remove(proposal);
+            ByProposal.Add(proposal, new Entry(ids ?? Enumerable.Empty<int>()));
+        }
+#endif
+
         // Exact for a two-mission comparison: at least one distinct actor assignment must exist.
         // The allocator's bounded provision/re-pack remains the final N-way guard; importantly,
         // RaidProvisioner separately classifies a solver failure caused only by earlier actor
@@ -229,7 +237,7 @@ namespace Game.Ai.V2
         public static bool PairHasDistinctAssignment(MissionProposal a, MissionProposal b)
         {
             if (!TryGet(a, out HashSet<int> aa) || !TryGet(b, out HashSet<int> bb))
-                return true; // legacy/bare harness: keep the final Provisioning guard authoritative
+                return false;
             return SetsHaveDistinctAssignment(aa, bb);
         }
 

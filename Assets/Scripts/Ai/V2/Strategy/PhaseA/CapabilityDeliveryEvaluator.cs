@@ -228,7 +228,7 @@ namespace Game.Ai.V2
         // site defence, §30) the admission is measured against. Everything after that — the one
         // GroundCombatAssemblyPlanner admission, the leased-army intersection, the deterministic
         // pick and the phase/turn stamping — is shared, not copied per lane.
-        private static bool TryHandoffGroundCombatSupport(PlayerSetupData player,
+        internal static bool TryHandoffGroundCombatSupport(PlayerSetupData player,
             WorldSnapshot afterSnap, AxisDemand demand, IReadOnlyList<int> leased, int turnNumber)
         {
             if (player == null || demand == null

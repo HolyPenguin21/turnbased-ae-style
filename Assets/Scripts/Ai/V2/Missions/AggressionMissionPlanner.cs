@@ -26,11 +26,12 @@ namespace Game.Ai.V2
             // to BuildProposal so the proposal's envelope is priced off the SAME projection the
             // score was folded from, instead of re-deriving a host-only cost a second time.
             public readonly int? ProjectedActivationAp;
+            public readonly bool IsCompletedTargetFallback;
 
             public RaidCandidate(RaidMissionTarget target, float baseValue, float localAdmissionScore,
                 string explain, bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None,
                 int? preferredMover = null, int? costedMover = null,
-                int? projectedActivationAp = null)
+                int? projectedActivationAp = null, bool isCompletedTargetFallback = false)
             {
                 Target = target;
                 BaseValue = baseValue;
@@ -41,6 +42,7 @@ namespace Game.Ai.V2
                 PreferredMover = preferredMover;
                 CostedMover = costedMover;
                 ProjectedActivationAp = projectedActivationAp;
+                IsCompletedTargetFallback = isCompletedTargetFallback;
             }
 
             public RaidCandidate AsIncumbent(CommitmentTier tier, int? preferredMover)
@@ -199,8 +201,11 @@ namespace Game.Ai.V2
                 .ThenBy(x => x.Target.Target.DiagnosticLabel))
                 picked.Add(c);
 
+            foreach (RaidCandidate c in incumbents.Where(x => x.IsCompletedTargetFallback))
+                picked.Add(c);
+
             IEnumerable<RaidCandidate> ordinary = incumbents
-                .Where(x => x.Tier == CommitmentTier.None)
+                .Where(x => x.Tier == CommitmentTier.None && !x.IsCompletedTargetFallback)
                 .Concat(fresh.Where(f => !incumbentKeys.Contains(f.Target.Target)))
                 .OrderByDescending(x => MissionAdmissionPolicy.AdmissionRank(
                     x.LocalAdmissionScore, x.IsIncumbent, x.Tier))
@@ -486,10 +491,14 @@ namespace Game.Ai.V2
             string role = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
             AiDebugLog.Write($"[AI][V2]   raid mission — {label} {intent.IntentKey}: {role} "
                 + $"#{moverArmyId.Value} -> ({homeHex.Value.Q},{homeHex.Value.R})");
+            string protection = ri.CompletedTargetAwaitingFreshDecision
+                ? "fresh-decision fallback; no commitment protection"
+                : "Hard funding protection is allocator-owned";
             return new RaidCandidate(target, value, value,
                 $"Raid {ri.Target.DiagnosticLabel} {phase}: {role} #{moverArmyId.Value} to base "
-                + $"({homeHex.Value.Q},{homeHex.Value.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
-                true, intent.Funding, moverArmyId, moverArmyId);
+                + $"({homeHex.Value.Q},{homeHex.Value.R}); intrinsic={F(value)}; {protection}",
+                true, intent.Funding, moverArmyId, moverArmyId,
+                isCompletedTargetFallback: ri.CompletedTargetAwaitingFreshDecision);
         }
 
         // Reinforcement is a durable continuation leg. Target discovery/value is not recomputed here;

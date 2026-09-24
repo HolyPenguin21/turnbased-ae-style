@@ -255,6 +255,7 @@ namespace Game.Ai.V2
                 frontProgress: s.FrontProgress,
                 corridorAlignment: s.CorridorAlignment,
                 economicExpansionValue: s.EconomicExpansionValue,
+                militaryTargetRelevance: s.MilitaryTargetRelevance,
                 winChance: TaskScoreEvaluator.WinChance(winChance),
                 cardPrice: activation * AiConfigV2.taskScoreReactivationApWeight,
                 delivery: TaskScoreEvaluator.DeliveryFromEta(
@@ -298,12 +299,18 @@ namespace Game.Ai.V2
                 ? WorldAnalysis.CorridorAlignmentToward(anchor, directionTarget, b.Hex,
                     AiConfigV2.attackCorridorDetourScale) : 0f;
 
+            float potentialSaturation = Curves.Ramp(
+                snap.Self.BestStackPotential / Mathf.Max(1f, snap.Self.TotalMilitaryPotential),
+                AiConfigV2.attackPotentialSatRampLo, AiConfigV2.attackPotentialSatRampHi);
+
             var score = new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
+                militaryTargetRelevance: TaskScoreEvaluator.MilitaryTargetRelevance(
+                    potentialSaturation * AiConfigV2.attackPotentialSaturationScoreWeight),
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(
                     intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled

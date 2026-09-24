@@ -236,7 +236,6 @@ namespace Game.Ai.V2
             //    its own detailed "[AI][V2]   desires — ..." trace; the line below is the summary.
             AiRadarState radarState = AiRadarStateRegistry.GetOrCreate(player);
             RadarAssessment assessment = StrategyLayer.Evaluate(snapshot, radarState);
-            assessment = AiStrategyV2Scope.ApplyRadarScope(assessment);
             DesireVector desires = assessment.Desires;
             Radar radar = assessment.Radar;
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: radar — {radar.DebugLine()} "
@@ -250,12 +249,9 @@ namespace Game.Ai.V2
             List<ReconObjective> reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
 
             // 3d. The ONE Aggression-opportunity enumeration for the turn — shared by DemandLayer
-            //     and AggressionMissionLayer (build-order step 9). A focus scope that drops the
-            //     Aggression axis (ReconOnly, ReconDevelopment) deliberately keeps the layer present
-            //     but does not enumerate or execute it.
-            List<AggressionObjective> aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                ? AggressionObjectiveEvaluator.Enumerate(snapshot, assessment.Breakdown.OpportunityReport)
-                : new List<AggressionObjective>();
+            //     and AggressionMissionLayer (build-order step 9).
+            List<AggressionObjective> aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                snapshot, assessment.Breakdown.OpportunityReport);
             // 3e. 2026-09-21 Block D — Development opportunities are NO LONGER enumerated here.
             //     Enumerate/BestEquipmentOpportunity keeps only ONE recipient per offering, so
             //     picking that recipient before any demand or durable intent exists silently threw
@@ -275,12 +271,11 @@ namespace Game.Ai.V2
                     + $"{(ao.NeedsCombatPower ? " needsPower" : "")}{(ao.NeedsHero ? " needsHero" : "")}");
             AiFrameLog.Objectives(reconObjectives, aggressionObjectives);
 
-            // 7a. Mission Continuity — resolve the durable in-flight intents FIRST, then apply the
-            //     centralized execution scope. In ReconOnly this cleanly retires stale Raid intents
+            // 7a. Mission Continuity — resolve durable in-flight intents FIRST. This cleanly
+            //     retires stale Raid intents
             //     before ActorCommitments or the allocator can protect them.
             List<MissionIntent> activeIntents = MissionContinuityLayer.ResolveActive(
                 player, snapshot, reconObjectives, aggressionObjectives, ctx);
-            activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
             // Normalized "which of my armies are already committed to an operation" view — so
             // DemandLayer / CapabilityInventory / ReusableArmySelector can tell an EXISTING scout
             // from an AVAILABLE one without knowing how continuity stores mover ownership.
@@ -292,13 +287,11 @@ namespace Game.Ai.V2
             //     ReconAssignmentPlanner.MeasureAirCapacity (the same canonical capacity owner
             //     ground already uses), recomputed fresh every call — no cross-call registry.
 
-            // S1. Demand Layer — capability SHORTAGES (no card selection). Pass the centralized
-            //     scope into the owner itself so suppressed axes do not even emit demand telemetry.
-            var scopedDemandAxes = new HashSet<DesireAxis>(AiStrategyV2Scope.AxesInScope);
+            // S1. Demand Layer — capability SHORTAGES (no card selection). All real axes are live.
+            var demandAxes = new HashSet<DesireAxis>(DesireAxes.All);
             List<AxisDemand> demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
-                null, scopedDemandAxes);
-            demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+                null, demandAxes);
 
             // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
             //     HousekeepingManager reserve). Radar scales objective value only; Strategic Manager
@@ -309,7 +302,7 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
-            //     In ReconOnly the filtered demand set can materialize only capability requested by Recon.
+            //     The demand set can materialize only capability requested by a real axis.
             int handAtStart = hand?.Hand?.Count ?? 0;
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
@@ -323,29 +316,24 @@ namespace Game.Ai.V2
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                    StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                    ? AggressionObjectiveEvaluator.Enumerate(
-                        snapshot, assessment.Breakdown.OpportunityReport)
-                    : new List<AggressionObjective>();
+                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                    snapshot, assessment.Breakdown.OpportunityReport);
                 // Direct Economy construction can atomically turn the builder's existing intent
                 // into ReturnBuilder (or resume a safe scout). Re-read the same continuity owner
                 // before mission construction so stale pre-build actor claims cannot execute.
                 activeIntents = MissionContinuityLayer.ResolveActive(
                     player, snapshot, reconObjectives, aggressionObjectives);
-                activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                 actorCommitments = ActorCommitments.FromIntents(
                     activeIntents, snapshot, reconObjectives);
                 // Phase A changed the settled facts behind the initial demand frame. Refresh that
                 // frame once here; the first operational admission consumes it without another
                 // full Generate call.
-                // Block D — this call regenerates every axis in scope, so DemandLayer.Development
+                // Block D — this call regenerates every axis, so DemandLayer.Development
                 // builds its own opportunities against this pass's complete need context.
                 demands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                     reconObjectives, aggressionObjectives, activeIntents, actorCommitments,
-                    player, ctx, root, null, scopedDemandAxes);
-                demands = AiStrategyV2Scope.ApplyDemandScope(demands);
+                    player, ctx, root, null, demandAxes);
             }
 
             List<MissionProposal> missions;
@@ -358,12 +346,11 @@ namespace Game.Ai.V2
             ActorCommitments postCommitments = null;
             bool phaseBHandled = false;
 
-            // The typed mid-turn architecture is canonical for every runtime scope. The
+            // The typed mid-turn architecture is the canonical production path. The
             // initial Phase A settles before operational admission; a later factual Development
             // invalidation may re-enter that same manager through the shared ledger. Each Recon
-            // admission still settles exactly one task command. Full therefore uses the same
-            // bounded settle -> observe -> typed re-admission path as focused diagnostics.
-            if (AiStrategyV2Scope.UsesTypedLoop)
+            // admission still settles exactly one task command, through the same bounded
+            // settle -> observe -> typed re-admission path.
             {
                 missions = new List<MissionProposal>();
                 int settledSteps = 0;
@@ -418,14 +405,14 @@ namespace Game.Ai.V2
                         + economyFacts;
                 }
 
-                foreach (DesireAxis axis in scopedDemandAxes.Where(a =>
+                foreach (DesireAxis axis in demandAxes.Where(a =>
                              a == DesireAxis.Economy || a == DesireAxis.Development))
                     lastStrategicAdmissionFingerprint[axis] =
                         StrategicAdmissionFingerprint(axis);
 
                 // One factual flag may invalidate more than one family (for example, discovering
                 // a deficient ResourceSite changes both Recon knowledge and Development
-                // opportunity). Snapshot the aggregate once, derive every in-scope family, and
+                // opportunity). Snapshot the aggregate once, derive every affected family, and
                 // only then consume the shared reasons so family order cannot erase a sibling's
                 // trigger.
                 bool EconomyBuilderReadyForCompletion()
@@ -473,8 +460,6 @@ namespace Game.Ai.V2
                                  DesireAxis.Economy, DesireAxis.Development,
                              })
                     {
-                        if (!AiStrategyV2Scope.AxisInScope(axis))
-                            continue;
                         StrategicInvalidationReason axisReasons = pending.Reasons
                             & DesireAxes.InvalidationMaskFor(axis);
                         // Actor movement alone must not re-run every Economy infrastructure
@@ -520,15 +505,11 @@ namespace Game.Ai.V2
                         .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
 
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                        ? AggressionObjectiveEvaluator.Enumerate(
-                            snapshot, assessment.Breakdown.OpportunityReport)
-                        : new List<AggressionObjective>();
+                    StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                    aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                        snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
-                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
                     // Block D — a PARTIAL re-evaluation does not regenerate the other axes, but
@@ -541,7 +522,6 @@ namespace Game.Ai.V2
                         reconObjectives, aggressionObjectives, activeIntents,
                         actorCommitments, player, ctx, root, null,
                         dirtyAxes, carriedForDevelopment);
-                    regenerated = AiStrategyV2Scope.ApplyDemandScope(regenerated);
                     List<AxisDemand> dirtyDemands = regenerated;
                     demands = demands.Where(d => d != null
                             && !dirtyAxes.Contains(d.RequestingAxis))
@@ -566,15 +546,11 @@ namespace Game.Ai.V2
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                            StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                        aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                            ? AggressionObjectiveEvaluator.Enumerate(
-                                snapshot, assessment.Breakdown.OpportunityReport)
-                            : new List<AggressionObjective>();
+                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                        aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                            snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                         actorCommitments = ActorCommitments.FromIntents(
                             activeIntents, snapshot, reconObjectives);
                         ownershipFreshAfterPhaseA = true;
@@ -646,16 +622,12 @@ namespace Game.Ai.V2
                         // AGG-RAID §3/§12 — rebuild the operational Aggression facts from THIS
                         // settled snapshot before re-enumerating objectives, so a neutral destroyed
                         // during the previous step is gone from the report in the same turn.
-                        if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                            StrategyLayer.RefreshAggressionLanePressures(
-                                snapshot, assessment.Breakdown);
-                        aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                            ? AggressionObjectiveEvaluator.Enumerate(
-                                snapshot, assessment.Breakdown.OpportunityReport)
-                            : new List<AggressionObjective>();
+                        StrategyLayer.RefreshAggressionLanePressures(
+                            snapshot, assessment.Breakdown);
+                        aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                            snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
                             player, snapshot, reconObjectives, aggressionObjectives);
-                        activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                         actorCommitments = ActorCommitments.FromIntents(
                             activeIntents, snapshot, reconObjectives);
                     }
@@ -1146,7 +1118,7 @@ namespace Game.Ai.V2
                 // and tempo passes exhaust their actionable budgets may new cold-axis
                 // preparation use what is physically left. No new budget/scorer/executor:
                 // call the same Phase A owner with freshly regenerated cold demands.
-                var coldAxes = new HashSet<DesireAxis>(scopedDemandAxes.Where(a =>
+                var coldAxes = new HashSet<DesireAxis>(demandAxes.Where(a =>
                     RadarValueScale.For(radar, a) <= 0f));
                 if (zeroRadarResidualWindow && coldAxes.Count > 0
                     && settledSteps < AiConfigV2.maxMidTurnStepsPerTurn
@@ -1155,21 +1127,16 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                    aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                        ? AggressionObjectiveEvaluator.Enumerate(
-                            snapshot, assessment.Breakdown.OpportunityReport)
-                        : new List<AggressionObjective>();
+                    StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                    aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                        snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
                         player, snapshot, reconObjectives, aggressionObjectives);
-                    activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                     actorCommitments = ActorCommitments.FromIntents(
                         activeIntents, snapshot, reconObjectives);
-                    List<AxisDemand> coldDemands = AiStrategyV2Scope.ApplyDemandScope(
-                        DemandLayer.Generate(snapshot, assessment.Breakdown,
+                    List<AxisDemand> coldDemands = DemandLayer.Generate(snapshot, assessment.Breakdown,
                             reconObjectives, aggressionObjectives, activeIntents,
-                            actorCommitments, player, ctx, root, null, scopedDemandAxes))
+                            actorCommitments, player, ctx, root, null, demandAxes)
                         .Where(d => d != null && coldAxes.Contains(d.RequestingAxis)).ToList();
                     if (coldDemands.Count > 0)
                     {
@@ -1199,21 +1166,17 @@ namespace Game.Ai.V2
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
                             reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
-                            aggressionObjectives = AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                                ? AggressionObjectiveEvaluator.Enumerate(
-                                    snapshot, assessment.Breakdown.OpportunityReport)
-                                : new List<AggressionObjective>();
+                            StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                            aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
+                                snapshot, assessment.Breakdown.OpportunityReport);
                             activeIntents = MissionContinuityLayer.ResolveActive(
                                 player, snapshot, reconObjectives, aggressionObjectives);
-                            activeIntents = AiStrategyV2Scope.ApplyIntentScope(player, activeIntents);
                             actorCommitments = ActorCommitments.FromIntents(
                                 activeIntents, snapshot, reconObjectives);
-                            demands = AiStrategyV2Scope.ApplyDemandScope(DemandLayer.Generate(
+                            demands = DemandLayer.Generate(
                                 snapshot, assessment.Breakdown, reconObjectives,
                                 aggressionObjectives, activeIntents, actorCommitments,
-                                player, ctx, root, null, scopedDemandAxes));
+                                player, ctx, root, null, demandAxes);
                             ownershipFreshAfterPhaseA = true;
                             yield return RunTypedAdmissions();
                         }
@@ -1232,174 +1195,10 @@ namespace Game.Ai.V2
                     snapshot.TurnNumber, new List<MissionTurnOutcome>());
                 ReconAcceptanceAudit.Summarize(player, ctx.TurnNumber);
             }
-            else
-            {
-                // 4. Planners -> mission proposals. Mission construction/stamping/logging has one
-                //    owner shared by the legacy batch and the optional mid-turn re-admission loop.
-                missions = BuildMissionSet(snapshot, assessment.Breakdown,
-                    activeIntents, reconObjectives, aggressionObjectives, radar, demands, trace, ctx);
-    
-                // 7b. Bind a funding policy to each Soft/Hard intent by matching it to its fresh
-                //     proposal. In ReconOnly activeIntents was already stripped of non-Recon durability.
-                List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
-    
-                var ledger = new MissionOutcomeLedger();
-                ledger.RegisterProposals(missions);
-                ledger.RegisterCommitments(commitments);
-    
-                // 5. Slices seeded from the SHARED AP ledger (net of Phase-A demand spend) -> many-to-
-                //    many packing -> ordered tentative allocation. No second radar split.
-                AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions, commitments, player,
-                    apLedger);
-                var provSession = new ProvisioningSession(snapshot);
-                allocation = session.Pack();
-    
-                // Spec §8 — distinguish "funded on the FINAL allocation pack" from "distinct missions
-                // funded at any point this turn". After a pack -> provision -> re-pack loop these differ
-                // legitimately (a mission funded on pass 1, provisioned, then dropped from the last
-                // pack), and reporting only the last pack next to cumulative provisioned/executed
-                // counters reads as an inconsistency during debugging.
-                fundedKeysThisTurn = new HashSet<StableMissionKey>();
-                void AccrueFundedKeys(TentativeAllocation a)
-                {
-                    if (a?.Funded == null) return;
-                    foreach (FundedEntry fe in a.Funded)
-                        if (fe?.Mission != null)
-                            fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
-                }
-                AccrueFundedKeys(allocation);
-    
-                // 6. Provision the funded missions through the ONE atomic door, with the bounded
-                //    pack -> provision -> re-pack loop (risk 2). Mover assignment across the funded set
-                //    is a per-pass batch step (PreparePass) so a single Provision() call carries no
-                //    hidden cross-mission responsibility. Re-pack is bounded by maxReallocIterations +
-                //    the AllocationSession's own rejected/cooldown/repriced/fingerprint state.
-                provisioned = new List<ProvisionedMission>();
-                provisioningFailures = new Dictionary<ProvisionFailureKind, int>();
-                int reallocPass = 0;
-                while (true)
-                {
-                    ProvisioningManager.PreparePass(player, root, ctx, provSession, allocation,
-                        actorCommitments);
-                    bool anyFailure = false;
-                    bool allFailuresArePoolWide = true;
-                    foreach (FundedEntry fe in allocation.Funded)
-                    {
-                        if (fe?.Mission == null)
-                            continue;
-                        StableMissionKey key = StableMissionKey.For(fe.Mission);
-                        if (provSession.AlreadyProvisioned(key))
-                            continue; // locked by an earlier pass this turn
-                        // A capability pool proven pool-wide unable is not asked again UNLESS a cheap
-                        // revalidation now finds an eligible actor (spec §7).
-                        if (!CapabilityPoolExhaustionRegistry.CanAttempt(player, fe.Mission, snapshot))
-                            continue;
-    
-                        ProvisioningResult result = ProvisioningManager.Provision(player, root, hand, ctx, provSession, fe);
-                        if (result.Success)
-                        {
-                            provSession.RegisterSuccess(key, result.Provisioned);
-                            session.RegisterProvisionSuccess(fe,
-                                result.Provisioned.ClaimedAp, result.Provisioned.ClaimedPhysical);
-                            ledger.RecordProvisionSuccess(fe.Mission, result.Provisioned);
-                            provisioned.Add(result.Provisioned);
-                            AiV2Trace.CheckProvisionEnvelope(fe.Mission.AttemptId,
-                                result.Provisioned.ClaimedAp, fe.Tentative.Ap);
-                            AiDebugLog.Write($"[AI][V2]   provision [{AiV2Trace.FormatCorrelation(fe.Mission)}] {key} — OK mover #{result.Provisioned.MoverArmyId} "
-                                + $"ap {result.Provisioned.ClaimedAp.ToString("0.#", CultureInfo.InvariantCulture)} "
-                                + $"(envelope {fe.Tentative.Ap.ToString("0.#", CultureInfo.InvariantCulture)}) "
-                                + $"stealthReserve {(result.Provisioned.StealthApReserved ? 1 : 0)}");
-                        }
-                        else
-                        {
-                            anyFailure = true;
-                            provisioningFailures.TryGetValue(result.Failure.Kind, out int failureCount);
-                            provisioningFailures[result.Failure.Kind] = failureCount + 1;
-                            CapabilityPoolExhaustionRegistry.DeferNoExecutableStep(
-                                player, fe.Mission, result.Failure);
-                            bool poolWide = CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable(
-                                snapshot, player, fe.Mission, result.Failure);
-                            if (poolWide)
-                                CapabilityPoolExhaustionRegistry.MarkExhausted(player,
-                                    CapabilityPoolExhaustionRegistry.PoolFor(fe.Mission),
-                                    $"{result.Failure.Kind}: no eligible actor in snapshot");
-                            allFailuresArePoolWide &= poolWide;
-                            session.RegisterProvisionFailure(fe, result.Failure);
-                            ledger.RecordProvisionFailure(fe.Mission, result.Failure);
-                            AiDebugLog.Write($"[AI][V2]   provision [{AiV2Trace.FormatCorrelation(fe.Mission)}] {key} — FAIL {result.Failure.Kind} "
-                                + $"[{result.Failure.Disposition}] {result.Failure.Detail}");
-                        }
-                    }
-    
-                    if (anyFailure && allFailuresArePoolWide)
-                        AiDebugLog.Write("[AI][V2] provision — failed capability pools exhausted; re-pack to admit other runnable lanes");
-                    if (!session.HasNewFailures || session.Converged)
-                        break;
-                    if (++reallocPass >= AiConfigV2.maxReallocIterations)
-                        break;
-                    allocation = session.Pack();
-                    AccrueFundedKeys(allocation);
-                }
-    
-                // 6b. Tasks -> per-hex execution on the real map (reuses AiTurnController.MoveArmyRoutine).
-                // Round 4 — a Scout ProvisionedMission bound to an air actor by ReconAssignmentPlanner/
-                // ProvisioningManager.ProvisionAir must NOT go through TaskExecutor/ReconGroundExecutor
-                // (which expects a live ground solo-Recce mover); it is execution-input for the terminal
-                // air-recon stage instead. Ground + Raid missions are unaffected.
-                var groundProvisioned = provisioned
-                    .Where(pm => pm.Kind != MissionKind.Scout || pm.ExecutorKind == ScoutExecutorKind.Ground)
-                    .ToList();
-                var airProvisioned = provisioned
-                    .Where(pm => pm.Kind == MissionKind.Scout && pm.ExecutorKind != ScoutExecutorKind.Ground)
-                    .ToList();
-    
-                var executed = new List<ExecutionResult>();
-                yield return TaskExecutor.Execute(player, root, ctx, groundProvisioned, executed, snapshot);
-    
-                if (executed.Any(e => e != null && e.Outcome.StateChanged))
-                    snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
-    
-                // ARCH-02 §35 — terminal air-recon is its OWN stage: PLAN the pass against the real,
-                // current world state, then EXECUTE the plan. TaskExecutor no longer touches air recon.
-                // Round 3 — no protection to release any more (AiConfigV2/ReconAirReservation.cs).
-                // Round 4 — AirReconPlanner no longer SELECTS; it turns this pass's air-bound
-                // ProvisionedMissions (WHO/WHICH-TARGET already decided by Assignment) into the
-                // executor's input shape.
-                AirReconPlan airReconPlan = AirReconPlanner.Plan(player, root, ctx, snapshot, airProvisioned);
-                var airReconResult = new AirReconExecutionResult();
-                // RECON-AIR-06 — `airPerMissionResults` collects one ExecutionResult PER air-executed
-                // ProvisionedMission this pass (the SAME shape Ground's `executed` list carries), so each
-                // flows into MissionOutcomeLedger.RecordExecution / MissionContinuity exactly like
-                // Ground's do — a provisioned air mission no longer silently falls through to
-                // Finalize()'s Blocked default for lack of any recorded Execution.
-                var airPerMissionResults = new List<ExecutionResult>();
-                yield return ReconAirExecutor.Execute(airReconPlan, player, root, ctx, snapshot, airReconResult, airPerMissionResults);
-                AiDebugLog.Write($"[AI][V2][Recon][Air] exec — outcome moved={airReconResult.AnyMoved} "
-                    + $"launched={airReconResult.AnyLaunched} struck={airReconResult.AnyStruck} steps={airReconResult.Steps} "
-                    + $"ap={airReconResult.ApSpent:0.#} stateVer={airReconResult.StateVersionAfter} "
-                    + $"perMission={airPerMissionResults.Count}");
-                allExecuted = executed.Concat(airPerMissionResults).ToList();
-                foreach (ExecutionResult er in allExecuted)
-                    ledger.RecordExecution(er);
-                ledger.RecordDeferrals(allocation.Deferred);
-                // Post-execution LIVE pass — a mission run later this turn may have met an earlier
-                // Surveil's objective. The ONLY live-world read on the continuity path, isolated in the
-                // ledger via ScoutObjectiveEvaluator; ReconcileAfterTurn below stays pure.
-                ledger.RefreshObjectiveStatesLive(player);
-    
-                // 7c. Update durable intent state for next turn — a PURE transition over the ledger's
-                //     facts (no world reads). Creates intents for started-but-unfinished recon,
-                //     advances/retires the rest, keeps a preferred mover.
-                MissionContinuityLayer.ReconcileAfterTurn(player, snapshot.TurnNumber, ledger.Finalize());
-    
-    
-            }
 
             // S5. Strategic Manager Phase B — Surplus Preparation. Spec §5/§13 — this runs in EVERY
-            //     mode, ReconOnly included: it is hand/card lifecycle management, not an operational
-            //     mission family. A combat Unit/Hero/Aviation it places may sit on the map while
-            //     Aggression/Defence missions stay disabled; that is expected in the isolated test.
-            //     Card type is never on its own a reason a legal card is left unplayed.
+            //     cycle: it is hand/card lifecycle management, not an operational
+            //     mission family. Card type is never on its own a reason a legal card is left unplayed.
             // Execution can reveal contacts and alter map knowledge (especially aviation). Phase B
             // must consume a coherent strategic snapshot, not operational resources paired with
             // the pre-execution Known/MapKnowledge layers.
@@ -1420,8 +1219,8 @@ namespace Game.Ai.V2
             // Spec §9 — one per-turn StrategicManager summary so it is always answerable why each
             // hand card was or was not played this turn. Per-card blocking reasons are on the
             // strat.A/strat.B diag lines above (fails=[card: needs H/E/M/T=…] / defer … / hold …).
-            // "remaining" carries NO "blocked=ReconOnly / wrongAxis" reason: Phase B runs in every
-            // mode and card type alone never suppresses a legal card.
+            // "remaining" carries no strategy-scope rejection: Phase B always runs, and card type
+            // alone never suppresses a legal card.
             int mPlayed = phaseA.CardsPlayed + phaseB.CardsPlayed;
             int mGen = phaseA.GeneratedCardsSucceeded + phaseB.GeneratedCardsSucceeded;
             int mEquip = phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
@@ -1434,7 +1233,7 @@ namespace Game.Ai.V2
                 + $"handEnd={handEnd} remaining={System.Math.Max(0, handEnd)} "
                 + $"matAttempts={phaseA.MaterializationAttempts + phaseB.MaterializationAttempts} "
                 + $"capDeliveries={phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries} "
-                + "blockedReasons=see strat.A/strat.B diag lines (never ReconOnly/wrongAxis)");
+                + "blockedReasons=see strat.A/strat.B diag lines");
 
             // End-of-Main physical resource control totals (spec §2.7). Housekeeping is zero-AP by
             // invariant and the bounded reaction pass logs its own [STATE]; captured here so the
@@ -1442,7 +1241,7 @@ namespace Game.Ai.V2
             AiV2Trace.LogState(trace.Id, stateStart, AiV2Trace.Stamp(root));
 
             // 8. Off-budget housekeeping — NOT an axis, guaranteed minimum, cannot be out-competed.
-            //    ReconOnly keeps this safety/cleanup layer; it does not buy cards or create new
+            //    This safety/cleanup layer does not buy cards or create new
             //    capability and remains the authoritative same-hex reorganisation path.
             var housekeeping = new HousekeepingResult();
             yield return HousekeepingManager.RunHousekeeping(
@@ -1510,20 +1309,15 @@ namespace Game.Ai.V2
             StrategyLayer.RefreshReconLanePressures(snapshot, breakdown);
             // AGG-RAID §3 — the same discipline for the Aggression lane: refresh only the
             // operational opportunity facts from the current snapshot, never the radar.
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression)
-                && !aggressionPressureAlreadyRefreshed)
+            if (!aggressionPressureAlreadyRefreshed)
                 StrategyLayer.RefreshAggressionLanePressures(snapshot, breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives);
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression))
-                missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
-                    activeIntents, aggressionObjectives, ctx));
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Economy))
-                missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
-                    activeIntents, demands));
-            if (AiStrategyV2Scope.AxisInScope(DesireAxis.Development))
-                missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));
-            missions = AiStrategyV2Scope.ApplyMissionScope(missions);
+            missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
+                activeIntents, aggressionObjectives, ctx));
+            missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
+                activeIntents, demands));
+            missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));
 
             foreach (MissionProposal m in missions)
                 if (m != null && string.IsNullOrEmpty(m.AttemptId))

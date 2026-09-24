@@ -660,12 +660,11 @@ namespace Game.Ai.V2
             // Radar model #2 / Task C — ONE global admission order across every lane, not a
             // per-lane queue merged by peeking only the head of each lane. The old per-lane-queue
             // merge could hide a globally more valuable proposal behind a locally-preferred one in
-            // the SAME lane: e.g. Economy locally prefers a same-turn-completion candidate over a
-            // plain one via AdmissionRank, but if the plain one has the higher cross-lane
-            // EffectiveValue, the old merge would still evaluate the local favourite first every
+            // the SAME lane: if a local planner preference differs from cross-lane value, the old
+            // merge would still evaluate the local favourite first every
             // round, potentially spending the whole budget before the globally stronger candidate
             // is ever looked at. EffectiveValue (RankValue) is therefore the ONE primary key here;
-            // AdmissionRank (which folds in Economy's same-turn bonus / durable-retarget margin)
+            // AdmissionRank (which may fold in durable-retarget lifecycle hysteresis)
             // is only a tie-break when two proposals are equally valuable cross-lane, or an
             // explicit admission gate elsewhere (cooldown/conflict/capacity checks below) — never a
             // way to jump the global queue.

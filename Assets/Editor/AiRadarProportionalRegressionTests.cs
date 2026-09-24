@@ -226,10 +226,8 @@ namespace Game.EditorTests
         [Test]
         public void Allocator_GlobalComparisonSurfacesTheHigherValueSameLaneCandidate()
         {
-            // Reproduces the spec's synthetic example: Economy A completes this turn (BaseValue 8,
-            // same-turn bonus -> local AdmissionRank 16) sits ahead of Economy B (BaseValue 12, no
-            // bonus) in the OLD per-lane queue, so the old head-only merge would compare A(8) against
-            // Scout C(10), fund C, and never even look at B(12) before the 1 AP ran out.
+            // A lower intrinsic Economy candidate must never hide a higher-value candidate in the
+            // same lane before the shared allocator compares it with Scout C.
             Radar radar = Radar.Even(); // scale == 1 on every axis, so EffectiveValue == BaseValue here.
             var player = new PlayerSetupData { Nickname = "RadarGlobalQueue" };
             var snapshot = new WorldSnapshot { TurnNumber = 1, Self = new SelfSnapshot { ActionPoints = 1 } };
@@ -247,7 +245,7 @@ namespace Game.EditorTests
             c.Axes.Value[DesireAxis.Recon] = 1f;
             c.EffectiveValue = c.BaseValue * RadarValueScale.For(radar, c);
 
-            Assert.That(MissionAdmissionPolicy.AdmissionRank(a), Is.EqualTo(16f).Within(Tol));
+            Assert.That(MissionAdmissionPolicy.AdmissionRank(a), Is.EqualTo(8f).Within(Tol));
             Assert.That(a.EffectiveValue, Is.EqualTo(8f).Within(Tol));
             Assert.That(b.EffectiveValue, Is.EqualTo(12f).Within(Tol));
 
@@ -257,7 +255,7 @@ namespace Game.EditorTests
 
             Assert.That(allocation.Funded.Count, Is.EqualTo(1));
             Assert.That(allocation.Funded[0].Mission, Is.SameAs(b),
-                "B has the highest cross-lane EffectiveValue and must not be hidden behind A's local admission bonus");
+                "B has the highest cross-lane EffectiveValue and must not be hidden by local ordering");
         }
 
         [Test]

@@ -32,8 +32,6 @@ namespace Game.Ai.V2
 
         // Initial Base admission uses positive net TaskScore; commitment switching keeps hysteresis.
         public const float economyBaseSwitchHysteresisThreshold = 10f;
-        public const float economySameTurnCompletionBonus = 8f;
-        public const float economyAdmissionCompletionCostWeight = 1f;
 
         // Borrowing an already committed actor is a real loss of continuity.
         public const float economyLoanHysteresisThreshold = taskScoreEconomyLoanHysteresisThreshold;

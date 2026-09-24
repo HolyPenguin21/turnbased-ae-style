@@ -61,6 +61,21 @@ namespace Game.Ai.V2
                 }
             }
 
+            if (a.SupportArmyId.HasValue
+                && (a.Phase == AttackMissionPhase.Reinforcement
+                    || a.Phase == AttackMissionPhase.SupportReturn)
+                && !RaidSupportActorAlive(snap, a.SupportArmyId.Value))
+            {
+                int lostSupportId = a.SupportArmyId.Value;
+                a.SupportArmyId = null;
+                a.SupportReturnHex = null;
+                a.ReinforcementRequestedTurn = -1;
+                if (a.Phase == AttackMissionPhase.SupportReturn)
+                    a.Phase = AttackMissionPhase.Assault;
+                AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support #{lostSupportId} "
+                    + $"lost; binding released, phase={a.Phase}");
+            }
+
             // ---- walking-home legs: arrival is the end of the leg ------------------------------
             if (a.Phase == AttackMissionPhase.SupportReturn)
             {
@@ -157,7 +172,7 @@ namespace Game.Ai.V2
             if (a.Phase != AttackMissionPhase.Reinforcement)
             {
                 a.Phase = AttackMissionPhase.Reinforcement;
-                a.ReinforcementRequestedTurn = snap?.TurnNumber ?? -1;
+                a.ReinforcementRequestedTurn = -1;
                 AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} phase -> Reinforcement "
                     + $"(primary #{a.PrimaryArmyId} does not clear {a.Target.DiagnosticLabel})");
                 return true;
@@ -254,6 +269,8 @@ namespace Game.Ai.V2
                     ? turn : t.OpportunisticStrikeTurn,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
+            RetireCompletedRaidFallbackForActor(state, payload.PrimaryArmyId,
+                "fresh Attack admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Attack] continuity — "
                 + $"[{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created "

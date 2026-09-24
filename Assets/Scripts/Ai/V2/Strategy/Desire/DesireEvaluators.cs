@@ -44,8 +44,9 @@ namespace Game.Ai.V2
     //    raidOpportunity — "a profitable target I can take right now" (opportunity + surplus +
     //                      relativeEdge + momentum).  `opportunity` comes from the shared
     //                      CombatOpportunityAnalyzer — never a private aggression-only estimator.
-    //    warPressure     — "built out, economy fine, time to break a KNOWN opponent/neutral target"
-    //                      (potentialSaturation + surplus + ecoGate + relativeEdge).
+    //    warPressure     — "economy secure and free force available against a KNOWN target"
+    //                      (surplus + ecoGate + relativeEdge). Military-potential saturation is
+    //                      Attack-only intrinsic value in AttackObjectiveEvaluator.
     //    raw = knownTargetGate * max(raidOpportunity, warPressure)
     //          * (UnderSiege ? aggSiegeDamp : 1).
     //    Military readiness without a known raid target is NOT aggression; in the blind opening it
@@ -91,7 +92,6 @@ namespace Game.Ai.V2
         public float AggOpportunity;
         public float AggSurplus;
         public float AggRelativeEdge;
-        public float AggPotentialSaturation;
         public float AggMomentum;
 
         public CombatOpportunity BestOpportunity = CombatOpportunity.None;
@@ -221,10 +221,6 @@ namespace Game.Ai.V2
                 ? AiConfigV2.aggRelEdgeNoIntel
                 : Curves.Ramp(ownPower / enemyPower, AiConfigV2.aggRelEdgeRampLo, AiConfigV2.aggRelEdgeRampHi);
 
-            float potentialSaturation = Curves.Ramp(
-                snapshot.Self.BestStackPotential / Mathf.Max(1f, snapshot.Self.TotalMilitaryPotential),
-                AiConfigV2.aggPotentialSatRampLo, AiConfigV2.aggPotentialSatRampHi);
-
             float ecoSecurity = snapshot.Economy != null ? snapshot.Economy.EconomicSecurity : 0.5f;
             float ecoGate = Mathf.Lerp(AiConfigV2.aggEcoGateLo, 1f, Mathf.Clamp01(ecoSecurity));
 
@@ -234,8 +230,7 @@ namespace Game.Ai.V2
                 + AiConfigV2.aggRaidOppWeightRelEdge * relativeEdge
                 + AiConfigV2.aggRaidOppWeightMomentum * momentum;
             float warPressure =
-                AiConfigV2.aggWarWeightPotentialSat * potentialSaturation
-                + AiConfigV2.aggWarWeightSurplus * surplus
+                AiConfigV2.aggWarWeightSurplus * surplus
                 + AiConfigV2.aggWarWeightEcoGate * ecoGate
                 + AiConfigV2.aggWarWeightRelEdge * relativeEdge;
 
@@ -277,7 +272,6 @@ namespace Game.Ai.V2
             breakdown.AggOpportunity = opportunity;
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
-            breakdown.AggPotentialSaturation = potentialSaturation;
             breakdown.AggMomentum = momentum;
             breakdown.BestOpportunity = opp.Best;
             breakdown.OpportunityReport = opp;
@@ -379,7 +373,7 @@ namespace Game.Ai.V2
             // Raid lane's within one turn: a settled step can capture the target, reveal a fresh
             // one or change the defender package. Rebuild them from the fresh snapshot on the same
             // terms, and — like raidOpportunity above — reuse the turn-frozen cross-turn signals
-            // (warPressure's saturation/eco terms) rather than re-pulsing Radar mid-turn.
+            // (warPressure's force/eco terms) rather than re-pulsing Radar mid-turn.
             List<AttackObjective> attackObjectives = AttackObjectiveEvaluator.Enumerate(snapshot);
             float attackOpportunity = BestAttackOpportunity(attackObjectives);
             breakdown.AggBestAttackOpportunity = attackOpportunity;
@@ -755,7 +749,7 @@ namespace Game.Ai.V2
                 + $"= max(offence=max(raid {F(b.AggRaidOpportunity)}, war {F(b.AggWarPressure)})*siegeDamp, "
                 + $"activeDefence {F(b.AggActiveDefencePressure)}) "
                 + $"[opp {F(b.AggOpportunity)} surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)} "
-                + $"sat {F(b.AggPotentialSaturation)} mom {F(b.AggMomentum)}]");
+                + $"mom {F(b.AggMomentum)}]");
             AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)} "
                 + $"| lossPulse enemy {F(state.EnemyLossPulse)} (drop {F(enemyDropFrac)}) "
                 + $"own {F(state.OwnLossPulse)} (drop {F(ownDropFrac)})");

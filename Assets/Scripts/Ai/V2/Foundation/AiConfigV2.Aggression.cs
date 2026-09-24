@@ -15,14 +15,14 @@ namespace Game.Ai.V2
         //  raidOpportunity — "there is a profitable target I can take right now" (from the shared
         //                    CombatOpportunityAnalyzer — same estimator MissionLayer/Provisioning
         //                    will use, never a throwaway aggression-only one).
-        //  warPressure     — "built out, economy is fine, time to commit to breaking the main
-        //                    opponent" (potential saturation + security-optional force + eco).
+        //  warPressure     — "economy is secure and free force exists against a known target"
+        //                    (surplus + relative edge + economy security).
         //  rawAggression = max(raidOpportunity, warPressure) * (UnderSiege ? aggSiegeDamp : 1).
         public const float aggRelEdgeRampLo = 0.80f;
         public const float aggRelEdgeRampHi = 2.20f;
         public const float aggRelEdgeNoIntel = 0.50f;   // "haven't seen them" != "I'm winning"
-        public const float aggPotentialSatRampLo = 0.60f;
-        public const float aggPotentialSatRampHi = 0.95f;
+        public const float attackPotentialSatRampLo = 0.60f;
+        public const float attackPotentialSatRampHi = 0.95f;
         public const float aggSurplusRampLo = 0.10f;
         public const float aggSurplusRampHi = 0.60f;
         // RequiredDefensiveReserve = Σ over threatened Citadel/Base/Facility assets of
@@ -36,7 +36,7 @@ namespace Game.Ai.V2
         public const float aggRaidOppWeightSurplus = 0.20f;
         public const float aggRaidOppWeightRelEdge = 0.15f;
         public const float aggRaidOppWeightMomentum = 0.15f;
-        public const float aggWarWeightPotentialSat = 0.45f;
+        public const float attackPotentialSaturationScoreWeight = 0.45f;
         public const float aggWarWeightSurplus = 0.25f;
         public const float aggWarWeightEcoGate = 0.20f;
         public const float aggWarWeightRelEdge = 0.10f;

@@ -204,13 +204,9 @@ namespace Game.Ai.V2
         public const float reconModeSwitchMargin = 0.15f;          // ...and the requested mode's strategic score must beat the current mode's by at least this (spec §25 — score-based, not just time-based)
         public const int reconAssignmentReassignHoldTurns = 1;     // ...min turns between strategic anchor/sector reassignments
         public const int reconAssignmentStallTurns = 2;            // ...no-progress turns after which an anchor reassignment is allowed early
-        public const int reconConcurrencyReconOnlyHardCap = 3;     // ReconConcurrencyPolicy — max concurrent scouts in the isolated ReconOnly acceptance environment
-        public const float reconConcurrencySecondLaneMinBaseValue = 50f;
+        // Lane value uses DemandUrgencyPolicy.NormalizedWorldValue (the canonical TaskScore band).
         public const float reconConcurrencySecondLaneMinRelValue = 0.80f;
         public const float reconConcurrencySecondLaneMinDarkFrac = 0.35f;
-        public const float reconConcurrencyThirdLaneMinBaseValue = 40f;
-        public const float reconConcurrencyThirdLaneMinRelValue = 0.65f;
-        public const float reconConcurrencyThirdLaneMinDarkFrac = 0.55f;
         // §P1 — when active durable Scout lanes exceed desired concurrency, shed at most this many
         // per turn (gradual contraction, not a one-pass collapse). Only Soft/None-funded lanes are
         // ever shed; a Hard-funded lane is kept even if it leaves active above desired.

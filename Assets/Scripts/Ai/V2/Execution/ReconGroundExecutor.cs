@@ -136,8 +136,6 @@ namespace Game.Ai.V2
             }
 
             ReconAcceptanceAudit.BeginTurn(player, ctx.TurnNumber);
-            if (recordBatchAudit && missionIndex == 0)
-                ReconAcceptanceAudit.RecordThreeScoutBatch(player, ctx.TurnNumber, queue);
 
             result.StartHex = army.Hex;
             result.FinalHex = army.Hex;

@@ -2203,35 +2203,14 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void ReconEconomyDevelopmentScope_AdmitsEconomyAndSuppressesRaid()
+        public void StrategyScope_IsPureAxisMappingForAllProductionMissionKinds()
         {
-            AiStrategyV2Mode previous = AiStrategyV2Scope.Mode;
-            try
-            {
-                AiStrategyV2Scope.Mode = AiStrategyV2Mode.ReconEconomyDevelopment;
-                List<MissionProposal> scoped = AiStrategyV2Scope.ApplyMissionScope(new[]
-                {
-                    EconomyMission(EconomyTaskKind.BuildExtraction, new HexCoord(1, 1), ResourceType.Energy),
-                    new MissionProposal { Kind = MissionKind.Raid },
-                });
-
-                Assert.That(scoped.Select(x => x.Kind), Is.EqualTo(new[] { MissionKind.Economy }));
-                Assert.That(AiStrategyV2Scope.AxisInScope(DesireAxis.Economy), Is.True);
-                Assert.That(AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression), Is.False);
-            }
-            finally
-            {
-                AiStrategyV2Scope.Mode = previous;
-            }
-        }
-
-        [Test]
-        public void ReconEconomyDevelopmentScope_IsProductionDefault()
-        {
-            Assert.That(AiStrategyV2Scope.Mode,
-                Is.EqualTo(AiStrategyV2Mode.ReconEconomyDevelopment));
-            Assert.That(AiStrategyV2Scope.UsesTypedLoop, Is.True);
-            Assert.That(AiStrategyV2Scope.AxisInScope(DesireAxis.Aggression), Is.False);
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.Scout), Is.EqualTo(DesireAxis.Recon));
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.Economy), Is.EqualTo(DesireAxis.Economy));
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.Development), Is.EqualTo(DesireAxis.Development));
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.Raid), Is.EqualTo(DesireAxis.Aggression));
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.ActiveDefence), Is.EqualTo(DesireAxis.Aggression));
+            Assert.That(AiStrategyV2Scope.AxisOf(MissionKind.Attack), Is.EqualTo(DesireAxis.Aggression));
         }
 
         [Test]
@@ -2693,7 +2672,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void EconomyAdmission_PrefersReadySameTurnMission()
+        public void EconomyAdmission_DoesNotAddPostTaskScoreSameTurnBonus()
         {
             MissionProposal ready = EconomyMission(EconomyTaskKind.BuildExtraction,
                 new HexCoord(1, 0), ResourceType.Materials);
@@ -2707,7 +2686,7 @@ namespace Game.EditorTests
             delayed.Requirements = new MissionRequirements { ApDesired = 2f, EtaTurns = 2 };
 
             Assert.That(MissionAdmissionPolicy.AdmissionRank(ready),
-                Is.GreaterThan(MissionAdmissionPolicy.AdmissionRank(delayed)));
+                Is.EqualTo(MissionAdmissionPolicy.AdmissionRank(delayed)));
         }
 
         // Match the shared, real assignment-AP model used by the production owner.
