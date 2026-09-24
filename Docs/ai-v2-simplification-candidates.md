@@ -49,6 +49,14 @@
 - **B (поведение):** проверить стратегические решения, которые читают сырой склад в обход
   owner-aware ledger (`AiAirSortiePlanner:974`, `AiTurnController:676`): могут ли они потратить
   Energy, зарезервированную Reaction/Economy. Если да — перевести на `StrategicSpendability`.
+  **Сделано 2026-09-24** (ветка `fix/c1b-air-energy-spendability`). Да, могли: аллокатор финансирует
+  из сырого склада, а `ProvisionAir` / Raid AirSupport сверяли Energy с сырым складом. Теперь гейт в
+  Provisioning — `ProvisioningManager.AirSpendableEnergyLeft` (= `StrategicSpendability.SpendableAmount(Energy)`
+  − `session.EnergyClaimed`); оценщик вылета получает ledger-удержанную Energy в `extraCommittedEnergy`.
+  Execution-гейты (`CanIssueMoveNow`/`CanAffordLaunch`) намеренно остались физическими. Мёртвые
+  `protectedPhysicalEnergy`/`protectedAp` аллокатора удалены. Открыто: AP-аналог в `ProvisionAir`
+  (`root.ActionPoints − session.ApClaimed` не видит AP-строк ledger) → C2-B; две модели «долга»
+  авиации (`CommittedAirActivationEnergy` vs `OutstandingRecoveryActivation`) не слиты.
 
 ### C2. `AxisBudgetLedger` — второй AP-пул с устаревшими аргументами — риск A: низкий, B: высокий
 

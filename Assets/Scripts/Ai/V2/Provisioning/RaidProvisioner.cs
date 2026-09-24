@@ -209,6 +209,11 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
                     new ProvisionRequirement(ap, new ResourceVector(0f, 0f, energy, 0f, 0f)),
                     $"raid support wing #{wing.Id} exceeds AP/Energy envelope"));
+            float energyLeft = ProvisioningManager.AirSpendableEnergyLeft(player, root, ctx, session);
+            if (energy > energyLeft + eps)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"spendable Energy exhausted: raid support wing #{wing.Id} needs {energy:0.##}, "
+                    + $"{energyLeft:0.##} left after reservations and earlier claims this pass"));
 
             target.AirSupportLandingHex = landing;
             return ProvisioningResult.Ok(new ProvisionedMission

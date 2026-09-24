@@ -152,17 +152,11 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"turn AP exhausted: air actor #{moverArmyId} needs {N(realAp)}, {N(turnApLeft)} left after earlier claims"));
 
-            // The cumulative, SEQUENTIAL check the funded-envelope comparison above
-            // cannot provide on its own: two separate AirLaunch (or AirExisting) missions provisioned
-            // one after another THIS pass both see the SAME unmutated root.Energy (Provisioning never
-            // mutates world resources — only Execution does), so each could pass its OWN envelope
-            // check independently while jointly exceeding the real stockpile. session.EnergyClaimed
-            // accumulates every earlier real claim this pass, mirroring session.ApClaimed for AP.
-            float liveEnergyLeft = root.GetResource(Game.Economy.ResourceType.Energy) - session.EnergyClaimed;
+            float liveEnergyLeft = AirSpendableEnergyLeft(player, root, ctx, session);
             if (realEnergy > liveEnergyLeft + eps)
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"turn Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
-                    + $"{N(liveEnergyLeft)} left after earlier claims this pass"));
+                    $"spendable Energy exhausted: air actor #{moverArmyId} needs {N(realEnergy)}, "
+                    + $"{N(liveEnergyLeft)} left after reservations and earlier claims this pass"));
 
             // AI-MGR — the SINGLE strategic sortie-reservation admission. Everything above
             // (CanAffordLaunch, the funded-envelope comparison, the cumulative live AP/Energy checks)
@@ -214,6 +208,29 @@ namespace Game.Ai.V2
         // AviationSortieReservationEvaluator (Resource Outlook -> Hand/Deck Energy Pressure -> Recon
         // Value -> Reserve), which reads live hand/deck/income Energy pressure itself. No new
         // evaluator, no per-turn reservation registry — recomputed every turn.
+        // The Energy an air claim (Recon sortie, Raid AirSupport) may still take this pass. Air is
+        // non-Economy spending, so it must fit StrategicSpendability — owner-aware ledger holds
+        // (EconomyDeferredBuild/Completion, reaction envelope) and unpaid mandatory-recovery
+        // activation are off limits — minus session.EnergyClaimed: Provisioning never mutates world
+        // resources, so sequential air claims in one pass would otherwise each see the same stock.
+        // Only air missions set ClaimedEnergy, so this never double-counts an Economy ledger row.
+        internal static float AirSpendableEnergyLeft(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session) =>
+            StrategicSpendability.SpendableAmount(player, root, ctx, ResourceType.Energy)
+            - (session?.EnergyClaimed ?? 0f);
+
+        // Energy held by owner-aware ledger rows only. The sortie evaluator subtracts in-flight
+        // wings' owed activation itself (ReconAirEnergyPolicy.CommittedAirActivationEnergy), so the
+        // recovery part of StrategicSpendability must not be handed to it a second time.
+        private static float LedgerHeldEnergy(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        {
+            if (player == null || root == null || ctx == null)
+                return 0f;
+            float raw = Mathf.Max(0, root.GetResource(ResourceType.Energy));
+            return raw - StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber,
+                StrategicReservedResource.Energy, raw);
+        }
+
         private static ProvisionFailure? AirSortieReservationAdmission(
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ProvisioningSession session,
             ScoutExecutionCandidate exec, int moverArmyId, HexCoord airfieldHex, float realAp, float realEnergy)
@@ -232,7 +249,7 @@ namespace Game.Ai.V2
                 exec.RouteScore,
                 existing ? moverArmyId : -1,
                 Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)),
-                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed)),
+                Mathf.CeilToInt(Mathf.Max(0f, session.EnergyClaimed + LedgerHeldEnergy(player, root, ctx))),
                 // Actors already in session.EnergyClaimed (a continuing wing provisioned earlier
                 // this pass) — the evaluator's live scan must not re-count their owed Energy.
                 session.ClaimedArmyIds);
