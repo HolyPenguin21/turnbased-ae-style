@@ -21,7 +21,7 @@ namespace Game.Ai.V2
     //  ARCH-02 §29/§31 — this class is the constrained physical ASSEMBLY SOLVER only. Actor
     //  eligibility is GroundCombatActorEligibility; the WorthIt win/coverage check is GroundCombatFeasibility;
     //  same-hex donor legality is GroundCombatDonorPolicy; the fresh-vs-continuation win gates are
-    //  RaidAdmissionPolicy. It computes no strategic objective value.
+    //  GroundCombatAdmissionPolicy. It computes no strategic objective value.
     // ===========================================================================================
     public sealed class GroundCombatAssemblyTransfer
     {
@@ -60,13 +60,6 @@ namespace Game.Ai.V2
         internal const float ContinuationWinChanceFloor = 0.40f;
     }
 
-    // Compatibility name for existing Raid call sites; the policy itself is target-agnostic.
-    internal static class RaidAdmissionPolicy
-    {
-        internal static float FreshStartWinChanceGate => GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
-        internal const float ContinuationWinChanceFloor = GroundCombatAdmissionPolicy.ContinuationWinChanceFloor;
-    }
-
     // The generalized ground-combat assembly REQUEST. The kernel below is shared by Raid,
     // Attack and ActiveDefence; nothing Raid-specific
     // (target merit, phase transitions, cooldowns) lives inside it. Every field is an explicit
@@ -77,7 +70,7 @@ namespace Game.Ai.V2
         // escort / rendezvous request), which trivially clears the estimator.
         public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
             System.Array.Empty<WorthIt.DefenderProfile>();
-        // Fresh-start vs continuation win gate. Callers pass RaidAdmissionPolicy's two constants.
+        // Fresh-start vs continuation win gate. Callers pass GroundCombatAdmissionPolicy's two constants.
         public float WinChanceGate = AiConfigV2.raidMinViableWinChance;
         // When set, this actor is tried first and (with PinToPreferred) exclusively.
         public int? PreferredPrimaryArmyId;
@@ -107,7 +100,7 @@ namespace Game.Ai.V2
             Plan(snap, new GroundCombatAssemblyRequest
             {
                 Defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>(),
-                WinChanceGate = RaidAdmissionPolicy.FreshStartWinChanceGate,
+                WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 ExcludedArmyIds = excludeArmyIds,
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
             });
@@ -123,23 +116,7 @@ namespace Game.Ai.V2
 
             IReadOnlyList<WorthIt.DefenderProfile> defenders =
                 request.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            // Perf — Record()'s caller re-invokes Plan() once per already-found army (excluding it
-            // each time) to enumerate the whole eligible set, and both loops below return on the
-            // FIRST army that clears the estimator. Trying the strongest army first means a
-            // decisive matchup exits after one Monte-Carlo call instead of working through weaker
-            // armies that were never going to beat it there first anyway. OrderBy is stable, so
-            // this ordering survives untouched through the PreferredPrimaryArmyId reorder below.
-            List<ArmySnapshot> eligible = GroundCombatActorEligibility
-                .EligibleReadyArmies(snap, request.ExcludedArmyIds)
-                .Where(a => Admissible(a, request))
-                .OrderByDescending(a => a.EffectiveArmyPower)
-                .ToList();
-            if (request.PinToPreferred && request.PreferredPrimaryArmyId.HasValue)
-                eligible = eligible.Where(a => a.ArmyId == request.PreferredPrimaryArmyId.Value).ToList();
-            else if (request.PreferredPrimaryArmyId.HasValue)
-                eligible = eligible
-                    .OrderByDescending(a => a.ArmyId == request.PreferredPrimaryArmyId.Value)
-                    .ToList();
+            List<ArmySnapshot> eligible = OrderedEligible(snap, request);
             if (eligible.Count == 0)
                 return GroundCombatAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
 
@@ -172,6 +149,65 @@ namespace Game.Ai.V2
 
             return GroundCombatAssemblyPlan.Infeasible(
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
+        }
+
+        // The ONE enumeration of "which ready ground armies could independently take this fight"
+        // under the request's gate — the set Plan() would return one by one if it were re-run while
+        // excluding each hit. Single pass with identical precedence: every already-formed actor
+        // first (Plan's exact loop), then same-hex assembly hosts in the same power order, where
+        // every earlier hit is excluded as a donor exactly as the repeated Plan() excluded it.
+        // Each actor is Monte-Carlo-tested at most once per stage instead of once per earlier hit.
+        internal static List<int> EligibleActorIds(WorldSnapshot snap, GroundCombatAssemblyRequest request)
+        {
+            var ids = new List<int>();
+            if (snap?.Self?.Armies == null || request == null)
+                return ids;
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                request.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            List<ArmySnapshot> eligible = OrderedEligible(snap, request);
+            foreach (ArmySnapshot a in eligible)
+                if (PlanForArmyAtThreshold(snap, defenders, a.ArmyId, request.WinChanceGate,
+                        request.DefenderHexDefenseBonus).Feasible)
+                    ids.Add(a.ArmyId);
+            if (!request.AllowSameHexAssembly)
+                return ids;
+
+            var excluded = request.ExcludedArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(request.ExcludedArmyIds);
+            excluded.UnionWith(ids);
+            foreach (ArmySnapshot a in eligible)
+            {
+                if (excluded.Contains(a.ArmyId))
+                    continue;
+                if (TryAssembleForHost(snap, defenders, a, excluded, request.WinChanceGate,
+                        request.DefenderHexDefenseBonus).Feasible)
+                {
+                    ids.Add(a.ArmyId);
+                    excluded.Add(a.ArmyId);
+                }
+            }
+            return ids;
+        }
+
+        // Free ready ground armies admissible for the request, strongest first. Both loops of
+        // Plan() return on the FIRST army that clears the estimator, so a decisive matchup exits
+        // after one Monte-Carlo call. OrderBy is stable, so this ordering survives untouched
+        // through the PreferredPrimaryArmyId reorder below.
+        private static List<ArmySnapshot> OrderedEligible(WorldSnapshot snap,
+            GroundCombatAssemblyRequest request)
+        {
+            List<ArmySnapshot> eligible = GroundCombatActorEligibility
+                .EligibleReadyArmies(snap, request.ExcludedArmyIds)
+                .Where(a => Admissible(a, request))
+                .OrderByDescending(a => a.EffectiveArmyPower)
+                .ToList();
+            if (request.PinToPreferred && request.PreferredPrimaryArmyId.HasValue)
+                eligible = eligible.Where(a => a.ArmyId == request.PreferredPrimaryArmyId.Value).ToList();
+            else if (request.PreferredPrimaryArmyId.HasValue)
+                eligible = eligible
+                    .OrderByDescending(a => a.ArmyId == request.PreferredPrimaryArmyId.Value)
+                    .ToList();
+            return eligible;
         }
 
         // AI-01 — the roster this plan would ACTUALLY produce: the live host's own members plus
@@ -381,7 +417,7 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId,
             float defenderHexDefenseBonus = 0f) =>
             PlanForArmyAtThreshold(snap, defenders, armyId,
-                RaidAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
+                GroundCombatAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
 
         // The exact gate the Aggression demand layer re-runs against the NEXT
         // objective before it may call an active Raid "covered". Threshold is explicit: a fresh

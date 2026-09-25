@@ -109,8 +109,8 @@ namespace Game.Ai.V2
         // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
         public const float raidMinViableWinChance = 0.65f;
         // Perf pre-filter:
-        // GroundCombatAdmissionRegistry.Record()/GroundCombatAssemblyPlanner.Plan() would otherwise
-        // run the 25-trial Monte-Carlo WinChance O(readyArmies^2) times per Raid target, per
+        // GroundCombatAssemblyPlanner.Plan()/EligibleActorIds() would otherwise
+        // run the 25-trial Monte-Carlo WinChance once per ready army per Raid target, per
         // settled step. Below this attackerPower/defenderPower ratio (aggregate
         // Attack+Defense+HP+0.25*Initiative, as in GroundCombatFeasibility.Clears), Monte Carlo is
         // skipped and the matchup is treated as not clearing raidMinViableWinChance. Calibration

@@ -649,8 +649,8 @@ namespace Game.Ai.V2
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
                     WinChanceGate = operationStarted
-                        ? RaidAdmissionPolicy.ContinuationWinChanceFloor
-                        : RaidAdmissionPolicy.FreshStartWinChanceGate,
+                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 })
                 : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, excluded);
 

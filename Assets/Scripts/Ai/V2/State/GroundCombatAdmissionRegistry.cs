@@ -72,33 +72,21 @@ namespace Game.Ai.V2
             ByProposal.Add(proposal, new Entry(ids));
         }
 
-        // The ONE enumeration of "which ready ground armies could independently take this fight".
-        // GroundCombatAssemblyPlanner.Plan returns the strongest currently-eligible actor under the
-        // given gate; re-running while excluding each hit walks the whole eligible set without
-        // duplicating its eligibility or WorthIt rules anywhere else.
+        // The ONE enumeration of "which ready ground armies could independently take this fight"
+        // is GroundCombatAssemblyPlanner.EligibleActorIds (single pass, same eligibility and
+        // WorthIt rules as Plan). This wrapper only fixes the lane-agnostic request shape.
         private static List<int> EnumerateEligible(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds,
-            float winChanceGate, float defenderHexDefenseBonus)
-        {
-            var excluded = unavailableArmyIds == null
-                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
-            var ids = new List<int>();
-            while (true)
+            float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null) =>
+            GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
-                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
-                    new GroundCombatAssemblyRequest
-                    {
-                        Defenders = defenders ?? Array.Empty<WorthIt.DefenderProfile>(),
-                        WinChanceGate = winChanceGate,
-                        ExcludedArmyIds = excluded,
-                        DefenderHexDefenseBonus = defenderHexDefenseBonus,
-                    });
-                if (!plan.Feasible || !excluded.Add(plan.BaseArmyId))
-                    break;
-                ids.Add(plan.BaseArmyId);
-            }
-            return ids;
-        }
+                Defenders = defenders ?? Array.Empty<WorthIt.DefenderProfile>(),
+                WinChanceGate = winChanceGate,
+                ExcludedArmyIds = unavailableArmyIds,
+                DefenderHexDefenseBonus = defenderHexDefenseBonus,
+                PreferredPrimaryArmyId = pinnedArmyId,
+                PinToPreferred = pinnedArmyId.HasValue,
+            });
 
         // A started Hard operation is not a fresh admission decision. Its PreferredMover already
         // passed the strict gate when the operation began and continuity/ActorCommitments owns that
@@ -186,27 +174,12 @@ namespace Game.Ai.V2
                 || !(proposal.Target is ActiveDefenceMissionTarget target)
                 || target.Phase != ActiveDefencePhase.Intercept)
                 return;
-            var excluded = unavailableArmyIds == null
-                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
-            var ids = new List<int>();
-            while (true)
-            {
-                GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
-                    new GroundCombatAssemblyRequest
-                    {
-                        Defenders = defenders ?? Array.Empty<WorthIt.DefenderProfile>(),
-                        WinChanceGate = proposal.FromDurableIntent
-                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
-                        PreferredPrimaryArmyId = proposal.FromDurableIntent
-                            ? proposal.PreferredMoverArmyId : null,
-                        PinToPreferred = proposal.FromDurableIntent
-                            && proposal.PreferredMoverArmyId.HasValue,
-                        ExcludedArmyIds = excluded,
-                    });
-                if (!plan.Feasible || !excluded.Add(plan.BaseArmyId)) break;
-                ids.Add(plan.BaseArmyId);
-            }
+            List<int> ids = EnumerateEligible(snap, defenders, unavailableArmyIds,
+                proposal.FromDurableIntent
+                    ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                    : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                0f,
+                proposal.FromDurableIntent ? proposal.PreferredMoverArmyId : null);
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
         }
