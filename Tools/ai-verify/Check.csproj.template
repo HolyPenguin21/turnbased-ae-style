@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compile check of Assets/ outside Unity. Generated into the work dir by compile_check.sh. -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.1</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <Nullable>disable</Nullable>
+    <DefineConstants>UNITY_INCLUDE_TESTS;UNITY_EDITOR;UNITY_2021_3_OR_NEWER;UNITY_6000_0_OR_NEWER</DefineConstants>
+    <NoWarn>$(NoWarn);CS0618;CS0414;CS0169;CS0649;CS0219;CS0162;CS0168;CS8632</NoWarn>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <AssemblyName>Assembly-CSharp</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="$(SrcAssets)/**/*.cs" />
+    <Compile Include="EngineStubs.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" />
+    <PackageReference Include="Unity3D.UnityEngine.UI" Version="2020.3.21" />
+    <PackageReference Include="NUnit" Version="3.14.0" />
+  </ItemGroup>
+</Project>
