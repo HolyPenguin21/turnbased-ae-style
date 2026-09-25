@@ -191,12 +191,19 @@ namespace Game.Ai.V2
 
             int activationAp = support.HasActivatedThisTurn ? 0 : support.ActivationApCost;
             // At the rendezvous the step IS the handoff: its own activation charges (newcomers to
-            // an army that already acted, both directions) are part of this leg's AP.
+            // an army that already acted, both directions) are part of this leg's AP. The odds
+            // projection above does not check that the armies can actually exchange anyone; the
+            // handoff plan does, so no plan means there is no step to provision.
             if (atRendezvous)
-                activationAp += GroundCombatReinforcement.HandoffApCost(
-                    GroundCombatReinforcement.PlanHandoff(primary, support,
-                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out _),
-                    primary, support);
+            {
+                HandoffPlan plan = GroundCombatReinforcement.PlanHandoff(primary, support,
+                    allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out string planWhy);
+                if (plan == null)
+                    return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
+                        ProvisionFailure.NoExecutableStep(
+                            $"{lane} reinforcement #{support.Id} -> #{primary.Id} has no executable handoff: {planWhy}")));
+                activationAp += GroundCombatReinforcement.HandoffApCost(plan, primary, support);
+            }
             if (activationAp > funded.Tentative.Ap + eps)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
@@ -451,10 +458,10 @@ namespace Game.Ai.V2
 
         // The AP the handoff itself charges: every newcomer to an army that already acted this
         // turn pays its activation (ArmyActions.TransferMembersApCost), in both directions.
+        // There is no cost of a handoff that has no plan — callers reject a null plan first.
         internal static int HandoffApCost(HandoffPlan plan, ArmyData primary, ArmyData support) =>
-            plan == null ? 0
-                : ArmyActions.TransferMembersApCost(plan.Incoming, primary)
-                    + ArmyActions.TransferMembersApCost(plan.Displaced, support);
+            ArmyActions.TransferMembersApCost(plan.Incoming, primary)
+                + ArmyActions.TransferMembersApCost(plan.Displaced, support);
 
         // The primary's ground bodies, most wounded first, then weakest (the one "who gives way"
         // order of every exchange).
