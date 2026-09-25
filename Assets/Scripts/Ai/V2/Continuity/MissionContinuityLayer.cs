@@ -443,6 +443,7 @@ namespace Game.Ai.V2
             // never lands two Raid operations on the same neutral target (either kind).
             HashSet<int> raidClaims = ActorCommitments.FromIntents(state.All, snap,
                 reconObjectives).ClaimedArmyIdSet;
+            HashSet<int> attackGatherUnavailable = null;
 
             foreach (MissionIntent intent in state.All.ToList())
             {
@@ -810,7 +811,12 @@ namespace Game.Ai.V2
                 {
                     // ATK §24/§25 — the Attack lane's own lifecycle answers live in
                     // MissionContinuityLayer.Attack.cs (a mechanical partial of this same owner).
-                    if (!ResolveAttackIntent(player, snap, intent, intent.Attack, out bool captured))
+                    // Audit F7 — a Gather re-plan may not recruit another intent's actor, nor an
+                    // army still walking home on a Return fallback (its leg would pin it).
+                    attackGatherUnavailable = attackGatherUnavailable
+                        ?? AttackGatherUnavailable(state, raidClaims);
+                    if (!ResolveAttackIntent(player, snap, intent, intent.Attack,
+                            attackGatherUnavailable, out bool captured))
                     {
                         dead.Add(intent.IntentKey);
                         if (captured)
@@ -2084,7 +2090,9 @@ namespace Game.Ai.V2
                     {
                         AdvanceIntent(intent, o, turn, state, allocState);
                         AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} "
-                            + "objective reached; operation ends at the captured site");
+                            + (o.AttackTarget.Phase == AttackMissionPhase.Assault
+                                ? "objective reached; operation ends at the captured site"
+                                : $"{o.AttackTarget.Phase} leg reached its goal"));
                         return;
                     }
                     if (o.HasAttackPayload && o.OperationStarted)
@@ -2331,10 +2339,16 @@ namespace Game.Ai.V2
                 // Economy actor ownership is durable. A replacement may only happen after
                 // ResolveActive retires a structurally invalid intent; an ordinary retry cannot
                 // atomically rewrite the mover behind continuity's back.
-                else if ((intent.Kind != MissionKind.Economy
-                        && intent.Kind != MissionKind.Development)
-                    || !intent.PreferredMoverArmyId.HasValue
-                    || intent.PreferredMoverArmyId.Value == o.MoverArmyId.Value)
+                // An Attack Reinforcement / SupportReturn / Gather step is executed by a SUPPORT
+                // army: like Raid's support legs above it must never overwrite the primary.
+                else if (!(intent.Attack != null && o.HasAttackPayload
+                        && (o.AttackTarget.Phase == AttackMissionPhase.Reinforcement
+                            || o.AttackTarget.Phase == AttackMissionPhase.SupportReturn
+                            || o.AttackTarget.Phase == AttackMissionPhase.Gather))
+                    && ((intent.Kind != MissionKind.Economy
+                            && intent.Kind != MissionKind.Development)
+                        || !intent.PreferredMoverArmyId.HasValue
+                        || intent.PreferredMoverArmyId.Value == o.MoverArmyId.Value))
                     intent.PreferredMoverArmyId = o.MoverArmyId;
             }
 
@@ -2351,17 +2365,28 @@ namespace Game.Ai.V2
             {
                 AttackIntent ai = intent.Attack;
                 ai.OperationStarted |= o.OperationStarted;
-                if (o.AttackTarget.SupportArmyId.HasValue)
-                    ai.SupportArmyId = o.AttackTarget.SupportArmyId;
-                if (o.AttackTarget.RecoveryBaseHex.HasValue)
-                    ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
-                // §46/§23 — a full/full swap displaced a primary body into the support container, so
-                // the whole support army must walk itself home. Same shared handoff semantics and the
-                // same SupportReturn leg the Raid lane uses.
-                // The destination itself is chosen by ResolveAttackIntent, which has the snapshot
-                // and the player: AdvanceIntent only records the immutable execution fact.
-                if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
-                    ai.Phase = AttackMissionPhase.SupportReturn;
+                if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
+                {
+                    // Audit F7 — an attempted handoff (full, partial or rejected) ends that
+                    // support's gather leg; whatever container is left on the host's hex is released
+                    // to Housekeeping. It never becomes the Reinforcement support nor walks home.
+                    if (o.ReinforcementHandoffAttempted && o.MoverArmyId.HasValue)
+                        ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value);
+                }
+                else
+                {
+                    if (o.AttackTarget.SupportArmyId.HasValue)
+                        ai.SupportArmyId = o.AttackTarget.SupportArmyId;
+                    if (o.AttackTarget.RecoveryBaseHex.HasValue)
+                        ai.RecoveryBaseHex = o.AttackTarget.RecoveryBaseHex;
+                    // §46/§23 — a full/full swap displaced a primary body into the support
+                    // container, so the whole support army must walk itself home. Same shared
+                    // handoff semantics and the same SupportReturn leg the Raid lane uses.
+                    // The destination itself is chosen by ResolveAttackIntent, which has the
+                    // snapshot and the player: AdvanceIntent only records the immutable fact.
+                    if (o.ReinforcementHandoffAttempted && ai.SupportArmyId.HasValue)
+                        ai.Phase = AttackMissionPhase.SupportReturn;
+                }
                 // §17 — the operation's turn-local side-strike marker. Continuity is the only
                 // writer; Execution merely reported that the diversion was really spent.
                 if (o.AttackOpportunisticStrike)
@@ -2700,6 +2725,22 @@ namespace Game.Ai.V2
         // completed Raid target's Return and (audit F6) an ActiveDefence Return. When that actor
         // is bound to a new ground-combat operation the fallback leg is retired, never kept as a
         // second owner of the same army.
+        private static HashSet<int> AttackGatherUnavailable(MissionIntentState state,
+            ISet<int> claims)
+        {
+            var unavailable = claims == null ? new HashSet<int>() : new HashSet<int>(claims);
+            foreach (MissionIntent i in state.All)
+            {
+                if (i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
+                    && i.Raid.PrimaryArmyId.HasValue)
+                    unavailable.Add(i.Raid.PrimaryArmyId.Value);
+                if (i?.ActiveDefence != null && i.ActiveDefence.Phase == ActiveDefencePhase.Return
+                    && i.ActiveDefence.PrimaryArmyId.HasValue)
+                    unavailable.Add(i.ActiveDefence.PrimaryArmyId.Value);
+            }
+            return unavailable;
+        }
+
         private static void RetireReturnFallbacksForActor(MissionIntentState state,
             int? actorId, string reason)
         {

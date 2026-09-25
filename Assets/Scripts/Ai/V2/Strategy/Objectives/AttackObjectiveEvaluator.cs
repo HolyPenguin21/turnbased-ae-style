@@ -18,12 +18,17 @@ namespace Game.Ai.V2
     //   SupportReturn   — the shared GroundCombat handoff left the support container empty-handed
     //                     and it walks home. Same leg Raid already owns.
     //   RecoveryReturn  — the operation is no longer viable; the primary withdraws to an own Base.
+    //   Gather          — no single army (nor a same-hex package) clears the site, but free armies
+    //                     spread across hexes do together: the host (PrimaryArmyId) holds while
+    //                     every planned support walks to it in parallel and hands its bodies over
+    //                     (GroundCombatAssemblyPlanner.PlanGather owns the host/support choice).
     public enum AttackMissionPhase
     {
         Assault = 0,
         Reinforcement = 1,
         SupportReturn = 2,
         RecoveryReturn = 3,
+        Gather = 4,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
@@ -34,9 +39,13 @@ namespace Game.Ai.V2
         public AttackMissionPhase Phase;
         public AttackTargetRef Target;
         public int? PrimaryArmyId;
+        // The army this leg moves for Reinforcement / SupportReturn / Gather.
         public int? SupportArmyId;
-        // Where the leg is actually walking this turn: the target site for Assault/Reinforcement,
-        // an own Base for the two return legs.
+        // Gather only: every support the frozen gather plan still expects at the host, including
+        // this leg's SupportArmyId. Continuity copies it into the durable AttackIntent.
+        public int[] GatherSupportArmyIds;
+        // Where the leg is actually walking this turn: the target site for Assault, the primary's
+        // hex for Reinforcement/Gather, an own Base for the two return legs.
         public HexCoord DestinationHex;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;

@@ -18,8 +18,10 @@ namespace Game.Ai.V2
         // Returns false when the intent must be retired. `success` distinguishes "we took the
         // Base" (§8: the army STAYS there, mission claim released, Housekeeping stabilises) from
         // "this operation is over for another reason".
+        // `unavailableArmyIds` — armies no Gather re-plan may recruit (other intents' claims and
+        // return-fallback walkers); only read by the Gather phase.
         internal static bool ResolveAttackIntent(PlayerSetupData player, WorldSnapshot snap,
-            MissionIntent intent, AttackIntent a, out bool success)
+            MissionIntent intent, AttackIntent a, ISet<int> unavailableArmyIds, out bool success)
         {
             success = false;
             if (a == null || !a.Target.HasValue)
@@ -157,6 +159,9 @@ namespace Game.Ai.V2
                 return true;
             }
 
+            if (a.Phase == AttackMissionPhase.Gather)
+                return ResolveAttackGather(snap, intent, a, unavailableArmyIds);
+
             // ---- §24 the Assault / Reinforcement decision --------------------------------------
             bool clears = AttackPrimaryClearsTarget(snap, a);
             if (clears)
@@ -216,9 +221,82 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Audit F7 — the Gather phase. The host (PrimaryArmyId) holds; every support in
+        // GatherSupportArmyIds walks to it and hands over (AdvanceIntent drops a support once its
+        // handoff was attempted). The operation turns into an Assault the moment the host clears
+        // the FRESH gate — gathering is still a fresh start decision, so the lower continuation
+        // floor does not apply until the host actually marches. When every planned support is
+        // spent and the host still falls short, the gather is re-planned around the same host from
+        // what is free now; if nothing can complete it, the existing Reinforcement path takes over
+        // (partial improvement, then the Production demand, then RecoveryReturn).
+        private static bool ResolveAttackGather(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ISet<int> unavailableArmyIds)
+        {
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+
+            // A support that stopped existing, or whose bodies no longer improve the host (arrival
+            // order filled the host differently than planned, defenders changed), leaves the plan:
+            // otherwise its leg would be rejected by Provisioning forever and the host would hold
+            // for nothing.
+            ArmySnapshot host = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            List<int> dropped = a.GatherSupportArmyIds.Where(id =>
+            {
+                ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
+                return s == null || !RaidSupportActorAlive(snap, id)
+                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, defenders, hexBonus);
+            }).ToList();
+            if (dropped.Count > 0)
+            {
+                a.GatherSupportArmyIds.RemoveAll(dropped.Contains);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} support(s) "
+                    + $"[{string.Join(",", dropped)}] lost or no longer improve host #{a.PrimaryArmyId}; "
+                    + $"remaining [{string.Join(",", a.GatherSupportArmyIds)}]");
+            }
+
+            if (AttackPrimaryClearsTarget(snap, a))
+            {
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} phase Gather -> Assault "
+                    + $"(host #{a.PrimaryArmyId} clears {a.Target.DiagnosticLabel} "
+                    + $"win={a.ProjectedWinChance:0.00}); released supports "
+                    + $"[{string.Join(",", a.GatherSupportArmyIds)}]");
+                a.GatherSupportArmyIds.Clear();
+                a.Phase = AttackMissionPhase.Assault;
+                return true;
+            }
+            if (a.GatherSupportArmyIds.Count > 0)
+                return true;
+
+            var unavailable = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            unavailable.Remove(a.PrimaryArmyId.Value);
+            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, defenders,
+                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                a.PrimaryArmyId);
+            if (plan.Feasible && plan.SupportArmyIds.Count > 0)
+            {
+                a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
+                intent.StallTurns = 0;
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} re-planned around host "
+                    + $"#{a.PrimaryArmyId}: supports [{string.Join(",", plan.SupportArmyIds)}] "
+                    + $"win={plan.ProjectedWinChance:0.00} gatherTurns={plan.GatherTurns} "
+                    + $"assaultEta={plan.AssaultEta} ap={plan.TotalAp}");
+                return true;
+            }
+
+            a.Phase = AttackMissionPhase.Reinforcement;
+            a.ReinforcementRequestedTurn = -1;
+            AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} phase Gather -> Reinforcement "
+                + $"(host #{a.PrimaryArmyId} still short and no complete gather remains: {plan.Reason})");
+            return true;
+        }
+
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
         // and the SAME honest hex-defence read the mission layer used, at the bounded continuation
-        // floor a started operation is entitled to.
+        // floor a started operation is entitled to (a still-gathering host is not marching yet and
+        // is held to the fresh gate).
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
         {
             if (!a.PrimaryArmyId.HasValue)
@@ -231,7 +309,7 @@ namespace Game.Ai.V2
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                 snap, defenders, a.PrimaryArmyId.Value,
-                a.OperationStarted
+                a.OperationStarted && a.Phase != AttackMissionPhase.Gather
                     ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                     : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 hexBonus);
@@ -267,7 +345,8 @@ namespace Game.Ai.V2
                 Phase = t.Phase,
                 OperationStarted = true,
                 PrimaryArmyId = t.PrimaryArmyId ?? o.MoverArmyId,
-                SupportArmyId = t.SupportArmyId,
+                // A Gather leg's mover is one of several supports, never the Reinforcement support.
+                SupportArmyId = t.Phase == AttackMissionPhase.Gather ? null : t.SupportArmyId,
                 RecoveryBaseHex = t.RecoveryBaseHex,
                 SupportReturnHex = t.SupportReturnHex,
                 ProjectedWinChance = t.ProjectedWinChance,
@@ -278,13 +357,25 @@ namespace Game.Ai.V2
                 LastOpportunisticStrikeTurn = o.AttackOpportunisticStrike
                     ? turn : t.OpportunisticStrikeTurn,
             };
+            // Audit F7 — an operation born from its first Gather step carries the whole frozen
+            // plan; the support that already attempted its handoff on that step is done.
+            if (t.Phase == AttackMissionPhase.Gather && t.GatherSupportArmyIds != null)
+                payload.GatherSupportArmyIds.AddRange(t.GatherSupportArmyIds.Where(id =>
+                    id != payload.PrimaryArmyId
+                    && !(o.ReinforcementHandoffAttempted && id == o.MoverArmyId)));
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
             RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh Attack admitted");
+            foreach (int supportId in payload.GatherSupportArmyIds)
+                RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Attack] continuity — "
                 + $"[{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created "
-                + $"(Hard attack on {t.Target.DiagnosticLabel}, primary #{payload.PrimaryArmyId})");
+                + $"(Hard attack on {t.Target.DiagnosticLabel}, primary #{payload.PrimaryArmyId}, "
+                + $"phase {payload.Phase}"
+                + (payload.Phase == AttackMissionPhase.Gather
+                    ? $", gather supports [{string.Join(",", payload.GatherSupportArmyIds)}]" : "")
+                + ")");
         }
 
         // §71 — a started operation is NOT re-pointed at a slightly better-scoring target. This is

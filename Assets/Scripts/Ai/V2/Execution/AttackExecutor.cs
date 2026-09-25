@@ -41,6 +41,7 @@ namespace Game.Ai.V2
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
                 case AttackMissionPhase.Reinforcement:
+                case AttackMissionPhase.Gather:
                     yield return RunReinforcementStep(player, ctx, pm, result, army);
                     yield break;
             }
@@ -306,12 +307,15 @@ namespace Game.Ai.V2
             bool handoffOk = TaskExecutor.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
                 out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
-                + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
+                + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
                 + $"{(wasSwap ? $"displaced={displacedUnitName} " : "")}{detail}");
 
             if (transferred > 0)
             {
+                // A delivered body is a physical start of the operation (a fresh Gather whose first
+                // step is a same-hex handoff must still create its durable intent, §70).
+                result.OperationStarted = true;
                 result.CombatChanged = true;
                 // The primary's readiness genuinely changed: bump and publish so the SAME turn's
                 // bounded cycle re-checks this Attack instead of waiting a turn.

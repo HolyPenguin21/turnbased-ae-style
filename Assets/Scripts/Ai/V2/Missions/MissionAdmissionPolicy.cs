@@ -91,7 +91,11 @@ namespace Game.Ai.V2
                 && a.Target is AttackMissionTarget aaTarget && b.Target is AttackMissionTarget abTarget
                 && aaTarget.Target.HasValue && abTarget.Target.HasValue
                 && aaTarget.Target.Equals(abTarget.Target))
-                return true;
+                // Audit F7 — parallel Gather legs of one operation walk DIFFERENT supports to the
+                // same host: complementary work, funded together, never one-per-pass.
+                return !(aaTarget.Phase == AttackMissionPhase.Gather
+                    && abTarget.Phase == AttackMissionPhase.Gather
+                    && aaTarget.SupportArmyId != abTarget.SupportArmyId);
 
             if (UsesGroundCombatAssignmentRegistry(a) && UsesGroundCombatAssignmentRegistry(b))
             {

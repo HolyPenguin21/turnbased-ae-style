@@ -143,6 +143,9 @@ namespace Game.Ai.V2
                         rows.Add($"{k}:air{i.Raid.AirSupportArmyId.Value}:{(int)i.Raid.Phase}");
                     if (i.Attack?.SupportArmyId != null)
                         rows.Add($"{k}:asup{i.Attack.SupportArmyId.Value}:{(int)i.Attack.Phase}");
+                    if (i.Attack?.Phase == AttackMissionPhase.Gather)
+                        foreach (int gatherId in i.Attack.GatherSupportArmyIds)
+                            rows.Add($"{k}:agat{gatherId}");
                     if (i.Economy?.BuilderArmyId != null)
                         rows.Add($"{k}:bld{i.Economy.BuilderArmyId.Value}");
                     if (i.Economy?.CollectorArmyId != null)

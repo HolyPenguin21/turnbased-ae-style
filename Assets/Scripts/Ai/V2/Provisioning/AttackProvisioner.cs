@@ -38,7 +38,9 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.SupportReturn:
                     return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
                         target.SupportArmyId, "support");
+                // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
                 case AttackMissionPhase.Reinforcement:
+                case AttackMissionPhase.Gather:
                     return ProvisionReinforcement(player, root, ctx, session, funded, target, key, eps);
             }
 
@@ -179,7 +181,8 @@ namespace Game.Ai.V2
             target.DefenderHexDefenseBonus = hexBonus;
             target.DefenderCount = defenders.Count;
 
-            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK REINFORCE "
+            AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
+                + $"{(target.Phase == AttackMissionPhase.Gather ? "GATHER" : "REINFORCE")} "
                 + $"support #{check.Mover.Id} -> primary #{primary.Id} at ({primary.Hex.Q},{primary.Hex.R}) "
                 + $"{(atRendezvous ? "HANDOFF" : "TRANSIT")} ap {N(check.ActivationAp)}");
             return ProvisioningResult.Ok(new ProvisionedMission

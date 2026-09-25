@@ -122,7 +122,8 @@ namespace Game.Ai.V2
                 // ATK §44 — same rule for an Attack leg: the pinned set is computed across ALL
                 // funded non-Assault legs including this one, so its own actor must stay permitted.
                 bool thisAttackLegsActor = proposal?.Target is AttackMissionTarget attackLeg
-                    && ((attackLeg.Phase == AttackMissionPhase.Reinforcement
+                    && (((attackLeg.Phase == AttackMissionPhase.Reinforcement
+                                || attackLeg.Phase == AttackMissionPhase.Gather)
                             && attackLeg.SupportArmyId == pinnedId)
                         || (attackLeg.Phase == AttackMissionPhase.RecoveryReturn
                             && attackLeg.PrimaryArmyId == pinnedId)

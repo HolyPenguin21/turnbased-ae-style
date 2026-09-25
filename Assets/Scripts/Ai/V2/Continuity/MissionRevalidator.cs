@@ -168,7 +168,8 @@ namespace Game.Ai.V2
                         ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
                 // Reinforcement is a rendezvous with the primary, not a fight with the site: its
                 // validity is the primary's, and the executor re-reads the meeting hex itself.
-                if (attack.Phase == AttackMissionPhase.Reinforcement)
+                if (attack.Phase == AttackMissionPhase.Reinforcement
+                    || attack.Phase == AttackMissionPhase.Gather)
                     return attack.PrimaryArmyId.HasValue
                         && ArmyRegistry.AllForOwner(player).Any(a =>
                             a.Id == attack.PrimaryArmyId.Value && a.Members.Count > 0)

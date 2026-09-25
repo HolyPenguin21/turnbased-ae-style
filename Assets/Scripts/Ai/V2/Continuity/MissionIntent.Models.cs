@@ -330,6 +330,10 @@ namespace Game.Ai.V2
         public bool OperationStarted;
         public int? PrimaryArmyId;
         public int? SupportArmyId;
+        // Gather phase only: supports still walking to (or about to hand off at) the primary.
+        // A support leaves this list when its handoff is attempted or it stops existing; the
+        // primary (the gather host) is never in it.
+        public List<int> GatherSupportArmyIds = new List<int>();
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
         public int ReinforcementRequestedTurn = -1;

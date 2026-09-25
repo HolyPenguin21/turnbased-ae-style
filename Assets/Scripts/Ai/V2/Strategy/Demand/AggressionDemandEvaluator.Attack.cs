@@ -47,6 +47,17 @@ namespace Game.Ai.V2
                     continue;
                 }
 
+                // Audit F7 — a planned gather already has its capability on the map; Production
+                // is only asked if the gather falls apart (Continuity then moves to Reinforcement).
+                if (ai.Phase == AttackMissionPhase.Gather)
+                {
+                    diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
+                        + $"target={ai.Target.DiagnosticLabel} host={ai.PrimaryArmyId} "
+                        + $"supports=[{string.Join(",", ai.GatherSupportArmyIds)}] "
+                        + "reason=attack_gather_in_progress");
+                    continue;
+                }
+
                 // Only a BOUND operation may ask for anything. Without a claimed primary there is
                 // no proven obligation yet — the fresh-objective path owns that case.
                 if (!ai.PrimaryArmyId.HasValue || commitments == null

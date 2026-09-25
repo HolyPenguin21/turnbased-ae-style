@@ -83,6 +83,11 @@ namespace Game.Ai.V2
                         || attack.Phase == AttackMissionPhase.SupportReturn)
                     && GroundContainerStillValid(attack.SupportArmyId.Value, snap))
                     c.Claim(attack.SupportArmyId.Value);
+                // Audit F7 — every support a Gather still expects at the host is this operation's.
+                if (attack != null && attack.Phase == AttackMissionPhase.Gather)
+                    foreach (int supportId in attack.GatherSupportArmyIds)
+                        if (GroundContainerStillValid(supportId, snap))
+                            c.Claim(supportId);
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 

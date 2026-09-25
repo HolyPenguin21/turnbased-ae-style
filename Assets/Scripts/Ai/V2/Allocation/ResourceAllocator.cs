@@ -153,6 +153,12 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.SupportReturn:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.SupportReturn,
                         at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
+                // One key per gather support: parallel legs of one operation never share a
+                // provisioning/cooldown slot; the host rides along as ActorId.
+                case AttackMissionPhase.Gather:
+                    return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Gather,
+                        at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R,
+                        actorId: at.PrimaryArmyId ?? 0);
                 case AttackMissionPhase.RecoveryReturn:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.RecoveryReturn,
                         at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
