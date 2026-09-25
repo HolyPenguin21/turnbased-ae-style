@@ -173,24 +173,9 @@ namespace Game.Ai.V2
         // same force the envelope is priced from.
         public static TaskScore WithResponse(ActiveDefenceObjective objective, ArmySnapshot actor,
             float winChance, int eta, float moverOpportunityCost = 0f,
-            int? projectedActivationAp = null)
-        {
-            TaskScore s = objective.TaskScore;
-            float activation = actor != null && !actor.HasActivatedThisTurn
-                ? Mathf.Max(0, projectedActivationAp ?? actor.ActivationApCost) : 0f;
-            return new TaskScore(
-                staleness: s.Staleness,
-                strategicRelevance: s.StrategicRelevance,
-                threatDirection: s.ThreatDirection,
-                ownTerritoryProximity: s.OwnTerritoryProximity,
-                militaryTargetRelevance: s.MilitaryTargetRelevance,
-                winChance: TaskScoreEvaluator.WinChance(winChance),
-                cardPrice: activation * AiConfigV2.taskScoreReactivationApWeight,
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    projectedActivationAp ?? actor?.ActivationApCost ?? 0,
-                    eta, AiConfigV2.taskScoreReactivationApWeight),
-                moverOpportunityCost: Mathf.Max(0f, moverOpportunityCost));
-        }
+            int? projectedActivationAp = null) =>
+            TaskScoreEvaluator.WithActorResponse(objective.TaskScore, actor, winChance, eta,
+                moverOpportunityCost, projectedActivationAp);
 
         private static bool IsHonestPositionedHostile(AssetThreatSnapshot t) =>
             t?.Asset != null && t.Contact?.Army != null

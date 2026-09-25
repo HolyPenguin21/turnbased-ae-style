@@ -299,6 +299,42 @@ namespace Game.Ai.V2
 
         internal static float EconomicExpansionValue(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreEconomicExpansionMax;
+
+        // The ONE ground-combat response fold (Raid, Attack, ActiveDefence): the objective's
+        // intrinsic slots are carried unchanged and the concrete force adds its own four — the
+        // win chance the shared estimator gave it, the activation AP it spends now (CardPrice), the
+        // recurring AP of every further turn on the way (Delivery) and the cost of taking this
+        // army off what it does now. Lanes never fold these slots a second, private way.
+        internal static TaskScore WithResponse(TaskScore intrinsic, float winChance,
+            float activationApNow, float recurringActivationAp, float etaTurns,
+            float moverOpportunityCost = 0f) =>
+            new TaskScore(
+                staleness: intrinsic.Staleness,
+                strategicRelevance: intrinsic.StrategicRelevance,
+                threatDirection: intrinsic.ThreatDirection,
+                ownTerritoryProximity: intrinsic.OwnTerritoryProximity,
+                frontProgress: intrinsic.FrontProgress,
+                corridorAlignment: intrinsic.CorridorAlignment,
+                economicExpansionValue: intrinsic.EconomicExpansionValue,
+                militaryTargetRelevance: intrinsic.MilitaryTargetRelevance,
+                winChance: WinChance(winChance),
+                cardPrice: Mathf.Max(0f, activationApNow) * AiConfigV2.taskScoreReactivationApWeight,
+                delivery: DeliveryFromEta(recurringActivationAp, etaTurns,
+                    AiConfigV2.taskScoreReactivationApWeight),
+                moverOpportunityCost: Mathf.Max(0f, moverOpportunityCost));
+
+        // The same fold priced off one actor: its activation is spent now only if it has not
+        // activated yet this turn. `projectedActivationAp` — the activation of the roster the
+        // assembly plan will really field (GroundCombatAssemblyPlanner is its owner); null keeps
+        // the actor's own snapshot figure.
+        internal static TaskScore WithActorResponse(TaskScore intrinsic, ArmySnapshot actor,
+            float winChance, int eta, float moverOpportunityCost = 0f,
+            int? projectedActivationAp = null)
+        {
+            int recurring = projectedActivationAp ?? actor?.ActivationApCost ?? 0;
+            float now = actor != null && !actor.HasActivatedThisTurn ? Mathf.Max(0, recurring) : 0f;
+            return WithResponse(intrinsic, winChance, now, recurring, eta, moverOpportunityCost);
+        }
     }
 
 }

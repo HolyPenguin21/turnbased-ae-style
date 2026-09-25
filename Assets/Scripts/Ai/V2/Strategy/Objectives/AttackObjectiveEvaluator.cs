@@ -278,27 +278,9 @@ namespace Game.Ai.V2
         // this particular army off whatever it is doing now. No Attack-specific slot.
         public static TaskScore WithResponse(AttackObjective objective, ArmySnapshot actor,
             float winChance, int eta, float moverOpportunityCost = 0f,
-            int? projectedActivationAp = null)
-        {
-            TaskScore s = objective.TaskScore;
-            float activation = actor != null && !actor.HasActivatedThisTurn
-                ? Mathf.Max(0, projectedActivationAp ?? actor.ActivationApCost) : 0f;
-            return new TaskScore(
-                staleness: s.Staleness,
-                strategicRelevance: s.StrategicRelevance,
-                threatDirection: s.ThreatDirection,
-                ownTerritoryProximity: s.OwnTerritoryProximity,
-                frontProgress: s.FrontProgress,
-                corridorAlignment: s.CorridorAlignment,
-                economicExpansionValue: s.EconomicExpansionValue,
-                militaryTargetRelevance: s.MilitaryTargetRelevance,
-                winChance: TaskScoreEvaluator.WinChance(winChance),
-                cardPrice: activation * AiConfigV2.taskScoreReactivationApWeight,
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    projectedActivationAp ?? actor?.ActivationApCost ?? 0,
-                    eta, AiConfigV2.taskScoreReactivationApWeight),
-                moverOpportunityCost: Mathf.Max(0f, moverOpportunityCost));
-        }
+            int? projectedActivationAp = null) =>
+            TaskScoreEvaluator.WithActorResponse(objective.TaskScore, actor, winChance, eta,
+                moverOpportunityCost, projectedActivationAp);
 
         // ---- internals -------------------------------------------------------------------------
 
