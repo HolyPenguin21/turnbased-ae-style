@@ -548,38 +548,27 @@ namespace Game.Ai.V2
                     result.StopReason = ExecutionStopReason.ReachedGoal;
                     yield break;
                 }
-                if (army.CurrentMovement <= 0)
+                var returnLeg = new GroundLegStepResult();
+                yield return GroundCombatLegStep.Transit(player, ctx, army, home,
+                    "V2 active defence — return", returnLeg);
+                if (returnLeg.Blocked.HasValue)
                 {
-                    result.StopReason = ExecutionStopReason.OutOfMovement;
+                    result.StopReason = returnLeg.Blocked.Value;
+                    result.NeedsReplan = returnLeg.NeedsReplan;
                     yield break;
                 }
-                HexCoord? returnStep = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
-                if (!returnStep.HasValue)
-                {
-                    result.StopReason = ExecutionStopReason.NoSafeStep;
-                    result.NeedsReplan = true;
-                    yield break;
-                }
-                HexCoord returnBefore = army.Hex;
-                var returnTrace = new AiMoveExecutionTrace();
-                yield return AiTurnController.MoveArmyRoutine(player,
-                    AiDecision.Move(army, returnStep.Value,
-                        "V2 active defence — return", 0f, AiGroundMoveAuthority.Transit),
-                    ctx, returnTrace);
-                army = Resolve(player, pm.MoverArmyId);
-                HexCoord returnAfter = army != null ? army.Hex : returnTrace.EndHex;
-                bool returnMoved = !returnAfter.Equals(returnBefore);
-                if (returnMoved) result.StepsMoved++;
-                result.FinalHex = returnAfter;
+                army = returnLeg.Army;
+                if (returnLeg.Moved) result.StepsMoved++;
+                result.FinalHex = returnLeg.EndHex;
                 result.ActualActorArmyId = pm.MoverArmyId;
                 if (army != null && army.Hex.Equals(home))
                 {
                     result.ReachedGoal = true;
                     result.StopReason = ExecutionStopReason.ReachedGoal;
                 }
-                else if (returnTrace.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
+                else if (returnLeg.BattleOccurred) result.StopReason = ExecutionStopReason.BattleStarted;
                 else if (army == null) result.StopReason = ExecutionStopReason.MoverLost;
-                else if (!returnMoved) result.StopReason = ExecutionStopReason.MoveRejected;
+                else if (!returnLeg.Moved) result.StopReason = ExecutionStopReason.MoveRejected;
                 else result.StopReason = army.CurrentMovement > 0
                     ? ExecutionStopReason.StepCompleted : ExecutionStopReason.OutOfMovement;
                 yield break;
@@ -984,37 +973,27 @@ namespace Game.Ai.V2
                 ReportArrived();
                 yield break;
             }
-            if (army.CurrentMovement <= 0)
+            // A temporarily blocked first step is a retry-next-turn, not a reason to drop the leg.
+            var leg = new GroundLegStepResult();
+            yield return GroundCombatLegStep.Transit(player, ctx, army, home,
+                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})",
+                leg);
+            if (leg.Blocked.HasValue)
             {
-                result.StopReason = ExecutionStopReason.OutOfMovement;
-                yield break;
-            }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
-            if (!next.HasValue)
-            {
-                // Temporarily blocked first step is a retry-next-turn, not a reason to drop the leg.
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopReason = leg.Blocked.Value;
+                result.NeedsReplan = leg.NeedsReplan;
                 yield break;
             }
 
-            HexCoord before = army.Hex;
-            var decision = AiDecision.Move(army, next.Value,
-                $"V2 raid — {(isSupportLeg ? "support " : isRecoveryLeg ? "recovery " : "")}return to base ({home.Q},{home.R})", 0f,
-                AiGroundMoveAuthority.Transit);
-            var trace = new AiMoveExecutionTrace();
-            yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
-
-            army = Resolve(player, pm.MoverArmyId);
-            HexCoord endHex = army != null ? army.Hex : trace.EndHex;
-            bool moved = !endHex.Equals(before);
+            army = leg.Army;
+            bool moved = leg.Moved;
             if (moved) result.StepsMoved++;
-            result.FinalHex = endHex;
+            result.FinalHex = leg.EndHex;
             result.OperationStarted |= moved;
             if (moved) result.ActualActorArmyId = pm.MoverArmyId;
 
-            if (trace.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
-            if (trace.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
+            if (leg.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
+            if (leg.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
             if (army == null)
             {
                 // Support/primary lost en route — release its claim and let the Raid continue from
@@ -1056,34 +1035,25 @@ namespace Game.Ai.V2
 
             if (!support.Hex.Equals(rendezvous))
             {
-                if (support.CurrentMovement <= 0)
+                var leg = new GroundLegStepResult();
+                yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
+                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})",
+                    leg);
+                if (leg.Blocked.HasValue)
                 {
-                    result.StopReason = ExecutionStopReason.OutOfMovement;
+                    result.StopReason = leg.Blocked.Value;
+                    result.NeedsReplan = leg.NeedsReplan;
                     yield break;
                 }
-                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous);
-                if (!next.HasValue)
-                {
-                    result.StopReason = ExecutionStopReason.NoSafeStep;
-                    result.NeedsReplan = true;
-                    yield break;
-                }
-                HexCoord before = support.Hex;
-                var decision = AiDecision.Move(support, next.Value,
-                    $"V2 raid — reinforcement convoy to primary #{primary.Id} at ({rendezvous.Q},{rendezvous.R})", 0f,
-                    AiGroundMoveAuthority.Transit);
-                var trace = new AiMoveExecutionTrace();
-                yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-                support = Resolve(player, pm.MoverArmyId);
-                HexCoord endHex = support != null ? support.Hex : trace.EndHex;
-                bool moved = !endHex.Equals(before);
+                support = leg.Army;
+                bool moved = leg.Moved;
                 if (moved) result.StepsMoved++;
-                result.FinalHex = endHex;
+                result.FinalHex = leg.EndHex;
                 result.OperationStarted |= moved;
 
-                if (trace.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
-                if (trace.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
+                if (leg.BattleOccurred) { result.StopReason = ExecutionStopReason.BattleStarted; yield break; }
+                if (leg.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
                 if (support == null)
                 {
                     result.StopReason = ExecutionStopReason.MoverLost;

@@ -179,38 +179,27 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.ReachedGoal;
                 yield break;
             }
-            if (army.CurrentMovement <= 0)
+            var leg = new GroundLegStepResult();
+            yield return GroundCombatLegStep.Transit(player, ctx, army, home,
+                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg);
+            if (leg.Blocked.HasValue)
             {
-                result.StopReason = ExecutionStopReason.OutOfMovement;
-                yield break;
-            }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
-            if (!next.HasValue)
-            {
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopReason = leg.Blocked.Value;
+                result.NeedsReplan = leg.NeedsReplan;
                 yield break;
             }
 
-            HexCoord before = army.Hex;
-            var decision = AiDecision.Move(army, next.Value,
-                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", 0f,
-                AiGroundMoveAuthority.Transit);
-            var trace = new AiMoveExecutionTrace();
-            yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
-
-            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            HexCoord endHex = army != null ? army.Hex : trace.EndHex;
-            bool moved = !endHex.Equals(before);
+            army = leg.Army;
+            bool moved = leg.Moved;
             if (moved)
             {
                 result.StepsMoved++;
                 result.ActualActorArmyId = pm.MoverArmyId;
             }
-            result.FinalHex = endHex;
+            result.FinalHex = leg.EndHex;
             result.OperationStarted |= moved;
 
-            if (trace.BattleOccurred)
+            if (leg.BattleOccurred)
             {
                 result.CombatChanged = true;
                 result.StopReason = ExecutionStopReason.BattleStarted;
@@ -259,33 +248,24 @@ namespace Game.Ai.V2
 
             if (!support.Hex.Equals(rendezvous))
             {
-                if (support.CurrentMovement <= 0)
+                var leg = new GroundLegStepResult();
+                yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
+                    $"V2 attack — {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
+                    leg);
+                if (leg.Blocked.HasValue)
                 {
-                    result.StopReason = ExecutionStopReason.OutOfMovement;
+                    result.StopReason = leg.Blocked.Value;
+                    result.NeedsReplan = leg.NeedsReplan;
                     yield break;
                 }
-                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous);
-                if (!next.HasValue)
-                {
-                    result.StopReason = ExecutionStopReason.NoSafeStep;
-                    result.NeedsReplan = true;
-                    yield break;
-                }
-                HexCoord before = support.Hex;
-                var decision = AiDecision.Move(support, next.Value,
-                    $"V2 attack — reinforcement convoy to primary #{primary.Id}", 0f,
-                    AiGroundMoveAuthority.Transit);
-                var trace = new AiMoveExecutionTrace();
-                yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-                support = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-                HexCoord endHex = support != null ? support.Hex : trace.EndHex;
-                bool moved = !endHex.Equals(before);
+                support = leg.Army;
+                bool moved = leg.Moved;
                 if (moved) result.StepsMoved++;
-                result.FinalHex = endHex;
+                result.FinalHex = leg.EndHex;
                 result.OperationStarted |= moved;
 
-                if (trace.BattleOccurred)
+                if (leg.BattleOccurred)
                 {
                     result.CombatChanged = true;
                     result.StopReason = ExecutionStopReason.BattleStarted;

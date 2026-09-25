@@ -1,4 +1,6 @@
 using System.Collections.Generic;
+using Game.HexGrid;
+using UnityEngine;
 
 namespace Game.Ai.V2
 {
@@ -90,6 +92,25 @@ namespace Game.Ai.V2
             phase == AttackMissionPhase.Reinforcement
             || phase == AttackMissionPhase.SupportReturn
             || phase == AttackMissionPhase.Gather;
+
+        // The requirements of a lifecycle leg whose mover Continuity already pinned (a walk home,
+        // a convoy, a gather): one activation this turn unless already paid, and the mover's own
+        // travel time to `destination`. The leg's execution priority is its durable commitment.
+        internal static MissionRequirements PinnedLegRequirements(ArmySnapshot mover,
+            HexCoord destination, out int eta)
+        {
+            int distance = HexGridMath.Distance(mover.Hex, destination);
+            eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, mover.MaxMovement));
+            float ap = mover.HasActivatedThisTurn ? 0f : mover.ActivationApCost;
+            return new MissionRequirements
+            {
+                MoverKnown = true,
+                RequiresArmy = true,
+                ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
+                EtaTurns = eta,
+                EstimatedDistance = distance,
+            };
+        }
 
         // Ground support armies a durable operation holds beyond its primary: the Raid/Attack
         // convoy while it travels or walks home after a swap, and every support an Attack Gather

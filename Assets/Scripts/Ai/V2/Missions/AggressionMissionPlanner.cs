@@ -265,10 +265,8 @@ namespace Game.Ai.V2
                     ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null
                         && a.ArmyId == d.PrimaryArmyId.Value);
                     if (actor == null) continue;
-                    int distance = HexGridMath.Distance(actor.Hex, d.ReturnHex.Value);
-                    int eta = AiV2Util.CeilDiv(distance,
-                        UnityEngine.Mathf.Max(1, actor.MaxMovement));
-                    float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+                    MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                        actor, d.ReturnHex.Value, out int eta);
                     var target = new ActiveDefenceMissionTarget
                     {
                         Phase = ActiveDefencePhase.Return, EnemyArmyId = d.EnemyArmyId,
@@ -285,12 +283,7 @@ namespace Game.Ai.V2
                         BaseValue = 0f, LocalAdmissionScore = 0f,
                         PreferredMoverArmyId = actor.ArmyId,
                         FromDurableIntent = true, DurableFundingTier = intent.Funding,
-                        Requirements = new MissionRequirements
-                        {
-                            MoverKnown = true, RequiresArmy = true,
-                            ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                            EtaTurns = eta, EstimatedDistance = distance,
-                        },
+                        Requirements = requirements,
                         Explain = $"ActiveDefence Return actor #{actor.ArmyId} -> {d.ReturnHex.Value.Q},{d.ReturnHex.Value.R}",
                     };
                     proposal.Axes.Value[DesireAxis.Aggression] = 1f;

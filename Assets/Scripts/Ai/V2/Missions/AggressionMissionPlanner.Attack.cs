@@ -257,9 +257,8 @@ namespace Game.Ai.V2
             float hexBonus, int defenderCount, float win, bool cover, int opportunisticTurn,
             float value, MissionIntent intent)
         {
-            int distance = HexGridMath.Distance(support.Hex, host.Hex);
-            int eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, support.MaxMovement));
-            float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                support, host.Hex, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Gather,
@@ -284,12 +283,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = support.ArmyId,
                 FromDurableIntent = intent != null,
                 DurableFundingTier = intent?.Funding ?? CommitmentTier.None,
-                Requirements = new MissionRequirements
-                {
-                    MoverKnown = true, RequiresArmy = true,
-                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                    EtaTurns = Mathf.Max(1, eta), EstimatedDistance = distance,
-                },
+                Requirements = requirements,
                 Explain = $"Attack {targetRef.DiagnosticLabel} Gather support #{support.ArmyId} -> host "
                     + $"#{host.ArmyId} at ({host.Hex.Q},{host.Hex.R})",
             };
@@ -311,9 +305,8 @@ namespace Game.Ai.V2
             if (actor == null)
                 return;
 
-            int distance = HexGridMath.Distance(actor.Hex, destination.Value);
-            int eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, actor.MaxMovement));
-            float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                actor, destination.Value, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = phase,
@@ -335,12 +328,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = actor.ArmyId,
                 FromDurableIntent = true,
                 DurableFundingTier = intent.Funding,
-                Requirements = new MissionRequirements
-                {
-                    MoverKnown = true, RequiresArmy = true,
-                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                    EtaTurns = eta, EstimatedDistance = distance,
-                },
+                Requirements = requirements,
                 Explain = $"Attack {phase} actor #{actor.ArmyId} -> "
                     + $"({destination.Value.Q},{destination.Value.R})",
             };
@@ -380,9 +368,8 @@ namespace Game.Ai.V2
             if (support == null)
                 return;
 
-            int distance = HexGridMath.Distance(support.Hex, primary.Hex);
-            int eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, support.MaxMovement));
-            float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                support, primary.Hex, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Reinforcement,
@@ -402,12 +389,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = support.ArmyId,
                 FromDurableIntent = true,
                 DurableFundingTier = intent.Funding,
-                Requirements = new MissionRequirements
-                {
-                    MoverKnown = true, RequiresArmy = true,
-                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                    EtaTurns = eta, EstimatedDistance = distance,
-                },
+                Requirements = requirements,
                 Explain = $"Attack Reinforcement support #{support.ArmyId} -> primary "
                     + $"#{a.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
             };
