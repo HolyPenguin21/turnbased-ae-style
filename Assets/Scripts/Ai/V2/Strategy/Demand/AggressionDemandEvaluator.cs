@@ -124,8 +124,15 @@ namespace Game.Ai.V2
 
                     IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
                     List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
+                    // The same gates Continuity applies (AdvanceRaidPhase): a started raid stays in
+                    // Assault down to the continuation floor, while every other phase returns to
+                    // Assault only at the fresh gate — so a shortage is reported exactly when
+                    // Continuity will not let the primary assault on its own.
+                    float primaryGate = ri.Phase == RaidMissionPhase.Assault
+                        ? MissionContinuityLayer.RaidStayInAssaultGate(ri)
+                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
                     GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                        snap, opposition, primaryId, AiConfigV2.raidMinViableWinChance);
+                        snap, opposition, primaryId, primaryGate);
                     if (primaryPlan.Feasible)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "

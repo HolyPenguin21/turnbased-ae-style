@@ -131,7 +131,12 @@ namespace Game.Ai.V2
         // through this same entry point: the dispatch below only decides WHICH primary is being
         // reinforced and against WHICH defender package (and, for a structure assault, what defence
         // that site gives them, §30). There is deliberately no RecordAttackReinforcement twin.
-        public static void RecordReinforcement(MissionProposal proposal, WorldSnapshot snap)
+        // `unavailableArmyIds` — armies claimed by other operations. Provisioning excludes them
+        // (ProvisioningSession.ExcludedForGroundCombat), so the eligible set must too: otherwise the
+        // leg is proposed/funded for a support no assignment can ever bind (NoMoverExists every
+        // pass) and PairHasDistinctAssignment over-estimates what can coexist.
+        public static void RecordReinforcement(MissionProposal proposal, WorldSnapshot snap,
+            ISet<int> unavailableArmyIds = null)
         {
             if (proposal == null || snap == null)
                 return;
@@ -161,8 +166,11 @@ namespace Game.Ai.V2
                 return;
             }
 
+            HashSet<int> excluded = unavailableArmyIds == null
+                ? null : new HashSet<int>(unavailableArmyIds);
+            excluded?.Remove(primaryArmyId);
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primaryArmyId, opposition, null, hexBonus);
+                snap, primaryArmyId, opposition, excluded, hexBonus);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));

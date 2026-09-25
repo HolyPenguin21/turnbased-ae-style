@@ -533,7 +533,7 @@ namespace Game.Ai.V2
                     + $"{candidates.Count} candidate(s); Hard funding protection is allocator-owned",
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1f;
-            GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);
+            GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap, committed);
             proposals.Add(proposal);
             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                 $"[AI][V2][Attack][Admission] decision=REINFORCE-SELECT {intent.IntentKey} "

@@ -154,8 +154,12 @@ namespace Game.Ai.V2
                 .FirstOrDefault(a => a != null && a.Id == target.Target.ArmyId
                     && a.Owner != null && a.Owner.IsNeutral && a.Members.Count > 1
                     && !HexEventRegistry.IsEventGuardArmy(target.LastKnownHex, a));
+            // The same freshness window RaidRecoveryPlanner chose this wing under
+            // (raidAirSupportSightingMaxAgeTurns); a stricter this-turn-only re-check rejected
+            // every strike planned on a routine 1-2-turn-old re-scout.
             if (!w.Returning && (!sighting.HasValue
-                    || sighting.Value.SeenTurn != session.Snapshot.TurnNumber
+                    || session.Snapshot.TurnNumber - sighting.Value.SeenTurn
+                        > AiConfigV2.raidAirSupportSightingMaxAgeTurns
                     || defender == null))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "raid air support target is stale, absent, event-owned, or has only one defender"));

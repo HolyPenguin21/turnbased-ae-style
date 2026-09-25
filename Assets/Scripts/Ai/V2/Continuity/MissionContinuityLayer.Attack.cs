@@ -54,14 +54,43 @@ namespace Game.Ai.V2
             }
 
             // ---- the primary must still exist as a real ground force ---------------------------
-            if (a.Phase != AttackMissionPhase.SupportReturn)
+            // RecoveryReturn only walks the survivors home, so it needs a live ground container,
+            // not a structural combat actor (the gate ActorCommitments already claims it under,
+            // and Raid's recoveryGroundGate): a battle-depleted remnant must still withdraw.
+            if (a.Phase == AttackMissionPhase.RecoveryReturn)
+            {
+                if (!a.PrimaryArmyId.HasValue
+                    || !ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap))
+                {
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — recovering "
+                        + $"primary #{a.PrimaryArmyId} is no longer a ground container");
+                    return false;
+                }
+            }
+            else if (a.Phase != AttackMissionPhase.SupportReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
                     || !GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
                 {
-                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
-                        + $"#{a.PrimaryArmyId} is no longer a structural ground actor in phase {a.Phase}");
-                    return false;
+                    // A started operation whose primary survives only as a non-combat remnant
+                    // (lone hero, lone recce) withdraws like any other non-viable operation (§47);
+                    // only a primary with no container left, or no own base to reach, retires here.
+                    HexCoord? withdrawTo = a.OperationStarted && a.PrimaryArmyId.HasValue
+                        && ActorCommitments.GroundContainerStillValid(a.PrimaryArmyId.Value, snap)
+                            ? SelectReturnBase(snap, player, a.PrimaryArmyId) : null;
+                    if (!withdrawTo.HasValue)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
+                            + $"#{a.PrimaryArmyId} is no longer a structural ground actor in phase {a.Phase}");
+                        return false;
+                    }
+                    a.Phase = AttackMissionPhase.RecoveryReturn;
+                    a.RecoveryBaseHex = withdrawTo;
+                    a.SupportArmyId = null;
+                    a.GatherSupportArmyIds.Clear();
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} phase -> RecoveryReturn "
+                        + $"({withdrawTo.Value.Q},{withdrawTo.Value.R}); primary #{a.PrimaryArmyId} "
+                        + "is only a non-combat remnant");
                 }
             }
 
@@ -186,7 +215,7 @@ namespace Game.Ai.V2
             }
 
             bool reinforcementPossible = a.SupportArmyId.HasValue
-                || AttackSupportCandidateExists(snap, a);
+                || AttackSupportCandidateExists(snap, a, unavailableArmyIds);
             if (reinforcementPossible)
                 return true;
 
@@ -457,15 +486,23 @@ namespace Game.Ai.V2
 
         // §41/§46 — is there any EXISTING free army whose merge would improve the primary's odds?
         // The shared kernel answers it; a "no" here is what makes the shortage a real Demand.
-        private static bool AttackSupportCandidateExists(WorldSnapshot snap, AttackIntent a)
+        // Armies claimed by other operations are excluded exactly as the planner's unpinned leg
+        // (AppendAttackUnpinnedReinforcement) and the Demand layer exclude them; counting them here
+        // kept the operation waiting for a support no stage would ever deliver, so it was reaped
+        // on stall instead of withdrawing through RecoveryReturn.
+        private static bool AttackSupportCandidateExists(WorldSnapshot snap, AttackIntent a,
+            ISet<int> unavailableArmyIds)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+            var excluded = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            excluded.Remove(a.PrimaryArmyId.Value);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
-                a.PrimaryArmyId.Value, opposition, null, hexBonus).Count > 0;
+                a.PrimaryArmyId.Value, opposition, excluded, hexBonus).Count > 0;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken

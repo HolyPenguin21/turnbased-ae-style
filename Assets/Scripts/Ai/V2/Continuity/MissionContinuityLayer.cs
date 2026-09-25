@@ -763,33 +763,20 @@ namespace Game.Ai.V2
                         EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                             c?.Army != null && c.Army.ArmyId == defence.EnemyArmyId
                             && c.Source == ContactSource.Honest && c.Position.HasValue);
-                        bool movingAway = contact != null
-                            && HexGridMath.Distance(contact.Position.Value, defence.ProtectedAssetHex)
-                                > HexGridMath.Distance(defence.LastKnownHex, defence.ProtectedAssetHex);
-                        bool fullNegative = contact != null
-                            && TaskScoreEvaluator.OwnTerritoryProximity(
-                                TaskScoreEvaluator.NearestOwnedHomeDistance(snap,
-                                    contact.Position.Value))
-                                <= -AiConfigV2.taskScoreProximityMax * 0.5f
-                                    + AiConfigV2.allocatorSliceEpsilon;
-                        // The enemy now stands on a known foreign structure: that fight is the
-                        // site's Attack objective (ActiveDefenceObjectiveEvaluator admission rule),
-                        // so the intercept ends here instead of pursuing without a proposal while
-                        // still claiming its actor away from every other lane.
+                        // No listed objective means no Intercept proposal at all: the planner
+                        // (AppendActiveDefence) proposes only from ActiveDefenceObjectiveEvaluator.
+                        // Enumerate. Keeping the intent Active here only held its actor claimed —
+                        // and a borrowed offensive suspended — with nothing moving it, until it was
+                        // reaped with a cooldown on this enemy. The intercept ends now: the borrowed
+                        // offensive resumes, otherwise the actor returns home. A threat that is
+                        // listed again is a fresh objective and competes like any other.
                         bool handedOffToAttack = contact != null
                             && ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(
                                 snap, contact.Position.Value);
-                        if (!handedOffToAttack && !ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
-                                hasListedThreat: false, movingAway: movingAway,
-                                homeDistanceAtFullNegative: fullNegative,
-                                activeStillBeatsAlternative: false))
-                        {
-                            active.Add(intent);
-                            continue;
-                        }
-                        if (handedOffToAttack)
-                            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END "
-                                + $"enemy={defence.EnemyArmyId} reason=enemy_on_known_foreign_structure");
+                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END "
+                            + $"enemy={defence.EnemyArmyId} reason="
+                            + (handedOffToAttack ? "enemy_on_known_foreign_structure"
+                                : contact == null ? "honest_contact_lost" : "threat_no_longer_listed"));
                         if (defence.SuspendedOffensiveIntentKey.HasValue
                             && state.TryGet(defence.SuspendedOffensiveIntentKey.Value,
                                 out MissionIntent suspendedOffensive)
@@ -853,6 +840,16 @@ namespace Game.Ai.V2
                             AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} claim released on "
                                 + "captured base; Housekeeping owns garrison stabilisation");
                         continue;
+                    }
+                    // A transient capability / pool suspension is re-tested every pass, exactly as
+                    // Raid and ActiveDefence do. Without this an Attack suspended once was never
+                    // resumed, never aged by ReconcileAfterTurn and never reaped.
+                    if (intent.Status == IntentStatus.Suspended
+                        && (intent.Suspended == SuspendReason.PoolExhausted
+                            || intent.Suspended == SuspendReason.CapabilityUnavailable))
+                    {
+                        intent.Status = IntentStatus.Active;
+                        intent.Suspended = SuspendReason.None;
                     }
                     if (intent.Status == IntentStatus.Active) active.Add(intent);
                     continue;
@@ -1447,7 +1444,8 @@ namespace Game.Ai.V2
                 // (possibly already re-oriented) target is moved to Reinforcement here, before
                 // Demand/Missions run this same pass.
                 else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId.HasValue
-                    && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target))
+                    && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target,
+                        RaidStayInAssaultGate(ri)))
                 {
                     if (ri.OperationStarted)
                         return TransitionToBestRecovery(player, snap, intent, ri,
@@ -1709,16 +1707,24 @@ namespace Game.Ai.V2
 
         // §5/§6 — the one shared "can the primary take THIS target right now" question. Fresh
         // target => fresh start gate.
+        // `winChanceGate` defaults to the fresh start gate (the "clears again" exits keep it as
+        // hysteresis); a started operation's own stay-in-Assault check passes the continuation
+        // floor, so this re-check is never stricter than the admission it re-checks.
         internal static bool PrimaryClearsTarget(WorldSnapshot snap, PlayerSetupData player,
-            int? primaryArmyId, RaidTargetRef target)
+            int? primaryArmyId, RaidTargetRef target, float? winChanceGate = null)
         {
             if (snap == null || !primaryArmyId.HasValue || !target.HasValue)
                 return false;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAt(
                 snap, AiV2Util.KnownOpposition(snap, target), primaryArmyId.Value,
-                AiConfigV2.raidMinViableWinChance);
+                winChanceGate ?? GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
             return plan.Feasible;
         }
+
+        internal static float RaidStayInAssaultGate(RaidIntent ri) =>
+            ri != null && ri.OperationStarted
+                ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                : GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
 
         // §11 — is the fixed return base still ours AND still structurally
         // reachable? "Structurally" is the key word: this reads the GENUINE, any-number-of-turns
@@ -2046,25 +2052,58 @@ namespace Game.Ai.V2
             // read from the next snapshot (ResolveGatherReturns / ResolveAttackAirSupport); a
             // failed leg releases just that donor or wing (an airborne wing then lands through
             // GroundCombatAirSupport.ReleaseOrphanStrikes).
-            if (o.HasAttackPayload && GroundCombatLegs.IsAttackSideLeg(o.AttackTarget.Phase))
+            // A leg that failed in Provisioning carries no payload (MissionOutcomeLedger fills it
+            // only from a ProvisionedMission), so the leg is read from the proposal as well; the
+            // leg shares the operation's IntentKey, and the generic retire/suspend branches below
+            // would otherwise end the whole operation for a failed side or support leg.
+            AttackMissionTarget? attackLeg = o.HasAttackPayload ? o.AttackTarget
+                : o.Proposal?.Target is AttackMissionTarget proposedLeg
+                    ? proposedLeg : (AttackMissionTarget?)null;
+            if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
             {
+                AttackMissionTarget leg = attackLeg.Value;
                 bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed;
                 if (failed && intent?.Attack != null
-                    && o.AttackTarget.Phase == AttackMissionPhase.GatherReturn
-                    && o.AttackTarget.SupportArmyId.HasValue)
+                    && leg.Phase == AttackMissionPhase.GatherReturn
+                    && leg.SupportArmyId.HasValue)
                 {
-                    intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == o.AttackTarget.SupportArmyId.Value);
+                    intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == leg.SupportArmyId.Value);
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
-                        + $"#{o.AttackTarget.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
+                        + $"#{leg.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
                 }
                 if (failed && intent?.Attack != null
-                    && o.AttackTarget.Phase == AttackMissionPhase.AirSupport
-                    && intent.Attack.AirSupportArmyId == o.AttackTarget.AirSupportArmyId)
+                    && leg.Phase == AttackMissionPhase.AirSupport
+                    && intent.Attack.AirSupportArmyId == leg.AirSupportArmyId)
                 {
                     ReleaseAttackAirSupport(intent.Attack, turn);
                     AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity — [{aid}] {o.IntentKey} wing "
-                        + $"#{o.AttackTarget.AirSupportArmyId} sortie failed ({Describe(o)}); released");
+                        + $"#{leg.AirSupportArmyId} sortie failed ({Describe(o)}); released");
                 }
+                return;
+            }
+
+            // A support leg (convoy / gather / support walk home) whose Provisioning failed is a
+            // support-local fact, like Raid's reinforcement exception below: a support that no longer
+            // improves the primary is released; a vanished mover or primary is left to the next
+            // ResolveActive pass, which owns support loss and primary loss.
+            if (attackLeg.HasValue && !o.HasAttackPayload && intent?.Attack != null
+                && GroundCombatLegs.IsAttackSupportLeg(attackLeg.Value.Phase)
+                && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed))
+            {
+                AttackMissionTarget leg = attackLeg.Value;
+                AttackIntent a = intent.Attack;
+                if (o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible)
+                {
+                    if (leg.Phase == AttackMissionPhase.Gather && leg.SupportArmyId.HasValue)
+                        a.GatherSupportArmyIds.Remove(leg.SupportArmyId.Value);
+                    else if (leg.Phase == AttackMissionPhase.Reinforcement)
+                    {
+                        a.SupportArmyId = null;
+                        a.ReinforcementRequestedTurn = -1;
+                    }
+                }
+                AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} {leg.Phase} leg "
+                    + $"failed in provisioning ({o.ProvisionFailureKindValue}); operation kept");
                 return;
             }
 
@@ -2551,7 +2590,11 @@ namespace Game.Ai.V2
                 }
             }
 
+            // A Raid keeps its absolute age cap (raidIntentMaxTurns) through capability
+            // suspensions: ResolveActive resumes it every pass, so without the cap a Raid waiting
+            // on a support no stage can bind was held — primary claimed — forever.
             if ((!capabilityUnavailable || intent.Kind == MissionKind.Development
+                    || intent.Kind == MissionKind.Raid
                     || IsMoverlessScoutRole(intent))
                 && ShouldReap(intent))
             {
