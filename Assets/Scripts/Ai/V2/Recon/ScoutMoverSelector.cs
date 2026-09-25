@@ -129,6 +129,17 @@ namespace Game.Ai.V2
 
     public static class ScoutMoverSelector
     {
+        // Two named stealth-capability rules (kept distinct on purpose):
+        //   StealthReadyThisTurn — can serve a stealth-Required job NOW: already hidden, or can
+        //     still slip into stealth before its first move (an activated scout cannot).
+        //   CanServeStealth — the durable role-level answer (continuity claim, vantage choice):
+        //     hidden, able to enter stealth, or carrying a stealth level at all.
+        public static bool StealthReadyThisTurn(ArmySnapshot a) =>
+            a != null && (a.IsHidden || (a.CanEnterStealth && !a.HasActivatedThisTurn));
+
+        public static bool CanServeStealth(ArmySnapshot a) =>
+            a != null && (a.IsHidden || a.CanEnterStealth || a.StealthLevel > 0);
+
         // Eligibility ONLY (no ranking / no ETA toward FocusHex — that basis is wrong for Surveil).
         // Same filter Rank applies: fielded solo Recce, not prison / air, has members, can still
         // act this turn (CurrentMovement > 0), not in excludeArmyIds, and — for a Required mission
@@ -155,7 +166,7 @@ namespace Game.Ai.V2
                     continue;
                 if (excludeArmyIds != null && excludeArmyIds.Contains(a.ArmyId))
                     continue;
-                if (needStealth && !(a.IsHidden || (a.CanEnterStealth && !a.HasActivatedThisTurn)))
+                if (needStealth && !StealthReadyThisTurn(a))
                     continue;
                 result.Add(a);
             }
@@ -221,10 +232,7 @@ namespace Game.Ai.V2
 
                 bool hidden = sparable.IsHidden;
                 bool canEnterStealth = StealthSystem.CanEnterStealth(sparable);
-                if (needStealth && !(hidden || canEnterStealth))
-                    continue;
-
-                result.Add(new ArmySnapshot
+                var extracted = new ArmySnapshot
                 {
                     ArmyId = a.ArmyId, Owner = player, Hex = a.Hex,
                     IsGarrison = false, RequiresGarrisonExtraction = true,
@@ -234,7 +242,11 @@ namespace Game.Ai.V2
                     IsHidden = hidden, CanEnterStealth = canEnterStealth,
                     StealthLevel = AbilityParams.GetStealthLevel(sparable),
                     HasHero = sparable.IsHero,
-                });
+                };
+                // A not-yet-extracted unit has not activated this turn.
+                if (needStealth && !StealthReadyThisTurn(extracted))
+                    continue;
+                result.Add(extracted);
             }
             return result;
         }

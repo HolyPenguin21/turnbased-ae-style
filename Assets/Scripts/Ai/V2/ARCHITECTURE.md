@@ -189,7 +189,7 @@ reactivate when important contact becomes stale or blind again.
 | Projected army capacity rule (planner == executor) | `Materialization/ArmyCapacityRules` |
 | Air-recon actor/target selection (round 4 — same owner as ground) | `Recon/ReconAssignmentPlanner` (`AppendAirCandidates`) |
 | Air-recon execution-input assembly (mode / launch-subset re-derivation / first-step gate / energy) | `Recon/AirReconPlanner` |
-| What a live Attack needs observed, and how Recon serves it | `AttackObjectiveEvaluator.ObservationNeeds` publishes the operation's target site; `ReconObjectiveEvaluator.AttackNeedRefresh` turns it into an ordinary Refresh (stale past `attackIntelMaxAgeTurns`, full relevance). No new Recon kind |
+| What a live Attack needs observed, and how Recon serves it | `AttackObjectiveEvaluator.ObservationNeeds` publishes the operation's target site; `ReconObjectiveEvaluator.AttackNeedRefresh` turns it into an ordinary Refresh (stale past `attackIntelMaxAgeTurns`, full relevance), gated on the HARD scout block only (`ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable`) — a known hostile site is always a visible-arrival block, so it is observed from a vantage (`SurveilVantageSelector.UsesVantage`). No new Recon kind |
 | Air support of a ground fight (wing options, strike estimate split back per defending army, second strike, landing base, leg requirements, wing provisioning, the flight step) | `Missions/GroundCombat/GroundCombatAirSupport` + `Execution/GroundCombatLegStep.AirStrikeSortie`. Raid (its AirSupport recovery phase) and Attack (a side leg) keep only their target identity, strike policy, win read and lifecycle. The held wing is `GroundCombatLegs.HeldAirSupportArmyId`; an airborne strike sortie no operation holds becomes a landing obligation (`ReleaseOrphanStrikes` → `AviationRebasePlanner.FindMandatoryContinuations`) |
 | Turns an army needs to cover a distance | `AiV2Util.TurnsToCover` |
 | Typed strategic invalidations | `State/StrategicInterruptRegistry` — factual reason mask plus per-reason payload; no second event bus |
@@ -220,6 +220,17 @@ reactivate when important contact becomes stale or blind again.
 | Transactional assault assembly (Raid, Attack, ActiveDefence intercept) | `Provisioning/GroundCombatAssaultTransaction.cs` — `GroundCombatAssaultTransactionRunner.Run` |
 | Per-lane continuity | `MissionContinuityLayer.ResolveActive` dispatches to `ResolveRaidIntent` (`Continuity/MissionContinuityLayer.Raid.cs`), `ResolveAttackIntent` (`.Attack.cs`) and `ResolveActiveDefenceIntent` (`.ActiveDefence.cs`); `TryResumePreemptedOffensive` is the one resume edge of a borrowed offensive |
 | Walk-home destination of every lifecycle leg | `MissionContinuityLayer.KeepOrReselectHome` (keep a still-owned, reachable base; otherwise `SelectReturnBase`) |
+| Which Scout jobs execute from a vantage (never on the focus) | `SurveilVantageSelector.UsesVantage` — every Surveil and a Refresh whose focus a visible scout may not stand on (the Attack observation need). Assignment, `ScoutCostModel`, Provisioning and the ground executor's anchor read it, never `Kind == Surveil` |
+| Recon intel staleness (ramp and "stale" threshold) | `ReconIntelSnapshotRegistry.Staleness` / `IsStaleAge` (`scoutSurveilStaleTurnsLo..Hi`) |
+| A Scout job needs the stealth lane (`Required` or positive `DetectionRisk`) | `ReconScoutKinds.NeedsStealth` (`ScoutMissionTarget.NeedsStealth` / `ReconObjective.NeedsStealth`) |
+| A scout can serve stealth (this turn / at all) | `ScoutMoverSelector.StealthReadyThisTurn` (Assignment eligibility, garrison extraction) / `CanServeStealth` (continuity claim, vantage choice). `StructuralCandidates` keeps its own diagnostic rule on purpose |
+| Scout exposure and stealth-detector risk | `Recon/ScoutRiskModel` (`IsExposed` / `CountDetectors` / `DetectorRisk`, snapshot or live sightings) — frontier annotation, objective scan, vantage ranking, optional-stealth leg risk |
+| Scout objective met live | `ScoutObjectiveEvaluator.IsSatisfiedLive` — post-execution ledger, ground and air executors, `MissionRevalidator` |
+| A durable Scout intent's current objective | `ReconObjectiveEvaluator.ForIntent` — mission re-materialisation and `ActorCommitments`' off-list stealth requirement |
+| Writing a Scout outcome into its durable intent (create / advance / absorb) | `MissionContinuityLayer.ApplyScoutPayload` |
+| Which durable actor a Recon mission may re-bind | only its own durable intent's actor (`ReconAssignmentPlanner.IsOwnDurableActor`), the rule ground combat applies in `ProvisioningSession.ExcludedForGroundCombat`; a planning witness never relaxes another intent's claim |
+| A mandatory air obligation (flight recovery / rebase continuation) that cannot progress this turn | `State/AviationObligationStallRegistry` — skipped by `ReconAirExecutor.FindMandatoryRecoveryActors`, `AviationRebasePlanner.FindMandatoryContinuations` and so `StrategicSpendability` until the next turn; the typed loop continues with missions |
+| A Scout's `TargetInvalidated` (execution or provisioning) | `Blocked`, never `Failed` (`MissionOutcomeLedger`): Continuity re-validates the objective (`IsIntentStillValid` → re-focus / retire) |
 | Support-local failure of a leg (never ends the operation) | `GroundCombatLegs.IsSupportLeg` / `RaidLegOf` / `AttackLegOf` — the ledger's execution and provisioning classifiers and `ReconcileOutcome` (`ReleaseInvalidSupport`) |
 | Strategic knowledge of an enemy army | `Analysis/AiMapMemory` sightings. Objectives, Missions, Provisioning and Execution read enemy existence/position only from there. A global `ArmyRegistry` sweep may confirm the outcome of a canonical operation the AI itself just performed (e.g. did the target survive the battle our army fought) — it may never stand in for knowledge of a hidden army, and "absent from the world" is never objective completion. |
 | Reaction feasibility evidence | `ReactionWitness` (struct in `Reaction/StrategicReactionPass.cs`) + `Reaction/ReactionOpportunityProbe` |
@@ -235,7 +246,7 @@ reactivate when important contact becomes stale or blind again.
   objective selection or replacement-mission synthesis (the stale-Explore replacement builder
   was removed — a stale-goal Scout is recorded and re-targeted by Continuity next pass).
 * **Air recon Assignment/Execution split (round 4).** WHICH air actor (an existing ready standalone
-  wing) or WHICH airfield+launch-subset serves a funded Observation (Refresh / non-stealth Surveil)
+  wing) or WHICH airfield+launch-subset serves a funded AirSweep (the only aviation Recon job)
   mission is decided by `Recon/ReconAssignmentPlanner.AppendAirCandidates` — the SAME single
   Assignment owner, and the same batch one-actor-per-job solver, Ground candidates already go
   through (`BuildCandidates` / `AssignFunded`; `ScoutExecutorKind.AirExisting` / `AirLaunch` on

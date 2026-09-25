@@ -287,8 +287,7 @@ namespace Game.Ai.V2
             if (!a.IsSoloRecce)
                 return false;
 
-            if (requirement == StealthRequirement.Required
-                && !(a.IsHidden || a.CanEnterStealth || a.StealthLevel > 0))
+            if (requirement == StealthRequirement.Required && !ScoutMoverSelector.CanServeStealth(a))
                 return false;
             return true;
         }

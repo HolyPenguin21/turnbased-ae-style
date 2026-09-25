@@ -67,7 +67,7 @@ namespace Game.Ai.V2
             HexCoord focus = target.FocusHex;
             int visionR = mover.EffectiveVisionRadius;
             // Spec §19 — a stealth-capable mover ignores neutral occupancy when choosing a vantage.
-            bool stealthCapable = mover.IsHidden || mover.StealthLevel > 0 || mover.CanEnterStealth;
+            bool stealthCapable = ScoutMoverSelector.CanServeStealth(mover);
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : 1;
 
             foreach (HexCoord h in snap.MapKnowledge.AllHexes)
