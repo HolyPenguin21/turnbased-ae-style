@@ -149,8 +149,6 @@ namespace Game.Ai.V2
                     }
                     demand.EconomyPreferredBuilderArmyId = builderId;
                     demand.EconomyBuilderRoutes = routes;
-                    demand.EconomyProjectedActivationApCost = choice.ProjectedActivationApCost;
-                    demand.EconomyProjectedMaxMovement = choice.ProjectedMaxMovement;
                     demand.EconomyAssignmentApCost = choice.TotalAssignmentApCost;
                     // A physically deployed Hero is not a fulfilled Economy build demand
                     // unless Continuity successfully owns its destination lease.

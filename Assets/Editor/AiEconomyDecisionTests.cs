@@ -469,11 +469,11 @@ namespace Game.EditorTests
         // unfunded AP envelope, rather than on MoverContended/NoMoverExists at selection time).
         //
         // Calls ProvisioningManager.Provision directly rather than going through
-        // RunDurableEconomyAttempt's ledger/ReconcileAfterTurn: EnvelopeTooSmall classifies as a
-        // Blocked, no-progress outbound Economy outcome, which ReconcileAfterTurn legitimately
-        // retires (RepayEconomyLoan + state.Remove) — that removal is correct production
-        // behaviour, not something this test should assert around. Provision's raw result already
-        // proves what this test is for: the builder cleared mover-selection.
+        // RunDurableEconomyAttempt's ledger/ReconcileAfterTurn: EnvelopeTooSmall is a transient,
+        // Blocked, no-progress outbound Economy outcome that ReconcileAfterTurn ages through
+        // StallTurns (AiEconomyContinuityAuditTests.B2_*) — not something this test should assert
+        // around. Provision's raw result already proves what this test is for: the builder cleared
+        // mover-selection.
         [Test]
         public void ProvisionEconomy_DurableMoverUnclaimed_ClearsSelectionUnlikeClaimedTwin()
         {
@@ -3365,10 +3365,10 @@ namespace Game.EditorTests
                     | System.Reflection.BindingFlags.NonPublic);
 
             Assert.That(shouldReap, Is.Not.Null);
-            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent }), Is.False);
+            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent, 1 }), Is.False);
 
             intent.StallTurns = AiConfigV2.commitmentStallTurns;
-            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent }), Is.True);
+            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent, 1 }), Is.True);
         }
 
         [Test]

@@ -77,10 +77,9 @@ namespace Game.Ai.V2
 
                 // Continuity owns the actor for an existing objective. A later, cheaper builder
                 // must not supply a different delivery cost for that same durable operation.
-                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
-                    && i.Economy?.Kind == EconomyTaskKind.BuildExtraction
-                    && i.Economy.TargetHex.Equals(site.Hex)
+                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
+                    MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                    && i.Economy.Kind == EconomyTaskKind.BuildExtraction
                     && i.Economy.ResourceType == site.ResourceType
                     && i.PreferredMoverArmyId.HasValue);
                 EconomyBuilderChoice builder = SelectEconomyBuilder(
@@ -146,10 +145,6 @@ namespace Game.Ai.V2
                     EconomyPaybackTurns = payback,
                     EconomyPreferredBuilderArmyId = readyLossToNewHero
                         ? null : builder?.Army.ArmyId,
-                    EconomyProjectedActivationApCost = readyLossToNewHero ? 0
-                        : builder?.ProjectedActivationApCost ?? 0,
-                    EconomyProjectedMaxMovement = readyLossToNewHero ? 0
-                        : builder?.ProjectedMaxMovement ?? 0,
                     EconomyReadyDeliveryCost = readyLossToNewHero
                         ? ReadyDeliveryCost(extraAp, opportunity) : (float?)null,
                     EconomyBuilderRoutes = site.BuilderRoutes,
@@ -424,8 +419,6 @@ namespace Game.Ai.V2
             EconomyAssignmentApCost = source.EconomyAssignmentApCost,
             EconomyPaybackTurns = source.EconomyPaybackTurns,
             EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
-            EconomyProjectedActivationApCost = source.EconomyProjectedActivationApCost,
-            EconomyProjectedMaxMovement = source.EconomyProjectedMaxMovement,
             EconomyReadyDeliveryCost = source.EconomyReadyDeliveryCost,
             EconomyBuilderRoutes = source.EconomyBuilderRoutes,
             WorldTaskScore = source.WorldTaskScore,
@@ -463,8 +456,6 @@ namespace Game.Ai.V2
                 return null;
             AxisDemand alternative = EconomyHeroPrerequisite(ready);
             alternative.EconomyPreferredBuilderArmyId = null;
-            alternative.EconomyProjectedActivationApCost = 0;
-            alternative.EconomyProjectedMaxMovement = 0;
             alternative.EconomyAssignmentApCost = ready.EconomyBuildApCost;
             alternative.EconomyHeroOpportunityCost = 0f;
             alternative.EconomyReadyDeliveryCost = readyCost;
@@ -493,6 +484,14 @@ namespace Game.Ai.V2
             ReinforceAtBase,
             Ineligible,
         }
+
+        // Which build an Economy demand is about: a Base (its own capability, or a builder-Hero
+        // prerequisite carrying the Base card) or an extraction facility. The one owner for
+        // Demand, Missions, Phase A, Continuity and the build reservation owner keys.
+        internal static EconomyTaskKind EconomyBuildKind(AxisDemand demand) =>
+            demand?.Capability == CapabilityKind.EconomicExpansionBase
+            || demand?.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
 
         internal static EconomyBuilderChoice SelectEconomyBuilder(WorldSnapshot snap,
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
@@ -847,41 +846,66 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot army = snap?.Self?.Armies?.FirstOrDefault(
                     a => a != null && a.ArmyId == route.ArmyId);
-                if (army == null)
-                    continue;
-                if (route.IsOnTarget && army.IsGarrison && army.HasHero)
-                {
+                if (CandidateRejection(snap, target, route, army, activeIntents, commitments) == null)
                     yield return (route, army);
-                    continue;
-                }
-                if (army.IsGarrison)
-                {
-                    if (!route.RequiresGarrisonExtraction)
-                        continue;
-                }
-                else if (!army.IsMobileEconomyBuilder)
-                    continue;
-
-                MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
-                bool claimed = commitments != null && commitments.IsArmyClaimed(army.ArmyId);
-                if (assignment != null)
-                {
-                    if (assignment.Kind == MissionKind.Economy)
-                    {
-                        if (!EconomyDonorStructurallyEligible(assignment)
-                            && (assignment.Economy == null
-                                || !assignment.Economy.TargetHex.Equals(target)))
-                            continue;
-                    }
-                    else if (!EconomyDonorStructurallyEligible(assignment))
-                        continue;
-                }
-                if (claimed && assignment == null)
-                    continue;
-                if (EconomyBuilderUnderImmediateThreat(snap, army.Hex))
-                    continue;
-                yield return (route, army);
             }
+        }
+
+        // Why a witnessed route's army is not a structural builder candidate for `target`, or
+        // null when it is. The ONE candidate gate of EconomyBuilderCandidates, also printed by
+        // Provisioning's diagnostic trace (EconomyBuilderCandidateRejection).
+        private static string CandidateRejection(WorldSnapshot snap, HexCoord target,
+            EconomyBuilderRouteSnapshot route, ArmySnapshot army,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        {
+            if (army == null)
+                return "not_in_snapshot";
+            if (route.IsOnTarget && army.IsGarrison && army.HasHero)
+                return null;
+            if (army.IsGarrison)
+            {
+                if (!route.RequiresGarrisonExtraction)
+                    return "garrison_without_extraction_route";
+            }
+            else if (!army.IsMobileEconomyBuilder)
+                return "not_mobile_economy_builder";
+
+            MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
+            if (assignment != null)
+            {
+                if (assignment.Kind == MissionKind.Economy)
+                {
+                    if (!EconomyDonorStructurallyEligible(assignment)
+                        && (assignment.Economy == null
+                            || !assignment.Economy.TargetHex.Equals(target)))
+                        return $"economy_assignment_elsewhere={assignment.IntentKey}";
+                }
+                else if (!EconomyDonorStructurallyEligible(assignment))
+                    return $"protected_assignment={assignment.IntentKey}";
+            }
+            if (assignment == null && commitments != null && commitments.IsArmyClaimed(army.ArmyId))
+                return "claimed";
+            if (EconomyBuilderUnderImmediateThreat(snap, army.Hex))
+                return "under_immediate_threat";
+            return null;
+        }
+
+        // Diagnostics: why `armyId` never became a ranked builder for `target` — the candidate
+        // gate's answer, or the later ranking stage (suitability / loan) when the gate passed.
+        internal static string EconomyBuilderCandidateRejection(WorldSnapshot snap, HexCoord target,
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes, int armyId,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        {
+            foreach (EconomyBuilderRouteSnapshot route in routes ?? SnapshotFallbackRoutes(snap, target))
+            {
+                if (route.ArmyId != armyId)
+                    continue;
+                ArmySnapshot army = snap?.Self?.Armies?.FirstOrDefault(
+                    a => a != null && a.ArmyId == armyId);
+                return CandidateRejection(snap, target, route, army, activeIntents, commitments)
+                    ?? "ranking_rejected (suitability or loan gate)";
+            }
+            return "no_witnessed_route";
         }
 
         private static IReadOnlyList<EconomyBuilderRouteSnapshot> SnapshotFallbackRoutes(
@@ -1121,10 +1145,8 @@ namespace Game.Ai.V2
                     }
 
                     MissionIntent pinnedBase = committed ? activeIntents?.FirstOrDefault(i =>
-                        i != null && i.Status == IntentStatus.Active
-                        && i.Kind == MissionKind.Economy
-                        && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                        && i.Economy.TargetHex.Equals(site.Hex)
+                        MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                        && i.Economy.Kind == EconomyTaskKind.FoundBase
                         && (i.Economy.BuildCard == null || i.Economy.BuildCard == card)
                         && i.PreferredMoverArmyId.HasValue) : null;
                     EconomyBuilderChoice builder = SelectEconomyBuilder(
@@ -1186,10 +1208,6 @@ namespace Game.Ai.V2
                         EconomyPaybackTurns = paybackTurns,
                         EconomyPreferredBuilderArmyId = readyLossToNewHero
                             ? null : builder?.Army.ArmyId,
-                        EconomyProjectedActivationApCost = readyLossToNewHero ? 0
-                            : builder?.ProjectedActivationApCost ?? 0,
-                        EconomyProjectedMaxMovement = readyLossToNewHero ? 0
-                            : builder?.ProjectedMaxMovement ?? 0,
                         EconomyReadyDeliveryCost = readyLossToNewHero
                             ? ReadyDeliveryCost(extraAp, heroCost) : (float?)null,
                         EconomyBuilderRoutes = site.BuilderRoutes,
@@ -1273,10 +1291,7 @@ namespace Game.Ai.V2
             if (ranked == null || ranked.Count == 0)
                 return result;
 
-            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
-                && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(IsRetargetableBaseCommitment);
 
             foreach (var group in ranked.GroupBy(d => (d.EconomyBuildCard, d.EconomyPreferredBuilderArmyId)))
             {
@@ -1302,10 +1317,7 @@ namespace Game.Ai.V2
             IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
         {
             AxisDemand first = ranked?.FirstOrDefault();
-            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
-                && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(IsRetargetableBaseCommitment);
             if (first == null || incumbent == null)
                 return first;
 
@@ -1340,11 +1352,7 @@ namespace Game.Ai.V2
         // One hysteresis/admission predicate reused by Demand, Phase A and Continuity.
         // Explicit scan provenance prevents a stale site-only score from authorizing a switch.
         internal static bool CanReplaceCommittedBase(MissionIntent incumbent, AxisDemand rival) =>
-            incumbent != null && incumbent.Status == IntentStatus.Active
-            && incumbent.Kind == MissionKind.Economy
-            && incumbent.Economy?.Kind == EconomyTaskKind.FoundBase
-            && incumbent.PreferredMoverArmyId.HasValue
-            && incumbent.Economy.BuildCard != null
+            IsRetargetableBaseCommitment(incumbent)
             && rival?.RequestingAxis == DesireAxis.Economy
             && rival.Capability == CapabilityKind.EconomicExpansionBase
             && rival.TargetHex.HasValue
@@ -1355,6 +1363,14 @@ namespace Game.Ai.V2
             && rival.Value > AiConfigV2.allocatorSliceEpsilon
             && rival.Value > rival.EconomySwitchIncumbentValue.Value
                 + AiConfigV2.economyBaseSwitchHysteresisThreshold;
+
+        // The Base commitment the switch hysteresis protects and may retarget: an ACTIVE FoundBase
+        // that still owns its card and its actor. One predicate for Demand's incumbent lookups and
+        // CanReplaceCommittedBase (Phase A / Continuity).
+        private static bool IsRetargetableBaseCommitment(MissionIntent i) =>
+            i != null && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
+            && i.Economy?.Kind == EconomyTaskKind.FoundBase
+            && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue;
 
         // Economy admission predicate for a NEW Base project. The axis only needs to prove WHY a
         // Base is worth having at all: useful local income/payback, a PlayerGlobal effect
@@ -1382,9 +1398,12 @@ namespace Game.Ai.V2
         {
             if (!target.HasValue || intents == null)
                 return false;
-            return intents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
-                && i.Economy.TargetHex.Equals(target.Value));
+            bool build = kind == EconomyTaskKind.BuildExtraction || kind == EconomyTaskKind.FoundBase;
+            return intents.Any(i => (build
+                    ? MissionContinuityLayer.HoldsEconomyBuildSite(i, target.Value)
+                    : i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
+                        && i.Economy?.TargetHex.Equals(target.Value) == true)
+                && i.Economy.Kind == kind);
         }
 
         private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,
@@ -1392,9 +1411,8 @@ namespace Game.Ai.V2
         {
             if (!target.HasValue || intents == null)
                 return false;
-            return intents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                && i.Economy.TargetHex.Equals(target.Value)
+            return intents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target.Value)
+                && i.Economy.Kind == EconomyTaskKind.FoundBase
                 && (i.Economy.BuildCard == null || i.Economy.BuildCard == card));
         }
 
@@ -1403,12 +1421,9 @@ namespace Game.Ai.V2
         {
             if (demand?.TargetHex == null || intents == null)
                 return false;
-            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
-                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
-            return intents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId.HasValue
-                && i.Economy?.Kind == kind
-                && i.Economy.TargetHex.Equals(demand.TargetHex.Value)
+            EconomyTaskKind kind = EconomyBuildKind(demand);
+            return intents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, demand.TargetHex.Value)
+                && i.PreferredMoverArmyId.HasValue && i.Economy.Kind == kind
                 && (kind == EconomyTaskKind.FoundBase
                     || i.Economy.ResourceType == demand.EconomyResourceType));
         }

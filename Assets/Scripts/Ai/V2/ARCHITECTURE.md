@@ -238,6 +238,19 @@ reactivate when important contact becomes stale or blind again.
 | Strategic knowledge of an enemy army | `Analysis/AiMapMemory` sightings. Objectives, Missions, Provisioning and Execution read enemy existence/position only from there. A global `ArmyRegistry` sweep may confirm the outcome of a canonical operation the AI itself just performed (e.g. did the target survive the battle our army fought) — it may never stand in for knowledge of a hidden army, and "absent from the world" is never objective completion. |
 | Reaction feasibility evidence | `ReactionWitness` (struct in `Reaction/StrategicReactionPass.cs`) + `Reaction/ReactionOpportunityProbe` |
 | Reaction witness arbitration (§28) | `Reaction/ReactionWitnessSelector` |
+| Economy objective / key encoding (intent key, attempt key, reservation owner) | `MissionIntentKey.EconomyObjectiveId` + `MissionIntentKey.ForEconomy` / `StableMissionKey.ForEconomy`; a build's reservation owner is `InfrastructureFulfillment.EconomyBuildOwner` (= `EconomyMissionPlanner.OwnerKey` of the mission key) |
+| Which build an Economy demand is about (FoundBase vs BuildExtraction) | `DemandLayer.EconomyBuildKind` — Demand, Missions, Phase A, Continuity and the owner keys |
+| A build obligation that still leases its site (Active, or transiently Suspended) | `MissionContinuityLayer.IsLiveEconomyBuild` / `HoldsEconomyBuildSite` — lease grant, Demand's committed-site reads, Phase A's protected builds, the active-intent resource hold, the planner's incumbent |
+| The Base commitment the switch hysteresis protects / retargets | `DemandLayer.IsRetargetableBaseCommitment` (both Base selectors, `CanReplaceCommittedBase`) |
+| Retiring an Economy intent (loan returned, owner's reservations released, removed) | `MissionContinuityLayer.RetireEconomyIntent` — every ResolveActive / ReconcileOutcome / AdvanceIntent / reap / takeover exit; `ResumeEconomyLender` is the only `EconomyLoan -> Active` transition |
+| A transient suspension (PoolExhausted / CapabilityUnavailable) is re-tested each pass | `MissionContinuityLayer.ResumeTransientSuspension` (every ResolveActive branch) |
+| A no-progress Economy outcome | `ReconcileOutcome`: retire only on a proven route failure (`IsEconomyRouteFailure`: provisioning `NoExecutableStep`, executed `NoSafeStep`/`MoveRejected`); NoMover/MoverContended suspend; anything else ages via StallTurns. Execution-side Economy `TargetInvalidated` is `Blocked` (`MissionOutcomeLedger`). A build ready on its site (`EconomyDeliveryReady`) and a collector holding its site (`EconomyHolding`) are progress |
+| A collector already on its site | no planner step (`EconomyMissionPlanner`); `ResolveActive` records the hold as progress |
+| Economy intent age | `ShouldReap(intent, turn)`: stall bound or `commitmentMaxTurns` WITHOUT progress; `KeepReturnBuilder` applies the same bound to the "unconditional" return walk |
+| Bounded delivery-failure streaks (Base per card+site, Extraction per resource+site) | `MissionIntentState.DeliveryFailureStreaks` |
+| Is a mobile collector worth its site (admit / keep) | `EconomyResourceStanding.UsefulMarginalIncomeGain` / `UsefulRetainedIncomeGain` (same test without its own income) |
+| The physical pool an Economy mission is funded from | `AllocationSession.PhysicalAvailableFor` — raw stock minus every hold except EconomyDeferredBuild and its own owner, the pool `StrategicSpendability.FitsSpendableForEconomyCompletion` checks |
+| Economy builder candidate gates | `DemandLayer.CandidateRejection` (structural, `EconomyBuilderCandidates`); `ProvisionEconomy.CandidateRejection` + `EvaluateGarrisonCandidate` (live); the FoundBase traces print these answers |
 
 ## Verified boundary invariants (02F–02H audit)
 

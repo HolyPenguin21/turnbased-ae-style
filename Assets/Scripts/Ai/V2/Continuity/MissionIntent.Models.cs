@@ -52,6 +52,18 @@ namespace Game.Ai.V2
             new MissionIntentKey(MissionKind.ActiveDefence,
                 (int)AggressionObjectiveKind.ActiveDefence, enemyArmyId, 0, 0);
 
+        // The ONE Economy objective encoding, shared by MissionIntentKey, StableMissionKey (and
+        // so every Economy reservation owner key): a recovery walk is identified by its actor, a
+        // build or collection by its resource (+1, 0 for none), all by the target hex.
+        public static int EconomyObjectiveId(EconomyTaskKind kind, int? builderArmyId,
+            int? collectorArmyId, ResourceType? resourceType) =>
+            kind == EconomyTaskKind.ReturnBuilder ? builderArmyId ?? 0
+            : kind == EconomyTaskKind.ReturnCollector ? collectorArmyId ?? 0
+            : resourceType.HasValue ? (int)resourceType.Value + 1 : 0;
+
+        public static MissionIntentKey ForEconomy(EconomyTaskKind kind, int objectiveId, HexCoord hex) =>
+            new MissionIntentKey(MissionKind.Economy, (int)kind, objectiveId, hex.Q, hex.R);
+
         public static MissionIntentKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
@@ -64,13 +76,8 @@ namespace Game.Ai.V2
             if (m != null && m.Kind == MissionKind.Attack && m.Target is AttackMissionTarget at)
                 return ForAttack(at.Target);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
-                return new MissionIntentKey(MissionKind.Economy, (int)et.Kind,
-                    et.Kind == EconomyTaskKind.ReturnBuilder
-                        ? et.BuilderArmyId ?? 0
-                        : et.Kind == EconomyTaskKind.ReturnCollector
-                            ? et.CollectorArmyId ?? 0
-                        : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
-                    et.TargetHex.Q, et.TargetHex.R);
+                return ForEconomy(et.Kind, EconomyObjectiveId(et.Kind, et.BuilderArmyId,
+                    et.CollectorArmyId, et.ResourceType), et.TargetHex);
             if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
                 return new MissionIntentKey(MissionKind.Development, (int)dt.Mode,
                     0, dt.FacilityHex.Q, dt.FacilityHex.R);
@@ -101,13 +108,9 @@ namespace Game.Ai.V2
                 return ForActiveDefence(ad.EnemyArmyId);
             EconomyIntent ei = intent?.Economy;
             if (ei != null)
-                return new MissionIntentKey(MissionKind.Economy, (int)ei.Kind,
-                    ei.Kind == EconomyTaskKind.ReturnBuilder
-                        ? ei.BuilderArmyId ?? intent?.PreferredMoverArmyId ?? 0
-                        : ei.Kind == EconomyTaskKind.ReturnCollector
-                            ? ei.CollectorArmyId ?? intent?.PreferredMoverArmyId ?? 0
-                        : ei.ResourceType.HasValue ? (int)ei.ResourceType.Value + 1 : 0,
-                    ei.TargetHex.Q, ei.TargetHex.R);
+                return ForEconomy(ei.Kind, EconomyObjectiveId(ei.Kind,
+                    ei.BuilderArmyId ?? intent.PreferredMoverArmyId,
+                    ei.CollectorArmyId ?? intent.PreferredMoverArmyId, ei.ResourceType), ei.TargetHex);
             DevelopmentIntent di = intent?.Development;
             if (di != null)
                 return new MissionIntentKey(MissionKind.Development, (int)di.Mode,
@@ -281,8 +284,6 @@ namespace Game.Ai.V2
         public float? IntrinsicValue;
         public float BuildValue;
         public float MinimumFollowupAp;
-        public int ProjectedActivationApCost;
-        public int ProjectedMaxMovement;
         public bool Loaned;
         public MissionIntentKey LoanSource;
     }

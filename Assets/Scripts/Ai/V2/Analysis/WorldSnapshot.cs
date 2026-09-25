@@ -910,7 +910,16 @@ namespace Game.Ai.V2
         // useful for the known hand/remaining deck within the existing runway horizon.
         // SpendableStockpile already excludes reservations, so reserved demand must
         // NOT be added again: that would count the same protected resources twice.
-        public float UsefulMarginalIncomeGain(float marginalGain)
+        public float UsefulMarginalIncomeGain(float marginalGain) =>
+            UsefulGain(marginalGain, OwnIncome);
+
+        // The same test for income an actor ALREADY produces (an arrived mobile collector):
+        // own income is taken without that contribution, so keeping an actor and sending it are
+        // judged by one rule and the actor is not measured against the income it makes itself.
+        public float UsefulRetainedIncomeGain(float contribution) =>
+            UsefulGain(contribution, OwnIncome - Mathf.Max(0f, contribution));
+
+        private float UsefulGain(float marginalGain, float ownIncome)
         {
             float physicalGain = Mathf.Max(0f, marginalGain);
             if (physicalGain <= AiConfigV2.allocatorSliceEpsilon)
@@ -919,7 +928,7 @@ namespace Game.Ai.V2
             float plannedNeed = Mathf.Max(0f, HandResourceNeed)
                 + Mathf.Max(0f, RemainingDeckResourceNeed);
             float covered = Mathf.Max(0f, SpendableStockpile)
-                + Mathf.Max(0f, OwnIncome) * horizon;
+                + Mathf.Max(0f, ownIncome) * horizon;
             return Mathf.Min(physicalGain, Mathf.Max(0f, plannedNeed - covered) / horizon);
         }
     }

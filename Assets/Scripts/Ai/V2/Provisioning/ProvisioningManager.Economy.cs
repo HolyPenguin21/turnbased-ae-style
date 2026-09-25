@@ -71,9 +71,103 @@ namespace Game.Ai.V2
                 eligibleBuilders = eligibleBuilders.Where(
                     x => x.Route.ArmyId == m.PreferredMoverArmyId.Value);
 
-            // DIAGNOSTIC (FoundBase only) — traces which single eligibility clause below rejects a
-            // durable intent's committed mover, since the FirstOrDefault predicate normally
-            // swallows all of them into one MoverContended result.
+            float ecoApEnvelopeRemaining = funded.Tentative.Ap;
+            float rawApRemaining = root.ActionPoints - session.ApClaimed;
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+
+            // Why one ranked candidate cannot be this mission's builder right now, or null when it
+            // can. The ONE eligibility gate of the selection loop below; the FoundBase diagnostic
+            // traces print this same answer instead of re-deriving the clauses.
+            string CandidateRejection(DemandLayer.EconomyBuilderChoice x)
+            {
+                if (x.Route.RequiresGarrisonExtraction)
+                {
+                    // ArmyId here names the Garrison, not yet a separate mover — re-derive the
+                    // exact same candidate AiArmyRoles.BestSparableEconomyHero would give
+                    // Analysis right now (canonical, same predicate as CanSpareGarrisonMember),
+                    // never trusting a hero identity carried across from an earlier phase.
+                    ArmyData g = ResolveArmy(player, x.Route.ArmyId);
+                    if (g == null) return "garrison_not_resolved";
+                    UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g);
+                    if (sparable == null) return "no_sparable_hero";
+                    if (DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex))
+                        return "under_immediate_threat";
+                    if (session.ClaimedArmyIds.Contains(g.Id)) return "claimed_this_pass";
+                    if (!g.Hex.Equals(target.TargetHex)
+                        && SafeStepPathing.FindSafePathCost(ctx.Map, player, g.Hex,
+                            target.TargetHex, sparable.MoveMax) == int.MaxValue)
+                        return "no_safe_path";
+                    return null;
+                }
+                ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                if (a == null) return "army_not_resolved";
+                if (!IsMobileEconomyHero(a, player)) return "not_mobile_economy_hero";
+                if (DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex))
+                    return "under_immediate_threat";
+                if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
+                MissionIntent conflicting = standingIntents.FirstOrDefault(i => i.PreferredMoverArmyId == a.Id
+                    && !i.IntentKey.Equals(currentIntentKey)
+                    && !DemandLayer.EconomyDonorStructurallyEligible(i));
+                if (conflicting != null)
+                    return $"conflicts_with={conflicting.IntentKey}({conflicting.Kind},{conflicting.Status})";
+                if (!a.Hex.Equals(target.TargetHex)
+                    && (a.CurrentMovement <= 0
+                        || !SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex).HasValue))
+                    return "no_executable_step";
+                return null;
+            }
+
+            // One evaluation of an eligible garrison-extraction candidate: the container the hero
+            // would move into, the FULL preparation plan pinned against a read-only preview of it,
+            // or why it fails — with the AP it would have needed when funding is the only obstacle.
+            // Shared by the selection loop and the FoundBase diagnostic trace.
+            (ArmyData Garrison, GarrisonExtractionCandidate Plan, EconomyCompletionPlan Prep,
+                float? ShortfallAp, string Detail) EvaluateGarrisonCandidate(
+                    DemandLayer.EconomyBuilderChoice candidate)
+            {
+                ArmyData g = ResolveArmy(player, candidate.Route.ArmyId);
+                if (g == null)
+                    return (null, default, default, null, "garrison_not_resolved");
+                GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
+                    player, g, actorCommitments, session, root, ecoApEnvelopeRemaining);
+                if (plan.Tier == GarrisonExtractionTier.None)
+                    // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
+                    // positive value is the cheapest tier's real cost, rejected purely for
+                    // exceeding ecoApEnvelopeRemaining (see ResolveGarrisonExtractionCandidate).
+                    return (g, plan, default, plan.ApCost > 0f ? plan.ApCost : (float?)null,
+                        plan.Reason);
+                // Cheap pre-check before paying for a full composition search: ONLY the one cost
+                // that is unconditionally real regardless of hex/turn specifics (creating the
+                // container, or the hero's own late-join charge into an already-activated
+                // Shell/Host). Hero.ActivationApCost and the build/followup cost are deliberately
+                // NOT added — both can be zero in the real plan (no travel, or the build cannot
+                // complete this stage), so adding them would stop this being a true lower bound.
+                // Failing the raw pool (session.ApClaimed by other missions this same pass, which
+                // the resolver cannot see) is still a funding shortfall, not an impossibility.
+                float roughEstimate = plan.ApCost;
+                if (roughEstimate > ecoApEnvelopeRemaining + eps
+                    || roughEstimate > rawApRemaining + eps)
+                    return (g, plan, default, roughEstimate,
+                        $"RoughEstimateTooBig ap={roughEstimate:0.##} "
+                        + $"ecoEnvelope={ecoApEnvelopeRemaining:0.##} rawPool={rawApRemaining:0.##}");
+                // Compute and PIN the FULL preparation plan (composition, donor, authoritative AP,
+                // resource stage cost) against a read-only preview of the not-yet-real container
+                // (BuildGarrisonExtractionPreview) — the SAME PlanEconomyCompletion the direct-army
+                // path uses, so Execution never re-plans, only re-validates this exact decision.
+                // `plan.ApCost` is passed as `alreadyCommittedApCost` so the feasibility checks see
+                // the budget reduced by the extraction cost this candidate will ALSO pay.
+                ArmyData preview = BuildGarrisonExtractionPreview(player, g, plan);
+                EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
+                    session.Snapshot, standingIntents, key, target, candidate, preview,
+                    plan.Container?.Id ?? -1, ecoApEnvelopeRemaining, rawApRemaining, plan.ApCost);
+                return (g, plan, prep, null, prep.Feasible
+                    ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
+                    : $"{prep.Failure.Kind} — {prep.Failure.Detail}");
+            }
+
+            // DIAGNOSTIC (FoundBase only) — which gate rejects a durable intent's committed mover,
+            // since the selection loop normally folds all of them into one MoverContended result.
+            // Prints the real gates' answers (DemandLayer's candidate gate, CandidateRejection).
             if (target.Kind == EconomyTaskKind.FoundBase
                 && m.FromDurableIntent && m.PreferredMoverArmyId.HasValue)
             {
@@ -86,188 +180,53 @@ namespace Game.Ai.V2
                     + $"inRankedBuilders={inRankedAtAll} rankedBuildersTotal={rankedBuilders.Count} "
                     + $"eligibleAfterMoverFilter={eligibleList.Count}");
                 if (!inRankedAtAll)
-                {
-                    // Never reached EconomyBuilderCandidates' yield at all — replicate its gates
-                    // here (read-only, does not touch the real generator) to see which one ate it.
-                    ArmySnapshot snapArmy = session.Snapshot?.Self?.Armies
-                        ?.FirstOrDefault(a => a != null && a.ArmyId == preferredId);
-                    if (snapArmy == null)
-                    {
-                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream — "
-                            + "not found in WorldSnapshot.Self.Armies (destroyed/merged/not owned this turn?)");
-                    }
-                    else
-                    {
-                        MissionIntent upstreamAssignment = standingIntents.FirstOrDefault(
-                            i => i != null && i.Status == IntentStatus.Active
-                            && i.PreferredMoverArmyId == preferredId);
-                        bool economyTargetMismatch = upstreamAssignment != null
-                            && upstreamAssignment.Kind == MissionKind.Economy
-                            && (upstreamAssignment.Economy == null
-                                || !upstreamAssignment.Economy.TargetHex.Equals(target.TargetHex));
-                        bool nonEconomyDonorBlock = upstreamAssignment != null
-                            && upstreamAssignment.Kind != MissionKind.Economy
-                            && !DemandLayer.EconomyDonorStructurallyEligible(upstreamAssignment);
-                        bool claimedUpstream = actorCommitments != null
-                            && actorCommitments.IsArmyClaimed(preferredId);
-                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream "
-                            + $"(EconomyBuilderCandidates-equivalent) — hex=({snapArmy.Hex.Q},{snapArmy.Hex.R}) "
-                            + $"isMobileEconomyBuilder={snapArmy.IsMobileEconomyBuilder} "
-                            + $"assignment={(upstreamAssignment == null ? "none" : $"{upstreamAssignment.Kind}/{upstreamAssignment.IntentKey} status={upstreamAssignment.Status}")} "
-                            + $"economyTargetMismatch={economyTargetMismatch} nonEconomyDonorBlock={nonEconomyDonorBlock} "
-                            + $"claimedUpstream={claimedUpstream} "
-                            + $"underImmediateThreat={DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, snapArmy.Hex)}");
-                    }
-                }
+                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{preferredId} upstream — "
+                        + DemandLayer.EconomyBuilderCandidateRejection(session.Snapshot,
+                            target.TargetHex, target.BuilderRoutes, preferredId,
+                            standingIntents, actorCommitments));
                 foreach (DemandLayer.EconomyBuilderChoice x in eligibleList)
-                {
-                    ArmyData a = ResolveArmy(player, x.Route.ArmyId);
-                    if (a == null)
-                    {
-                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} — ResolveArmy returned null");
-                        continue;
-                    }
-                    bool cMobile = IsMobileEconomyHero(a, player);
-                    bool cThreat = !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex);
-                    bool cClaimed = !session.ClaimedArmyIds.Contains(a.Id);
-                    MissionIntent conflicting = standingIntents.FirstOrDefault(i => i.PreferredMoverArmyId == a.Id
-                        && !i.IntentKey.Equals(currentIntentKey)
-                        && !DemandLayer.EconomyDonorStructurallyEligible(i));
-                    bool cDonorConflict = conflicting == null;
-                    bool atTarget = a.Hex.Equals(target.TargetHex);
-                    HexCoord? nextStep = atTarget
-                        ? (HexCoord?)null
-                        : SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex);
-                    bool cPath = atTarget || (a.CurrentMovement > 0 && nextStep.HasValue);
-                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
-                        + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
-                        + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
-                        + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
-                        + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
-                        + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
-                        + $"=> ELIGIBLE={cMobile && cThreat && cClaimed && cDonorConflict && cPath}");
-                }
+                    AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} "
+                        + $"rejection={CandidateRejection(x) ?? "none"}");
             }
 
-            bool IsCandidateEligible(DemandLayer.EconomyBuilderChoice x)
-            {
-                if (x.Route.RequiresGarrisonExtraction)
-                {
-                    // ArmyId here names the Garrison, not yet a separate mover — re-derive the
-                    // exact same candidate AiArmyRoles.BestSparableEconomyHero would give
-                    // Analysis right now (canonical, same predicate as CanSpareGarrisonMember),
-                    // never trusting a hero identity carried across from an earlier phase.
-                    ArmyData g = ResolveArmy(player, x.Route.ArmyId);
-                    UnitData sparable = g == null ? null
-                        : AiArmyRoles.BestSparableEconomyHero(player, g);
-                    return g != null && sparable != null
-                        && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex)
-                        && !session.ClaimedArmyIds.Contains(g.Id)
-                        && (g.Hex.Equals(target.TargetHex)
-                            || SafeStepPathing.FindSafePathCost(
-                                ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax)
-                                != int.MaxValue);
-                }
-                ArmyData a = ResolveArmy(player, x.Route.ArmyId);
-                return a != null && IsMobileEconomyHero(a, player)
-                && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex)
-                && !session.ClaimedArmyIds.Contains(a.Id)
-                && !standingIntents.Any(i => i.PreferredMoverArmyId == a.Id
-                    && !i.IntentKey.Equals(currentIntentKey)
-                    && !DemandLayer.EconomyDonorStructurallyEligible(i))
-                && (a.Hex.Equals(target.TargetHex)
-                    || (a.CurrentMovement > 0
-                        && SafeStepPathing.FindNextSafeStep(
-                            ctx.Map, a, target.TargetHex).HasValue));
-            }
-
-            // A garrison-extraction candidate can pass IsCandidateEligible (a sparable hero exists)
+            // A garrison-extraction candidate can pass the eligibility gate (a sparable hero exists)
             // yet still have no viable container, so walk the ranked list in order and keep trying
             // until one candidate actually produces a builder — never give up on the first
             // candidate while other eligible ones remain. No mutation happens here. The loop finds
             // either a hero that ALREADY exists as a real field mover (direct-army candidates) or,
-            // for a garrison candidate, a viable GarrisonExtractionCandidate PLAN plus a
-            // conservative pre-mutation cost estimate — never both. The plan's real materialization
+            // for a garrison candidate, a viable GarrisonExtractionCandidate PLAN plus its pinned
+            // preparation — never both. The plan's real materialization
             // (ArmyActions.CreateArmy/TransferMember) happens later, in
-            // TaskExecutor.MaterializeEconomyGarrisonBuilder, inside that step's own
+            // TaskExecutor.ApplyEconomyPreparation, inside that step's own
             // beforeStep/afterStep window — see the synthetic-MoverArmyId return further down.
             DemandLayer.EconomyBuilderChoice builderChoice = null;
             ArmyData hero = null;
             ArmyData deferredGarrison = null;
             GarrisonExtractionCandidate deferredPlan = default;
             EconomyCompletionPlan deferredPreparation = default;
-            float ecoApEnvelopeRemaining = funded.Tentative.Ap;
-            float rawApRemaining = root.ActionPoints - session.ApClaimed;
-            float eps = AiConfigV2.allocatorSliceEpsilon;
             // The cheapest garrison-extraction cost seen across every candidate that was
             // structurally legal but rejected only for exceeding the AP envelope/pool. If the loop
             // ends with no builder AND this is set, the failure is a funding shortfall, not "no
             // legal way to get a builder" — the caller below reports EnvelopeTooSmall(requiredAp)
             // instead of a generic NoMoverExists.
             float? economyBuilderShortfallAp = null;
-            void TrackEconomyShortfall(float requiredAp) => economyBuilderShortfallAp =
-                economyBuilderShortfallAp.HasValue
-                    ? Mathf.Min(economyBuilderShortfallAp.Value, requiredAp) : requiredAp;
             foreach (DemandLayer.EconomyBuilderChoice candidate in eligibleBuilders
                 .OrderBy(x => m.PreferredMoverArmyId == x.Route.ArmyId ? 0 : 1)
-                .Where(IsCandidateEligible))
+                .Where(x => CandidateRejection(x) == null))
             {
                 if (candidate.Route.RequiresGarrisonExtraction)
                 {
-                    ArmyData candidateGarrison = ResolveArmy(player, candidate.Route.ArmyId);
-                    if (candidateGarrison == null)
-                        continue;
-                    GarrisonExtractionCandidate plan = ResolveGarrisonExtractionCandidate(
-                        player, candidateGarrison, actorCommitments, session,
-                        root, ecoApEnvelopeRemaining);
-                    if (plan.Tier == GarrisonExtractionTier.None)
-                    {
-                        // plan.ApCost is 0f only for a true non-existence (no sparable hero); a
-                        // positive value here is the cheapest tier's real cost, rejected purely for
-                        // exceeding ecoApEnvelopeRemaining (see ResolveGarrisonExtractionCandidate).
-                        if (plan.ApCost > 0f)
-                            TrackEconomyShortfall(plan.ApCost);
-                        continue;
-                    }
-                    // Cheap pre-check before paying for a full composition search: ONLY the one
-                    // cost that is unconditionally real regardless of hex/turn specifics (creating
-                    // the container, or the hero's own late-join charge into an already-activated
-                    // Shell/Host). Hero.ActivationApCost and the build/followup cost are
-                    // deliberately NOT added — both can be zero in the real plan (no travel, or the
-                    // build cannot complete this stage), so adding them would stop this being a
-                    // true lower bound and could reject an affordable candidate before
-                    // PlanEconomyCompletion looks at it.
-                    float roughEstimate = plan.ApCost;
-                    if (roughEstimate > ecoApEnvelopeRemaining + eps
-                        || roughEstimate > rawApRemaining + eps)
-                    {
-                        // Passed ResolveGarrisonExtractionCandidate's own envelope check but not the
-                        // rawApRemaining one (session.ApClaimed by other missions this same pass,
-                        // which the resolver cannot see) — still a real funding shortfall, not a
-                        // structural impossibility.
-                        TrackEconomyShortfall(roughEstimate);
-                        continue;
-                    }
-
-                    // Compute and PIN the FULL preparation plan (composition, donor, authoritative
-                    // AP, resource stage cost) here, against a read-only preview of the
-                    // not-yet-real container (BuildGarrisonExtractionPreview) — the SAME
-                    // PlanEconomyCompletion the direct-army path uses below, so Execution never
-                    // re-plans, only re-validates this exact decision and applies it. `plan.ApCost`
-                    // is passed as `alreadyCommittedApCost` so the feasibility checks inside see
-                    // the budget reduced by the extraction cost this candidate will ALSO pay — see
-                    // that parameter.
-                    ArmyData preview = BuildGarrisonExtractionPreview(player, candidateGarrison, plan);
-                    int identityArmyId = plan.Container?.Id ?? -1;
-                    EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
-                        session.Snapshot, standingIntents, key, target, candidate, preview,
-                        identityArmyId, ecoApEnvelopeRemaining, rawApRemaining, plan.ApCost);
-                    if (!prep.Feasible)
+                    var evaluated = EvaluateGarrisonCandidate(candidate);
+                    if (evaluated.ShortfallAp.HasValue)
+                        economyBuilderShortfallAp = economyBuilderShortfallAp.HasValue
+                            ? Mathf.Min(economyBuilderShortfallAp.Value, evaluated.ShortfallAp.Value)
+                            : evaluated.ShortfallAp.Value;
+                    if (evaluated.Garrison == null || !evaluated.Prep.Feasible)
                         continue;
 
-                    deferredGarrison = candidateGarrison;
-                    deferredPlan = plan;
-                    deferredPreparation = prep;
+                    deferredGarrison = evaluated.Garrison;
+                    deferredPlan = evaluated.Plan;
+                    deferredPreparation = evaluated.Prep;
                     builderChoice = candidate;
                     break;
                 }
@@ -351,11 +310,10 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                         $"committed economy builder #{preferredId} cannot advance this turn"));
                 }
-                // DIAGNOSTIC (FoundBase only) — the durable-mover trace above never fires here:
-                // this is reached only once a fresh Economy mission's FirstOrDefault predicate
-                // rejected every ranked candidate (or rankedBuilders was empty). Replicate that
-                // exact predicate per candidate, read-only, so the single clause eating each one is
-                // visible.
+                // DIAGNOSTIC (FoundBase only) — a fresh mission's selection loop rejected every
+                // ranked candidate (or none was ranked). Print each candidate's real answer: the
+                // eligibility gate, then the same garrison evaluation / completion plan the loop ran
+                // (docs/ai-economy-mover-materialization-decision-tree.md, "Known trap").
                 if (target.Kind == EconomyTaskKind.FoundBase)
                 {
                     AiDebugLog.Write($"[AI][V2][Economy][TRACE] {player?.Nickname} fresh economy mission "
@@ -363,116 +321,26 @@ namespace Game.Ai.V2
                         + $"turn={session.Snapshot?.TurnNumber} — rankedBuildersTotal={rankedBuilders.Count}");
                     foreach (DemandLayer.EconomyBuilderChoice x in rankedBuilders)
                     {
-                        if (x.Route.RequiresGarrisonExtraction)
+                        string rejection = CandidateRejection(x);
+                        string plan = "n/a";
+                        if (rejection == null)
                         {
-                            ArmyData g = ResolveArmy(player, x.Route.ArmyId);
-                            UnitData sparable = g == null ? null
-                                : AiArmyRoles.BestSparableEconomyHero(player, g);
-                            bool cThreatG = g != null
-                                && !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex);
-                            bool cClaimedG = g != null && !session.ClaimedArmyIds.Contains(g.Id);
-                            bool cPathG = g != null && sparable != null && (g.Hex.Equals(target.TargetHex)
-                                || SafeStepPathing.FindSafePathCost(
-                                    ctx.Map, player, g.Hex, target.TargetHex, sparable.MoveMax) != int.MaxValue);
-                            // Calls the SAME pure resolver the real extraction path uses
-                            // (ResolveGarrisonExtractionCandidate + ApplyGarrisonExtraction) — the
-                            // trace must never keep its own copy of the container search, which
-                            // would drift out of sync.
-                            GarrisonExtractionCandidate containerPlan = g == null
-                                ? GarrisonExtractionCandidate.No("garrison not resolved")
-                                : ResolveGarrisonExtractionCandidate(player, g, actorCommitments,
-                                    session, root, funded.Tentative.Ap);
-                            bool cContainerG = containerPlan.Tier != GarrisonExtractionTier.None;
-                            bool shallowEligibleG = g != null && sparable != null && cThreatG
-                                && cClaimedG && cPathG && cContainerG;
-                            // The shallow gates above (mirrored from IsCandidateEligible +
-                            // ResolveGarrisonExtractionCandidate) are NOT the whole real gate: the
-                            // real loop also runs the roughEstimate AP pre-check and the full
-                            // PlanEconomyCompletion (donor loan, real path for the PREVIEW army,
-                            // composition/lightening, authoritative AP, StrategicSpendability)
-                            // before accepting a candidate. Replicate the SAME two downstream
-                            // checks, read-only, so the real rejection reason is visible instead of
-                            // falling through to the generic NoMoverExists below (see
-                            // docs/ai-economy-mover-materialization-decision-tree.md, "Known
-                            // trap").
-                            string prepDetailG = "n/a";
-                            bool prepFeasibleG = false;
-                            if (shallowEligibleG)
+                            if (x.Route.RequiresGarrisonExtraction)
+                                plan = EvaluateGarrisonCandidate(x).Detail;
+                            else
                             {
-                                float roughEstimateG = containerPlan.ApCost;
-                                if (roughEstimateG > ecoApEnvelopeRemaining + eps
-                                    || roughEstimateG > rawApRemaining + eps)
-                                {
-                                    prepDetailG = $"RoughEstimateTooBig ap={roughEstimateG:0.##} "
-                                        + $"ecoEnvelope={ecoApEnvelopeRemaining:0.##} rawPool={rawApRemaining:0.##}";
-                                }
-                                else
-                                {
-                                    ArmyData previewG = BuildGarrisonExtractionPreview(player, g, containerPlan);
-                                    int identityArmyIdG = containerPlan.Container?.Id ?? -1;
-                                    EconomyCompletionPlan prepG = PlanEconomyCompletion(player, root, ctx,
-                                        session.Snapshot, standingIntents, key, target, x, previewG,
-                                        identityArmyIdG, ecoApEnvelopeRemaining, rawApRemaining, containerPlan.ApCost);
-                                    prepFeasibleG = prepG.Feasible;
-                                    prepDetailG = prepG.Feasible
-                                        ? $"Feasible realAp={prepG.RealAp:0.##} completionThisTurn={prepG.CompletionThisTurn}"
-                                        : $"{prepG.Failure.Kind} — {prepG.Failure.Detail}";
-                                }
+                                ArmyData a = ResolveArmy(player, x.Route.ArmyId);
+                                EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
+                                    session.Snapshot, standingIntents, key, target, x, a, a.Id,
+                                    ecoApEnvelopeRemaining, rawApRemaining);
+                                plan = prep.Feasible
+                                    ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
+                                    : $"{prep.Failure.Kind} — {prep.Failure.Detail}";
                             }
-                            AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} (garrison-extraction) "
-                                + $"resolved={g != null} sparableHero={sparable != null} "
-                                + $"notUnderImmediateThreat={cThreatG} notClaimedThisPass={cClaimedG} hasPath={cPathG} "
-                                + $"container={(cContainerG ? containerPlan.Tier.ToString() : containerPlan.Reason)} "
-                                + (cContainerG ? $"containerApCost={containerPlan.ApCost:0.##} " : "")
-                                + $"shallowEligible={shallowEligibleG} plan=[{prepDetailG}] "
-                                + $"=> ELIGIBLE={shallowEligibleG && prepFeasibleG}");
-                            continue;
                         }
-                        ArmyData a = ResolveArmy(player, x.Route.ArmyId);
-                        if (a == null)
-                        {
-                            AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId} — ResolveArmy returned null");
-                            continue;
-                        }
-                        bool cMobile = IsMobileEconomyHero(a, player);
-                        bool cThreat = !DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex);
-                        bool cClaimed = !session.ClaimedArmyIds.Contains(a.Id);
-                        MissionIntent conflicting = standingIntents.FirstOrDefault(i => i.PreferredMoverArmyId == a.Id
-                            && !i.IntentKey.Equals(currentIntentKey)
-                            && !DemandLayer.EconomyDonorStructurallyEligible(i));
-                        bool cDonorConflict = conflicting == null;
-                        bool atTarget = a.Hex.Equals(target.TargetHex);
-                        HexCoord? nextStep = atTarget
-                            ? (HexCoord?)null
-                            : SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex);
-                        bool cPath = atTarget || (a.CurrentMovement > 0 && nextStep.HasValue);
-                        bool shallowEligible = cMobile && cThreat && cClaimed && cDonorConflict && cPath;
-                        // Same reasoning as the garrison-extraction branch above: the shallow
-                        // checks here mirror only IsCandidateEligible, not the full
-                        // PlanEconomyCompletion the real loop runs against this army once selected.
-                        // Replicate that final gate too so a direct-army candidate that looks
-                        // ELIGIBLE here but fails on donor loan / AP / spendable resources shows
-                        // its real reason.
-                        string prepDetail = "n/a";
-                        bool prepFeasible = false;
-                        if (shallowEligible)
-                        {
-                            EconomyCompletionPlan prep = PlanEconomyCompletion(player, root, ctx,
-                                session.Snapshot, standingIntents, key, target, x, a, a.Id,
-                                ecoApEnvelopeRemaining, rawApRemaining);
-                            prepFeasible = prep.Feasible;
-                            prepDetail = prep.Feasible
-                                ? $"Feasible realAp={prep.RealAp:0.##} completionThisTurn={prep.CompletionThisTurn}"
-                                : $"{prep.Failure.Kind} — {prep.Failure.Detail}";
-                        }
-                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{a.Id} hex=({a.Hex.Q},{a.Hex.R}) "
-                            + $"currentMovement={a.CurrentMovement} maxMovement={a.MaxMovement} "
-                            + $"isMobileEconomyHero={cMobile} notUnderImmediateThreat={cThreat} "
-                            + $"notClaimedThisPass={cClaimed} noConflictingIntent={cDonorConflict}"
-                            + (conflicting != null ? $" (conflictsWith={conflicting.IntentKey} kind={conflicting.Kind} status={conflicting.Status})" : "")
-                            + $" atTargetHex={atTarget} hasSafeNextStep={(atTarget ? (object)"n/a" : nextStep.HasValue)} "
-                            + $"shallowEligible={shallowEligible} plan=[{prepDetail}] "
-                            + $"=> ELIGIBLE={shallowEligible && prepFeasible}");
+                        AiDebugLog.Write($"[AI][V2][Economy][TRACE]   #{x.Route.ArmyId}"
+                            + (x.Route.RequiresGarrisonExtraction ? " (garrison-extraction)" : "")
+                            + $" rejection={rejection ?? "none"} plan=[{plan}]");
                     }
                 }
                 // A structurally legal container existed (Shell/Host/Create) for at least one
@@ -534,6 +402,10 @@ namespace Game.Ai.V2
                     EconomyBuildApCost = target.BuildApCost,
                     MinimumFollowupAp = target.MinimumFollowupAp,
                     EconomySiteValue = target.BuildValue,
+                    // The admitted mission's canonical TaskScore — the intent's IntrinsicValue.
+                    // Without it the handoff recorded 0 (not "unknown"), and a later turn with no
+                    // refreshed demand priced the durable build at zero (Economy audit B9).
+                    Value = m.BaseValue,
                 }, hero.Id, ctx.TurnNumber);
                 if (delivery == null)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(

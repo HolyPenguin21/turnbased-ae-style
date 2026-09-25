@@ -17,13 +17,12 @@ namespace Game.Ai.V2
     {
         private readonly Dictionary<MissionIntentKey, MissionIntent> _intents =
             new Dictionary<MissionIntentKey, MissionIntent>();
-        private int _baseExpansionDeliveryFailureTurn = -1;
-        private int _baseExpansionDeliveryFailureCount;
-        private CardData _baseExpansionDeliveryFailureCard;
-        private HexCoord? _baseExpansionDeliveryFailureTarget;
-        private int _baseExpansionSuppressedUntilTurn = -1;
-        private CardData _baseExpansionSuppressedCard;
-        private HexCoord? _baseExpansionSuppressedTarget;
+        // The player this store belongs to (null for a detached store). Lets a Continuity
+        // transition that only holds the state release that player's turn-scoped reservations.
+        internal PlayerSetupData Owner { get; }
+
+        public MissionIntentState() { }
+        internal MissionIntentState(PlayerSetupData owner) { Owner = owner; }
 
         public IReadOnlyCollection<MissionIntent> All => _intents.Values;
         public int Count => _intents.Count;
@@ -100,80 +99,61 @@ namespace Game.Ai.V2
             return _reconTrimmedActorIds;
         }
 
-        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) =>
-            turn < _baseExpansionSuppressedUntilTurn
-            && card == _baseExpansionSuppressedCard
-            && target.HasValue
-            && target.Equals(_baseExpansionSuppressedTarget);
-
-        // A structurally valid site may still be operationally impossible for every materialized
-        // builder. Count only consecutive, canonical delivery-gate failures for the exact staged
-        // project. Once the ordinary commitment stall window is exhausted, briefly suppress that
-        // project so Demand can compare other sites instead of repeating a failed delivery.
-        internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target)
+        // Bounded delivery-failure streaks. A structurally valid site may still be operationally
+        // impossible for every builder: count only CONSECUTIVE-turn delivery-gate failures of the
+        // exact project and, once the ordinary commitment stall window is exhausted, briefly
+        // suppress that project so Demand compares other sites instead of repeating it. One
+        // counter per project — Base by (card, site), Extraction by (resource, site) — because
+        // several Economy builds can be active (and stuck) at once; a single shared slot let two
+        // stuck projects reset each other's streak forever (Economy audit B4).
+        private sealed class DeliveryFailureStreaks<TKey>
         {
-            if (card == null || !target.HasValue)
-                return false;
-            if (IsBaseExpansionDeliverySuppressed(turn, card, target))
+            private readonly Dictionary<TKey, (int Turn, int Count)> _failures =
+                new Dictionary<TKey, (int, int)>();
+            private readonly Dictionary<TKey, int> _suppressedUntilTurn = new Dictionary<TKey, int>();
+
+            public bool IsSuppressed(int turn, TKey key) =>
+                _suppressedUntilTurn.TryGetValue(key, out int until) && turn < until;
+
+            public bool Record(int turn, TKey key)
+            {
+                if (IsSuppressed(turn, key))
+                    return true;
+                bool hasRecord = _failures.TryGetValue(key, out (int Turn, int Count) rec);
+                bool consecutiveTurn = hasRecord && (rec.Turn == turn || rec.Turn == turn - 1);
+                int count = consecutiveTurn ? rec.Count : 0;
+                if (!hasRecord || rec.Turn != turn)
+                    count++;
+                _failures[key] = (turn, count);
+
+                if (count < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
+                    return false;
+
+                _suppressedUntilTurn[key] = turn
+                    + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
+                _failures.Remove(key);
                 return true;
-            bool sameProject = card == _baseExpansionDeliveryFailureCard
-                && target.Equals(_baseExpansionDeliveryFailureTarget);
-            bool consecutiveTurn = _baseExpansionDeliveryFailureTurn == turn
-                || _baseExpansionDeliveryFailureTurn == turn - 1;
-            if (!sameProject || !consecutiveTurn)
-                _baseExpansionDeliveryFailureCount = 0;
-            if (_baseExpansionDeliveryFailureTurn != turn)
-                _baseExpansionDeliveryFailureCount++;
-            _baseExpansionDeliveryFailureTurn = turn;
-            _baseExpansionDeliveryFailureCard = card;
-            _baseExpansionDeliveryFailureTarget = target;
-
-            if (_baseExpansionDeliveryFailureCount
-                < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
-                return false;
-
-            _baseExpansionSuppressedCard = card;
-            _baseExpansionSuppressedTarget = target;
-            _baseExpansionSuppressedUntilTurn = turn
-                + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
-            _baseExpansionDeliveryFailureCount = 0;
-            return true;
+            }
         }
 
-        // Same bounded-suppression pattern as Base above, generalized to a key
-        // per (resource type, site) because BuildExtraction has no single staged slot: several
-        // extraction intents can be durable and suspended at once, unlike Base's one project. Wired
-        // from MissionContinuityLayer.AdvanceIntent's capabilityUnavailable branch — the sole call
-        // site — so a durable Extraction intent stuck on repeated NoMoverExists/MoverContended
-        // cannot be suspended forever with its actor/card reservation never released.
-        private readonly Dictionary<(ResourceType?, HexCoord), (int Turn, int Count)>
-            _extractionDeliveryFailures = new Dictionary<(ResourceType?, HexCoord), (int, int)>();
-        private readonly Dictionary<(ResourceType?, HexCoord), int> _extractionSuppressedUntilTurn =
-            new Dictionary<(ResourceType?, HexCoord), int>();
+        private readonly DeliveryFailureStreaks<(CardData, HexCoord)> _baseDeliveryFailures =
+            new DeliveryFailureStreaks<(CardData, HexCoord)>();
+        private readonly DeliveryFailureStreaks<(ResourceType?, HexCoord)> _extractionDeliveryFailures =
+            new DeliveryFailureStreaks<(ResourceType?, HexCoord)>();
+
+        internal bool IsBaseExpansionDeliverySuppressed(int turn, CardData card, HexCoord? target) =>
+            card != null && target.HasValue
+            && _baseDeliveryFailures.IsSuppressed(turn, (card, target.Value));
+
+        internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target) =>
+            card != null && target.HasValue
+            && _baseDeliveryFailures.Record(turn, (card, target.Value));
 
         internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) =>
-            _extractionSuppressedUntilTurn.TryGetValue((resourceType, target), out int until) && turn < until;
+            _extractionDeliveryFailures.IsSuppressed(turn, (resourceType, target));
 
-        internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target)
-        {
-            var key = (resourceType, target);
-            if (IsExtractionDeliverySuppressed(turn, resourceType, target))
-                return true;
-            bool hasRecord = _extractionDeliveryFailures.TryGetValue(key, out (int Turn, int Count) rec);
-            bool consecutiveTurn = hasRecord && (rec.Turn == turn || rec.Turn == turn - 1);
-            int count = consecutiveTurn ? rec.Count : 0;
-            if (!hasRecord || rec.Turn != turn)
-                count++;
-            _extractionDeliveryFailures[key] = (turn, count);
-
-            if (count < System.Math.Max(1, AiConfigV2.commitmentStallTurns))
-                return false;
-
-            _extractionSuppressedUntilTurn[key] = turn
-                + System.Math.Max(1, AiConfigV2.allocatorRejectCooldownTurns) + 1;
-            _extractionDeliveryFailures.Remove(key);
-            return true;
-        }
+        internal bool RecordExtractionDeliveryFailure(int turn, ResourceType? resourceType, HexCoord target) =>
+            _extractionDeliveryFailures.Record(turn, (resourceType, target));
 
     }
 
@@ -187,7 +167,7 @@ namespace Game.Ai.V2
             if (player == null)
                 return new MissionIntentState();
             if (!ByPlayer.TryGetValue(player, out MissionIntentState s))
-                ByPlayer[player] = s = new MissionIntentState();
+                ByPlayer[player] = s = new MissionIntentState(player);
             return s;
         }
 

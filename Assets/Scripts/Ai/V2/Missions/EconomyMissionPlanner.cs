@@ -37,6 +37,13 @@ namespace Game.Ai.V2
                 if (pinnedBuilder != null && pinnedBuilder.CurrentMovement <= 0
                     && !pinnedBuilder.Hex.Equals(e.TargetHex))
                     continue;
+                // A collector already on its site holds it for the income tick: there is no step
+                // to execute. Continuity records the hold (ResolveActive); proposing it would make
+                // a zero-AP commitment the first funded task of every typed admission, settle with
+                // no invalidation and stop the loop for everything else.
+                if (e.Kind == EconomyTaskKind.MobileCollection && pinnedBuilder != null
+                    && pinnedBuilder.Hex.Equals(e.TargetHex))
+                    continue;
                 AxisDemand refreshed = mobile ? null : demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)
@@ -69,11 +76,14 @@ namespace Game.Ai.V2
                     BuildApCost = refreshed?.EconomyBuildApCost ?? e.BuildApCost,
                     BuildValue = refreshed != null ? refreshed.EconomySiteValue : e.BuildValue,
                     MinimumFollowupAp = refreshed?.MinimumFollowupAp ?? e.MinimumFollowupAp,
-                    BuilderRoutes = refreshed?.EconomyBuilderRoutes,
-                    ProjectedActivationApCost = refreshed?.EconomyProjectedActivationApCost
-                        ?? e.ProjectedActivationApCost,
-                    ProjectedMaxMovement = refreshed?.EconomyProjectedMaxMovement
-                        ?? e.ProjectedMaxMovement,
+                    // Provisioning ranks builders over the SAME witnessed routes Requirements prices
+                    // below — never the raw-distance fallback a missing refreshed demand used to
+                    // leave it with (audit B13).
+                    BuilderRoutes = refreshed?.EconomyBuilderRoutes
+                        ?? CurrentBuilderRoutes(snapshot, new EconomyMissionTarget
+                        {
+                            Kind = e.Kind, TargetHex = e.TargetHex, ResourceType = e.ResourceType,
+                        }),
                 };
                 // An available refreshed demand contains the full delivered TaskScore. BuildValue
                 // is a legacy operational/site fact and must not replace it in global admission.
@@ -147,8 +157,7 @@ namespace Game.Ai.V2
                      .OrderByDescending(x => x.Value).ThenBy(x => x.TargetHex.Value.Q)
                      .ThenBy(x => x.TargetHex.Value.R))
             {
-                EconomyTaskKind kind = d.Capability == CapabilityKind.EconomicExpansionBase
-                    ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+                EconomyTaskKind kind = DemandLayer.EconomyBuildKind(d);
                 var target = new EconomyMissionTarget
                 {
                     Kind = kind,
@@ -163,12 +172,10 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = d.MinimumFollowupAp,
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
-                    ProjectedActivationApCost = d.EconomyProjectedActivationApCost,
-                    ProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 };
-                MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Kind == MissionKind.Economy && i.Economy != null
-                    && i.Economy.Kind == kind && i.Economy.TargetHex.Equals(target.TargetHex));
+                MissionIntent incumbent = activeIntents?.FirstOrDefault(i =>
+                    MissionContinuityLayer.HoldsEconomyBuildSite(i, target.TargetHex)
+                    && i.Economy.Kind == kind);
                 // Active Economy work was materialized above from continuity itself. A fresh
                 // demand may describe the same site with a newly ranked builder, but it cannot
                 // replace or duplicate the committed operation.

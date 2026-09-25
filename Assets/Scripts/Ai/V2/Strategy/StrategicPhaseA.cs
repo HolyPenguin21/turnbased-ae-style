@@ -121,10 +121,11 @@ namespace Game.Ai.V2
             // StrategicResourceReservationLedger is per-owner, so each keeps its own reserved
             // resources and idle clock.
             List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
-                .Where(i => i != null && i.Status == IntentStatus.Active
-                    && i.Kind == MissionKind.Economy && i.Economy != null
-                    && i.Economy.Kind == kind)
-                .OrderByDescending(i => i.Funding)
+                .Where(i => MissionContinuityLayer.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
+                // a transiently suspended build keeps its hold, but the retarget slot goes to an
+                // Active one (CanReplaceCommittedBase only switches an Active commitment)
+                .OrderByDescending(i => i.Status == IntentStatus.Active)
+                .ThenByDescending(i => i.Funding)
                 .ThenByDescending(i => i.Economy.BuildValue)
                 .ThenBy(i => i.CreatedTurn)
                 .ThenBy(i => i.IntentKey)
@@ -298,7 +299,7 @@ namespace Game.Ai.V2
             AxisDemand protectedEconomyBuild = economyBuildObligations
                 .OrderByDescending(d => IsCommittedEconomyBuild(activeIntents, d) ? 1 : 0)
                 .ThenByDescending(d => d.Value)
-                .ThenByDescending(d => ResolveEconomyTaskKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
+                .ThenByDescending(d => DemandLayer.EconomyBuildKind(d) == EconomyTaskKind.FoundBase ? 1 : 0)
                 .ThenByDescending(d => d.EconomySiteValue)
                 .ThenBy(d => d.TargetHex?.Q ?? int.MaxValue)
                 .ThenBy(d => d.TargetHex?.R ?? int.MaxValue)
@@ -825,27 +826,11 @@ namespace Game.Ai.V2
         {
             if (activeIntents == null || demand?.TargetHex == null)
                 return false;
-            EconomyTaskKind kind = ResolveEconomyTaskKind(demand);
-            return activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
-                && i.Economy.TargetHex.Equals(demand.TargetHex.Value)
+            EconomyTaskKind kind = DemandLayer.EconomyBuildKind(demand);
+            return activeIntents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, demand.TargetHex.Value)
+                && i.Economy.Kind == kind
                 && (kind != EconomyTaskKind.FoundBase || i.Economy.BuildCard == null
                     || i.Economy.BuildCard == demand.EconomyBuildCard));
-        }
-
-        // A Base-founding EconomyHeroPrerequisite demand (Capability.Hero) carries no
-        // EconomicExpansionBase capability of its own — it is only distinguishable from an
-        // extraction-facility Hero prerequisite through the underlying build card's cardType.
-        // Falling back to BuildExtraction for every Hero demand here would make a Base-founding
-        // pending Hero invisible to the active-commitment tie-break above.
-        private static EconomyTaskKind ResolveEconomyTaskKind(AxisDemand demand)
-        {
-            if (demand.Capability == CapabilityKind.EconomicExpansionBase)
-                return EconomyTaskKind.FoundBase;
-            if (demand.Capability == CapabilityKind.Hero
-                && demand.EconomyBuildCard?.Definition?.cardType == CardType.Base)
-                return EconomyTaskKind.FoundBase;
-            return EconomyTaskKind.BuildExtraction;
         }
 
         private static AxisDemand CloneResidualDemand(DemandState state)
@@ -880,8 +865,6 @@ namespace Game.Ai.V2
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
-                EconomyProjectedActivationApCost = d.EconomyProjectedActivationApCost,
-                EconomyProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 DeliveryShape = d.DeliveryShape,

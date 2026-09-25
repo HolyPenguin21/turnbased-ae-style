@@ -46,8 +46,6 @@ namespace Game.Ai.V2
         public float BuildValue;
         public float MinimumFollowupAp;
         public IReadOnlyList<EconomyBuilderRouteSnapshot> BuilderRoutes;
-        public int ProjectedActivationApCost;
-        public int ProjectedMaxMovement;
     }
 
     // The *existing* hero, not a card-in-hand or an anonymous "operator" demand. This target

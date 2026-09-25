@@ -232,13 +232,16 @@ namespace Game.Ai.V2
             if (demand?.TargetHex == null || (demand.Capability != CapabilityKind.EconomicInfrastructure
                 && demand.Capability != CapabilityKind.EconomicExpansionBase))
                 return null;
-            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
-                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
-            int targetId = demand.EconomyResourceType.HasValue
-                ? (int)demand.EconomyResourceType.Value + 1 : 0;
-            HexCoord h = demand.TargetHex.Value;
-            return EconomyMissionPlanner.OwnerKey(new StableMissionKey(MissionKind.Economy,
-                (int)kind, targetId, h.Q, h.R));
+            return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
+                demand.EconomyResourceType, demand.TargetHex.Value);
+        }
+
+        // The reservation owner key of one build: the same key its mission and intent carry.
+        internal static string EconomyBuildOwner(EconomyTaskKind kind, ResourceType? resourceType,
+            HexCoord target)
+        {
+            return EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(kind,
+                MissionIntentKey.EconomyObjectiveId(kind, null, null, resourceType), target));
         }
 
         // A selected infrastructure demand already has a valuable legal site and a
@@ -297,10 +300,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, int turn, MissionIntent intent)
         {
             EconomyIntent economy = intent?.Economy;
-            if (player == null || intent == null || intent.Status != IntentStatus.Active
-                || intent.Kind != MissionKind.Economy || economy == null
-                || (economy.Kind != EconomyTaskKind.BuildExtraction
-                    && economy.Kind != EconomyTaskKind.FoundBase)
+            if (player == null || !MissionContinuityLayer.IsLiveEconomyBuild(intent)
                 || economy.BuildResourceCost == null)
                 return;
 
@@ -349,14 +349,8 @@ namespace Game.Ai.V2
                 || demand.Capability != CapabilityKind.Hero || !demand.TargetHex.HasValue
                 || demand.EconomyBuildResourceCost == null)
                 return null;
-            return EconomyReservationOwner(new AxisDemand
-            {
-                Capability = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
-                    ? CapabilityKind.EconomicExpansionBase
-                    : CapabilityKind.EconomicInfrastructure,
-                TargetHex = demand.TargetHex,
-                EconomyResourceType = demand.EconomyResourceType,
-            });
+            return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
+                demand.EconomyResourceType, demand.TargetHex.Value);
         }
 
         private static void ReserveDeferredEconomyResourcesCore(

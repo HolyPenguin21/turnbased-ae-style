@@ -37,6 +37,9 @@ namespace Game.Ai.V2
         public int? MoverArmyId;
         public DeferReason? AllocationDeferReason;
         public ProvisionFailureKind? ProvisionFailureKindValue;
+        // The executor's stop reason when the mission reached Execution (null otherwise).
+        // Continuity reads it to tell a proven route failure from a transient stop.
+        public ExecutionStopReason? StopReason;
         public ScoutTargetKind ScoutKind;
         public bool ScoutRequiresStealth;   // AI-RECON-02 — provisioned Scout requirement was a stealth one
         public HexCoord FocusHex;
@@ -338,10 +341,15 @@ namespace Game.Ai.V2
                             || e.StopReason == ExecutionStopReason.HexEventStarted);
                     // Extraction and direct-army preparation are distinct productive mutations:
                     // the former creates the actor, the latter changes its roster and/or donor intent.
+                    // An Economy actor standing productively on its target (a build ready for
+                    // Phase A's follow-up, a collector holding its site for the income tick) is
+                    // doing its job without a mutation of its own — progress, not a stall.
                     o.MadeProgress = e.StepsMoved > 0 || e.EnteredStealth
                         || e.InfrastructureChanged || e.CombatChanged
                         || e.OperationStarted || raidEngaged
-                        || e.ActorMaterialized || e.EconomyPrepared;
+                        || e.ActorMaterialized || e.EconomyPrepared
+                        || e.EconomyDeliveryReady || e.EconomyHolding;
+                    o.StopReason = e.StopReason;
                     if (o.MissionKind == MissionKind.Raid)
                     {
                         o.OperationStarted = e.OperationStarted
@@ -467,6 +475,11 @@ namespace Game.Ai.V2
                         break;
                     case ExecutionStopReason.NoSafeStep:
                     case ExecutionStopReason.MoveRejected:
+                    // Economy audit B2 — every execution-side TargetInvalidated of an Economy step
+                    // is transient (stale plan, unaffordable activation, AP/resources of a pinned
+                    // preparation gone this pass), never proof the durable build is invalid:
+                    // Continuity re-validates the objective itself (ResolveActive).
+                    case ExecutionStopReason.TargetInvalidated:
                         o.Outcome = ExecutionOutcome.Blocked;
                         break;
                     default:

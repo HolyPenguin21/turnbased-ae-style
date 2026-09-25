@@ -40,7 +40,7 @@ namespace Game.Ai.V2
                 // never keep pursuing on behalf of foreign infrastructure.
                 defence.ObjectiveCompleted = true;
             }
-            if (defence == null || actor == null || ShouldReap(intent))
+            if (defence == null || actor == null || ShouldReap(intent, snap?.TurnNumber ?? 0))
             {
                 TryResumePreemptedOffensive(state, defence, "defence_ended");
                 return DefenceResolution.Retire;

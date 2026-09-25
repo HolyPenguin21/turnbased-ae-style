@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
 
@@ -115,6 +116,10 @@ namespace Game.Ai.V2
             TargetKind = targetKind; ActorId = actorId; DetailId = detailId;
         }
 
+        // Same objective encoding as MissionIntentKey.ForEconomy (EconomyObjectiveId).
+        public static StableMissionKey ForEconomy(EconomyTaskKind kind, int objectiveId, HexCoord hex) =>
+            new StableMissionKey(MissionKind.Economy, (int)kind, objectiveId, hex.Q, hex.R);
+
         public static StableMissionKey ForRaidAssault(RaidTargetRef target) =>
             target.Kind == RaidTargetKind.NeutralArmy
                 ? new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, target.ArmyId, 0, 0, RaidTargetKind.NeutralArmy)
@@ -196,13 +201,8 @@ namespace Game.Ai.V2
                 return new StableMissionKey(MissionKind.ActiveDefence, (int)ad.Phase,
                     ad.EnemyArmyId, 0, 0);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
-                return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
-                    et.Kind == EconomyTaskKind.ReturnBuilder
-                        ? et.BuilderArmyId ?? 0
-                        : et.Kind == EconomyTaskKind.ReturnCollector
-                            ? et.CollectorArmyId ?? 0
-                        : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
-                    et.TargetHex.Q, et.TargetHex.R);
+                return ForEconomy(et.Kind, MissionIntentKey.EconomyObjectiveId(et.Kind,
+                    et.BuilderArmyId, et.CollectorArmyId, et.ResourceType), et.TargetHex);
             if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
                 return new StableMissionKey(MissionKind.Development, (int)dt.Mode,
                     0, dt.FacilityHex.Q, dt.FacilityHex.R);
@@ -395,7 +395,8 @@ namespace Game.Ai.V2
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
-                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger);
+                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger,
+                player);
         }
     }
 
@@ -406,6 +407,7 @@ namespace Game.Ai.V2
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
         private readonly ApBudgetLedger _ledger;
+        private readonly PlayerSetupData _player;
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
             new Dictionary<StableMissionKey, ProvisionRequirement>();
@@ -454,8 +456,10 @@ namespace Game.Ai.V2
         public bool Converged { get; private set; }
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null)
+            List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null,
+            PlayerSetupData player = null)
         {
+            _player = player;
             _snap = snap;
             _missions = missions;
             _commitments = commitments;
@@ -652,7 +656,7 @@ namespace Game.Ai.V2
                 }
 
                 ResourceVector cPhys = PhysicalDesired(m);
-                if (cPhys.AnyPhysical && !physicalRemaining.CoversPhysical(cPhys, eps))
+                if (cPhys.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining).CoversPhysical(cPhys, eps))
                 {
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.CommitmentPoolExhausted });
                     alloc.CommitmentsStarveFreshDecisions = true;
@@ -745,17 +749,18 @@ namespace Game.Ai.V2
 
                 ResourceVector physMin = PhysicalMinimum(m);
                 ResourceVector physDraw = PhysicalDesired(m);
-                if ((physMin.AnyPhysical || physDraw.AnyPhysical) && !physicalRemaining.CoversPhysical(physMin, eps))
+                ResourceVector physAvailable = PhysicalAvailableFor(m, physicalRemaining);
+                if ((physMin.AnyPhysical || physDraw.AnyPhysical) && !physAvailable.CoversPhysical(physMin, eps))
                 {
                     alloc.Deferred.Add(new DeferredEntry
                     {
                         Mission = m, Reason = DeferReason.InsufficientPhysical,
-                        Required = physMin, Available = physicalRemaining,
-                        Missing = (physMin - physicalRemaining).ClampLow0(),
+                        Required = physMin, Available = physAvailable,
+                        Missing = (physMin - physAvailable).ClampLow0(),
                     });
                     continue;
                 }
-                if (!physicalRemaining.CoversPhysical(physDraw, eps))
+                if (!physAvailable.CoversPhysical(physDraw, eps))
                     physDraw = physMin;
 
                 float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
@@ -806,7 +811,7 @@ namespace Game.Ai.V2
                 ExecutionLane lane = MissionAdmissionPolicy.LaneFor(m);
                 if (ConflictsCurrentPortfolio(m) || AtCapacity(lane)) continue;
                 ResourceVector physMin = PhysicalMinimum(m);
-                if (physMin.AnyPhysical && !physicalRemaining.CoversPhysical(physMin, eps)) continue;
+                if (physMin.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining).CoversPhysical(physMin, eps)) continue;
 
                 var v = new ResourceVector(min);
                 var funded = new FundedEntry
@@ -927,6 +932,26 @@ namespace Game.Ai.V2
                 Mathf.Max(baseMin.Energy, floor.Physical.Energy),
                 Mathf.Max(baseMin.Materials, floor.Physical.Materials),
                 Mathf.Max(baseMin.Tech, floor.Physical.Tech));
+        }
+
+        // Economy audit B7 — an Economy build completes against the SAME spendable pool
+        // Provisioning checks it with (StrategicSpendability.FitsSpendableForEconomyCompletion):
+        // raw stock minus every explicit hold except EconomyDeferredBuild rows and its own owner's
+        // rows. Funding it from raw stock instead made Provisioning reject it, the reprice floor
+        // re-funded it from the same raw stock, and the bounded re-pack ended the whole typed
+        // admission. Other missions keep the raw pool and their Provisioning gates.
+        private ResourceVector PhysicalAvailableFor(MissionProposal m, ResourceVector remaining)
+        {
+            if (m?.Kind != MissionKind.Economy || _player == null)
+                return remaining;
+            string owner = EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m));
+            int turn = _snap?.TurnNumber ?? 0;
+            float Held(StrategicReservedResource r) => StrategicResourceReservationLedger.Active(
+                _player, turn, r, owner, StrategicReservationReason.EconomyDeferredBuild);
+            var held = new ResourceVector(0f, Held(StrategicReservedResource.Human),
+                Held(StrategicReservedResource.Energy), Held(StrategicReservedResource.Materials),
+                Held(StrategicReservedResource.Tech));
+            return (remaining - held).ClampLow0();
         }
 
         private ResourceVector PhysicalDesired(MissionProposal m)
