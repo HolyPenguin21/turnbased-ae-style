@@ -406,7 +406,8 @@ namespace Game.Ai.V2
             unavailable.Remove(a.PrimaryArmyId.Value);
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
-                a.PrimaryArmyId);
+                a.PrimaryArmyId, GroundCombatDonorPolicy.BorrowableDonorApPrices(
+                    snap?.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All));
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);

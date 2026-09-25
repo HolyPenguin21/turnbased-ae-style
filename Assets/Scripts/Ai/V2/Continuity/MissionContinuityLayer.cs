@@ -409,6 +409,29 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
             }
 
+            // Strike force — a Raid / ActiveDefence whose primary an Attack gather bought ends here.
+            // The gather priced the abandoned operation into its own score
+            // (GroundCombatDonorPolicy.BorrowableDonorApPrices) and won the allocation; the army now
+            // walks to the host and, after the handoff, home. Runs before the orphan repair below,
+            // so a Raid an ActiveDefence had borrowed is resumed (and, if its army is the one given
+            // away, retired by this same rule on the next pass).
+            var givenToGather = new HashSet<int>(state.All
+                .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    && i.Attack?.Phase == AttackMissionPhase.Gather)
+                .SelectMany(i => i.Attack.GatherSupportArmyIds));
+            var donatedOperations = new HashSet<MissionIntentKey>();
+            foreach (MissionIntent lender in state.All.Where(i => i != null
+                && (i.Kind == MissionKind.Raid || i.Kind == MissionKind.ActiveDefence)
+                && i.PreferredMoverArmyId.HasValue
+                && givenToGather.Contains(i.PreferredMoverArmyId.Value)))
+            {
+                donatedOperations.Add(lender.IntentKey);
+                dead.Add(lender.IntentKey);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {lender.IntentKey} retired: "
+                    + $"its army #{lender.PreferredMoverArmyId} was given to an Attack gather "
+                    + $"(abandoned value {lender.LastIntrinsicValue:0.00})");
+            }
+
             // The same orphan repair for the Raid an ActiveDefence borrowed.
             // Every ordinary ActiveDefence exit resumes its lender explicitly, but if the defending
             // intent is gone without one of those exits having run (retired on another path, or its
@@ -450,6 +473,8 @@ namespace Game.Ai.V2
 
             foreach (MissionIntent intent in state.All.ToList())
             {
+                if (donatedOperations.Contains(intent.IntentKey))
+                    continue;
                 if (intent.Kind == MissionKind.Development)
                 {
                     DevelopmentIntent d = intent.Development;
@@ -2323,6 +2348,8 @@ namespace Game.Ai.V2
                 intent.TurnsActive++;
             }
             intent.LastAttemptKey = o.AttemptKey;
+            if (o.Proposal != null && o.Proposal.BaseValue > 0f)
+                intent.LastIntrinsicValue = o.Proposal.BaseValue;
             intent.CumulativeApSpent += o.ApSpent;
             intent.StepsMovedTotal += o.StepsMoved;
             if (o.MoverArmyId.HasValue)

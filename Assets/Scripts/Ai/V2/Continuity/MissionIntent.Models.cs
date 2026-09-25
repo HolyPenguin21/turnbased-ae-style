@@ -397,6 +397,10 @@ namespace Game.Ai.V2
         // MissionContinuityLayer.MarkProtectedThisTurn); TurnsActive and ShouldReap still run.
         public int LastProtectedTurn = -1;
         public int StallTurns;
+        // The canonical TaskScore value of the last admitted proposal of this operation that
+        // carried one (lifecycle legs carry 0 and never overwrite it). What abandoning the
+        // operation costs (GroundCombatDonorPolicy.BorrowableDonorApPrices). Continuity writes it.
+        public float LastIntrinsicValue;
         public float CumulativeApSpent;
         public int StepsMovedTotal;
         private int? _preferredMoverArmyId;

@@ -13,6 +13,27 @@ namespace Game.Ai.V2
     // canonical raid transaction. Bodies verbatim.
     internal static class GroundCombatDonorPolicy
     {
+        // Strike force — the armies an Attack gather may BUY as supports: the primary of every
+        // active Raid / ActiveDefence, priced at what abandoning that operation costs (its
+        // LastIntrinsicValue) in AP-equivalents at the one activation rate TaskScore charges
+        // (taskScoreReactivationApWeight per AP). The gather adds the price to that donor's AP,
+        // so its own TaskScore carries the loss and the allocator arbitrates; Continuity retires
+        // the lender once the gather holds its army. An operation of unknown worth is not for sale.
+        internal static Dictionary<int, float> BorrowableDonorApPrices(IEnumerable<MissionIntent> intents)
+        {
+            var prices = new Dictionary<int, float>();
+            float rate = UnityEngine.Mathf.Max(0.0001f, AiConfigV2.taskScoreReactivationApWeight);
+            foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
+            {
+                if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
+                    || (i.Kind != MissionKind.Raid && i.Kind != MissionKind.ActiveDefence)
+                    || i.LastIntrinsicValue <= 0f)
+                    continue;
+                prices[i.PreferredMoverArmyId.Value] = i.LastIntrinsicValue / rate;
+            }
+            return prices;
+        }
+
         // §12 — the best same-hex hero that may legally join `host`, or (null, null): the one
         // commander evaluation (HeroRoleEvaluator.CompareCandidates) for THIS fight, then a stable
         // donor-id tiebreak. A donor must retain at least one member because Provisioning

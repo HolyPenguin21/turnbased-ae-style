@@ -192,8 +192,11 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
             List<MissionProposal> proposals, float? mustBeat = null)
         {
+            Dictionary<int, float> donorPrices = GroundCombatDonorPolicy.BorrowableDonorApPrices(
+                snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor);
+                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                donorApPrices: donorPrices);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
@@ -203,14 +206,17 @@ namespace Game.Ai.V2
             }
             ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(x => x != null
                 && x.ArmyId == gather.HostArmyId);
+            // The lead leg must be a FREE army: a bought donor is still held by its operation until
+            // the Attack intent this lead step creates makes Continuity retire that operation.
             ArmySnapshot lead = gather.SupportArmyIds
+                .Where(id => !donorPrices.ContainsKey(id))
                 .Select(id => snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id))
                 .FirstOrDefault(s => s != null && (s.Hex.Equals(gather.HostHex) || s.CurrentMovement > 0));
             if (host == null || lead == null)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
                     $"[AI][V2][Attack][Gather] decision=HOLD target={objective.Target.DiagnosticLabel} "
-                    + $"host={gather.HostArmyId} reason=no_planned_support_can_act_this_turn");
+                    + $"host={gather.HostArmyId} reason=no_free_planned_support_can_act_this_turn");
                 return false;
             }
 

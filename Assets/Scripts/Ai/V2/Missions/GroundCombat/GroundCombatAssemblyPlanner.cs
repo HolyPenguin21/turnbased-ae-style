@@ -382,16 +382,24 @@ namespace Game.Ai.V2
         // spread-out late-game army attacks at its assembled peak. Candidates are the snapshot's free ready field armies
         // (GroundCombatActorEligibility) minus `excludeArmyIds`; rosters are read live, exactly as
         // TryAssembleForHost does. `pinnedHostArmyId` re-plans a started gather around its host.
+        // `donorApPrices` — armies of other operations the gather may buy as SUPPORTS (never as
+        // host), each with its abandonment price in AP (GroundCombatDonorPolicy).
         internal static GroundCombatGatherPlan PlanGather(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate,
-            int? pinnedHostArmyId = null)
+            int? pinnedHostArmyId = null, IReadOnlyDictionary<int, float> donorApPrices = null)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatGatherPlan.Infeasible("no own-force snapshot");
             opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
 
             List<ArmySnapshot> free = GroundCombatActorEligibility.EligibleReadyArmies(snap, excludeArmyIds);
+            List<ArmySnapshot> bought = donorApPrices == null || donorApPrices.Count == 0
+                ? new List<ArmySnapshot>()
+                : GroundCombatActorEligibility.EligibleReadyArmies(snap, null)
+                    .Where(a => donorApPrices.ContainsKey(a.ArmyId)
+                        && !free.Any(f => f.ArmyId == a.ArmyId))
+                    .ToList();
             List<ArmySnapshot> hosts = pinnedHostArmyId.HasValue
                 ? snap.Self.Armies.Where(a => a != null && a.ArmyId == pinnedHostArmyId.Value
                     && a.IsStructuralRaidActor).ToList()
@@ -402,8 +410,8 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot hostSnap in hosts)
             {
                 GroundCombatGatherPlan p = PlanGatherForHost(snap, opposition, defenderHexDefenseBonus,
-                    targetHex, hostSnap, free.Where(s => s.ArmyId != hostSnap.ArmyId).ToList(),
-                    winChanceGate);
+                    targetHex, hostSnap, free.Concat(bought).Where(s => s.ArmyId != hostSnap.ArmyId).ToList(),
+                    winChanceGate, donorApPrices);
                 if (!p.Feasible)
                 {
                     why = p.Reason;
@@ -421,7 +429,7 @@ namespace Game.Ai.V2
         private static GroundCombatGatherPlan PlanGatherForHost(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ArmySnapshot hostSnap, List<ArmySnapshot> supportSnaps,
-            float winChanceGate)
+            float winChanceGate, IReadOnlyDictionary<int, float> donorApPrices)
         {
             ArmyData host = LiveArmy(hostSnap);
             if (host == null || host.Members.Count == 0)
@@ -450,7 +458,10 @@ namespace Game.Ai.V2
                     Units = sparable,
                     Bodies = sparable.Select(WorthIt.FromLiveUnit).ToList(),
                     Turns = turns,
-                    Ap = s.ActivationApCost * System.Math.Max(1, turns),
+                    // A bought donor also costs the operation it abandons.
+                    Ap = s.ActivationApCost * System.Math.Max(1, turns)
+                        + (donorApPrices != null && donorApPrices.TryGetValue(s.ArmyId, out float price)
+                            ? UnityEngine.Mathf.CeilToInt(price) : 0),
                 });
             }
             if (pool.Count == 0)
