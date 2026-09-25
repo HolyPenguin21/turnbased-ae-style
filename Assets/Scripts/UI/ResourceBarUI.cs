@@ -22,9 +22,9 @@ namespace Game.UI
         [SerializeField] private TMP_Text techText;
         [SerializeField] private TMP_Text turnText;
 
-        // Resolved once in OnEnable, by which point setup has already registered it — Show()
-        // (this object's only activation trigger) is only ever called "right after citadel
-        // setup finishes" per its own comment above, so the human's PlayerRoot is guaranteed to
+        // Resolved once in OnEnable, by which point setup has already registered it — CardHandUI.Show()
+        // (this object sits under CardHandPanel, its only activation trigger) is only ever called
+        // right after citadel setup finishes, so the human's PlayerRoot is guaranteed to
         // exist by the time OnEnable runs.
         private PlayerRoot _humanRoot;
 
@@ -33,13 +33,6 @@ namespace Game.UI
         // temporarily the acting AI's own root instead. Always the one RefreshResourceText reads
         // and ResourcesChanged is subscribed to; SetDisplayedRoot is the only place that changes.
         private PlayerRoot _displayedRoot;
-
-        // Hidden until a citadel exists to report on — GameTurnController calls this once,
-        // right after citadel setup finishes, and it never hides again after that.
-        public void Show()
-        {
-            gameObject.SetActive(true);
-        }
 
         private void OnEnable()
         {
