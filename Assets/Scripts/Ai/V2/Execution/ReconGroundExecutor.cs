@@ -48,8 +48,6 @@ namespace Game.Ai.V2
         {
             public ReconMode RequestedMode;
             public HexCoord StrategicAnchor;
-            public float ExploreScore;
-            public float RefreshScore;
         }
 
         // Compatibility adapter for the current flag-off pipeline. It preserves the old bounded
@@ -172,8 +170,6 @@ namespace Game.Ai.V2
 
             prepared = new PreparedStep
             {
-                ExploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f,
-                RefreshScore = ReconIntelSnapshotRegistry.StalePressure(snapshot),
                 RequestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
                     ? ReconMode.Explore
                     : ReconMode.Refresh,
@@ -186,8 +182,7 @@ namespace Game.Ai.V2
             };
 
             ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
-                prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber,
-                prepared.ExploreScore, prepared.RefreshScore);
+                prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             // Required stealth is preparatory state in the same admitted task transaction. The
             // operation is idempotent when the actor is already hidden and can never be charged
@@ -236,8 +231,7 @@ namespace Game.Ai.V2
 
             RefreshObjectiveSatisfied(player, pm, result);
             ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id,
-                army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber,
-                prepared.ExploreScore, prepared.RefreshScore);
+                army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
                 player, ctx.Map, army, assignment);
