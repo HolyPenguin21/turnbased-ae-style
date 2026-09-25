@@ -102,8 +102,7 @@ namespace Game.Ai.V2
                     && demand.Capability != CapabilityKind.EconomicExpansionBase))
                 return null;
 
-            EconomyTaskKind kind = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
-                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            EconomyTaskKind kind = DemandLayer.EconomyBuildKind(demand);
             var objective = new EconomyIntent
             {
                 Kind = kind,
@@ -290,9 +289,7 @@ namespace Game.Ai.V2
                 return;
             }
 
-            EconomyTaskKind completedKind =
-                completedDemand.Capability == CapabilityKind.EconomicExpansionBase
-                    ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            EconomyTaskKind completedKind = DemandLayer.EconomyBuildKind(completedDemand);
             bool threatened = DemandLayer.EconomyBuilderUnderImmediateThreat(snap, actor.Hex);
             bool alreadyProtected = (completedKind == EconomyTaskKind.FoundBase && !threatened)
                 || IsProtectedEconomyHex(snap, player, actor.Hex);

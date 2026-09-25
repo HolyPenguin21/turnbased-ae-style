@@ -157,8 +157,7 @@ namespace Game.Ai.V2
                      .OrderByDescending(x => x.Value).ThenBy(x => x.TargetHex.Value.Q)
                      .ThenBy(x => x.TargetHex.Value.R))
             {
-                EconomyTaskKind kind = d.Capability == CapabilityKind.EconomicExpansionBase
-                    ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+                EconomyTaskKind kind = DemandLayer.EconomyBuildKind(d);
                 var target = new EconomyMissionTarget
                 {
                     Kind = kind,

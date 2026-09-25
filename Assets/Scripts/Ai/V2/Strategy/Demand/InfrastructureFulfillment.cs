@@ -232,11 +232,16 @@ namespace Game.Ai.V2
             if (demand?.TargetHex == null || (demand.Capability != CapabilityKind.EconomicInfrastructure
                 && demand.Capability != CapabilityKind.EconomicExpansionBase))
                 return null;
-            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
-                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
+                demand.EconomyResourceType, demand.TargetHex.Value);
+        }
+
+        // The reservation owner key of one build: the same key its mission and intent carry.
+        internal static string EconomyBuildOwner(EconomyTaskKind kind, ResourceType? resourceType,
+            HexCoord target)
+        {
             return EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(kind,
-                MissionIntentKey.EconomyObjectiveId(kind, null, null, demand.EconomyResourceType),
-                demand.TargetHex.Value));
+                MissionIntentKey.EconomyObjectiveId(kind, null, null, resourceType), target));
         }
 
         // A selected infrastructure demand already has a valuable legal site and a
@@ -344,14 +349,8 @@ namespace Game.Ai.V2
                 || demand.Capability != CapabilityKind.Hero || !demand.TargetHex.HasValue
                 || demand.EconomyBuildResourceCost == null)
                 return null;
-            return EconomyReservationOwner(new AxisDemand
-            {
-                Capability = demand.EconomyBuildCard?.Definition?.cardType == CardType.Base
-                    ? CapabilityKind.EconomicExpansionBase
-                    : CapabilityKind.EconomicInfrastructure,
-                TargetHex = demand.TargetHex,
-                EconomyResourceType = demand.EconomyResourceType,
-            });
+            return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
+                demand.EconomyResourceType, demand.TargetHex.Value);
         }
 
         private static void ReserveDeferredEconomyResourcesCore(

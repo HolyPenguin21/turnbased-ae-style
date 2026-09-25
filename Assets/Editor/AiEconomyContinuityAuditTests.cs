@@ -522,6 +522,28 @@ namespace Game.EditorTests
             Assert.That(((EconomyMissionTarget)proposed.Target).BuilderRoutes, Is.SameAs(routes));
         }
 
+        // --- refactor pins: one Economy build kind / owner key -----------------------------
+
+        [Test]
+        public void BuildKind_BaseHeroPrerequisite_SharesTheBaseBuildsOwnerKey()
+        {
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            var baseDemand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Economy, Capability = CapabilityKind.EconomicExpansionBase,
+                TargetHex = Site, EconomyBuildCard = card,
+                EconomyBuildResourceCost = new ResourceCost(materials: 3),
+            };
+            AxisDemand hero = DemandLayer.EconomyHeroPrerequisite(baseDemand);
+
+            Assert.That(DemandLayer.EconomyBuildKind(hero), Is.EqualTo(EconomyTaskKind.FoundBase));
+            Assert.That(InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(hero),
+                Is.EqualTo(InfrastructureFulfillment.EconomyReservationOwner(baseDemand)));
+            Assert.That(InfrastructureFulfillment.EconomyReservationOwner(baseDemand),
+                Is.EqualTo(EconomyMissionPlanner.OwnerKey(StableMissionKey.For(
+                    Proposal(EconomyTaskKind.FoundBase, Site, card)))));
+        }
+
         // --- B12: collector usefulness is judged without its own contribution ---------------
 
         [Test]

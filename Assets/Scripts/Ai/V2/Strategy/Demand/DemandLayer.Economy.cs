@@ -485,6 +485,14 @@ namespace Game.Ai.V2
             Ineligible,
         }
 
+        // Which build an Economy demand is about: a Base (its own capability, or a builder-Hero
+        // prerequisite carrying the Base card) or an extraction facility. The one owner for
+        // Demand, Missions, Phase A, Continuity and the build reservation owner keys.
+        internal static EconomyTaskKind EconomyBuildKind(AxisDemand demand) =>
+            demand?.Capability == CapabilityKind.EconomicExpansionBase
+            || demand?.EconomyBuildCard?.Definition?.cardType == CardType.Base
+                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+
         internal static EconomyBuilderChoice SelectEconomyBuilder(WorldSnapshot snap,
             HexCoord target, IReadOnlyList<EconomyBuilderRouteSnapshot> routes,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
@@ -1390,8 +1398,7 @@ namespace Game.Ai.V2
         {
             if (demand?.TargetHex == null || intents == null)
                 return false;
-            EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
-                ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
+            EconomyTaskKind kind = EconomyBuildKind(demand);
             return intents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, demand.TargetHex.Value)
                 && i.PreferredMoverArmyId.HasValue && i.Economy.Kind == kind
                 && (kind == EconomyTaskKind.FoundBase
