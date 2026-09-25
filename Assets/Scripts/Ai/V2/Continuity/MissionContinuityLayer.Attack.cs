@@ -124,55 +124,46 @@ namespace Game.Ai.V2
                 }
                 // The leg was entered by an execution fact (a full/full swap); THIS is where the
                 // destination gets chosen, through the one own-Base selection owner.
-                if (!a.SupportReturnHex.HasValue)
-                    a.SupportReturnHex = SelectReturnBase(snap, player, a.SupportArmyId);
+                bool hadHome = a.SupportReturnHex.HasValue;
+                HexCoord? home = KeepOrReselectHome(snap, player, a.SupportArmyId,
+                    a.SupportReturnHex, out bool retargeted);
                 ArmySnapshot support = snap?.Self?.Armies?.FirstOrDefault(x => x != null
                     && x.ArmyId == a.SupportArmyId.Value);
-                // No own base to send it to must never wedge the operation (same rule as below).
-                if (support == null || !a.SupportReturnHex.HasValue
-                    || support.Hex.Equals(a.SupportReturnHex.Value))
+                // No own base to send it to must never wedge the operation: release the support
+                // and let the primary carry on being re-evaluated.
+                if (support == null || !home.HasValue || support.Hex.Equals(home.Value))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support "
-                        + $"#{a.SupportArmyId} released after SupportReturn");
+                        + $"#{a.SupportArmyId} released after SupportReturn"
+                        + (home.HasValue ? "" : " (no reachable home base)"));
                     ReleaseAttackSupport(a);
                 }
-                else if (!ReturnBaseStillValid(snap, player, a.SupportArmyId, a.SupportReturnHex))
+                else
                 {
-                    HexCoord? replacement = SelectReturnBase(snap, player, a.SupportArmyId);
-                    if (replacement == null)
-                    {
-                        // No home for the support must never wedge the operation: release it and
-                        // let the primary carry on being re-evaluated.
-                        AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support "
-                            + $"#{a.SupportArmyId} has no reachable home base — released");
-                        ReleaseAttackSupport(a);
-                    }
-                    else
-                    {
-                        a.SupportReturnHex = replacement;
+                    a.SupportReturnHex = home;
+                    if (retargeted && hadHome)
                         intent.StallTurns = 0;
-                    }
                 }
                 return true;
             }
 
             if (a.Phase == AttackMissionPhase.RecoveryReturn)
             {
-                if (!a.RecoveryBaseHex.HasValue
-                    || !ReturnBaseStillValid(snap, player, a.PrimaryArmyId, a.RecoveryBaseHex))
+                // §47 — best reachable OWN base, chosen by the one owner. Never a hardcoded
+                // starting Citadel.
+                HexCoord? recoveryHome = KeepOrReselectHome(snap, player, a.PrimaryArmyId,
+                    a.RecoveryBaseHex, out bool recoveryRetargeted);
+                if (recoveryHome == null)
                 {
-                    // §47 — best reachable OWN base, chosen by the one owner. Never a hardcoded
-                    // starting Citadel.
-                    HexCoord? replacement = SelectReturnBase(snap, player, a.PrimaryArmyId);
-                    if (replacement == null)
-                    {
-                        AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — "
-                            + "recovery base lost and no replacement own base exists");
-                        return false;
-                    }
+                    AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — "
+                        + "recovery base lost and no replacement own base exists");
+                    return false;
+                }
+                if (recoveryRetargeted)
+                {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} recovery base retargeted "
-                        + $"to ({replacement.Value.Q},{replacement.Value.R})");
-                    a.RecoveryBaseHex = replacement;
+                        + $"to ({recoveryHome.Value.Q},{recoveryHome.Value.R})");
+                    a.RecoveryBaseHex = recoveryHome;
                     intent.StallTurns = 0;
                 }
                 ArmySnapshot recovering = snap?.Self?.Armies?.FirstOrDefault(x => x != null
@@ -262,8 +253,7 @@ namespace Game.Ai.V2
                     && x.ArmyId == r.ArmyId);
                 if (s == null || !ActorCommitments.GroundContainerStillValid(r.ArmyId, snap))
                     return true;
-                if (!ReturnBaseStillValid(snap, player, r.ArmyId, r.BaseHex))
-                    r.BaseHex = SelectReturnBase(snap, player, r.ArmyId);
+                r.BaseHex = KeepOrReselectHome(snap, player, r.ArmyId, r.BaseHex, out _);
                 bool done = !r.BaseHex.HasValue || s.Hex.Equals(r.BaseHex.Value);
                 if (done)
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} donor #{r.ArmyId} "

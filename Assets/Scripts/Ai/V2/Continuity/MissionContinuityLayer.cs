@@ -723,10 +723,17 @@ namespace Game.Ai.V2
                     }
                     if (defence.Phase == ActiveDefencePhase.Return)
                     {
-                        if (!defence.ReturnHex.HasValue || actor.Hex.Equals(defence.ReturnHex.Value))
+                        // The same walk-home rule every lifecycle leg uses: a home base that was
+                        // lost or became unreachable is re-picked, never walked to.
+                        HexCoord? home = KeepOrReselectHome(snap, player, defence.PrimaryArmyId,
+                            defence.ReturnHex, out _);
+                        if (!home.HasValue || actor.Hex.Equals(home.Value))
                             dead.Add(intent.IntentKey);
                         else
+                        {
+                            defence.ReturnHex = home;
                             active.Add(intent);
+                        }
                         continue;
                     }
                     if (objective == null)
@@ -1019,22 +1026,25 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} retired at turn start (raid target no longer valid)");
                         continue;
                     }
-                    if (ri.Phase == RaidMissionPhase.Return
-                        && !ReturnBaseStillValid(snap, player, ri.PrimaryArmyId, ri.ReturnHex))
+                    if (ri.Phase == RaidMissionPhase.Return)
                     {
                         // §11 — losing the chosen base is a controlled RETARGET, never a stall.
-                        HexCoord? replacement = SelectReturnBase(snap, player, ri.PrimaryArmyId);
-                        if (replacement == null)
+                        HexCoord? home = KeepOrReselectHome(snap, player, ri.PrimaryArmyId,
+                            ri.ReturnHex, out bool retargeted);
+                        if (home == null)
                         {
                             dead.Add(intent.IntentKey);
                             AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} retired — return base lost "
                                 + "and no replacement base exists");
                             continue;
                         }
-                        AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} return base retargeted to "
-                            + $"({replacement.Value.Q},{replacement.Value.R})");
-                        ri.ReturnHex = replacement;
-                        intent.StallTurns = 0;
+                        if (retargeted)
+                        {
+                            AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} return base retargeted to "
+                                + $"({home.Value.Q},{home.Value.R})");
+                            ri.ReturnHex = home;
+                            intent.StallTurns = 0;
+                        }
                     }
                     if (ri.Phase == RaidMissionPhase.RecoveryReturn
                         && !RecoveryBaseStillValid(snap, player, ri.PrimaryArmyId, ri.RecoveryBaseHex))
@@ -1079,11 +1089,11 @@ namespace Game.Ai.V2
                     // §SupportReturn — same controlled-retarget rule for the support's own home.
                     // Losing the support (already handled above) always releases the claim before
                     // this point can even run against a stale actor.
-                    if (ri.Phase == RaidMissionPhase.SupportReturn && ri.SupportArmyId.HasValue
-                        && !ReturnBaseStillValid(snap, player, ri.SupportArmyId, ri.SupportReturnHex))
+                    if (ri.Phase == RaidMissionPhase.SupportReturn && ri.SupportArmyId.HasValue)
                     {
-                        HexCoord? replacement = SelectReturnBase(snap, player, ri.SupportArmyId);
-                        if (replacement == null)
+                        HexCoord? supportHome = KeepOrReselectHome(snap, player, ri.SupportArmyId,
+                            ri.SupportReturnHex, out bool supportRetargeted);
+                        if (supportHome == null)
                         {
                             // §SupportReturn — no own base to send it to must never wedge the Raid:
                             // release the support and let the primary carry on being re-evaluated.
@@ -1093,11 +1103,11 @@ namespace Game.Ai.V2
                             ri.SupportReturnHex = null;
                             ReleaseRaidSupport(snap, player, ri);
                         }
-                        else
+                        else if (supportRetargeted)
                         {
                             AiDebugLog.Write($"[AI][V2][Raid] {intent.IntentKey} support return base "
-                                + $"retargeted to ({replacement.Value.Q},{replacement.Value.R})");
-                            ri.SupportReturnHex = replacement;
+                                + $"retargeted to ({supportHome.Value.Q},{supportHome.Value.R})");
+                            ri.SupportReturnHex = supportHome;
                             intent.StallTurns = 0;
                         }
                     }
@@ -1775,6 +1785,21 @@ namespace Game.Ai.V2
         //    5. min ETA for the returning army
         //    6. starting Citadel first, then coordinates (stable tie-break only)
         // ---------------------------------------------------------------------------------------
+        // The ONE walk-home destination rule for every lifecycle leg (Raid Return / SupportReturn,
+        // Attack SupportReturn / RecoveryReturn / GatherReturn, ActiveDefence Return): keep the
+        // fixed base while it is still ours and structurally reachable, otherwise re-pick through
+        // SelectReturnBase. `reselected` tells the caller the leg moved (reset its stall clock);
+        // null means no own base is left at all.
+        internal static HexCoord? KeepOrReselectHome(WorldSnapshot snap, PlayerSetupData player,
+            int? moverArmyId, HexCoord? current, out bool reselected)
+        {
+            reselected = false;
+            if (current.HasValue && ReturnBaseStillValid(snap, player, moverArmyId, current))
+                return current;
+            reselected = true;
+            return SelectReturnBase(snap, player, moverArmyId);
+        }
+
         internal static HexCoord? SelectReturnBase(WorldSnapshot snap, PlayerSetupData player, int? moverArmyId)
         {
             if (snap?.Self?.BaseHexes == null || player == null)
