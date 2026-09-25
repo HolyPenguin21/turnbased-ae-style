@@ -53,6 +53,8 @@ namespace Game.Ai.V2
         // number exactly once.
         public int ActualAp;
         public int AppliedTransfers;
+        // The host's commander was promoted for this fight: a world mutation of its own.
+        public bool CommanderReordered;
 
         public static GroundCombatAssaultOutcome Failed(ProvisioningResult failure) =>
             new GroundCombatAssaultOutcome { Success = false, Failure = failure };
@@ -488,7 +490,9 @@ namespace Game.Ai.V2
             // change, so the funded activation above is untouched.
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
                 opposition, r.DefenderHexDefenseBonus);
-            if (lead != null && lead != host.Commander && host.TryReorderCommander(lead, out _))
+            bool reordered = lead != null && lead != host.Commander
+                && host.TryReorderCommander(lead, out _);
+            if (reordered)
                 AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — host #{host.Id} "
                     + $"commander -> {lead.Name} for this fight");
 
@@ -504,6 +508,7 @@ namespace Game.Ai.V2
                 Plan = plan,
                 ActualAp = actualAp,
                 AppliedTransfers = applied.Count,
+                CommanderReordered = reordered,
             };
         }
 

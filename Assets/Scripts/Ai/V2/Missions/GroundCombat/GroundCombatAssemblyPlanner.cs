@@ -39,8 +39,8 @@ namespace Game.Ai.V2
         public readonly List<GroundCombatAssemblyTransfer> Transfers = new List<GroundCombatAssemblyTransfer>();
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
-        // The win-chance gate this plan was admitted at (GroundCombatAssemblyPlanner.Plan): any
-        // later re-check of the same plan asks the same question, never a stricter one.
+        // The win-chance gate this plan was admitted at (set where the plan is built against a
+        // gate): any later re-check of the same plan asks the same question, never a stricter one.
         public float WinChanceGate;
 
         public static GroundCombatAssemblyPlan Infeasible(string reason) =>
@@ -170,7 +170,7 @@ namespace Game.Ai.V2
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus);
                 if (exact.Feasible)
-                    return WithGate(exact, request.WinChanceGate);
+                    return exact;
             }
 
             if (!request.AllowSameHexAssembly)
@@ -187,17 +187,11 @@ namespace Game.Ai.V2
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus);
                 if (assembled.Feasible)
-                    return WithGate(assembled, request.WinChanceGate);
+                    return assembled;
             }
 
             return GroundCombatAssemblyPlan.Infeasible(
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
-        }
-
-        private static GroundCombatAssemblyPlan WithGate(GroundCombatAssemblyPlan plan, float gate)
-        {
-            plan.WinChanceGate = gate;
-            return plan;
         }
 
         // The ONE enumeration of "which ready ground armies could independently take this fight"
@@ -440,15 +434,6 @@ namespace Game.Ai.V2
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .Select(WorthIt.FromLiveUnit)
                 .ToList();
-            // Handoffs move ground bodies only; the host's own best commander for THIS fight
-            // (HeroRoleEvaluator — the assault transaction promotes it before the march) leads,
-            // and its Command sets the formation's capacity.
-            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                opposition, defenderHexDefenseBonus) ?? host.Commander;
-            int capacity = ArmyData.ComputeCapacity(lead == null ? host.Members
-                : new[] { lead }.Concat(host.Members.Where(u => u != lead)), host.IsGarrison);
-            int memberCount = host.Members.Count;
-            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(lead);
 
             var pool = new List<GatherSupport>();
             foreach (ArmySnapshot s in supportSnaps)
@@ -471,6 +456,16 @@ namespace Game.Ai.V2
             if (pool.Count == 0)
                 return GroundCombatGatherPlan.Infeasible(
                     $"gather host #{host.Id}: no other free field army has a body to spare");
+
+            // Handoffs move ground bodies only; the host's own best commander for the PEAK
+            // formation (its bodies plus the pool — HeroRoleEvaluator; the assault transaction
+            // promotes the same choice before the march) leads, and its Command sets capacity.
+            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
+                opposition, defenderHexDefenseBonus, pool.SelectMany(x => x.Bodies)) ?? host.Commander;
+            int capacity = ArmyData.ComputeCapacity(lead == null ? host.Members
+                : new[] { lead }.Concat(host.Members.Where(u => u != lead)), host.IsGarrison);
+            int memberCount = host.Members.Count;
+            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(lead);
 
             // One Monte-Carlo bound before the greedy loop: the host's slots filled with the
             // strongest bodies the whole pool holds. If even that misses the gate, skip this host.
@@ -725,6 +720,7 @@ namespace Game.Ai.V2
                 NeedsAssembly = false,
                 ProjectedWinChance = win,
                 CoversAllDefenders = cover,
+                WinChanceGate = minWinChance,
             };
         }
 
@@ -763,7 +759,7 @@ namespace Game.Ai.V2
                         selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
                         if (GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition, minWinChance,
                                 defenderHexDefenseBonus, out float hWin, out bool hCover))
-                            return FinishAssembly(host, selected, hWin, hCover);
+                            return FinishAssembly(host, selected, hWin, hCover, minWinChance);
                     }
                 }
             }
@@ -816,20 +812,20 @@ namespace Game.Ai.V2
                     selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
                     if (GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition, minWinChance,
                             defenderHexDefenseBonus, out float win, out bool cover))
-                        return FinishAssembly(host, selected, win, cover);
+                        return FinishAssembly(host, selected, win, cover, minWinChance);
                 }
             }
 
             // The hero alone (no bodies available/needed) may already clear.
             if (selected.Count > 0 && GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition,
                     minWinChance, defenderHexDefenseBonus, out float wOnly, out bool cOnly))
-                return FinishAssembly(host, selected, wOnly, cOnly);
+                return FinishAssembly(host, selected, wOnly, cOnly, minWinChance);
 
             return GroundCombatAssemblyPlan.Infeasible($"raid actor #{host.Id} cannot reach the win bar from safe same-hex donors");
         }
 
         private static GroundCombatAssemblyPlan FinishAssembly(ArmyData host,
-            IReadOnlyList<GroundCombatAssemblyTransfer> selected, float win, bool cover)
+            IReadOnlyList<GroundCombatAssemblyTransfer> selected, float win, bool cover, float gate)
         {
             var plan = new GroundCombatAssemblyPlan
             {
@@ -838,6 +834,7 @@ namespace Game.Ai.V2
                 NeedsAssembly = true,
                 ProjectedWinChance = win,
                 CoversAllDefenders = cover,
+                WinChanceGate = gate,
             };
             foreach (GroundCombatAssemblyTransfer t in selected)
             {

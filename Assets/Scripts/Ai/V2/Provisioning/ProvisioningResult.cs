@@ -84,10 +84,12 @@ namespace Game.Ai.V2
         // Execution step) suppress this constructor's bump so V2StateVersion is bumped exactly once
         // per real mutation. Every other caller (Provisioning's direct-army path, which has no
         // separate StampVersion call for this mutation) keeps the default `true`.
+        // `otherMutation` — a committed world change that moved no member (the assault
+        // transaction's commander promotion): versioned exactly like a transfer.
         public static ProvisioningResult Ok(ProvisionedMission m, int transferredMemberCount = 0,
-            bool bumpVersion = true)
+            bool bumpVersion = true, bool otherMutation = false)
         {
-            bool changed = transferredMemberCount > 0;
+            bool changed = transferredMemberCount > 0 || otherMutation;
             int version = changed && bumpVersion ? V2StateVersion.Bump() : V2StateVersion.Current;
             if (m != null) m.PlannedAtStateVersion = version;
             return new ProvisioningResult

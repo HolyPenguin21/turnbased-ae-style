@@ -1035,9 +1035,11 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> context = HeroRoleEvaluator.CommandContext(ectx.Snap);
             IReadOnlyList<WorthIt.DefenderProfile> bodies = ectx.DestArmyMembers
                 ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-            // A heroless destination holds its nominal capacity with no commander slot.
+            // "Before" = the army after the hero joins WITHOUT leading: the current commander keeps
+            // capacity and every other hero, the newcomer included, takes a slot. A heroless
+            // destination holds its nominal capacity with no commander slot.
             HeroRoleEvaluator.CommandProjection before = ectx.DestHasHero
-                ? HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity, ectx.DestHeroCount - 1,
+                ? HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity, ectx.DestHeroCount,
                     ectx.DestCommander, bodies, context, 0f)
                 : HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity + 1, 0, default,
                     bodies, context, 0f);

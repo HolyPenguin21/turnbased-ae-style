@@ -152,11 +152,14 @@ namespace Game.Ai.V2
 
         // The best LEGAL commander among a live army's heroes for a known fight (null: no hero).
         // Legal = the army's whole roster still fits under that hero's Command, exactly the
-        // rule Housekeeping's reorder keeps; the current commander wins every tie (stable key 0).
+        // rule Housekeeping's reorder keeps; on a full tie of every CompareCandidates key the
+        // current commander stays (stable key 0). `prospectiveBodies` — bodies the formation is
+        // about to receive (a gather's pool): each hero is judged on the best that fit under it.
         // Used by the cross-hex gather projection and by the assault transaction, which promotes
         // it (ArmyData.TryReorderCommander, zero AP) before the march.
         public static UnitData BestCommanderFor(IReadOnlyList<UnitData> members, bool isGarrison,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies = null)
         {
             if (members == null)
                 return null;
@@ -167,6 +170,7 @@ namespace Game.Ai.V2
             List<WorthIt.DefenderProfile> bodies = members
                 .Where(u => u != null && AiArmyRoles.IsGroundBattleBody(u))
                 .Select(WorthIt.FromLiveUnit)
+                .Concat(prospectiveBodies ?? Enumerable.Empty<WorthIt.DefenderProfile>())
                 .ToList();
             List<UnitData> legal = heroes
                 .Where(h => ArmyData.ComputeCapacity(

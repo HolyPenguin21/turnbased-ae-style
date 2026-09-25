@@ -204,8 +204,9 @@ namespace Game.Ai.V2
 
             // 2b. Strike force step 7 — a garrison below its non-hero floor takes ONE body from a
             // viable same-hex field army (the fist that just took the base): the most wounded,
-            // then the weakest, never a hero. Evaluate() keeps it only if the field army's side
-            // stays legal; the hand had its chance first (the held-base garrison demand, Phase A).
+            // then the weakest, never a hero — and only while the army STAYS viable without it
+            // (GarrisonDeficit outranks every other Outcome key, so the guard lives here). The
+            // hand had its chance first (the held-base garrison demand, Phase A).
             if (state.Meta.TryGetValue(garrisonId, out ReorgContainer floorGarrison)
                 && floorGarrison.IsGarrison && floorGarrison.CanReceive
                 && state.Roster[garrisonId].Count(u => u.IsGroundCombatant) < floorGarrison.GarrisonNonHeroFloor)
@@ -224,7 +225,8 @@ namespace Game.Ai.V2
                         .ThenBy(u => WorthIt.CombatValue(u.CombatProfile))
                         .ThenBy(u => u.Key)
                         .FirstOrDefault();
-                    if (body == null)
+                    if (body == null
+                        || !ReorgViability.IsViable(state.Roster[srcId].Where(u => u != body).ToList()))
                         continue;
                     VState c = TryMoveOne(state, srcId, garrisonId, body,
                         "garrison floor from a viable same-hex field army (most wounded / weakest)");

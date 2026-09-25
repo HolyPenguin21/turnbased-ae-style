@@ -433,8 +433,11 @@ namespace Game.Ai.V2
                     ? i.Attack : null;
                 if (a == null || !a.Target.HasValue)
                     continue;
-                if (a.Phase == AttackMissionPhase.Gather || a.Phase == AttackMissionPhase.Assault
-                    || a.Phase == AttackMissionPhase.Reinforcement)
+                // Recon's objectives are frozen before Continuity resolves this turn's intents, so
+                // the target's own status is read here: a captured / invalidated site needs no look.
+                if ((a.Phase == AttackMissionPhase.Gather || a.Phase == AttackMissionPhase.Assault
+                        || a.Phase == AttackMissionPhase.Reinforcement)
+                    && EvaluateTarget(snap, a.Target) == AttackTargetStatus.Continue)
                     yield return a.Target.Hex;
             }
         }

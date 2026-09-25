@@ -12,10 +12,10 @@ namespace Game.Ai.V2
     //
     //  A mechanical partial of the existing Aggression demand owner. Two things may create a
     //  demand here:
-    //    * a PROVEN structural shortage of a bound, live Attack operation: its primary runs below
-    //      the confident fresh gate against the target site (Attack itself only needs its floor —
-    //      the margin above it is what reinforcement buys), and no existing free army could fix
-    //      that by joining it;
+    //    * a PROVEN structural shortage of a bound, live Attack operation: its primary no longer
+    //      clears Attack's floor against the target site — the same gate the phase machine turns
+    //      to Reinforcement on (one owner), so a delivered support is really used — and no
+    //      existing free army could fix that by joining it;
     //    * strike force step 4 — the best known Base/Citadel objective that no army can take even
     //      at Attack's floor, while cards in hand could still strengthen the fist
     //      (AppendUnboundAttackDemand). The target is a real, known structure, so this names a
@@ -80,7 +80,7 @@ namespace Game.Ai.V2
                     snap, null, ai.Target.Hex);
 
                 GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                    snap, opposition, primaryId, GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    snap, opposition, primaryId, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
                     hexBonus);
                 if (primaryPlan.Feasible)
                 {
@@ -218,8 +218,8 @@ namespace Game.Ai.V2
         }
 
         // Strike force step 4 — the Attack objective with no operation yet. Only the best known
-        // Base/Citadel (the same TaskScore the mission layer ranks by) and only when no free army
-        // nor same-hex package can take it even at Attack's floor. The fist (the strongest free
+        // Base/Citadel (the same TaskScore the mission layer ranks by) and only when no free army,
+        // same-hex package nor cross-hex gather can take it even at Attack's floor. The fist (the strongest free
         // field army) is what the hand should strengthen, and only a hand that can actually add
         // to the best stack (BestStackPotential > FieldPotential) is asked.
         private static void AppendUnboundAttackDemand(WorldSnapshot snap,
@@ -255,6 +255,16 @@ namespace Game.Ai.V2
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
                     + $"actor={plan.BaseArmyId} win={plan.ProjectedWinChance:0.00} "
                     + "reason=unbound_attack_takeable_by_existing_force");
+                return;
+            }
+            GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
+                objective.Opposition, hexBonus, objective.Hex, claimed,
+                GroundCombatAdmissionPolicy.AttackWinChanceFloor);
+            if (gather.Feasible)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
+                    + $"host={gather.HostArmyId} win={gather.ProjectedWinChance:0.00} "
+                    + "reason=unbound_attack_takeable_by_a_gather");
                 return;
             }
 

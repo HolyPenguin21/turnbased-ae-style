@@ -124,6 +124,41 @@
 
 ---
 
+## 5a. Перепроверка шагов 3–7 (25.09, вторая)
+
+### Реализация — найдено и исправлено
+
+| # | Где | Дефект | Исправление |
+|---|---|---|---|
+| F1 | `HeroRoleEvaluator.BestCommanderFor` | Комментарий обещал, что текущий командир выигрывает любую ничью; на деле — только полную ничью всех ключей | Комментарий исправлен |
+| F2 | `StrategicCardEvaluator.HeroCommandMarginalValue` | Проекция «до» для армии с героем не учитывала, что новый герой тоже займёт место: +1 место, сравнение смещено против новичка | `otherHeroes = DestHeroCount` |
+| F3 | Housekeeping, заполнение гарнизона (2b) | `GarrisonDeficit` старше `Legality`, поэтому оценка приняла бы ход, после которого кулак нежизнеспособен — кулак мог «стечь» в гарнизон | Кандидат строится, только если армия остаётся жизнеспособной без бойца |
+| F4 | `GroundCombatAssemblyPlan.WinChanceGate` | Порог ставил только `Plan` (обёрткой), планы `PlanForArmyAtThreshold`/`TryAssembleForHost` несли 0 | Порог пишется там, где план строится против порога; обёртка удалена |
+| F5 | `AppendAttackDemands` (связанная операция) | Запрос шёл при шансе < 0.65, а Reinforcement — только < 0.2. `TryHandoffGroundCombatSupport` привязывал поддержку, Continuity тут же возвращал Assault, `SupportArmyId` оставался висеть, запрос дальше «удовлетворён» | Один порог — `AttackWinChanceFloor` |
+| F6 | `AppendUnboundAttackDemand` | Не проверял сбор из нескольких армий — мог просить карты, когда цель уже берётся Gather | Добавлена проверка `PlanGather` |
+| F7 | `PlanGatherForHost` | Командир выбирался по составу хоста, а транзакция — по собранному; ответы могли разойтись | Командир выбирается для пикового состава (`BestCommanderFor(..., prospectiveBodies)` = тела пула) |
+| F9 | `AttackObjectiveEvaluator.ObservationNeeds` | Recon-цели замораживаются до `ResolveActive`: захваченная цель ещё «живая» | Фильтр `EvaluateTarget == Continue` |
+| F10 | Транзакция штурма, перестановка командира | Мутация мира без подъёма `V2StateVersion`/`StateChanged`, если не было передач | `GroundCombatAssaultOutcome.CommanderReordered` → `ProvisioningResult.Ok(..., otherMutation)` |
+
+Замечено, не дефект: `TryEnemyCitadelAnchor` теперь пропускает выбывших игроков — это меняет и якорь `AirSweep` (раньше мог указать на цитадель выбывшего).
+
+### Резервация ресурсов
+
+- **Новых писателей резервов нет.** `StrategicResourceReservationLedger`, `ApBudgetLedger`, лизинги не менялись.
+- **Новые запросы** (`FieldCombatPower` для несвязанной цели — форма `Any`; для гарнизона — новая форма `Garrison`) идут через тот же портфель Phase A и тот же AP-пул. `DeliveryShape` читается только в `MaterializationDeliveryPolicy` и в проверке подкрепления (`IndependentFieldArmy`) — новая форма в чужую ветку не попадает; после доставки армии получают обычный лизинг (`StrategicCapabilityLeaseRegistry.Mark`).
+- **Акторы:** доноры, идущие домой, держатся `ActorCommitments` через `GroundCombatLegs.HeldGroundSupportArmyIds`; тот же список читают отпечатки допуска Economy/Development — смена доноров их корректно перезапускает.
+- **Стоимость (F8, в игру):** нога донора домой — активация каждый ход (раньше донор стоял бесплатно). Сбор до пика берёт больше доноров → больше AP на ходьбу. Перестановка командира — 0 AP.
+- **Повторная проверка штурма** больше не строже допуска: Raid-инкумбент, допущенный по 0.4, теперь реально выполняется (раньше транзакция отклоняла его по 0.65).
+
+### Кеш (по дереву `docs/ai-v2-cache-audit.md`)
+
+- **Класс C:** `ForceBaselineRegistry` — один писатель (пайплайн после первого скана), ключ по игроку, сброс в `CitadelSetupController`; `Analysis` только читает (A-1 не повторяется). `AttackIntent.GatherReturns` — пишет только Continuity (`AdvanceIntent`, `ResolveGatherReturns`, отсечка исхода в `ReconcileOutcome`); намерения не сохраняются в сейв.
+- **Класс A:** новые поля `SelfSnapshot`/`ArmySnapshot.HeroCount` строятся в `BuildSelf` каждого скана; читатели только снимок.
+- **Живые чтения реестра намерений** (`ObservationNeeds` из Recon) — тот же шов, что уже у `Analysis`/Housekeeping; порядок «Recon до ResolveActive» закрыт F9.
+- **Версия состояния:** единственная новая мутация (перестановка командира) версионирована (F10).
+- **Класс B:** ключ `GroundCombatAdmissionRegistry` не менялся.
+- Вывод: инварианты I1–I6 в силе.
+
 ## 6. Оставшиеся шаги кулака
 
 Согласованная модель (от пользователя):
@@ -167,7 +202,7 @@
 - **Пол шанса победы Attack 0.2** — один владелец `GroundCombatAdmissionPolicy.AttackWinChanceFloor` (`AiConfigV2.attackMinViableWinChance`), один для свежей и продолжающейся операции (он ниже пола продолжения 0.4). Выше пола шанс — слагаемое `WinChance` скора (`WithResponse`). Места: `AppendAttack` (Assault), `TryAppendFreshAttackGather`, Continuity (`ResolveAttackGather`, `AttackPrimaryClearsTarget`), `GroundCombatAdmissionRegistry.RecordAttack` (+ пин инкумбента с порогом лейна).
 - **Повторная проверка в транзакции** — корень: `GroundCombatAssemblyPlan.WinChanceGate` (порог, по которому план допущен, пишет `Plan`); `GroundCombatAssaultTransactionRunner.Run` перепроверяет по нему. Выбор порога назначенного штурма — `GroundCombatAdmissionPolicy.AssaultGate`. Это заодно исправило Raid: инкумбент, допущенный по 0.4, больше не перепроверяется по 0.65.
 - **Префильтр мощности** (`GroundCombatFeasibility`, калиброван на 0.65) применяется только к порогам ≥ 0.65: ниже в калибровке встречалась победа до 0.24.
-- **Demand:** связанная операция просит поддержку, пока основной ниже уверенного порога 0.65 (была константа рейда, теперь `FreshStartWinChanceGate`). Новое `AppendUnboundAttackDemand`: лучшая Base/Citadel без операции, если никто не берёт её даже по полу и рука реально усиливает кулак (`BestStackPotential > FieldPotential`) → `FieldCombatPower` (форма `Any`, `TargetHex` = кулак). Экипировка из руки уже разыгрывается Phase B по оценке против угроз — отдельного вида потребности не заводилось.
+- **Demand:** связанная операция просит поддержку, когда основной не проходит пол атаки — тот же порог, на котором машина фаз переходит в Reinforcement (один владелец; иначе доставленная армия привязывалась и тут же терялась, см. перепроверку, F5). Новое `AppendUnboundAttackDemand`: лучшая Base/Citadel без операции, если её не берёт ни одна армия, ни пакет на клетке, ни сбор (`PlanGather`) даже по полу, и рука реально усиливает кулак (`BestStackPotential > FieldPotential`) → `FieldCombatPower` (форма `Any`, `TargetHex` = кулак). Экипировка из руки уже разыгрывается Phase B по оценке против угроз — отдельного вида потребности не заводилось.
 - **Не тронуто:** `AttackTacticalOpportunity` (попутный удар по армии, не цель Attack) остаётся на свежем пороге рейда.
 
 ### Шаг 5 — планировщик кулака — СДЕЛАНО ЧАСТИЧНО

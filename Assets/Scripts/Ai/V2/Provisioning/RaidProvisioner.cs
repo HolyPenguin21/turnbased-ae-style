@@ -129,7 +129,7 @@ namespace Game.Ai.V2
                 // debit this one number exactly once.
                 ClaimedAp = actualAp,
                 StealthApReserved = false,
-            }, assault.AppliedTransfers);
+            }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
         }
 
         private static ProvisioningResult ProvisionAirSupport(PlayerSetupData player, PlayerRoot root,

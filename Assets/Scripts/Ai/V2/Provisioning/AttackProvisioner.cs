@@ -104,7 +104,7 @@ namespace Game.Ai.V2
                 ClaimedPhysical = funded.PhysicalDraw,
                 ClaimedAp = assault.ActualAp,
                 StealthApReserved = false,
-            }, assault.AppliedTransfers);
+            }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
         }
 
         private static ProvisioningResult ProvisionWalkHome(PlayerSetupData player, PlayerRoot root,
