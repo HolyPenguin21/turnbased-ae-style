@@ -985,6 +985,25 @@ namespace Game.Ai.V2
             HexCoord old = s.FocusHex;
             HexCoord? pick = null;
             int bestDist = int.MaxValue;
+            // Recon S3 — prefer a waypoint at least scoutTargetMinSeparation from every other
+            // scout's focus (the spacing Assignment keeps between lanes); only when none exists
+            // fall back to the nearest runnable hex.
+            HexCoord? spacedPick = null;
+            int spacedDist = int.MaxValue;
+            bool Spaced(HexCoord h)
+            {
+                foreach (HexCoord other in ownedFoci)
+                    if (!other.Equals(old)
+                        && HexGridMath.Distance(other, h) < AiConfigV2.scoutTargetMinSeparation)
+                        return false;
+                return true;
+            }
+            void Consider(HexCoord h)
+            {
+                int d = HexGridMath.Distance(old, h);
+                if (d < bestDist) { bestDist = d; pick = h; }
+                if (d < spacedDist && Spaced(h)) { spacedDist = d; spacedPick = h; }
+            }
 
             if (ReconScoutKinds.IsRefresh(s.Kind))
             {
@@ -997,8 +1016,7 @@ namespace Game.Ai.V2
                         continue;
                     if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
                         continue;
-                    int d = HexGridMath.Distance(old, kv.Key);
-                    if (d < bestDist) { bestDist = d; pick = kv.Key; }
+                    Consider(kv.Key);
                 }
             }
             else
@@ -1011,11 +1029,12 @@ namespace Game.Ai.V2
                         continue;
                     if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
                         continue;
-                    int d = HexGridMath.Distance(old, f.Hex);
-                    if (d < bestDist) { bestDist = d; pick = f.Hex; }
+                    Consider(f.Hex);
                 }
             }
 
+            if (spacedPick.HasValue)
+                pick = spacedPick;
             if (pick == null)
                 return false;
             ownedFoci.Remove(old);

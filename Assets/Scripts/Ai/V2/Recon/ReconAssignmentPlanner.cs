@@ -736,7 +736,11 @@ namespace Game.Ai.V2
                     continue;
                 if (!isAir && usedGroundActors + 1 > groundActorCap)
                     continue;
-                if (!isAir)
+                // Recon S3 — the separation keeps a NEW lane out of an area already being scouted.
+                // Two durable roles that ended up close (re-focus, a lane started in an earlier
+                // pass) are both already committed: blocking one of them every pass left it
+                // MoverContended forever — suspended, never aged, its scout idle.
+                if (!isAir && !open[i].Mission.FromDurableIntent)
                 {
                     bool tooCloseToChosenGround = false;
                     ScoutMissionTarget target = (ScoutMissionTarget)open[i].Mission.Target;
