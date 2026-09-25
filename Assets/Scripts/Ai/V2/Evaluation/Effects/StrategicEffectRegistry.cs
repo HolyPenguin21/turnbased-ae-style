@@ -301,6 +301,10 @@ namespace Game.Ai.V2
         public readonly int DestNominalCapacity;
         public readonly int DestOccupiedSlots;
         public readonly bool DestHasHero;
+        // The destination army's commander and hero count (0 / default for a new or heroless
+        // destination) — what a hero card's Command is compared against (HeroCommandMarginalValue).
+        public readonly WorthIt.SideCommander DestCommander;
+        public readonly int DestHeroCount;
         // final closure §3.3 (army -> candidate direction) — the value the DEST ARMY's already-
         // present auras add specifically to THIS incoming candidate's projected profile. The
         // candidate does not carry the aura ability itself, so this cannot come from Resolve(card);
@@ -381,6 +385,9 @@ namespace Game.Ai.V2
 
             ResolveDestination(snap, plan, out FreeBattleSlots, out DestArmyMembers,
                 out ArmySnapshot destArmy, out DestNominalCapacity, out DestOccupiedSlots, out DestHasHero);
+
+            DestCommander = destArmy?.Commander ?? default;
+            DestHeroCount = destArmy?.HeroCount ?? 0;
 
             IncomingAuraSynergy = ComputeIncomingAuraSynergy(
                 destArmy, ProjectedLine, plan, ExpectedCombatRounds);

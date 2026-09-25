@@ -1015,6 +1015,11 @@ namespace Game.Ai.V2
         // portfolio solver — AP / H-E-M-T / generation / physical / recipient capacity), so a slot
         // the hero's Command unlocks is only "usable" if there is really a body to put in it. 0 for
         // any call with no candidate set keeps the conservative "hero itself only" behaviour.
+        //
+        // Strike force: whether the hero would LEAD the destination is HeroRoleEvaluator's call
+        // (a second hero that beats the current commander is promoted by Housekeeping, and then
+        // its Command does set capacity), and leading also prices the win-chance gain against
+        // the command context (heroCommandWinGainValue).
         private static float HeroCommandMarginalValue(CardDefinition def, EffectEvaluationContext ectx,
             int projectedLegalFillers, out string detail)
         {
@@ -1022,11 +1027,30 @@ namespace Game.Ai.V2
             if (def == null || def.cardType != CardType.Hero)
                 return 0f;
 
-            // ectx.DestNominalCapacity/DestOccupiedSlots/DestHasHero come from the SAME
-            // StrategicEffectRegistry.ResolveDestination walk that already resolved FreeBattleSlots
-            // for this exact plan (single destination-army lookup, not a second one just for Command).
+            // Who leads the destination after the hero joins — HeroRoleEvaluator's one commander
+            // evaluation against the command context (the strongest known enemy field army),
+            // exactly the choice Housekeeping's commander reorder will make. The destination's
+            // bodies are known; its current commander is compared on the fight and capacity only
+            // (its static role signals are not in the snapshot), so a tie keeps it.
+            IReadOnlyList<WorthIt.DefendingArmy> context = HeroRoleEvaluator.CommandContext(ectx.Snap);
+            IReadOnlyList<WorthIt.DefenderProfile> bodies = ectx.DestArmyMembers
+                ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
+            // A heroless destination holds its nominal capacity with no commander slot.
+            HeroRoleEvaluator.CommandProjection before = ectx.DestHasHero
+                ? HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity, ectx.DestHeroCount - 1,
+                    ectx.DestCommander, bodies, context, 0f)
+                : HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity + 1, 0, default,
+                    bodies, context, 0f);
+            HeroRoleEvaluator.CommandProjection led = HeroRoleEvaluator.ProjectCommand(def.commandRating,
+                ectx.DestHeroCount, WorthIt.SideCommander.Of(def), bodies, context, 0f);
+            bool leads = !ectx.DestHasHero || HeroRoleEvaluator.CompareCandidates(
+                new HeroRoleEvaluator.CommandCandidate(led, 0, 0f, 0, 0, 1),
+                new HeroRoleEvaluator.CommandCandidate(before, 0, 0f, 0, 0, 0)) < 0;
+
+            // Command slots: the marginal usable capacity it unlocks — slots the AI actually has
+            // bodies for (the destination's own plus `projectedLegalFillers`).
             int nominalCap = ectx.DestNominalCapacity;
-            int projectedCap = ArmyData.ComputeProjectedCapacity(nominalCap, ectx.DestHasHero, def);
+            int projectedCap = leads ? def.commandRating : nominalCap;
 
             int occupiedBefore = ectx.DestOccupiedSlots;
             // The hero itself consumes one battle slot; plus the bodies that could jointly-legally
@@ -1037,12 +1061,19 @@ namespace Game.Ai.V2
             int usableAfter = Mathf.Min(projectedCap, requiredCapacity);
             int usableExtraSlots = Mathf.Clamp(
                 usableAfter - usableBefore, 0, AiConfigV2.heroCommandMarginalMaxSlots);
-            float value = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
+            float slotValue = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
+
+            // Command in the fight: the win-chance gain when it leads.
+            float winGain = leads ? Mathf.Max(0f, led.WinChance - before.WinChance) : 0f;
+            float value = slotValue + winGain * AiConfigV2.heroCommandWinGainValue;
 
             detail = $"command={def.commandRating} nominalCap={nominalCap} projectedCap={projectedCap} "
-                   + $"occupiedBefore={occupiedBefore} legalFillers={Mathf.Max(0, projectedLegalFillers)} "
-                   + $"requiredCapacity={requiredCapacity} "
-                   + $"usableExtraSlots={usableExtraSlots} commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
+                   + $"leads={(leads ? 1 : 0)} occupiedBefore={occupiedBefore} "
+                   + $"legalFillers={Mathf.Max(0, projectedLegalFillers)} requiredCapacity={requiredCapacity} "
+                   + $"usableExtraSlots={usableExtraSlots} "
+                   + $"win={before.WinChance.ToString("0.00", CultureInfo.InvariantCulture)}->"
+                   + $"{led.WinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
+                   + $"commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
             return value;
         }
 

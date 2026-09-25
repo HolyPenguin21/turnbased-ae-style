@@ -170,6 +170,7 @@ namespace Game.Ai.V2
         public bool IsAirfield;
         public int MemberCount;
         public bool HasHero;
+        public int HeroCount;
         // Best CommandRating among this army's hero members (0 = no hero): the capacity this army
         // COULD have if its best hero were made commander. A potential, not the army's current
         // cap (that is Capacity, set by the commander). CombatOpportunityAnalyzer sizes an

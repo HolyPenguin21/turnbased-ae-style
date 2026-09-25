@@ -149,6 +149,32 @@ namespace Game.Ai.V2
             return new CommandProjection(win, slots, roster);
         }
 
+        // The fight a commander is judged against when no concrete target is in hand: the
+        // strongest enemy field army (none known: no fight, and capacity / role decide).
+        // Housekeeping (per group benchmarks) and Phase B's hero-card value both read this.
+        public static bool IsCommandBenchmark(ArmySnapshot enemy) =>
+            enemy != null && enemy.Owner != null && !enemy.Owner.IsNeutral
+            && !enemy.IsGarrison && !enemy.IsPrison && !enemy.IsAir
+            && enemy.Members != null && enemy.Members.Count > 0;
+
+        public static IReadOnlyList<WorthIt.DefendingArmy> CommandContext(
+            IEnumerable<(int ArmyId, IReadOnlyList<WorthIt.DefenderProfile> Members, WorthIt.SideCommander Commander)> threats)
+        {
+            var strongest = (threats ?? Enumerable.Empty<(int, IReadOnlyList<WorthIt.DefenderProfile>, WorthIt.SideCommander)>())
+                .Where(t => t.Members != null && t.Members.Count > 0)
+                .OrderByDescending(t => AiPower.EffectiveArmyPowerFromProfiles(t.Members))
+                .ThenBy(t => t.ArmyId)
+                .FirstOrDefault();
+            return strongest.Members == null
+                ? Array.Empty<WorthIt.DefendingArmy>()
+                : new[] { new WorthIt.DefendingArmy(strongest.Members, strongest.Commander) };
+        }
+
+        public static IReadOnlyList<WorthIt.DefendingArmy> CommandContext(WorldSnapshot snap) =>
+            CommandContext((snap?.TrueWorld?.EnemyArmies ?? (IReadOnlyList<ArmySnapshot>)Array.Empty<ArmySnapshot>())
+                .Where(IsCommandBenchmark)
+                .Select(a => (a.ArmyId, a.Members, a.Commander)));
+
         // The static, fight-independent side of one commander option, whatever form the hero is
         // in — on the map or still a card. Built once (WorldAnalysis.BuildSelf) and projected
         // against each fight by the caller.

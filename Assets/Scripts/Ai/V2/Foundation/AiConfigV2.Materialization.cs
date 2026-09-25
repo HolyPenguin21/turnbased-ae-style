@@ -290,6 +290,7 @@
         // bodies to fill the slots it unlocks (canonical ArmyData.ComputeProjectedCapacity).
         public const float heroCommandMarginalSlotValue = 0.9f;// value of ONE extra battle slot this hero's Command unlocks AND the AI can fill
         public const int   heroCommandMarginalMaxSlots  = 4;   // cap on counted extra slots
+        public const float heroCommandWinGainValue      = 1.0f;// value of the full win-chance gain against the command context when this hero would lead (HeroRoleEvaluator)
 
         // ResourceGain role (PlayerGlobal recurring-resource cards — ApBonus/ProduceHuman/
         // ProduceMaterials/...). "Earlier is better": a fast, deliberately strong turn-decay down

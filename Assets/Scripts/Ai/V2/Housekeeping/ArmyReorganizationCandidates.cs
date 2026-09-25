@@ -313,19 +313,12 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
         }
 
-        // The fight Housekeeping judges a commander against: the strongest enemy army benchmarked
-        // against this group (none known: no fight, and capacity / role decide).
-        private static IReadOnlyList<WorthIt.DefendingArmy> CommandContext(VState state)
-        {
-            ReorgThreatBenchmark strongest = state.ThreatBenchmarks
-                .Where(t => t?.Members != null && t.Members.Count > 0)
-                .OrderByDescending(t => AiPower.EffectiveArmyPowerFromProfiles(t.Members))
-                .ThenBy(t => t.ArmyId)
-                .FirstOrDefault();
-            return strongest == null
-                ? System.Array.Empty<WorthIt.DefendingArmy>()
-                : new[] { new WorthIt.DefendingArmy(strongest.Members, strongest.Commander) };
-        }
+        // The fight Housekeeping judges a commander against: HeroRoleEvaluator's strongest-enemy
+        // context over this group's benchmarks.
+        private static IReadOnlyList<WorthIt.DefendingArmy> CommandContext(VState state) =>
+            HeroRoleEvaluator.CommandContext(state.ThreatBenchmarks
+                .Where(t => t != null)
+                .Select(t => (t.ArmyId, t.Members, t.Commander)));
 
         // The best commander among the heroes already in `units` (null when none). Only a hero
         // the WHOLE current roster fits under may lead it — a reorder never breaks capacity

@@ -267,9 +267,7 @@ namespace Game.Ai.V2
 
             foreach (ArmySnapshot enemy in enemies.OrderBy(a => a?.ArmyId ?? int.MaxValue))
             {
-                if (enemy == null || enemy.Owner == null || enemy.Owner.IsNeutral
-                    || enemy.IsGarrison || enemy.IsPrison || enemy.IsAir
-                    || enemy.Members == null || enemy.Members.Count == 0)
+                if (!HeroRoleEvaluator.IsCommandBenchmark(enemy))
                     continue;
 
                 int move = Mathf.Max(1, enemy.MaxMovement);

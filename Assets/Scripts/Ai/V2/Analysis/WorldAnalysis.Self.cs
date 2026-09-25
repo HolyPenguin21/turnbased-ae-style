@@ -341,6 +341,7 @@ namespace Game.Ai.V2
                 IsAirfield = a.IsAirfield,
                 MemberCount = a.Members.Count,
                 HasHero = a.Members.Any(m => m.IsHero),
+                HeroCount = a.Members.Count(m => m.IsHero),
                 BestHeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
                 // A hero is public battle information once seen; a stealth-hidden commander is not.
                 Commander = a.Commander != null
