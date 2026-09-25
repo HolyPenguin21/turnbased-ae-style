@@ -80,6 +80,14 @@ namespace Game.Ai.V2
             // traces print this same answer instead of re-deriving the clauses.
             string CandidateRejection(DemandLayer.EconomyBuilderChoice x)
             {
+                // Another mission holding this actor — a field army, or a garrison whose hero an
+                // Economy / Development intent has pinned through the garrison's id.
+                MissionIntent conflicting = standingIntents.FirstOrDefault(i =>
+                    i.PreferredMoverArmyId == x.Route.ArmyId
+                    && !i.IntentKey.Equals(currentIntentKey)
+                    && !DemandLayer.EconomyDonorStructurallyEligible(i));
+                if (conflicting != null)
+                    return $"conflicts_with={conflicting.IntentKey}({conflicting.Kind},{conflicting.Status})";
                 if (x.Route.RequiresGarrisonExtraction)
                 {
                     // ArmyId here names the Garrison, not yet a separate mover — re-derive the
@@ -105,11 +113,6 @@ namespace Game.Ai.V2
                 if (DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex))
                     return "under_immediate_threat";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
-                MissionIntent conflicting = standingIntents.FirstOrDefault(i => i.PreferredMoverArmyId == a.Id
-                    && !i.IntentKey.Equals(currentIntentKey)
-                    && !DemandLayer.EconomyDonorStructurallyEligible(i));
-                if (conflicting != null)
-                    return $"conflicts_with={conflicting.IntentKey}({conflicting.Kind},{conflicting.Status})";
                 if (!a.Hex.Equals(target.TargetHex)
                     && (a.CurrentMovement <= 0
                         || !SafeStepPathing.FindNextSafeStep(ctx.Map, a, target.TargetHex).HasValue))

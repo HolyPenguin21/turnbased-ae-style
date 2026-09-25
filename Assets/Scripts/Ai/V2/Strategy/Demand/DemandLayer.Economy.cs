@@ -860,11 +860,13 @@ namespace Game.Ai.V2
         {
             if (army == null)
                 return "not_in_snapshot";
-            if (route.IsOnTarget && army.IsGarrison && army.HasHero)
-                return null;
+            // Shape only: a garrison needs an extraction route, or already stands on the site with
+            // a hero. Either way the assignment / claim / threat gates below still apply — a
+            // garrison's heroes are pinned through its army id (ActorCommitments: an Economy or
+            // Development intent holds the garrison while its hero is still inside).
             if (army.IsGarrison)
             {
-                if (!route.RequiresGarrisonExtraction)
+                if (!route.RequiresGarrisonExtraction && !(route.IsOnTarget && army.HasHero))
                     return "garrison_without_extraction_route";
             }
             else if (!army.IsMobileEconomyBuilder)
