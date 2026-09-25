@@ -34,7 +34,7 @@ namespace Game.EditorTests
             session.SetGroundCombatConstraints(claimed, new HashSet<int>());
 
             GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
-                session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
+                session, mission, Array.Empty<WorthIt.DefendingArmy>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
             Assert.That(failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
@@ -55,7 +55,7 @@ namespace Game.EditorTests
             session.SetGroundCombatConstraints(claimed, new HashSet<int>());
 
             GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
-                session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
+                session, mission, Array.Empty<WorthIt.DefendingArmy>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
             Assert.That(failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
@@ -103,7 +103,7 @@ namespace Game.EditorTests
             session.SetGroundCombatConstraints(new ActorCommitments(), new HashSet<int>());
 
             GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
-                session, mission, Array.Empty<WorthIt.DefenderProfile>(), out ProvisionFailure failure);
+                session, mission, Array.Empty<WorthIt.DefendingArmy>(), out ProvisionFailure failure);
 
             Assert.That(plan, Is.Null);
             Assert.That(failure.Kind, Is.EqualTo(ProvisionFailureKind.MoverContended));
@@ -132,7 +132,7 @@ namespace Game.EditorTests
             });
 
             GroundCombatAssemblyPlan plan = GroundCombatAssaultTransactionRunner.PlanAssignedAssault(
-                session, mission, Array.Empty<WorthIt.DefenderProfile>(), out _);
+                session, mission, Array.Empty<WorthIt.DefendingArmy>(), out _);
 
             Assert.That(plan, Is.Not.Null);
             Assert.That(plan.Feasible, Is.True);

@@ -24,6 +24,10 @@ namespace Game.EditorTests
         // A matchup calibrated (Tools probe, 2026-09-23) so that a large defender hex bonus moves
         // the WIN CHANCE while COVERAGE stays intact — the bonus must be able to fail an admission
         // on its own, not only by making defenders undamageable.
+        // One commander-less defending army — the plain single-roster fight.
+        private static IReadOnlyList<WorthIt.DefendingArmy> One(IReadOnlyList<WorthIt.DefenderProfile> defenders) =>
+            new[] { new WorthIt.DefendingArmy(defenders, default) };
+
         private static List<WorthIt.DefenderProfile> Attackers() => new List<WorthIt.DefenderProfile>
         {
             Body(12, 4, 14, 5), Body(11, 4, 13, 4),
@@ -42,9 +46,9 @@ namespace Game.EditorTests
             List<WorthIt.DefenderProfile> attackers = Attackers();
             List<WorthIt.DefenderProfile> defenders = Defenders();
 
-            bool flatClears = GroundCombatFeasibility.Clears(attackers, defenders,
+            bool flatClears = GroundCombatFeasibility.Clears(attackers, default, One(defenders),
                 AiConfigV2.raidMinViableWinChance, 0f, out float flatWin, out bool flatCover);
-            bool fortifiedClears = GroundCombatFeasibility.Clears(attackers, defenders,
+            bool fortifiedClears = GroundCombatFeasibility.Clears(attackers, default, One(defenders),
                 AiConfigV2.raidMinViableWinChance, 8f, out float fortifiedWin, out bool fortifiedCover);
 
             Assert.That(flatCover, Is.True, "same rosters on open ground stay damageable");
@@ -63,12 +67,15 @@ namespace Game.EditorTests
             List<WorthIt.DefenderProfile> attackers = Attackers();
             List<WorthIt.DefenderProfile> defenders = Defenders();
 
-            GroundCombatFeasibility.Clears(attackers, defenders, out float legacyWin, out bool legacyCover);
-            GroundCombatFeasibility.Clears(attackers, defenders,
+            // A single commander-less defending army with no hex bonus is exactly the plain
+            // roster-vs-roster estimate: the opposition model adds nothing by itself.
+            float legacyWin = WorthIt.WinChance(attackers, defenders, 0f);
+            bool legacyCover = WorthIt.CanDamageAll(attackers, defenders, 0f);
+            GroundCombatFeasibility.Clears(attackers, default, One(defenders),
                 AiConfigV2.raidMinViableWinChance, 0f, out float explicitWin, out bool explicitCover);
 
             Assert.That(explicitWin, Is.EqualTo(legacyWin),
-                "existing callers that pass no bonus must not shift by a single Monte-Carlo trial");
+                "the opposition model must not shift a plain matchup by a single Monte-Carlo trial");
             Assert.That(explicitCover, Is.EqualTo(legacyCover));
         }
 
@@ -81,9 +88,9 @@ namespace Game.EditorTests
             List<WorthIt.DefenderProfile> defenders = Defenders();
 
             GroundCombatAssemblyPlan flat = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, defenders, 7, AiConfigV2.raidMinViableWinChance, 0f);
+                snap, One(defenders), 7, AiConfigV2.raidMinViableWinChance, 0f);
             GroundCombatAssemblyPlan fortified = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, defenders, 7, AiConfigV2.raidMinViableWinChance, 8f);
+                snap, One(defenders), 7, AiConfigV2.raidMinViableWinChance, 8f);
 
             Assert.That(flat.Feasible, Is.True);
             Assert.That(fortified.Feasible, Is.False,
@@ -100,7 +107,7 @@ namespace Game.EditorTests
             GroundCombatAssemblyPlan flat = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = One(defenders),
                     WinChanceGate = AiConfigV2.raidMinViableWinChance,
                     AllowSameHexAssembly = false,
                     DefenderHexDefenseBonus = 0f,
@@ -108,7 +115,7 @@ namespace Game.EditorTests
             GroundCombatAssemblyPlan fortified = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = One(defenders),
                     WinChanceGate = AiConfigV2.raidMinViableWinChance,
                     AllowSameHexAssembly = false,
                     DefenderHexDefenseBonus = 8f,
@@ -130,10 +137,10 @@ namespace Game.EditorTests
             List<WorthIt.DefenderProfile> defenders = Defenders();
 
             bool flat = GroundCombatAssemblyPlanner.TryProjectReinforcement(primary, support,
-                primaryCapacity: 2, primaryMemberCount: 1, defenders,
+                primaryCapacity: 2, primaryMemberCount: 1, primaryCommander: default, One(defenders),
                 out List<WorthIt.DefenderProfile> flatRoster, out string flatWhy, 0f);
             bool fortified = GroundCombatAssemblyPlanner.TryProjectReinforcement(primary, support,
-                primaryCapacity: 2, primaryMemberCount: 1, defenders,
+                primaryCapacity: 2, primaryMemberCount: 1, primaryCommander: default, One(defenders),
                 out _, out _, 40f);
 
             Assert.That(flat, Is.True, flatWhy);
