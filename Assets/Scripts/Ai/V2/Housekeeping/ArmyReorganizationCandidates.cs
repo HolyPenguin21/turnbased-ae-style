@@ -49,7 +49,7 @@ namespace Game.Ai.V2
                 if (units.Count(u => u != null && u.IsHero) < 2)
                     continue;
                 ReorgUnit current = units.First(u => u != null && u.IsHero);
-                ReorgUnit best = BestCommander(units, commandContext);
+                ReorgUnit best = BestCommander(units, meta.IsGarrison, commandContext);
                 if (best == null || ReferenceEquals(best, current))
                     continue;
                 VState c = TryReorderCommander(state, armyId, best);
@@ -327,19 +327,35 @@ namespace Game.Ai.V2
                 : new[] { new WorthIt.DefendingArmy(strongest.Members, strongest.Commander) };
         }
 
-        // The best commander among the heroes already in `units` (null when none).
-        private static ReorgUnit BestCommander(List<ReorgUnit> units,
+        // The best commander among the heroes already in `units` (null when none). Only a hero
+        // the WHOLE current roster fits under may lead it — a reorder never breaks capacity
+        // (ReorgViability.Capacity of the reordered roster). With no such hero the current
+        // commander stays: there is no legal choice to make.
+        private static ReorgUnit BestCommander(List<ReorgUnit> units, bool isGarrison,
             IReadOnlyList<WorthIt.DefendingArmy> context)
         {
             List<ReorgUnit> heroes = units.Where(u => u != null && u.IsHero).ToList();
             if (heroes.Count == 0)
                 return null;
+            List<ReorgUnit> legal = heroes
+                .Where(h => ReorgViability.Capacity(LedBy(units, h), isGarrison) >= units.Count)
+                .ToList();
+            if (legal.Count == 0)
+                return heroes[0];
             List<WorthIt.DefenderProfile> bodies = CommandBodies(units);
-            return heroes
+            return legal
                 .Select(h => (unit: h, candidate: CommandCandidateFor(h, bodies, heroes.Count - 1, context)))
                 .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
                     HeroRoleEvaluator.CompareCandidates))
                 .First().unit;
+        }
+
+        // `units` with `hero` moved to the commander slot (TryReorderCommander's roster order).
+        private static List<ReorgUnit> LedBy(List<ReorgUnit> units, ReorgUnit hero)
+        {
+            var roster = new List<ReorgUnit>(units.Count) { hero };
+            roster.AddRange(units.Where(u => !ReferenceEquals(u, hero)));
+            return roster;
         }
 
         private static List<WorthIt.DefenderProfile> CommandBodies(List<ReorgUnit> units) =>

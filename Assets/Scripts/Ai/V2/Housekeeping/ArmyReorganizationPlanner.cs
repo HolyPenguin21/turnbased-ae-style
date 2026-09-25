@@ -25,13 +25,13 @@ namespace Game.Ai.V2
             public readonly int OperatorExposure;
             public readonly int Singletons;
             public readonly int NonViable;
-            // §7 — sum over mutable multi-hero containers of (best hero CommandRating − first hero
-            // CommandRating). Zero when every such container is already led by its highest-capacity
-            // hero. Ranked as a formation-quality term: above generic strength/composition, below
-            // the hard legality/singleton/viability invariants.
-            public readonly int CommandCapacityWaste;
+            // §7 — number of mutable multi-hero containers not led by the one commander
+            // evaluation's best legal hero (HeroRoleEvaluator, see CommanderMismatch). Ranked as a
+            // formation-quality term: above generic strength/composition, below the hard
+            // legality/singleton/viability invariants.
+            public readonly int CommanderMismatch;
             // §9 — count of heroless/support-led viable field formations a benched combat hero
-            // could take over. Ranked as a formation-quality term, below command-capacity waste
+            // could take over. Ranked as a formation-quality term, below the commander mismatch
             // and above generic strength/composition.
             public readonly int FormationDefect;
             // Defensive-readiness profile. With deployed enemies it is threat-first:
@@ -51,7 +51,7 @@ namespace Game.Ai.V2
                 OperatorExposure = operatorExposure;
                 Singletons = singles;
                 NonViable = nonViable;
-                CommandCapacityWaste = commandWaste;
+                CommanderMismatch = commandWaste;
                 FormationDefect = formationDefect;
                 FormationStrengths = formationStrengths ?? System.Array.Empty<float>();
                 NegComposition = negComp;
@@ -65,7 +65,7 @@ namespace Game.Ai.V2
                 c = OperatorExposure.CompareTo(o.OperatorExposure); if (c != 0) return c;
                 c = Singletons.CompareTo(o.Singletons); if (c != 0) return c;
                 c = NonViable.CompareTo(o.NonViable); if (c != 0) return c;
-                c = CommandCapacityWaste.CompareTo(o.CommandCapacityWaste); if (c != 0) return c;
+                c = CommanderMismatch.CompareTo(o.CommanderMismatch); if (c != 0) return c;
                 c = FormationDefect.CompareTo(o.FormationDefect); if (c != 0) return c;
 
                 c = CompareFormationProfiles(FormationStrengths, o.FormationStrengths);

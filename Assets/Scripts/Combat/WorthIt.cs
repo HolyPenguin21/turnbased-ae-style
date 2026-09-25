@@ -9,51 +9,25 @@ using UnityEngine;
 
 namespace Game.Combat
 {
-    // The one shared "is this fight worth it" estimate every AI planner used to duplicate on its
-    // own — AiAggressionPlanner's own IsEnemyWeaker and AiEventPlanner.ShouldExplore were both the
-    // exact same flat Attack-sum-vs-Defense-sum comparison, just copy-pasted twice.
+    // The one shared "is this ground fight worth it" estimate — every army-vs-army comparison on
+    // the map goes through here, never a private formula at a call site.
     //
-    // DefenseAt/HexDefenseBonus fold in the same terrain + Base-building defense bonus a REAL
-    // fight actually grants the defender (see BattleScreenUI.Combat.cs's own BeginAttack — the
-    // exact same two lookups, just read directly off HexCoord/HexMap instead of a live
-    // BattleGrid, since nothing here needs a battle to exist yet). Only ever added to the
-    // DEFENDER's side, same as the real fight — never the attacker's.
-    //
-    // Score/IsWorthIt (added once AiMapMemory started remembering a sighted enemy's own Attack
-    // sum too, not just Defense — see KnownEnemySighting.AttackSum/KnownEventGuardAttackAt) are
-    // this class's real "is it worth it" answer: they read BOTH directions of the exchange
-    // instead of just "can we out-muscle their defense" — our own net edge (AttackSum vs their
-    // Defense) minus theirs (their Attack vs our own Defense) — a unit that wins by grinding
-    // through a tough defense while getting chewed up doing it no longer scores the same as one
-    // that wins cleanly. Still not BattleAi.SimulateRounds' full round-by-round grid playout
-    // (AI_ARCHITECTURE.html section 07's "Combat Worth-It Score") — every caller here only ever
-    // knows the OTHER side through fog-of-war memory (an aggregate Attack/Defense sum, no
-    // composition, no abilities, no per-unit HP/position to place on a grid), so there's nothing
-    // to simulate with; this is the richest read the available data actually supports.
-    //
-    // 2026-08-22 update (project owner's own call): Score/WinChance no longer read a flat
-    // deterministic expected-value formula — they now run MonteCarloTrials simulated dice
-    // exchanges (SimulateExchangeMargin, same 50/50-per-die mechanic ChallengeResolver.RollDice
-    // actually rolls with) and average/tally the outcome. Same two aggregate sums in, same
-    // two-sided "our edge minus their edge" question — just answered via actual coin flips instead
-    // of always assuming every dice pool lands its mean, so the result now carries the real
-    // mechanic's variance instead of hiding it behind one smooth number. Still bounded to the same
-    // aggregate-sum data described above — this was never an attempt at simulating a real
-    // multi-round fight (that needs BattleAi.SimulateRounds' own full grid/HP data, which the map
-    // doesn't have and this file still deliberately doesn't touch).
-    // stakes/fateEdge/urgency(goal) (the formula's other two terms) stay out on purpose — there's
-    // no target-value system anywhere in the codebase yet to price "stakes" against, and no
-    // goal/urgency object flows into any of these callers today (Оборона/Атака, section 02.4/
-    // 02.5, are still scoring-only per that same doc — see its own roadmap Phase 2).
-    //
-    // CanDamageAll/DefenderProfile (added per the project owner's own report: Score alone can
-    // read "worth it" on a lopsided army-vs-army matchup — e.g. two 5/4 units vs one 8/6 — that
-    // real per-unit dice actually favor the other side, since Attack/Defense sums pool as if
-    // every hit were rolled against one shared total instead of each unit fighting its own
-    // target) — a coverage check that every known enemy unit has at least one real counter in
-    // our own roster, using the same expected-damage read the real in-battle target picker uses,
-    // just without the full round-by-round grid playout (per the project owner's own call —
-    // "adequate, not as detailed as in battle").
+    //  · DefenderProfile — one combatant as the estimator sees it: our own live units
+    //    (FromLiveUnit) or an enemy's fog-honest remembered roster (AiMapMemory).
+    //  · Estimate / WinChance — MonteCarloTrials complete battles (SimulateOneBattle): each round a
+    //    shuffle-then-Initiative turn order, every living actor rolls real dice (50% per die)
+    //    against a random living enemy, the canonical ability-modifier chain, and the Fate duel of
+    //    every exchange (ResolveExchange, spending decided by FateDuelAi). Each side may have a
+    //    commander (SideCommander — ArmyData.Commander, the army's first hero): its Initiative is
+    //    added to every combatant of its side and its Fate buys rerolls. No grid positions.
+    //  · EstimateSequential — a hex held by several armies: one battle per defending army,
+    //    strongest first, wounds carry over, Fate refills.
+    //  · HexDefenseBonus — terrain + Base-building defence, added to the DEFENDER's dice only,
+    //    exactly as BattleScreenUI.Combat's BeginAttack does in a real fight.
+    //  · CanDamageAll — the coverage gate: every known defender must have at least one attacker
+    //    able to scratch it (the same expected-damage read BattleTargetSelector uses), because a
+    //    win chance alone can overstate a fight nothing in the roster can actually hurt.
+    //  · CombatValue — the quick body value every strongest-first roster pick uses.
     public static class WorthIt
     {
         // Attack-sum of `army`'s own non-hero members — the same side of the comparison every
@@ -209,6 +183,9 @@ namespace Game.Combat
 
             public static SideCommander Of(UnitData hero) =>
                 hero == null ? default : new SideCommander(hero.Initiative, hero.FateMax);
+            // A hero that is still a card (an event guard, a hero about to be played).
+            public static SideCommander Of(CardDefinition hero) =>
+                hero == null ? default : new SideCommander(hero.initiative, hero.fate);
             public static SideCommander Of(IEnumerable<UnitData> members) =>
                 Of(ArmyData.CommanderOf(members));
         }
@@ -426,7 +403,7 @@ namespace Game.Combat
         // actor rolling real dice against a random living enemy, until one side has nobody left or
         // MaxSimulatedRounds runs out. Returns +1 (attackers wiped the defenders), -1 (defenders
         // wiped the attackers), or 0 (mutual wipe, or neither side finished the other off in time —
-        // same "draw" reading SimulateExchangeMargin's own tie already used).
+        // a draw, which every readout counts as half a win).
         private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders,
             System.Random rng, int attackerFate = 0, int defenderFate = 0)
         {
@@ -519,8 +496,8 @@ namespace Game.Combat
 
         // Full-roster win fraction — MonteCarloTrials complete battles (SimulateOneBattle above),
         // fresh HP for every trial. `hexDefenseBonus` is folded into every defending unit's own
-        // Defense once here (same as CanDamage's own `extraDefense`), not pre-baked by the caller
-        // the way the aggregate-sum overload above expects. Empty/null `enemyUnits` is a trivial
+        // Defense once here (same as CanDamage's own `extraDefense`), never pre-baked by the
+        // caller. Empty/null `enemyUnits` is a trivial
         // win (nothing known to fight — matches CanDamageAll's own "vacuously coverable" reading);
         // empty/null `attackerUnits` against a real enemy roster is a trivial loss.
         public static float WinChance(IReadOnlyCollection<DefenderProfile> attackerUnits,
@@ -702,6 +679,7 @@ namespace Game.Combat
             for (int t = 0; t < MonteCarloTrials; t++)
             {
                 var attackers = new List<BattleUnit>(baseline);
+                var entryStats = new List<BattleUnit>(baseline);
                 int result = 1;
                 foreach (DefendingArmy a in order)
                 {
@@ -710,7 +688,22 @@ namespace Game.Combat
                         attackerCommander.Fate, a.Commander.Fate);
                     if (result <= 0)
                         break;
-                    attackers = attackers.Where(u => u.Hp > 0f).ToList();
+                    // Wounds carry into the next battle; in-battle stat changes (Berserk) do not —
+                    // the game reverts them when a battle ends (BattleScreenUI.RevertBerserkStacks).
+                    var survivors = new List<BattleUnit>(attackers.Count);
+                    var survivorStats = new List<BattleUnit>(attackers.Count);
+                    for (int i = 0; i < attackers.Count; i++)
+                    {
+                        if (attackers[i].Hp <= 0f)
+                            continue;
+                        BattleUnit u = attackers[i];
+                        u.Attack = entryStats[i].Attack;
+                        u.Defense = entryStats[i].Defense;
+                        survivors.Add(u);
+                        survivorStats.Add(entryStats[i]);
+                    }
+                    attackers = survivors;
+                    entryStats = survivorStats;
                 }
                 if (result > 0)
                 {
@@ -925,17 +918,6 @@ namespace Game.Combat
                     return false;
             return true;
         }
-
-        // Score/IsWorthIt's own two-sided net-edge margin, PLUS the coverage gate above — both
-        // need to pass. `defenders` is optional (pass null/empty where no per-unit read is
-        // available at all) so existing callers keep working unchanged. `hexDefenseBonus` — see
-        // CanDamage's own comment; `enemyDefense` above already has it folded into the aggregate
-        // for the edge read, this is the SAME number handed separately so the per-unit coverage
-        // check applies it too. Defaults to 0f (source-compatible with a caller that has no hex).
-        //
-        // Routes through the full-roster WinChance whenever `defenders` carries a real per-unit
-        // snapshot (see MeetsWinChance's own comment — same reasoning, same 2026-08-22 change);
-        // falls back to the aggregate-sum Score only when no composition is remembered at all.
 
         // The hex's own contribution alone, no army — terrain.defenseModifier (see
         // TerrainTypeEntry's own comment: added to the defender's dice pool only, in every real

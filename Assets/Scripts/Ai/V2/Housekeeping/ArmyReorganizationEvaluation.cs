@@ -56,7 +56,7 @@ namespace Game.Ai.V2
                     operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
 
                 if (meta.CanChangeComposition)
-                    commandWaste += CommanderMismatch(units, commandContext);
+                    commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
 
                 if (meta.IsGarrison)
                 {
@@ -227,13 +227,13 @@ namespace Game.Ai.V2
         // 1 when a container with two or more heroes is not led by the one commander evaluation's
         // best hero (HeroRoleEvaluator — fight against the group's strongest threat, then capacity,
         // then role/leadership). The commander reorder candidate is the zero-AP fix.
-        private static int CommanderMismatch(List<ReorgUnit> units,
+        private static int CommanderMismatch(List<ReorgUnit> units, bool isGarrison,
             IReadOnlyList<WorthIt.DefendingArmy> context)
         {
             if (units.Count(u => u != null && u.IsHero) < 2)
                 return 0;
             ReorgUnit current = units.First(u => u != null && u.IsHero);
-            return ReferenceEquals(BestCommander(units, context), current) ? 0 : 1;
+            return ReferenceEquals(BestCommander(units, isGarrison, context), current) ? 0 : 1;
         }
     }
 }

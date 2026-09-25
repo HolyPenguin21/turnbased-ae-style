@@ -72,9 +72,8 @@ namespace Game.Combat
         //
         // Null/empty `knownDefenders` (no remembered per-unit composition, only an aggregate
         // Defense/Attack sum) reports the strike as a no-op — the aggregate numbers pass through
-        // unchanged. There's no per-unit roster here to simulate a random-target strike against,
-        // same "nothing to simulate with" limitation WorthIt's own aggregate-sum fallback already
-        // lives with everywhere else in this codebase.
+        // unchanged. There's no per-unit roster here to simulate a random-target strike against
+        // (WorthIt likewise treats an unknown roster as nothing to fight).
         //
         // Monte Carlo, not a closed form (same reasoning WorthIt's own top comment gives) —
         // MonteCarloTrials complete sequential strikes, averaged per-defender remaining HP. A

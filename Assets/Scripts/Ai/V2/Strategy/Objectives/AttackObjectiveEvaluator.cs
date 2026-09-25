@@ -89,10 +89,10 @@ namespace Game.Ai.V2
         // The known opposition on the target site (§31): its garrison and every known enemy army
         // on that same hex, each its own battle with its own commander — one objective.
         public IReadOnlyList<WorthIt.DefendingArmy> Opposition = Array.Empty<WorthIt.DefendingArmy>();
-        // Every defending body of that opposition (counts, power, coverage).
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
-            Array.Empty<WorthIt.DefenderProfile>();
-        public int DefenderCount;
+        // Every defending body of that opposition (counts, power, coverage) — derived from
+        // Opposition on read, never stored as a second copy.
+        public IReadOnlyList<WorthIt.DefenderProfile> Defenders => WorthIt.UnitsOf(Opposition);
+        public int DefenderCount => Defenders.Count;
         public float TargetPower;
         // Turns since the site was last actually observed. int.MaxValue-safe: 0 when the memory
         // carries no stamp at all, which is treated as maximally stale by the score below.
@@ -401,8 +401,6 @@ namespace Game.Ai.V2
             {
                 Target = AttackTargetRef.For(b.Hex, b.Owner, kind),
                 Opposition = opposition,
-                Defenders = defenders,
-                DefenderCount = defenders.Count,
                 TargetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders),
                 IntelAgeTurns = intelAge,
                 TaskScore = score,

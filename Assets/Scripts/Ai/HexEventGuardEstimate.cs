@@ -40,7 +40,7 @@ namespace Game.Ai
         {
             var hero = entry?.ResolvedGuardMembers?
                 .FirstOrDefault(g => g.card != null && g.card.cardType == CardType.Hero).card;
-            return hero == null ? default : new WorthIt.SideCommander(hero.initiative, hero.fate);
+            return WorthIt.SideCommander.Of(hero);
         }
     }
 }
