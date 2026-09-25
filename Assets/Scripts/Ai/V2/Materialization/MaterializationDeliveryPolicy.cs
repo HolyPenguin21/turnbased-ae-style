@@ -193,6 +193,12 @@ namespace Game.Ai.V2
                             : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 case CapabilityKind.FieldCombatPower:
                 {
+                    if (demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
+                        return p.Deploy.Kind == DeploymentKind.Garrison && demand.TargetHex.HasValue
+                            && p.Deploy.Hex.Equals(demand.TargetHex.Value)
+                                ? DeliveryAssessment.Ok
+                                : DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                                    $"garrison_at_target_required:{p.Deploy.Kind}");
                     if (p.Deploy.Kind == DeploymentKind.Garrison)
                         return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                             p.Deploy.Kind.ToString());

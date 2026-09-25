@@ -110,13 +110,24 @@ namespace Game.Ai.V2
             List<ReconObjective> refresh = BuildRefreshObjectives(snap, ref direction);
             // Strike force step 6 — Attack's observation needs join as Refresh objectives of the
             // same identity, replacing a generic Refresh of the same hex.
+            // A need never observed at all (the enemy citadel's cheat anchor, step 7) is an
+            // ordinary Explore focus instead.
             foreach (HexCoord need in AttackObjectiveEvaluator.ObservationNeeds(snap).Distinct())
             {
                 ReconObjective o = AttackNeedRefresh(snap, need, null, ref direction);
-                if (o == null)
+                if (o != null)
+                {
+                    refresh.RemoveAll(r => r.FocusHex.Equals(need));
+                    refresh.Add(o);
                     continue;
-                refresh.RemoveAll(r => r.FocusHex.Equals(need));
-                refresh.Add(o);
+                }
+                if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, need, out _)
+                    && !list.Any(x => x.Kind == ReconObjectiveKind.Explore && x.FocusHex.Equals(need)))
+                {
+                    o = ExploreAt(snap, need);
+                    if (o != null)
+                        list.Add(o);
+                }
             }
             list.AddRange(refresh);
 

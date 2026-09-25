@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
+using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
 
@@ -167,6 +168,53 @@ namespace Game.Ai.V2
             }
 
             AppendUnboundAttackDemand(snap, activeIntents, commitments, diag, demands);
+            AppendHeldBaseGarrisonDemands(snap, diag, demands);
+        }
+
+        // Strike force step 7 — a base our field army holds (the fist that just took it) whose
+        // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
+        // deliver, Housekeeping fills the floor at turn end from the holding army's most wounded,
+        // then weakest, body (ArmyReorganizationCandidates, garrison fill).
+        private static void AppendHeldBaseGarrisonDemands(WorldSnapshot snap, List<string> diag,
+            List<AxisDemand> demands)
+        {
+            IReadOnlyList<ArmySnapshot> armies = snap.Self.Armies
+                ?? (IReadOnlyList<ArmySnapshot>)System.Array.Empty<ArmySnapshot>();
+            foreach (HexCoord baseHex in snap.Self.BaseHexes ?? (IReadOnlyList<HexCoord>)System.Array.Empty<HexCoord>())
+            {
+                ArmySnapshot garrison = armies.FirstOrDefault(a => a != null && a.IsGarrison
+                    && a.Hex.Equals(baseHex));
+                if (garrison == null
+                    || !armies.Any(a => a != null && a.IsStructuralRaidActor && a.Hex.Equals(baseHex)))
+                    continue;
+                int floor = baseHex.Equals(snap.Self.Citadel)
+                    ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
+                int missing = floor - (garrison.Members?.Count ?? 0);
+                if (missing <= 0)
+                    continue;
+                float desired = missing * AiConfigV2.combatPowerPerBodyEstimate;
+                TaskScore score = new TaskScore(strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
+                    AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)));
+                diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "
+                    + $"capability=FieldCombatPower shape=Garrison missing={missing} desired={desired:0.#} "
+                    + $"task={score.Value:0.##} reason=held_base_garrison_below_floor");
+                demands.Add(new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Aggression,
+                    Capability = CapabilityKind.FieldCombatPower,
+                    DeliveryShape = CapabilityDeliveryShape.Garrison,
+                    ConsumerMissionKind = MissionKind.Attack,
+                    DesiredAmount = desired,
+                    RequiredCapabilityPower = desired,
+                    RequiredTraits = TraitPreference.None,
+                    MinimumFollowupAp = 0f,
+                    TargetHex = baseHex,
+                    WorldTaskScore = score,
+                    Value = score.Value,
+                    Explain = $"garrison the held base ({baseHex.Q},{baseHex.R}) from hand: "
+                        + $"{missing} body short of its floor {floor}; task={score.Value:0.##}",
+                });
+            }
         }
 
         // Strike force step 4 — the Attack objective with no operation yet. Only the best known

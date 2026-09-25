@@ -202,6 +202,37 @@ namespace Game.Ai.V2
                 }
             }
 
+            // 2b. Strike force step 7 — a garrison below its non-hero floor takes ONE body from a
+            // viable same-hex field army (the fist that just took the base): the most wounded,
+            // then the weakest, never a hero. Evaluate() keeps it only if the field army's side
+            // stays legal; the hand had its chance first (the held-base garrison demand, Phase A).
+            if (state.Meta.TryGetValue(garrisonId, out ReorgContainer floorGarrison)
+                && floorGarrison.IsGarrison && floorGarrison.CanReceive
+                && state.Roster[garrisonId].Count(u => u.IsGroundCombatant) < floorGarrison.GarrisonNonHeroFloor)
+            {
+                foreach (int srcId in armyIds)
+                {
+                    ReorgContainer src = state.Meta[srcId];
+                    if (!IsFieldContainer(src) || !src.CanDonate
+                        || !ReorgViability.IsViable(state.Roster[srcId]))
+                        continue;
+                    ReorgUnit body = state.Roster[srcId]
+                        .Where(u => u != null && !u.IsHero && u.IsGroundBattleBody && !u.IsAviation
+                            && !u.IsCommitted)
+                        .OrderBy(u => u.CombatProfile.MaxHitPoints > 0f
+                            ? u.CombatProfile.HitPoints / u.CombatProfile.MaxHitPoints : 1f)
+                        .ThenBy(u => WorthIt.CombatValue(u.CombatProfile))
+                        .ThenBy(u => u.Key)
+                        .FirstOrDefault();
+                    if (body == null)
+                        continue;
+                    VState c = TryMoveOne(state, srcId, garrisonId, body,
+                        "garrison floor from a viable same-hex field army (most wounded / weakest)");
+                    if (c != null)
+                        yield return c;
+                }
+            }
+
             // 3. Seed an occupied weak field container from a viable field donor. Empty reusable
             // shells are deliberately excluded: they are useful future containers, not defects to
             // be filled merely for housekeeping symmetry.

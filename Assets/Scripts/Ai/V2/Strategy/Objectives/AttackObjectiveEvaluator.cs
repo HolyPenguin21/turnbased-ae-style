@@ -413,11 +413,20 @@ namespace Game.Ai.V2
         // live operation that is still going to fight there (Gather / Assault / Reinforcement).
         // Recon closes it with its own Refresh objective (ReconObjectiveEvaluator); Attack never
         // moves a scout itself.
+        // Step 7 — when this player knows no hostile Base/Citadel at all, Attack has nothing to aim
+        // at: it asks to observe the enemy citadel, whose coordinates are the cheat anchor
+        // (WorldAnalysis.TryEnemyCitadelAnchor). Its defenders stay unknown until Recon sees them;
+        // only then does it become an ordinary objective through snap.Known.Buildings.
         internal static IEnumerable<HexCoord> ObservationNeeds(WorldSnapshot snap)
         {
             PlayerSetupData player = snap?.Observer;
             if (player == null)
                 yield break;
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
+                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
+            if (!buildings.Any(b => IsHostileStrategicStructure(b, player))
+                && WorldAnalysis.TryEnemyCitadelAnchor(snap, out HexCoord citadel))
+                yield return citadel;
             foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
             {
                 AttackIntent a = i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active

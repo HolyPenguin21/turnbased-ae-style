@@ -42,7 +42,9 @@ namespace Game.Ai.V2
     //                         move to the consumer on its own. A Raid reinforcement cannot be
     //                         satisfied by attaching a unit onto the (remote) primary or by
     //                         depositing it into a garrison.
-    public enum CapabilityDeliveryShape { Any, IndependentFieldArmy }
+    //   Garrison            — the capability must be deposited into the garrison at TargetHex
+    //                         (strike force step 7: a base the fist just took is held from hand).
+    public enum CapabilityDeliveryShape { Any, IndependentFieldArmy, Garrison }
 
     [System.Flags]
     public enum TraitPreference

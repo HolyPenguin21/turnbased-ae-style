@@ -160,10 +160,24 @@ namespace Game.Ai.V2
                 }
             }
 
+            return TryEnemyCitadelAnchor(snap, out anchor);
+        }
+
+        // The nearest opponent citadel to our own, read from TrueWorld — the owner-approved cheat
+        // anchor for "where is the enemy's citadel" (aviation sweep fallback above, and the
+        // strike force's observation need, AttackObjectiveEvaluator.ObservationNeeds). Only the
+        // coordinates cross the knowledge boundary: what defends it is known only once observed.
+        internal static bool TryEnemyCitadelAnchor(WorldSnapshot snap, out HexCoord anchor)
+        {
+            anchor = default;
+            if (snap?.Self == null || snap.TrueWorld == null)
+                return false;
+            HexCoord home = snap.Self.Citadel;
             bool found = false;
             foreach (OpponentSnapshot o in snap.TrueWorld.Opponents ?? new List<OpponentSnapshot>())
             {
-                if (o?.Player == null || !o.Player.CitadelHexQ.HasValue || !o.Player.CitadelHexR.HasValue)
+                if (o?.Player == null || o.Player.IsEliminated
+                    || !o.Player.CitadelHexQ.HasValue || !o.Player.CitadelHexR.HasValue)
                     continue;
                 var citadel = new HexCoord(o.Player.CitadelHexQ.Value, o.Player.CitadelHexR.Value);
                 if (!found || HexGridMath.Distance(home, citadel) < HexGridMath.Distance(home, anchor))
