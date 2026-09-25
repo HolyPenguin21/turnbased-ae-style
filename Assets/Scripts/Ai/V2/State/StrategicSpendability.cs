@@ -54,6 +54,12 @@ namespace Game.Ai.V2
             return (ap, energy);
         }
 
+        // The Energy that protection subtracts, for a consumer that nets its own pool from a
+        // different base (ResourceAllocator funds Economy builds against the SAME pool
+        // FitsSpendableForEconomyCompletion checks them with).
+        internal static int OutstandingRecoveryEnergy(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx) => OutstandingRecoveryActivation(player, root, ctx).Energy;
+
         internal static bool CanFundRecoveryPrefix(float availableAp, int availableEnergy,
             float alreadyCommittedAp, int alreadyCommittedEnergy,
             float nextActivationAp, int nextActivationEnergy) =>

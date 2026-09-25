@@ -162,7 +162,7 @@ namespace Game.Ai.V2
             outcomeLedger.RegisterCommitments(commitments);
 
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions,
-                commitments, player, apLedger);
+                commitments, player, apLedger, root, ctx);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
             var provisioned = new List<ProvisionedMission>();

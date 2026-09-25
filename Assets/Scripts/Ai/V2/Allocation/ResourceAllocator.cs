@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 using UnityEngine;
 
@@ -390,13 +391,13 @@ namespace Game.Ai.V2
 
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
-            ApBudgetLedger ledger = null)
+            ApBudgetLedger ledger = null, PlayerRoot root = null, AiTurnContext ctx = null)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
                 missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger,
-                player);
+                player, root, ctx);
         }
     }
 
@@ -408,6 +409,11 @@ namespace Game.Ai.V2
         private readonly AiAllocatorState _state;
         private readonly ApBudgetLedger _ledger;
         private readonly PlayerSetupData _player;
+        private readonly PlayerRoot _root;
+        private readonly AiTurnContext _ctx;
+        // Unpaid mandatory air-recovery Energy, re-read at the start of every Pack pass (landing,
+        // activation or loss releases it) — see PhysicalAvailableFor.
+        private float _recoveryEnergy;
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
             new Dictionary<StableMissionKey, ProvisionRequirement>();
@@ -457,9 +463,11 @@ namespace Game.Ai.V2
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
             List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null,
-            PlayerSetupData player = null)
+            PlayerSetupData player = null, PlayerRoot root = null, AiTurnContext ctx = null)
         {
             _player = player;
+            _root = root;
+            _ctx = ctx;
             _snap = snap;
             _missions = missions;
             _commitments = commitments;
@@ -544,6 +552,7 @@ namespace Game.Ai.V2
             foreach (LockedAllocation lc in _lockedClaims.Values)
                 lockedPhysical += lc.PhysicalClaim;
             ResourceVector physicalRemaining = (physicalPool - lockedPhysical).ClampLow0();
+            _recoveryEnergy = StrategicSpendability.OutstandingRecoveryEnergy(_player, _root, _ctx);
             alloc.PhysicalPool = physicalPool;
             alloc.PhysicalLocked = lockedPhysical;
 
@@ -937,9 +946,11 @@ namespace Game.Ai.V2
         // Economy audit B7 — an Economy build completes against the SAME spendable pool
         // Provisioning checks it with (StrategicSpendability.FitsSpendableForEconomyCompletion):
         // raw stock minus every explicit hold except EconomyDeferredBuild rows and its own owner's
-        // rows. Funding it from raw stock instead made Provisioning reject it, the reprice floor
-        // re-funded it from the same raw stock, and the bounded re-pack ended the whole typed
-        // admission. Other missions keep the raw pool and their Provisioning gates.
+        // rows, minus the unpaid Energy of mandatory air recovery (StrategicSpendability.
+        // OutstandingRecoveryEnergy — the same subtraction that gate makes). Funding it from raw
+        // stock instead made Provisioning reject it, the reprice floor re-funded it from the same
+        // raw stock, and the bounded re-pack ended the whole typed admission. Other missions keep
+        // the raw pool and their Provisioning gates.
         private ResourceVector PhysicalAvailableFor(MissionProposal m, ResourceVector remaining)
         {
             if (m?.Kind != MissionKind.Economy || _player == null)
@@ -949,7 +960,8 @@ namespace Game.Ai.V2
             float Held(StrategicReservedResource r) => StrategicResourceReservationLedger.Active(
                 _player, turn, r, owner, StrategicReservationReason.EconomyDeferredBuild);
             var held = new ResourceVector(0f, Held(StrategicReservedResource.Human),
-                Held(StrategicReservedResource.Energy), Held(StrategicReservedResource.Materials),
+                Held(StrategicReservedResource.Energy) + _recoveryEnergy,
+                Held(StrategicReservedResource.Materials),
                 Held(StrategicReservedResource.Tech));
             return (remaining - held).ClampLow0();
         }

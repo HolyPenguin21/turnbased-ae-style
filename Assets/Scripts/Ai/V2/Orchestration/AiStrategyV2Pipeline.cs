@@ -537,7 +537,7 @@ namespace Game.Ai.V2
                     cycleLedger.RegisterCommitments(cycleCommitments);
 
                     AllocationSession cycleSession = ResourceAllocator.BeginTurn(snapshot, radar,
-                        missions, cycleCommitments, player, apLedger);
+                        missions, cycleCommitments, player, apLedger, root, ctx);
                     var cycleProvisioning = new ProvisioningSession(snapshot);
                     allocation = cycleSession.Pack();
                     foreach (FundedEntry fe in allocation.Funded)
