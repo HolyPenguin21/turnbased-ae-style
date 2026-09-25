@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Combat;
@@ -145,10 +145,6 @@ namespace Game.Ai.V2
                     EconomyPaybackTurns = payback,
                     EconomyPreferredBuilderArmyId = readyLossToNewHero
                         ? null : builder?.Army.ArmyId,
-                    EconomyProjectedActivationApCost = readyLossToNewHero ? 0
-                        : builder?.ProjectedActivationApCost ?? 0,
-                    EconomyProjectedMaxMovement = readyLossToNewHero ? 0
-                        : builder?.ProjectedMaxMovement ?? 0,
                     EconomyReadyDeliveryCost = readyLossToNewHero
                         ? ReadyDeliveryCost(extraAp, opportunity) : (float?)null,
                     EconomyBuilderRoutes = site.BuilderRoutes,
@@ -423,8 +419,6 @@ namespace Game.Ai.V2
             EconomyAssignmentApCost = source.EconomyAssignmentApCost,
             EconomyPaybackTurns = source.EconomyPaybackTurns,
             EconomyPreferredBuilderArmyId = source.EconomyPreferredBuilderArmyId,
-            EconomyProjectedActivationApCost = source.EconomyProjectedActivationApCost,
-            EconomyProjectedMaxMovement = source.EconomyProjectedMaxMovement,
             EconomyReadyDeliveryCost = source.EconomyReadyDeliveryCost,
             EconomyBuilderRoutes = source.EconomyBuilderRoutes,
             WorldTaskScore = source.WorldTaskScore,
@@ -462,8 +456,6 @@ namespace Game.Ai.V2
                 return null;
             AxisDemand alternative = EconomyHeroPrerequisite(ready);
             alternative.EconomyPreferredBuilderArmyId = null;
-            alternative.EconomyProjectedActivationApCost = 0;
-            alternative.EconomyProjectedMaxMovement = 0;
             alternative.EconomyAssignmentApCost = ready.EconomyBuildApCost;
             alternative.EconomyHeroOpportunityCost = 0f;
             alternative.EconomyReadyDeliveryCost = readyCost;
@@ -1183,10 +1175,6 @@ namespace Game.Ai.V2
                         EconomyPaybackTurns = paybackTurns,
                         EconomyPreferredBuilderArmyId = readyLossToNewHero
                             ? null : builder?.Army.ArmyId,
-                        EconomyProjectedActivationApCost = readyLossToNewHero ? 0
-                            : builder?.ProjectedActivationApCost ?? 0,
-                        EconomyProjectedMaxMovement = readyLossToNewHero ? 0
-                            : builder?.ProjectedMaxMovement ?? 0,
                         EconomyReadyDeliveryCost = readyLossToNewHero
                             ? ReadyDeliveryCost(extraAp, heroCost) : (float?)null,
                         EconomyBuilderRoutes = site.BuilderRoutes,

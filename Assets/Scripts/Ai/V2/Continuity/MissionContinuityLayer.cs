@@ -116,8 +116,6 @@ namespace Game.Ai.V2
                 IntrinsicValue = demand.Value,
                 BuildValue = demand.EconomySiteValue,
                 MinimumFollowupAp = demand.MinimumFollowupAp,
-                ProjectedActivationApCost = demand.EconomyProjectedActivationApCost,
-                ProjectedMaxMovement = demand.EconomyProjectedMaxMovement,
             };
             var intent = new MissionIntent
             {
@@ -251,8 +249,6 @@ namespace Game.Ai.V2
             objective.IntrinsicValue = challenger.Value;
             objective.BuildValue = challenger.EconomySiteValue;
             objective.BuilderArmyId = incumbent.PreferredMoverArmyId;
-            objective.ProjectedActivationApCost = challenger.EconomyProjectedActivationApCost;
-            objective.ProjectedMaxMovement = challenger.EconomyProjectedMaxMovement;
             incumbent.IntentKey = newKey;
             incumbent.LastAttemptKey = new StableMissionKey(MissionKind.Economy,
                 (int)EconomyTaskKind.FoundBase, 0, target.Q, target.R);
@@ -2119,8 +2115,6 @@ namespace Game.Ai.V2
                 BuildApCost = t.BuildApCost, BuildValue = t.BuildValue,
                 IntrinsicValue = o.Proposal?.BaseValue,
                 MinimumFollowupAp = t.MinimumFollowupAp,
-                ProjectedActivationApCost = t.ProjectedActivationApCost,
-                ProjectedMaxMovement = t.ProjectedMaxMovement,
                 Loaned = o.EconomyLoanSource.HasValue,
                 LoanSource = o.EconomyLoanSource ?? default,
             };

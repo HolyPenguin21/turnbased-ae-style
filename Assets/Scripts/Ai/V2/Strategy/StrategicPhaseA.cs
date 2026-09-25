@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Cards;
@@ -880,8 +880,6 @@ namespace Game.Ai.V2
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,
-                EconomyProjectedActivationApCost = d.EconomyProjectedActivationApCost,
-                EconomyProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 EconomyBuilderRoutes = d.EconomyBuilderRoutes,
                 RequiredCapabilityPower = d.RequiredCapabilityPower,
                 DeliveryShape = d.DeliveryShape,

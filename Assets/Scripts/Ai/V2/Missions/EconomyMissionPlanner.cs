@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
@@ -84,10 +84,6 @@ namespace Game.Ai.V2
                         {
                             Kind = e.Kind, TargetHex = e.TargetHex, ResourceType = e.ResourceType,
                         }),
-                    ProjectedActivationApCost = refreshed?.EconomyProjectedActivationApCost
-                        ?? e.ProjectedActivationApCost,
-                    ProjectedMaxMovement = refreshed?.EconomyProjectedMaxMovement
-                        ?? e.ProjectedMaxMovement,
                 };
                 // An available refreshed demand contains the full delivered TaskScore. BuildValue
                 // is a legacy operational/site fact and must not replace it in global admission.
@@ -177,8 +173,6 @@ namespace Game.Ai.V2
                     MinimumFollowupAp = d.MinimumFollowupAp,
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
-                    ProjectedActivationApCost = d.EconomyProjectedActivationApCost,
-                    ProjectedMaxMovement = d.EconomyProjectedMaxMovement,
                 };
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Kind == MissionKind.Economy && i.Economy != null

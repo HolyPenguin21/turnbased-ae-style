@@ -281,8 +281,6 @@ namespace Game.Ai.V2
         public float? IntrinsicValue;
         public float BuildValue;
         public float MinimumFollowupAp;
-        public int ProjectedActivationApCost;
-        public int ProjectedMaxMovement;
         public bool Loaned;
         public MissionIntentKey LoanSource;
     }
