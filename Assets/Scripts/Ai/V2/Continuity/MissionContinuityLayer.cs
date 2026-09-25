@@ -2342,9 +2342,7 @@ namespace Game.Ai.V2
                 // An Attack Reinforcement / SupportReturn / Gather step is executed by a SUPPORT
                 // army: like Raid's support legs above it must never overwrite the primary.
                 else if (!(intent.Attack != null && o.HasAttackPayload
-                        && (o.AttackTarget.Phase == AttackMissionPhase.Reinforcement
-                            || o.AttackTarget.Phase == AttackMissionPhase.SupportReturn
-                            || o.AttackTarget.Phase == AttackMissionPhase.Gather))
+                        && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase))
                     && ((intent.Kind != MissionKind.Economy
                             && intent.Kind != MissionKind.Development)
                         || !intent.PreferredMoverArmyId.HasValue

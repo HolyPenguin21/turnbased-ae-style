@@ -259,16 +259,10 @@ namespace Game.Ai.V2
                     string claims = string.Join(";", (activeIntents ?? new List<MissionIntent>())
                         .Where(i => i != null)
                         .Select(i => $"{i.Kind}:{i.Status}:{i.PreferredMoverArmyId}"
-                            + $":{i.Raid?.SupportArmyId}:{i.Raid?.AirSupportArmyId}"
-                            // Attack support is claimed only during Reinforcement/SupportReturn
-                            // (ActorCommitments), so its phase is part of the occupancy key.
-                            + (i.Attack?.SupportArmyId != null
-                                ? $":asup{i.Attack.SupportArmyId.Value}:{(int)i.Attack.Phase}"
-                                : string.Empty)
-                            // Gather supports are claimed while the Gather phase lasts.
-                            + (i.Attack?.Phase == AttackMissionPhase.Gather
-                                ? $":agat{string.Join(",", i.Attack.GatherSupportArmyIds)}"
-                                : string.Empty))
+                            + $":{i.Raid?.AirSupportArmyId}"
+                            // Held ground supports (convoys, gathers) — the same list
+                            // ActorCommitments claims (GroundCombatLegs).
+                            + $":sup{string.Join(",", GroundCombatLegs.HeldGroundSupportArmyIds(i))}")
                         .Distinct().OrderBy(x => x, System.StringComparer.Ordinal));
                     // The fingerprint's site facts are produced by the SAME
                     // WorldAnalysis.EconomyOpportunityRows the typed invalidation is derived from,

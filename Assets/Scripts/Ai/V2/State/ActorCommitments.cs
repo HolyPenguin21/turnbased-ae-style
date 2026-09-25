@@ -67,27 +67,20 @@ namespace Game.Ai.V2
                         && a.ArmyId == raid.AirSupportArmyId.Value && a.IsAir
                         && !a.IsAirfield && a.MemberCount > 0))
                     c.Claim(raid.AirSupportArmyId.Value);
-                if (raid != null && raid.SupportArmyId.HasValue
-                    && (raid.Phase == RaidMissionPhase.Reinforcement || raid.Phase == RaidMissionPhase.SupportReturn)
-                    && snap.Self.Armies.Any(a => a != null && a.ArmyId == raid.SupportArmyId.Value
-                        && !a.IsPrison && !a.IsAir && a.MemberCount > 0))
+                // Raid/Attack convoys and every support an Attack Gather still expects — the one
+                // list GroundCombatLegs owns. A support that stopped being a live ground container
+                // releases just its own claim.
+                foreach (int supportId in GroundCombatLegs.HeldGroundSupportArmyIds(i))
                 {
-                    c.Claim(raid.SupportArmyId.Value);
-                    AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
-                        + $"support={raid.SupportArmyId.Value} phase={raid.Phase} reason=support_actor_en_route");
+                    if (!GroundContainerStillValid(supportId, snap))
+                        continue;
+                    c.Claim(supportId);
+                    if (raid != null)
+                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
+                            + $"support={supportId} phase={raid.Phase} reason=support_actor_en_route");
                 }
 
                 AttackIntent attack = i?.Attack;
-                if (attack != null && attack.SupportArmyId.HasValue
-                    && (attack.Phase == AttackMissionPhase.Reinforcement
-                        || attack.Phase == AttackMissionPhase.SupportReturn)
-                    && GroundContainerStillValid(attack.SupportArmyId.Value, snap))
-                    c.Claim(attack.SupportArmyId.Value);
-                // Audit F7 — every support a Gather still expects at the host is this operation's.
-                if (attack != null && attack.Phase == AttackMissionPhase.Gather)
-                    foreach (int supportId in attack.GatherSupportArmyIds)
-                        if (GroundContainerStillValid(supportId, snap))
-                            c.Claim(supportId);
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 
