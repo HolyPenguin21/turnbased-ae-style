@@ -605,14 +605,7 @@ namespace Game.Ai.V2
             shorten = Mathf.Clamp01(occupiedNearby / 4f);
         }
 
-        private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex)
-        {
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
-                    detectors++;
-            return Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
-        }
+        private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex) =>
+            ScoutRiskModel.DetectorRisk(AiMapMemory.AllKnownEnemySightings(player), hex);
     }
 }

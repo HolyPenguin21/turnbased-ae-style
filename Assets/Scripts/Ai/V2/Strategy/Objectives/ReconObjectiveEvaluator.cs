@@ -556,26 +556,10 @@ namespace Game.Ai.V2
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 
-        private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex)
-        {
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> s = snap?.Known?.EnemySightings;
-            if (s == null) return false;
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            // Same exposure rule as WorldAnalysis.Knowledge: a garrison cannot engage (audit F1);
-            // its detection is counted by DetectorsAt.
-            foreach (AiMapMemory.KnownEnemySighting e in s)
-                if (!e.IsGarrison && HexGridMath.Distance(e.Hex, hex) <= r) return true;
-            return false;
-        }
+        private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex) =>
+            ScoutRiskModel.IsExposed(snap?.Known?.EnemySightings, hex);
 
-        private static int DetectorsAt(WorldSnapshot snap, HexCoord hex)
-        {
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> s = snap?.Known?.EnemySightings;
-            if (s == null) return 0;
-            int r = AiConfigV2.frontierEnemyExposureRadius, n = 0;
-            foreach (AiMapMemory.KnownEnemySighting e in s)
-                if (HexGridMath.Distance(e.Hex, hex) <= r && e.CanDetectStealthAt(hex)) n++;
-            return n;
-        }
+        private static int DetectorsAt(WorldSnapshot snap, HexCoord hex) =>
+            ScoutRiskModel.CountDetectors(snap?.Known?.EnemySightings, hex);
     }
 }
