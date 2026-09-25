@@ -161,23 +161,14 @@
 
 **Следующий коммит (одобрен):** ценность карты героя в Phase B (`StrategicCardEvaluator.HeroCommandMarginalValue`) — на `HeroRoleEvaluator.ProjectCommand` через `Profile(CardDefinition)`.
 
-### Шаг 4 — скор атаки и готовность
+### Шаг 4 — скор атаки и готовность — СДЕЛАНО
 
-**Где сейчас:**
-- В скоре атаки уже есть прообраз готовности: `militaryTargetRelevance = Ramp(BestStack/TotalMilitary, 0.60…0.95) × 0.45` (`attackPotentialSat*`, `AiConfigV2.Aggression`).
-- **Его и заменить** на Сборку/Развёртку/запас. Нового слота в `TaskScore` не заводить — в `WithResponse` явно сказано «No Attack-specific slot».
-
-**Пол шанса победы 0.2 вместо 0.65.** Сейчас Attack использует общий `GroundCombatAdmissionPolicy.FreshStartWinChanceGate` (= `raidMinViableWinChance` 0.65) в местах:
-- `AggressionMissionPlanner.AppendAttack` и `TryAppendFreshAttackGather`;
-- `GroundCombatAdmissionRegistry.RecordAttack`;
-- `MissionContinuityLayer.Attack` (`ResolveAttackGather`, `AttackPrimaryClearsTarget`);
-- `AttackTacticalOpportunity`;
-- `AggressionDemandEvaluator.Attack` (`raidMinViableWinChance` напрямую);
-- `GroundCombatAssaultTransactionRunner.Run` — повторная проверка перед мутацией (`raidMinViableWinChance` **жёстко**, а не из запроса).
-
-Нужен один владелец порога Attack. Например, `GroundCombatAdmissionPolicy.AttackFloor`, а повторная проверка в транзакции берёт порог из `GroundCombatAssaultRequest` (поле лейна), не из константы рейда. Raid и ActiveDefence не трогать.
-
-**Demand:** при большом запасе усиления и низком шансе победы — запросы Production/экипировки через существующий `AggressionDemandEvaluator.AppendAttackDemands` (там уже есть `FieldCombatPower`). Открытый пункт из аудита кеша: для **несвязанной** Attack-цели деманд не создаётся.
+- **Готовность** — `AttackObjectiveEvaluator.Readiness(SelfSnapshot)`: Сборка = Fist / P_field (рампа 0.5…0.9), Развёртка = P_field / (P_deck + запас экипировки) (рампа 0.4…0.8), произведение. Заменила `potentialSaturation` в том же слоте `MilitaryTargetRelevance` (× `attackReadinessScoreWeight` 0.45), только Base/Citadel. Авиация в готовность не входит.
+- **Пол шанса победы Attack 0.2** — один владелец `GroundCombatAdmissionPolicy.AttackWinChanceFloor` (`AiConfigV2.attackMinViableWinChance`), один для свежей и продолжающейся операции (он ниже пола продолжения 0.4). Выше пола шанс — слагаемое `WinChance` скора (`WithResponse`). Места: `AppendAttack` (Assault), `TryAppendFreshAttackGather`, Continuity (`ResolveAttackGather`, `AttackPrimaryClearsTarget`), `GroundCombatAdmissionRegistry.RecordAttack` (+ пин инкумбента с порогом лейна).
+- **Повторная проверка в транзакции** — корень: `GroundCombatAssemblyPlan.WinChanceGate` (порог, по которому план допущен, пишет `Plan`); `GroundCombatAssaultTransactionRunner.Run` перепроверяет по нему. Выбор порога назначенного штурма — `GroundCombatAdmissionPolicy.AssaultGate`. Это заодно исправило Raid: инкумбент, допущенный по 0.4, больше не перепроверяется по 0.65.
+- **Префильтр мощности** (`GroundCombatFeasibility`, калиброван на 0.65) применяется только к порогам ≥ 0.65: ниже в калибровке встречалась победа до 0.24.
+- **Demand:** связанная операция просит поддержку, пока основной ниже уверенного порога 0.65 (была константа рейда, теперь `FreshStartWinChanceGate`). Новое `AppendUnboundAttackDemand`: лучшая Base/Citadel без операции, если никто не берёт её даже по полу и рука реально усиливает кулак (`BestStackPotential > FieldPotential`) → `FieldCombatPower` (форма `Any`, `TargetHex` = кулак). Экипировка из руки уже разыгрывается Phase B по оценке против угроз — отдельного вида потребности не заводилось.
+- **Не тронуто:** `AttackTacticalOpportunity` (попутный удар по армии, не цель Attack) остаётся на свежем пороге рейда.
 
 ### Шаг 5 — планировщик кулака (вырастает из `PlanGather`)
 

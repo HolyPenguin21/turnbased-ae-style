@@ -278,7 +278,7 @@ namespace Game.Ai.V2
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(a.PrimaryArmyId.Value);
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
                 a.PrimaryArmyId);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
@@ -299,9 +299,7 @@ namespace Game.Ai.V2
         }
 
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
-        // and the SAME honest hex-defence read the mission layer used, at the bounded continuation
-        // floor a started operation is entitled to (a still-gathering host is not marching yet and
-        // is held to the fresh gate).
+        // and the SAME honest hex-defence read the mission layer used, at Attack's one floor.
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
         {
             if (!a.PrimaryArmyId.HasValue)
@@ -314,10 +312,7 @@ namespace Game.Ai.V2
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                 snap, opposition, a.PrimaryArmyId.Value,
-                a.OperationStarted && a.Phase != AttackMissionPhase.Gather
-                    ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                    : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
-                hexBonus);
+                GroundCombatAdmissionPolicy.AttackWinChanceFloor, hexBonus);
             if (plan.Feasible)
             {
                 a.ProjectedWinChance = plan.ProjectedWinChance;

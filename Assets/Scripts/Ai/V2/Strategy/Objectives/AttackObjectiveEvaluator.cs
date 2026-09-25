@@ -375,9 +375,7 @@ namespace Game.Ai.V2
                 ? WorldAnalysis.CorridorAlignmentToward(anchor, directionTarget, b.Hex,
                     AiConfigV2.attackCorridorDetourScale) : 0f;
 
-            float potentialSaturation = Curves.Ramp(
-                snap.Self.BestStackPotential / Mathf.Max(1f, snap.Self.TotalMilitaryPotential),
-                AiConfigV2.attackPotentialSatRampLo, AiConfigV2.attackPotentialSatRampHi);
+            float readiness = Readiness(snap.Self);
 
             var score = new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
@@ -385,11 +383,11 @@ namespace Game.Ai.V2
                 frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
-                // Military-potential realisation is a stronghold fact (§ Attack-only): a Facility
-                // needs no concentrated stack to destroy, so it earns none of it.
+                // Readiness is a stronghold fact (§ Attack-only): a Facility needs no
+                // concentrated stack to destroy, so it earns none of it.
                 militaryTargetRelevance: kind == AttackTargetKind.Facility ? 0f
                     : TaskScoreEvaluator.MilitaryTargetRelevance(
-                        potentialSaturation * AiConfigV2.attackPotentialSaturationScoreWeight),
+                        readiness * AiConfigV2.attackReadinessScoreWeight),
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(
                     intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled
@@ -405,6 +403,21 @@ namespace Game.Ai.V2
                 IntelAgeTurns = intelAge,
                 TaskScore = score,
             };
+        }
+
+        // Strike force step 4 — Attack readiness from the SelfSnapshot force measures. Not a gate:
+        // how much of the available force already stands in one fist (assembly: Fist / P_field) and
+        // how much of the reachable ceiling is already on the map (deployment: P_field against
+        // P_deck plus the equipment still in hand/deck). Aviation is parallel support and stays out.
+        internal static float Readiness(SelfSnapshot self)
+        {
+            if (self == null)
+                return 0f;
+            float assembly = self.FistPower / Mathf.Max(1f, self.FieldPotential);
+            float deployment = self.FieldPotential
+                / Mathf.Max(1f, self.TotalMilitaryPotential + self.Reserve.Equipment);
+            return Curves.Ramp(assembly, AiConfigV2.attackAssemblyReadyLo, AiConfigV2.attackAssemblyReadyHi)
+                * Curves.Ramp(deployment, AiConfigV2.attackDeploymentReadyLo, AiConfigV2.attackDeploymentReadyHi);
         }
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as

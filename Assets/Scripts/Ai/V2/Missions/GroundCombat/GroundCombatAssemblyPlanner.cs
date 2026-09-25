@@ -39,6 +39,9 @@ namespace Game.Ai.V2
         public readonly List<GroundCombatAssemblyTransfer> Transfers = new List<GroundCombatAssemblyTransfer>();
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
+        // The win-chance gate this plan was admitted at (GroundCombatAssemblyPlanner.Plan): any
+        // later re-check of the same plan asks the same question, never a stricter one.
+        public float WinChanceGate;
 
         public static GroundCombatAssemblyPlan Infeasible(string reason) =>
             new GroundCombatAssemblyPlan { Feasible = false, Reason = reason };
@@ -81,6 +84,22 @@ namespace Game.Ai.V2
         // conservative: it fixes the observed 0.78-start -> ~0.41-next-turn discontinuity without
         // authorising a clearly hopeless attack. Fresh raids never see this floor.
         internal const float ContinuationWinChanceFloor = 0.40f;
+
+        // Attack (strike force step 4): ONE floor for a fresh and a continuing operation alike.
+        // Below it the AI sits and defends; above it the win chance is a term of the Attack score
+        // (AttackObjectiveEvaluator.WithResponse), not a gate. It is below the continuation floor,
+        // so no Attack re-check is ever stricter than its admission.
+        internal static float AttackWinChanceFloor => AiConfigV2.attackMinViableWinChance;
+
+        // The gate an assigned assault actor is (re)planned at: Attack's floor; otherwise the
+        // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
+        internal static float AssaultGate(MissionProposal proposal, int actorId) =>
+            proposal != null && proposal.Kind == MissionKind.Attack ? AttackWinChanceFloor
+            : proposal != null && proposal.FromDurableIntent
+                && proposal.DurableFundingTier == CommitmentTier.Hard
+                && proposal.PreferredMoverArmyId == actorId
+                ? ContinuationWinChanceFloor
+                : FreshStartWinChanceGate;
     }
 
     // The generalized ground-combat assembly REQUEST. The kernel below is shared by Raid,
@@ -151,7 +170,7 @@ namespace Game.Ai.V2
                     snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus);
                 if (exact.Feasible)
-                    return exact;
+                    return WithGate(exact, request.WinChanceGate);
             }
 
             if (!request.AllowSameHexAssembly)
@@ -168,11 +187,17 @@ namespace Game.Ai.V2
                     snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus);
                 if (assembled.Feasible)
-                    return assembled;
+                    return WithGate(assembled, request.WinChanceGate);
             }
 
             return GroundCombatAssemblyPlan.Infeasible(
                 "no already-formed or transactionally assemblable same-hex force clears the shared raid estimator");
+        }
+
+        private static GroundCombatAssemblyPlan WithGate(GroundCombatAssemblyPlan plan, float gate)
+        {
+            plan.WinChanceGate = gate;
+            return plan;
         }
 
         // The ONE enumeration of "which ready ground armies could independently take this fight"

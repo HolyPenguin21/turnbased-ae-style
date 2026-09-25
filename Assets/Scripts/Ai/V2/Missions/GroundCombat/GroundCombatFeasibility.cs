@@ -28,7 +28,9 @@ namespace Game.Ai.V2
             // cutoff is based on. Skips the Monte-Carlo estimate entirely for a matchup whose raw
             // aggregate power ratio is already far below anything that has ever cleared
             // raidMinViableWinChance; everything else still runs the real estimator unchanged.
-            if (defenders.Count > 0)
+            // The calibration only holds for a gate that high: a lower one (Attack's floor) always
+            // runs the estimator.
+            if (defenders.Count > 0 && minWinChance >= AiConfigV2.raidMinViableWinChance)
             {
                 float attackerPower = PowerSum(attackers);
                 // The bonus WorthIt will actually add to every defending unit's Defense has to be

@@ -69,9 +69,7 @@ namespace Game.Ai.V2
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
-                        WinChanceGate = pinnedActor.HasValue
-                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                        WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceFloor,
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -181,7 +179,7 @@ namespace Game.Ai.V2
             List<MissionProposal> proposals)
         {
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
+                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",

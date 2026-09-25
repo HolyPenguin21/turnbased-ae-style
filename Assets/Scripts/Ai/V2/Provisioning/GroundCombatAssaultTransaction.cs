@@ -277,9 +277,10 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // Keep the strict gate for fresh actors and the bounded continuation floor for
-            // the same Hard incumbent. Unlike PlanForArmy, this request can also assemble
-            // a legal same-hex roster, but may never re-select a different primary.
+            // GroundCombatAdmissionPolicy.AssaultGate picks the gate (Attack's floor; the strict
+            // gate for fresh actors and the bounded continuation floor for the same Hard
+            // incumbent). Unlike PlanForArmy, this request can also assemble a legal same-hex
+            // roster, but may never re-select a different primary.
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
@@ -287,13 +288,7 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    // New operations keep the strict fresh gate; only a pinned Hard
-                    // incumbent may use the existing bounded continuation floor.
-                    WinChanceGate = proposal.FromDurableIntent
-                        && proposal.DurableFundingTier == CommitmentTier.Hard
-                        && proposal.PreferredMoverArmyId == actorId
-                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 });
             if (!plan.Feasible)
@@ -407,10 +402,11 @@ namespace Game.Ai.V2
                                 $"{lane} donor #{group.Key} cannot spare the complete planned batch")));
                 }
                 // §29 — the site's own defence is part of THIS fight, so the pre-mutation re-check
-                // must ask the estimator the same question the plan was admitted on.
+                // must ask the estimator the same question the plan was admitted on: the same
+                // defence bonus and the same gate.
                 if (!GroundCombatFeasibility.Clears(projectedProfiles,
                         WorthIt.SideCommander.Of(projectedUnits), opposition,
-                        AiConfigV2.raidMinViableWinChance, r.DefenderHexDefenseBonus,
+                        plan.WinChanceGate, r.DefenderHexDefenseBonus,
                         out float projectedWin, out _))
                     return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.AssemblyInfeasible(

@@ -44,6 +44,7 @@ namespace Game.Ai.V2
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
                 GroundCombatAdmissionPolicy.FreshStartWinChanceGate, 0f);
             ApplyDurableIncumbentPin(proposal, snap, opposition, 0f, ids,
+                GroundCombatAdmissionPolicy.ContinuationWinChanceFloor,
                 "RaidAdmission", target.Target.DiagnosticLabel);
 
             ByProposal.Remove(proposal);
@@ -64,8 +65,9 @@ namespace Game.Ai.V2
 
             opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                GroundCombatAdmissionPolicy.FreshStartWinChanceGate, defenderHexDefenseBonus);
+                GroundCombatAdmissionPolicy.AttackWinChanceFloor, defenderHexDefenseBonus);
             ApplyDurableIncumbentPin(proposal, snap, opposition, defenderHexDefenseBonus, ids,
+                GroundCombatAdmissionPolicy.AttackWinChanceFloor,
                 "AttackAdmission", target.Target.DiagnosticLabel);
 
             ByProposal.Remove(proposal);
@@ -101,7 +103,7 @@ namespace Game.Ai.V2
         // fails the continuation gate, the strict fresh set remains a legitimate fallback.
         private static void ApplyDurableIncumbentPin(MissionProposal proposal, WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            List<int> ids, string logTag, string targetLabel)
+            List<int> ids, float continuationGate, string logTag, string targetLabel)
         {
             if (!proposal.FromDurableIntent
                 || proposal.DurableFundingTier != CommitmentTier.Hard
@@ -109,8 +111,7 @@ namespace Game.Ai.V2
                 return;
             int incumbentId = proposal.PreferredMoverArmyId.Value;
             GroundCombatAssemblyPlan incumbent = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, opposition, incumbentId,
-                GroundCombatAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
+                snap, opposition, incumbentId, continuationGate, defenderHexDefenseBonus);
             if (!incumbent.Feasible)
                 return;
             ids.Clear();
