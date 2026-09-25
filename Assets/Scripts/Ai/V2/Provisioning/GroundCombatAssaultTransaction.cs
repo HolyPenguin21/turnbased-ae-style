@@ -460,8 +460,24 @@ namespace Game.Ai.V2
         // turn pays its activation (ArmyActions.TransferMembersApCost), in both directions.
         // There is no cost of a handoff that has no plan — callers reject a null plan first.
         internal static int HandoffApCost(HandoffPlan plan, ArmyData primary, ArmyData support) =>
-            ArmyActions.TransferMembersApCost(plan.Incoming, primary)
-                + ArmyActions.TransferMembersApCost(plan.Displaced, support);
+            ProjectedHandoffApCost(plan.Incoming, plan.Displaced, primary, support, supportWalks: false);
+
+        // THE handoff charge, for the handoff happening now or on a support's arrival turn.
+        // Now (`supportWalks` false — the armies already share the hex): the live rule
+        // (ArmyActions.TransferMembersApCost). On arrival after a walk: the support activated to
+        // walk there, so every body it receives pays its activation; the primary holds that turn
+        // (a gather host, a reinforced primary waiting at the rendezvous), so its newcomers ride
+        // its own first activation for free. PlanGather prices its supports with this, so a gather
+        // plan's TotalAp carries the same charges the rendezvous legs will provision.
+        internal static int ProjectedHandoffApCost(IEnumerable<UnitData> incoming,
+            IEnumerable<UnitData> displaced, ArmyData primary, ArmyData support, bool supportWalks)
+        {
+            if (!supportWalks)
+                return ArmyActions.TransferMembersApCost(incoming, primary)
+                    + ArmyActions.TransferMembersApCost(displaced, support);
+            return (displaced ?? Enumerable.Empty<UnitData>())
+                .Where(u => u != null).Distinct().Sum(u => u.ActivationApCost);
+        }
 
         // The primary's ground bodies, most wounded first, then weakest (the one "who gives way"
         // order of every exchange).

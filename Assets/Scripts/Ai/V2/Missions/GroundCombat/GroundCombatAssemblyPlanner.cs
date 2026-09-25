@@ -62,7 +62,8 @@ namespace Game.Ai.V2
         public int GatherTurns;
         // Turns the assembled roster needs from the host's hex to the target.
         public int AssaultEta;
-        // Σ support activation × walking turns + assembled activation × assault turns.
+        // Σ (support activation × walking turns + its handoff charge) + assembled activation ×
+        // assault turns.
         public int TotalAp;
         public int TotalEta => GatherTurns + AssaultEta;
 
@@ -382,6 +383,7 @@ namespace Game.Ai.V2
         // their bodies over, so the assembled force clears `winChanceGate` at the lowest total AP:
         //
         //   cost(host) = Σ support.ActivationAp × max(1, turns(support -> host))
+        //              + Σ handoff charge (GroundCombatReinforcement.ProjectedHandoffApCost)
         //              + ActivationAp(assembled roster) × turns(host -> target)
         //
         // Every walking turn re-activates the walker, so the cheapest host is naturally one already
@@ -448,11 +450,13 @@ namespace Game.Ai.V2
 
             // The host's side of the handoff, exactly as GroundCombatReinforcement.ImprovesOdds
             // reads the primary.
+            // `bodyUnits` stays index-parallel to `bodies`, so every projected fill / swap names
+            // the live units that move and the handoff is priced on them.
             var roster = new List<UnitData>(host.Members);
-            List<WorthIt.DefenderProfile> bodies = host.Members
+            List<UnitData> bodyUnits = host.Members
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
-                .Select(WorthIt.FromLiveUnit)
                 .ToList();
+            List<WorthIt.DefenderProfile> bodies = bodyUnits.Select(WorthIt.FromLiveUnit).ToList();
 
             var pool = new List<GatherSupport>();
             foreach (ArmySnapshot s in supportSnaps)
@@ -466,6 +470,7 @@ namespace Game.Ai.V2
                 pool.Add(new GatherSupport
                 {
                     ArmyId = s.ArmyId,
+                    Live = live,
                     Units = sparable,
                     Bodies = sparable.Select(WorthIt.FromLiveUnit).ToList(),
                     Turns = turns,
@@ -491,8 +496,7 @@ namespace Game.Ai.V2
             UnitData heroExchangedFor = null;
             foreach (GatherSupport s in pool.OrderBy(x => x.Ap).ThenBy(x => x.ArmyId))
             {
-                CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, LiveArmy(
-                        supportSnaps.First(x => x.ArmyId == s.ArmyId)),
+                CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
                     opposition, defenderHexDefenseBonus, pooledBodies);
                 if (handover == null)
                     continue;
@@ -500,14 +504,18 @@ namespace Game.Ai.V2
                 heroDonor = s;
                 heroExchangedFor = handover.HeroExchangedFor;
                 roster.Add(handover.Hero);
+                s.Incoming.Add(handover.Hero);
                 // A hero exchanged for the host's weakest body: that body leaves the formation.
                 if (heroExchangedFor != null)
                 {
-                    int gone = host.Members.Where(u => AiArmyRoles.IsGroundBattleBody(u)).ToList()
-                        .IndexOf(heroExchangedFor);
+                    int gone = bodyUnits.IndexOf(heroExchangedFor);
                     roster.Remove(heroExchangedFor);
+                    s.Displaced.Add(heroExchangedFor);
                     if (gone >= 0)
+                    {
                         bodies.RemoveAt(gone);
+                        bodyUnits.RemoveAt(gone);
+                    }
                 }
                 break;
             }
@@ -542,13 +550,16 @@ namespace Game.Ai.V2
             {
                 GatherSupport pick = null;
                 List<WorthIt.DefenderProfile> pickRoster = null;
+                List<int> pickIncoming = null;
+                int pickDisplaced = -1;
                 float pickWin = 0f, pickRate = 0f;
                 foreach (GatherSupport s in pool)
                 {
                     if (chosen.Contains(s)
                         || !TryProjectReinforcement(bodies, s.Bodies, capacity, memberCount,
                             commander, opposition, out List<WorthIt.DefenderProfile> projected, out _,
-                            out float projectedWin, defenderHexDefenseBonus))
+                            out float projectedWin, out List<int> incomingIdx, out int displacedIdx,
+                            defenderHexDefenseBonus))
                         continue;
                     if (clears && projectedWin - win < AiConfigV2.attackGatherMinWinGain)
                         continue;
@@ -557,6 +568,8 @@ namespace Game.Ai.V2
                     {
                         pick = s;
                         pickRoster = projected;
+                        pickIncoming = incomingIdx;
+                        pickDisplaced = displacedIdx;
                         pickWin = projectedWin;
                         pickRate = rate;
                     }
@@ -570,13 +583,22 @@ namespace Game.Ai.V2
                         + $"(win {win:0.00} < {winChanceGate:0.00})");
                 }
 
-                // A fill appends the first `added` sparable bodies in the order passed above, so
-                // the matching live units are exact; a swap keeps the roster size (its AP/speed
-                // delta of one body is ignored).
-                int added = pickRoster.Count - bodies.Count;
-                if (added > 0)
-                    roster.AddRange(pick.Units.Take(added));
-                memberCount += System.Math.Max(0, added);
+                // The live units the projection moved: a fill appends them, a swap exchanges one
+                // for the host's weakest body, which leaves with the support.
+                if (pickDisplaced >= 0)
+                {
+                    UnitData gone = bodyUnits[pickDisplaced];
+                    bodyUnits.RemoveAt(pickDisplaced);
+                    roster.Remove(gone);
+                    pick.Displaced.Add(gone);
+                }
+                foreach (int i in pickIncoming)
+                {
+                    bodyUnits.Add(pick.Units[i]);
+                    roster.Add(pick.Units[i]);
+                    pick.Incoming.Add(pick.Units[i]);
+                }
+                memberCount += pickIncoming.Count - (pickDisplaced >= 0 ? 1 : 0);
                 bodies = pickRoster;
                 win = pickWin;
                 chosen.Add(pick);
@@ -599,7 +621,10 @@ namespace Game.Ai.V2
                 CoversAllDefenders = cover,
                 GatherTurns = chosen.Count == 0 ? 0 : chosen.Max(s => s.Turns),
                 AssaultEta = assaultEta,
-                TotalAp = chosen.Sum(s => s.Ap)
+                // Walks + each support's handoff (the same charge its rendezvous leg provisions)
+                // + the assembled roster's march to the target.
+                TotalAp = chosen.Sum(s => s.Ap + GroundCombatReinforcement.ProjectedHandoffApCost(
+                        s.Incoming, s.Displaced, host, s.Live, supportWalks: s.Turns > 0))
                     + ArmyData.ComputeActivationApCost(roster) * System.Math.Max(1, assaultEta),
             };
             foreach (GatherSupport s in chosen.OrderByDescending(s => s.Turns).ThenBy(s => s.ArmyId))
@@ -610,6 +635,10 @@ namespace Game.Ai.V2
         private sealed class GatherSupport
         {
             public int ArmyId;
+            public ArmyData Live;
+            // What its handoff moves: support -> host, and host -> support.
+            public readonly List<UnitData> Incoming = new List<UnitData>();
+            public readonly List<UnitData> Displaced = new List<UnitData>();
             public List<UnitData> Units;
             public List<WorthIt.DefenderProfile> Bodies;
             public int Turns;
@@ -647,10 +676,28 @@ namespace Game.Ai.V2
             int primaryCapacity, int primaryMemberCount, WorthIt.SideCommander primaryCommander,
             IReadOnlyList<WorthIt.DefendingArmy> opposition,
             out List<WorthIt.DefenderProfile> projected, out string why,
-            out float projectedWin, float defenderHexDefenseBonus)
+            out float projectedWin, float defenderHexDefenseBonus) =>
+            TryProjectReinforcement(primaryBodies, sparableSupportBodies, primaryCapacity,
+                primaryMemberCount, primaryCommander, opposition, out projected, out why,
+                out projectedWin, out _, out _, defenderHexDefenseBonus);
+
+        // Same projection, also naming WHO moves: `incoming` — indices into
+        // `sparableSupportBodies` that join the primary; `displacedIndex` — the index into
+        // `primaryBodies` the swap sends back to the support (-1 for a fill). PlanGather prices
+        // the handoff (GroundCombatReinforcement.ProjectedHandoffApCost) on exactly these units.
+        internal static bool TryProjectReinforcement(
+            IReadOnlyList<WorthIt.DefenderProfile> primaryBodies,
+            IReadOnlyList<WorthIt.DefenderProfile> sparableSupportBodies,
+            int primaryCapacity, int primaryMemberCount, WorthIt.SideCommander primaryCommander,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            out List<WorthIt.DefenderProfile> projected, out string why,
+            out float projectedWin, out List<int> incoming, out int displacedIndex,
+            float defenderHexDefenseBonus)
         {
             why = null;
             projectedWin = 0f;
+            incoming = new List<int>();
+            displacedIndex = -1;
             opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             var before = (primaryBodies ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
             projected = new List<WorthIt.DefenderProfile>(before);
@@ -663,7 +710,12 @@ namespace Game.Ai.V2
             int freeSlots = System.Math.Max(0, primaryCapacity - primaryMemberCount);
             if (freeSlots > 0)
             {
-                projected.AddRange(sparableSupportBodies.Take(freeSlots));
+                int take = System.Math.Min(freeSlots, sparableSupportBodies.Count);
+                for (int i = 0; i < take; i++)
+                {
+                    projected.Add(sparableSupportBodies[i]);
+                    incoming.Add(i);
+                }
             }
             else
             {
@@ -672,20 +724,25 @@ namespace Game.Ai.V2
                     why = "primary is full and has no swappable non-hero body";
                     return false;
                 }
-                WorthIt.DefenderProfile weakest = before
-                    .OrderBy(p => p.MaxHitPoints > 0f ? p.HitPoints / p.MaxHitPoints : 1f)
-                    .ThenBy(ProfileCombatValue)
+                int weakest = Enumerable.Range(0, before.Count)
+                    .OrderBy(i => before[i].MaxHitPoints > 0f ? before[i].HitPoints / before[i].MaxHitPoints : 1f)
+                    .ThenBy(i => ProfileCombatValue(before[i]))
                     .First();
-                WorthIt.DefenderProfile fresh = sparableSupportBodies
-                    .OrderByDescending(ProfileCombatValue)
-                    .FirstOrDefault(p => ProfileCombatValue(p) > ProfileCombatValue(weakest));
-                if (ProfileCombatValue(fresh) <= ProfileCombatValue(weakest))
+                float weakestValue = ProfileCombatValue(before[weakest]);
+                int fresh = Enumerable.Range(0, sparableSupportBodies.Count)
+                    .OrderByDescending(i => ProfileCombatValue(sparableSupportBodies[i]))
+                    .Where(i => ProfileCombatValue(sparableSupportBodies[i]) > weakestValue)
+                    .DefaultIfEmpty(-1)
+                    .First();
+                if (fresh < 0)
                 {
                     why = "primary is full and no support body improves on its weakest member";
                     return false;
                 }
-                projected.Remove(weakest);
-                projected.Add(fresh);
+                projected.RemoveAt(weakest);
+                projected.Add(sparableSupportBodies[fresh]);
+                incoming.Add(fresh);
+                displacedIndex = weakest;
             }
 
             // Handoffs move ground bodies only: the primary's commander leads before and after.
