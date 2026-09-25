@@ -173,9 +173,9 @@ namespace Game.Ai.V2
                     BuilderArmyId = d.EconomyPreferredBuilderArmyId,
                     BuilderRoutes = d.EconomyBuilderRoutes,
                 };
-                MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Kind == MissionKind.Economy && i.Economy != null
-                    && i.Economy.Kind == kind && i.Economy.TargetHex.Equals(target.TargetHex));
+                MissionIntent incumbent = activeIntents?.FirstOrDefault(i =>
+                    MissionContinuityLayer.HoldsEconomyBuildSite(i, target.TargetHex)
+                    && i.Economy.Kind == kind);
                 // Active Economy work was materialized above from continuity itself. A fresh
                 // demand may describe the same site with a newly ranked builder, but it cannot
                 // replace or duplicate the committed operation.

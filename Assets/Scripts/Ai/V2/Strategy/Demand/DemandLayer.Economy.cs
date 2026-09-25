@@ -1266,10 +1266,7 @@ namespace Game.Ai.V2
             if (ranked == null || ranked.Count == 0)
                 return result;
 
-            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
-                && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(IsRetargetableBaseCommitment);
 
             foreach (var group in ranked.GroupBy(d => (d.EconomyBuildCard, d.EconomyPreferredBuilderArmyId)))
             {
@@ -1295,10 +1292,7 @@ namespace Game.Ai.V2
             IReadOnlyList<AxisDemand> ranked, IReadOnlyList<MissionIntent> activeIntents)
         {
             AxisDemand first = ranked?.FirstOrDefault();
-            MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
-                && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue);
+            MissionIntent incumbent = activeIntents?.FirstOrDefault(IsRetargetableBaseCommitment);
             if (first == null || incumbent == null)
                 return first;
 
@@ -1333,11 +1327,7 @@ namespace Game.Ai.V2
         // One hysteresis/admission predicate reused by Demand, Phase A and Continuity.
         // Explicit scan provenance prevents a stale site-only score from authorizing a switch.
         internal static bool CanReplaceCommittedBase(MissionIntent incumbent, AxisDemand rival) =>
-            incumbent != null && incumbent.Status == IntentStatus.Active
-            && incumbent.Kind == MissionKind.Economy
-            && incumbent.Economy?.Kind == EconomyTaskKind.FoundBase
-            && incumbent.PreferredMoverArmyId.HasValue
-            && incumbent.Economy.BuildCard != null
+            IsRetargetableBaseCommitment(incumbent)
             && rival?.RequestingAxis == DesireAxis.Economy
             && rival.Capability == CapabilityKind.EconomicExpansionBase
             && rival.TargetHex.HasValue
@@ -1348,6 +1338,14 @@ namespace Game.Ai.V2
             && rival.Value > AiConfigV2.allocatorSliceEpsilon
             && rival.Value > rival.EconomySwitchIncumbentValue.Value
                 + AiConfigV2.economyBaseSwitchHysteresisThreshold;
+
+        // The Base commitment the switch hysteresis protects and may retarget: an ACTIVE FoundBase
+        // that still owns its card and its actor. One predicate for Demand's incumbent lookups and
+        // CanReplaceCommittedBase (Phase A / Continuity).
+        private static bool IsRetargetableBaseCommitment(MissionIntent i) =>
+            i != null && i.Kind == MissionKind.Economy && i.Status == IntentStatus.Active
+            && i.Economy?.Kind == EconomyTaskKind.FoundBase
+            && i.Economy.BuildCard != null && i.PreferredMoverArmyId.HasValue;
 
         // Economy admission predicate for a NEW Base project. The axis only needs to prove WHY a
         // Base is worth having at all: useful local income/payback, a PlayerGlobal effect
