@@ -136,7 +136,9 @@ namespace Game.Ai.V2
                 result.StepsMoved++;
             result.FinalHex = endHex;
 
-            bool operationStarted = moved || trace.BattleOccurred;
+            // Same facts as Raid's assault step: an ordinary hex event on the way is a physical
+            // start of the operation and ends this step for a fresh observation.
+            bool operationStarted = moved || trace.BattleOccurred || trace.HexEventOccurred;
             result.OperationStarted |= operationStarted;
             if (operationStarted)
                 result.ActualActorArmyId = pm.MoverArmyId;
@@ -152,6 +154,11 @@ namespace Game.Ai.V2
                 if (strike.HasValue && next.Value.Equals(waypoint))
                     result.AttackOpportunisticStrike = true;
                 result.StopReason = ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+            if (trace.HexEventOccurred)
+            {
+                result.StopReason = ExecutionStopReason.HexEventStarted;
                 yield break;
             }
             if (army == null)
@@ -221,6 +228,11 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.BattleStarted;
                 yield break;
             }
+            if (leg.HexEventOccurred)
+            {
+                result.StopReason = ExecutionStopReason.HexEventStarted;
+                yield break;
+            }
             if (army == null)
             {
                 result.StopReason = ExecutionStopReason.MoverLost;
@@ -285,6 +297,11 @@ namespace Game.Ai.V2
                 {
                     result.CombatChanged = true;
                     result.StopReason = ExecutionStopReason.BattleStarted;
+                    yield break;
+                }
+                if (leg.HexEventOccurred)
+                {
+                    result.StopReason = ExecutionStopReason.HexEventStarted;
                     yield break;
                 }
                 if (support == null)

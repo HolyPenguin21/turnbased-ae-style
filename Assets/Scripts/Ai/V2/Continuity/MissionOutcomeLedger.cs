@@ -455,6 +455,19 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // A support-mover leg of an Attack (convoy, gather, walk home, donor, wing) that lost its
+            // mover or its primary must not retire the whole operation — the same rule Raid applies
+            // to its support legs above. ResolveActive's next pass detects the loss and cleans up
+            // only that support (or, for a lost primary, retires the operation itself).
+            if (o.MissionKind == MissionKind.Attack && o.HasAttackPayload
+                && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase)
+                && (e.StopReason == ExecutionStopReason.MoverLost
+                    || e.StopReason == ExecutionStopReason.TargetInvalidated))
+            {
+                o.Outcome = ExecutionOutcome.Blocked;
+                return;
+            }
+
             if (o.MissionKind == MissionKind.Economy)
             {
                 // A committed roster mutation remains progress if its pinned tail became stale.
