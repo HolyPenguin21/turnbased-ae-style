@@ -93,7 +93,25 @@ namespace Game.Ai.V2
             phase == AttackMissionPhase.Reinforcement
             || phase == AttackMissionPhase.SupportReturn
             || phase == AttackMissionPhase.Gather
-            || phase == AttackMissionPhase.GatherReturn;
+            || phase == AttackMissionPhase.GatherReturn
+            || phase == AttackMissionPhase.AirSupport;
+
+        // An Attack leg run BESIDE the operation, never as its step: a gather donor walking home or
+        // the support wing's sortie. Its outcome never touches the operation's lifecycle, and it
+        // never competes with the operation's other legs for admission.
+        internal static bool IsAttackSideLeg(AttackMissionPhase phase) =>
+            phase == AttackMissionPhase.GatherReturn || phase == AttackMissionPhase.AirSupport;
+
+        // The support wing a durable operation holds (Raid in its AirSupport phase, Attack while a
+        // wing is bound). ActorCommitments claims it; an airborne strike sortie no operation holds
+        // is sent home by GroundCombatAirSupport.ReleaseOrphanStrikes.
+        internal static int? HeldAirSupportArmyId(MissionIntent intent)
+        {
+            RaidIntent raid = intent?.Raid;
+            if (raid != null && raid.Phase == RaidMissionPhase.AirSupport && raid.AirSupportArmyId.HasValue)
+                return raid.AirSupportArmyId;
+            return intent?.Attack?.AirSupportArmyId;
+        }
 
         // The requirements of a lifecycle leg whose mover Continuity already pinned (a walk home,
         // a convoy, a gather): one activation this turn unless already paid, and the mover's own

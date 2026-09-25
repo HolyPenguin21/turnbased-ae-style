@@ -92,10 +92,11 @@ namespace Game.Ai.V2
                 && aaTarget.Target.HasValue && abTarget.Target.HasValue
                 && aaTarget.Target.Equals(abTarget.Target))
                 // Audit F7 — parallel Gather legs of one operation walk DIFFERENT supports to the
-                // same host, and a donor walking home (GatherReturn) runs beside every other leg:
+                // same host, and a side leg (a donor walking home, the support wing) runs beside
+                // every other leg:
                 // complementary work, funded together, never one-per-pass.
-                return !(aaTarget.Phase == AttackMissionPhase.GatherReturn
-                    || abTarget.Phase == AttackMissionPhase.GatherReturn
+                return !(GroundCombatLegs.IsAttackSideLeg(aaTarget.Phase)
+                    || GroundCombatLegs.IsAttackSideLeg(abTarget.Phase)
                     || aaTarget.Phase == AttackMissionPhase.Gather
                         && abTarget.Phase == AttackMissionPhase.Gather
                         && aaTarget.SupportArmyId != abTarget.SupportArmyId);

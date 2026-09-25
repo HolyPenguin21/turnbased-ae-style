@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
@@ -41,6 +42,8 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.GatherReturn:
                     return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
                         target.SupportArmyId, "gather donor");
+                case AttackMissionPhase.AirSupport:
+                    return ProvisionAirSupport(player, root, ctx, session, funded, target, key, eps);
                 // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
@@ -48,6 +51,71 @@ namespace Game.Ai.V2
             }
 
             return ProvisionAssault(player, root, ctx, session, funded, target, key, eps);
+        }
+
+        // The support wing's sortie: the one GroundCombatAirSupport provisioning. The site must
+        // still be the operation's target with fresh defenders (unless the wing is already on its
+        // way home); the strike is judged on the primary's own sequential fight at the site.
+        private static ProvisioningResult ProvisionAirSupport(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
+            AttackMissionTarget target, StableMissionKey key, float eps)
+        {
+            WorldSnapshot snap = session.Snapshot;
+            if (!target.AirSupportArmyId.HasValue || !target.AirSupportLandingHex.HasValue)
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "attack air support requires one bound wing and its landing base"));
+            HexCoord targetHex = target.Target.Hex;
+            if (!GroundCombatAirSupport.TryResolveWing(player, session, target.AirSupportArmyId.Value,
+                    targetHex, "attack", out AirSupportWing w, out ProvisionFailure wingFailure))
+                return ProvisioningResult.Fail(wingFailure);
+
+            MissionIntent intent = null;
+            MissionIntentRegistry.GetOrCreate(player).TryGet(MissionIntentKey.ForAttack(target.Target),
+                out intent);
+            ArmyData primary = intent?.Attack?.PrimaryArmyId is int primaryId
+                ? AiV2Util.ResolveArmy(player, primaryId) : null;
+            List<AiMapMemory.KnownEnemySighting> site = (snap?.Known?.EnemySightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(s => s.Hex.Equals(targetHex) && s.Defenders != null && s.Defenders.Count > 0)
+                .ToList();
+            if (!w.Returning && (primary == null || site.Count == 0
+                    || AttackObjectiveEvaluator.EvaluateTarget(snap, target.Target)
+                        != AttackObjectiveEvaluator.AttackTargetStatus.Continue
+                    || site.Any(s => snap.TurnNumber - s.SeenTurn > AiConfigV2.attackIntelMaxAgeTurns)))
+                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
+                    "attack air support site is no longer the target, has no fresh defenders, "
+                    + "or the primary is gone"));
+
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, targetHex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, targetHex);
+            List<WorthIt.DefenderProfile> roster = primary == null
+                ? new List<WorthIt.DefenderProfile>()
+                : primary.Members.Where(u => AiArmyRoles.IsGroundBattleBody(u))
+                    .Select(WorthIt.FromLiveUnit).ToList();
+            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(primary?.Commander);
+            if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w, targetHex,
+                    opposition, site.Sum(s => s.DefenseSum), site.Sum(s => s.AttackSum),
+                    AirStrikePolicy.Standard,
+                    opp => WorthIt.EstimateSequential(roster, commander, opp, hexBonus).WinChance,
+                    "attack", eps, out HexCoord landing, out float ap, out float energy,
+                    out ProvisionFailure finishFailure))
+                return ProvisioningResult.Fail(finishFailure);
+
+            target.AirSupportLandingHex = landing;
+            return ProvisioningResult.Ok(new ProvisionedMission
+            {
+                Mission = funded.Mission,
+                Key = key,
+                Kind = MissionKind.Attack,
+                MoverArmyId = w.Wing.Id,
+                FocusHex = targetHex,
+                ExecutionHex = targetHex,
+                AttackTarget = target,
+                ClaimedAp = ap,
+                ClaimedEnergy = energy,
+                ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
+            });
         }
 
         // §25 — the target must still be the thing we set out to capture, answered from honest

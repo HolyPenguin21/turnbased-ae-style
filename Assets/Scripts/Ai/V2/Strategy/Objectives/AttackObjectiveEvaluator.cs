@@ -11,8 +11,8 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ATK §23 — the execution legs of ONE Attack operation. Deliberately the same shape the Raid
-    // lane already uses, minus AirSupport (§79 keeps Attack ground-only in this first version) and
-    // minus a post-success Return: §8 says the army STAYS on the Base it just took.
+    // lane already uses, minus a post-success Return: §8 says the army STAYS on the Base it just
+    // took. Air support is a side leg (AirSupport below), not a phase of the operation.
     //   Assault         — march on the target and take it.
     //   Reinforcement   — the primary cannot clear the site; a support army is being brought in.
     //   SupportReturn   — the shared GroundCombat handoff left the support container empty-handed
@@ -25,6 +25,9 @@ namespace Game.Ai.V2
     //   GatherReturn    — a gather support that already handed over walks home (strike force
     //                     step 5). One leg per donor, run beside whatever the operation does;
     //                     it is never the operation's own phase (AttackIntent.GatherReturns).
+    //   AirSupport      — a wing strikes the site's defenders right before the assault (the one
+    //                     GroundCombatAirSupport, as Raid's). Run by the wing beside the
+    //                     operation's own leg; never the operation's own phase.
     public enum AttackMissionPhase
     {
         Assault = 0,
@@ -33,6 +36,7 @@ namespace Game.Ai.V2
         RecoveryReturn = 3,
         Gather = 4,
         GatherReturn = 5,
+        AirSupport = 6,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
@@ -48,6 +52,9 @@ namespace Game.Ai.V2
         // Gather only: every support the frozen gather plan still expects at the host, including
         // this leg's SupportArmyId. Continuity copies it into the durable AttackIntent.
         public int[] GatherSupportArmyIds;
+        // AirSupport only: the bound wing and the own base it lands at.
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
         // Where the leg is actually walking this turn: the target site for Assault, the primary's
         // hex for Reinforcement/Gather, an own Base for the two return legs.
         public HexCoord DestinationHex;

@@ -233,16 +233,22 @@
 - **Давить или перегруппироваться.** Отдельного кода не нужно: после захвата намерение завершается, армия свободна, и следующая цель Attack соревнуется по скору, где готовность (шаг 4) снижает скор, пока кулак не собран.
 - **Цитадель через чит-якорь.** `WorldAnalysis.TryEnemyCitadelAnchor` вынесен из `TryAirSweepAnchor` (один владелец). Когда игрок не знает ни одной враждебной Base/Citadel, `AttackObjectiveEvaluator.ObservationNeeds` публикует якорь; Recon закрывает его Refresh или, если клетку никогда не видели, обычным Explore. Цель Attack появляется только из `Known.Buildings` после обзора — неразведанные защитники не допускаются.
 
-### Затем — авиация в поддержку атаки
+### Авиация в поддержку атаки — СДЕЛАНО
 
-**Образец:** как авиацию подключали к Recon:
-- `ReconAirReservationPrepass`;
-- `AviationSortieReservationEvaluator` (Combat отложен);
-- `ReconAirReservation`.
+**Один механизм на Raid и Attack** — `Missions/GroundCombat/GroundCombatAirSupport` (+ `GroundCombatLegStep.AirStrikeSortie`), вынесен из Raid без изменения его поведения:
+- `Options` — свободные крылья, оценка удара (`AviationCombatEstimator.EstimateAirStrike`), второй удар для вертолётов, база посадки, AP/Energy. Выжившие раскладываются обратно по армиям (`AfterStrike`, новые `AirStrikeEstimate.SurvivorSourceIndices`), так что многоармейный объект остаётся последовательными боями. Шанс «до/после» считает сама полоса (`winAgainst`): Raid — прежним чтением, Attack — `EstimateSequential` основной армии против объекта с бонусом гекса.
+- `LegRequirements`, `SortieEta` (= `AiV2Util.TurnsToCover`, общее правило с наземными переходами рейда), `SortieLive`.
+- Провижинг: `TryResolveWing` (крыло и его вылет) → проверки цели полосы → `TryFinishWing` (маршрут, ценность удара, конверт AP/Energy, тратимая Energy).
+- Шаг полёта: `GroundCombatLegStep.AirStrikeSortie` (был `TaskExecutor.RunRaidAirSupportStep`). `ExecutionResult.RaidAirSupportStrikeSucceeded` → `AirSupportStrikeSucceeded`.
+- Raid оставил за собой: цель-армию нейтралов, `AirStrikePolicy.RaidSupport` (минимум 1 выживший), свою оценку восстановления (`PlanScore`) и сравнение вариантов.
 
-**Для атаки:** удар по защитникам цели перед штурмом, «до/после» через `AviationCombatEstimator.EstimateAirStrike` + `WorthIt`. Для рейда это уже сделано: `RaidProvisioner.ProvisionAirSupport`, `RaidRecoveryPlanner.ProjectAirSupport`. Взять тот же механизм, не второй.
-
----
+**Attack:**
+- Боковая нога `AttackMissionPhase.AirSupport` (как `GatherReturn`: не фаза операции, исход не трогает жизненный цикл, не конкурирует с ногами той же операции).
+- **Привязка** (Continuity, `ResolveAttackAirSupport`): операция в Assault; удар крыла приходится на 1..`attackAirSupportLeadTurns` (1) хода раньше прибытия основной армии — штурм в тот же ход не опережает удар; обзор объекта свежий (`attackIntelMaxAgeTurns`); прирост шанса ≥ `attackAirSupportMinWinGain` (0.05). Из вариантов — лучший итоговый шанс, затем ETA, AP, Energy. Крыло, уже летящее по любому вылету, не берётся.
+- **Удар** — `AirStrikePolicy.Standard` по всем защитникам объекта (захват делает наземный штурм).
+- **Отпуск:** после посадки, если не взлетело к следующему ходу, если перестало быть крылом, при провале ноги. Пока вылет в воздухе, крыло не отпускается.
+- **Сироты:** `GroundCombatAirSupport.ReleaseOrphanStrikes` в начале/конце `ResolveActive` — ударный вылет, крыло которого не держит ни одна операция (`GroundCombatLegs.HeldAirSupportArmyId`), становится существующим обязательством посадки (`Rebase` домой, `AviationRebasePlanner.FindMandatoryContinuations`; его активацию уже бережёт `StrategicSpendability`). Это закрывает и прежнюю дыру Raid: крыло, отпущенное в воздухе, больше не остаётся висеть.
+- Резервация: нога несёт AP и Energy активации крыла (`LegRequirements`), провижинг проверяет тратимую Energy; удержание — `ActorCommitments` через `HeldAirSupportArmyId`. Кеш: поля намерения пишет только Continuity; живое чтение `AirSortieRegistry` — тот же шов, что у Raid.
 
 ## 7. Побочные хвосты
 

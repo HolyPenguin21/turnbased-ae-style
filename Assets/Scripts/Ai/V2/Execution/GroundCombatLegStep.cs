@@ -1,4 +1,5 @@
 using System.Collections;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -58,6 +59,96 @@ namespace Game.Ai.V2
             r.Moved = !r.EndHex.Equals(r.StartHex);
             r.BattleOccurred = trace.BattleOccurred;
             r.HexEventOccurred = trace.HexEventOccurred;
+        }
+
+        // THE flight step of a ground fight's air support (Raid AirSupport, Attack AirSupport):
+        // one step of the wing's strike sortie toward `targetHex` — create the sortie on the first
+        // step, strike the defenders on arrival under `policy`, then fly back and land at
+        // `landingHex`. The lane validates its own target first; this never re-plans.
+        internal static IEnumerator AirStrikeSortie(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData wing,
+            HexCoord targetHex, HexCoord landingHex, AirStrikePolicy policy, string label,
+            string flyReason)
+        {
+            AirSortie sortie = AirSortieRegistry.ForArmy(player, wing);
+            if (sortie == null)
+            {
+                sortie = new AirSortie
+                {
+                    Kind = AirSortieKind.Strike, Army = wing,
+                    TargetHex = targetHex,
+                    LandingHex = landingHex,
+                    Outbound = true,
+                };
+                AirSortieRegistry.Add(player, sortie);
+            }
+            if (sortie.Kind != AirSortieKind.Strike)
+            {
+                result.StopReason = ExecutionStopReason.TargetInvalidated;
+                yield break;
+            }
+
+            if (sortie.Outbound && wing.Hex.Equals(targetHex))
+            {
+                AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
+                if (presenter == null)
+                {
+                    result.StopReason = ExecutionStopReason.TargetInvalidated;
+                    yield break;
+                }
+                var strike = new AviationCombatPresenter.AirStrikeResult();
+                wing.PendingAirStrikePolicy = policy;
+                yield return presenter.ResolveAirStrikeAtCurrentHex(wing, wing.Hex,
+                    wing.PendingAirStrikePolicy.Value, strike);
+                wing.PendingAirStrikePolicy = null;
+                wing.LastAirStrikeHex = wing.Hex;
+                wing.LastAirStrikeAttacked = strike.Attacked;
+                result.CombatChanged |= strike.Attacked;
+                result.AirSupportStrikeSucceeded |= strike.Attacked;
+                sortie.Outbound = false;
+                sortie.TargetHex = sortie.LandingHex;
+                result.ActualActorArmyId = wing.Id;
+                result.StopReason = ExecutionStopReason.StepCompleted;
+                yield break;
+            }
+
+            AiDecision move = AiAirSortiePlanner.ContinueSortie(player, root, ctx, sortie,
+                label, flyReason, 0f);
+            if (move == null)
+            {
+                result.StopReason = wing.CurrentMovement <= 0
+                    ? ExecutionStopReason.OutOfMovement : ExecutionStopReason.NoSafeStep;
+                yield break;
+            }
+            HexCoord before = wing.Hex;
+            bool enteringTarget = sortie.Outbound && move.TargetHex.Equals(targetHex);
+            if (enteringTarget)
+                wing.PendingAirStrikePolicy = policy;
+            var trace = new AiMoveExecutionTrace();
+            yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
+            wing.PendingAirStrikePolicy = null;
+            ArmyData after = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
+            HexCoord final = after?.Hex ?? trace.EndHex;
+            if (!final.Equals(before))
+                result.StepsMoved++;
+            result.FinalHex = final;
+            result.ActualActorArmyId = pm.MoverArmyId;
+            if (after != null && after.LastAirStrikeHex.HasValue
+                && after.LastAirStrikeHex.Value.Equals(targetHex)
+                && after.LastAirStrikeAttacked)
+            {
+                result.CombatChanged = true;
+                result.AirSupportStrikeSucceeded = true;
+                sortie.Outbound = false;
+                sortie.TargetHex = sortie.LandingHex;
+            }
+            if (!sortie.Outbound && final.Equals(sortie.LandingHex))
+            {
+                AirSortieRegistry.Remove(player, sortie);
+                result.ReachedGoal = true;
+                result.DurableRoleContinues = true;
+            }
+            result.StopReason = ExecutionStopReason.StepCompleted;
         }
     }
 }

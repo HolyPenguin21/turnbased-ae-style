@@ -1,4 +1,5 @@
 ﻿using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Map;
 using Game.Players;
@@ -167,6 +168,11 @@ namespace Game.Ai.V2
                 if (attackReturn)
                     return mover.Hex.Equals(attack.DestinationHex)
                         ? MissionValidity.StaleGoalMet : MissionValidity.Valid;
+                // The support wing's sortie is valid while the wing is; the flight step re-checks
+                // its own route every step and never captures anything.
+                if (attack.Phase == AttackMissionPhase.AirSupport)
+                    return AviationRules.IsValidAirArmy(mover)
+                        ? MissionValidity.Valid : MissionValidity.StaleMoverLost;
                 // Reinforcement is a rendezvous with the primary, not a fight with the site: its
                 // validity is the primary's, and the executor re-reads the meeting hex itself.
                 if (attack.Phase == AttackMissionPhase.Reinforcement

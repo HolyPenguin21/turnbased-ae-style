@@ -383,7 +383,10 @@ namespace Game.Ai.V2
                     SafeStepPathing.FindSafePathCost(ctx.Map, player, from, to, maxMovement));
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
             if (state.Count == 0)
+            {
+                GroundCombatAirSupport.ReleaseOrphanStrikes(player, state.All);
                 return active;
+            }
 
             bool underSiege = snap?.Threat?.UnderSiege == true;
             var dead = new List<MissionIntentKey>();
@@ -841,12 +844,7 @@ namespace Game.Ai.V2
 
                     if (ri.Phase == RaidMissionPhase.AirSupport)
                     {
-                        ArmyData airWing = ri.AirSupportArmyId.HasValue
-                            ? AiV2Util.ResolveArmy(player, ri.AirSupportArmyId.Value) : null;
-                        AirSortie sortie = airWing != null
-                            ? AirSortieRegistry.ForArmy(player, airWing) : null;
-                        if (airWing == null || !AviationRules.IsValidAirArmy(airWing)
-                            || sortie == null)
+                        if (!GroundCombatAirSupport.SortieLive(player, ri.AirSupportArmyId, out _))
                         {
                             int? released = ri.AirSupportArmyId;
                             ri.AirSupportAttemptedTurn = snap.TurnNumber;
@@ -1228,6 +1226,9 @@ namespace Game.Ai.V2
                         + $"kept {owner.IntentKey}, unbound {duplicate.IntentKey}");
                 }
             }
+            // An airborne strike sortie whose operation let go of it (retired, released, failed)
+            // must still land.
+            GroundCombatAirSupport.ReleaseOrphanStrikes(player, state.All);
             return active;
         }
 
@@ -2014,18 +2015,30 @@ namespace Game.Ai.V2
                 + (o.StructuralFailure ? " structural" : "")
                 + $" {o.IntentKey}");
 
-            // Strike force step 5 — a gather donor walking home is no step of the operation:
-            // whatever its outcome, the Attack intent's lifecycle (progress, stall, suspension,
-            // retirement) is untouched. Arrival or loss is read from the next snapshot
-            // (ResolveGatherReturns); a failed walk releases just that donor.
-            if (o.HasAttackPayload && o.AttackTarget.Phase == AttackMissionPhase.GatherReturn)
+            // Strike force — a side leg (a gather donor walking home, the support wing's sortie) is
+            // no step of the operation: whatever its outcome, the Attack intent's lifecycle
+            // (progress, stall, suspension, retirement) is untouched. Arrival, landing or loss is
+            // read from the next snapshot (ResolveGatherReturns / ResolveAttackAirSupport); a
+            // failed leg releases just that donor or wing (an airborne wing then lands through
+            // GroundCombatAirSupport.ReleaseOrphanStrikes).
+            if (o.HasAttackPayload && GroundCombatLegs.IsAttackSideLeg(o.AttackTarget.Phase))
             {
-                if ((o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed)
-                    && intent?.Attack != null && o.AttackTarget.SupportArmyId.HasValue)
+                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed;
+                if (failed && intent?.Attack != null
+                    && o.AttackTarget.Phase == AttackMissionPhase.GatherReturn
+                    && o.AttackTarget.SupportArmyId.HasValue)
                 {
                     intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == o.AttackTarget.SupportArmyId.Value);
                     AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
                         + $"#{o.AttackTarget.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
+                }
+                if (failed && intent?.Attack != null
+                    && o.AttackTarget.Phase == AttackMissionPhase.AirSupport
+                    && intent.Attack.AirSupportArmyId == o.AttackTarget.AirSupportArmyId)
+                {
+                    ReleaseAttackAirSupport(intent.Attack, turn);
+                    AiDebugLog.Write($"[AI][V2][Attack][AirSupport] continuity — [{aid}] {o.IntentKey} wing "
+                        + $"#{o.AttackTarget.AirSupportArmyId} sortie failed ({Describe(o)}); released");
                 }
                 return;
             }

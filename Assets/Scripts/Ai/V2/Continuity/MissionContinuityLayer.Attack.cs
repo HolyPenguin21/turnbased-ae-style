@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
@@ -64,6 +66,7 @@ namespace Game.Ai.V2
             }
 
             ResolveGatherReturns(snap, player, intent, a);
+            ResolveAttackAirSupport(snap, player, intent, a, unavailableArmyIds);
 
             bool supportLostThisPass = false;
             if (a.SupportArmyId.HasValue
@@ -239,6 +242,103 @@ namespace Game.Ai.V2
                         + " — released");
                 return done;
             });
+        }
+
+        // Strike force — the fist's air support, the one GroundCombatAirSupport (as Raid's). A wing
+        // is bound while the operation is in Assault and its strike lands 1..attackAirSupportLeadTurns
+        // turns before the primary reaches the site (never raced by the assault in the same turn),
+        // the site's intel is fresh and the strike raises the primary's fight by
+        // attackAirSupportMinWinGain. It stays bound while its sortie flies
+        // (never orphaned mid-air) and is released once it has landed, when it never took off
+        // by a later turn, or when it stops being a valid wing.
+        private static void ResolveAttackAirSupport(WorldSnapshot snap, PlayerSetupData player,
+            MissionIntent intent, AttackIntent a, ISet<int> unavailableArmyIds)
+        {
+            int turn = snap?.TurnNumber ?? 0;
+            if (a.AirSupportArmyId.HasValue)
+            {
+                bool flying = GroundCombatAirSupport.SortieLive(player, a.AirSupportArmyId,
+                    out bool wingValid);
+                if (flying)
+                {
+                    a.AirSupportSortieSeen = true;
+                    return;
+                }
+                if (wingValid && !a.AirSupportSortieSeen && a.AirSupportBoundTurn >= turn)
+                    return;
+                AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} wing "
+                    + $"#{a.AirSupportArmyId} released ("
+                    + (!wingValid ? "no longer a valid wing" : a.AirSupportSortieSeen ? "landed" : "never took off")
+                    + ")");
+                ReleaseAttackAirSupport(a, turn);
+                return;
+            }
+
+            if (a.Phase != AttackMissionPhase.Assault || a.AirSupportAttemptedTurn == turn
+                || !a.PrimaryArmyId.HasValue || snap?.Self?.Armies == null)
+                return;
+            ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            if (primary == null)
+                return;
+            int primaryEta = AiV2Util.TurnsToCover(primary,
+                HexGridMath.Distance(primary.Hex, a.Target.Hex));
+            if (primaryEta < 2 || primaryEta > 1 + AiConfigV2.attackAirSupportLeadTurns)
+                return;
+
+            List<AiMapMemory.KnownEnemySighting> site = (snap.Known?.EnemySightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(s => s.Hex.Equals(a.Target.Hex) && s.Defenders != null && s.Defenders.Count > 0)
+                .ToList();
+            if (site.Count == 0
+                || site.Any(s => turn - s.SeenTurn > AiConfigV2.attackIntelMaxAgeTurns))
+                return;
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefenderProfile> roster = primary.Members
+                ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
+            Func<IReadOnlyList<WorthIt.DefendingArmy>, float> win = opp =>
+                WorthIt.EstimateSequential(roster, primary.Commander, opp, hexBonus).WinChance;
+            float current = win(opposition);
+
+            // A wing already flying any sortie is not free for this one.
+            var unavailable = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            foreach (ArmySnapshot w in snap.Self.Armies)
+                if (w != null && w.IsAir && GroundCombatAirSupport.SortieLive(player, w.ArmyId, out _))
+                    unavailable.Add(w.ArmyId);
+
+            List<AirSupportOption> options = GroundCombatAirSupport.Options(snap, opposition,
+                    a.Target.Hex, site.Sum(s => s.DefenseSum), site.Sum(s => s.AttackSum),
+                    AirStrikePolicy.Standard, win, current, unavailable)
+                .Where(o => o.FirstStrikeEta <= primaryEta - 1
+                    && o.WinAfter - current >= AiConfigV2.attackAirSupportMinWinGain)
+                .OrderByDescending(o => o.WinAfter)
+                .ThenBy(o => o.EtaTurns)
+                .ThenBy(o => o.Ap)
+                .ThenBy(o => o.Resources.Energy)
+                .ThenBy(o => o.WingArmyId)
+                .ToList();
+            if (options.Count == 0)
+                return;
+            AirSupportOption best = options[0];
+            a.AirSupportArmyId = best.WingArmyId;
+            a.AirSupportLandingHex = best.LandingHex;
+            a.AirSupportBoundTurn = turn;
+            a.AirSupportSortieSeen = false;
+            AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} bound wing "
+                + $"#{best.WingArmyId} for {a.Target.DiagnosticLabel}: win {current:0.00} -> "
+                + $"{best.WinAfter:0.00} ({(best.SecondStrike ? "two strikes" : "one strike")}), "
+                + $"eta {best.EtaTurns}, landing ({best.LandingHex.Q},{best.LandingHex.R})");
+        }
+
+        private static void ReleaseAttackAirSupport(AttackIntent a, int turn)
+        {
+            a.AirSupportArmyId = null;
+            a.AirSupportLandingHex = null;
+            a.AirSupportSortieSeen = false;
+            a.AirSupportAttemptedTurn = turn;
         }
 
         // The one "support leaves an Attack" edge after SupportReturn: release the claim and hand

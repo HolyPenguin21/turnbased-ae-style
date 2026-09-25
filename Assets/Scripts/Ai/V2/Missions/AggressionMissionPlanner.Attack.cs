@@ -46,6 +46,8 @@ namespace Game.Ai.V2
                     foreach (AttackGatherReturn r in a.GatherReturns)
                         AppendAttackWalkHome(snap, intent, a, AttackMissionPhase.GatherReturn,
                             r.ArmyId, r.BaseHex, proposals);
+                    // The bound support wing flies its sortie beside the operation too.
+                    AppendAttackAirSupport(snap, intent, a, proposals);
                 }
 
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
@@ -307,6 +309,47 @@ namespace Game.Ai.V2
             };
             proposal.Axes.Value[DesireAxis.Aggression] = 1f;
             return proposal;
+        }
+
+        // The support wing's sortie leg (AttackMissionPhase.AirSupport): the wing Continuity bound
+        // flies to the site, strikes, and lands. Lifecycle work of a Hard operation, so its
+        // intrinsic score stays neutral; requirements are the one air-support leg shape.
+        private static void AppendAttackAirSupport(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, List<MissionProposal> proposals)
+        {
+            if (!a.AirSupportArmyId.HasValue || !a.AirSupportLandingHex.HasValue)
+                return;
+            ArmySnapshot wing = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.AirSupportArmyId.Value && x.IsAir && !x.IsAirfield);
+            if (wing == null)
+                return;
+            int eta = GroundCombatAirSupport.SortieEta(wing, a.Target.Hex);
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.AirSupport,
+                Target = a.Target,
+                AirSupportArmyId = wing.ArmyId,
+                AirSupportLandingHex = a.AirSupportLandingHex,
+                DestinationHex = a.Target.Hex,
+                DefenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count,
+                EstimatedEta = eta,
+                OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = 0f,
+                LocalAdmissionScore = 0f,
+                PreferredMoverArmyId = wing.ArmyId,
+                FromDurableIntent = true,
+                DurableFundingTier = intent.Funding,
+                Requirements = GroundCombatAirSupport.LegRequirements(wing, a.Target.Hex, eta),
+                Explain = $"Attack {a.Target.DiagnosticLabel} AirSupport wing #{wing.ArmyId} "
+                    + $"-> strike, land ({a.AirSupportLandingHex.Value.Q},{a.AirSupportLandingHex.Value.R})",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            proposals.Add(proposal);
         }
 
         // §24/§47 — a walking-home leg (RecoveryReturn / SupportReturn). Lifecycle work, not fresh

@@ -356,6 +356,14 @@ namespace Game.Ai.V2
         // AttackMissionPhase.GatherReturn legs). Continuity picks each one's base and drops it on
         // arrival or loss; the operation's own Phase never becomes GatherReturn.
         public List<AttackGatherReturn> GatherReturns = new List<AttackGatherReturn>();
+        // Air support of the fist (AttackMissionPhase.AirSupport legs): the bound wing, where it
+        // lands, the turn it was bound, whether its sortie has been seen flying, and the turn a
+        // binding last ended (no second binding that turn). Continuity owns all five.
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
+        public int AirSupportBoundTurn = -1;
+        public bool AirSupportSortieSeen;
+        public int AirSupportAttemptedTurn = -1;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
         public int ReinforcementRequestedTurn = -1;

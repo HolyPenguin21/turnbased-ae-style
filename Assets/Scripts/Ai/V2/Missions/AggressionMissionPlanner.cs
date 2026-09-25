@@ -591,11 +591,7 @@ namespace Game.Ai.V2
                 && a.ArmyId == airId && a.IsAir && !a.IsAirfield && !a.IsPrison);
             if (wing == null)
                 return null;
-            int distance = HexGridMath.Distance(wing.Hex, ri.LastKnownHex);
-            int eta = distance <= wing.CurrentMovement ? 1
-                : 1 + (distance - wing.CurrentMovement
-                    + System.Math.Max(1, wing.MaxMovement) - 1)
-                    / System.Math.Max(1, wing.MaxMovement);
+            int eta = GroundCombatAirSupport.SortieEta(wing, ri.LastKnownHex);
             var target = new RaidMissionTarget
             {
                 Phase = RaidMissionPhase.AirSupport,
@@ -718,19 +714,8 @@ namespace Game.Ai.V2
                 ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
                     && c.Target.AirSupportArmyId.HasValue
                     && a.ArmyId == c.Target.AirSupportArmyId.Value);
-                float activation = wing != null && !wing.HasActivatedThisTurn
-                    ? wing.ActivationApCost : 0f;
-                float energy = wing != null && !wing.HasActivatedThisTurn
-                    ? wing.ActivationEnergyCost : 0f;
-                req = new MissionRequirements
-                {
-                    RequiresArmy = true, RequiresHero = false, MoverKnown = wing != null,
-                    ApMinimum = activation, ApDesired = activation, ApMaximum = activation,
-                    EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
-                    EstimatedDistance = wing == null ? 0
-                        : HexGridMath.Distance(wing.Hex, c.Target.DestinationHex),
-                    EtaTurns = System.Math.Max(1, c.Target.EstimatedEta),
-                };
+                req = GroundCombatAirSupport.LegRequirements(wing, c.Target.DestinationHex,
+                    c.Target.EstimatedEta);
             }
             int? plannedMover = c.PreferredMover ?? estimate.PlannedMoverArmyId ?? c.CostedMover;
 

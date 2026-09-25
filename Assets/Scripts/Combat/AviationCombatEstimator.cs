@@ -49,11 +49,17 @@ namespace Game.Combat
             public readonly float KillAnyProbability;
             public readonly float ExpectedKillCount;
             public readonly float WipeProbability;
+            // For each ExpectedDefendersAfter entry, its index in the knownDefenders the estimate
+            // was run on — so a caller that passed several defending armies back to back can
+            // split the survivors back into those armies (GroundCombatAirSupport.AfterStrike).
+            public readonly IReadOnlyList<int> SurvivorSourceIndices;
 
             public AirStrikeEstimate(float expectedDefenseAfter, float expectedAttackAfter,
                 IReadOnlyList<WorthIt.DefenderProfile> expectedDefendersAfter, float expectedDamage,
-                float killAnyProbability = 0f, float expectedKillCount = 0f, float wipeProbability = 0f)
+                float killAnyProbability = 0f, float expectedKillCount = 0f, float wipeProbability = 0f,
+                IReadOnlyList<int> survivorSourceIndices = null)
             {
+                SurvivorSourceIndices = survivorSourceIndices;
                 ExpectedDefenseAfter = expectedDefenseAfter;
                 ExpectedAttackAfter = expectedAttackAfter;
                 ExpectedDefendersAfter = expectedDefendersAfter;
@@ -155,6 +161,7 @@ namespace Game.Combat
             }
 
             var expectedDefenders = new List<WorthIt.DefenderProfile>();
+            var survivorIndices = new List<int>();
             float expectedDefense = 0f, expectedAttack = 0f;
             for (int i = 0; i < n; i++)
             {
@@ -164,12 +171,14 @@ namespace Game.Combat
                 WorthIt.DefenderProfile original = knownDefenders[i];
                 expectedDefenders.Add(new WorthIt.DefenderProfile(original.Defense, original.HasCeramicArmor, original.TypeTags,
                     original.Attack, meanHp, original.Initiative, original.Abilities));
+                survivorIndices.Add(i);
                 expectedDefense += original.Defense;
                 expectedAttack += original.Attack;
             }
 
             return new AirStrikeEstimate(expectedDefense, expectedAttack, expectedDefenders, totalDamageSum / Trials,
-                (float)killAnyTrials / Trials, killCountSum / Trials, (float)wipeTrials / Trials);
+                (float)killAnyTrials / Trials, killCountSum / Trials, (float)wipeTrials / Trials,
+                survivorIndices);
         }
 
         // Deterministic per-matchup seed, same reasoning as WorthIt.BuildSeed's own comment — built

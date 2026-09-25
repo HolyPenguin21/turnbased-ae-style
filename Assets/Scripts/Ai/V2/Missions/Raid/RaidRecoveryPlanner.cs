@@ -161,93 +161,27 @@ namespace Game.Ai.V2
                 return RaidRecoveryProjection.None(currentWin,
                     "air support requires a recent neutral sighting");
 
-            List<HexCoord> bases = (snap.Self.BaseHexes ?? Array.Empty<HexCoord>())
-                .Distinct().OrderBy(x => x.Q).ThenBy(x => x.R).ToList();
-            if (bases.Count == 0)
+            if (!GroundCombatAirSupport.LandingBase(snap, raid.LastKnownHex).HasValue)
                 return RaidRecoveryProjection.None(currentWin,
                     "air support has no owned recovery landing base");
 
+            // The one air support (GroundCombatAirSupport); the raid keeps its own target, strike
+            // policy, win read and canonical recovery score.
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
                 "no free air wing produces a viable canonical recovery plan");
-            foreach (ArmySnapshot wing in (snap.Self.Armies ?? Array.Empty<ArmySnapshot>())
-                .Where(x => x != null && x.IsAir && !x.IsAirfield && !x.IsPrison
-                    && x.MemberCount > 0 && x.CurrentMovement > 0
-                    && (!fixedWingArmyId.HasValue || x.ArmyId == fixedWingArmyId.Value)
-                    && (unavailableArmyIds == null
-                        || !unavailableArmyIds.Contains(x.ArmyId)))
-                .OrderBy(x => x.ArmyId))
+            foreach (AirSupportOption o in GroundCombatAirSupport.Options(snap, opposition,
+                raid.LastKnownHex, sighting.Value.DefenseSum, sighting.Value.AttackSum,
+                AirStrikePolicy.RaidSupport(raid.Target.ArmyId),
+                opp => Win(CombatRoster(primary), primary.Commander, opp, out _),
+                currentWin, unavailableArmyIds, fixedWingArmyId))
             {
-                List<float> attacks = (wing.RecoveryMembers
-                        ?? Array.Empty<RaidRecoveryMemberSnapshot>())
-                    .Where(x => x.IsAviation)
-                    .OrderBy(x => x.UnitIndex)
-                    .Select(x => x.CurrentProfile.Attack).ToList();
-                if (attacks.Count == 0)
-                    continue;
-
-                AviationCombatEstimator.AirStrikeEstimate estimate =
-                    AviationCombatEstimator.EstimateAirStrike(attacks,
-                        sighting.Value.DefenseSum, sighting.Value.AttackSum, WorthIt.UnitsOf(opposition),
-                        AirStrikePolicy.RaidSupport(raid.Target.ArmyId));
-                if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
-                    || estimate.ExpectedDefendersAfter.Count < 1)
-                    continue;
-                float after = Win(CombatRoster(primary), primary.Commander,
-                    AfterStrike(opposition, estimate.ExpectedDefendersAfter), out _);
-                if (after <= currentWin + AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-
-                int distance = HexGridMath.Distance(wing.Hex, raid.LastKnownHex);
-                int eta = CeilTurns(wing, distance);
-
-                // A wing with real endurance (helicopter-class TurnsWithoutRefuel) that reaches
-                // THIS turn can hold position unlanded overnight and strike again next turn before
-                // heading home, instead of every sortie being forced into a same-turn round trip.
-                // Second strike is priced by simply
-                // extending eta by one turn — PlanScore's own DeliveryFromEta already charges
-                // exactly one extra recurring activation for that, the same real per-turn
-                // reactivation fee any other multi-turn move already pays.
-                float finalAfter = after;
-                int finalEta = eta;
-                if (eta <= 1 && wing.SafeUnlandedEndsRemaining >= 1)
-                {
-                    AviationCombatEstimator.AirStrikeEstimate second =
-                        AviationCombatEstimator.EstimateAirStrike(attacks,
-                            estimate.ExpectedDefenseAfter, estimate.ExpectedAttackAfter,
-                            estimate.ExpectedDefendersAfter,
-                            AirStrikePolicy.RaidSupport(raid.Target.ArmyId));
-                    if (second.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon
-                        && second.ExpectedDefendersAfter.Count >= 1)
-                    {
-                        float after2 = Win(CombatRoster(primary), primary.Commander,
-                            AfterStrike(opposition, second.ExpectedDefendersAfter), out _);
-                        if (after2 > finalAfter + AiConfigV2.allocatorSliceEpsilon)
-                        {
-                            finalAfter = after2;
-                            finalEta = eta + 1;
-                        }
-                    }
-                }
-
-                float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
-                float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
-                // The second strike is a SEPARATE turn's activation (ArmyData.ActivationEnergyCost
-                // is charged per activation, same rule as ActivationApCost) — its own fresh launch
-                // energy is real and must be priced too, not just the recurring AP fee Delivery
-                // already covers.
-                if (finalEta > eta)
-                    energy += wing.ActivationEnergyCost;
-                ResourceVector resources = new ResourceVector(0f, 0f, energy, 0f, 0f);
-                TaskScore score = PlanScore(finalAfter, 0f, ap, resources, finalEta,
-                    wing.ActivationApCost, 2);
-                HexCoord landing = bases
-                    .OrderBy(x => HexGridMath.Distance(x, raid.LastKnownHex))
-                    .ThenBy(x => x.Q).ThenBy(x => x.R).First();
+                TaskScore score = PlanScore(o.WinAfter, 0f, o.Ap, o.Resources, o.EtaTurns,
+                    o.RecurringAp, 2);
                 var option = new RaidRecoveryProjection(true,
-                    RaidMissionPhase.AirSupport, null, null, wing.ArmyId, landing,
-                    finalEta, ap, resources, 2, currentWin, finalAfter, score, default,
-                    $"air support #{wing.ArmyId} reaches {finalAfter:0.00} "
-                    + $"({(finalEta > eta ? "two strikes" : "one strike")}) "
+                    RaidMissionPhase.AirSupport, null, null, o.WingArmyId, o.LandingHex,
+                    o.EtaTurns, o.Ap, o.Resources, 2, currentWin, o.WinAfter, score, default,
+                    $"air support #{o.WingArmyId} reaches {o.WinAfter:0.00} "
+                    + $"({(o.SecondStrike ? "two strikes" : "one strike")}) "
                     + $"with canonical score {score.Value:0.00}");
                 if (!best.Viable || Compare(option, best) < 0)
                     best = option;
@@ -580,12 +514,6 @@ namespace Game.Ai.V2
         }
 
         // The Raid target after an air strike: the same army (same commander), fewer bodies.
-        private static IReadOnlyList<WorthIt.DefendingArmy> AfterStrike(
-            IReadOnlyList<WorthIt.DefendingArmy> opposition,
-            IReadOnlyList<WorthIt.DefenderProfile> survivors) =>
-            new[] { new WorthIt.DefendingArmy(survivors,
-                opposition != null && opposition.Count > 0 ? opposition[0].Commander : default) };
-
         internal static int JoinActivationAp(ArmySnapshot target,
             RaidRecoveryMemberSnapshot incoming)
         {
@@ -605,12 +533,8 @@ namespace Game.Ai.V2
                 : fallbackDistance;
         }
 
-        private static int CeilTurns(ArmySnapshot army, int distance)
-        {
-            int remaining = Math.Max(0, army.CurrentMovement);
-            int move = Math.Max(1, army.MaxMovement);
-            return distance <= remaining ? 1 : 1 + (distance - remaining + move - 1) / move;
-        }
+        private static int CeilTurns(ArmySnapshot army, int distance) =>
+            AiV2Util.TurnsToCover(army, distance);
 
         private static bool Covers(ResourceBundle stock, ResourceVector cost) =>
             stock.Human + 0.001f >= cost.Human && stock.Energy + 0.001f >= cost.Energy

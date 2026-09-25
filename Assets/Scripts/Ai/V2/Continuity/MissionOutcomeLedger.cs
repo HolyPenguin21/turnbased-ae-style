@@ -357,7 +357,7 @@ namespace Game.Ai.V2
                         o.ReinforcementHandoffAttempted =
                             e.ReinforcementHandoffAttempted;
                         o.RaidAirSupportStrikeSucceeded =
-                            e.RaidAirSupportStrikeSucceeded;
+                            e.AirSupportStrikeSucceeded;
                         o.RaidRefitSucceeded = e.RaidRefitSucceeded;
                         o.RaidResourcesSpent = e.ResourcesSpent;
                     }

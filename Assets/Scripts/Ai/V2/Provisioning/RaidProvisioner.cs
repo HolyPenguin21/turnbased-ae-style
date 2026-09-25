@@ -140,20 +140,11 @@ namespace Game.Ai.V2
                 || !target.AirSupportArmyId.HasValue || !target.PrimaryArmyId.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "raid air support requires one exact physical neutral target and wing"));
-            ArmyData wing = ResolveArmy(player, target.AirSupportArmyId.Value);
-            if (wing == null || !AviationRules.IsValidAirArmy(wing) || wing.Owner != player
-                || wing.Members.Count == 0 || session.ClaimedArmyIds.Contains(wing.Id))
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"raid support wing #{target.AirSupportArmyId.Value} unavailable"));
-            AirSortie active = AirSortieRegistry.ForArmy(player, wing);
-            bool continuing = active != null && active.Kind == AirSortieKind.Strike
-                && (active.Outbound && active.TargetHex.Equals(target.LastKnownHex)
-                    || !active.Outbound);
-            bool returning = active != null && active.Kind == AirSortieKind.Strike
-                && !active.Outbound;
-            if (active != null && !continuing)
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"wing #{wing.Id} is reserved by another sortie"));
+            // The one air support (GroundCombatAirSupport): the wing and its sortie state, then the
+            // raid's own target checks, then the shared route / worth / envelope finish.
+            if (!GroundCombatAirSupport.TryResolveWing(player, session, target.AirSupportArmyId.Value,
+                    target.LastKnownHex, "raid", out AirSupportWing w, out ProvisionFailure wingFailure))
+                return ProvisioningResult.Fail(wingFailure);
 
             AiMapMemory.KnownEnemySighting? sighting = (session.Snapshot?.Known?.NeutralSightings
                     ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
@@ -163,58 +154,27 @@ namespace Game.Ai.V2
                 .FirstOrDefault(a => a != null && a.Id == target.Target.ArmyId
                     && a.Owner != null && a.Owner.IsNeutral && a.Members.Count > 1
                     && !HexEventRegistry.IsEventGuardArmy(target.LastKnownHex, a));
-            if (!returning && (!sighting.HasValue
+            if (!w.Returning && (!sighting.HasValue
                     || sighting.Value.SeenTurn != session.Snapshot.TurnNumber
                     || defender == null))
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     "raid air support target is stale, absent, event-owned, or has only one defender"));
 
-            HexCoord landing;
-            if (continuing)
-                landing = active.LandingHex;
-            else
-            {
-                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing,
-                    target.LastKnownHex, ctx.Map, player);
-                MultiTurnSortie? multi = sameTurn.HasValue ? null
-                    : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing,
-                        target.LastKnownHex, ctx.Map, player);
-                if (!sameTurn.HasValue && !multi.HasValue)
-                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                        $"wing #{wing.Id} has no AA-safe recoverable route to exact raid target"));
-                landing = sameTurn?.LandingHex ?? multi.Value.LandingHex;
-
-                IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                    AiV2Util.KnownDefenders(session.Snapshot, target.Target);
-                AviationCombatEstimator.AirStrikeEstimate estimate =
-                    AviationCombatEstimator.EstimateAirStrike(wing.Members,
-                        sighting.Value.DefenseSum, sighting.Value.AttackSum, defenders,
-                        AirStrikePolicy.RaidSupport(target.Target.ArmyId));
-                ArmyData primary = ResolveArmy(player, target.PrimaryArmyId.Value);
-                float beforeWin = primary == null || defenders.Count == 0 ? 0f
-                    : WorthIt.WinChance(primary, defenders, 0f, sighting.Value.Commander);
-                float afterWin = primary == null || estimate.ExpectedDefendersAfter.Count == 0
-                    ? beforeWin
-                    : WorthIt.WinChance(primary, estimate.ExpectedDefendersAfter, 0f,
-                        sighting.Value.Commander);
-                if (estimate.ExpectedDamage <= eps
-                    || estimate.ExpectedDefendersAfter.Count < 1
-                    || afterWin <= beforeWin + eps)
-                    return ProvisioningResult.Fail(ProvisionFailure.SortieNotWorthwhile(
-                        "nonlethal raid support does not improve the primary's projected odds"));
-            }
-
-            float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
-            float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
-            if (ap > funded.Tentative.Ap + eps || energy > funded.PhysicalDraw.Energy + eps)
-                return ProvisioningResult.Fail(ProvisionFailure.EnvelopeTooSmall(
-                    new ProvisionRequirement(ap, new ResourceVector(0f, 0f, energy, 0f, 0f)),
-                    $"raid support wing #{wing.Id} exceeds AP/Energy envelope"));
-            float energyLeft = ProvisioningManager.AirSpendableEnergyLeft(player, root, ctx, session);
-            if (energy > energyLeft + eps)
-                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    $"spendable Energy exhausted: raid support wing #{wing.Id} needs {energy:0.##}, "
-                    + $"{energyLeft:0.##} left after reservations and earlier claims this pass"));
+            IReadOnlyList<WorthIt.DefenderProfile> defenders =
+                AiV2Util.KnownDefenders(session.Snapshot, target.Target);
+            ArmyData primary = ResolveArmy(player, target.PrimaryArmyId.Value);
+            WorthIt.SideCommander defenderCommander = sighting?.Commander ?? default;
+            if (!GroundCombatAirSupport.TryFinishWing(player, root, ctx, session, funded, w,
+                    target.LastKnownHex,
+                    new[] { new WorthIt.DefendingArmy(defenders, defenderCommander) },
+                    sighting?.DefenseSum ?? 0f, sighting?.AttackSum ?? 0f,
+                    AirStrikePolicy.RaidSupport(target.Target.ArmyId),
+                    opp => primary == null || defenders.Count == 0 ? 0f
+                        : WorthIt.WinChance(primary, WorthIt.UnitsOf(opp), 0f, defenderCommander),
+                    "raid", eps, out HexCoord landing, out float ap, out float energy,
+                    out ProvisionFailure finishFailure))
+                return ProvisioningResult.Fail(finishFailure);
+            ArmyData wing = w.Wing;
 
             target.AirSupportLandingHex = landing;
             return ProvisioningResult.Ok(new ProvisionedMission

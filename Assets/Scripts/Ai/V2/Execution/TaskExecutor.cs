@@ -58,7 +58,7 @@ namespace Game.Ai.V2
         // fact, like the handoff above: only Continuity may turn it into the durable intent's
         // turn-local marker, and nothing here re-derives it from the intent's mutated state.
         public bool AttackOpportunisticStrike;
-        public bool RaidAirSupportStrikeSucceeded;
+        public bool AirSupportStrikeSucceeded;
         public RaidRefitAction RaidRefitAction;
         public bool RaidRefitSucceeded;
         public ResourceVector ResourcesSpent;
@@ -851,86 +851,10 @@ namespace Game.Ai.V2
                 result.NeedsReplan = true;
                 yield break;
             }
-            AirSortie sortie = AirSortieRegistry.ForArmy(player, wing);
-            if (sortie == null)
-            {
-                sortie = new AirSortie
-                {
-                    Kind = AirSortieKind.Strike, Army = wing,
-                    TargetHex = pm.RaidLastKnownHex,
-                    LandingHex = pm.RaidAirSupportLandingHex.Value,
-                    Outbound = true,
-                };
-                AirSortieRegistry.Add(player, sortie);
-            }
-            if (sortie.Kind != AirSortieKind.Strike)
-            {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                yield break;
-            }
-
-            if (sortie.Outbound && wing.Hex.Equals(pm.RaidLastKnownHex))
-            {
-                AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
-                if (presenter == null)
-                {
-                    result.StopReason = ExecutionStopReason.TargetInvalidated;
-                    yield break;
-                }
-                var strike = new AviationCombatPresenter.AirStrikeResult();
-                wing.PendingAirStrikePolicy = AirStrikePolicy.RaidSupport(pm.RaidTarget.ArmyId);
-                yield return presenter.ResolveAirStrikeAtCurrentHex(wing, wing.Hex,
-                    wing.PendingAirStrikePolicy.Value, strike);
-                wing.PendingAirStrikePolicy = null;
-                wing.LastAirStrikeHex = wing.Hex;
-                wing.LastAirStrikeAttacked = strike.Attacked;
-                result.CombatChanged |= strike.Attacked;
-                result.RaidAirSupportStrikeSucceeded |= strike.Attacked;
-                sortie.Outbound = false;
-                sortie.TargetHex = sortie.LandingHex;
-                result.ActualActorArmyId = wing.Id;
-                result.StopReason = ExecutionStopReason.StepCompleted;
-                yield break;
-            }
-
-            AiDecision move = AiAirSortiePlanner.ContinueSortie(player, root, ctx, sortie,
-                "RaidSupport", "flies toward exact raid target", 0f);
-            if (move == null)
-            {
-                result.StopReason = wing.CurrentMovement <= 0
-                    ? ExecutionStopReason.OutOfMovement : ExecutionStopReason.NoSafeStep;
-                yield break;
-            }
-            HexCoord before = wing.Hex;
-            bool enteringTarget = sortie.Outbound
-                && move.TargetHex.Equals(pm.RaidLastKnownHex);
-            if (enteringTarget)
-                wing.PendingAirStrikePolicy = AirStrikePolicy.RaidSupport(pm.RaidTarget.ArmyId);
-            var trace = new AiMoveExecutionTrace();
-            yield return AiTurnController.MoveArmyRoutine(player, move, ctx, trace);
-            wing.PendingAirStrikePolicy = null;
-            ArmyData after = Resolve(player, pm.MoverArmyId);
-            HexCoord final = after?.Hex ?? trace.EndHex;
-            if (!final.Equals(before))
-                result.StepsMoved++;
-            result.FinalHex = final;
-            result.ActualActorArmyId = pm.MoverArmyId;
-            if (after != null && after.LastAirStrikeHex.HasValue
-                && after.LastAirStrikeHex.Value.Equals(pm.RaidLastKnownHex)
-                && after.LastAirStrikeAttacked)
-            {
-                result.CombatChanged = true;
-                result.RaidAirSupportStrikeSucceeded = true;
-                sortie.Outbound = false;
-                sortie.TargetHex = sortie.LandingHex;
-            }
-            if (!sortie.Outbound && final.Equals(sortie.LandingHex))
-            {
-                AirSortieRegistry.Remove(player, sortie);
-                result.ReachedGoal = true;
-                result.DurableRoleContinues = true;
-            }
-            result.StopReason = ExecutionStopReason.StepCompleted;
+            yield return GroundCombatLegStep.AirStrikeSortie(player, root, ctx, pm, result, wing,
+                pm.RaidLastKnownHex, pm.RaidAirSupportLandingHex.Value,
+                AirStrikePolicy.RaidSupport(pm.RaidTarget.ArmyId),
+                "RaidSupport", "flies toward exact raid target");
         }
 
         // =====================================================================================

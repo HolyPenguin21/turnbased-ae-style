@@ -121,6 +121,11 @@ namespace Game.Ai.V2
         // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
         // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
         public const float attackGatherMinWinGain = 0.05f;
+        // Air support of the fist: the strike lands at least one and at most this many turns before
+        // the primary reaches the site (so it is not raced by the assault itself), and only a
+        // strike that raises the primary's win chance by at least this much is flown.
+        public const int attackAirSupportLeadTurns = 1;
+        public const float attackAirSupportMinWinGain = 0.05f;
         // Perf pre-filter:
         // GroundCombatAssemblyPlanner.Plan()/EligibleActorIds() would otherwise
         // run the 25-trial Monte-Carlo WinChance once per ready army per Raid target, per

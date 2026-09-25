@@ -1,4 +1,5 @@
 using System.Collections;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -44,6 +45,20 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
                     yield return RunReinforcementStep(player, ctx, pm, result, army);
+                    yield break;
+                case AttackMissionPhase.AirSupport:
+                    if (!AviationRules.IsValidAirArmy(army) || !target.AirSupportLandingHex.HasValue)
+                    {
+                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        result.NeedsReplan = true;
+                        yield break;
+                    }
+                    // The one flight step of ground-fight air support; a plain strike on every
+                    // defender of the site (the ground assault takes the structure).
+                    yield return GroundCombatLegStep.AirStrikeSortie(player, root, ctx, pm, result,
+                        army, target.Target.Hex, target.AirSupportLandingHex.Value,
+                        AirStrikePolicy.Standard, "AttackSupport",
+                        "flies toward the attack site");
                     yield break;
             }
 
