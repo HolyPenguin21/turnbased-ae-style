@@ -375,7 +375,7 @@ namespace Game.Map
 
         public static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, out string failReason)
-            => CanTransferMembers(units, source, target, out _, out _, out _, out failReason);
+            => CanTransferMembers(units, source, target, null, out _, out _, out _, out failReason);
 
         public static int TransferMembersApCost(IEnumerable<UnitData> units, ArmyData target)
         {
@@ -385,9 +385,11 @@ namespace Game.Map
                 .Distinct().Sum(u => u.ActivationApCost);
         }
 
+        // `promoteToCommander` — a hero of the batch that takes command of `target` on arrival
+        // (placed first, so the target's capacity is judged under ITS Command).
         private static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
-            ArmyData target, out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost,
-            out string failReason)
+            ArmyData target, UnitData promoteToCommander, out PlayerRoot targetRoot,
+            out int totalApCost, out int totalEnergyCost, out string failReason)
         {
             failReason = null;
             targetRoot = null;
@@ -429,7 +431,8 @@ namespace Game.Map
             var projectedTarget = new List<UnitData>(target.Members);
             foreach (UnitData unit in distinct)
             {
-                int index = unit.IsHero ? projectedTarget.Count(u => u.IsHero) : projectedTarget.Count;
+                int index = unit == promoteToCommander ? 0
+                    : unit.IsHero ? projectedTarget.Count(u => u.IsHero) : projectedTarget.Count;
                 projectedTarget.Insert(index, unit);
             }
             if (!target.IsAirfield
@@ -462,10 +465,20 @@ namespace Game.Map
             return true;
         }
 
+        // `promoteToCommander` (optional) — a hero of the batch that takes command of `target` in
+        // the same atomic operation (the zero-AP TryReorderCommander a player could do right
+        // after the move); capacity is checked under its Command.
         public static bool TransferMembersAtomic(IReadOnlyList<UnitData> units, ArmyData source,
-            ArmyData target, HexSelectionController hexSelectionController, out string failReason)
+            ArmyData target, HexSelectionController hexSelectionController, out string failReason,
+            UnitData promoteToCommander = null)
         {
-            if (!CanTransferMembers(units, source, target,
+            if (promoteToCommander != null
+                && (!promoteToCommander.IsHero || units == null || !units.Contains(promoteToCommander)))
+            {
+                failReason = "The promoted commander must be a hero of the batch.";
+                return false;
+            }
+            if (!CanTransferMembers(units, source, target, promoteToCommander,
                     out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out failReason))
                 return false;
 
@@ -473,6 +486,8 @@ namespace Game.Map
                 source.Members.Remove(unit);
             foreach (UnitData unit in units)
                 target.AddMemberSorted(unit);
+            if (promoteToCommander != null && target.Members.IndexOf(promoteToCommander) > 0)
+                target.TryReorderCommander(promoteToCommander, out _);
             targetRoot?.SpendActionPoints(totalApCost);
             if (totalEnergyCost > 0)
                 targetRoot?.AddResource(ResourceType.Energy, -totalEnergyCost);

@@ -376,8 +376,14 @@ namespace Game.Ai.V2
             List<int> dropped = a.GatherSupportArmyIds.Where(id =>
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
+                // A support stays while its bodies improve the host OR its hero would take command
+                // (GroundCombatReinforcement.CommandHandover — the plan may keep it for that alone).
                 return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
-                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus);
+                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus)
+                        && GroundCombatReinforcement.CommandHandover(
+                            AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value),
+                            AiV2Util.ResolveArmy(snap.Observer, id),
+                            opposition, hexBonus, null, out _) == null;
             }).ToList();
             if (dropped.Count > 0)
             {

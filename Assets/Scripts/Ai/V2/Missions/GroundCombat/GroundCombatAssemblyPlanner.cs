@@ -468,14 +468,30 @@ namespace Game.Ai.V2
                 return GroundCombatGatherPlan.Infeasible(
                     $"gather host #{host.Id}: no other free field army has a body to spare");
 
-            // Handoffs move ground bodies only; the host's own best commander for the PEAK
-            // formation (its bodies plus the pool — HeroRoleEvaluator; the assault transaction
-            // promotes the same choice before the march) leads, and its Command sets capacity.
+            // The PEAK formation's commander (its bodies plus the pool — HeroRoleEvaluator): the
+            // host's own best hero (the assault transaction promotes it before the march), or a
+            // support's hero handed over because it leads this fight better
+            // (GroundCombatReinforcement.CommandHandover — the handoff applies the same rule; the
+            // cheapest such support is kept in the plan for its hero). Its Command sets capacity.
+            List<WorthIt.DefenderProfile> pooledBodies = pool.SelectMany(x => x.Bodies).ToList();
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
-                opposition, defenderHexDefenseBonus, pool.SelectMany(x => x.Bodies)) ?? host.Commander;
+                opposition, defenderHexDefenseBonus, pooledBodies) ?? host.Commander;
+            GatherSupport heroDonor = null;
+            foreach (GatherSupport s in pool.OrderBy(x => x.Ap).ThenBy(x => x.ArmyId))
+            {
+                UnitData handed = GroundCombatReinforcement.CommandHandover(host, LiveArmy(
+                        supportSnaps.First(x => x.ArmyId == s.ArmyId)),
+                    opposition, defenderHexDefenseBonus, pooledBodies, out _);
+                if (handed == null)
+                    continue;
+                lead = handed;
+                heroDonor = s;
+                roster.Add(handed);
+                break;
+            }
             int capacity = ArmyData.ComputeCapacity(lead == null ? host.Members
                 : new[] { lead }.Concat(host.Members.Where(u => u != lead)), host.IsGarrison);
-            int memberCount = host.Members.Count;
+            int memberCount = host.Members.Count + (heroDonor != null ? 1 : 0);
             WorthIt.SideCommander commander = WorthIt.SideCommander.Of(lead);
 
             // One Monte-Carlo bound before the greedy loop: the host's slots filled with the
@@ -543,6 +559,9 @@ namespace Game.Ai.V2
                 clears = GroundCombatFeasibility.Clears(bodies, commander, opposition, winChanceGate,
                     defenderHexDefenseBonus, out win, out cover);
             }
+
+            if (heroDonor != null && !chosen.Contains(heroDonor))
+                chosen.Add(heroDonor);
 
             int assembledMove = ArmyData.ComputeMaxMovement(roster);
             int assaultEta = AiV2Util.CeilDiv(HexGridMath.Distance(host.Hex, targetHex),

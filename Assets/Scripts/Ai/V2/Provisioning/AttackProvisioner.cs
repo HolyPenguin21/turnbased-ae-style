@@ -240,7 +240,7 @@ namespace Game.Ai.V2
 
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,
-                "attack", out bool atRendezvous);
+                "attack", out bool atRendezvous, allowCommandHandover: true);
             if (!check.Ok)
                 return check.Failure;
 

@@ -1054,18 +1054,44 @@ namespace Game.Ai.V2
         // The concrete roster mutation: fill the primary's free slots first, then — if it is full —
         // swap its most critically wounded bodies for fresh ones. Executed through the SAME
         // authoritative ArmyActions primitives a human uses; the support container is never emptied.
+        // `commandOpposition` (optional, the lane's fight) — when given, the support's hero may be
+        // handed over to lead the primary (GroundCombatReinforcement.CommandHandover), in the same
+        // atomic transfer as the bodies its Command makes room for.
         internal static bool ApplyReinforcementHandoff(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ArmyData support, ArmyData primary,
-            out int transferred, out bool wasSwap, out string displacedUnitName, out string detail)
+            out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
+            IReadOnlyList<WorthIt.DefendingArmy> commandOpposition = null, float commandHexBonus = 0f)
         {
             transferred = 0;
             wasSwap = false;
             displacedUnitName = null;
             detail = "";
+            if (commandOpposition != null)
+            {
+                UnitData hero = GroundCombatReinforcement.CommandHandover(primary, support,
+                    commandOpposition, commandHexBonus, null, out List<UnitData> withHero);
+                if (hero != null)
+                {
+                    var led = new List<UnitData> { hero };
+                    led.AddRange(primary.Members);
+                    int roomUnderHero = Mathf.Max(0,
+                        ArmyData.ComputeCapacity(led, primary.IsGarrison) - led.Count);
+                    var batch = new List<UnitData> { hero };
+                    batch.AddRange(withHero.Take(roomUnderHero));
+                    if (ArmyActions.TransferMembersAtomic(batch, support, primary, ctx.HexSelection,
+                            out string handoverWhy, hero))
+                    {
+                        transferred = batch.Count;
+                        detail = $"hero {hero.Name} took command with {batch.Count - 1} body(ies)";
+                        return true;
+                    }
+                    detail = $"command handover of {hero.Name} rejected ({handoverWhy}); ";
+                }
+            }
             List<UnitData> sparable = RaidProvisioner.SparableSupportBodies(support);
             if (sparable.Count == 0)
             {
-                detail = "support has no sparable body";
+                detail += "support has no sparable body";
                 return false;
             }
 
@@ -1081,7 +1107,7 @@ namespace Game.Ai.V2
                     detail = $"transferred {batch.Count} into free slot(s)";
                     return true;
                 }
-                detail = $"atomic transfer rejected: {why}";
+                detail += $"atomic transfer rejected: {why}";
                 return false;
             }
 

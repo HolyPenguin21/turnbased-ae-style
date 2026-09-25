@@ -150,7 +150,7 @@ namespace Game.Ai.V2
             PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            string lane, out bool atRendezvous)
+            string lane, out bool atRendezvous, bool allowCommandHandover = false)
         {
             atRendezvous = false;
             ArmyData support = AiV2Util.ResolveArmy(player, supportArmyId);
@@ -171,7 +171,7 @@ namespace Game.Ai.V2
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
             if (!GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
-                    defenderHexDefenseBonus, out string why))
+                    defenderHexDefenseBonus, out string why, allowCommandHandover))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
                         $"{lane} reinforcement #{support.Id} -> #{primary.Id} would not improve the primary's odds: {why}")));
@@ -208,12 +208,19 @@ namespace Game.Ai.V2
     internal static class GroundCombatReinforcement
     {
         // Would merging the support's transferable bodies into the primary raise its WorthIt win
-        // chance against the current opposition, on the hex where the fight will happen? A convoy
-        // that cannot help is never provisioned.
+        // chance against the current opposition, on the hex where the fight will happen — or, for
+        // a lane that hands command over (Attack), would its hero take command of the primary
+        // (CommandHandover)? A convoy that cannot help is never provisioned.
         internal static bool ImprovesOdds(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            out string why)
+            out string why, bool allowCommandHandover = false)
         {
+            if (allowCommandHandover && CommandHandover(primary, support, opposition,
+                    defenderHexDefenseBonus, null, out _) != null)
+            {
+                why = null;
+                return true;
+            }
             List<UnitData> sparable = SparableSupportBodies(support);
             List<WorthIt.DefenderProfile> primaryBodies = primary.Members
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
@@ -229,7 +236,53 @@ namespace Game.Ai.V2
                 defenderHexDefenseBonus);
         }
 
-        // A support container is never emptied and never gives up its own hero.
+        // Strike force — THE "hand the support's hero over to lead the primary" rule. A field hero of
+        // the support (never a SupportOperator) moves when, joined to the primary, it is the best
+        // commander of the primary's fight (HeroRoleEvaluator.BestCommanderFor, judged with
+        // `prospectiveBodies` — the bodies that would come along) — i.e. it beats every hero the
+        // primary already has. The support must stay a non-empty, legally sized container without
+        // it and `bodiesWithHero` (its strongest ground bodies, keeping at least one member back).
+        // Returns null when no hero should move. Used by the gather projection and the handoff.
+        internal static UnitData CommandHandover(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, out List<UnitData> bodiesWithHero)
+        {
+            bodiesWithHero = null;
+            if (primary == null || support == null || primary.IsGarrison)
+                return null;
+            List<UnitData> bodies = support.Members
+                .Where(x => AiArmyRoles.IsGroundBattleBody(x))
+                .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
+                .ThenBy(x => x.Name)
+                .ToList();
+            List<WorthIt.DefenderProfile> prospects = (prospectiveBodies
+                ?? bodies.Select(WorthIt.FromLiveUnit)).ToList();
+            foreach (UnitData hero in support.Members
+                .Where(u => u != null && u.IsHero && !u.IsPrisoner
+                    && HeroRoleEvaluator.Classify(u) != HeroOperationalRole.SupportOperator)
+                .OrderByDescending(HeroRoleEvaluator.CombatLeadershipScore)
+                .ThenBy(u => u.RuntimeId))
+            {
+                // The support keeps at least one member: its weakest body stays when nothing else does.
+                var going = new List<UnitData>(bodies);
+                if (support.Members.Count - 1 - going.Count < 1 && going.Count > 0)
+                    going.RemoveAt(going.Count - 1);
+                var remainder = support.Members.Where(u => u != hero && !going.Contains(u)).ToList();
+                if (remainder.Count < 1
+                    || ArmyData.ComputeCapacity(remainder, support.IsGarrison) < remainder.Count)
+                    continue;
+                var joined = new List<UnitData>(primary.Members) { hero };
+                if (HeroRoleEvaluator.BestCommanderFor(joined, primary.IsGarrison, opposition,
+                        defenderHexDefenseBonus, prospects) != hero)
+                    continue;
+                bodiesWithHero = going;
+                return hero;
+            }
+            return null;
+        }
+
+        // A support container is never emptied and never gives up its own hero (a hero moves
+        // only through CommandHandover).
         internal static List<UnitData> SparableSupportBodies(ArmyData support)
         {
             var list = new List<UnitData>();

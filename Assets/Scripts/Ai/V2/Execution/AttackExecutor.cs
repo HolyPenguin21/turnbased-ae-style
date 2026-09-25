@@ -44,7 +44,7 @@ namespace Game.Ai.V2
                     yield break;
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:
-                    yield return RunReinforcementStep(player, ctx, pm, result, army);
+                    yield return RunReinforcementStep(player, ctx, pm, result, army, snapshot);
                     yield break;
                 case AttackMissionPhase.AirSupport:
                     if (!AviationRules.IsValidAirArmy(army) || !target.AirSupportLandingHex.HasValue)
@@ -259,7 +259,7 @@ namespace Game.Ai.V2
         // primary's hex) exactly ONE atomic roster handoff with no movement in the same step. The
         // handoff itself is the shared TaskExecutor primitive; Attack does not get its own.
         private static IEnumerator RunReinforcementStep(PlayerSetupData player, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, ArmyData support)
+            ProvisionedMission pm, ExecutionResult result, ArmyData support, WorldSnapshot snapshot)
         {
             AttackMissionTarget target = pm.AttackTarget;
             ArmyData primary = target.PrimaryArmyId.HasValue
@@ -317,8 +317,12 @@ namespace Game.Ai.V2
             }
 
             result.ReinforcementHandoffAttempted = true;
+            // The site's fight decides whether the support's hero should take command of the fist
+            // (GroundCombatReinforcement.CommandHandover — the gather projection's same rule).
             bool handoffOk = TaskExecutor.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
-                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
+                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
+                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
+                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex));
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
                 + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
