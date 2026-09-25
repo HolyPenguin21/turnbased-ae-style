@@ -623,6 +623,27 @@ namespace Game.Combat
                 attackerCommander, defenderCommander);
         }
 
+        // THE quick "how much fight is in this body" number (Attack + Defense + HitPoints +
+        // 0.25 × Initiative) every roster pick uses: strongest-first ordering, swap candidates,
+        // the Monte-Carlo pre-filter. One formula, never re-typed at a call site.
+        public static float CombatValue(float attack, float defense, float hitPoints, int initiative) =>
+            attack + defense + hitPoints + 0.25f * initiative;
+
+        public static float CombatValue(DefenderProfile p) =>
+            CombatValue(p.Attack, p.Defense, p.HitPoints, p.Initiative);
+
+        // Every defending body of an opposition, in army order — the flat roster callers use for
+        // counts, power and coverage. Built from the per-army list, never kept as a second source.
+        public static List<DefenderProfile> UnitsOf(IEnumerable<DefendingArmy> armies)
+        {
+            var units = new List<DefenderProfile>();
+            if (armies != null)
+                foreach (DefendingArmy a in armies)
+                    if (a.Units != null)
+                        units.AddRange(a.Units);
+            return units;
+        }
+
         // One defending army of a multi-army hex: its fighting roster and its own commander.
         public readonly struct DefendingArmy
         {

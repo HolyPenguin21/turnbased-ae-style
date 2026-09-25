@@ -61,7 +61,7 @@ namespace Game.Ai.V2
             for (int i = 0; i < profiles.Count; i++)
             {
                 WorthIt.DefenderProfile p = profiles[i];
-                sum += p.Attack + p.Defense + p.HitPoints + 0.25f * p.Initiative;
+                sum += WorthIt.CombatValue(p);
             }
             return sum;
         }

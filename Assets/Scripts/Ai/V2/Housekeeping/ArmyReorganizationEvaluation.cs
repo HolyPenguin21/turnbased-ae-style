@@ -34,6 +34,7 @@ namespace Game.Ai.V2
             int singles = 0;
             int nonViable = 0;
             int commandWaste = 0;
+            IReadOnlyList<WorthIt.DefendingArmy> commandContext = CommandContext(s);
             float composition = 0f;
             var formationStrengths = new List<float>();
 
@@ -55,7 +56,7 @@ namespace Game.Ai.V2
                     operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
 
                 if (meta.CanChangeComposition)
-                    commandWaste += CommandCapacityWaste(units);
+                    commandWaste += CommanderMismatch(units, commandContext);
 
                 if (meta.IsGarrison)
                 {
@@ -223,24 +224,16 @@ namespace Game.Ai.V2
         private static float NoDefenderReadiness(int eta) =>
             1f - 1f / (1f + Math.Max(0, eta));
 
-        // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster
-        // order here mirrors the live ArmyData.Members order (Analyzer preserves it; a planned
-        // commander reorder rewrites it), so units[firstHero] is the container's real commander
-        // and ReorgViability.Capacity already reads its CommandRating.
-        private static int CommandCapacityWaste(List<ReorgUnit> units)
+        // 1 when a container with two or more heroes is not led by the one commander evaluation's
+        // best hero (HeroRoleEvaluator — fight against the group's strongest threat, then capacity,
+        // then role/leadership). The commander reorder candidate is the zero-AP fix.
+        private static int CommanderMismatch(List<ReorgUnit> units,
+            IReadOnlyList<WorthIt.DefendingArmy> context)
         {
-            int bestCr = 0;
-            int firstCr = -1;
-            foreach (ReorgUnit u in units)
-            {
-                if (u == null || !u.IsHero)
-                    continue;
-                if (firstCr < 0)
-                    firstCr = u.CommandRating;
-                if (u.CommandRating > bestCr)
-                    bestCr = u.CommandRating;
-            }
-            return firstCr < 0 ? 0 : Math.Max(0, bestCr - firstCr);
+            if (units.Count(u => u != null && u.IsHero) < 2)
+                return 0;
+            ReorgUnit current = units.First(u => u != null && u.IsHero);
+            return ReferenceEquals(BestCommander(units, context), current) ? 0 : 1;
         }
     }
 }

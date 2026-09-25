@@ -625,8 +625,7 @@ namespace Game.Ai.V2
             return result;
         }
 
-        private static float ProfileCombatValue(WorthIt.DefenderProfile p) =>
-            p.Attack + p.Defense + p.HitPoints + 0.25f * p.Initiative;
+        private static float ProfileCombatValue(WorthIt.DefenderProfile p) => WorthIt.CombatValue(p);
 
         private static bool Admissible(ArmySnapshot a, GroundCombatAssemblyRequest r)
         {
@@ -705,13 +704,14 @@ namespace Game.Ai.V2
             var selected = new List<GroundCombatAssemblyTransfer>();
 
             // §12 — a heroless host may take ONE eligible same-hex hero from a safe donor
-            // (typically the garrison). Preference: CombatLeader > Flexible > SupportOperator.
+            // (typically the garrison), the best commander for THIS fight (HeroRoleEvaluator).
             // A lone-hero container is intentionally left to Housekeeping first: Provisioning's
             // canonical raid transaction never empties donor containers, so the planner must not
             // promise a transfer the executor will reject.
             if (!projectedUnits.Any(u => u != null && u.IsHero))
             {
-                (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host, excludeArmyIds);
+                (ArmyData heroDonor, UnitData hero) = GroundCombatDonorPolicy.PickAttachableHero(owner, host,
+                    excludeArmyIds, opposition, defenderHexDefenseBonus);
                 if (hero != null)
                 {
                     var withHero = new List<UnitData>(projectedUnits) { hero };

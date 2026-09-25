@@ -118,10 +118,11 @@ namespace Game.Ai.V2
         public bool WorthPlanning()
         {
             // §7 — a commander reorder is a single-container operation, so it must not wait on
-            // the multi-container gate below: a lone army/garrison with a sub-optimal commander
-            // is worth a zero-AP planning pass on its own.
+            // the multi-container gate below: a lone army/garrison with a choice of commander is
+            // worth a zero-AP planning pass on its own (the planner's one commander evaluation
+            // decides whether the current one is already the best).
             foreach (ReorgContainer c in Containers)
-                if (ReorgViability.HasCommanderUpgrade(c))
+                if (ReorgViability.HasCommanderChoice(c))
                     return true;
 
             if (Containers.Count < AiConfigV2.housekeepingMinContainersForGroup)
@@ -197,28 +198,9 @@ namespace Game.Ai.V2
         public static bool IsNonExemptSingleton(ReorgContainer c) =>
             c != null && !c.SingletonExempt && c.IsMutableGround && IsSingletonShape(c.Units);
 
-        // §7 — the container holds >= 2 heroes and its current commander (first hero in roster
-        // order, i.e. the one ComputeCapacity reads) does not have the highest CommandRating
-        // available, so a zero-AP reorder would raise its legal capacity.
-        public static bool HasCommanderUpgrade(ReorgContainer c)
-        {
-            if (c == null || !c.CanChangeComposition)
-                return false;
-            int first = -1;
-            int best = 0;
-            int heroes = 0;
-            foreach (ReorgUnit u in c.Units)
-            {
-                if (u == null || !u.IsHero)
-                    continue;
-                heroes++;
-                if (first < 0)
-                    first = u.CommandRating;
-                if (u.CommandRating > best)
-                    best = u.CommandRating;
-            }
-            return heroes >= 2 && first >= 0 && best > first;
-        }
+        // §7 — the container holds >= 2 heroes, so which of them commands is a real choice.
+        public static bool HasCommanderChoice(ReorgContainer c) =>
+            c != null && c.CanChangeComposition && c.Units.Count(u => u != null && u.IsHero) >= 2;
 
         // Mirrors ArmyData.ComputeCapacity exactly: preserve roster order, first hero wins; for a
         // no-hero roster ask the canonical gameplay function for its default instead of duplicating

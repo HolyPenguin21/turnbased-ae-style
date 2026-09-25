@@ -160,6 +160,8 @@ reactivate when important contact becomes stale or blind again.
 | Own-force power | `Evaluation/Power/AiPower` — no `ReactionPower` / `RaidPower` |
 | Tactical roster odds + per-defender penetration | `Game.Combat.WorthIt` — skill-aware; each side's commander (initiative bonus, Fate rerolls through `FateDuelAi`'s policy); a multi-army hex is `EstimateSequential` (strongest defender first, wounds carry, Fate refills). The aggregate-sum estimator is gone |
 | Who leads an army (capacity, battle initiative, Fate) | `ArmyData.Commander` — the army's first hero; battle, UI and AI read only this |
+| Which hero SHOULD lead a formation | `HeroRoleEvaluator.ProjectCommand` + `CompareCandidates` — the formation's fight under that hero (WorthIt, with its capacity/initiative/Fate) against the opposition, then capacity, then role/leadership. Same-hex assembly (`GroundCombatDonorPolicy.PickAttachableHero`), Housekeeping's commander reorder, bench pick and `CommanderMismatch` all use it |
+| A body's quick combat value (Attack+Defense+HP+0.25·Initiative) | `WorthIt.CombatValue` |
 | The opposition of a ground fight (each defending army + its observed commander) | `AiV2Util.KnownOpposition` (Raid/ActiveDefence target), `AttackObjectiveEvaluator.KnownSiteOpposition` (Attack site); flat defender lists are `WorthIt.UnitsOf` of these. `GroundCombatFeasibility.Clears` takes the attacker's commander + the opposition |
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
 | Skills / effects semantics | `Evaluation/Effects/StrategicEffectRegistry` |
