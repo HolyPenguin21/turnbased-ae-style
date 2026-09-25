@@ -202,8 +202,11 @@ namespace Game.Ai.V2
 
             if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
             {
+                // The mover's arrival state (ScoutMoverSelector.ArrivesHiddenLive): hidden now, or
+                // the Required entry provisioning reserved and preparation performs.
                 if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
-                        ctx.TurnNumber, pm.RequiresStealth))
+                        ctx.TurnNumber, ScoutMoverSelector.ArrivesHiddenLive(
+                            StealthSystem.IsArmyFullyHidden(mover), pm.StealthApReserved)))
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;
             }

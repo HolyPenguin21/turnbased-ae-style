@@ -319,6 +319,15 @@ namespace Game.Ai.V2
             HexCoord focus = target.FocusHex;
             HexCoord executionHex = exec.ExecutionHex;
 
+            // Whether the mover will stand fully hidden on the vantage — the same arrival rule the
+            // selector chose it by (ScoutMoverSelector.ArrivesHidden) and the state the executor's
+            // step gate will see: hidden now, or a Required stealth entry this pass reserves.
+            bool alreadyHidden = exec.RequiresGarrisonExtraction
+                ? plannedExtractUnit.IsHidden
+                : StealthSystem.IsArmyFullyHidden(army);
+            bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
+            bool arrivesHidden = ScoutMoverSelector.ArrivesHiddenLive(alreadyHidden, reserveStealth);
+
             if (surveil)
             {
                 int trackedId = target.Contact?.Army?.ArmyId ?? -1;
@@ -337,7 +346,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
                 if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                        target.NeedsStealth))
+                        arrivesHidden))
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
             }
@@ -357,7 +366,7 @@ namespace Game.Ai.V2
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
                     if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                            target.NeedsStealth))
+                            arrivesHidden))
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
                 }
@@ -394,10 +403,6 @@ namespace Game.Ai.V2
             int activationAp = exec.RequiresGarrisonExtraction
                 ? plannedExtractUnit.ActivationApCost
                 : (army.HasActivatedThisTurn ? 0 : army.ActivationApCost);
-            bool alreadyHidden = exec.RequiresGarrisonExtraction
-                ? plannedExtractUnit.IsHidden
-                : army.Members.Any(mem => mem.IsHidden);
-            bool reserveStealth = target.Stealth == StealthRequirement.Required && !alreadyHidden;
             int stealthAp = reserveStealth ? StealthTransitionApCost : 0;
             float realNeed = activationAp + stealthAp;
 

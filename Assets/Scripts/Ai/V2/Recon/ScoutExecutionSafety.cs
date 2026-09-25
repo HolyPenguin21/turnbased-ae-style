@@ -34,8 +34,10 @@ namespace Game.Ai.V2
 
         // LIVE vantage check — ProvisioningManager / MissionRevalidator. A Surveil vantage is a
         // hex the scout must physically reach and stand on, so it is exactly StepBlocked.
+        // `moverArrivesHidden` — ScoutMoverSelector.ArrivesHiddenLive, never the mission's bare
+        // stealth wish: the step gate judges the scout's real hidden state.
         public static bool VantageBlockedNow(PlayerSetupData player, HexCoord hex, int currentTurn,
-            bool requiresStealth)
-            => StepBlocked(player, hex, requiresStealth);
+            bool moverArrivesHidden)
+            => StepBlocked(player, hex, moverArrivesHidden);
     }
 }

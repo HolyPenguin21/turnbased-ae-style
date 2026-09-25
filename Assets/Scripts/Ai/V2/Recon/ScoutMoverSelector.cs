@@ -132,13 +132,29 @@ namespace Game.Ai.V2
         // Two named stealth-capability rules (kept distinct on purpose):
         //   StealthReadyThisTurn — can serve a stealth-Required job NOW: already hidden, or can
         //     still slip into stealth before its first move (an activated scout cannot).
-        //   CanServeStealth — the durable role-level answer (continuity claim, vantage choice):
-        //     hidden, able to enter stealth, or carrying a stealth level at all.
+        //   CanServeStealth — the durable role-level answer (continuity claim): hidden, able to
+        //     enter stealth, or carrying a stealth level at all.
+        // And one arrival rule: ArrivesHidden — will this mover stand FULLY hidden on the hex it
+        // reaches for `target` (what ScoutExecutionSafety asks of a vantage)?
         public static bool StealthReadyThisTurn(ArmySnapshot a) =>
             a != null && (a.IsHidden || (a.CanEnterStealth && !a.HasActivatedThisTurn));
 
         public static bool CanServeStealth(ArmySnapshot a) =>
             a != null && (a.IsHidden || a.CanEnterStealth || a.StealthLevel > 0);
+
+        // Only two things guarantee it: the mover is hidden already, or the mission is
+        // stealth-Required, so provisioning reserves the entry and the executor enters stealth
+        // before the first step (StealthApReserved). Optional stealth is a per-step heuristic and a
+        // stealth level alone is not being hidden. Snapshot form of ArrivesHiddenLive.
+        public static bool ArrivesHidden(ArmySnapshot mover, ScoutMissionTarget target) =>
+            mover != null && (mover.IsHidden
+                || (target.Stealth == StealthRequirement.Required
+                    && StealthReadyThisTurn(mover)));
+
+        // Live form, for provisioning: `alreadyHidden` — the mover (or the unit to be extracted)
+        // is fully hidden now; `stealthEntryReserved` — the mission reserves the Required entry.
+        public static bool ArrivesHiddenLive(bool alreadyHidden, bool stealthEntryReserved) =>
+            alreadyHidden || stealthEntryReserved;
 
         // Eligibility ONLY (no ranking / no ETA toward FocusHex — that basis is wrong for Surveil).
         // Same filter Rank applies: fielded solo Recce, not prison / air, has members, can still

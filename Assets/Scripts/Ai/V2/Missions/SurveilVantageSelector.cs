@@ -16,7 +16,8 @@ namespace Game.Ai.V2
     //    * on the map (MapKnowledge.AllHexes) and != FocusHex
     //    * within the mover's REAL vision reach: Distance(hex, FocusHex) <= EffectiveVisionRadius
     //    * not MapKnowledge.IsBlockedForScout for THIS mover — an active scout-danger cooldown for
-    //      every scout; for a mover that cannot go hidden also any hex whose arrival sets
+    //      every scout; for a mover that will not arrive hidden
+    //      (ScoutMoverSelector.ArrivesHidden) also any hex whose arrival sets
     //      something off (a known army to fight, a known undefended foreign structure to take
     //      over — a Surveil mission must never do an Aggression action). A fully hidden scout
     //      may share such a hex (stealth design); DetectionRisk ranks it.
@@ -66,8 +67,10 @@ namespace Game.Ai.V2
 
             HexCoord focus = target.FocusHex;
             int visionR = mover.EffectiveVisionRadius;
-            // Spec §19 — a stealth-capable mover ignores neutral occupancy when choosing a vantage.
-            bool stealthCapable = ScoutMoverSelector.CanServeStealth(mover);
+            // Spec §19 — a mover that will stand fully hidden there ignores occupancy when
+            // choosing a vantage; mere stealth capability is not enough (provisioning and the
+            // execution gate check the hidden state the mover will actually arrive in).
+            bool arrivesHidden = ScoutMoverSelector.ArrivesHidden(mover, target);
             int budget = mover.MaxMovement > 0 ? mover.MaxMovement : 1;
 
             foreach (HexCoord h in snap.MapKnowledge.AllHexes)
@@ -79,7 +82,7 @@ namespace Game.Ai.V2
                     continue;
                 // The one arrival rule (snapshot form): danger zones for every scout; a known army
                 // or undefended foreign structure only for a scout that cannot go hidden.
-                if (snap.MapKnowledge.IsBlockedForScout(h, stealthCapable))
+                if (snap.MapKnowledge.IsBlockedForScout(h, arrivesHidden))
                     continue;
 
                 int dist = HexGridMath.Distance(mover.Hex, h);
