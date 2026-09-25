@@ -92,7 +92,8 @@ namespace Game.Ai.V2
             // capture of a base that changed hands while the army was in transit.
             bool attackReturn = pm.Kind == MissionKind.Attack
                 && (pm.AttackTarget.Phase == AttackMissionPhase.RecoveryReturn
-                    || pm.AttackTarget.Phase == AttackMissionPhase.SupportReturn);
+                    || pm.AttackTarget.Phase == AttackMissionPhase.SupportReturn
+                    || pm.AttackTarget.Phase == AttackMissionPhase.GatherReturn);
             if (raidReturn || defenceReturn || attackReturn)
             {
                 Game.HexGrid.HexCoord? home = raidReturn

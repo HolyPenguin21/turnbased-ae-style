@@ -2014,6 +2014,22 @@ namespace Game.Ai.V2
                 + (o.StructuralFailure ? " structural" : "")
                 + $" {o.IntentKey}");
 
+            // Strike force step 5 — a gather donor walking home is no step of the operation:
+            // whatever its outcome, the Attack intent's lifecycle (progress, stall, suspension,
+            // retirement) is untouched. Arrival or loss is read from the next snapshot
+            // (ResolveGatherReturns); a failed walk releases just that donor.
+            if (o.HasAttackPayload && o.AttackTarget.Phase == AttackMissionPhase.GatherReturn)
+            {
+                if ((o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed)
+                    && intent?.Attack != null && o.AttackTarget.SupportArmyId.HasValue)
+                {
+                    intent.Attack.GatherReturns.RemoveAll(r => r.ArmyId == o.AttackTarget.SupportArmyId.Value);
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — [{aid}] {o.IntentKey} donor "
+                        + $"#{o.AttackTarget.SupportArmyId.Value} walk home failed ({Describe(o)}); released");
+                }
+                return;
+            }
+
             if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
             {
                 if (o.MissionKind == MissionKind.ActiveDefence && intent?.ActiveDefence != null)
@@ -2362,10 +2378,13 @@ namespace Game.Ai.V2
                 if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
                 {
                     // Audit F7 — an attempted handoff (full, partial or rejected) ends that
-                    // support's gather leg; whatever container is left on the host's hex is released
-                    // to Housekeeping. It never becomes the Reinforcement support nor walks home.
-                    if (o.ReinforcementHandoffAttempted && o.MoverArmyId.HasValue)
-                        ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value);
+                    // support's gather leg. Strike force step 5: whatever container is left walks
+                    // home (GatherReturn; ResolveAttackIntent picks the base). It never becomes the
+                    // Reinforcement support.
+                    if (o.ReinforcementHandoffAttempted && o.MoverArmyId.HasValue
+                        && ai.GatherSupportArmyIds.Remove(o.MoverArmyId.Value)
+                        && !ai.GatherReturns.Any(r => r.ArmyId == o.MoverArmyId.Value))
+                        ai.GatherReturns.Add(new AttackGatherReturn { ArmyId = o.MoverArmyId.Value });
                 }
                 else
                 {

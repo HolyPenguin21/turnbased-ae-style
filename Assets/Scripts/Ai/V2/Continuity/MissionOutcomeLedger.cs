@@ -195,7 +195,8 @@ namespace Game.Ai.V2
                     // hex read as "objective met" after every single assault step.
                     AttackMissionTarget attack = pm.AttackTarget;
                     if (attack.Phase == AttackMissionPhase.RecoveryReturn
-                        || attack.Phase == AttackMissionPhase.SupportReturn)
+                        || attack.Phase == AttackMissionPhase.SupportReturn
+                        || attack.Phase == AttackMissionPhase.GatherReturn)
                     {
                         ArmyData actor = ArmyRegistry.AllForOwner(player)
                             .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);

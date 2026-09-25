@@ -330,6 +330,12 @@ namespace Game.Ai.V2
     // garrison asset, new distances — that an automatic retarget inside the same intent would be
     // planning the next war with the previous war's world. Completion, a global replan, and then a
     // FRESH objective is the only correct chain.
+    public sealed class AttackGatherReturn
+    {
+        public int ArmyId;
+        public HexCoord? BaseHex;
+    }
+
     public sealed class AttackIntent : IGroundCombatOperation
     {
         // THE target identity. Hex + expected owner + kind live in one object (§21), never in
@@ -346,6 +352,10 @@ namespace Game.Ai.V2
         // A support leaves this list when its handoff is attempted or it stops existing; the
         // primary (the gather host) is never in it.
         public List<int> GatherSupportArmyIds = new List<int>();
+        // Strike force step 5 — gather supports that handed over and walk home (the
+        // AttackMissionPhase.GatherReturn legs). Continuity picks each one's base and drops it on
+        // arrival or loss; the operation's own Phase never becomes GatherReturn.
+        public List<AttackGatherReturn> GatherReturns = new List<AttackGatherReturn>();
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
         public int ReinforcementRequestedTurn = -1;

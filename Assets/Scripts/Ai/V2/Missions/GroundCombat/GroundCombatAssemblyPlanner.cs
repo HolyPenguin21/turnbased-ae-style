@@ -383,8 +383,9 @@ namespace Game.Ai.V2
         // on the way to the target and close to its supports. Supports are added greedily by win
         // gain per AP through the SAME fill/swap projection the handoff executes
         // (TryProjectReinforcement over GroundCombatReinforcement.SparableSupportBodies). There is
-        // no count or distance cap: the win gate is the only bar, so a spread-out late-game army
-        // attacks at its assembled peak. Candidates are the snapshot's free ready field armies
+        // no count or distance cap: the win gate is the bar to be feasible, and past it supports
+        // keep joining while each still adds attackGatherMinWinGain (strike force step 5), so a
+        // spread-out late-game army attacks at its assembled peak. Candidates are the snapshot's free ready field armies
         // (GroundCombatActorEligibility) minus `excludeArmyIds`; rosters are read live, exactly as
         // TryAssembleForHost does. `pinnedHostArmyId` re-plans a started gather around its host.
         internal static GroundCombatGatherPlan PlanGather(WorldSnapshot snap,
@@ -439,10 +440,15 @@ namespace Game.Ai.V2
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .Select(WorthIt.FromLiveUnit)
                 .ToList();
-            int capacity = ArmyData.ComputeCapacity(host.Members, host.IsGarrison);
+            // Handoffs move ground bodies only; the host's own best commander for THIS fight
+            // (HeroRoleEvaluator — the assault transaction promotes it before the march) leads,
+            // and its Command sets the formation's capacity.
+            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
+                opposition, defenderHexDefenseBonus) ?? host.Commander;
+            int capacity = ArmyData.ComputeCapacity(lead == null ? host.Members
+                : new[] { lead }.Concat(host.Members.Where(u => u != lead)), host.IsGarrison);
             int memberCount = host.Members.Count;
-            // Handoffs move ground bodies only, so the host's commander leads the formation.
-            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(host.Commander);
+            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(lead);
 
             var pool = new List<GatherSupport>();
             foreach (ArmySnapshot s in supportSnaps)
@@ -482,7 +488,11 @@ namespace Game.Ai.V2
             bool clears = GroundCombatFeasibility.Clears(bodies, commander, opposition, winChanceGate,
                 defenderHexDefenseBonus, out float win, out bool cover);
             var chosen = new List<GatherSupport>();
-            while (!clears)
+            // Strike force step 5 — gather to the PEAK, not to the bare gate: below the gate any
+            // improving support is taken (best win gain per AP first); past it a support is worth
+            // its walk only while it moves the fight by more than Monte-Carlo noise
+            // (attackGatherMinWinGain).
+            while (true)
             {
                 GatherSupport pick = null;
                 List<WorthIt.DefenderProfile> pickRoster = null;
@@ -494,6 +504,8 @@ namespace Game.Ai.V2
                             commander, opposition, out List<WorthIt.DefenderProfile> projected, out _,
                             out float projectedWin, defenderHexDefenseBonus))
                         continue;
+                    if (clears && projectedWin - win < AiConfigV2.attackGatherMinWinGain)
+                        continue;
                     float rate = (projectedWin - win) / System.Math.Max(1, s.Ap);
                     if (pick == null || rate > pickRate)
                     {
@@ -504,9 +516,13 @@ namespace Game.Ai.V2
                     }
                 }
                 if (pick == null)
+                {
+                    if (clears)
+                        break;
                     return GroundCombatGatherPlan.Infeasible(
                         $"gather host #{host.Id}: no remaining support improves the formation "
                         + $"(win {win:0.00} < {winChanceGate:0.00})");
+                }
 
                 // A fill appends the first `added` sparable bodies in the order passed above, so
                 // the matching live units are exact; a swap keeps the roster size (its AP/speed

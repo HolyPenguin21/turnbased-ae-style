@@ -41,6 +41,11 @@ namespace Game.Ai.V2
                         AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx);
                     else if (a.Phase == AttackMissionPhase.Gather)
                         AppendAttackGather(snap, intent, a, proposals, ctx);
+                    // Strike force step 5 — donors that already handed over walk home beside
+                    // whatever the operation itself does.
+                    foreach (AttackGatherReturn r in a.GatherReturns)
+                        AppendAttackWalkHome(snap, intent, a, AttackMissionPhase.GatherReturn,
+                            r.ArmyId, r.BaseHex, proposals);
                 }
 
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
@@ -108,6 +113,12 @@ namespace Game.Ai.V2
                 TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, actor,
                     plan.ProjectedWinChance, eta, 0f, projectedAp);
 
+                // Strike force step 5 — a fresh operation may instead gather the fist to its peak
+                // first: that gather competes with this direct assault on the same TaskScore.
+                if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
+                        hexBonus, excluded, proposals, score.Value))
+                    continue;
+
                 var target = new AttackMissionTarget
                 {
                     Phase = AttackMissionPhase.Assault,
@@ -174,9 +185,10 @@ namespace Game.Ai.V2
         // intent (§70) carrying the frozen plan, after which the remaining legs are proposed as
         // durable lifecycle work by AppendAttackGather. The lead leg is the critical path: the
         // support with the longest walk that can act this turn.
+        // `mustBeat` — the score of a direct assault the gather must out-score (null: none exists).
         private static bool TryAppendFreshAttackGather(WorldSnapshot snap, AttackObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
-            List<MissionProposal> proposals)
+            List<MissionProposal> proposals, float? mustBeat = null)
         {
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor);
@@ -204,6 +216,14 @@ namespace Game.Ai.V2
             int perTurnAp = AiV2Util.CeilDiv(gather.TotalAp, eta);
             TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, host,
                 gather.ProjectedWinChance, eta, 0f, perTurnAp);
+            if (mustBeat.HasValue && score.Value <= mustBeat.Value)
+            {
+                AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
+                    $"[AI][V2][Attack][Gather] decision=SKIP target={objective.Target.DiagnosticLabel} "
+                    + $"host={host.ArmyId} win={F(gather.ProjectedWinChance)} score={F(score.Value)} "
+                    + $"reason=direct_assault_scores_higher({F(mustBeat.Value)})");
+                return false;
+            }
             MissionProposal proposal = BuildAttackGatherLeg(objective.Target, host, lead,
                 gather.SupportArmyIds, hexBonus, objective.DefenderCount, gather.ProjectedWinChance,
                 gather.CoversAllDefenders, 0, score.Value, null);
@@ -309,8 +329,10 @@ namespace Game.Ai.V2
             {
                 Phase = phase,
                 Target = a.Target,
-                PrimaryArmyId = a.PrimaryArmyId,
-                SupportArmyId = a.SupportArmyId,
+                // A donor walking home is no part of the operation's force: it never names the
+                // primary (which would pin it) and moves as its own support actor.
+                PrimaryArmyId = phase == AttackMissionPhase.GatherReturn ? null : a.PrimaryArmyId,
+                SupportArmyId = phase == AttackMissionPhase.GatherReturn ? moverArmyId : a.SupportArmyId,
                 DestinationHex = destination.Value,
                 RecoveryBaseHex = a.RecoveryBaseHex,
                 SupportReturnHex = a.SupportReturnHex,

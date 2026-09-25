@@ -483,6 +483,15 @@ namespace Game.Ai.V2
             foreach (int d in claimedDonors)
                 session.ClaimedArmyIds.Add(d);
 
+            // Strike force step 5 — the host marches under its best legal commander for THIS fight
+            // (HeroRoleEvaluator, the same choice the gather projection made). Zero AP, no roster
+            // change, so the funded activation above is untouched.
+            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
+                opposition, r.DefenderHexDefenseBonus);
+            if (lead != null && lead != host.Commander && host.TryReorderCommander(lead, out _))
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — host #{host.Id} "
+                    + $"commander -> {lead.Name} for this fight");
+
             AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — OK host #{host.Id} "
                 + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}"
                 + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "

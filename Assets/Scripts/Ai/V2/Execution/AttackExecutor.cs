@@ -38,6 +38,7 @@ namespace Game.Ai.V2
             {
                 case AttackMissionPhase.RecoveryReturn:
                 case AttackMissionPhase.SupportReturn:
+                case AttackMissionPhase.GatherReturn:
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
                 case AttackMissionPhase.Reinforcement:

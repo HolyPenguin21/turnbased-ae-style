@@ -63,6 +63,8 @@ namespace Game.Ai.V2
                 }
             }
 
+            ResolveGatherReturns(snap, player, intent, a);
+
             bool supportLostThisPass = false;
             if (a.SupportArmyId.HasValue
                 && (a.Phase == AttackMissionPhase.Reinforcement
@@ -216,6 +218,29 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Strike force step 5 — gather donors that already handed over walk home. The base is
+        // chosen (and re-chosen when lost) by the one own-Base selection owner; a donor leaves the
+        // list on arrival, when its container is gone, or when no home is reachable.
+        private static void ResolveGatherReturns(WorldSnapshot snap, PlayerSetupData player,
+            MissionIntent intent, AttackIntent a)
+        {
+            a.GatherReturns.RemoveAll(r =>
+            {
+                ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == r.ArmyId);
+                if (s == null || !ActorCommitments.GroundContainerStillValid(r.ArmyId, snap))
+                    return true;
+                if (!ReturnBaseStillValid(snap, player, r.ArmyId, r.BaseHex))
+                    r.BaseHex = SelectReturnBase(snap, player, r.ArmyId);
+                bool done = !r.BaseHex.HasValue || s.Hex.Equals(r.BaseHex.Value);
+                if (done)
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} donor #{r.ArmyId} "
+                        + (r.BaseHex.HasValue ? "is home" : "has no reachable home base")
+                        + " — released");
+                return done;
+            });
+        }
+
         // The one "support leaves an Attack" edge after SupportReturn: release the claim and hand
         // the operation back to the Assault / Reinforcement decision below (§24), which re-reads
         // whether the primary clears the site on its own.
@@ -228,12 +253,13 @@ namespace Game.Ai.V2
 
         // Audit F7 — the Gather phase. The host (PrimaryArmyId) holds; every support in
         // GatherSupportArmyIds walks to it and hands over (AdvanceIntent drops a support once its
-        // handoff was attempted). The operation turns into an Assault the moment the host clears
-        // the FRESH gate — gathering is still a fresh start decision, so the lower continuation
-        // floor does not apply until the host actually marches. When every planned support is
-        // spent and the host still falls short, the gather is re-planned around the same host from
-        // what is free now; if nothing can complete it, the existing Reinforcement path takes over
-        // (partial improvement, then the Production demand, then RecoveryReturn).
+        // handoff was attempted, and it walks home). Strike force step 5: the gather builds the
+        // fist to its PEAK, so the host marches once every planned support is spent and it clears
+        // Attack's floor — or earlier, when it already clears and a leg has stalled. When every
+        // planned support is spent and the host still falls short, the gather is re-planned around
+        // the same host from what is free now; if nothing can complete it, the existing
+        // Reinforcement path takes over (partial improvement, then the Production demand, then
+        // RecoveryReturn).
         private static bool ResolveAttackGather(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ISet<int> unavailableArmyIds)
         {
@@ -261,7 +287,8 @@ namespace Game.Ai.V2
                     + $"remaining [{string.Join(",", a.GatherSupportArmyIds)}]");
             }
 
-            if (AttackPrimaryClearsTarget(snap, a))
+            if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
+                && AttackPrimaryClearsTarget(snap, a))
             {
                 AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} phase Gather -> Assault "
                     + $"(host #{a.PrimaryArmyId} clears {a.Target.DiagnosticLabel} "

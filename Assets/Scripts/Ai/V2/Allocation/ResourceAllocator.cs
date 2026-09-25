@@ -159,6 +159,10 @@ namespace Game.Ai.V2
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.Gather,
                         at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R,
                         actorId: at.PrimaryArmyId ?? 0);
+                // One key per donor walking home.
+                case AttackMissionPhase.GatherReturn:
+                    return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.GatherReturn,
+                        at.SupportArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);
                 case AttackMissionPhase.RecoveryReturn:
                     return new StableMissionKey(MissionKind.Attack, (int)AttackMissionPhase.RecoveryReturn,
                         at.PrimaryArmyId ?? 0, at.DestinationHex.Q, at.DestinationHex.R);

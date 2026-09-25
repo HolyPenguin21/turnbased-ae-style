@@ -22,6 +22,9 @@ namespace Game.Ai.V2
     //                     spread across hexes do together: the host (PrimaryArmyId) holds while
     //                     every planned support walks to it in parallel and hands its bodies over
     //                     (GroundCombatAssemblyPlanner.PlanGather owns the host/support choice).
+    //   GatherReturn    — a gather support that already handed over walks home (strike force
+    //                     step 5). One leg per donor, run beside whatever the operation does;
+    //                     it is never the operation's own phase (AttackIntent.GatherReturns).
     public enum AttackMissionPhase
     {
         Assault = 0,
@@ -29,6 +32,7 @@ namespace Game.Ai.V2
         SupportReturn = 2,
         RecoveryReturn = 3,
         Gather = 4,
+        GatherReturn = 5,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the

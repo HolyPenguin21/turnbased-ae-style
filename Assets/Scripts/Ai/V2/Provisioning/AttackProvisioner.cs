@@ -38,6 +38,9 @@ namespace Game.Ai.V2
                 case AttackMissionPhase.SupportReturn:
                     return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
                         target.SupportArmyId, "support");
+                case AttackMissionPhase.GatherReturn:
+                    return ProvisionWalkHome(player, root, ctx, session, funded, target, key, eps,
+                        target.SupportArmyId, "gather donor");
                 // Audit F7 — a Gather leg is the same convoy + handoff with a pinned support.
                 case AttackMissionPhase.Reinforcement:
                 case AttackMissionPhase.Gather:

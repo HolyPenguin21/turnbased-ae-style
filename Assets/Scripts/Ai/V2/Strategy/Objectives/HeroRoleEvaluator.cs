@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Combat;
 using Game.Cards;
+using Game.Map;
 using Game.Units;
 using UnityEngine;
 
@@ -147,6 +148,38 @@ namespace Game.Ai.V2
                 ? 1f
                 : WorthIt.EstimateSequential(roster, commander, opposition, defenderHexDefenseBonus).WinChance;
             return new CommandProjection(win, slots, roster);
+        }
+
+        // The best LEGAL commander among a live army's heroes for a known fight (null: no hero).
+        // Legal = the army's whole roster still fits under that hero's Command, exactly the
+        // rule Housekeeping's reorder keeps; the current commander wins every tie (stable key 0).
+        // Used by the cross-hex gather projection and by the assault transaction, which promotes
+        // it (ArmyData.TryReorderCommander, zero AP) before the march.
+        public static UnitData BestCommanderFor(IReadOnlyList<UnitData> members, bool isGarrison,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus)
+        {
+            if (members == null)
+                return null;
+            List<UnitData> heroes = members.Where(u => u != null && u.IsHero && !u.IsPrisoner).ToList();
+            if (heroes.Count == 0)
+                return null;
+            UnitData current = ArmyData.CommanderOf(members);
+            List<WorthIt.DefenderProfile> bodies = members
+                .Where(u => u != null && AiArmyRoles.IsGroundBattleBody(u))
+                .Select(WorthIt.FromLiveUnit)
+                .ToList();
+            List<UnitData> legal = heroes
+                .Where(h => ArmyData.ComputeCapacity(
+                    new[] { h }.Concat(members.Where(u => u != h)), isGarrison) >= members.Count)
+                .ToList();
+            if (legal.Count == 0)
+                return current;
+            return legal
+                .Select(h => (hero: h, candidate: Candidate(h, ProjectCommand(h.CommandRating,
+                    heroes.Count - 1, WorthIt.SideCommander.Of(h), bodies, opposition,
+                    defenderHexDefenseBonus), h == current ? 0 : 1 + legal.IndexOf(h))))
+                .OrderBy(x => x.candidate, Comparer<CommandCandidate>.Create(CompareCandidates))
+                .First().hero;
         }
 
         // The fight a commander is judged against when no concrete target is in hand: the

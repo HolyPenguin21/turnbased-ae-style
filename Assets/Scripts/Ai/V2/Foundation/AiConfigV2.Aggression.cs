@@ -118,6 +118,9 @@ namespace Game.Ai.V2
         // Attack's one win-chance floor (fresh and continuing alike): below it the AI sits and
         // defends; above it the win chance is a term of the Attack score, not a gate.
         public const float attackMinViableWinChance = 0.20f;
+        // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
+        // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
+        public const float attackGatherMinWinGain = 0.05f;
         // Perf pre-filter:
         // GroundCombatAssemblyPlanner.Plan()/EligibleActorIds() would otherwise
         // run the 25-trial Monte-Carlo WinChance once per ready army per Raid target, per

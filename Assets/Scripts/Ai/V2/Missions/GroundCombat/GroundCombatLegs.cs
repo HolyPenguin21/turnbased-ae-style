@@ -79,7 +79,8 @@ namespace Game.Ai.V2
             if (mission?.Target is AttackMissionTarget attack)
                 return ((attack.Phase == AttackMissionPhase.Reinforcement
                             || attack.Phase == AttackMissionPhase.Gather
-                            || attack.Phase == AttackMissionPhase.SupportReturn)
+                            || attack.Phase == AttackMissionPhase.SupportReturn
+                            || attack.Phase == AttackMissionPhase.GatherReturn)
                         && attack.SupportArmyId == armyId)
                     || (attack.Phase == AttackMissionPhase.RecoveryReturn
                         && attack.PrimaryArmyId == armyId);
@@ -91,7 +92,8 @@ namespace Game.Ai.V2
         internal static bool IsAttackSupportLeg(AttackMissionPhase phase) =>
             phase == AttackMissionPhase.Reinforcement
             || phase == AttackMissionPhase.SupportReturn
-            || phase == AttackMissionPhase.Gather;
+            || phase == AttackMissionPhase.Gather
+            || phase == AttackMissionPhase.GatherReturn;
 
         // The requirements of a lifecycle leg whose mover Continuity already pinned (a walk home,
         // a convoy, a gather): one activation this turn unless already paid, and the mover's own
@@ -132,6 +134,8 @@ namespace Game.Ai.V2
             if (attack.Phase == AttackMissionPhase.Gather)
                 foreach (int id in attack.GatherSupportArmyIds)
                     yield return id;
+            foreach (AttackGatherReturn r in attack.GatherReturns)
+                yield return r.ArmyId;
         }
     }
 }
