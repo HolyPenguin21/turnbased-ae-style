@@ -3365,10 +3365,10 @@ namespace Game.EditorTests
                     | System.Reflection.BindingFlags.NonPublic);
 
             Assert.That(shouldReap, Is.Not.Null);
-            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent }), Is.False);
+            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent, 1 }), Is.False);
 
             intent.StallTurns = AiConfigV2.commitmentStallTurns;
-            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent }), Is.True);
+            Assert.That((bool)shouldReap.Invoke(null, new object[] { intent, 1 }), Is.True);
         }
 
         [Test]

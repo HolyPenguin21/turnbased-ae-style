@@ -494,7 +494,7 @@ namespace Game.Ai.V2
                     bool arrived = valid && ResearchProductionSystem.ActorStillQualifies(
                         player, d.Hero, d.FacilityHex, d.Mode)
                         && ResearchProductionSystem.IsEligible(player, d.FacilityHex, d.Mode, out _);
-                    if (!valid || arrived || ShouldReap(intent))
+                    if (!valid || arrived || ShouldReap(intent, snap?.TurnNumber ?? 0))
                     {
                         dead.Add(intent.IntentKey);
                         AiDebugLog.Write($"[AI][V2][Development] retire {intent.IntentKey} "
@@ -1316,7 +1316,7 @@ namespace Game.Ai.V2
                 if (intent.Suspended != SuspendReason.PoolExhausted && !protectedWaitingOnResources)
                     intent.StallTurns++;
 
-                if (ShouldReap(intent))
+                if (ShouldReap(intent, turn))
                 {
                     RetireOutcomeIntent(state, intent, null, turn);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedIdle");
@@ -1542,9 +1542,7 @@ namespace Game.Ai.V2
             {
                 if (returnBuilderOutcome && intent != null)
                 {
-                    intent.Status = IntentStatus.Active;
-                    intent.Suspended = SuspendReason.None;
-                    intent.LastReconciledTurn = turn;
+                    KeepReturnBuilder(state, intent, o, turn);
                     return;
                 }
                 RetireOutcomeIntent(state, intent, o, turn);
@@ -1558,9 +1556,7 @@ namespace Game.Ai.V2
             {
                 if (returnBuilderOutcome && intent != null)
                 {
-                    intent.Status = IntentStatus.Active;
-                    intent.Suspended = SuspendReason.None;
-                    intent.LastReconciledTurn = turn;
+                    KeepReturnBuilder(state, intent, o, turn);
                     return;
                 }
                 if (intent != null)
@@ -1573,8 +1569,7 @@ namespace Game.Ai.V2
             {
                 if (returnBuilderOutcome && intent != null)
                 {
-                    intent.LastReconciledTurn = turn;
-                    intent.StallTurns = 0;
+                    KeepReturnBuilder(state, intent, o, turn);
                     return;
                 }
                 // A no-progress Economy outcome ends its outbound commitment only on a PROVEN
@@ -1880,7 +1875,7 @@ namespace Game.Ai.V2
             if ((!capabilityUnavailable || intent.Kind == MissionKind.Development
                     || intent.Kind == MissionKind.Raid
                     || IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent))
-                && ShouldReap(intent))
+                && ShouldReap(intent, turn))
             {
                 RetireOutcomeIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
@@ -2215,7 +2210,27 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static bool ShouldReap(MissionIntent i)
+        // ReturnBuilder is preserved through every transient failure (a lost shelter is re-targeted
+        // by ResolveActive, a blocked way home may clear) — but only while it still gets home:
+        // a builder that has not advanced for commitmentMaxTurns is released, its lender resumed,
+        // instead of holding the hero (and the lender) forever. Economy audit S1.
+        private static void KeepReturnBuilder(MissionIntentState state, MissionIntent intent,
+            MissionTurnOutcome o, int turn)
+        {
+            if (turn - intent.LastProgressTurn >= AiConfigV2.commitmentMaxTurns)
+            {
+                AiDebugLog.Write($"[AI][V2][Economy][Recovery] release {intent.IntentKey} — no progress "
+                    + $"home since t{intent.LastProgressTurn}");
+                RetireEconomyIntent(state, intent, o, turn);
+                return;
+            }
+            intent.Status = IntentStatus.Active;
+            intent.Suspended = SuspendReason.None;
+            intent.LastReconciledTurn = turn;
+            intent.StallTurns = 0;
+        }
+
+        private static bool ShouldReap(MissionIntent i, int turn)
         {
             if (i.Kind == MissionKind.Raid)
                 return i.StallTurns >= AiConfigV2.raidIntentStallTurns
@@ -2228,6 +2243,13 @@ namespace Game.Ai.V2
             // cap; only a real stall ends it here.
             if (i.Kind == MissionKind.Scout || i.Kind == MissionKind.Attack)
                 return i.StallTurns >= AiConfigV2.commitmentStallTurns;
+            // Economy audit B10 — an Economy obligation that advances every turn (a long walk to
+            // a site, a collector holding its site, a builder walking home) is not aged out by
+            // absolute age; the cap bounds time WITHOUT progress instead, which still ends a build
+            // that waits (protected, unaffordable) longer than commitmentMaxTurns.
+            if (i.Kind == MissionKind.Economy)
+                return i.StallTurns >= AiConfigV2.commitmentStallTurns
+                    || turn - i.LastProgressTurn >= AiConfigV2.commitmentMaxTurns;
             return i.StallTurns >= AiConfigV2.commitmentStallTurns
                 || i.TurnsActive >= AiConfigV2.commitmentMaxTurns;
         }

@@ -380,6 +380,66 @@ namespace Game.EditorTests
                 "a build completing now outranks other builds' deferred holds, as in Provisioning");
         }
 
+        // --- B10 / S1: Economy age is time without progress ---------------------------------
+
+        [Test]
+        public void B10_BuildAdvancingEveryTurn_IsNotReapedByAbsoluteAge()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 1);
+            intent.TurnsActive = 6;
+            intent.LastReconciledTurn = 6;
+            intent.LastProgressTurn = 6;
+
+            Settle(player, m, 7, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, StepsMoved = 1,
+            });
+
+            Assert.That(Has(player, intent), Is.True, "a long walk that keeps moving is not stale");
+        }
+
+        [Test]
+        public void B10_BuildWaitingWithoutProgress_IsStillBoundedByMaxTurns()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 1);
+            intent.LastReconciledTurn = 6;
+            intent.LastProtectedTurn = 7;   // Phase A still holds its resources this turn
+
+            MissionContinuityLayer.ReconcileAfterTurn(player, 7, new List<MissionTurnOutcome>());
+
+            Assert.That(Has(player, intent), Is.False,
+                "a build that has waited commitmentMaxTurns without any progress is released");
+        }
+
+        [Test]
+        public void S1_ReturnBuilderThatNeverGetsHome_IsReleasedAndItsLenderResumed()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.ReturnBuilder, Home);
+            MissionIntent intent = DurableIntent(player, m, 1);
+            var donor = new MissionIntent
+            {
+                Kind = MissionKind.Scout, PreferredMoverArmyId = Actor,
+                Status = IntentStatus.Suspended, Suspended = SuspendReason.EconomyLoan,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(9, 9) },
+            };
+            donor.IntentKey = MissionIntentKey.For(donor);
+            MissionIntentRegistry.GetOrCreate(player).Put(donor);
+            intent.Economy.Loaned = true;
+            intent.Economy.LoanSource = donor.IntentKey;
+
+            Settle(player, m, 3, failure: ProvisionFailure.NoExecutableStep("route home blocked"));
+            Assert.That(Has(player, intent), Is.True, "a briefly blocked way home is kept");
+
+            Settle(player, m, 7, failure: ProvisionFailure.NoExecutableStep("route home blocked"));
+            Assert.That(Has(player, intent), Is.False);
+            Assert.That(donor.Status, Is.EqualTo(IntentStatus.Active));
+        }
+
         // --- B12: collector usefulness is judged without its own contribution ---------------
 
         [Test]
