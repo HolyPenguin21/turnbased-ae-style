@@ -97,34 +97,7 @@ namespace Game.Ai.V2
 
             BuildApActionEconomy(self, player, ownArmies);
 
-            var nowPool = new List<AiPower.PowerUnit>();
-            int nowCap = NoHeroStackCapacity;
-            foreach (ArmyData a in ownArmies)
-                foreach (UnitData m in a.Members)
-                {
-                    nowPool.Add(AiPower.ToPowerUnit(m));
-                    if (m.IsHero && m.CommandRating > nowCap) nowCap = m.CommandRating;
-                }
-            foreach (CardData c in self.Hand)
-                if (c?.Definition != null && IsMilitaryCard(c.Definition))
-                {
-                    nowPool.Add(AiPower.ToPowerUnit(c.Definition));
-                    if (c.Definition.cardType == CardType.Hero && c.Definition.commandRating > nowCap)
-                        nowCap = c.Definition.commandRating;
-                }
-
-            var ceilingPool = new List<AiPower.PowerUnit>(nowPool);
-            int ceilingCap = nowCap;
-            foreach (CardDefinition d in self.Deck)
-                if (d != null && IsMilitaryCard(d))
-                {
-                    ceilingPool.Add(AiPower.ToPowerUnit(d));
-                    if (d.cardType == CardType.Hero && d.commandRating > ceilingCap)
-                        ceilingCap = d.commandRating;
-                }
-
-            self.BestStackPotential = AiPower.BestStackPotential(nowPool, nowCap);
-            self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(ceilingPool, ceilingCap);
+            BuildForceMeasures(self, player, ownArmies);
 
             return self;
         }
@@ -156,6 +129,129 @@ namespace Game.Ai.V2
 
         private static bool IsMilitaryCard(CardDefinition d) =>
             d.cardType == CardType.Unit || d.cardType == CardType.Hero;
+
+        // Strike force step 3 — the SelfSnapshot force measures, all on one scale: the AiPower
+        // strength of one composed ground stack. The pools are nested on the map stack, each
+        // step adding one source, so FieldPotential + Reserve.Units + Reserve.Hero is exactly
+        // TotalMilitaryPotential. Aviation never joins a ground stack; it is reserve only.
+        // Prisoners do not fight and are no one's commander.
+        private static void BuildForceMeasures(SelfSnapshot self, PlayerSetupData player,
+            List<ArmyData> ownArmies)
+        {
+            var commandHeroes = new List<OwnCommandHero>();
+            var mapPool = new List<AiPower.PowerUnit>();
+            int mapCap = NoHeroStackCapacity;
+            foreach (ArmyData a in ownArmies)
+                foreach (UnitData m in a.Members)
+                {
+                    if (m == null || m.IsAviation || m.IsPrisoner) continue;
+                    mapPool.Add(AiPower.ToPowerUnit(m));
+                    if (!m.IsHero) continue;
+                    mapCap = Mathf.Max(mapCap, m.CommandRating);
+                    commandHeroes.Add(new OwnCommandHero(
+                        HeroRoleEvaluator.Profile(m, m.RuntimeId), ForceSource.Map));
+                }
+
+            var handUnits = new List<AiPower.PowerUnit>();
+            var handHeroes = new List<AiPower.PowerUnit>();
+            var deckUnits = new List<AiPower.PowerUnit>();
+            var deckHeroes = new List<AiPower.PowerUnit>();
+            var equipment = new List<CardDefinition>();
+            int handCap = 0, deckCap = 0;
+            float aviation = 0f;
+
+            // Cards carry no runtime id: hand then deck, by position, as negative keys.
+            void AddCard(CardDefinition d, ForceSource source, int key, List<AiPower.PowerUnit> units,
+                List<AiPower.PowerUnit> heroes, ref int cap)
+            {
+                if (d == null) return;
+                if (d.cardType == CardType.Equipment) { equipment.Add(d); return; }
+                if (!IsMilitaryCard(d)) return;
+                if (d.isAviation) { aviation += AiPower.ToPowerUnit(d).BasePower; return; }
+                if (d.cardType == CardType.Unit) { units.Add(AiPower.ToPowerUnit(d)); return; }
+                heroes.Add(AiPower.ToPowerUnit(d));
+                cap = Mathf.Max(cap, d.commandRating);
+                commandHeroes.Add(new OwnCommandHero(HeroRoleEvaluator.Profile(d, key), source));
+            }
+            for (int i = 0; i < self.Hand.Count; i++)
+                AddCard(self.Hand[i]?.Definition, ForceSource.Hand, -(1 + i),
+                    handUnits, handHeroes, ref handCap);
+            for (int i = 0; i < self.Deck.Count; i++)
+                AddCard(self.Deck[i], ForceSource.Deck, -(1 + self.Hand.Count + i),
+                    deckUnits, deckHeroes, ref deckCap);
+
+            List<AiPower.PowerUnit> withUnits = mapPool.Concat(handUnits).Concat(deckUnits).ToList();
+            float unitsCeiling = AiPower.BestStackPotential(withUnits, mapCap);
+
+            self.FieldPotential = AiPower.BestStackPotential(mapPool, mapCap);
+            self.BestStackPotential = AiPower.BestStackPotential(
+                mapPool.Concat(handUnits).Concat(handHeroes).ToList(), Mathf.Max(mapCap, handCap));
+            self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(
+                withUnits.Concat(handHeroes).Concat(deckHeroes).ToList(),
+                Mathf.Max(mapCap, Mathf.Max(handCap, deckCap)));
+            self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
+                .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
+            self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)
+                ? start : self.TotalMilitaryPotential;
+            self.Reserve = new ForceReserve(
+                units: Mathf.Max(0f, unitsCeiling - self.FieldPotential),
+                hero: Mathf.Max(0f, self.TotalMilitaryPotential - unitsCeiling),
+                equipment: EquipmentReserve(self, ownArmies, equipment),
+                aviation: aviation);
+            self.CommandHeroes = commandHeroes;
+        }
+
+        // Σ over the equipment cards of each one's combat gain on a free, legal ground host
+        // (StrategicCardEvaluator.EquipmentDeltaParts — the one equipment value). A host takes one
+        // item; the largest gains are matched first.
+        private static float EquipmentReserve(SelfSnapshot self, List<ArmyData> ownArmies,
+            List<CardDefinition> equipment)
+        {
+            if (equipment.Count == 0)
+                return 0f;
+
+            // Each free ground host as "the combat gain of this item on it" (0 = does not fit).
+            var hosts = new List<System.Func<CardDefinition, float>>();
+            foreach (ArmyData a in ownArmies)
+                foreach (UnitData u in a.Members)
+                    if (u != null && !u.IsAviation && !u.IsPrisoner && u.Equipment == null
+                        && u.OriginatingCard != null)
+                        hosts.Add(eq => EquipmentSystem.FitsHost(eq, u.OriginatingCard, out _)
+                            ? StrategicCardEvaluator.EquipmentDeltaParts(eq, u).Combat : 0f);
+            foreach (CardData c in self.Hand)
+                if (IsGroundHostCard(c?.Definition) && c.Equipment == null)
+                    hosts.Add(eq => EquipmentSystem.FitsHost(eq, c.Definition, out _)
+                        ? StrategicCardEvaluator.EquipmentDeltaParts(eq, c).Combat : 0f);
+            foreach (CardDefinition d in self.Deck)
+                if (IsGroundHostCard(d))
+                    hosts.Add(eq => EquipmentSystem.FitsHost(eq, d, out _)
+                        ? StrategicCardEvaluator.EquipmentDeltaParts(eq, d).Combat : 0f);
+
+            var pairs = new List<(float gain, int item, int host)>();
+            for (int e = 0; e < equipment.Count; e++)
+                for (int h = 0; h < hosts.Count; h++)
+                {
+                    float gain = hosts[h](equipment[e]);
+                    if (gain > 0f) pairs.Add((gain, e, h));
+                }
+            pairs.Sort((x, y) => x.gain != y.gain ? y.gain.CompareTo(x.gain)
+                : x.item != y.item ? x.item.CompareTo(y.item) : x.host.CompareTo(y.host));
+
+            var usedItems = new HashSet<int>();
+            var usedHosts = new HashSet<int>();
+            float total = 0f;
+            foreach ((float gain, int item, int host) in pairs)
+                if (!usedItems.Contains(item) && !usedHosts.Contains(host))
+                {
+                    usedItems.Add(item);
+                    usedHosts.Add(host);
+                    total += gain;
+                }
+            return total;
+        }
+
+        private static bool IsGroundHostCard(CardDefinition d) =>
+            d != null && IsMilitaryCard(d) && !d.isAviation;
 
         // AI-MGR — Dynamic Strategic Effect Utility. Snapshot-pure AP action-economy read: how many
         // recurring-AP sources are in play, how much AP the AI could still usefully spend this turn,
@@ -245,7 +341,12 @@ namespace Game.Ai.V2
                 IsAirfield = a.IsAirfield,
                 MemberCount = a.Members.Count,
                 HasHero = a.Members.Any(m => m.IsHero),
-                HeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
+                HeroCount = a.Members.Count(m => m.IsHero),
+                BestHeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
+                // A hero is public battle information once seen; a stealth-hidden commander is not.
+                Commander = a.Commander != null
+                    && (isOwn || !StealthSystem.IsHiddenFrom(a.Commander, viewer))
+                    ? WorthIt.SideCommander.Of(a.Commander) : default,
                 HasAntiAir = a.Members.Any(m => m.HasAbility(UnitAbilities.AntiAir)),
                 // review-r4 P1 ARCH — the coverage roles come from StrategicEffectRegistry, so a new
                 // counter/support/mobility mechanic flows in without editing this file.

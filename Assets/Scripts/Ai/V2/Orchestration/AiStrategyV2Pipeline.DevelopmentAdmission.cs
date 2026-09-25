@@ -137,12 +137,11 @@ namespace Game.Ai.V2
                     string k = $"{i.Kind}:{i.Status}";
                     if (i.PreferredMoverArmyId.HasValue)
                         rows.Add($"{k}:{i.PreferredMoverArmyId.Value}");
-                    if (i.Raid?.SupportArmyId != null)
-                        rows.Add($"{k}:sup{i.Raid.SupportArmyId.Value}:{(int)i.Raid.Phase}");
                     if (i.Raid?.AirSupportArmyId != null)
                         rows.Add($"{k}:air{i.Raid.AirSupportArmyId.Value}:{(int)i.Raid.Phase}");
-                    if (i.Attack?.SupportArmyId != null)
-                        rows.Add($"{k}:asup{i.Attack.SupportArmyId.Value}:{(int)i.Attack.Phase}");
+                    // Held ground supports — the same list ActorCommitments claims.
+                    foreach (int supportId in GroundCombatLegs.HeldGroundSupportArmyIds(i))
+                        rows.Add($"{k}:sup{supportId}");
                     if (i.Economy?.BuilderArmyId != null)
                         rows.Add($"{k}:bld{i.Economy.BuilderArmyId.Value}");
                     if (i.Economy?.CollectorArmyId != null)

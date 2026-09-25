@@ -228,19 +228,31 @@ namespace Game.Map
 
         public int Capacity => ComputeCapacity(Members, IsGarrison);
 
+        // THE army's commander: its first hero (heroes are kept as a contiguous prefix, see
+        // TryReorderCommander). It alone gives the army its capacity (ComputeCapacity), its battle
+        // Fate and its initiative bonus (BattleTurnOrder). Every "which hero leads this army"
+        // question in battle, UI and AI reads this one rule. Null when the army has no hero.
+        public UnitData Commander => CommanderOf(Members);
+
+        public static UnitData CommanderOf(IEnumerable<UnitData> members)
+        {
+            if (members != null)
+                foreach (UnitData member in members)
+                    if (member != null && member.IsHero)
+                        return member;
+            return null;
+        }
+
         // The Capacity rule as a pure function of a (candidate) member list, rather than always
         // reading this instance's own Members — lets a caller ask "what would capacity become
         // if the roster looked like THIS" before actually committing to an order.
         public static int ComputeCapacity(IEnumerable<UnitData> members, bool isGarrison)
         {
             int nominalCapacity = isGarrison ? GarrisonBaseCapacity : BaseCapacity;
-            if (members != null)
-                foreach (UnitData member in members)
-                    if (member != null && member.IsHero)
-                        return ComputeProjectedCapacity(nominalCapacity, hasExistingHero: false,
-                            addedHeroCount: 1, firstAddedHeroCommandRating: member.CommandRating);
+            UnitData commander = CommanderOf(members);
             return ComputeProjectedCapacity(nominalCapacity, hasExistingHero: false,
-                addedHeroCount: 0, firstAddedHeroCommandRating: 0);
+                addedHeroCount: commander != null ? 1 : 0,
+                firstAddedHeroCommandRating: commander != null ? commander.CommandRating : 0);
         }
 
         // Canonical capacity projection for BOTH live gameplay and read-only planning. A capacity

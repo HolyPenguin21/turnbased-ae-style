@@ -107,29 +107,10 @@ namespace Game.Ai.V2
             var excluded = new HashSet<int>(ClaimedArmyIds);
             foreach (int pinnedId in _groundCombatPinnedByOtherLegs)
             {
-                // The pinned set is computed across ALL funded non-Assault Raid legs, including
-                // this very Reinforcement/Return leg. Its own actor must remain permitted;
-                // never erase a real same-pass claim or an assignment belonging to another Raid.
-                bool thisLegsActor = proposal?.Target is RaidMissionTarget raid
-                    && ((raid.Phase == RaidMissionPhase.Reinforcement
-                            && raid.SupportArmyId == pinnedId)
-                        || (raid.Phase == RaidMissionPhase.Return
-                            && raid.PrimaryArmyId == pinnedId)
-                        || (raid.Phase == RaidMissionPhase.RecoveryReturn
-                            && raid.PrimaryArmyId == pinnedId)
-                        || (raid.Phase == RaidMissionPhase.SupportReturn
-                            && raid.SupportArmyId == pinnedId));
-                // ATK §44 — same rule for an Attack leg: the pinned set is computed across ALL
-                // funded non-Assault legs including this one, so its own actor must stay permitted.
-                bool thisAttackLegsActor = proposal?.Target is AttackMissionTarget attackLeg
-                    && ((attackLeg.Phase == AttackMissionPhase.Reinforcement
-                            && attackLeg.SupportArmyId == pinnedId)
-                        || (attackLeg.Phase == AttackMissionPhase.RecoveryReturn
-                            && attackLeg.PrimaryArmyId == pinnedId)
-                        || (attackLeg.Phase == AttackMissionPhase.SupportReturn
-                            && attackLeg.SupportArmyId == pinnedId));
-                thisLegsActor |= thisAttackLegsActor;
-                if (!thisLegsActor)
+                // The pinned set is computed across ALL funded lifecycle legs, including this
+                // very leg. Its own actor must remain permitted; never erase a real same-pass
+                // claim or an assignment belonging to another operation.
+                if (!GroundCombatLegs.IsOwnLegActor(proposal, pinnedId))
                     excluded.Add(pinnedId);
             }
             if (_groundCombatDurableCommitments != null)

@@ -901,30 +901,12 @@ namespace Game.UI
                 yield break;
             }
 
-            bool defenderDone = false;
-            bool attackerDone = false;
-            bool isDefenderTurn = true;
-            while (!defenderDone || !attackerDone)
+            // The turn order is FateDuelOrder's (shared with the WorthIt estimator).
+            var order = new FateDuelOrder();
+            while (order.TryNext(out bool isDefenderTurn))
             {
-                if (isDefenderTurn ? defenderDone : attackerDone)
-                {
-                    isDefenderTurn = !isDefenderTurn;
-                    continue;
-                }
-
                 yield return RunTurn(isDefenderTurn);
-                if (isDefenderTurn)
-                    defenderDone = true;
-                else
-                    attackerDone = true;
-                if (_turnSpent)
-                {
-                    if (isDefenderTurn)
-                        attackerDone = false;
-                    else
-                        defenderDone = false;
-                }
-                isDefenderTurn = !isDefenderTurn;
+                order.Report(_turnSpent);
             }
         }
 

@@ -39,6 +39,15 @@ namespace Game.Ai.V2
                             a.SupportArmyId, a.SupportReturnHex, proposals);
                     else if (a.Phase == AttackMissionPhase.Reinforcement)
                         AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx);
+                    else if (a.Phase == AttackMissionPhase.Gather)
+                        AppendAttackGather(snap, intent, a, proposals, ctx);
+                    // Strike force step 5 — donors that already handed over walk home beside
+                    // whatever the operation itself does.
+                    foreach (AttackGatherReturn r in a.GatherReturns)
+                        AppendAttackWalkHome(snap, intent, a, AttackMissionPhase.GatherReturn,
+                            r.ArmyId, r.BaseHex, proposals);
+                    // The bound support wing flies its sortie beside the operation too.
+                    AppendAttackAirSupport(snap, intent, a, proposals);
                 }
 
             // ---- Assault: fresh objectives and incumbents still marching on their target ------
@@ -57,7 +66,7 @@ namespace Game.Ai.V2
                 if (pinnedActor.HasValue)
                     excluded.Remove(pinnedActor.Value);
 
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = objective.Defenders;
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
                 // §30 — the honest, knowledge-scoped answer to "what defence does a defender on
                 // that hex actually get". Never a live BuildingRegistry read.
                 float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
@@ -66,10 +75,8 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest
                     {
-                        Defenders = defenders,
-                        WinChanceGate = pinnedActor.HasValue
-                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                        Opposition = opposition,
+                        WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceFloor,
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -78,6 +85,11 @@ namespace Game.Ai.V2
 
                 if (!plan.Feasible)
                 {
+                    // Audit F7 — a FRESH objective no single army nor same-hex package can take
+                    // may still be taken by free armies spread over several hexes: gather them.
+                    if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
+                            hexBonus, excluded, proposals))
+                        continue;
                     // §24 — a started operation whose primary can no longer clear the site is a
                     // REINFORCEMENT decision, not a dead objective. Continuity moves the phase;
                     // the planner only refrains from proposing an impossible assault.
@@ -102,6 +114,12 @@ namespace Game.Ai.V2
                 int? projectedAp = GroundCombatAssemblyPlanner.ProjectedActivationApCost(snap, plan);
                 TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, actor,
                     plan.ProjectedWinChance, eta, 0f, projectedAp);
+
+                // Strike force step 5 — a fresh operation may instead gather the fist to its peak
+                // first: that gather competes with this direct assault on the same TaskScore.
+                if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
+                        hexBonus, excluded, proposals, score.Value))
+                    continue;
 
                 var target = new AttackMissionTarget
                 {
@@ -146,7 +164,7 @@ namespace Game.Ai.V2
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;
 
-                GroundCombatAdmissionRegistry.RecordAttack(proposal, snap, defenders, hexBonus, excluded);
+                GroundCombatAdmissionRegistry.RecordAttack(proposal, snap, opposition, hexBonus, excluded);
                 if (!GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible)
                     || eligible.Count == 0)
                 {
@@ -163,6 +181,183 @@ namespace Game.Ai.V2
             }
         }
 
+        // Audit F7 — the first leg of a fresh cross-hex gather. The whole operation is priced here
+        // (win of the assembled force, gather + assault ETA, total AP spread over that ETA) so it
+        // competes honestly with every other lane; its first executed step creates the Hard
+        // intent (§70) carrying the frozen plan, after which the remaining legs are proposed as
+        // durable lifecycle work by AppendAttackGather. The lead leg is the critical path: the
+        // support with the longest walk that can act this turn.
+        // `mustBeat` — the score of a direct assault the gather must out-score (null: none exists).
+        private static bool TryAppendFreshAttackGather(WorldSnapshot snap, AttackObjective objective,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
+            List<MissionProposal> proposals, float? mustBeat = null)
+        {
+            Dictionary<int, float> donorPrices = GroundCombatDonorPolicy.BorrowableDonorApPrices(
+                snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
+            GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
+                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                donorApPrices: donorPrices);
+            if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
+            {
+                AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
+                    $"[AI][V2][Attack][Gather] decision=REJECT target={objective.Target.DiagnosticLabel} "
+                    + $"reason={gather.Reason ?? "host_already_clears"}");
+                return false;
+            }
+            ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == gather.HostArmyId);
+            // The lead leg must be a FREE army: a bought donor is still held by its operation until
+            // the Attack intent this lead step creates makes Continuity retire that operation.
+            ArmySnapshot lead = gather.SupportArmyIds
+                .Where(id => !donorPrices.ContainsKey(id))
+                .Select(id => snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id))
+                .FirstOrDefault(s => s != null && (s.Hex.Equals(gather.HostHex) || s.CurrentMovement > 0));
+            if (host == null || lead == null)
+            {
+                AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
+                    $"[AI][V2][Attack][Gather] decision=HOLD target={objective.Target.DiagnosticLabel} "
+                    + $"host={gather.HostArmyId} reason=no_free_planned_support_can_act_this_turn");
+                return false;
+            }
+
+            int eta = Mathf.Max(1, gather.TotalEta);
+            int perTurnAp = AiV2Util.CeilDiv(gather.TotalAp, eta);
+            TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, host,
+                gather.ProjectedWinChance, eta, 0f, perTurnAp);
+            if (mustBeat.HasValue && score.Value <= mustBeat.Value)
+            {
+                AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
+                    $"[AI][V2][Attack][Gather] decision=SKIP target={objective.Target.DiagnosticLabel} "
+                    + $"host={host.ArmyId} win={F(gather.ProjectedWinChance)} score={F(score.Value)} "
+                    + $"reason=direct_assault_scores_higher({F(mustBeat.Value)})");
+                return false;
+            }
+            MissionProposal proposal = BuildAttackGatherLeg(objective.Target, host, lead,
+                gather.SupportArmyIds, hexBonus, objective.DefenderCount, gather.ProjectedWinChance,
+                gather.CoversAllDefenders, 0, score.Value, null);
+            proposal.Explain = $"Attack {objective.Target.DiagnosticLabel} Gather (fresh) task "
+                + $"{F(score.Value)} host #{host.ArmyId} supports [{string.Join(",", gather.SupportArmyIds)}] "
+                + $"win {F(gather.ProjectedWinChance)} gatherTurns {gather.GatherTurns} "
+                + $"assaultEta {gather.AssaultEta} ap {gather.TotalAp}";
+            proposals.Add(proposal);
+            AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
+                $"[AI][V2][Attack][Gather] decision=PROPOSE target={objective.Target.DiagnosticLabel} "
+                + $"host={host.ArmyId} lead={lead.ArmyId} supports=[{string.Join(",", gather.SupportArmyIds)}] "
+                + $"win={F(gather.ProjectedWinChance)} gatherTurns={gather.GatherTurns} "
+                + $"assaultEta={gather.AssaultEta} ap={gather.TotalAp} score={F(score.Value)}");
+            return true;
+        }
+
+        // Audit F7 — the durable Gather legs: every planned support still expected at the host
+        // walks to it (or hands over once there) in parallel. Lifecycle work of a Hard operation,
+        // so, like the Reinforcement convoy, the intrinsic score stays neutral.
+        private static void AppendAttackGather(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, List<MissionProposal> proposals, AiTurnContext ctx)
+        {
+            if (!a.PrimaryArmyId.HasValue)
+                return;
+            ArmySnapshot host = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            if (host == null)
+                return;
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
+            int defenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count;
+            foreach (int supportId in a.GatherSupportArmyIds.ToList())
+            {
+                ArmySnapshot support = snap.Self.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == supportId);
+                // Nothing to do this turn: an idle proposal would only fail NoExecutableStep.
+                if (support == null || (!support.Hex.Equals(host.Hex) && support.CurrentMovement <= 0))
+                    continue;
+                proposals.Add(BuildAttackGatherLeg(a.Target, host, support, a.GatherSupportArmyIds,
+                    hexBonus, defenderCount, a.ProjectedWinChance, a.CoversAllDefenders,
+                    a.LastOpportunisticStrikeTurn, 0f, intent));
+            }
+            AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                $"[AI][V2][Attack][Gather] decision=CONTINUE {intent.IntentKey} host={host.ArmyId} "
+                + $"supports=[{string.Join(",", a.GatherSupportArmyIds)}]");
+        }
+
+        private static MissionProposal BuildAttackGatherLeg(AttackTargetRef targetRef,
+            ArmySnapshot host, ArmySnapshot support, IEnumerable<int> gatherSupportIds,
+            float hexBonus, int defenderCount, float win, bool cover, int opportunisticTurn,
+            float value, MissionIntent intent)
+        {
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                support, host.Hex, out int eta);
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.Gather,
+                Target = targetRef,
+                PrimaryArmyId = host.ArmyId,
+                SupportArmyId = support.ArmyId,
+                GatherSupportArmyIds = gatherSupportIds.ToArray(),
+                DestinationHex = host.Hex,
+                DefenderHexDefenseBonus = hexBonus,
+                DefenderCount = defenderCount,
+                ProjectedWinChance = win,
+                CoversAllDefenders = cover,
+                EstimatedEta = eta,
+                OpportunisticStrikeTurn = opportunisticTurn,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = value,
+                LocalAdmissionScore = value,
+                PreferredMoverArmyId = support.ArmyId,
+                FromDurableIntent = intent != null,
+                DurableFundingTier = intent?.Funding ?? CommitmentTier.None,
+                Requirements = requirements,
+                Explain = $"Attack {targetRef.DiagnosticLabel} Gather support #{support.ArmyId} -> host "
+                    + $"#{host.ArmyId} at ({host.Hex.Q},{host.Hex.R})",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            return proposal;
+        }
+
+        // The support wing's sortie leg (AttackMissionPhase.AirSupport): the wing Continuity bound
+        // flies to the site, strikes, and lands. Lifecycle work of a Hard operation, so its
+        // intrinsic score stays neutral; requirements are the one air-support leg shape.
+        private static void AppendAttackAirSupport(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, List<MissionProposal> proposals)
+        {
+            if (!a.AirSupportArmyId.HasValue || !a.AirSupportLandingHex.HasValue)
+                return;
+            ArmySnapshot wing = snap.Self.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.AirSupportArmyId.Value && x.IsAir && !x.IsAirfield);
+            if (wing == null)
+                return;
+            int eta = GroundCombatAirSupport.SortieEta(wing, a.Target.Hex);
+            var target = new AttackMissionTarget
+            {
+                Phase = AttackMissionPhase.AirSupport,
+                Target = a.Target,
+                AirSupportArmyId = wing.ArmyId,
+                AirSupportLandingHex = a.AirSupportLandingHex,
+                DestinationHex = a.Target.Hex,
+                DefenderCount = AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex).Count,
+                EstimatedEta = eta,
+                OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
+            };
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.Attack,
+                Target = target,
+                BaseValue = 0f,
+                LocalAdmissionScore = 0f,
+                PreferredMoverArmyId = wing.ArmyId,
+                FromDurableIntent = true,
+                DurableFundingTier = intent.Funding,
+                Requirements = GroundCombatAirSupport.LegRequirements(wing, a.Target.Hex, eta),
+                Explain = $"Attack {a.Target.DiagnosticLabel} AirSupport wing #{wing.ArmyId} "
+                    + $"-> strike, land ({a.AirSupportLandingHex.Value.Q},{a.AirSupportLandingHex.Value.R})",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            proposals.Add(proposal);
+        }
+
         // §24/§47 — a walking-home leg (RecoveryReturn / SupportReturn). Lifecycle work, not fresh
         // strategic target scoring: its execution priority comes from the durable commitment, so the
         // intrinsic score stays neutral and cannot out-rank unrelated lanes.
@@ -177,15 +372,16 @@ namespace Game.Ai.V2
             if (actor == null)
                 return;
 
-            int distance = HexGridMath.Distance(actor.Hex, destination.Value);
-            int eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, actor.MaxMovement));
-            float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                actor, destination.Value, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = phase,
                 Target = a.Target,
-                PrimaryArmyId = a.PrimaryArmyId,
-                SupportArmyId = a.SupportArmyId,
+                // A donor walking home is no part of the operation's force: it never names the
+                // primary (which would pin it) and moves as its own support actor.
+                PrimaryArmyId = phase == AttackMissionPhase.GatherReturn ? null : a.PrimaryArmyId,
+                SupportArmyId = phase == AttackMissionPhase.GatherReturn ? moverArmyId : a.SupportArmyId,
                 DestinationHex = destination.Value,
                 RecoveryBaseHex = a.RecoveryBaseHex,
                 SupportReturnHex = a.SupportReturnHex,
@@ -201,12 +397,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = actor.ArmyId,
                 FromDurableIntent = true,
                 DurableFundingTier = intent.Funding,
-                Requirements = new MissionRequirements
-                {
-                    MoverKnown = true, RequiresArmy = true,
-                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                    EtaTurns = eta, EstimatedDistance = distance,
-                },
+                Requirements = requirements,
                 Explain = $"Attack {phase} actor #{actor.ArmyId} -> "
                     + $"({destination.Value.Q},{destination.Value.R})",
             };
@@ -246,9 +437,8 @@ namespace Game.Ai.V2
             if (support == null)
                 return;
 
-            int distance = HexGridMath.Distance(support.Hex, primary.Hex);
-            int eta = AiV2Util.CeilDiv(distance, Mathf.Max(1, support.MaxMovement));
-            float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
+            MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                support, primary.Hex, out int eta);
             var target = new AttackMissionTarget
             {
                 Phase = AttackMissionPhase.Reinforcement,
@@ -268,12 +458,7 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = support.ArmyId,
                 FromDurableIntent = true,
                 DurableFundingTier = intent.Funding,
-                Requirements = new MissionRequirements
-                {
-                    MoverKnown = true, RequiresArmy = true,
-                    ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                    EtaTurns = eta, EstimatedDistance = distance,
-                },
+                Requirements = requirements,
                 Explain = $"Attack Reinforcement support #{support.ArmyId} -> primary "
                     + $"#{a.PrimaryArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
             };
@@ -291,11 +476,11 @@ namespace Game.Ai.V2
             MissionIntent intent, AttackIntent a, ArmySnapshot primary, ISet<int> committed,
             List<MissionProposal> proposals, AiTurnContext ctx)
         {
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, a.PrimaryArmyId.Value, defenders, committed, hexBonus);
+                snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus);
             if (candidates.Count == 0)
             {
                 AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
@@ -324,7 +509,7 @@ namespace Game.Ai.V2
                 SupportArmyId = null,
                 DestinationHex = primary.Hex,
                 DefenderHexDefenseBonus = hexBonus,
-                DefenderCount = defenders.Count,
+                DefenderCount = WorthIt.UnitsOf(opposition).Count,
                 EstimatedEta = eta,
                 OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
             };

@@ -105,7 +105,10 @@ namespace Game.Ai.V2
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius))
             {
-                if (sighting.Owner == null || sighting.Owner.IsNeutral)
+                // A building-bound garrison cannot leave its structure to catch the scout
+                // (AiMapMemory keeps it permanently since audit F1); it is detection risk only,
+                // which DetectorRisk still counts.
+                if (sighting.Owner == null || sighting.Owner.IsNeutral || sighting.IsGarrison)
                     continue;
                 // Own stealth state only — whether this enemy has DETECTED the scout is unknown to
                 // its owner (stealth design), so it is never read here.
@@ -117,9 +120,7 @@ namespace Game.Ai.V2
                 // fog. Terrain is immutable/public and safe; structural defence is added only when
                 // the hex is currently visible to this player.
                 float hexBonus = HonestHexDefenseBonus(player, map, sighting.Hex);
-                float win = sighting.Defenders != null && sighting.Defenders.Count > 0
-                    ? WorthIt.WinChance(army, sighting.Defenders, hexBonus)
-                    : WorthIt.WinChance(army, sighting.DefenseSum + hexBonus, sighting.AttackSum);
+                float win = WorthIt.WinChance(army, sighting.Defenders, hexBonus, sighting.Commander);
                 if (win < worstWin)
                 {
                     worstWin = win;
@@ -214,7 +215,8 @@ namespace Game.Ai.V2
                 // the hex it would end on must not sit under a second known threat it cannot beat.
                 if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
                     continue;
-                WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus);
+                WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus,
+                    visible.Contains(target.Commander) ? WorthIt.SideCommander.Of(target.Commander) : default);
                 if (est.WinChance < bestWin)
                     continue;
                 if (est.CriticalAfterBattleChance > AiConfigV2.scoutReactionAttackMaxCriticalAfter)
@@ -277,12 +279,11 @@ namespace Game.Ai.V2
             foreach (AiMapMemory.KnownEnemySighting s in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { hex }, AiConfig.scoutFleeRadius))
             {
-                if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral)
+                // A garrison cannot move out to punish the post-combat position (audit F1).
+                if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral || s.IsGarrison)
                     continue;
                 float hexBonus = HonestHexDefenseBonus(player, map, s.Hex);
-                float win = s.Defenders != null && s.Defenders.Count > 0
-                    ? WorthIt.WinChance(army, s.Defenders, hexBonus)
-                    : WorthIt.WinChance(army, s.DefenseSum + hexBonus, s.AttackSum);
+                float win = WorthIt.WinChance(army, s.Defenders, hexBonus, s.Commander);
                 if (win < StrongEnemyFleeWinChance)
                     return true;
             }

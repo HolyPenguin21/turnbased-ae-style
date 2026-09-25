@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using Game.Cards;
 using Game.Units;
@@ -26,6 +27,48 @@ namespace Game.Combat
     // The companion "stop trying after any single failed reroll" rule (per the user's own spec)
     // lives in BattleAttackPopupUI.RunAiTurn instead of here — it's a turn-loop control decision
     // (react to what a reroll's OWN result was), not a fresh "should I spend" evaluation.
+    // THE turn order of a Fate duel (one owner for the live battle, BattleAttackPopupUI.RunDuel,
+    // and the estimator, WorthIt.ResolveExchange): the defender decides first, the sides
+    // alternate, a side that is done is skipped, and a side that spent re-opens the other one.
+    // The duel ends when both sides are done. A plain mutable struct on purpose — the estimator
+    // plays it inside a Monte-Carlo loop and must not allocate:
+    //     var order = new FateDuelOrder();
+    //     while (order.TryNext(out bool defenderTurn)) { ...one side's turn...; order.Report(spent); }
+    public struct FateDuelOrder
+    {
+        private bool _defenderDone;
+        private bool _attackerDone;
+        private bool _attackerTurn;   // default false: the defender opens the duel
+
+        // The side that decides next; false once both are done.
+        public bool TryNext(out bool isDefenderTurn)
+        {
+            while (!_defenderDone || !_attackerDone)
+            {
+                if (_attackerTurn ? _attackerDone : _defenderDone)
+                {
+                    _attackerTurn = !_attackerTurn;
+                    continue;
+                }
+                isDefenderTurn = !_attackerTurn;
+                return true;
+            }
+            isDefenderTurn = false;
+            return false;
+        }
+
+        // The side TryNext named has finished its turn; `spent` — it spent Fate at least once.
+        public void Report(bool spent)
+        {
+            if (_attackerTurn) _attackerDone = true; else _defenderDone = true;
+            if (spent)
+            {
+                if (_attackerTurn) _defenderDone = false; else _attackerDone = false;
+            }
+            _attackerTurn = !_attackerTurn;
+        }
+    }
+
     public static class FateDuelAi
     {
         // isDefender: true when evaluating the DEFENDER's own spend, false for the ATTACKER's.
@@ -42,8 +85,19 @@ namespace Game.Combat
         // logic below applies to it — same branch as before this refactor, unchanged.
         public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
             UnitData attacker, UnitData defender, AbilityMagnitudes magnitudes,
+            bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false) =>
+            ShouldSpendFate(attackerDice, defenderDice, fateAvailable, isDefender,
+                attacker?.Abilities, defender?.TypeTags, defender?.Abilities, magnitudes,
+                isRetreating, defendingUnitHp, isCaptureKill);
+
+        // The same decision on the ability/type facts alone — what WorthIt's simulated battles
+        // carry (no live UnitData). One spending policy for the real duel and for the estimate.
+        public static bool ShouldSpendFate(bool[] attackerDice, bool[] defenderDice, int fateAvailable, bool isDefender,
+            IEnumerable<string> attackerAbilities, IReadOnlyCollection<UnitTypeTag> defenderTypeTags,
+            IEnumerable<string> defenderAbilities, AbilityMagnitudes magnitudes,
             bool isRetreating = false, int defendingUnitHp = int.MaxValue, bool isCaptureKill = false)
         {
+            var m = new Matchup(attackerAbilities, defenderTypeTags, defenderAbilities, magnitudes);
             if (fateAvailable <= 0)
                 return false;
             bool[] ownDice = isDefender ? defenderDice : attackerDice;
@@ -57,27 +111,52 @@ namespace Game.Combat
                     ? result.AttackerSuccesses >= result.DefenderSuccesses
                     : result.Damage <= 0;
 
-            int damage = ChallengeResult.ApplyAbilityModifiers(result.Damage, attacker, defender, magnitudes);
+            int damage = m.Damage(result.Damage);
 
             return isDefender
-                ? ShouldDefenderSpend(result, attacker, defender, magnitudes, damage, isRetreating, defendingUnitHp)
-                : ShouldAttackerSpend(result, attacker, defender, magnitudes, damage);
+                ? ShouldDefenderSpend(result, m, damage, isRetreating, defendingUnitHp)
+                : ShouldAttackerSpend(result, m, damage);
         }
 
-        private static bool ShouldAttackerSpend(ChallengeResult result, UnitData attacker, UnitData defender,
-            AbilityMagnitudes magnitudes, int currentDamage)
+        // The attacker's abilities and the defender's type/abilities of one exchange — all the
+        // policy below ever needs to read about the two units.
+        private readonly struct Matchup
+        {
+            private readonly HashSet<string> _attackerAbilities;
+            private readonly IReadOnlyCollection<UnitTypeTag> _defenderTypeTags;
+            private readonly IEnumerable<string> _defenderAbilities;
+            private readonly AbilityMagnitudes _magnitudes;
+
+            public Matchup(IEnumerable<string> attackerAbilities,
+                IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
+                AbilityMagnitudes magnitudes)
+            {
+                _attackerAbilities = attackerAbilities == null
+                    ? new HashSet<string>() : new HashSet<string>(attackerAbilities);
+                _defenderTypeTags = defenderTypeTags ?? System.Array.Empty<UnitTypeTag>();
+                _defenderAbilities = defenderAbilities ?? System.Array.Empty<string>();
+                _magnitudes = magnitudes;
+            }
+
+            public bool AttackerHas(string ability) => _attackerAbilities.Contains(ability);
+            public bool DefenderIs(UnitTypeTag tag) => System.Linq.Enumerable.Contains(_defenderTypeTags, tag);
+            public int Damage(int rawDamage) => ChallengeResult.ApplyAbilityModifiers(rawDamage,
+                _attackerAbilities, _defenderTypeTags, _defenderAbilities, _magnitudes);
+        }
+
+        private static bool ShouldAttackerSpend(ChallengeResult result, Matchup m, int currentDamage)
         {
             if (currentDamage > 0)
                 return false; // already lands, nothing to fix
 
             int ownMisses = CountMisses(result.AttackerDice);
-            if (!TryMinRerollsForAttackerDamage(result, attacker, defender, magnitudes, ownMisses, out int minRerolls))
+            if (!TryMinRerollsForAttackerDamage(result, m, ownMisses, out int minRerolls))
                 return false; // physically unreachable within the misses actually on the table
-            return minRerolls <= AttackerCap(attacker, defender);
+            return minRerolls <= AttackerCap(m);
         }
 
-        private static bool ShouldDefenderSpend(ChallengeResult result, UnitData attacker, UnitData defender,
-            AbilityMagnitudes magnitudes, int currentDamage, bool isRetreating, int defendingUnitHp)
+        private static bool ShouldDefenderSpend(ChallengeResult result, Matchup m, int currentDamage,
+            bool isRetreating, int defendingUnitHp)
         {
             if (currentDamage <= 0)
                 return false; // nothing to defend against right now
@@ -87,7 +166,7 @@ namespace Game.Combat
             // pure waste of a resource that won't replenish until this battle ends.
             int bestCaseDefenderSuccesses = result.DefenderDice.Length;
             int bestCaseRawDamage = Mathf.Max(0, result.AttackerSuccesses - bestCaseDefenderSuccesses);
-            int bestCaseDamage = ChallengeResult.ApplyAbilityModifiers(bestCaseRawDamage, attacker, defender, magnitudes);
+            int bestCaseDamage = m.Damage(bestCaseRawDamage);
             if (bestCaseDamage >= defendingUnitHp)
                 return false;
 
@@ -113,9 +192,9 @@ namespace Game.Combat
                 return false;
 
             int ownMisses = CountMisses(result.DefenderDice);
-            if (!TryMinRerollsForDefenderSafety(result, attacker, defender, magnitudes, ownMisses, out int minRerolls))
+            if (!TryMinRerollsForDefenderSafety(result, m, ownMisses, out int minRerolls))
                 return false;
-            return minRerolls <= DefenderCap(attacker, defender);
+            return minRerolls <= DefenderCap(m);
         }
 
         // cap = 2 whenever the ATTACKER carries a combo that makes an eventual landed hit worth
@@ -123,25 +202,25 @@ namespace Game.Combat
         // a hit) or a type-matched Hyperkinetic/Pyrokinetic bonus (the hit itself deals more once
         // it lands). Same underlying fact drives both sides' willingness to keep pushing/blocking
         // it, hence AttackerCap/DefenderCap share one implementation.
-        private static int AttackerCap(UnitData attacker, UnitData defender)
+        private static int AttackerCap(Matchup m)
         {
-            bool boosted = attacker.HasAbility(UnitAbilities.ShockAttack)
-                || attacker.HasAbility(UnitAbilities.Splash)   // a landed hit also spreads to neighbours
-                || attacker.HasAbility(UnitAbilities.Scorcher)
-                || (attacker.HasAbility(UnitAbilities.Hyperkinetic) && defender.TypeTags.Contains(UnitTypeTag.Armored))
-                || (attacker.HasAbility(UnitAbilities.Pyrokinetic) && defender.TypeTags.Contains(UnitTypeTag.Bio));
+            bool boosted = m.AttackerHas(UnitAbilities.ShockAttack)
+                || m.AttackerHas(UnitAbilities.Splash)   // a landed hit also spreads to neighbours
+                || m.AttackerHas(UnitAbilities.Scorcher)
+                || (m.AttackerHas(UnitAbilities.Hyperkinetic) && m.DefenderIs(UnitTypeTag.Armored))
+                || (m.AttackerHas(UnitAbilities.Pyrokinetic) && m.DefenderIs(UnitTypeTag.Bio));
             return boosted ? 2 : 1;
         }
 
-        private static int DefenderCap(UnitData attacker, UnitData defender) => AttackerCap(attacker, defender);
+        private static int DefenderCap(Matchup m) => AttackerCap(m);
 
-        private static bool TryMinRerollsForAttackerDamage(ChallengeResult result, UnitData attacker, UnitData defender,
-            AbilityMagnitudes magnitudes, int ownMisses, out int minRerolls)
+        private static bool TryMinRerollsForAttackerDamage(ChallengeResult result, Matchup m,
+            int ownMisses, out int minRerolls)
         {
             for (int k = 1; k <= ownMisses; k++)
             {
                 int rawDamage = Mathf.Max(0, (result.AttackerSuccesses + k) - result.DefenderSuccesses);
-                int damage = ChallengeResult.ApplyAbilityModifiers(rawDamage, attacker, defender, magnitudes);
+                int damage = m.Damage(rawDamage);
                 if (damage > 0)
                 {
                     minRerolls = k;
@@ -152,13 +231,13 @@ namespace Game.Combat
             return false;
         }
 
-        private static bool TryMinRerollsForDefenderSafety(ChallengeResult result, UnitData attacker, UnitData defender,
-            AbilityMagnitudes magnitudes, int ownMisses, out int minRerolls)
+        private static bool TryMinRerollsForDefenderSafety(ChallengeResult result, Matchup m,
+            int ownMisses, out int minRerolls)
         {
             for (int k = 1; k <= ownMisses; k++)
             {
                 int rawDamage = Mathf.Max(0, result.AttackerSuccesses - (result.DefenderSuccesses + k));
-                int damage = ChallengeResult.ApplyAbilityModifiers(rawDamage, attacker, defender, magnitudes);
+                int damage = m.Damage(rawDamage);
                 if (damage <= 0)
                 {
                     minRerolls = k;

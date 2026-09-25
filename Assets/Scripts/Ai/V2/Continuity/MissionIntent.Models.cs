@@ -177,7 +177,17 @@ namespace Game.Ai.V2
         public int BaselineObservedTurn;
     }
 
-    public sealed class RaidIntent
+    // S4 — the physical core every ground-combat operation (Raid, Attack, ActiveDefence) shares:
+    // the one army the operation owns, and the separate support army it may be bringing in.
+    // MissionIntent.PreferredMoverArmyId projects onto PrimaryArmyId through this interface, so the
+    // primary exists exactly once per operation and generic code needs no per-lane knowledge.
+    public interface IGroundCombatOperation
+    {
+        int? PrimaryArmyId { get; set; }
+        int? SupportArmyId { get; }
+    }
+
+    public sealed class RaidIntent : IGroundCombatOperation
     {
         // THE target identity. Single source of truth for both physical neutral armies (ArmyId,
         // which may legitimately be 0) and event guards (stable hex, no ArmyId until spawned).
@@ -218,7 +228,7 @@ namespace Game.Ai.V2
         // (see MissionIntent below), so generic continuity/commitment code keeps working and there
         // is never a second, divergent copy. null == no primary bound yet (a real army's Id may
         // legitimately be 0, so 0 is NOT used as "unbound" — see AiV2 raid-target-unification).
-        public int? PrimaryArmyId;
+        public int? PrimaryArmyId { get; set; }
 
         public int? AirSupportArmyId;
         public HexCoord? AirSupportLandingHex;
@@ -228,7 +238,7 @@ namespace Game.Ai.V2
         // The separate mobile support army delivering reinforcement to the primary, and later the
         // one returning home after a full/full swap (RaidMissionPhase.SupportReturn). HasValue only
         // during Reinforcement/SupportReturn; released (without destroying the Raid) if lost.
-        public int? SupportArmyId;
+        public int? SupportArmyId { get; set; }
 
         // The base the primary walks back to in RaidMissionPhase.Return. Fixed after the first
         // successful Return step; re-selected only if that base is lost or becomes unreachable.
@@ -286,7 +296,7 @@ namespace Game.Ai.V2
         public float IntrinsicValue;
     }
 
-    public sealed class ActiveDefenceIntent
+    public sealed class ActiveDefenceIntent : IGroundCombatOperation
     {
         public ActiveDefencePhase Phase;
         public int EnemyArmyId;
@@ -297,7 +307,9 @@ namespace Game.Ai.V2
         public AssetKind ProtectedAssetKind;
         public float ProtectedAssetValue;
         public float ThreatSeverity;
-        public int? PrimaryArmyId;
+        public int? PrimaryArmyId { get; set; }
+        // ActiveDefence intercepts with its primary alone.
+        int? IGroundCombatOperation.SupportArmyId => null;
         // ATK §49 — the offensive ground-combat intent this defence preempted for its actor, so
         // Continuity can resume exactly that one when the threat is gone. Deliberately NOT named
         // after a single lane: Raid and Attack are both offensive owners of the same armies, and a
@@ -318,7 +330,13 @@ namespace Game.Ai.V2
     // garrison asset, new distances — that an automatic retarget inside the same intent would be
     // planning the next war with the previous war's world. Completion, a global replan, and then a
     // FRESH objective is the only correct chain.
-    public sealed class AttackIntent
+    public sealed class AttackGatherReturn
+    {
+        public int ArmyId;
+        public HexCoord? BaseHex;
+    }
+
+    public sealed class AttackIntent : IGroundCombatOperation
     {
         // THE target identity. Hex + expected owner + kind live in one object (§21), never in
         // separate fields that can drift apart.
@@ -328,8 +346,24 @@ namespace Game.Ai.V2
         // there is nothing to protect and the objective may be freely re-picked — same rule the
         // Raid lane uses for OperationStarted.
         public bool OperationStarted;
-        public int? PrimaryArmyId;
-        public int? SupportArmyId;
+        public int? PrimaryArmyId { get; set; }
+        public int? SupportArmyId { get; set; }
+        // Gather phase only: supports still walking to (or about to hand off at) the primary.
+        // A support leaves this list when its handoff is attempted or it stops existing; the
+        // primary (the gather host) is never in it.
+        public List<int> GatherSupportArmyIds = new List<int>();
+        // Strike force step 5 — gather supports that handed over and walk home (the
+        // AttackMissionPhase.GatherReturn legs). Continuity picks each one's base and drops it on
+        // arrival or loss; the operation's own Phase never becomes GatherReturn.
+        public List<AttackGatherReturn> GatherReturns = new List<AttackGatherReturn>();
+        // Air support of the fist (AttackMissionPhase.AirSupport legs): the bound wing, where it
+        // lands, the turn it was bound, whether its sortie has been seen flying, and the turn a
+        // binding last ended (no second binding that turn). Continuity owns all five.
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
+        public int AirSupportBoundTurn = -1;
+        public bool AirSupportSortieSeen;
+        public int AirSupportAttemptedTurn = -1;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
         public int ReinforcementRequestedTurn = -1;
@@ -363,6 +397,10 @@ namespace Game.Ai.V2
         // MissionContinuityLayer.MarkProtectedThisTurn); TurnsActive and ShouldReap still run.
         public int LastProtectedTurn = -1;
         public int StallTurns;
+        // The canonical TaskScore value of the last admitted proposal of this operation that
+        // carried one (lifecycle legs carry 0 and never overwrite it). What abandoning the
+        // operation costs (GroundCombatDonorPolicy.BorrowableDonorApPrices). Continuity writes it.
+        public float LastIntrinsicValue;
         public float CumulativeApSpent;
         public int StepsMovedTotal;
         private int? _preferredMoverArmyId;
@@ -373,24 +411,13 @@ namespace Game.Ai.V2
         // AdvanceIntent, telemetry) needs no Raid-specific knowledge.
         public int? PreferredMoverArmyId
         {
-            get
-            {
-                RaidIntent r = Raid;
-                if (r != null) return r.PrimaryArmyId;
-                ActiveDefenceIntent d = ActiveDefence;
-                if (d != null) return d.PrimaryArmyId;
-                // ATK §22 — pass-through to the ONE AttackIntent.PrimaryArmyId, exactly as Raid and
-                // ActiveDefence already do. There is deliberately no second _preferredMoverArmyId
-                // copy for Attack: "the army this operation owns" exists once in the model.
-                AttackIntent a = Attack;
-                return a != null ? a.PrimaryArmyId : _preferredMoverArmyId;
-            }
+            // Pass-through to the ONE IGroundCombatOperation.PrimaryArmyId for Raid, Attack and
+            // ActiveDefence: "the army this operation owns" exists once in the model.
+            get => GroundCombat != null ? GroundCombat.PrimaryArmyId : _preferredMoverArmyId;
             set
             {
-                RaidIntent r = Raid;
-                if (r != null) r.PrimaryArmyId = value;
-                else if (ActiveDefence != null) ActiveDefence.PrimaryArmyId = value;
-                else if (Attack != null) Attack.PrimaryArmyId = value;
+                IGroundCombatOperation g = GroundCombat;
+                if (g != null) g.PrimaryArmyId = value;
                 else _preferredMoverArmyId = value;
             }
         }
@@ -401,5 +428,6 @@ namespace Game.Ai.V2
         public DevelopmentIntent Development => Objective as DevelopmentIntent;
         public ActiveDefenceIntent ActiveDefence => Objective as ActiveDefenceIntent;
         public AttackIntent Attack => Objective as AttackIntent;
+        public IGroundCombatOperation GroundCombat => Objective as IGroundCombatOperation;
     }
 }

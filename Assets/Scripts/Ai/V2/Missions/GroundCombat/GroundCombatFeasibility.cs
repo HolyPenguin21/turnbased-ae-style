@@ -15,24 +15,22 @@ namespace Game.Ai.V2
     // open ground keep passing nothing and behave bit-for-bit as before.
     internal static class GroundCombatFeasibility
     {
+        // THE ground-combat feasibility check: does this attacker (roster + its commander) cover
+        // every known defending body and clear `minWinChance` against the opposition — every
+        // defending army its own battle, strongest first, with its own commander
+        // (WorthIt.EstimateSequential). A single-army opposition is one ordinary battle.
         internal static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, out float win, out bool cover) =>
-            Clears(attackers, defenders, AiConfigV2.raidMinViableWinChance, 0f, out win, out cover);
-
-        internal static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float minWinChance,
-            out float win, out bool cover) =>
-            Clears(attackers, defenders, minWinChance, 0f, out win, out cover);
-
-        internal static bool Clears(IReadOnlyList<WorthIt.DefenderProfile> attackers,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float minWinChance,
-            float defenderHexDefenseBonus, out float win, out bool cover)
+            WorthIt.SideCommander attackerCommander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            float minWinChance, float defenderHexDefenseBonus, out float win, out bool cover)
         {
+            List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
             // Perf pre-filter — see AiConfigV2.raidPowerRatioPreFilter for the calibration this
-            // cutoff is based on. Skips the 25-trial Monte-Carlo WinChance entirely for a matchup
-            // whose raw aggregate power ratio is already far below anything that has ever cleared
+            // cutoff is based on. Skips the Monte-Carlo estimate entirely for a matchup whose raw
+            // aggregate power ratio is already far below anything that has ever cleared
             // raidMinViableWinChance; everything else still runs the real estimator unchanged.
-            if (defenders.Count > 0)
+            // The calibration only holds for a gate that high: a lower one (Attack's floor) always
+            // runs the estimator.
+            if (defenders.Count > 0 && minWinChance >= AiConfigV2.raidMinViableWinChance)
             {
                 float attackerPower = PowerSum(attackers);
                 // The bonus WorthIt will actually add to every defending unit's Defense has to be
@@ -52,8 +50,8 @@ namespace Game.Ai.V2
             cover = WorthIt.CanDamageAll(attackers, defenders, defenderHexDefenseBonus);
             win = defenders.Count == 0
                 ? 1f
-                : WorthIt.WinChance((IReadOnlyCollection<WorthIt.DefenderProfile>)attackers,
-                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, defenderHexDefenseBonus);
+                : WorthIt.EstimateSequential(attackers, attackerCommander, opposition,
+                    defenderHexDefenseBonus).WinChance;
             return cover && win >= minWinChance;
         }
 
@@ -65,7 +63,7 @@ namespace Game.Ai.V2
             for (int i = 0; i < profiles.Count; i++)
             {
                 WorthIt.DefenderProfile p = profiles[i];
-                sum += p.Attack + p.Defense + p.HitPoints + 0.25f * p.Initiative;
+                sum += WorthIt.CombatValue(p);
             }
             return sum;
         }

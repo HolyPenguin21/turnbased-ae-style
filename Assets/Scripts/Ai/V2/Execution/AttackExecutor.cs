@@ -1,4 +1,5 @@
 using System.Collections;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -38,10 +39,26 @@ namespace Game.Ai.V2
             {
                 case AttackMissionPhase.RecoveryReturn:
                 case AttackMissionPhase.SupportReturn:
+                case AttackMissionPhase.GatherReturn:
                     yield return RunWalkHomeStep(player, ctx, pm, result, army, target);
                     yield break;
                 case AttackMissionPhase.Reinforcement:
-                    yield return RunReinforcementStep(player, ctx, pm, result, army);
+                case AttackMissionPhase.Gather:
+                    yield return RunReinforcementStep(player, ctx, pm, result, army, snapshot);
+                    yield break;
+                case AttackMissionPhase.AirSupport:
+                    if (!AviationRules.IsValidAirArmy(army) || !target.AirSupportLandingHex.HasValue)
+                    {
+                        result.StopReason = ExecutionStopReason.TargetInvalidated;
+                        result.NeedsReplan = true;
+                        yield break;
+                    }
+                    // The one flight step of ground-fight air support; a plain strike on every
+                    // defender of the site (the ground assault takes the structure).
+                    yield return GroundCombatLegStep.AirStrikeSortie(player, root, ctx, pm, result,
+                        army, target.Target.Hex, target.AirSupportLandingHex.Value,
+                        AirStrikePolicy.Standard, "AttackSupport",
+                        "flies toward the attack site");
                     yield break;
             }
 
@@ -119,7 +136,9 @@ namespace Game.Ai.V2
                 result.StepsMoved++;
             result.FinalHex = endHex;
 
-            bool operationStarted = moved || trace.BattleOccurred;
+            // Same facts as Raid's assault step: an ordinary hex event on the way is a physical
+            // start of the operation and ends this step for a fresh observation.
+            bool operationStarted = moved || trace.BattleOccurred || trace.HexEventOccurred;
             result.OperationStarted |= operationStarted;
             if (operationStarted)
                 result.ActualActorArmyId = pm.MoverArmyId;
@@ -135,6 +154,11 @@ namespace Game.Ai.V2
                 if (strike.HasValue && next.Value.Equals(waypoint))
                     result.AttackOpportunisticStrike = true;
                 result.StopReason = ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+            if (trace.HexEventOccurred)
+            {
+                result.StopReason = ExecutionStopReason.HexEventStarted;
                 yield break;
             }
             if (army == null)
@@ -178,41 +202,35 @@ namespace Game.Ai.V2
                 result.StopReason = ExecutionStopReason.ReachedGoal;
                 yield break;
             }
-            if (army.CurrentMovement <= 0)
+            var leg = new GroundLegStepResult();
+            yield return GroundCombatLegStep.Transit(player, ctx, army, home,
+                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", leg);
+            if (leg.Blocked.HasValue)
             {
-                result.StopReason = ExecutionStopReason.OutOfMovement;
-                yield break;
-            }
-            HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, army, home);
-            if (!next.HasValue)
-            {
-                result.StopReason = ExecutionStopReason.NoSafeStep;
-                result.NeedsReplan = true;
+                result.StopReason = leg.Blocked.Value;
+                result.NeedsReplan = leg.NeedsReplan;
                 yield break;
             }
 
-            HexCoord before = army.Hex;
-            var decision = AiDecision.Move(army, next.Value,
-                $"V2 attack — {target.Phase} to ({home.Q},{home.R})", 0f,
-                AiGroundMoveAuthority.Transit);
-            var trace = new AiMoveExecutionTrace();
-            yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
-
-            army = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-            HexCoord endHex = army != null ? army.Hex : trace.EndHex;
-            bool moved = !endHex.Equals(before);
+            army = leg.Army;
+            bool moved = leg.Moved;
             if (moved)
             {
                 result.StepsMoved++;
                 result.ActualActorArmyId = pm.MoverArmyId;
             }
-            result.FinalHex = endHex;
+            result.FinalHex = leg.EndHex;
             result.OperationStarted |= moved;
 
-            if (trace.BattleOccurred)
+            if (leg.BattleOccurred)
             {
                 result.CombatChanged = true;
                 result.StopReason = ExecutionStopReason.BattleStarted;
+                yield break;
+            }
+            if (leg.HexEventOccurred)
+            {
+                result.StopReason = ExecutionStopReason.HexEventStarted;
                 yield break;
             }
             if (army == null)
@@ -241,7 +259,7 @@ namespace Game.Ai.V2
         // primary's hex) exactly ONE atomic roster handoff with no movement in the same step. The
         // handoff itself is the shared TaskExecutor primitive; Attack does not get its own.
         private static IEnumerator RunReinforcementStep(PlayerSetupData player, AiTurnContext ctx,
-            ProvisionedMission pm, ExecutionResult result, ArmyData support)
+            ProvisionedMission pm, ExecutionResult result, ArmyData support, WorldSnapshot snapshot)
         {
             AttackMissionTarget target = pm.AttackTarget;
             ArmyData primary = target.PrimaryArmyId.HasValue
@@ -258,36 +276,32 @@ namespace Game.Ai.V2
 
             if (!support.Hex.Equals(rendezvous))
             {
-                if (support.CurrentMovement <= 0)
+                var leg = new GroundLegStepResult();
+                yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
+                    $"V2 attack — {target.Phase.ToString().ToLowerInvariant()} convoy to primary #{primary.Id}",
+                    leg);
+                if (leg.Blocked.HasValue)
                 {
-                    result.StopReason = ExecutionStopReason.OutOfMovement;
+                    result.StopReason = leg.Blocked.Value;
+                    result.NeedsReplan = leg.NeedsReplan;
                     yield break;
                 }
-                HexCoord? next = SafeStepPathing.FindNextSafeStep(ctx.Map, support, rendezvous);
-                if (!next.HasValue)
-                {
-                    result.StopReason = ExecutionStopReason.NoSafeStep;
-                    result.NeedsReplan = true;
-                    yield break;
-                }
-                HexCoord before = support.Hex;
-                var decision = AiDecision.Move(support, next.Value,
-                    $"V2 attack — reinforcement convoy to primary #{primary.Id}", 0f,
-                    AiGroundMoveAuthority.Transit);
-                var trace = new AiMoveExecutionTrace();
-                yield return AiTurnController.MoveArmyRoutine(player, decision, ctx, trace);
 
-                support = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
-                HexCoord endHex = support != null ? support.Hex : trace.EndHex;
-                bool moved = !endHex.Equals(before);
+                support = leg.Army;
+                bool moved = leg.Moved;
                 if (moved) result.StepsMoved++;
-                result.FinalHex = endHex;
+                result.FinalHex = leg.EndHex;
                 result.OperationStarted |= moved;
 
-                if (trace.BattleOccurred)
+                if (leg.BattleOccurred)
                 {
                     result.CombatChanged = true;
                     result.StopReason = ExecutionStopReason.BattleStarted;
+                    yield break;
+                }
+                if (leg.HexEventOccurred)
+                {
+                    result.StopReason = ExecutionStopReason.HexEventStarted;
                     yield break;
                 }
                 if (support == null)
@@ -303,15 +317,22 @@ namespace Game.Ai.V2
             }
 
             result.ReinforcementHandoffAttempted = true;
+            // The site's fight decides whether the support's hero should take command of the fist
+            // (GroundCombatReinforcement.CommandHandover — the gather projection's same rule).
             bool handoffOk = TaskExecutor.ApplyReinforcementHandoff(player, ctx, pm, support, primary,
-                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
+                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
+                AttackObjectiveEvaluator.KnownSiteOpposition(snapshot, target.Target.Hex),
+                AttackObjectiveEvaluator.KnownSiteDefenceBonus(snapshot, ctx.Map, target.Target.Hex));
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — attack "
-                + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
+                + $"{target.Phase.ToString().ToLowerInvariant()} handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
                 + $"{(wasSwap ? $"displaced={displacedUnitName} " : "")}{detail}");
 
             if (transferred > 0)
             {
+                // A delivered body is a physical start of the operation (a fresh Gather whose first
+                // step is a same-hex handoff must still create its durable intent, §70).
+                result.OperationStarted = true;
                 result.CombatChanged = true;
                 // The primary's readiness genuinely changed: bump and publish so the SAME turn's
                 // bounded cycle re-checks this Attack instead of waiting a turn.

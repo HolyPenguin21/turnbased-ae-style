@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Combat;
 using Game.Map;
 using Game.Players;
 using Game.Units;
@@ -12,11 +13,34 @@ namespace Game.Ai.V2
     // canonical raid transaction. Bodies verbatim.
     internal static class GroundCombatDonorPolicy
     {
-        // §12 — the best same-hex hero that may legally join `host`, or (null, null).
-        // CombatLeader > Flexible > SupportOperator, then a stable donor-id tiebreak. A donor must
-        // retain at least one member because Provisioning enforces that same transaction boundary.
+        // Strike force — the armies an Attack gather may BUY as supports: the primary of every
+        // active Raid / ActiveDefence, priced at what abandoning that operation costs (its
+        // LastIntrinsicValue) in AP-equivalents at the one activation rate TaskScore charges
+        // (taskScoreReactivationApWeight per AP). The gather adds the price to that donor's AP,
+        // so its own TaskScore carries the loss and the allocator arbitrates; Continuity retires
+        // the lender once the gather holds its army. An operation of unknown worth is not for sale.
+        internal static Dictionary<int, float> BorrowableDonorApPrices(IEnumerable<MissionIntent> intents)
+        {
+            var prices = new Dictionary<int, float>();
+            float rate = UnityEngine.Mathf.Max(0.0001f, AiConfigV2.taskScoreReactivationApWeight);
+            foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
+            {
+                if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
+                    || (i.Kind != MissionKind.Raid && i.Kind != MissionKind.ActiveDefence)
+                    || i.LastIntrinsicValue <= 0f)
+                    continue;
+                prices[i.PreferredMoverArmyId.Value] = i.LastIntrinsicValue / rate;
+            }
+            return prices;
+        }
+
+        // §12 — the best same-hex hero that may legally join `host`, or (null, null): the one
+        // commander evaluation (HeroRoleEvaluator.CompareCandidates) for THIS fight, then a stable
+        // donor-id tiebreak. A donor must retain at least one member because Provisioning
+        // enforces that same transaction boundary.
         internal static (ArmyData donor, UnitData hero) PickAttachableHero(PlayerSetupData owner,
-            ArmyData host, ISet<int> excludeArmyIds)
+            ArmyData host, ISet<int> excludeArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus)
         {
             var candidates = new List<(ArmyData donor, UnitData hero)>();
             foreach (ArmyData donor in ArmyRegistry.AllForOwner(owner))
@@ -41,15 +65,28 @@ namespace Game.Ai.V2
             }
             if (candidates.Count == 0)
                 return (null, null);
-            candidates.Sort((x, y) =>
+            // The hero this host should be led by against THIS fight: the one commander
+            // evaluation (HeroRoleEvaluator) over the host's own bodies, then donor id.
+            List<WorthIt.DefenderProfile> bodies = host.Members
+                .Where(u => u != null && u.IsGroundCombatant)
+                .Select(WorthIt.FromLiveUnit).ToList();
+            var ranked = candidates
+                .Select(x => (x.donor, x.hero, candidate: HeroRoleEvaluator.Candidate(x.hero,
+                    HeroRoleEvaluator.ProjectCommand(x.hero.CommandRating, 0,
+                        WorthIt.SideCommander.Of(x.hero), bodies, opposition, defenderHexDefenseBonus),
+                    0)))
+                .ToList();
+            ranked.Sort((x, y) =>
             {
-                int c = HeroRoleEvaluator.CompareForFieldCommand(x.hero, y.hero);
+                int c = HeroRoleEvaluator.CompareCandidates(x.candidate, y.candidate);
+                if (c != 0) return c;
+                c = string.CompareOrdinal(x.hero.Name ?? string.Empty, y.hero.Name ?? string.Empty);
                 return c != 0 ? c : x.donor.Id.CompareTo(y.donor.Id);
             });
-            return candidates[0];
+            return (ranked[0].donor, ranked[0].hero);
         }
 
         internal static float UnitCombatValue(UnitData u) =>
-            u == null ? 0f : u.Attack + u.Defense + u.HitPointsCurrent + 0.25f * u.Initiative;
+            u == null ? 0f : WorthIt.CombatValue(u.Attack, u.Defense, u.HitPointsCurrent, u.Initiative);
     }
 }

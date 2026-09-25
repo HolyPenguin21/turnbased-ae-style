@@ -18,8 +18,8 @@ namespace Game.UI
         [SerializeField] private TMP_Text nameText;
         [SerializeField] private TMP_Text typeText;
 
-        // Five compact stat badges, shown for Unit/Hero/Base cards (hidden entirely for
-        // Facility — see Setup) — each slot is repurposed per CardType rather than having its
+        // Five compact stat badges, shown for Unit/Hero/Base/Facility cards (Facility uses the
+        // Base mapping; hidden entirely for Tactic/Equipment — see RefreshStatsRow) — each slot is repurposed per CardType rather than having its
         // own dedicated field per stat, since only 5 numbers are ever shown at once and which
         // stat occupies which slot is a deliberate, fixed mapping (see the user's own spec):
         //   AttackBadge slot: Attack (Unit) / Command Rating (Hero) / Level (Base)
@@ -181,15 +181,16 @@ namespace Game.UI
             typeText.text = _hand?.GameConfig?.FormatAbilities(abilities) ?? string.Empty;
         }
 
-        // See the field block's own comment for the fixed per-slot stat mapping. Facility,
-        // Tactic and Equipment cards have no unit/hero/building identity of their own to show
-        // stats for, so the whole row is hidden for them rather than showing 5 zeroes.
+        // See the field block's own comment for the fixed per-slot stat mapping. Facility uses
+        // the Base mapping. Tactic and Equipment cards have no unit/hero/building identity of
+        // their own to show stats for, so the whole row is hidden for them rather than showing
+        // 5 zeroes.
         private void RefreshStatsRow(CardDefinition definition)
         {
             if (statsRow == null)
                 return;
 
-            bool show = definition != null && definition.cardType != CardType.Facility
+            bool show = definition != null
                 && definition.cardType != CardType.Tactic && definition.cardType != CardType.Equipment;
             statsRow.SetActive(show);
             if (!show)
@@ -206,6 +207,7 @@ namespace Game.UI
                     slot5 = definition.initiative;
                     break;
                 case CardType.Base:
+                case CardType.Facility: // same slot layout as Base — the card art carries the stat icons
                     slot1 = 1; // Level — always 1 for a not-yet-built card, see the field block's own comment
                     slot2 = definition.defenseRating;
                     hp = definition.hitPoints;
@@ -251,6 +253,7 @@ namespace Game.UI
                     s4 = EquipmentStat.MoveMax;       s5 = EquipmentStat.Initiative;
                     break;
                 case CardType.Base:
+                case CardType.Facility:
                     return;
                 default: // Unit
                     s1 = EquipmentStat.Attack;  s2 = EquipmentStat.Defense;

@@ -73,10 +73,12 @@ namespace Game.Turns
         [SerializeField] private HexMap map;
         [SerializeField] private GameConfig gameConfig;
 
-        // Hidden until the game actually starts — see BeginGame.
+        // Lives inside CardHandPanel (as does endTurnButton), so it's shown/hidden together with
+        // cardHand — no activation calls of its own. Kept only for the AI-watch debug view.
         [SerializeField] private ResourceBarUI resourceBar;
 
-        // Hidden until the game actually starts — see BeginGame. Same trigger as resourceBar.
+        // CardHandPanel: the hand plus resourceBar and endTurnButton. Hidden until the game
+        // actually starts — see BeginGame.
         [SerializeField] private CardHandUI cardHand;
         // Gameplay-side deck source for pre-turn Initiative resource-demand analysis. Existing
         // scenes predate this field, so BeginGame bootstraps it once from CardHandUI when the
@@ -424,7 +426,9 @@ namespace Game.Turns
         // equipment attach (_attachModeActive) — it must be completed or cancelled first.
         private void RefreshEndTurnInteractable()
         {
-            if (endTurnButton != null && endTurnButton.gameObject.activeInHierarchy)
+            // No activeInHierarchy guard: the button is hidden with CardHandPanel while a battle
+            // screen is open, and must come back with the right state when it reshows.
+            if (endTurnButton != null)
                 endTurnButton.interactable = TurnConfirmed && !InputBlocked && !_attachModeActive;
         }
 
@@ -467,8 +471,8 @@ namespace Game.Turns
         // Called once, right after every player has placed their citadel.
         public void BeginGame()
         {
-            if (resourceBar != null)
-                resourceBar.Show();
+            // One trigger for the whole bottom panel — the hand, the resource bar and the
+            // end-turn button all live under CardHandPanel.
             if (cardHand != null)
                 cardHand.Show();
             // Existing scenes already carry the same deck catalog on CardHandUI. Copy it once
@@ -476,11 +480,10 @@ namespace Game.Turns
             // from this point the Initiative module is independent of the UI object.
             if (startingDeckCatalog == null && cardHand != null)
                 startingDeckCatalog = cardHand.StartingDeckCatalog;
-            // Shown once, same trigger as resourceBar, and never hidden again — only its
-            // interactable state changes from here on (see BeginPlayerTurn/OnTurnConfirmed).
+            // Visible with CardHandPanel (see cardHand.Show above) — only its interactable
+            // state changes from here on (see BeginPlayerTurn/OnTurnConfirmed).
             if (endTurnButton != null)
             {
-                endTurnButton.gameObject.SetActive(true);
                 endTurnButton.interactable = false;
                 endTurnButton.onClick.RemoveAllListeners();
                 endTurnButton.onClick.AddListener(OnEndTurnClicked);

@@ -11,19 +11,32 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     // ATK §23 — the execution legs of ONE Attack operation. Deliberately the same shape the Raid
-    // lane already uses, minus AirSupport (§79 keeps Attack ground-only in this first version) and
-    // minus a post-success Return: §8 says the army STAYS on the Base it just took.
+    // lane already uses, minus a post-success Return: §8 says the army STAYS on the Base it just
+    // took. Air support is a side leg (AirSupport below), not a phase of the operation.
     //   Assault         — march on the target and take it.
     //   Reinforcement   — the primary cannot clear the site; a support army is being brought in.
     //   SupportReturn   — the shared GroundCombat handoff left the support container empty-handed
     //                     and it walks home. Same leg Raid already owns.
     //   RecoveryReturn  — the operation is no longer viable; the primary withdraws to an own Base.
+    //   Gather          — no single army (nor a same-hex package) clears the site, but free armies
+    //                     spread across hexes do together: the host (PrimaryArmyId) holds while
+    //                     every planned support walks to it in parallel and hands its bodies over
+    //                     (GroundCombatAssemblyPlanner.PlanGather owns the host/support choice).
+    //   GatherReturn    — a gather support that already handed over walks home (strike force
+    //                     step 5). One leg per donor, run beside whatever the operation does;
+    //                     it is never the operation's own phase (AttackIntent.GatherReturns).
+    //   AirSupport      — a wing strikes the site's defenders right before the assault (the one
+    //                     GroundCombatAirSupport, as Raid's). Run by the wing beside the
+    //                     operation's own leg; never the operation's own phase.
     public enum AttackMissionPhase
     {
         Assault = 0,
         Reinforcement = 1,
         SupportReturn = 2,
         RecoveryReturn = 3,
+        Gather = 4,
+        GatherReturn = 5,
+        AirSupport = 6,
     }
 
     // The mission-layer transport for one Attack leg. Every field is a frozen decision the
@@ -34,9 +47,16 @@ namespace Game.Ai.V2
         public AttackMissionPhase Phase;
         public AttackTargetRef Target;
         public int? PrimaryArmyId;
+        // The army this leg moves for Reinforcement / SupportReturn / Gather.
         public int? SupportArmyId;
-        // Where the leg is actually walking this turn: the target site for Assault/Reinforcement,
-        // an own Base for the two return legs.
+        // Gather only: every support the frozen gather plan still expects at the host, including
+        // this leg's SupportArmyId. Continuity copies it into the durable AttackIntent.
+        public int[] GatherSupportArmyIds;
+        // AirSupport only: the bound wing and the own base it lands at.
+        public int? AirSupportArmyId;
+        public HexCoord? AirSupportLandingHex;
+        // Where the leg is actually walking this turn: the target site for Assault, the primary's
+        // hex for Reinforcement/Gather, an own Base for the two return legs.
         public HexCoord DestinationHex;
         public HexCoord? RecoveryBaseHex;
         public HexCoord? SupportReturnHex;
@@ -77,11 +97,13 @@ namespace Game.Ai.V2
     {
         public AggressionObjectiveKind Kind => AggressionObjectiveKind.Attack;
         public AttackTargetRef Target;
-        // The known defender package standing on the target site (§31): its garrison and every
-        // known enemy army on that same hex, as one fight. Never split into separate objectives.
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
-            Array.Empty<WorthIt.DefenderProfile>();
-        public int DefenderCount;
+        // The known opposition on the target site (§31): its garrison and every known enemy army
+        // on that same hex, each its own battle with its own commander — one objective.
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition = Array.Empty<WorthIt.DefendingArmy>();
+        // Every defending body of that opposition (counts, power, coverage) — derived from
+        // Opposition on read, never stored as a second copy.
+        public IReadOnlyList<WorthIt.DefenderProfile> Defenders => WorthIt.UnitsOf(Opposition);
+        public int DefenderCount => Defenders.Count;
         public float TargetPower;
         // Turns since the site was last actually observed. int.MaxValue-safe: 0 when the memory
         // carries no stamp at all, which is treated as maximally stale by the score below.
@@ -229,21 +251,22 @@ namespace Game.Ai.V2
         public static float KnownSiteDefenceBonus(WorldSnapshot snap, HexMap map, HexCoord hex) =>
             AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, hex);
 
-        // Every known hostile body standing on the site, as ONE defender package (§31). A garrison
-        // and two field armies sitting on the same Base are one fight, never three objectives.
-        public static List<WorthIt.DefenderProfile> KnownSiteDefenders(WorldSnapshot snap, HexCoord hex)
+        // Every known hostile body standing on the site (§31): a garrison and two field armies on
+        // the same Base are one objective. Flat roster for counts / power / coverage.
+        public static List<WorthIt.DefenderProfile> KnownSiteDefenders(WorldSnapshot snap, HexCoord hex) =>
+            WorthIt.UnitsOf(KnownSiteOpposition(snap, hex));
+
+        // The same site as the fights it really is: every known army on the hex is its own battle,
+        // with its own observed commander (WorthIt.EstimateSequential plays them strongest first).
+        public static List<WorthIt.DefendingArmy> KnownSiteOpposition(WorldSnapshot snap, HexCoord hex)
         {
-            var defenders = new List<WorthIt.DefenderProfile>();
             IEnumerable<AiMapMemory.KnownEnemySighting> sightings = snap?.Known?.EnemySightings
                 ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>();
-            foreach (AiMapMemory.KnownEnemySighting s in sightings
-                .Where(s => s.Hex.Equals(hex))
-                .OrderBy(s => s.ArmyId))
-            {
-                if (s.Defenders != null)
-                    defenders.AddRange(s.Defenders);
-            }
-            return defenders;
+            return sightings
+                .Where(s => s.Hex.Equals(hex) && s.Defenders != null)
+                .OrderBy(s => s.ArmyId)
+                .Select(s => new WorthIt.DefendingArmy(s.Defenders, s.Commander))
+                .ToList();
         }
 
         // ---- response terms (§35) -------------------------------------------------------------
@@ -340,7 +363,8 @@ namespace Game.Ai.V2
         {
             AttackTargetKind kind = b.IsStartingCitadel ? AttackTargetKind.Citadel
                 : b.IsBase ? AttackTargetKind.Base : AttackTargetKind.Facility;
-            List<WorthIt.DefenderProfile> defenders = KnownSiteDefenders(snap, b.Hex);
+            List<WorthIt.DefendingArmy> opposition = KnownSiteOpposition(snap, b.Hex);
+            List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
 
             // §34 — the site's own defence is NOT a positive term for the attacker. It is priced
             // exactly once, as a reduction of WinChance through the shared WorthIt estimator (the
@@ -362,9 +386,7 @@ namespace Game.Ai.V2
                 ? WorldAnalysis.CorridorAlignmentToward(anchor, directionTarget, b.Hex,
                     AiConfigV2.attackCorridorDetourScale) : 0f;
 
-            float potentialSaturation = Curves.Ramp(
-                snap.Self.BestStackPotential / Mathf.Max(1f, snap.Self.TotalMilitaryPotential),
-                AiConfigV2.attackPotentialSatRampLo, AiConfigV2.attackPotentialSatRampHi);
+            float readiness = Readiness(snap.Self);
 
             var score = new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
@@ -372,11 +394,11 @@ namespace Game.Ai.V2
                 frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
-                // Military-potential realisation is a stronghold fact (§ Attack-only): a Facility
-                // needs no concentrated stack to destroy, so it earns none of it.
+                // Readiness is a stronghold fact (§ Attack-only): a Facility needs no
+                // concentrated stack to destroy, so it earns none of it.
                 militaryTargetRelevance: kind == AttackTargetKind.Facility ? 0f
                     : TaskScoreEvaluator.MilitaryTargetRelevance(
-                        potentialSaturation * AiConfigV2.attackPotentialSaturationScoreWeight),
+                        readiness * AiConfigV2.attackReadinessScoreWeight),
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(
                     intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled
@@ -387,12 +409,59 @@ namespace Game.Ai.V2
             return new AttackObjective
             {
                 Target = AttackTargetRef.For(b.Hex, b.Owner, kind),
-                Defenders = defenders,
-                DefenderCount = defenders.Count,
+                Opposition = opposition,
                 TargetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders),
                 IntelAgeTurns = intelAge,
                 TaskScore = score,
             };
+        }
+
+        // Strike force step 6 — the observation Attack publishes for Recon: the target site of every
+        // live operation that is still going to fight there (Gather / Assault / Reinforcement).
+        // Recon closes it with its own Refresh objective (ReconObjectiveEvaluator); Attack never
+        // moves a scout itself.
+        // Step 7 — when this player knows no hostile Base/Citadel at all, Attack has nothing to aim
+        // at: it asks to observe the enemy citadel, whose coordinates are the cheat anchor
+        // (WorldAnalysis.TryEnemyCitadelAnchor). Its defenders stay unknown until Recon sees them;
+        // only then does it become an ordinary objective through snap.Known.Buildings.
+        internal static IEnumerable<HexCoord> ObservationNeeds(WorldSnapshot snap)
+        {
+            PlayerSetupData player = snap?.Observer;
+            if (player == null)
+                yield break;
+            IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap.Known?.Buildings
+                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)Array.Empty<AiMapMemory.KnownBuilding>();
+            if (!buildings.Any(b => IsHostileStrategicStructure(b, player))
+                && WorldAnalysis.TryEnemyCitadelAnchor(snap, out HexCoord citadel))
+                yield return citadel;
+            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+            {
+                AttackIntent a = i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    ? i.Attack : null;
+                if (a == null || !a.Target.HasValue)
+                    continue;
+                // Recon's objectives are frozen before Continuity resolves this turn's intents, so
+                // the target's own status is read here: a captured / invalidated site needs no look.
+                if ((a.Phase == AttackMissionPhase.Gather || a.Phase == AttackMissionPhase.Assault
+                        || a.Phase == AttackMissionPhase.Reinforcement)
+                    && EvaluateTarget(snap, a.Target) == AttackTargetStatus.Continue)
+                    yield return a.Target.Hex;
+            }
+        }
+
+        // Strike force step 4 — Attack readiness from the SelfSnapshot force measures. Not a gate:
+        // how much of the available force already stands in one fist (assembly: Fist / P_field) and
+        // how much of the reachable ceiling is already on the map (deployment: P_field against
+        // P_deck plus the equipment still in hand/deck). Aviation is parallel support and stays out.
+        internal static float Readiness(SelfSnapshot self)
+        {
+            if (self == null)
+                return 0f;
+            float assembly = self.FistPower / Mathf.Max(1f, self.FieldPotential);
+            float deployment = self.FieldPotential
+                / Mathf.Max(1f, self.TotalMilitaryPotential + self.Reserve.Equipment);
+            return Curves.Ramp(assembly, AiConfigV2.attackAssemblyReadyLo, AiConfigV2.attackAssemblyReadyHi)
+                * Curves.Ramp(deployment, AiConfigV2.attackDeploymentReadyLo, AiConfigV2.attackDeploymentReadyHi);
         }
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as

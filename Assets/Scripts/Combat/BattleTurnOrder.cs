@@ -15,9 +15,9 @@ namespace Game.Combat
     // Heroes never appear in the returned acting order — per the user's own confirmed rule,
     // hero cards cannot attack, only be positioned (see BattleScreenUI's Arrangement phase). A
     // hero still contributes its own Initiative as its side's bonus; it just never gets a turn
-    // of its own to Pass through. A hero is no longer pinned to the reserved back-row column
-    // during Arrangement (draggable anywhere within its own side, see BattleGrid's own comment),
-    // so its position is found by scanning both of that side's rows rather than assumed fixed.
+    // of its own to Pass through. The bonus hero is the side's COMMANDER (ArmyData.Commander —
+    // the army's first hero), the same hero that gives the army its capacity and battle Fate,
+    // never whichever hero happens to stand first on the grid.
     public static class BattleTurnOrder
     {
         // Both armies are required (not just the grid) because a non-hero unit can advance
@@ -31,8 +31,8 @@ namespace Game.Combat
         // going blank once its melee units had crossed over.
         public static List<UnitData> BuildOrder(BattleGrid grid, ArmyData attacker, ArmyData defender)
         {
-            UnitData attackerHero = FindHero(grid, attackerSide: true);
-            UnitData defenderHero = FindHero(grid, attackerSide: false);
+            UnitData attackerHero = attacker?.Commander;
+            UnitData defenderHero = defender?.Commander;
 
             var order = new List<UnitData>(grid.AllUnits().Where(u => u.IsGroundCombatant));
             order.Sort((a, b) => EffectiveInitiative(b, attacker, defender, attackerHero, defenderHero)
@@ -46,8 +46,8 @@ namespace Game.Combat
         // per side instead of merged across both.
         public static (UnitData hero, List<(UnitData unit, int initiative)> acting) BuildSideSummary(BattleGrid grid, ArmyData attacker, ArmyData defender, bool attackerSide)
         {
-            UnitData attackerHero = FindHero(grid, attackerSide: true);
-            UnitData defenderHero = FindHero(grid, attackerSide: false);
+            UnitData attackerHero = attacker?.Commander;
+            UnitData defenderHero = defender?.Commander;
             UnitData hero = attackerSide ? attackerHero : defenderHero;
             ArmyData side = attackerSide ? attacker : defender;
 
@@ -60,26 +60,6 @@ namespace Game.Combat
             }
             acting.Sort((a, b) => b.Item2.CompareTo(a.Item2));
             return (hero, acting);
-        }
-
-        // Public — reused by BattleScreenUI to look up each side's hero for the attack popup's
-        // Fate display (see BattleAttackPopupUI.Begin). Row-based lookup is still correct here —
-        // unlike regular combat units, a hero never leaves its own side's rows (see the class
-        // comment above).
-        public static UnitData FindHero(BattleGrid grid, bool attackerSide)
-        {
-            int frontRow = attackerSide ? BattleGrid.AttackerFrontRow : BattleGrid.DefenderFrontRow;
-            int backRow = attackerSide ? BattleGrid.AttackerBackRow : BattleGrid.DefenderBackRow;
-            for (int col = 0; col < BattleGrid.Columns; col++)
-            {
-                UnitData front = grid.Get(frontRow, col);
-                if (front != null && front.IsHero)
-                    return front;
-                UnitData back = grid.Get(backRow, col);
-                if (back != null && back.IsHero)
-                    return back;
-            }
-            return null;
         }
 
         // Every unit still on the grid that belongs to `army`, wherever it currently sits —

@@ -93,32 +93,13 @@ namespace Game.Ai.V2
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
                 {
-                    if (fe?.Mission?.Target is ActiveDefenceMissionTarget activeReturn
-                        && activeReturn.Phase == ActiveDefencePhase.Return
-                        && activeReturn.PrimaryArmyId.HasValue)
-                    {
-                        pinnedByOtherLegs.Add(activeReturn.PrimaryArmyId.Value);
+                    // A lifecycle leg that already carries Continuity-pinned actors pins them for
+                    // every other ground-combat proposal in the same solve (GroundCombatLegs).
+                    if (!GroundCombatLegs.PinsActors(fe?.Mission, out int? pinnedPrimary,
+                            out int? pinnedSupport))
                         continue;
-                    }
-                    // ATK §44 — an Attack leg that already carries its own pinned actors pins
-                    // them for every other ground-combat proposal in the same solve, exactly as a
-                    // non-Assault Raid leg does.
-                    if (fe?.Mission != null && fe.Mission.Kind == MissionKind.Attack
-                        && fe.Mission.Target is AttackMissionTarget pinnedAttack
-                        && pinnedAttack.Phase != AttackMissionPhase.Assault)
-                    {
-                        if (pinnedAttack.PrimaryArmyId.HasValue)
-                            pinnedByOtherLegs.Add(pinnedAttack.PrimaryArmyId.Value);
-                        if (pinnedAttack.SupportArmyId.HasValue)
-                            pinnedByOtherLegs.Add(pinnedAttack.SupportArmyId.Value);
-                        continue;
-                    }
-                    if (fe?.Mission == null || fe.Mission.Kind != MissionKind.Raid
-                        || !(fe.Mission.Target is RaidMissionTarget rt)
-                        || rt.Phase == RaidMissionPhase.Assault)
-                        continue;
-                    if (rt.PrimaryArmyId.HasValue) pinnedByOtherLegs.Add(rt.PrimaryArmyId.Value);
-                    if (rt.SupportArmyId.HasValue) pinnedByOtherLegs.Add(rt.SupportArmyId.Value);
+                    if (pinnedPrimary.HasValue) pinnedByOtherLegs.Add(pinnedPrimary.Value);
+                    if (pinnedSupport.HasValue) pinnedByOtherLegs.Add(pinnedSupport.Value);
                 }
             if (allocation?.Funded != null)
                 foreach (FundedEntry fe in allocation.Funded)
@@ -129,23 +110,10 @@ namespace Game.Ai.V2
                             && fe.Mission.Kind != MissionKind.Attack)
                         || session.AlreadyProvisioned(StableMissionKey.For(fe.Mission)))
                         continue;
-                    // Non-Assault legs normally already have their actor pinned by Continuity and
-                    // take no part in the assignment solve. An UNPINNED
-                    // Reinforcement leg (no SupportArmyId yet, i.e. no prior materialization handoff
-                    // assigned one) IS an actor-contention decision for an EXISTING free army and
-                    // must join the same batch solve Assault uses.
-                    if (fe.Mission.Target is RaidMissionTarget t && t.Phase != RaidMissionPhase.Assault
-                        && !(t.Phase == RaidMissionPhase.Reinforcement && !t.SupportArmyId.HasValue))
-                        continue;
-                    if (fe.Mission.Target is ActiveDefenceMissionTarget ad
-                        && ad.Phase == ActiveDefencePhase.Return)
-                        continue;
-                    // ATK §44 — an Attack Assault leg is a fresh actor-contention decision, and so
-                    // is an UNPINNED Reinforcement leg (no support army bound yet). Every other
-                    // Attack leg already carries its Continuity-pinned actor.
-                    if (fe.Mission.Target is AttackMissionTarget at
-                        && at.Phase != AttackMissionPhase.Assault
-                        && !(at.Phase == AttackMissionPhase.Reinforcement && !at.SupportArmyId.HasValue))
+                    // Lifecycle legs already have their actor pinned by Continuity and take no
+                    // part in the assignment solve; Assault / Intercept and an UNPINNED
+                    // Reinforcement leg (no support bound yet) are actor-contention decisions.
+                    if (!GroundCombatLegs.JoinsAssignmentSolve(fe.Mission))
                         continue;
                     open.Add(fe);
                 }

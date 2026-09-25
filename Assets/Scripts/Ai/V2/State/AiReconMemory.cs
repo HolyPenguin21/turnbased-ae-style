@@ -27,6 +27,11 @@ namespace Game.Ai.V2
         public bool HasAntiAir;
         public int RecceRadius;
         public int RecceSpotStrength;
+        // Building-bound garrison (AiMapMemory.KnownEnemySighting.IsGarrison) — a site defender,
+        // never a roaming threat contact.
+        public bool IsGarrison;
+        // The observed commander (AiMapMemory.KnownEnemySighting.Commander).
+        public WorthIt.SideCommander Commander;
     }
 
     public static class AiReconMemory
@@ -82,6 +87,8 @@ namespace Game.Ai.V2
                         HasAntiAir = s.HasAntiAir,
                         RecceRadius = s.RecceRadius,
                         RecceSpotStrength = s.RecceSpotStrength,
+                        IsGarrison = s.IsGarrison,
+                        Commander = s.Commander,
                     };
                 }
             }

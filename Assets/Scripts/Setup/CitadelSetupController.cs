@@ -153,6 +153,7 @@ namespace Game.Setup
             AiMapMemory.EnsureSubscribed(map);
             Game.Ai.V2.AirSortieRegistry.Clear();
             Game.Ai.V2.AiRadarStateRegistry.Clear(); // Strategy V2 per-player smoothing / loss-pulse state
+            Game.Ai.V2.ForceBaselineRegistry.Clear(); // Strategy V2 per-player first-turn force ceiling (P_start)
             Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history
             Game.Ai.V2.ScoutTrailRegistry.ClearAll(); // Strategy V2 bounded per-scout backtrack trail (spec §5)
             Game.Ai.V2.ResourceStarvationRegistry.Clear(); // Strategy V2 decaying resource-starvation economic feedback (spec §17)
@@ -164,6 +165,12 @@ namespace Game.Setup
             Game.Ai.V2.AiV2Trace.Clear();                        // Strategy V2 per-player debuggability trace scopes (correlation ids)
             Game.Turns.InitiativePublicHistory.Clear();          // public previous-initiative results (opponent estimate)
             Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear(); // per-player initiative AP telemetry
+            // Turn-stamped V2 state keyed by player (audit P3): not a logic leak (players are new
+            // objects every match) but they would otherwise retain the previous match's players.
+            Game.Ai.V2.StrategicInterruptRegistry.ClearAll();
+            Game.Ai.V2.StrategicResourceReservationLedger.ClearAll();
+            Game.Ai.V2.StrategicTempoBudget.ClearAll();
+            Game.Ai.V2.StrategicCapabilityLeaseRegistry.ClearAll();
             AssignStartingHexes(GameSession.Players);
 
             _allPlayers.Clear();

@@ -26,7 +26,12 @@ namespace Game.Ai.V2
             var model = new ThreatModel();
             var contacts = new List<EnemyContactSnapshot>();
 
-            foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings)
+            // A building-bound garrison cannot leave its structure, so it never threatens OUR
+            // assets; it is that site's defender package, read directly from the sightings by
+            // AttackObjectiveEvaluator.KnownSiteDefenders. Same rule the cheat branch below already
+            // applies (ea.IsGarrison) — keeps a permanently remembered garrison (AiMapMemory, audit
+            // F1) from inflating the defensive reserve / ActiveDefence / Recon contact tracking.
+            foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings.Where(x => !x.IsGarrison))
             {
                 bool visibleNow = VisionSystem.IsVisible(player, s.Hex);
                 contacts.Add(new EnemyContactSnapshot
@@ -42,7 +47,8 @@ namespace Game.Ai.V2
             }
 
             var liveArmyIds = new HashSet<int>(snap.Known.EnemySightings.Select(s => s.ArmyId));
-            foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds))
+            foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds)
+                .Where(o => !o.IsGarrison))
             {
                 int age = System.Math.Max(0, snap.TurnNumber - obs.LastObservedTurn);
                 contacts.Add(new EnemyContactSnapshot
@@ -102,9 +108,12 @@ namespace Game.Ai.V2
 
             foreach (BuildingSnapshot b in snap.TrueWorld.AllBuildings.Where(x => x.Owner == player))
             {
-                ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(b.Hex));
-                var defenders = garrison?.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                float garrisonDef = defenders.Sum(d => d.Defense);
+                List<WorthIt.DefendingArmy> opposition = snap.Self.Armies
+                    .Where(a => a != null && a.Hex.Equals(b.Hex) && !a.IsPrison && !a.IsAir
+                        && !a.IsAirfield && a.MemberCount > 0)
+                    .OrderBy(a => a.ArmyId)
+                    .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander))
+                    .ToList();
 
                 AssetKind kind = ClassifyBuildingAsset(b);
                 if (kind == AssetKind.Base || kind == AssetKind.Citadel)
@@ -117,8 +126,7 @@ namespace Game.Ai.V2
                     Hex = b.Hex,
                     Kind = kind,
                     HexDefenseBonus = b.Defense,
-                    Defense = b.Defense + garrisonDef,
-                    Defenders = defenders,
+                    Opposition = opposition,
                     Value = BuildingAssetValue(kind, b, snap, totalIncome),
                 });
             }
@@ -130,8 +138,7 @@ namespace Game.Ai.V2
                     Hex = a.Hex,
                     Kind = AssetKind.Army,
                     HexDefenseBonus = 0f,
-                    Defense = a.DefenseSum,
-                    Defenders = a.Members,
+                    Opposition = new[] { new WorthIt.DefendingArmy(a.Members, a.Commander) },
                     Value = Mathf.Min(AiConfigV2.assetValueArmyCap, a.EffectiveArmyPower / AiConfigV2.assetValueArmyPowerDivisor),
                 });
             }
@@ -145,11 +152,10 @@ namespace Game.Ai.V2
             {
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
-                    bool canDamage = WorthIt.CanDamageAll(c.Army.Members, asset.Defenders, asset.HexDefenseBonus);
-                    float winChance = WorthIt.WinChance(
-                        (IReadOnlyCollection<WorthIt.DefenderProfile>)c.Army.Members,
-                        (IReadOnlyCollection<WorthIt.DefenderProfile>)asset.Defenders,
-                        asset.HexDefenseBonus);
+                    bool canDamage = WorthIt.CanDamageAll(c.Army.Members,
+                        WorthIt.UnitsOf(asset.Opposition), asset.HexDefenseBonus);
+                    float winChance = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander,
+                        asset.Opposition, asset.HexDefenseBonus).WinChance;
 
                     int? enemyEta = null;
                     if (c.Position.HasValue)
@@ -219,6 +225,7 @@ namespace Game.Ai.V2
                     HasHero = source.HasHero,
                     HasAntiAir = source.HasAntiAir,
                     IsHiddenFromUs = source.IsHiddenFromUs,
+                    Commander = source.Commander,
                     AttackSum = source.AttackSum,
                     DefenseSum = source.DefenseSum,
                     EffectiveArmyPower = source.EffectiveArmyPower,
@@ -246,6 +253,7 @@ namespace Game.Ai.V2
                 Hex = o.LastObservedHex,
                 MemberCount = o.MemberCount,
                 HasAntiAir = o.HasAntiAir,
+                Commander = o.Commander,
                 AttackSum = o.AttackSum,
                 DefenseSum = o.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
@@ -266,6 +274,8 @@ namespace Game.Ai.V2
                 Hex = s.Hex,
                 MemberCount = s.MemberCount,
                 HasAntiAir = s.HasAntiAir,
+                IsGarrison = s.IsGarrison,
+                Commander = s.Commander,
                 AttackSum = s.AttackSum,
                 DefenseSum = s.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),

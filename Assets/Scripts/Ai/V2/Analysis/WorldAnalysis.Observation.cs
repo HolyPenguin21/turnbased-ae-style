@@ -277,7 +277,8 @@ namespace Game.Ai.V2
             && a.EffectiveArmyPower == b.EffectiveArmyPower
             && a.CompositionQuality == b.CompositionQuality
             && a.HasHero == b.HasHero
-            && a.HeroCommandRating == b.HeroCommandRating
+            && a.BestHeroCommandRating == b.BestHeroCommandRating
+            && a.Commander.Equals(b.Commander)
             && a.HasResearchOperator == b.HasResearchOperator
             && a.HasProductionOperator == b.HasProductionOperator
             && a.HasAntiAir == b.HasAntiAir
@@ -530,7 +531,10 @@ namespace Game.Ai.V2
                 + $"explorable {P(s.MapKnowledge.ExplorableUnknownFrac)}");
 
             AiDebugLog.Write($"[AI][V2]   self.power field={F(self.FieldPower)} garrison={F(self.GarrisonPower)} total={F(self.TotalPower)} "
-                + $"| bestStack={F(self.BestStackPotential)} totalPotential={F(self.TotalMilitaryPotential)} "
+                + $"| pField={F(self.FieldPotential)} fist={F(self.FistPower)} bestStack={F(self.BestStackPotential)} "
+                + $"pDeck={F(self.TotalMilitaryPotential)} pStart={F(self.StartPotential)} "
+                + $"reserve units={F(self.Reserve.Units)} hero={F(self.Reserve.Hero)} "
+                + $"equip={F(self.Reserve.Equipment)} air={F(self.Reserve.Aviation)} "
                 + $"| AP={self.ActionPoints} hand={self.Hand.Count}/{self.HandCapacity} deck={self.Deck.Count} "
                 + $"| dev fac={(self.HasDevFacility ? 1 : 0)} op={(self.HasDevOperator ? 1 : 0)}");
             if (s.Development != null)

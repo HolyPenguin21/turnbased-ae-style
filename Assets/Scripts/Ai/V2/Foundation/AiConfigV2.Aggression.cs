@@ -21,8 +21,15 @@ namespace Game.Ai.V2
         public const float aggRelEdgeRampLo = 0.80f;
         public const float aggRelEdgeRampHi = 2.20f;
         public const float aggRelEdgeNoIntel = 0.50f;   // "haven't seen them" != "I'm winning"
-        public const float attackPotentialSatRampLo = 0.60f;
-        public const float attackPotentialSatRampHi = 0.95f;
+        // Attack readiness (strike force step 4) — how much of the available force stands in one
+        // fist and how much of the ceiling is already on the map (SelfSnapshot force measures):
+        //   assembly   = FistPower / FieldPotential                                  ramp lo..hi
+        //   deployment = FieldPotential / (TotalMilitaryPotential + Reserve.Equipment) ramp lo..hi
+        //   readiness  = assembly * deployment -> MilitaryTargetRelevance (Base/Citadel only).
+        public const float attackAssemblyReadyLo = 0.50f;
+        public const float attackAssemblyReadyHi = 0.90f;
+        public const float attackDeploymentReadyLo = 0.40f;
+        public const float attackDeploymentReadyHi = 0.80f;
         public const float aggSurplusRampLo = 0.10f;
         public const float aggSurplusRampHi = 0.60f;
         // RequiredDefensiveReserve = Σ over threatened Citadel/Base/Facility assets of
@@ -36,7 +43,7 @@ namespace Game.Ai.V2
         public const float aggRaidOppWeightSurplus = 0.20f;
         public const float aggRaidOppWeightRelEdge = 0.15f;
         public const float aggRaidOppWeightMomentum = 0.15f;
-        public const float attackPotentialSaturationScoreWeight = 0.45f;
+        public const float attackReadinessScoreWeight = 0.45f;
         public const float aggWarWeightSurplus = 0.25f;
         public const float aggWarWeightEcoGate = 0.20f;
         public const float aggWarWeightRelEdge = 0.10f;
@@ -108,9 +115,20 @@ namespace Game.Ai.V2
         // Structural requirement projection: a raid roster must clear this Monte-Carlo win chance
         // (parity with V1 AiConfig.raidMinimumWinChance / opportunityMinViableWinChance).
         public const float raidMinViableWinChance = 0.65f;
+        // Attack's one win-chance floor (fresh and continuing alike): below it the AI sits and
+        // defends; above it the win chance is a term of the Attack score, not a gate.
+        public const float attackMinViableWinChance = 0.20f;
+        // Strike force step 5 — past the gate a gather keeps recruiting a support only while it
+        // adds at least this much win chance (one Monte-Carlo trial is 0.04: less is noise).
+        public const float attackGatherMinWinGain = 0.05f;
+        // Air support of the fist: the strike lands at least one and at most this many turns before
+        // the primary reaches the site (so it is not raced by the assault itself), and only a
+        // strike that raises the primary's win chance by at least this much is flown.
+        public const int attackAirSupportLeadTurns = 1;
+        public const float attackAirSupportMinWinGain = 0.05f;
         // Perf pre-filter:
-        // GroundCombatAdmissionRegistry.Record()/GroundCombatAssemblyPlanner.Plan() would otherwise
-        // run the 25-trial Monte-Carlo WinChance O(readyArmies^2) times per Raid target, per
+        // GroundCombatAssemblyPlanner.Plan()/EligibleActorIds() would otherwise
+        // run the 25-trial Monte-Carlo WinChance once per ready army per Raid target, per
         // settled step. Below this attackerPower/defenderPower ratio (aggregate
         // Attack+Defense+HP+0.25*Initiative, as in GroundCombatFeasibility.Clears), Monte Carlo is
         // skipped and the matchup is treated as not clearing raidMinViableWinChance. Calibration

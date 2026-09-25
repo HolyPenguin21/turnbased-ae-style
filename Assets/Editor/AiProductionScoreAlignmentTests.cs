@@ -333,7 +333,7 @@ namespace Game.EditorTests
                 stat = EquipmentStat.MoveMax, amount = 3,
             });
             Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
-                primary, new[] { primary }, moveOnly, guards), Is.False,
+                primary, new[] { primary }, moveOnly, new WorthIt.DefendingArmy(guards, default)), Is.False,
                 "Mobility alone cannot claim a WorthIt combat improvement against known guards");
             var weapon = new EquipmentGrant();
             weapon.statChanges.Add(new EquipmentStatChange
@@ -341,10 +341,11 @@ namespace Game.EditorTests
                 stat = EquipmentStat.Attack, amount = 20,
             });
             Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
-                primary, new[] { primary }, weapon, guards), Is.True,
+                primary, new[] { primary }, weapon, new WorthIt.DefendingArmy(guards, default)), Is.True,
                 "A proven improvement in the recipient army's combat outcome counts");
             Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
-                primary, new[] { primary }, weapon, Array.Empty<WorthIt.DefenderProfile>()), Is.False,
+                primary, new[] { primary }, weapon,
+                new WorthIt.DefendingArmy(Array.Empty<WorthIt.DefenderProfile>(), default)), Is.False,
                 "An unobserved enemy cannot justify speculative equipment");
             Assert.That(primary.Attack, Is.EqualTo(1),
                 "Projection must never mutate the living army before generation/attachment");

@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
@@ -18,8 +20,10 @@ namespace Game.Ai.V2
         // Returns false when the intent must be retired. `success` distinguishes "we took the
         // Base" (§8: the army STAYS there, mission claim released, Housekeeping stabilises) from
         // "this operation is over for another reason".
+        // `unavailableArmyIds` — armies no Gather re-plan may recruit (other intents' claims and
+        // return-fallback walkers); only read by the Gather phase.
         internal static bool ResolveAttackIntent(PlayerSetupData player, WorldSnapshot snap,
-            MissionIntent intent, AttackIntent a, out bool success)
+            MissionIntent intent, AttackIntent a, ISet<int> unavailableArmyIds, out bool success)
         {
             success = false;
             if (a == null || !a.Target.HasValue)
@@ -53,7 +57,7 @@ namespace Game.Ai.V2
             if (a.Phase != AttackMissionPhase.SupportReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
-                    || !RaidPrimaryActorAlive(snap, a.PrimaryArmyId.Value))
+                    || !GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
                         + $"#{a.PrimaryArmyId} is no longer a structural ground actor in phase {a.Phase}");
@@ -61,11 +65,14 @@ namespace Game.Ai.V2
                 }
             }
 
+            ResolveGatherReturns(snap, player, intent, a);
+            ResolveAttackAirSupport(snap, player, intent, a, unavailableArmyIds);
+
             bool supportLostThisPass = false;
             if (a.SupportArmyId.HasValue
                 && (a.Phase == AttackMissionPhase.Reinforcement
                     || a.Phase == AttackMissionPhase.SupportReturn)
-                && !RaidSupportActorAlive(snap, a.SupportArmyId.Value))
+                && !ActorCommitments.GroundContainerStillValid(a.SupportArmyId.Value, snap))
             {
                 int lostSupportId = a.SupportArmyId.Value;
                 a.SupportArmyId = null;
@@ -83,8 +90,7 @@ namespace Game.Ai.V2
             {
                 if (!a.SupportArmyId.HasValue)
                 {
-                    a.SupportReturnHex = null;
-                    a.Phase = AttackMissionPhase.Assault;
+                    ReleaseAttackSupport(a);
                     return true;
                 }
                 // The leg was entered by an execution fact (a full/full swap); THIS is where the
@@ -99,9 +105,7 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support "
                         + $"#{a.SupportArmyId} released after SupportReturn");
-                    a.SupportArmyId = null;
-                    a.SupportReturnHex = null;
-                    a.Phase = AttackMissionPhase.Assault;
+                    ReleaseAttackSupport(a);
                 }
                 else if (!ReturnBaseStillValid(snap, player, a.SupportArmyId, a.SupportReturnHex))
                 {
@@ -112,9 +116,7 @@ namespace Game.Ai.V2
                         // let the primary carry on being re-evaluated.
                         AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support "
                             + $"#{a.SupportArmyId} has no reachable home base — released");
-                        a.SupportArmyId = null;
-                        a.SupportReturnHex = null;
-                        a.Phase = AttackMissionPhase.Assault;
+                        ReleaseAttackSupport(a);
                     }
                     else
                     {
@@ -156,6 +158,9 @@ namespace Game.Ai.V2
                 }
                 return true;
             }
+
+            if (a.Phase == AttackMissionPhase.Gather)
+                return ResolveAttackGather(snap, intent, a, unavailableArmyIds);
 
             // ---- §24 the Assault / Reinforcement decision --------------------------------------
             bool clears = AttackPrimaryClearsTarget(snap, a);
@@ -216,25 +221,232 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // Strike force step 5 — gather donors that already handed over walk home. The base is
+        // chosen (and re-chosen when lost) by the one own-Base selection owner; a donor leaves the
+        // list on arrival, when its container is gone, or when no home is reachable.
+        private static void ResolveGatherReturns(WorldSnapshot snap, PlayerSetupData player,
+            MissionIntent intent, AttackIntent a)
+        {
+            a.GatherReturns.RemoveAll(r =>
+            {
+                ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                    && x.ArmyId == r.ArmyId);
+                if (s == null || !ActorCommitments.GroundContainerStillValid(r.ArmyId, snap))
+                    return true;
+                if (!ReturnBaseStillValid(snap, player, r.ArmyId, r.BaseHex))
+                    r.BaseHex = SelectReturnBase(snap, player, r.ArmyId);
+                bool done = !r.BaseHex.HasValue || s.Hex.Equals(r.BaseHex.Value);
+                if (done)
+                    AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} donor #{r.ArmyId} "
+                        + (r.BaseHex.HasValue ? "is home" : "has no reachable home base")
+                        + " — released");
+                return done;
+            });
+        }
+
+        // Strike force — the fist's air support, the one GroundCombatAirSupport (as Raid's). A wing
+        // is bound while the operation is in Assault and its strike lands 1..attackAirSupportLeadTurns
+        // turns before the primary reaches the site (never raced by the assault in the same turn),
+        // the site's intel is fresh and the strike raises the primary's fight by
+        // attackAirSupportMinWinGain. It stays bound while its sortie flies
+        // (never orphaned mid-air) and is released once it has landed, when it never took off
+        // by a later turn, or when it stops being a valid wing.
+        private static void ResolveAttackAirSupport(WorldSnapshot snap, PlayerSetupData player,
+            MissionIntent intent, AttackIntent a, ISet<int> unavailableArmyIds)
+        {
+            int turn = snap?.TurnNumber ?? 0;
+            if (a.AirSupportArmyId.HasValue)
+            {
+                bool flying = GroundCombatAirSupport.SortieLive(player, a.AirSupportArmyId,
+                    out bool wingValid);
+                if (flying)
+                {
+                    a.AirSupportSortieSeen = true;
+                    return;
+                }
+                if (wingValid && !a.AirSupportSortieSeen && a.AirSupportBoundTurn >= turn)
+                    return;
+                AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} wing "
+                    + $"#{a.AirSupportArmyId} released ("
+                    + (!wingValid ? "no longer a valid wing" : a.AirSupportSortieSeen ? "landed" : "never took off")
+                    + ")");
+                ReleaseAttackAirSupport(a, turn);
+                return;
+            }
+
+            if (a.Phase != AttackMissionPhase.Assault || a.AirSupportAttemptedTurn == turn
+                || !a.PrimaryArmyId.HasValue || snap?.Self?.Armies == null)
+                return;
+            ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            if (primary == null)
+                return;
+            int primaryEta = AiV2Util.TurnsToCover(primary,
+                HexGridMath.Distance(primary.Hex, a.Target.Hex));
+            if (primaryEta < 2 || primaryEta > 1 + AiConfigV2.attackAirSupportLeadTurns)
+                return;
+
+            List<AiMapMemory.KnownEnemySighting> site = (snap.Known?.EnemySightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(s => s.Hex.Equals(a.Target.Hex) && s.Defenders != null && s.Defenders.Count > 0)
+                .ToList();
+            if (site.Count == 0
+                || site.Any(s => turn - s.SeenTurn > AiConfigV2.attackIntelMaxAgeTurns))
+                return;
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefenderProfile> roster = primary.Members
+                ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
+            Func<IReadOnlyList<WorthIt.DefendingArmy>, float> win = opp =>
+                WorthIt.EstimateSequential(roster, primary.Commander, opp, hexBonus).WinChance;
+            float current = win(opposition);
+
+            // A wing already flying any sortie is not free for this one.
+            var unavailable = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            foreach (ArmySnapshot w in snap.Self.Armies)
+                if (w != null && w.IsAir && GroundCombatAirSupport.SortieLive(player, w.ArmyId, out _))
+                    unavailable.Add(w.ArmyId);
+
+            List<AirSupportOption> options = GroundCombatAirSupport.Options(snap, opposition,
+                    a.Target.Hex, site.Sum(s => s.DefenseSum), site.Sum(s => s.AttackSum),
+                    AirStrikePolicy.Standard, win, current, unavailable)
+                .Where(o => o.FirstStrikeEta <= primaryEta - 1
+                    && o.WinAfter - current >= AiConfigV2.attackAirSupportMinWinGain)
+                .OrderByDescending(o => o.WinAfter)
+                .ThenBy(o => o.EtaTurns)
+                .ThenBy(o => o.Ap)
+                .ThenBy(o => o.Resources.Energy)
+                .ThenBy(o => o.WingArmyId)
+                .ToList();
+            if (options.Count == 0)
+                return;
+            AirSupportOption best = options[0];
+            a.AirSupportArmyId = best.WingArmyId;
+            a.AirSupportLandingHex = best.LandingHex;
+            a.AirSupportBoundTurn = turn;
+            a.AirSupportSortieSeen = false;
+            AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} bound wing "
+                + $"#{best.WingArmyId} for {a.Target.DiagnosticLabel}: win {current:0.00} -> "
+                + $"{best.WinAfter:0.00} ({(best.SecondStrike ? "two strikes" : "one strike")}), "
+                + $"eta {best.EtaTurns}, landing ({best.LandingHex.Q},{best.LandingHex.R})");
+        }
+
+        private static void ReleaseAttackAirSupport(AttackIntent a, int turn)
+        {
+            a.AirSupportArmyId = null;
+            a.AirSupportLandingHex = null;
+            a.AirSupportSortieSeen = false;
+            a.AirSupportAttemptedTurn = turn;
+        }
+
+        // The one "support leaves an Attack" edge after SupportReturn: release the claim and hand
+        // the operation back to the Assault / Reinforcement decision below (§24), which re-reads
+        // whether the primary clears the site on its own.
+        private static void ReleaseAttackSupport(AttackIntent a)
+        {
+            a.SupportArmyId = null;
+            a.SupportReturnHex = null;
+            a.Phase = AttackMissionPhase.Assault;
+        }
+
+        // Audit F7 — the Gather phase. The host (PrimaryArmyId) holds; every support in
+        // GatherSupportArmyIds walks to it and hands over (AdvanceIntent drops a support once its
+        // handoff was attempted, and it walks home). Strike force step 5: the gather builds the
+        // fist to its PEAK, so the host marches once every planned support is spent and it clears
+        // Attack's floor — or earlier, when it already clears and a leg has stalled. When every
+        // planned support is spent and the host still falls short, the gather is re-planned around
+        // the same host from what is free now; if nothing can complete it, the existing
+        // Reinforcement path takes over (partial improvement, then the Production demand, then
+        // RecoveryReturn).
+        private static bool ResolveAttackGather(WorldSnapshot snap, MissionIntent intent,
+            AttackIntent a, ISet<int> unavailableArmyIds)
+        {
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
+            float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
+
+            // A support that stopped existing, or whose bodies no longer improve the host (arrival
+            // order filled the host differently than planned, defenders changed), leaves the plan:
+            // otherwise its leg would be rejected by Provisioning forever and the host would hold
+            // for nothing.
+            ArmySnapshot host = snap?.Self?.Armies?.FirstOrDefault(x => x != null
+                && x.ArmyId == a.PrimaryArmyId.Value);
+            List<int> dropped = a.GatherSupportArmyIds.Where(id =>
+            {
+                ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
+                // A support stays while its bodies improve the host OR its hero would take command
+                // (GroundCombatReinforcement.CommandHandover — the plan may keep it for that alone).
+                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
+                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus)
+                        && GroundCombatReinforcement.CommandHandover(
+                            AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value),
+                            AiV2Util.ResolveArmy(snap.Observer, id),
+                            opposition, hexBonus, null) == null;
+            }).ToList();
+            if (dropped.Count > 0)
+            {
+                a.GatherSupportArmyIds.RemoveAll(dropped.Contains);
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} support(s) "
+                    + $"[{string.Join(",", dropped)}] lost or no longer improve host #{a.PrimaryArmyId}; "
+                    + $"remaining [{string.Join(",", a.GatherSupportArmyIds)}]");
+            }
+
+            if ((a.GatherSupportArmyIds.Count == 0 || intent.StallTurns > 0)
+                && AttackPrimaryClearsTarget(snap, a))
+            {
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} phase Gather -> Assault "
+                    + $"(host #{a.PrimaryArmyId} clears {a.Target.DiagnosticLabel} "
+                    + $"win={a.ProjectedWinChance:0.00}); released supports "
+                    + $"[{string.Join(",", a.GatherSupportArmyIds)}]");
+                a.GatherSupportArmyIds.Clear();
+                a.Phase = AttackMissionPhase.Assault;
+                return true;
+            }
+            if (a.GatherSupportArmyIds.Count > 0)
+                return true;
+
+            var unavailable = unavailableArmyIds == null
+                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
+            unavailable.Remove(a.PrimaryArmyId.Value);
+            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
+                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                a.PrimaryArmyId, GroundCombatDonorPolicy.BorrowableDonorApPrices(
+                    snap?.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All));
+            if (plan.Feasible && plan.SupportArmyIds.Count > 0)
+            {
+                a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
+                intent.StallTurns = 0;
+                AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} re-planned around host "
+                    + $"#{a.PrimaryArmyId}: supports [{string.Join(",", plan.SupportArmyIds)}] "
+                    + $"win={plan.ProjectedWinChance:0.00} gatherTurns={plan.GatherTurns} "
+                    + $"assaultEta={plan.AssaultEta} ap={plan.TotalAp}");
+                return true;
+            }
+
+            a.Phase = AttackMissionPhase.Reinforcement;
+            a.ReinforcementRequestedTurn = -1;
+            AiDebugLog.Write($"[AI][V2][Attack][Gather] {intent.IntentKey} phase Gather -> Reinforcement "
+                + $"(host #{a.PrimaryArmyId} still short and no complete gather remains: {plan.Reason})");
+            return true;
+        }
+
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
-        // and the SAME honest hex-defence read the mission layer used, at the bounded continuation
-        // floor a started operation is entitled to.
+        // and the SAME honest hex-defence read the mission layer used, at Attack's one floor.
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             // Continuity is snapshot-pure and has no map, so terrain is not in this read; the
             // remembered structural defence still is. The mission/provisioning layers, which do have
             // the map, apply the full bonus before anything is actually funded or executed.
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, defenders, a.PrimaryArmyId.Value,
-                a.OperationStarted
-                    ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                    : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
-                hexBonus);
+                snap, opposition, a.PrimaryArmyId.Value,
+                GroundCombatAdmissionPolicy.AttackWinChanceFloor, hexBonus);
             if (plan.Feasible)
             {
                 a.ProjectedWinChance = plan.ProjectedWinChance;
@@ -249,11 +461,11 @@ namespace Game.Ai.V2
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
-                a.PrimaryArmyId.Value, defenders, null, hexBonus).Count > 0;
+                a.PrimaryArmyId.Value, opposition, null, hexBonus).Count > 0;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken
@@ -267,7 +479,8 @@ namespace Game.Ai.V2
                 Phase = t.Phase,
                 OperationStarted = true,
                 PrimaryArmyId = t.PrimaryArmyId ?? o.MoverArmyId,
-                SupportArmyId = t.SupportArmyId,
+                // A Gather leg's mover is one of several supports, never the Reinforcement support.
+                SupportArmyId = t.Phase == AttackMissionPhase.Gather ? null : t.SupportArmyId,
                 RecoveryBaseHex = t.RecoveryBaseHex,
                 SupportReturnHex = t.SupportReturnHex,
                 ProjectedWinChance = t.ProjectedWinChance,
@@ -278,13 +491,25 @@ namespace Game.Ai.V2
                 LastOpportunisticStrikeTurn = o.AttackOpportunisticStrike
                     ? turn : t.OpportunisticStrikeTurn,
             };
+            // Audit F7 — an operation born from its first Gather step carries the whole frozen
+            // plan; the support that already attempted its handoff on that step is done.
+            if (t.Phase == AttackMissionPhase.Gather && t.GatherSupportArmyIds != null)
+                payload.GatherSupportArmyIds.AddRange(t.GatherSupportArmyIds.Where(id =>
+                    id != payload.PrimaryArmyId
+                    && !(o.ReinforcementHandoffAttempted && id == o.MoverArmyId)));
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
-            RetireCompletedRaidFallbackForActor(state, payload.PrimaryArmyId,
+            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh Attack admitted");
+            foreach (int supportId in payload.GatherSupportArmyIds)
+                RetireReturnFallbacksForActor(state, supportId, "fresh Attack gather admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Attack] continuity — "
                 + $"[{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created "
-                + $"(Hard attack on {t.Target.DiagnosticLabel}, primary #{payload.PrimaryArmyId})");
+                + $"(Hard attack on {t.Target.DiagnosticLabel}, primary #{payload.PrimaryArmyId}, "
+                + $"phase {payload.Phase}"
+                + (payload.Phase == AttackMissionPhase.Gather
+                    ? $", gather supports [{string.Join(",", payload.GatherSupportArmyIds)}]" : "")
+                + ")");
         }
 
         // §71 — a started operation is NOT re-pointed at a slightly better-scoring target. This is

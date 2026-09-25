@@ -367,7 +367,8 @@ namespace Game.Ai.V2
                 ReconObjective best = groundVisitRunnable.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
-                    + $"profile=generic-ground desired={matGround} reason=persistent_ground_traversal_deficit "
+                    + $"profile=generic-ground desired={matGround} "
+                    + $"reason={(groundPersist ? "persistent_ground_traversal_deficit" : "zero_capacity_bootstrap")} "
                     + $"groundTraversalDeficit(effective)={groundEffectiveDeficit}(streak={groundStreak}) "
                     + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
                     + $"matGround={matGround} matObs={matObs} runnable={runnable.Count} blocked={blocked} "
@@ -384,7 +385,7 @@ namespace Game.Ai.V2
                     WorldTaskScore = best.TaskScore,
                     Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"persistent GroundTraversal effective deficit {groundEffectiveDeficit} "
+                    Explain = $"{(groundPersist ? "persistent" : "bootstrap")} GroundTraversal effective deficit {groundEffectiveDeficit} "
                         + $"(aviation cannot substitute a physical visit); want {matGround}; blocked {blocked}",
                 };
             }
@@ -394,7 +395,8 @@ namespace Game.Ai.V2
                 ReconObjective best = observationRunnable.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? observationRunnable.FirstOrDefault() ?? runnable[0];
                 AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
-                    + $"profile=generic-observation desired={matObs} reason=persistent_observation_deficit "
+                    + $"profile=generic-observation desired={matObs} "
+                    + $"reason={(obsPersist ? "persistent_observation_deficit" : "zero_capacity_bootstrap")} "
                     + $"obsDeficit(effective)={obsEffectiveDeficit}(streak={obsStreak}) "
                     + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
                     + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "

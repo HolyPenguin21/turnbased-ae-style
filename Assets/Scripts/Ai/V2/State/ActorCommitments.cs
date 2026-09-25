@@ -61,28 +61,26 @@ namespace Game.Ai.V2
                 // (SupportReturn): Housekeeping (and every other mission lane) must never see the
                 // convoy as a free army during either leg. Losing it releases just this claim.
                 RaidIntent raid = i?.Raid;
-                if (raid != null && raid.Phase == RaidMissionPhase.AirSupport
-                    && raid.AirSupportArmyId.HasValue
+                int? airWing = GroundCombatLegs.HeldAirSupportArmyId(i);
+                if (airWing.HasValue
                     && snap.Self.Armies.Any(a => a != null
-                        && a.ArmyId == raid.AirSupportArmyId.Value && a.IsAir
+                        && a.ArmyId == airWing.Value && a.IsAir
                         && !a.IsAirfield && a.MemberCount > 0))
-                    c.Claim(raid.AirSupportArmyId.Value);
-                if (raid != null && raid.SupportArmyId.HasValue
-                    && (raid.Phase == RaidMissionPhase.Reinforcement || raid.Phase == RaidMissionPhase.SupportReturn)
-                    && snap.Self.Armies.Any(a => a != null && a.ArmyId == raid.SupportArmyId.Value
-                        && !a.IsPrison && !a.IsAir && a.MemberCount > 0))
+                    c.Claim(airWing.Value);
+                // Raid/Attack convoys and every support an Attack Gather still expects — the one
+                // list GroundCombatLegs owns. A support that stopped being a live ground container
+                // releases just its own claim.
+                foreach (int supportId in GroundCombatLegs.HeldGroundSupportArmyIds(i))
                 {
-                    c.Claim(raid.SupportArmyId.Value);
-                    AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
-                        + $"support={raid.SupportArmyId.Value} phase={raid.Phase} reason=support_actor_en_route");
+                    if (!GroundContainerStillValid(supportId, snap))
+                        continue;
+                    c.Claim(supportId);
+                    if (raid != null)
+                        AiDebugLog.Write($"[AI][V2][Commitment][Raid] decision=CLAIM intent={i.IntentKey} "
+                            + $"support={supportId} phase={raid.Phase} reason=support_actor_en_route");
                 }
 
                 AttackIntent attack = i?.Attack;
-                if (attack != null && attack.SupportArmyId.HasValue
-                    && (attack.Phase == AttackMissionPhase.Reinforcement
-                        || attack.Phase == AttackMissionPhase.SupportReturn)
-                    && GroundContainerStillValid(attack.SupportArmyId.Value, snap))
-                    c.Claim(attack.SupportArmyId.Value);
                 if (i?.PreferredMoverArmyId == null)
                     continue;
 
@@ -166,6 +164,11 @@ namespace Game.Ai.V2
 
                 if (i.Kind == MissionKind.ActiveDefence)
                 {
+                    // Audit F6 — the Return leg is a zero-value fallback (Funding None), exactly
+                    // like a completed Raid's Return above: the actor is exposed to fresh Raid /
+                    // Attack / ActiveDefence allocation instead of being hidden from assembly.
+                    if (i.ActiveDefence?.Phase == ActiveDefencePhase.Return)
+                        continue;
                     int actorId = i.PreferredMoverArmyId.Value;
                     if (GroundCombatActorStillValid(actorId, snap, out _))
                         c.Claim(actorId);
@@ -270,7 +273,10 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool GroundContainerStillValid(int armyId, WorldSnapshot snap)
+        // A support/return actor only has to be a live, non-air, non-empty ground container —
+        // during transit legs it carries bodies or itself home, not qualifying for fresh combat.
+        // One owner for Continuity (support loss) and commitments (support claims).
+        internal static bool GroundContainerStillValid(int armyId, WorldSnapshot snap)
         {
             ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                 && a.ArmyId == armyId);

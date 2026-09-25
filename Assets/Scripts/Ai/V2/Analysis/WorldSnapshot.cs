@@ -170,11 +170,16 @@ namespace Game.Ai.V2
         public bool IsAirfield;
         public int MemberCount;
         public bool HasHero;
-        // Best CommandRating among this army's hero members (0 = no hero). Sets a real forming
-        // army's slot cap (ArmyData.ComputeCapacity) — the CombatOpportunityAnalyzer reads it to
-        // size an assemblable raid roster the way EvaluateAssemblablePlan does. Own armies only in
-        // practice (a fog/cheat-read enemy army never exposes its hero's rating).
-        public int HeroCommandRating;
+        public int HeroCount;
+        // Best CommandRating among this army's hero members (0 = no hero): the capacity this army
+        // COULD have if its best hero were made commander. A potential, not the army's current
+        // cap (that is Capacity, set by the commander). CombatOpportunityAnalyzer sizes an
+        // assemblable roster with it. Own armies only.
+        public int BestHeroCommandRating;
+        // The army's commander (ArmyData.Commander) — its initiative bonus and battle Fate for
+        // WorthIt. Own armies: read live; an enemy contact: as observed (AiMapMemory). Default
+        // when the army has no (visible) hero.
+        public WorthIt.SideCommander Commander;
         // HasAntiAir is DUAL-USE: for an own army it means "fields an AntiAir counter unit"; for an
         // enemy contact it means "fields AA guns" (aviation-routing danger). Kept as its own field
         // because the aviation path (AirReconRouteCandidate) reads it independently.
@@ -386,6 +391,49 @@ namespace Game.Ai.V2
         public float EstimatedAirApDemand;         // apAirSortieApProxy per structurally-available recon-air sortie/wing
     }
 
+    // Where a force element is now: already on the map, in hand, or still in the deck.
+    public enum ForceSource { Map, Hand, Deck }
+
+    // One commander option (HeroRoleEvaluator.HeroProfile) and where the hero is.
+    public readonly struct OwnCommandHero
+    {
+        public readonly HeroRoleEvaluator.HeroProfile Profile;
+        public readonly ForceSource Source;
+
+        public OwnCommandHero(HeroRoleEvaluator.HeroProfile profile, ForceSource source)
+        {
+            Profile = profile;
+            Source = source;
+        }
+    }
+
+    // Reinforcement reserve (strike force step 3): what the cards in hand + deck can still add
+    // to the field, on the SelfSnapshot force-measure scale. Built as nested pools on the map
+    // stack, so FieldPotential + Units + Hero == TotalMilitaryPotential.
+    //   Units     — unit cards added under the map's own command capacity;
+    //   Hero      — hero cards added on top (their bodies and the capacity they lift);
+    //   Equipment — Σ, per equipment card, its best combat gain on a free legal host
+    //               (StrategicCardEvaluator.EquipmentDeltaParts, one host per item);
+    //   Aviation  — Σ power of aviation cards: support that may or may not help a ground fight.
+    public readonly struct ForceReserve
+    {
+        public readonly float Units;
+        public readonly float Hero;
+        public readonly float Equipment;
+        public readonly float Aviation;
+
+        public ForceReserve(float units, float hero, float equipment, float aviation)
+        {
+            Units = units;
+            Hero = hero;
+            Equipment = equipment;
+            Aviation = aviation;
+        }
+
+        // What can strengthen a ground stack.
+        public float Ground => Units + Hero + Equipment;
+    }
+
     // =======================================================================================
     //  SELF
     // =======================================================================================
@@ -399,15 +447,35 @@ namespace Game.Ai.V2
         public float GarrisonPower;
         public float TotalPower;
 
-        // Best single stack the player could assemble RIGHT NOW from on-map units + hand + deck,
-        // capped at the best available hero's CommandRating. Dynamic — loses a strong unit in a
-        // battle and this drops. Comparison / "how strong am I" only; gates nothing.
+        // ---- Force measures (strike force step 3) ----------------------------------------------
+        // One scale for all of them: the AiPower strength of ONE composed ground stack
+        // (AiPower.ComposeStack, capped by the best available hero's CommandRating). Aviation is
+        // support, not part of a ground stack — it only shows up as Reserve.Aviation.
+
+        // P_field — best single stack from what is on the map now (field armies + garrisons).
+        public float FieldPotential;
+
+        // Best single stack the player could assemble RIGHT NOW from on-map units + hand.
+        // Dynamic — loses a strong unit in a battle and this drops.
         public float BestStackPotential;
 
-        // Near-static ceiling: every military unit already on the map plus every unit card still
-        // in hand or deck, composition-adjusted. "If we can't get stronger than this even in
-        // theory, there is nothing left to wait for before striking the enemy citadel."
+        // P_deck — near-static ceiling: on-map units plus every unit/hero card still in hand or
+        // deck, composition-adjusted. "If we can't get stronger than this even in theory, there
+        // is nothing left to wait for before striking the enemy citadel."
         public float TotalMilitaryPotential;
+
+        // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
+        public float FistPower;
+
+        // P_start — TotalMilitaryPotential as recorded on this player's first V2 turn
+        // (ForceBaselineRegistry); this turn's TotalMilitaryPotential until one is recorded.
+        public float StartPotential;
+
+        // What hand + deck can still add to the field (see ForceReserve).
+        public ForceReserve Reserve;
+
+        // Every hero that could command a formation: on the map, in hand, in the deck.
+        public IReadOnlyList<OwnCommandHero> CommandHeroes = System.Array.Empty<OwnCommandHero>();
 
         public ResourceBundle Stockpile;
         public ResourceBundle PerTurnIncome;
@@ -479,6 +547,7 @@ namespace Game.Ai.V2
         }
 
         public IReadOnlyList<WorthIt.DefenderProfile> Defenders => Strength.Defenders;
+        public WorthIt.SideCommander Commander => Strength.Commander;
     }
 
     // =======================================================================================
@@ -897,9 +966,11 @@ namespace Game.Ai.V2
         public HexCoord Hex;
         public AssetKind Kind;
         public float Value;                // importance to US, set by the snapshot
-        public float Defense;              // quick scalar: HexDefenseBonus + Σ Defenders' Defense
         public float HexDefenseBonus;      // the structural / terrain part alone (fed to WorthIt as its hexDefenseBonus)
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders; // garrison / the army's own roster
+        // Who an attacker must beat to take this asset: for a structure every own ground army on
+        // its hex (garrison and field armies, each its own battle with its commander — the rules'
+        // one-army-after-another fight); for a field army, that army alone.
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition = System.Array.Empty<WorthIt.DefendingArmy>();
     }
 
     // One Enemy x Asset pressure pairing above the listing cutoff.

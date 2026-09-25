@@ -156,6 +156,9 @@ namespace Game.Ai.V2
                         {
                             ArmyId = recipient?.ArmyId ?? -1, Owner = player, Hex = p.Deploy.Hex,
                             HasHero = true, IsMobileEconomyBuilder = true,
+                            // The recipient has no hero, so the played hero becomes its commander.
+                            Commander = WorthIt.SideCommander.Of(
+                                p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef),
                             Members = recipient?.Members ?? System.Array.Empty<WorthIt.DefenderProfile>(),
                             NonHeroActivationApCosts = recipient?.NonHeroActivationApCosts ?? System.Array.Empty<int>(),
                             NonHeroMoveMax = recipient?.NonHeroMoveMax ?? System.Array.Empty<int>(),
@@ -190,6 +193,12 @@ namespace Game.Ai.V2
                             : DeliveryAssessment.No(DeliveryFailureReason.InsufficientSafeEscort);
                 case CapabilityKind.FieldCombatPower:
                 {
+                    if (demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
+                        return p.Deploy.Kind == DeploymentKind.Garrison && demand.TargetHex.HasValue
+                            && p.Deploy.Hex.Equals(demand.TargetHex.Value)
+                                ? DeliveryAssessment.Ok
+                                : DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                                    $"garrison_at_target_required:{p.Deploy.Kind}");
                     if (p.Deploy.Kind == DeploymentKind.Garrison)
                         return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                             p.Deploy.Kind.ToString());

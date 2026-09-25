@@ -31,8 +31,9 @@ namespace Game.Ai.V2
         public FundedEntry Funded;
         public StableMissionKey Key;
         public HexCoord TargetHex;
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
-            System.Array.Empty<WorthIt.DefenderProfile>();
+        // The opposition this fight is against (every defending army with its commander).
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition =
+            System.Array.Empty<WorthIt.DefendingArmy>();
         // §30 — the defence the DEFENDERS enjoy where this fight will happen. 0 for open ground;
         // an assault on a known Base/Citadel passes what honest memory observed.
         public float DefenderHexDefenseBonus;
@@ -52,6 +53,8 @@ namespace Game.Ai.V2
         // number exactly once.
         public int ActualAp;
         public int AppliedTransfers;
+        // The host's commander was promoted for this fight: a world mutation of its own.
+        public bool CommanderReordered;
 
         public static GroundCombatAssaultOutcome Failed(ProvisioningResult failure) =>
             new GroundCombatAssaultOutcome { Success = false, Failure = failure };
@@ -146,8 +149,8 @@ namespace Game.Ai.V2
         internal static GroundCombatLegCheck ValidateReinforcement(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
-            string lane, out bool atRendezvous)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
+            string lane, out bool atRendezvous, bool allowCommandHandover = false)
         {
             atRendezvous = false;
             ArmyData support = AiV2Util.ResolveArmy(player, supportArmyId);
@@ -167,8 +170,8 @@ namespace Game.Ai.V2
 
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
-            if (!GroundCombatReinforcement.ImprovesOdds(primary, support, defenders,
-                    defenderHexDefenseBonus, out string why))
+            if (!GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
+                    defenderHexDefenseBonus, out string why, allowCommandHandover))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
                         $"{lane} reinforcement #{support.Id} -> #{primary.Id} would not improve the primary's odds: {why}")));
@@ -187,6 +190,13 @@ namespace Game.Ai.V2
             }
 
             int activationAp = support.HasActivatedThisTurn ? 0 : support.ActivationApCost;
+            // At the rendezvous the step IS the handoff: its own activation charges (newcomers to
+            // an army that already acted, both directions) are part of this leg's AP.
+            if (atRendezvous)
+                activationAp += GroundCombatReinforcement.HandoffApCost(
+                    GroundCombatReinforcement.PlanHandoff(primary, support,
+                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out _),
+                    primary, support);
             if (activationAp > funded.Tentative.Ap + eps)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
@@ -200,17 +210,65 @@ namespace Game.Ai.V2
         }
     }
 
+    // One command handover (GroundCombatReinforcement.CommandHandover): the hero, the primary body
+    // it is exchanged for (null when there was room), everything that moves support -> primary
+    // (the hero first) and everything that moves primary -> support.
+    internal sealed class CommandHandoverPlan
+    {
+        internal readonly UnitData Hero;
+        internal readonly UnitData HeroExchangedFor;
+        internal readonly IReadOnlyList<UnitData> Incoming;
+        internal readonly IReadOnlyList<UnitData> Displaced;
+
+        internal CommandHandoverPlan(UnitData hero, UnitData heroExchangedFor,
+            IReadOnlyList<UnitData> incoming, IReadOnlyList<UnitData> displaced)
+        {
+            Hero = hero;
+            HeroExchangedFor = heroExchangedFor;
+            Incoming = incoming;
+            Displaced = displaced;
+        }
+    }
+
+    // What one reinforcement / gather handoff will do, decided once (GroundCombatReinforcement.
+    // PlanHandoff): who goes support -> primary, who goes primary -> support, and the hero that
+    // takes command, if any. The leg's AP (HandoffApCost) and the executed transfer read the same
+    // plan.
+    internal sealed class HandoffPlan
+    {
+        internal readonly IReadOnlyList<UnitData> Incoming;
+        internal readonly IReadOnlyList<UnitData> Displaced;
+        internal readonly UnitData Promote;
+        internal readonly string Detail;
+
+        internal HandoffPlan(IReadOnlyList<UnitData> incoming, IReadOnlyList<UnitData> displaced,
+            UnitData promote, string detail)
+        {
+            Incoming = incoming;
+            Displaced = displaced ?? System.Array.Empty<UnitData>();
+            Promote = promote;
+            Detail = detail;
+        }
+    }
+
     // ATK §28/§46 — reinforcement admission belongs to the GroundCombat kernel, not to a lane.
     // Both halves were private to the Raid provisioner; nothing in either is Raid-specific.
     internal static class GroundCombatReinforcement
     {
         // Would merging the support's transferable bodies into the primary raise its WorthIt win
-        // chance against the current defenders, on the hex where the fight will happen? A convoy
-        // that cannot help is never provisioned.
+        // chance against the current opposition, on the hex where the fight will happen — or, for
+        // a lane that hands command over (Attack), would its hero take command of the primary
+        // (CommandHandover)? A convoy that cannot help is never provisioned.
         internal static bool ImprovesOdds(ArmyData primary, ArmyData support,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
-            out string why)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
+            out string why, bool allowCommandHandover = false)
         {
+            if (allowCommandHandover && CommandHandover(primary, support, opposition,
+                    defenderHexDefenseBonus, null) != null)
+            {
+                why = null;
+                return true;
+            }
             List<UnitData> sparable = SparableSupportBodies(support);
             List<WorthIt.DefenderProfile> primaryBodies = primary.Members
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
@@ -222,10 +280,201 @@ namespace Game.Ai.V2
             int capacity = ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
             return GroundCombatAssemblyPlanner.TryProjectReinforcement(
                 primaryBodies, supportBodies, capacity, primary.Members.Count,
-                defenders, out _, out why, defenderHexDefenseBonus);
+                WorthIt.SideCommander.Of(primary.Commander), opposition, out _, out why,
+                defenderHexDefenseBonus);
         }
 
-        // A support container is never emptied and never gives up its own hero.
+        // Strike force — THE "hand the support's hero over to lead the primary" rule, exchanges
+        // included. A field hero of the support (never a SupportOperator) moves when, joined to the
+        // primary, it is the best commander of the primary's fight (HeroRoleEvaluator.
+        // BestCommanderFor, judged with `prospectiveBodies` — the bodies that would come along —
+        // or the support's own bodies). When the primary has no room for the hero itself, the hero
+        // is exchanged for the primary's most wounded, then weakest, body. Under the hero's
+        // Command the free slots take the support's strongest bodies; every further support body
+        // that beats the primary's weakest remaining body is exchanged for it (the same "fresh for
+        // weakest" rule as the bodies-only swap). The support must stay a non-empty, legally sized
+        // container with what it keeps and what it receives. Null when no hero should move. Used
+        // by the gather projection, the gather plan's donor retention, the reinforcement gate and
+        // the handoff — one answer for all four.
+        internal static CommandHandoverPlan CommandHandover(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies)
+        {
+            if (primary == null || support == null || primary.IsGarrison)
+                return null;
+            List<UnitData> donorBodies = support.Members
+                .Where(x => AiArmyRoles.IsGroundBattleBody(x))
+                .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
+                .ThenBy(x => x.Name)
+                .ToList();
+            List<WorthIt.DefenderProfile> prospects = (prospectiveBodies
+                ?? donorBodies.Select(WorthIt.FromLiveUnit)).ToList();
+            UnitData weakestHostBody = WeakestBodies(primary.Members).FirstOrDefault();
+
+            foreach (UnitData hero in support.Members
+                .Where(u => u != null && u.IsHero && !u.IsPrisoner
+                    && HeroRoleEvaluator.Classify(u) != HeroOperationalRole.SupportOperator)
+                .OrderByDescending(HeroRoleEvaluator.CombatLeadershipScore)
+                .ThenBy(u => u.RuntimeId))
+            {
+                // Joined without displacing anyone, or — no room for the hero itself — exchanged
+                // for the primary's weakest body.
+                UnitData heroFor = null;
+                var joined = new List<UnitData>(primary.Members) { hero };
+                if (ArmyData.ComputeCapacity(new[] { hero }.Concat(primary.Members), false) < joined.Count)
+                {
+                    if (weakestHostBody == null)
+                        continue;
+                    heroFor = weakestHostBody;
+                    joined.Remove(heroFor);
+                }
+                if (HeroRoleEvaluator.BestCommanderFor(joined, false, opposition,
+                        defenderHexDefenseBonus, prospects) != hero)
+                    continue;
+
+                var incoming = new List<UnitData> { hero };
+                var displaced = new List<UnitData>();
+                if (heroFor != null)
+                    displaced.Add(heroFor);
+                var led = new List<UnitData> { hero };
+                led.AddRange(primary.Members.Where(u => u != heroFor));
+                int room = System.Math.Max(0, ArmyData.ComputeCapacity(led, false) - led.Count);
+                var fresh = new Queue<UnitData>(donorBodies);
+                while (room > 0 && fresh.Count > 0)
+                {
+                    incoming.Add(fresh.Dequeue());
+                    room--;
+                }
+                var weakest = new Queue<UnitData>(WeakestBodies(primary.Members.Where(u => u != heroFor)));
+                while (fresh.Count > 0 && weakest.Count > 0
+                    && GroundCombatDonorPolicy.UnitCombatValue(fresh.Peek())
+                        > GroundCombatDonorPolicy.UnitCombatValue(weakest.Peek()))
+                {
+                    incoming.Add(fresh.Dequeue());
+                    displaced.Add(weakest.Dequeue());
+                }
+
+                // The support is never emptied: if everything would leave, its weakest moving body
+                // stays (the last fill, or else the last exchange, which is undone as a pair).
+                int fills = incoming.Count - 1 - (displaced.Count - (heroFor != null ? 1 : 0));
+                if (!support.Members.Except(incoming).Concat(displaced).Any() && incoming.Count > 1)
+                {
+                    if (fills > 0)
+                        incoming.RemoveAt(fills);
+                    else
+                    {
+                        incoming.RemoveAt(incoming.Count - 1);
+                        displaced.RemoveAt(displaced.Count - 1);
+                    }
+                }
+                // Without its hero the support must still hold what it keeps and receives; a
+                // support that cannot does not give this hero away.
+                if (!SupportStaysLegal(support, incoming, displaced))
+                    continue;
+                return new CommandHandoverPlan(hero, heroFor, incoming, displaced);
+            }
+            return null;
+        }
+
+        // THE handoff decision, in order: a command handover (only when the lane passes its fight,
+        // `commandOpposition` — Attack) when CommandHandover finds one the armies can take; else the
+        // support's sparable bodies into the primary's free slots; else, the primary being full,
+        // one fresh support body for the primary's most wounded / weakest body (the first fresh
+        // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
+        internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
+            out string why)
+        {
+            why = "";
+            if (primary == null || support == null)
+            {
+                why = "primary or support is gone";
+                return null;
+            }
+            if (commandOpposition != null)
+            {
+                CommandHandoverPlan c = CommandHandover(primary, support, commandOpposition,
+                    commandHexBonus, null);
+                if (c != null)
+                {
+                    if (ArmyActions.CanExchangeMembers(c.Incoming, support, primary, c.Hero,
+                            c.Displaced, out string cWhy))
+                        return new HandoffPlan(c.Incoming, c.Displaced, c.Hero,
+                            $"hero {c.Hero.Name} took command"
+                            + (c.HeroExchangedFor != null ? $" in exchange for {c.HeroExchangedFor.Name}" : "")
+                            + $"; {c.Incoming.Count - 1} body(ies) in, {c.Displaced.Count} out");
+                    why = $"command handover of {c.Hero.Name} rejected ({cWhy}); ";
+                }
+            }
+
+            List<UnitData> sparable = SparableSupportBodies(support);
+            if (sparable.Count == 0)
+            {
+                why += "support has no sparable body";
+                return null;
+            }
+            int freeSlots = System.Math.Max(0,
+                ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison) - primary.Members.Count);
+            if (freeSlots > 0)
+            {
+                List<UnitData> batch = sparable.Take(freeSlots).ToList();
+                if (ArmyActions.CanExchangeMembers(batch, support, primary, null, null, out string fWhy))
+                    return new HandoffPlan(batch, null, null, $"transferred {batch.Count} into free slot(s)");
+                why += $"atomic transfer rejected: {fWhy}";
+                return null;
+            }
+
+            // Primary is full — trade out its most critically wounded member for the best fresh
+            // body the support can spare (a straight exchange needs no free slot on either side).
+            // An exchange is the SupportReturn trigger: the displaced unit only exists in the
+            // support now, so the whole support army walks itself home afterward.
+            UnitData weakest = WeakestBodies(primary.Members).FirstOrDefault();
+            if (weakest == null)
+            {
+                why += "primary is full and has no swappable non-hero body";
+                return null;
+            }
+            foreach (UnitData fresh in sparable)
+            {
+                if (GroundCombatDonorPolicy.UnitCombatValue(fresh)
+                    <= GroundCombatDonorPolicy.UnitCombatValue(weakest))
+                    continue;
+                if (ArmyActions.CanExchangeMembers(new[] { fresh }, support, primary, null,
+                        new[] { weakest }, out string sWhy))
+                    return new HandoffPlan(new[] { fresh }, new[] { weakest }, null,
+                        $"swapped {weakest.Name} out for {fresh.Name}");
+                why += $"swap rejected: {sWhy}; ";
+            }
+            why += "primary is full and no support body improves on its weakest member";
+            return null;
+        }
+
+        // The AP the handoff itself charges: every newcomer to an army that already acted this
+        // turn pays its activation (ArmyActions.TransferMembersApCost), in both directions.
+        internal static int HandoffApCost(HandoffPlan plan, ArmyData primary, ArmyData support) =>
+            plan == null ? 0
+                : ArmyActions.TransferMembersApCost(plan.Incoming, primary)
+                    + ArmyActions.TransferMembersApCost(plan.Displaced, support);
+
+        // The primary's ground bodies, most wounded first, then weakest (the one "who gives way"
+        // order of every exchange).
+        private static IEnumerable<UnitData> WeakestBodies(IEnumerable<UnitData> members) =>
+            (members ?? Enumerable.Empty<UnitData>())
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
+                .OrderBy(u => u.HitPointsMax > 0 ? (float)u.HitPointsCurrent / u.HitPointsMax : 1f)
+                .ThenBy(u => GroundCombatDonorPolicy.UnitCombatValue(u))
+                .ThenBy(u => u.Name);
+
+        private static bool SupportStaysLegal(ArmyData support, List<UnitData> incoming,
+            List<UnitData> displaced)
+        {
+            var remainder = support.Members.Where(u => !incoming.Contains(u)).Concat(displaced).ToList();
+            return remainder.Count >= 1
+                && ArmyData.ComputeCapacity(remainder, support.IsGarrison) >= remainder.Count;
+        }
+
+        // A support container is never emptied and never gives up its own hero (a hero moves
+        // only through CommandHandover).
         internal static List<UnitData> SparableSupportBodies(ArmyData support)
         {
             var list = new List<UnitData>();
@@ -255,7 +504,7 @@ namespace Game.Ai.V2
         // regression tests. The batch solver owns actor identity; the combat assembly kernel
         // owns feasibility of THAT actor and donors, never a replacement actor search.
         internal static GroundCombatAssemblyPlan PlanAssignedAssault(ProvisioningSession session,
-            MissionProposal proposal, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            MissionProposal proposal, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             out ProvisionFailure failure, float defenderHexDefenseBonus = 0f, string lane = "raid")
         {
             failure = default;
@@ -275,23 +524,18 @@ namespace Game.Ai.V2
                 return null;
             }
 
-            // Keep the strict gate for fresh actors and the bounded continuation floor for
-            // the same Hard incumbent. Unlike PlanForArmy, this request can also assemble
-            // a legal same-hex roster, but may never re-select a different primary.
+            // GroundCombatAdmissionPolicy.AssaultGate picks the gate (Attack's floor; the strict
+            // gate for fresh actors and the bounded continuation floor for the same Hard
+            // incumbent). Unlike PlanForArmy, this request can also assemble a legal same-hex
+            // roster, but may never re-select a different primary.
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = opposition,
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    // New operations keep the strict fresh gate; only a pinned Hard
-                    // incumbent may use the existing bounded continuation floor.
-                    WinChanceGate = proposal.FromDurableIntent
-                        && proposal.DurableFundingTier == CommitmentTier.Hard
-                        && proposal.PreferredMoverArmyId == actorId
-                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AssaultGate(proposal, actorId),
                     DefenderHexDefenseBonus = defenderHexDefenseBonus,
                 });
             if (!plan.Feasible)
@@ -314,8 +558,8 @@ namespace Game.Ai.V2
             MissionProposal m = funded.Mission;
             StableMissionKey key = r.Key;
             HexCoord targetHex = r.TargetHex;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = r.Defenders
-                ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = r.Opposition
+                ?? System.Array.Empty<WorthIt.DefendingArmy>();
             string lane = r.LaneLabel;
             float eps = r.Eps;
 
@@ -324,7 +568,7 @@ namespace Game.Ai.V2
             // ExcludedForGroundCombat ownership view the batch solver used, so a mission can never
             // steal a durable Economy/Recon/Raid actor after the batch solver correctly rejected it.
             GroundCombatAssemblyPlan plan = PlanAssignedAssault(session, m,
-                defenders, out ProvisionFailure assignmentFailure, r.DefenderHexDefenseBonus, lane);
+                opposition, out ProvisionFailure assignmentFailure, r.DefenderHexDefenseBonus, lane);
             if (plan == null)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(assignmentFailure));
 
@@ -405,9 +649,11 @@ namespace Game.Ai.V2
                                 $"{lane} donor #{group.Key} cannot spare the complete planned batch")));
                 }
                 // §29 — the site's own defence is part of THIS fight, so the pre-mutation re-check
-                // must ask the estimator the same question the plan was admitted on.
-                if (!GroundCombatFeasibility.Clears(projectedProfiles, defenders,
-                        AiConfigV2.raidMinViableWinChance, r.DefenderHexDefenseBonus,
+                // must ask the estimator the same question the plan was admitted on: the same
+                // defence bonus and the same gate.
+                if (!GroundCombatFeasibility.Clears(projectedProfiles,
+                        WorthIt.SideCommander.Of(projectedUnits), opposition,
+                        plan.WinChanceGate, r.DefenderHexDefenseBonus,
                         out float projectedWin, out _))
                     return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.AssemblyInfeasible(
@@ -484,6 +730,17 @@ namespace Game.Ai.V2
             foreach (int d in claimedDonors)
                 session.ClaimedArmyIds.Add(d);
 
+            // Strike force step 5 — the host marches under its best legal commander for THIS fight
+            // (HeroRoleEvaluator, the same choice the gather projection made). Zero AP, no roster
+            // change, so the funded activation above is untouched.
+            UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
+                opposition, r.DefenderHexDefenseBonus);
+            bool reordered = lead != null && lead != host.Commander
+                && host.TryReorderCommander(lead, out _);
+            if (reordered)
+                AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — host #{host.Id} "
+                    + $"commander -> {lead.Name} for this fight");
+
             AiDebugLog.Write($"[AI][V2]   {lane} provision [{m.AttemptId}] {key} — OK host #{host.Id} "
                 + $"{(plan.NeedsAssembly ? $"(+{transfers.Count} body from {claimedDonors.Count} donor) " : "")}"
                 + $"win~{plan.ProjectedWinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
@@ -496,6 +753,7 @@ namespace Game.Ai.V2
                 Plan = plan,
                 ActualAp = actualAp,
                 AppliedTransfers = applied.Count,
+                CommanderReordered = reordered,
             };
         }
 

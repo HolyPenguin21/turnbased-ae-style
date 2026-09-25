@@ -246,9 +246,9 @@ namespace Game.UI
         // from, so the human and AI draw algorithm can never quietly diverge.
         private CardDefinition PopRandomCard() => DeckDraw.PopRandom(_remainingDeck);
 
-        // Called once by GameTurnController.BeginGame, right after citadel setup — same
-        // trigger as ResourceBarUI/the end-turn button. The panel starts inactive in the
-        // scene, so Awake (and so the starting-hand population above) doesn't run until this
+        // Called once by GameTurnController.BeginGame, right after citadel setup. This object is
+        // CardHandPanel, which also parents ResourceBarUI and the end-turn button, so Show/Hide
+        // drive all three together. The panel starts inactive in the scene, so Awake (and so the starting-hand population above) doesn't run until this
         // actually activates it. Also the counterpart to Hide() below — reshown once
         // BattleScreenUI closes. Relayout(animated: false) covers any card added by
         // GrantEventReward/GrantCard while a guard-fight battle screen kept the hand hidden —
@@ -261,7 +261,8 @@ namespace Game.UI
             Relayout(animated: false);
         }
 
-        // Called by BattleScreenUI while a battle is open — the hand means nothing behind the
+        // Called by BattleScreenUI while a battle is open (takes the resource bar and end-turn
+        // button with it — they're children of this panel) — the hand means nothing behind the
         // battle screen (no play-a-card-onto-the-map interaction makes sense mid-combat) and
         // would otherwise visually crowd/overlap it.
         public void Hide()

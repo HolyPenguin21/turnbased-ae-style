@@ -74,29 +74,30 @@ namespace Game.Ai.V2
             if (snap?.Self == null || snap.Known == null)
                 return report;
 
-            var ownBodies = new List<WorthIt.DefenderProfile>();
-            int heroCap = 0;
+            // Everything that could form the assemblable roster: bodies on the map and in hand.
+            var assemblableBodies = new List<WorthIt.DefenderProfile>();
             foreach (ArmySnapshot a in snap.Self.Armies)
             {
                 if (a == null || a.IsPrison) continue;
-                if (a.Members != null) ownBodies.AddRange(a.Members);
-                if (a.HeroCommandRating > heroCap) heroCap = a.HeroCommandRating;
+                if (a.Members != null) assemblableBodies.AddRange(a.Members);
             }
-
-            var handBodies = new List<WorthIt.DefenderProfile>();
             foreach (CardData card in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
             {
                 CardDefinition d = card?.Definition;
-                if (d == null) continue;
-                if (d.cardType == CardType.Hero && d.commandRating > heroCap) heroCap = d.commandRating;
-                if (d.cardType == CardType.Unit) handBodies.Add(AiPower.ToDefenderProfile(d));
+                if (d != null && d.cardType == CardType.Unit)
+                    assemblableBodies.Add(AiPower.ToDefenderProfile(d));
             }
 
-            bool heroAvailable = heroCap > 0;
-            int cap = heroAvailable ? heroCap : NoHeroStackCapacity;
-            int bodySlots = heroAvailable ? Mathf.Max(0, cap - 1) : Mathf.Max(0, cap);
-            report.HeroAvailable = heroAvailable;
-            report.AssemblableCap = cap;
+            // Its commander options: heroes on the map and in hand. Which one leads is decided per
+            // fight by HeroRoleEvaluator (BestAssembly).
+            List<HeroRoleEvaluator.HeroProfile> commanders = (snap.Self.CommandHeroes
+                    ?? (IReadOnlyList<OwnCommandHero>)System.Array.Empty<OwnCommandHero>())
+                .Where(h => h.Source != ForceSource.Deck)
+                .Select(h => h.Profile)
+                .ToList();
+            report.HeroAvailable = commanders.Count > 0;
+            report.AssemblableCap = commanders.Count > 0
+                ? commanders.Max(h => h.CommandRating) : NoHeroStackCapacity;
 
             ArmySnapshot bestReadyArmy = snap.Self.Armies
                 .Where(a => a.IsStructuralRaidActor && a.Members != null && a.Members.Count > 0)
@@ -105,11 +106,8 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             List<WorthIt.DefenderProfile> readyRoster = bestReadyArmy?.Members?.ToList()
                 ?? new List<WorthIt.DefenderProfile>();
-
-            List<WorthIt.DefenderProfile> assemblableRoster = ownBodies.Concat(handBodies)
-                .OrderByDescending(ProfilePower)
-                .Take(bodySlots)
-                .ToList();
+            // The ready army fights under its own commander.
+            WorthIt.SideCommander readyCommander = bestReadyArmy?.Commander ?? default;
 
             var fromHexes = new List<HexCoord>();
             int moverBudget = AiConfigV2.etaFallbackMoveBudget;
@@ -130,9 +128,12 @@ namespace Game.Ai.V2
             {
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = t.Defenders
                     ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                bool cover = WorthIt.CanDamageAll(assemblableRoster, defenders, 0f);
+                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                    readyCommander, t.Commander);
+                HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
+                    new[] { new WorthIt.DefendingArmy(defenders, t.Commander) });
+                float asmWin = assembly.WinChance;
+                bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, 0f);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
                 int eta = CeilDiv(minDist, moverBudget);
                 float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
@@ -174,9 +175,12 @@ namespace Game.Ai.V2
                 {
                     IReadOnlyList<WorthIt.DefenderProfile> defenders = g.Defenders
                         ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                    float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                    bool cover = WorthIt.CanDamageAll(assemblableRoster, defenders, 0f);
+                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                        readyCommander, g.Commander);
+                    HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
+                        new[] { new WorthIt.DefendingArmy(defenders, g.Commander) });
+                    float asmWin = assembly.WinChance;
+                    bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, 0f);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
                     int eta = CeilDiv(minDist, moverBudget);
                     float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
@@ -230,11 +234,24 @@ namespace Game.Ai.V2
             return report;
         }
 
-        private static float ProfilePower(WorthIt.DefenderProfile p) => Mathf.Max(0f,
-            p.Attack * AiConfigV2.powerAttackWeight
-            + p.Defense * AiConfigV2.powerDefenseWeight
-            + p.HitPoints * AiConfigV2.powerHitPointsWeight
-            + p.Initiative * AiConfigV2.powerInitiativeWeight);
+        // The assemblable roster under the commander HeroRoleEvaluator picks for THIS fight: the
+        // best bodies that fit under each candidate, judged against the opposition. With no hero
+        // anywhere the stack holds NoHeroStackCapacity bodies and has no commander; that is the
+        // same projection with no commander slot to take (rating = capacity + 1).
+        private static HeroRoleEvaluator.CommandProjection BestAssembly(
+            List<HeroRoleEvaluator.HeroProfile> commanders, List<WorthIt.DefenderProfile> bodies,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition)
+        {
+            if (commanders.Count == 0)
+                return HeroRoleEvaluator.ProjectCommand(NoHeroStackCapacity + 1, 0, default,
+                    bodies, opposition, 0f);
+            return commanders
+                .Select(h => HeroRoleEvaluator.Candidate(h, HeroRoleEvaluator.ProjectCommand(
+                    h.CommandRating, 0, h.Commander, bodies, opposition, 0f)))
+                .OrderBy(c => c, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
+                    HeroRoleEvaluator.CompareCandidates))
+                .First().Projection;
+        }
 
         // A neutral sighting has its own honest last-observed turn. It is not part of the enemy
         // threat-contact model; using that model's missing-contact fallback used to mark even a

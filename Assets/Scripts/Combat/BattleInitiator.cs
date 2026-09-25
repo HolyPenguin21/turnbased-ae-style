@@ -109,12 +109,17 @@ namespace Game.Combat
                     continue;
                 }
 
-                // Whole visible roster — WorthIt keeps only ground combatants itself.
-                var visibleRoster = Game.Map.StealthSystem.TargetableMembersFor(army, observer)
+                // Whole visible roster — WorthIt keeps only ground combatants itself. The defending
+                // army's commander counts when the mover can see it (its initiative and Fate are part
+                // of how hard that army is to beat).
+                var visibleMembers = Game.Map.StealthSystem.TargetableMembersFor(army, observer)
                     .Where(member => member != null)
-                    .Select(WorthIt.FromLiveUnit)
                     .ToList();
-                WorthIt.BattleEstimate estimate = WorthIt.Estimate(mover, visibleRoster, 0f);
+                var visibleRoster = visibleMembers.Select(WorthIt.FromLiveUnit).ToList();
+                UnitData commander = army.Commander;
+                WorthIt.BattleEstimate estimate = WorthIt.Estimate(mover, visibleRoster, 0f,
+                    commander != null && visibleMembers.Contains(commander)
+                        ? WorthIt.SideCommander.Of(commander) : default);
 
                 if (best == null || IsHarderDefender(estimate, army.Id, bestEstimate, best.Id))
                 {

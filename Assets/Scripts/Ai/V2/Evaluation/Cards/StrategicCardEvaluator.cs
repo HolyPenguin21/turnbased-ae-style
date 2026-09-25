@@ -1015,6 +1015,11 @@ namespace Game.Ai.V2
         // portfolio solver — AP / H-E-M-T / generation / physical / recipient capacity), so a slot
         // the hero's Command unlocks is only "usable" if there is really a body to put in it. 0 for
         // any call with no candidate set keeps the conservative "hero itself only" behaviour.
+        //
+        // Strike force: whether the hero would LEAD the destination is HeroRoleEvaluator's call
+        // (a second hero that beats the current commander is promoted by Housekeeping, and then
+        // its Command does set capacity), and leading also prices the win-chance gain against
+        // the command context (heroCommandWinGainValue).
         private static float HeroCommandMarginalValue(CardDefinition def, EffectEvaluationContext ectx,
             int projectedLegalFillers, out string detail)
         {
@@ -1022,11 +1027,32 @@ namespace Game.Ai.V2
             if (def == null || def.cardType != CardType.Hero)
                 return 0f;
 
-            // ectx.DestNominalCapacity/DestOccupiedSlots/DestHasHero come from the SAME
-            // StrategicEffectRegistry.ResolveDestination walk that already resolved FreeBattleSlots
-            // for this exact plan (single destination-army lookup, not a second one just for Command).
+            // Who leads the destination after the hero joins — HeroRoleEvaluator's one commander
+            // evaluation against the command context (the strongest known enemy field army),
+            // exactly the choice Housekeeping's commander reorder will make. The destination's
+            // bodies are known; its current commander is compared on the fight and capacity only
+            // (its static role signals are not in the snapshot), so a tie keeps it.
+            IReadOnlyList<WorthIt.DefendingArmy> context = HeroRoleEvaluator.CommandContext(ectx.Snap);
+            IReadOnlyList<WorthIt.DefenderProfile> bodies = ectx.DestArmyMembers
+                ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
+            // "Before" = the army after the hero joins WITHOUT leading: the current commander keeps
+            // capacity and every other hero, the newcomer included, takes a slot. A heroless
+            // destination holds its nominal capacity with no commander slot.
+            HeroRoleEvaluator.CommandProjection before = ectx.DestHasHero
+                ? HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity, ectx.DestHeroCount,
+                    ectx.DestCommander, bodies, context, 0f)
+                : HeroRoleEvaluator.ProjectCommand(ectx.DestNominalCapacity + 1, 0, default,
+                    bodies, context, 0f);
+            HeroRoleEvaluator.CommandProjection led = HeroRoleEvaluator.ProjectCommand(def.commandRating,
+                ectx.DestHeroCount, WorthIt.SideCommander.Of(def), bodies, context, 0f);
+            bool leads = !ectx.DestHasHero || HeroRoleEvaluator.CompareCandidates(
+                new HeroRoleEvaluator.CommandCandidate(led, 0, 0f, 0, 0, 1),
+                new HeroRoleEvaluator.CommandCandidate(before, 0, 0f, 0, 0, 0)) < 0;
+
+            // Command slots: the marginal usable capacity it unlocks — slots the AI actually has
+            // bodies for (the destination's own plus `projectedLegalFillers`).
             int nominalCap = ectx.DestNominalCapacity;
-            int projectedCap = ArmyData.ComputeProjectedCapacity(nominalCap, ectx.DestHasHero, def);
+            int projectedCap = leads ? def.commandRating : nominalCap;
 
             int occupiedBefore = ectx.DestOccupiedSlots;
             // The hero itself consumes one battle slot; plus the bodies that could jointly-legally
@@ -1037,12 +1063,19 @@ namespace Game.Ai.V2
             int usableAfter = Mathf.Min(projectedCap, requiredCapacity);
             int usableExtraSlots = Mathf.Clamp(
                 usableAfter - usableBefore, 0, AiConfigV2.heroCommandMarginalMaxSlots);
-            float value = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
+            float slotValue = usableExtraSlots * AiConfigV2.heroCommandMarginalSlotValue;
+
+            // Command in the fight: the win-chance gain when it leads.
+            float winGain = leads ? Mathf.Max(0f, led.WinChance - before.WinChance) : 0f;
+            float value = slotValue + winGain * AiConfigV2.heroCommandWinGainValue;
 
             detail = $"command={def.commandRating} nominalCap={nominalCap} projectedCap={projectedCap} "
-                   + $"occupiedBefore={occupiedBefore} legalFillers={Mathf.Max(0, projectedLegalFillers)} "
-                   + $"requiredCapacity={requiredCapacity} "
-                   + $"usableExtraSlots={usableExtraSlots} commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
+                   + $"leads={(leads ? 1 : 0)} occupiedBefore={occupiedBefore} "
+                   + $"legalFillers={Mathf.Max(0, projectedLegalFillers)} requiredCapacity={requiredCapacity} "
+                   + $"usableExtraSlots={usableExtraSlots} "
+                   + $"win={before.WinChance.ToString("0.00", CultureInfo.InvariantCulture)}->"
+                   + $"{led.WinChance.ToString("0.00", CultureInfo.InvariantCulture)} "
+                   + $"commandMarginalValue={value.ToString("0.00", CultureInfo.InvariantCulture)}";
             return value;
         }
 
@@ -1158,15 +1191,15 @@ namespace Game.Ai.V2
         private static float UnitMatchupFit(EquipmentGrant grant, UnitData recipient,
             IReadOnlyCollection<UnitData> members, WorldSnapshot snap)
         {
-            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
             int comparable = 0;
             int improved = 0;
-            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            foreach (WorthIt.DefendingArmy threat in threats)
             {
-                if (defenders == null || defenders.Count == 0)
+                if (threat.Units == null || threat.Units.Count == 0)
                     continue;
                 comparable++;
-                if (ImprovesGroundCombatOutcome(recipient, members, grant, defenders))
+                if (ImprovesGroundCombatOutcome(recipient, members, grant, threat))
                     improved++;
             }
             return comparable > 0 ? (float)improved / comparable : 0f;
@@ -1178,7 +1211,7 @@ namespace Game.Ai.V2
         {
             if (grant == null || host == null || host.cardType != CardType.Unit)
                 return 0f;
-            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
             if (threats.Count == 0)
                 return 0f;
             AiPower.ProjectedStrategicLine before = AiPower.EffectiveLine(host, existing);
@@ -1193,8 +1226,9 @@ namespace Game.Ai.V2
 
             int comparable = 0;
             int improved = 0;
-            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            foreach (WorthIt.DefendingArmy threat in threats)
             {
+                IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
                 if (defenders == null || defenders.Count == 0)
                     continue;
                 comparable++;
@@ -1212,8 +1246,10 @@ namespace Game.Ai.V2
                 // changes can still be the real reason the attachment matters. Reuse the SAME
                 // full-roster WorthIt read as deployed recipients; never fall back to a private
                 // Attack+Defense heuristic.
-                WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f);
-                WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f);
+                WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f,
+                    default, threat.Commander);
+                WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f,
+                    default, threat.Commander);
                 if (next.WinChance > previous.WinChance
                     || (next.WinChance == previous.WinChance
                         && (next.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
@@ -1228,8 +1264,9 @@ namespace Game.Ai.V2
         // without mutating gameplay UnitData or pretending the grant created a new combat body.
         internal static bool ImprovesGroundCombatOutcome(UnitData recipient,
             IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
-            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
+            WorthIt.DefendingArmy threat, float hexBonus = 0f)
         {
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
             if (recipient == null || recipient.IsHero || grant == null || members == null
                 || defenders == null || defenders.Count == 0 || !members.Contains(recipient))
                 return false;
@@ -1274,24 +1311,28 @@ namespace Game.Ai.V2
             if (!coversBefore)
                 return true;
 
-            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus);
-            WorthIt.BattleEstimate improvedEstimate = WorthIt.Estimate(after, defenders, hexBonus);
+            // Equipment never changes who leads: the same commanders on both sides of the compare.
+            WorthIt.SideCommander ownCommander = WorthIt.SideCommander.Of(members);
+            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus,
+                ownCommander, threat.Commander);
+            WorthIt.BattleEstimate improvedEstimate = WorthIt.Estimate(after, defenders, hexBonus,
+                ownCommander, threat.Commander);
             return improvedEstimate.WinChance > previous.WinChance
                 || (improvedEstimate.WinChance == previous.WinChance
                     && (improvedEstimate.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
                         || improvedEstimate.CriticalAfterBattleChance < previous.CriticalAfterBattleChance));
         }
 
-        private static List<IReadOnlyList<WorthIt.DefenderProfile>> EquipmentValuationThreats(WorldSnapshot snap)
+        private static List<WorthIt.DefendingArmy> EquipmentValuationThreats(WorldSnapshot snap)
         {
-            var result = new List<IReadOnlyList<WorthIt.DefenderProfile>>();
+            var result = new List<WorthIt.DefendingArmy>();
             // Only composition crosses the TrueWorld boundary. Ground and aviation rosters are
             // both legitimate Production valuation inputs; neither hidden coordinates nor army
             // identity is passed to recipient selection or Mission planning.
             if (snap?.TrueWorld?.EnemyArmies != null)
                 result.AddRange(snap.TrueWorld.EnemyArmies
                     .Where(a => a != null && a.Members != null && a.Members.Count > 0)
-                    .Select(a => a.Members));
+                    .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander)));
 
             // A neutral's last honestly observed defender profiles are the only permitted
             // composition witness. After it disappears into fog, its hidden live roster may
@@ -1299,7 +1340,7 @@ namespace Game.Ai.V2
             if (snap?.Known?.NeutralSightings != null)
                 result.AddRange(snap.Known.NeutralSightings
                     .Where(s => s.Defenders != null && s.Defenders.Count > 0)
-                    .Select(s => s.Defenders));
+                    .Select(s => new WorthIt.DefendingArmy(s.Defenders, s.Commander)));
 
             // An event guard is not a live ArmyData until triggered. Its legitimately observed
             // defender profiles already belong to Known, so use those directly for WorthIt;
@@ -1307,7 +1348,7 @@ namespace Game.Ai.V2
             if (snap?.Known?.EventGuards != null)
                 result.AddRange(snap.Known.EventGuards
                     .Where(g => g.Defenders != null && g.Defenders.Count > 0)
-                    .Select(g => g.Defenders));
+                    .Select(g => new WorthIt.DefendingArmy(g.Defenders, g.Commander)));
             return result;
         }
 
@@ -1318,6 +1359,10 @@ namespace Game.Ai.V2
         internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData host,
             WorldSnapshot snap = null, CapabilityInventory inv = null)
             => EquipmentDeltaParts(equipDef, host, host?.Definition, snap, inv);
+
+        // A host that is still only a definition (a deck card): nothing is attached to it yet.
+        internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardDefinition host)
+            => EquipmentDeltaParts(equipDef, null, host, null, null);
 
         private static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData hostCard,
             CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)

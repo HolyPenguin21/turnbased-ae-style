@@ -265,10 +265,8 @@ namespace Game.Ai.V2
                     ArmySnapshot actor = snap.Self?.Armies?.FirstOrDefault(a => a != null
                         && a.ArmyId == d.PrimaryArmyId.Value);
                     if (actor == null) continue;
-                    int distance = HexGridMath.Distance(actor.Hex, d.ReturnHex.Value);
-                    int eta = AiV2Util.CeilDiv(distance,
-                        UnityEngine.Mathf.Max(1, actor.MaxMovement));
-                    float ap = actor.HasActivatedThisTurn ? 0f : actor.ActivationApCost;
+                    MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
+                        actor, d.ReturnHex.Value, out int eta);
                     var target = new ActiveDefenceMissionTarget
                     {
                         Phase = ActiveDefencePhase.Return, EnemyArmyId = d.EnemyArmyId,
@@ -285,12 +283,7 @@ namespace Game.Ai.V2
                         BaseValue = 0f, LocalAdmissionScore = 0f,
                         PreferredMoverArmyId = actor.ArmyId,
                         FromDurableIntent = true, DurableFundingTier = intent.Funding,
-                        Requirements = new MissionRequirements
-                        {
-                            MoverKnown = true, RequiresArmy = true,
-                            ApMinimum = ap, ApDesired = ap, ApMaximum = ap,
-                            EtaTurns = eta, EstimatedDistance = distance,
-                        },
+                        Requirements = requirements,
                         Explain = $"ActiveDefence Return actor #{actor.ArmyId} -> {d.ReturnHex.Value.Q},{d.ReturnHex.Value.R}",
                     };
                     proposal.Axes.Value[DesireAxis.Aggression] = 1f;
@@ -309,13 +302,13 @@ namespace Game.Ai.V2
                     c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
                     && c.Source == ContactSource.Honest && c.Position.HasValue);
                 if (contact == null) continue;
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = contact.Army.Members
-                    ?? System.Array.Empty<WorthIt.DefenderProfile>();
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = new[]
+                    { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) };
 
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest
                     {
-                        Defenders = defenders,
+                        Opposition = opposition,
                         WinChanceGate = pinnedActor.HasValue
                             ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                             : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
@@ -359,7 +352,7 @@ namespace Game.Ai.V2
                         GroundCombatAssemblyPlan borrowed = GroundCombatAssemblyPlanner.Plan(snap,
                             new GroundCombatAssemblyRequest
                             {
-                                Defenders = defenders,
+                                Opposition = opposition,
                                 WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                                 PreferredPrimaryArmyId = candidate.ArmyId,
                                 PinToPreferred = true,
@@ -438,7 +431,7 @@ namespace Game.Ai.V2
                         + $"task {actorScore.Value:0.00} win {plan.ProjectedWinChance:0.00} eta {eta}",
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;
-                GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, defenders, excluded);
+                GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, opposition, excluded);
                 if (GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible)
                     && eligible.Count > 0)
                 {
@@ -502,9 +495,9 @@ namespace Game.Ai.V2
 
             if (!ri.SupportArmyId.HasValue)
             {
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, ri.Target);
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    snap, primaryId, defenders, null);
+                    snap, primaryId, opposition, null);
                 if (candidates.Count == 0)
                     return null;
 
@@ -598,11 +591,7 @@ namespace Game.Ai.V2
                 && a.ArmyId == airId && a.IsAir && !a.IsAirfield && !a.IsPrison);
             if (wing == null)
                 return null;
-            int distance = HexGridMath.Distance(wing.Hex, ri.LastKnownHex);
-            int eta = distance <= wing.CurrentMovement ? 1
-                : 1 + (distance - wing.CurrentMovement
-                    + System.Math.Max(1, wing.MaxMovement) - 1)
-                    / System.Math.Max(1, wing.MaxMovement);
+            int eta = GroundCombatAirSupport.SortieEta(wing, ri.LastKnownHex);
             var target = new RaidMissionTarget
             {
                 Phase = RaidMissionPhase.AirSupport,
@@ -639,20 +628,20 @@ namespace Game.Ai.V2
                 excluded = ownExcluded;
             }
             RaidMissionTarget target = o.ToTarget();
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, o.Target);
 
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
                 ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = opposition,
                     PreferredPrimaryArmyId = pinnedPrimaryArmyId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
                     WinChanceGate = operationStarted
-                        ? RaidAdmissionPolicy.ContinuationWinChanceFloor
-                        : RaidAdmissionPolicy.FreshStartWinChanceGate,
+                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
+                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 })
-                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, excluded);
+                : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;
@@ -725,19 +714,8 @@ namespace Game.Ai.V2
                 ArmySnapshot wing = snap.Self?.Armies?.FirstOrDefault(a => a != null
                     && c.Target.AirSupportArmyId.HasValue
                     && a.ArmyId == c.Target.AirSupportArmyId.Value);
-                float activation = wing != null && !wing.HasActivatedThisTurn
-                    ? wing.ActivationApCost : 0f;
-                float energy = wing != null && !wing.HasActivatedThisTurn
-                    ? wing.ActivationEnergyCost : 0f;
-                req = new MissionRequirements
-                {
-                    RequiresArmy = true, RequiresHero = false, MoverKnown = wing != null,
-                    ApMinimum = activation, ApDesired = activation, ApMaximum = activation,
-                    EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
-                    EstimatedDistance = wing == null ? 0
-                        : HexGridMath.Distance(wing.Hex, c.Target.DestinationHex),
-                    EtaTurns = System.Math.Max(1, c.Target.EstimatedEta),
-                };
+                req = GroundCombatAirSupport.LegRequirements(wing, c.Target.DestinationHex,
+                    c.Target.EstimatedEta);
             }
             int? plannedMover = c.PreferredMover ?? estimate.PlannedMoverArmyId ?? c.CostedMover;
 

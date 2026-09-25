@@ -195,7 +195,8 @@ namespace Game.Ai.V2
                     // hex read as "objective met" after every single assault step.
                     AttackMissionTarget attack = pm.AttackTarget;
                     if (attack.Phase == AttackMissionPhase.RecoveryReturn
-                        || attack.Phase == AttackMissionPhase.SupportReturn)
+                        || attack.Phase == AttackMissionPhase.SupportReturn
+                        || attack.Phase == AttackMissionPhase.GatherReturn)
                     {
                         ArmyData actor = ArmyRegistry.AllForOwner(player)
                             .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
@@ -356,7 +357,7 @@ namespace Game.Ai.V2
                         o.ReinforcementHandoffAttempted =
                             e.ReinforcementHandoffAttempted;
                         o.RaidAirSupportStrikeSucceeded =
-                            e.RaidAirSupportStrikeSucceeded;
+                            e.AirSupportStrikeSucceeded;
                         o.RaidRefitSucceeded = e.RaidRefitSucceeded;
                         o.RaidResourcesSpent = e.ResourcesSpent;
                     }
@@ -451,6 +452,19 @@ namespace Game.Ai.V2
                         o.Outcome = ExecutionOutcome.Failed;
                         break;
                 }
+                return;
+            }
+
+            // A support-mover leg of an Attack (convoy, gather, walk home, donor, wing) that lost its
+            // mover or its primary must not retire the whole operation — the same rule Raid applies
+            // to its support legs above. ResolveActive's next pass detects the loss and cleans up
+            // only that support (or, for a lost primary, retires the operation itself).
+            if (o.MissionKind == MissionKind.Attack && o.HasAttackPayload
+                && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase)
+                && (e.StopReason == ExecutionStopReason.MoverLost
+                    || e.StopReason == ExecutionStopReason.TargetInvalidated))
+            {
+                o.Outcome = ExecutionOutcome.Blocked;
                 return;
             }
 

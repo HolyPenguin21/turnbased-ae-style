@@ -34,6 +34,7 @@ namespace Game.Ai.V2
             int singles = 0;
             int nonViable = 0;
             int commandWaste = 0;
+            IReadOnlyList<WorthIt.DefendingArmy> commandContext = CommandContext(s);
             float composition = 0f;
             var formationStrengths = new List<float>();
 
@@ -55,7 +56,7 @@ namespace Game.Ai.V2
                     operatorExposure += units.Count(u => u != null && u.IsDevelopmentOperator);
 
                 if (meta.CanChangeComposition)
-                    commandWaste += CommandCapacityWaste(units);
+                    commandWaste += CommanderMismatch(units, meta.IsGarrison, commandContext);
 
                 if (meta.IsGarrison)
                 {
@@ -140,7 +141,7 @@ namespace Game.Ai.V2
             foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
             {
                 var ranked = new List<(int containerId, WorthIt.BattleEstimate selection,
-                    List<WorthIt.DefenderProfile> defenders)>();
+                    List<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)>();
 
                 foreach (KeyValuePair<int, ReorgContainer> kv in state.Meta)
                 {
@@ -157,13 +158,18 @@ namespace Game.Ai.V2
                         .ToList();
                     if (defenders.Count == 0)
                         continue;
+                    // The container's commander: its first hero (ArmyData.Commander's rule).
+                    ReorgUnit commanderUnit = units.FirstOrDefault(u => u != null && u.IsHero);
+                    WorthIt.SideCommander commander = commanderUnit?.AsCommander ?? default;
 
-                    // BattleInitiator currently ranks contact candidates with a zero bonus.
-                    // Keep selection identical. The actual readiness read below applies the
-                    // group's terrain/base defence without changing which container is contacted.
-                    WorthIt.BattleEstimate selection =
-                        WorthIt.Estimate(threat.Members, defenders, 0f);
-                    ranked.Add((kv.Key, selection, defenders));
+                    // BattleInitiator ranks contact candidates with a zero bonus and only the
+                    // commander it can see. Keep selection identical. The actual readiness read
+                    // below applies the group's terrain/base defence and the real commander.
+                    WorthIt.BattleEstimate selection = WorthIt.Estimate(threat.Members, defenders, 0f,
+                        threat.Commander,
+                        commanderUnit != null && threat.TargetableUnitKeys.Contains(commanderUnit.Key)
+                            ? commander : default);
+                    ranked.Add((kv.Key, selection, defenders, commander));
                 }
 
                 // This attacker cannot contact any non-hero defender on the hex (for example every
@@ -174,11 +180,11 @@ namespace Game.Ai.V2
                 ranked.Sort((a, b) => BattleInitiator.CompareDefenderHardness(
                     a.selection, a.containerId, b.selection, b.containerId));
 
-                float first = ContactReadiness(state, threat, ranked[0].defenders);
+                float first = ContactReadiness(state, threat, ranked[0].defenders, ranked[0].commander);
                 // If the first army falls and no second contactable formation remains, the second
                 // defensive layer is empty: model certain passage at the same distance weighting.
                 float second = ranked.Count > 1
-                    ? ContactReadiness(state, threat, ranked[1].defenders)
+                    ? ContactReadiness(state, threat, ranked[1].defenders, ranked[1].commander)
                     : NoDefenderReadiness(threat.EtaToGroup);
                 rows.Add(new ThreatContactRow(threat.ArmyId, first, second));
             }
@@ -204,10 +210,10 @@ namespace Game.Ai.V2
         }
 
         private static float ContactReadiness(VState state, ReorgThreatBenchmark threat,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders)
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)
         {
-            WorthIt.BattleEstimate estimate =
-                WorthIt.Estimate(threat.Members, defenders, state.HexDefenseBonus);
+            WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders,
+                state.HexDefenseBonus, threat.Commander, commander);
             float success = WorthIt.CanDamageAll(
                     threat.Members, defenders, state.HexDefenseBonus)
                 ? estimate.WinChance
@@ -218,24 +224,16 @@ namespace Game.Ai.V2
         private static float NoDefenderReadiness(int eta) =>
             1f - 1f / (1f + Math.Max(0, eta));
 
-        // (best hero CommandRating − current commander's CommandRating), clamped at 0. Roster
-        // order here mirrors the live ArmyData.Members order (Analyzer preserves it; a planned
-        // commander reorder rewrites it), so units[firstHero] is the container's real commander
-        // and ReorgViability.Capacity already reads its CommandRating.
-        private static int CommandCapacityWaste(List<ReorgUnit> units)
+        // 1 when a container with two or more heroes is not led by the one commander evaluation's
+        // best hero (HeroRoleEvaluator — fight against the group's strongest threat, then capacity,
+        // then role/leadership). The commander reorder candidate is the zero-AP fix.
+        private static int CommanderMismatch(List<ReorgUnit> units, bool isGarrison,
+            IReadOnlyList<WorthIt.DefendingArmy> context)
         {
-            int bestCr = 0;
-            int firstCr = -1;
-            foreach (ReorgUnit u in units)
-            {
-                if (u == null || !u.IsHero)
-                    continue;
-                if (firstCr < 0)
-                    firstCr = u.CommandRating;
-                if (u.CommandRating > bestCr)
-                    bestCr = u.CommandRating;
-            }
-            return firstCr < 0 ? 0 : Math.Max(0, bestCr - firstCr);
+            if (units.Count(u => u != null && u.IsHero) < 2)
+                return 0;
+            ReorgUnit current = units.First(u => u != null && u.IsHero);
+            return ReferenceEquals(BestCommander(units, isGarrison, context), current) ? 0 : 1;
         }
     }
 }

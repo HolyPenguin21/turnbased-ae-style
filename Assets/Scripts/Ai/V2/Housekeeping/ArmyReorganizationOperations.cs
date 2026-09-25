@@ -20,7 +20,7 @@ namespace Game.Ai.V2
             roster.RemoveAt(idx);
             roster.Insert(0, u);
             c.Transfers.Add(PlannedTransfer.Reorder(u.Key, armyId,
-                "promote highest-capacity hero to commander"));
+                "promote the best commander"));
             c.MovedUnitKeys.Add(u.Key);
             return c;
         }

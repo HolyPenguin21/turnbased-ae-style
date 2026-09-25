@@ -29,7 +29,8 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { defender }, new HashSet<int>(), before, home);
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                new HashSet<int>(), before, home);
 
             Assert.That(before, Is.LessThan(AiConfigV2.raidMinViableWinChance),
                 "fixture must start below the existing raid gate");
@@ -58,7 +59,8 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { defender }, new HashSet<int>(), before, home);
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                new HashSet<int>(), before, home);
 
             var expected = new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(plan.ProjectedWinChance),
@@ -94,7 +96,8 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { weak }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { defender }, new HashSet<int>(), before, home);
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                new HashSet<int>(), before, home);
 
             Assert.That(plan.Viable, Is.True);
             Assert.That(plan.FirstRefitAction.Kind, Is.EqualTo(RaidRefitActionKind.SwapUnit));
@@ -163,7 +166,8 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { defender }, new HashSet<int>(), before, home,
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                new HashSet<int>(), before, home,
                 (from, to, maxMovement) => to.Equals(target)
                     ? int.MaxValue : HexGridMath.Distance(from, to));
 

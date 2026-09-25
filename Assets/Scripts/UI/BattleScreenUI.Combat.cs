@@ -850,7 +850,7 @@ namespace Game.UI
         {
             if (army?.Owner == null || army.Owner.IsHuman)
                 return;
-            UnitData sideHero = BattleTurnOrder.FindHero(_grid, army == _attacker);
+            UnitData sideHero = army.Commander;
             aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(
                 survived ? AiThoughtCategory.BattleWon : AiThoughtCategory.BattleLost, hasHero: sideHero != null));
         }

@@ -62,8 +62,8 @@ namespace Game.Ai.V2
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
                     $"active defence actor #{actorId} is owned by another mission"));
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = sighting.Value.Defenders
-                ?? Array.Empty<WorthIt.DefenderProfile>();
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = new[]
+                { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
             // Re-checking an admitted mission must re-apply the SAME admission threshold it was
             // admitted under; otherwise Missions accepts a continuation at
             // ContinuationWinChanceFloor, the allocator funds it, and Provisioning rejects the
@@ -81,7 +81,7 @@ namespace Game.Ai.V2
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = opposition,
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,

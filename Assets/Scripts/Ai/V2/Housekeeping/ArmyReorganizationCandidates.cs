@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Combat;
 
 namespace Game.Ai.V2
 {
@@ -35,29 +36,21 @@ namespace Game.Ai.V2
             }
 
             // 0. Commander reorder — zero-AP, membership-preserving. For any reorderable container
-            // (field OR garrison) holding >= 2 heroes whose first hero is not the highest
-            // CommandRating, promote the strongest hero so ComputeCapacity reads its rating.
+            // (field OR garrison) holding >= 2 heroes, promote the one commander evaluation's best
+            // hero (HeroRoleEvaluator — its formation's fight against the group's strongest threat,
+            // then capacity, then role/leadership) so capacity, initiative and Fate follow it.
+            IReadOnlyList<WorthIt.DefendingArmy> commandContext = CommandContext(state);
             foreach (int armyId in armyIds)
             {
                 ReorgContainer meta = state.Meta[armyId];
                 if (!meta.CanChangeComposition)
                     continue;
                 List<ReorgUnit> units = state.Roster[armyId];
-                var heroes = units.Where(u => u.IsHero).ToList();
-                if (heroes.Count < 2)
+                if (units.Count(u => u != null && u.IsHero) < 2)
                     continue;
-                ReorgUnit current = heroes[0];
-                // §7 primary rule is maximum legal capacity == CommandRating; §8 role and combat
-                // leadership only break CommandRating ties deterministically.
-                ReorgUnit best = heroes
-                    .OrderByDescending(h => h.CommandRating)
-                    .ThenByDescending(h => (int)h.HeroRole == (int)HeroOperationalRole.CombatLeader ? 2
-                        : (int)h.HeroRole == (int)HeroOperationalRole.Flexible ? 1 : 0)
-                    .ThenByDescending(h => h.HeroCombatLeadership)
-                    .ThenByDescending(h => h.Power)
-                    .ThenBy(h => h.Key)
-                    .First();
-                if (ReferenceEquals(best, current) || best.CommandRating <= current.CommandRating)
+                ReorgUnit current = units.First(u => u != null && u.IsHero);
+                ReorgUnit best = BestCommander(units, meta.IsGarrison, commandContext);
+                if (best == null || ReferenceEquals(best, current))
                     continue;
                 VState c = TryReorderCommander(state, armyId, best);
                 if (c != null)
@@ -93,7 +86,7 @@ namespace Game.Ai.V2
                     if (!srcIsBench)
                         continue;
 
-                    ReorgUnit combatHero = BestBenchedHeroForField(srcUnits);
+                    ReorgUnit combatHero = BestBenchedHeroForField(srcUnits, dstUnits, commandContext);
                     if (combatHero == null)
                         continue;
                     if (src.IsGarrison && !GarrisonMayRelease(srcUnits, combatHero, src))
@@ -134,7 +127,7 @@ namespace Game.Ai.V2
                     if (!srcIsBench)
                         continue;
 
-                    ReorgUnit hero = BestBenchedHeroForField(srcUnits);
+                    ReorgUnit hero = BestBenchedHeroForField(srcUnits, dstUnits, commandContext);
                     if (hero == null)
                         continue;
                     if (src.IsGarrison && !GarrisonMayRelease(srcUnits, hero, src))
@@ -206,6 +199,39 @@ namespace Game.Ai.V2
                         if (c != null)
                             yield return c;
                     }
+                }
+            }
+
+            // 2b. Strike force step 7 — a garrison below its non-hero floor takes ONE body from a
+            // viable same-hex field army (the fist that just took the base): the most wounded,
+            // then the weakest, never a hero — and only while the army STAYS viable without it
+            // (GarrisonDeficit outranks every other Outcome key, so the guard lives here). The
+            // hand had its chance first (the held-base garrison demand, Phase A).
+            if (state.Meta.TryGetValue(garrisonId, out ReorgContainer floorGarrison)
+                && floorGarrison.IsGarrison && floorGarrison.CanReceive
+                && state.Roster[garrisonId].Count(u => u.IsGroundCombatant) < floorGarrison.GarrisonNonHeroFloor)
+            {
+                foreach (int srcId in armyIds)
+                {
+                    ReorgContainer src = state.Meta[srcId];
+                    if (!IsFieldContainer(src) || !src.CanDonate
+                        || !ReorgViability.IsViable(state.Roster[srcId]))
+                        continue;
+                    ReorgUnit body = state.Roster[srcId]
+                        .Where(u => u != null && !u.IsHero && u.IsGroundBattleBody && !u.IsAviation
+                            && !u.IsCommitted)
+                        .OrderBy(u => u.CombatProfile.MaxHitPoints > 0f
+                            ? u.CombatProfile.HitPoints / u.CombatProfile.MaxHitPoints : 1f)
+                        .ThenBy(u => WorthIt.CombatValue(u.CombatProfile))
+                        .ThenBy(u => u.Key)
+                        .FirstOrDefault();
+                    if (body == null
+                        || !ReorgViability.IsViable(state.Roster[srcId].Where(u => u != body).ToList()))
+                        continue;
+                    VState c = TryMoveOne(state, srcId, garrisonId, body,
+                        "garrison floor from a viable same-hex field army (most wounded / weakest)");
+                    if (c != null)
+                        yield return c;
                 }
             }
 
@@ -303,16 +329,75 @@ namespace Game.Ai.V2
         // §8/§9 — the best benched hero to lead a field formation: never a SupportOperator
         // (Housekeeping keeps those for base/research/production; an urgent operation takes its own
         // support-fallback path). CombatLeader before Flexible, then combat leadership, then key.
-        private static ReorgUnit BestBenchedHeroForField(List<ReorgUnit> roster)
+        // A benched (garrison / lone) hero that may lead `field`: never a SupportOperator, never a
+        // committed or development-operator hero; among the rest, the one commander evaluation's
+        // best for the field formation's own bodies.
+        private static ReorgUnit BestBenchedHeroForField(List<ReorgUnit> roster,
+            List<ReorgUnit> field, IReadOnlyList<WorthIt.DefendingArmy> context)
         {
+            List<WorthIt.DefenderProfile> bodies = CommandBodies(field);
             return roster
                 .Where(u => u != null && u.IsHero && !u.IsCommitted && !u.IsDevelopmentOperator
                     && u.HeroRole != HeroOperationalRole.SupportOperator)
-                .OrderByDescending(u => u.HeroRole == HeroOperationalRole.CombatLeader ? 1 : 0)
-                .ThenByDescending(u => u.HeroCombatLeadership)
-                .ThenBy(u => u.Key)
+                .Select(u => (unit: u, candidate: CommandCandidateFor(u, bodies, 0, context)))
+                .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
+                    HeroRoleEvaluator.CompareCandidates))
+                .Select(x => x.unit)
                 .FirstOrDefault();
         }
+
+        // The fight Housekeeping judges a commander against: HeroRoleEvaluator's strongest-enemy
+        // context over this group's benchmarks.
+        private static IReadOnlyList<WorthIt.DefendingArmy> CommandContext(VState state) =>
+            HeroRoleEvaluator.CommandContext(state.ThreatBenchmarks
+                .Where(t => t != null)
+                .Select(t => (t.ArmyId, t.Members, t.Commander)));
+
+        // The best commander among the heroes already in `units` (null when none). Only a hero
+        // the WHOLE current roster fits under may lead it — a reorder never breaks capacity
+        // (ReorgViability.Capacity of the reordered roster). With no such hero the current
+        // commander stays: there is no legal choice to make.
+        private static ReorgUnit BestCommander(List<ReorgUnit> units, bool isGarrison,
+            IReadOnlyList<WorthIt.DefendingArmy> context)
+        {
+            List<ReorgUnit> heroes = units.Where(u => u != null && u.IsHero).ToList();
+            if (heroes.Count == 0)
+                return null;
+            List<ReorgUnit> legal = heroes
+                .Where(h => ReorgViability.Capacity(LedBy(units, h), isGarrison) >= units.Count)
+                .ToList();
+            if (legal.Count == 0)
+                return heroes[0];
+            List<WorthIt.DefenderProfile> bodies = CommandBodies(units);
+            return legal
+                .Select(h => (unit: h, candidate: CommandCandidateFor(h, bodies, heroes.Count - 1, context)))
+                .OrderBy(x => x.candidate, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
+                    HeroRoleEvaluator.CompareCandidates))
+                .First().unit;
+        }
+
+        // `units` with `hero` moved to the commander slot (TryReorderCommander's roster order).
+        private static List<ReorgUnit> LedBy(List<ReorgUnit> units, ReorgUnit hero)
+        {
+            var roster = new List<ReorgUnit>(units.Count) { hero };
+            roster.AddRange(units.Where(u => !ReferenceEquals(u, hero)));
+            return roster;
+        }
+
+        private static List<WorthIt.DefenderProfile> CommandBodies(List<ReorgUnit> units) =>
+            (units ?? new List<ReorgUnit>())
+                .Where(u => u != null && u.IsGroundCombatant)
+                .Select(u => u.CombatProfile)
+                .ToList();
+
+        private static HeroRoleEvaluator.CommandCandidate CommandCandidateFor(ReorgUnit hero,
+            IEnumerable<WorthIt.DefenderProfile> bodies, int otherHeroes,
+            IReadOnlyList<WorthIt.DefendingArmy> context) =>
+            new HeroRoleEvaluator.CommandCandidate(
+                HeroRoleEvaluator.ProjectCommand(hero.CommandRating, otherHeroes, hero.AsCommander,
+                    bodies, context, 0f),
+                HeroRoleEvaluator.RolePreference(hero.HeroRole), hero.HeroCombatLeadership,
+                hero.CommandRating, hero.AsCommander.Fate, hero.Key);
 
         private static IEnumerable<int> OrderedDestinations(VState state, List<int> armyIds, int srcId)
         {

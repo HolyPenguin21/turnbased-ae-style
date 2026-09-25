@@ -34,6 +34,15 @@ namespace Game.Ai.V2
         internal static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
             ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
 
+        // Turns an army needs to cover `distance`: this turn's remaining movement first, then its
+        // full movement per turn (a distance within reach is one turn).
+        internal static int TurnsToCover(ArmySnapshot army, int distance)
+        {
+            int remaining = System.Math.Max(0, army.CurrentMovement);
+            int move = System.Math.Max(1, army.MaxMovement);
+            return distance <= remaining ? 1 : 1 + (distance - remaining + move - 1) / move;
+        }
+
         // Ceiling integer division, guarded against a non-positive divisor. Identical body in six
         // independent cost/threat-model files.
         internal static int CeilDiv(int a, int b) => b <= 0 ? a : (a + b - 1) / b;
@@ -56,18 +65,23 @@ namespace Game.Ai.V2
         // legitimate army id (see ArmyData identity sequencing), so absence is expressed only by
         // RaidTargetRef.HasValue == false or "not found in the sighting/guard list", never by a
         // numeric sentinel.
-        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target)
+        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target) =>
+            WorthIt.UnitsOf(KnownOpposition(snap, target));
+
+        // The same target as the fight it is: one defending army (or event guard) with its
+        // observed commander. Empty when nothing is known.
+        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownOpposition(WorldSnapshot snap, RaidTargetRef target)
         {
             if (snap?.Known == null || !target.HasValue)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
+                return System.Array.Empty<WorthIt.DefendingArmy>();
 
             if (target.Kind == RaidTargetKind.EventGuard)
             {
                 if (snap.Known.EventGuards != null)
                     foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
                         if (g.Hex.Equals(target.Hex))
-                            return g.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-                return System.Array.Empty<WorthIt.DefenderProfile>();
+                            return new[] { new WorthIt.DefendingArmy(g.Defenders, g.Commander) };
+                return System.Array.Empty<WorthIt.DefendingArmy>();
             }
 
             IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
@@ -75,8 +89,8 @@ namespace Game.Ai.V2
                 .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
                 if (s.ArmyId == target.ArmyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
+                    return new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander) };
+            return System.Array.Empty<WorthIt.DefendingArmy>();
         }
 
         // Legacy overload for non-Raid callers that only ever deal with a physical army. Raid

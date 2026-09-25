@@ -37,7 +37,7 @@ namespace Game.UI
         // army without duplicating this lookup.
         public static Sprite ResolvePortrait(ArmyData army)
         {
-            UnitData hero = army?.Members.FirstOrDefault(m => m.IsHero);
+            UnitData hero = army?.Commander;
             UnitData portraitSource = hero ?? army?.Members.FirstOrDefault(m => !m.IsHero);
             return portraitSource?.DetailArt;
         }
