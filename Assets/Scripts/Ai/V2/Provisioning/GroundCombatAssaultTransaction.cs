@@ -203,6 +203,26 @@ namespace Game.Ai.V2
         }
     }
 
+    // One command handover (GroundCombatReinforcement.CommandHandover): the hero, the primary body
+    // it is exchanged for (null when there was room), everything that moves support -> primary
+    // (the hero first) and everything that moves primary -> support.
+    internal sealed class CommandHandoverPlan
+    {
+        internal readonly UnitData Hero;
+        internal readonly UnitData HeroExchangedFor;
+        internal readonly IReadOnlyList<UnitData> Incoming;
+        internal readonly IReadOnlyList<UnitData> Displaced;
+
+        internal CommandHandoverPlan(UnitData hero, UnitData heroExchangedFor,
+            IReadOnlyList<UnitData> incoming, IReadOnlyList<UnitData> displaced)
+        {
+            Hero = hero;
+            HeroExchangedFor = heroExchangedFor;
+            Incoming = incoming;
+            Displaced = displaced;
+        }
+    }
+
     // ATK §28/§46 — reinforcement admission belongs to the GroundCombat kernel, not to a lane.
     // Both halves were private to the Raid provisioner; nothing in either is Raid-specific.
     internal static class GroundCombatReinforcement
@@ -216,7 +236,7 @@ namespace Game.Ai.V2
             out string why, bool allowCommandHandover = false)
         {
             if (allowCommandHandover && CommandHandover(primary, support, opposition,
-                    defenderHexDefenseBonus, null, out _) != null)
+                    defenderHexDefenseBonus, null) != null)
             {
                 why = null;
                 return true;
@@ -236,49 +256,113 @@ namespace Game.Ai.V2
                 defenderHexDefenseBonus);
         }
 
-        // Strike force — THE "hand the support's hero over to lead the primary" rule. A field hero of
-        // the support (never a SupportOperator) moves when, joined to the primary, it is the best
-        // commander of the primary's fight (HeroRoleEvaluator.BestCommanderFor, judged with
-        // `prospectiveBodies` — the bodies that would come along) — i.e. it beats every hero the
-        // primary already has. The support must stay a non-empty, legally sized container without
-        // it and `bodiesWithHero` (its strongest ground bodies, keeping at least one member back).
-        // Returns null when no hero should move. Used by the gather projection and the handoff.
-        internal static UnitData CommandHandover(ArmyData primary, ArmyData support,
+        // Strike force — THE "hand the support's hero over to lead the primary" rule, exchanges
+        // included. A field hero of the support (never a SupportOperator) moves when, joined to the
+        // primary, it is the best commander of the primary's fight (HeroRoleEvaluator.
+        // BestCommanderFor, judged with `prospectiveBodies` — the bodies that would come along —
+        // or the support's own bodies). When the primary has no room for the hero itself, the hero
+        // is exchanged for the primary's most wounded, then weakest, body. Under the hero's
+        // Command the free slots take the support's strongest bodies; every further support body
+        // that beats the primary's weakest remaining body is exchanged for it (the same "fresh for
+        // weakest" rule as the bodies-only swap). The support must stay a non-empty, legally sized
+        // container with what it keeps and what it receives. Null when no hero should move. Used
+        // by the gather projection, the gather plan's donor retention, the reinforcement gate and
+        // the handoff — one answer for all four.
+        internal static CommandHandoverPlan CommandHandover(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies, out List<UnitData> bodiesWithHero)
+            IEnumerable<WorthIt.DefenderProfile> prospectiveBodies)
         {
-            bodiesWithHero = null;
             if (primary == null || support == null || primary.IsGarrison)
                 return null;
-            List<UnitData> bodies = support.Members
+            List<UnitData> donorBodies = support.Members
                 .Where(x => AiArmyRoles.IsGroundBattleBody(x))
                 .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                 .ThenBy(x => x.Name)
                 .ToList();
             List<WorthIt.DefenderProfile> prospects = (prospectiveBodies
-                ?? bodies.Select(WorthIt.FromLiveUnit)).ToList();
+                ?? donorBodies.Select(WorthIt.FromLiveUnit)).ToList();
+            UnitData weakestHostBody = WeakestBodies(primary.Members).FirstOrDefault();
+
             foreach (UnitData hero in support.Members
                 .Where(u => u != null && u.IsHero && !u.IsPrisoner
                     && HeroRoleEvaluator.Classify(u) != HeroOperationalRole.SupportOperator)
                 .OrderByDescending(HeroRoleEvaluator.CombatLeadershipScore)
                 .ThenBy(u => u.RuntimeId))
             {
-                // The support keeps at least one member: its weakest body stays when nothing else does.
-                var going = new List<UnitData>(bodies);
-                if (support.Members.Count - 1 - going.Count < 1 && going.Count > 0)
-                    going.RemoveAt(going.Count - 1);
-                var remainder = support.Members.Where(u => u != hero && !going.Contains(u)).ToList();
-                if (remainder.Count < 1
-                    || ArmyData.ComputeCapacity(remainder, support.IsGarrison) < remainder.Count)
-                    continue;
+                // Joined without displacing anyone, or — no room for the hero itself — exchanged
+                // for the primary's weakest body.
+                UnitData heroFor = null;
                 var joined = new List<UnitData>(primary.Members) { hero };
-                if (HeroRoleEvaluator.BestCommanderFor(joined, primary.IsGarrison, opposition,
+                if (ArmyData.ComputeCapacity(new[] { hero }.Concat(primary.Members), false) < joined.Count)
+                {
+                    if (weakestHostBody == null)
+                        continue;
+                    heroFor = weakestHostBody;
+                    joined.Remove(heroFor);
+                }
+                if (HeroRoleEvaluator.BestCommanderFor(joined, false, opposition,
                         defenderHexDefenseBonus, prospects) != hero)
                     continue;
-                bodiesWithHero = going;
-                return hero;
+
+                var incoming = new List<UnitData> { hero };
+                var displaced = new List<UnitData>();
+                if (heroFor != null)
+                    displaced.Add(heroFor);
+                var led = new List<UnitData> { hero };
+                led.AddRange(primary.Members.Where(u => u != heroFor));
+                int room = System.Math.Max(0, ArmyData.ComputeCapacity(led, false) - led.Count);
+                var fresh = new Queue<UnitData>(donorBodies);
+                while (room > 0 && fresh.Count > 0)
+                {
+                    incoming.Add(fresh.Dequeue());
+                    room--;
+                }
+                var weakest = new Queue<UnitData>(WeakestBodies(primary.Members.Where(u => u != heroFor)));
+                while (fresh.Count > 0 && weakest.Count > 0
+                    && GroundCombatDonorPolicy.UnitCombatValue(fresh.Peek())
+                        > GroundCombatDonorPolicy.UnitCombatValue(weakest.Peek()))
+                {
+                    incoming.Add(fresh.Dequeue());
+                    displaced.Add(weakest.Dequeue());
+                }
+
+                // The support is never emptied: if everything would leave, its weakest moving body
+                // stays (the last fill, or else the last exchange, which is undone as a pair).
+                int fills = incoming.Count - 1 - (displaced.Count - (heroFor != null ? 1 : 0));
+                if (!support.Members.Except(incoming).Concat(displaced).Any() && incoming.Count > 1)
+                {
+                    if (fills > 0)
+                        incoming.RemoveAt(fills);
+                    else
+                    {
+                        incoming.RemoveAt(incoming.Count - 1);
+                        displaced.RemoveAt(displaced.Count - 1);
+                    }
+                }
+                // Without its hero the support must still hold what it keeps and receives; a
+                // support that cannot does not give this hero away.
+                if (!SupportStaysLegal(support, incoming, displaced))
+                    continue;
+                return new CommandHandoverPlan(hero, heroFor, incoming, displaced);
             }
             return null;
+        }
+
+        // The primary's ground bodies, most wounded first, then weakest (the one "who gives way"
+        // order of every exchange).
+        private static IEnumerable<UnitData> WeakestBodies(IEnumerable<UnitData> members) =>
+            (members ?? Enumerable.Empty<UnitData>())
+                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
+                .OrderBy(u => u.HitPointsMax > 0 ? (float)u.HitPointsCurrent / u.HitPointsMax : 1f)
+                .ThenBy(u => GroundCombatDonorPolicy.UnitCombatValue(u))
+                .ThenBy(u => u.Name);
+
+        private static bool SupportStaysLegal(ArmyData support, List<UnitData> incoming,
+            List<UnitData> displaced)
+        {
+            var remainder = support.Members.Where(u => !incoming.Contains(u)).Concat(displaced).ToList();
+            return remainder.Count >= 1
+                && ArmyData.ComputeCapacity(remainder, support.IsGarrison) >= remainder.Count;
         }
 
         // A support container is never emptied and never gives up its own hero (a hero moves

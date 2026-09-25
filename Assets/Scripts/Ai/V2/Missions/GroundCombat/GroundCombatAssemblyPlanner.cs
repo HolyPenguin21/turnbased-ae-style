@@ -477,21 +477,34 @@ namespace Game.Ai.V2
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
                 opposition, defenderHexDefenseBonus, pooledBodies) ?? host.Commander;
             GatherSupport heroDonor = null;
+            UnitData heroExchangedFor = null;
             foreach (GatherSupport s in pool.OrderBy(x => x.Ap).ThenBy(x => x.ArmyId))
             {
-                UnitData handed = GroundCombatReinforcement.CommandHandover(host, LiveArmy(
+                CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, LiveArmy(
                         supportSnaps.First(x => x.ArmyId == s.ArmyId)),
-                    opposition, defenderHexDefenseBonus, pooledBodies, out _);
-                if (handed == null)
+                    opposition, defenderHexDefenseBonus, pooledBodies);
+                if (handover == null)
                     continue;
-                lead = handed;
+                lead = handover.Hero;
                 heroDonor = s;
-                roster.Add(handed);
+                heroExchangedFor = handover.HeroExchangedFor;
+                roster.Add(handover.Hero);
+                // A hero exchanged for the host's weakest body: that body leaves the formation.
+                if (heroExchangedFor != null)
+                {
+                    int gone = host.Members.Where(u => AiArmyRoles.IsGroundBattleBody(u)).ToList()
+                        .IndexOf(heroExchangedFor);
+                    roster.Remove(heroExchangedFor);
+                    if (gone >= 0)
+                        bodies.RemoveAt(gone);
+                }
                 break;
             }
-            int capacity = ArmyData.ComputeCapacity(lead == null ? host.Members
-                : new[] { lead }.Concat(host.Members.Where(u => u != lead)), host.IsGarrison);
-            int memberCount = host.Members.Count + (heroDonor != null ? 1 : 0);
+            List<UnitData> ledRoster = roster.Where(u => u != lead).ToList();
+            if (lead != null)
+                ledRoster.Insert(0, lead);
+            int capacity = ArmyData.ComputeCapacity(ledRoster, host.IsGarrison);
+            int memberCount = roster.Count;
             WorthIt.SideCommander commander = WorthIt.SideCommander.Of(lead);
 
             // One Monte-Carlo bound before the greedy loop: the host's slots filled with the

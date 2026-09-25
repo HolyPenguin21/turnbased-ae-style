@@ -1068,24 +1068,23 @@ namespace Game.Ai.V2
             detail = "";
             if (commandOpposition != null)
             {
-                UnitData hero = GroundCombatReinforcement.CommandHandover(primary, support,
-                    commandOpposition, commandHexBonus, null, out List<UnitData> withHero);
-                if (hero != null)
+                CommandHandoverPlan plan = GroundCombatReinforcement.CommandHandover(primary, support,
+                    commandOpposition, commandHexBonus, null);
+                if (plan != null)
                 {
-                    var led = new List<UnitData> { hero };
-                    led.AddRange(primary.Members);
-                    int roomUnderHero = Mathf.Max(0,
-                        ArmyData.ComputeCapacity(led, primary.IsGarrison) - led.Count);
-                    var batch = new List<UnitData> { hero };
-                    batch.AddRange(withHero.Take(roomUnderHero));
-                    if (ArmyActions.TransferMembersAtomic(batch, support, primary, ctx.HexSelection,
-                            out string handoverWhy, hero))
+                    if (ArmyActions.TransferMembersAtomic(plan.Incoming, support, primary, ctx.HexSelection,
+                            out string handoverWhy, plan.Hero, plan.Displaced))
                     {
-                        transferred = batch.Count;
-                        detail = $"hero {hero.Name} took command with {batch.Count - 1} body(ies)";
+                        transferred = plan.Incoming.Count;
+                        wasSwap = plan.Displaced.Count > 0;
+                        displacedUnitName = wasSwap
+                            ? string.Join(",", plan.Displaced.Select(u => u.Name)) : null;
+                        detail = $"hero {plan.Hero.Name} took command"
+                            + (plan.HeroExchangedFor != null ? $" in exchange for {plan.HeroExchangedFor.Name}" : "")
+                            + $"; {plan.Incoming.Count - 1} body(ies) in, {plan.Displaced.Count} out";
                         return true;
                     }
-                    detail = $"command handover of {hero.Name} rejected ({handoverWhy}); ";
+                    detail = $"command handover of {plan.Hero.Name} rejected ({handoverWhy}); ";
                 }
             }
             List<UnitData> sparable = RaidProvisioner.SparableSupportBodies(support);

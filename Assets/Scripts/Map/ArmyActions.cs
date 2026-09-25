@@ -375,7 +375,7 @@ namespace Game.Map
 
         public static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, out string failReason)
-            => CanTransferMembers(units, source, target, null, out _, out _, out _, out failReason);
+            => CanTransferMembers(units, source, target, null, null, out _, out _, out _, out failReason);
 
         public static int TransferMembersApCost(IEnumerable<UnitData> units, ArmyData target)
         {
@@ -387,9 +387,11 @@ namespace Game.Map
 
         // `promoteToCommander` — a hero of the batch that takes command of `target` on arrival
         // (placed first, so the target's capacity is judged under ITS Command).
+        // `displaced` — members of `target` that move to `source` in the same operation (an
+        // exchange); both sides are judged on their final rosters.
         private static bool CanTransferMembers(IReadOnlyList<UnitData> units, ArmyData source,
-            ArmyData target, UnitData promoteToCommander, out PlayerRoot targetRoot,
-            out int totalApCost, out int totalEnergyCost, out string failReason)
+            ArmyData target, UnitData promoteToCommander, IReadOnlyList<UnitData> displaced,
+            out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out string failReason)
         {
             failReason = null;
             targetRoot = null;
@@ -422,13 +424,29 @@ namespace Game.Map
                 }
             }
 
+            var back = (displaced ?? System.Array.Empty<UnitData>()).Where(u => u != null).Distinct().ToList();
+            foreach (UnitData unit in back)
+            {
+                if (!target.Members.Contains(unit) || distinct.Contains(unit)
+                    || !AviationRules.CanContain(source, unit))
+                {
+                    failReason = $"{unit.Name} cannot be exchanged back from {target.Name}.";
+                    return false;
+                }
+            }
+
             var projectedSource = source.Members.Where(u => !distinct.Contains(u)).ToList();
+            foreach (UnitData unit in back)
+            {
+                int index = unit.IsHero ? projectedSource.Count(u => u.IsHero) : projectedSource.Count;
+                projectedSource.Insert(index, unit);
+            }
             if (ArmyData.ComputeCapacity(projectedSource, source.IsGarrison) < projectedSource.Count)
             {
                 failReason = $"The batch would leave {source.Name} without room for everyone else.";
                 return false;
             }
-            var projectedTarget = new List<UnitData>(target.Members);
+            var projectedTarget = target.Members.Where(u => !back.Contains(u)).ToList();
             foreach (UnitData unit in distinct)
             {
                 int index = unit == promoteToCommander ? 0
@@ -449,10 +467,13 @@ namespace Game.Map
             }
 
             var chargeable = distinct.Where(target.RequiresActivationCharge).ToList();
-            if (chargeable.Count > 0)
+            var chargeableBack = back.Where(source.RequiresActivationCharge).ToList();
+            if (chargeable.Count > 0 || chargeableBack.Count > 0)
             {
-                totalApCost = TransferMembersApCost(chargeable, target);
-                totalEnergyCost = chargeable.Where(u => u.IsAviation).Sum(u => u.LaunchEnergyCost);
+                totalApCost = TransferMembersApCost(chargeable, target)
+                    + TransferMembersApCost(chargeableBack, source);
+                totalEnergyCost = chargeable.Concat(chargeableBack)
+                    .Where(u => u.IsAviation).Sum(u => u.LaunchEnergyCost);
                 targetRoot = PlayerRootRegistry.FindFor(target.Owner);
                 if (targetRoot == null || !targetRoot.CanSpendActionPoints(totalApCost)
                     || targetRoot.GetResource(ResourceType.Energy) < totalEnergyCost)
@@ -468,9 +489,12 @@ namespace Game.Map
         // `promoteToCommander` (optional) — a hero of the batch that takes command of `target` in
         // the same atomic operation (the zero-AP TryReorderCommander a player could do right
         // after the move); capacity is checked under its Command.
+        // `displaced` (optional) — members of `target` that go to `source` in the same operation,
+        // an exchange of any size (SwapMembers is the one-for-one case); each side is checked on
+        // its final roster and every newcomer to an already-activated army pays its activation.
         public static bool TransferMembersAtomic(IReadOnlyList<UnitData> units, ArmyData source,
             ArmyData target, HexSelectionController hexSelectionController, out string failReason,
-            UnitData promoteToCommander = null)
+            UnitData promoteToCommander = null, IReadOnlyList<UnitData> displaced = null)
         {
             if (promoteToCommander != null
                 && (!promoteToCommander.IsHero || units == null || !units.Contains(promoteToCommander)))
@@ -478,14 +502,20 @@ namespace Game.Map
                 failReason = "The promoted commander must be a hero of the batch.";
                 return false;
             }
-            if (!CanTransferMembers(units, source, target, promoteToCommander,
+            if (!CanTransferMembers(units, source, target, promoteToCommander, displaced,
                     out PlayerRoot targetRoot, out int totalApCost, out int totalEnergyCost, out failReason))
                 return false;
 
+            List<UnitData> back = (displaced ?? System.Array.Empty<UnitData>())
+                .Where(u => u != null).Distinct().ToList();
             foreach (UnitData unit in units)
                 source.Members.Remove(unit);
+            foreach (UnitData unit in back)
+                target.Members.Remove(unit);
             foreach (UnitData unit in units)
                 target.AddMemberSorted(unit);
+            foreach (UnitData unit in back)
+                source.AddMemberSorted(unit);
             if (promoteToCommander != null && target.Members.IndexOf(promoteToCommander) > 0)
                 target.TryReorderCommander(promoteToCommander, out _);
             targetRoot?.SpendActionPoints(totalApCost);
@@ -493,11 +523,14 @@ namespace Game.Map
                 targetRoot?.AddResource(ResourceType.Energy, -totalEnergyCost);
             foreach (UnitData unit in units)
                 target.MarkUnitActivationPaid(unit);
+            foreach (UnitData unit in back)
+                source.MarkUnitActivationPaid(unit);
 
             hexSelectionController?.RestackArmiesOn(source.Hex, null);
             if (!target.Hex.Equals(source.Hex))
                 hexSelectionController?.RestackArmiesOn(target.Hex, null);
-            PublishRosterChange(source, target, units.Any(u => AbilityParams.GetBestRecceRadius(u) > 0));
+            PublishRosterChange(source, target,
+                units.Concat(back).Any(u => AbilityParams.GetBestRecceRadius(u) > 0));
             return true;
         }
 

@@ -383,7 +383,7 @@ namespace Game.Ai.V2
                         && GroundCombatReinforcement.CommandHandover(
                             AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value),
                             AiV2Util.ResolveArmy(snap.Observer, id),
-                            opposition, hexBonus, null, out _) == null;
+                            opposition, hexBonus, null) == null;
             }).ToList();
             if (dropped.Count > 0)
             {
