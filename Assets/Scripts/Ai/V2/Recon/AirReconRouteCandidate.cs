@@ -698,8 +698,7 @@ namespace Game.Ai.V2
                 return 0f;
             if (!AiReconIntelMemory.TryGetIntelAge(player, h, turn, out int age))
                 return 1f;
-            return Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
-                AiConfigV2.scoutSurveilStaleTurnsHi, age);
+            return ReconIntelSnapshotRegistry.Staleness(age);
         }
     }
 }

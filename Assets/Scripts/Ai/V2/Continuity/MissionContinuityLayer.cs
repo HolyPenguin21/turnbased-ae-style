@@ -993,7 +993,7 @@ namespace Game.Ai.V2
                     if (kv.Key.Equals(old) || ownedFoci.Contains(kv.Key))
                         continue;
                     int age = System.Math.Max(0, snap.TurnNumber - kv.Value);
-                    if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                    if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
                         continue;
                     if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
                         continue;

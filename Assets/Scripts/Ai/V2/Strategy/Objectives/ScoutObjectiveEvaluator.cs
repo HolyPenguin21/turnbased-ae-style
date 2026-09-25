@@ -74,7 +74,7 @@ namespace Game.Ai.V2
                 // genuinely stale. If another observer refreshed it before this scan, age is 0 and
                 // the intent is already complete. Never-observed is not Refresh and returns false.
                 return ReconIntelSnapshotRegistry.TryGetIntelAge(snap, intent.FocusHex, out int age)
-                    && age >= AiConfigV2.scoutSurveilStaleTurnsLo
+                    && ReconIntelSnapshotRegistry.IsStaleAge(age)
                     && (IsRefreshFocusRunnable(snap, intent.FocusHex)
                         || (AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(intent.FocusHex)
                             && IsAttackObservationFocusRunnable(snap, intent.FocusHex)));

@@ -182,7 +182,7 @@ namespace Game.Ai.V2
         {
             if (strategicRelevance <= 0f)
                 return;
-            bool stale = ageTurns >= AiConfigV2.scoutSurveilStaleTurnsLo;
+            bool stale = ReconIntelSnapshotRegistry.IsStaleAge(ageTurns);
             Record(player, turn, StaleStrategicRefresh, stale,
                 $"hex=({hex.Q},{hex.R}) age={ageTurns} strategic={strategicRelevance:0.00}");
         }

@@ -189,7 +189,7 @@ namespace Game.Ai.V2
                 return AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction);
             }
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
-                || age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                || !ReconIntelSnapshotRegistry.IsStaleAge(age))
                 return null;
             if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
                 return null;
@@ -228,8 +228,7 @@ namespace Game.Ai.V2
                     staleWeighted += w;
                     continue;
                 }
-                staleWeighted += w * Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
-                    AiConfigV2.scoutSurveilStaleTurnsHi);
+                staleWeighted += w * ReconIntelSnapshotRegistry.Staleness(age);
             }
             if (samples == 0)
                 return null;
@@ -286,7 +285,7 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
             {
                 int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
-                if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
                     continue;
                 if (snap.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(kv.Key, stealthCapable: false))
                     continue;
@@ -420,8 +419,7 @@ namespace Game.Ai.V2
         {
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
                 return 1f;
-            return Mathf.Lerp(floor, 1f, Curves.Ramp(age,
-                AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi));
+            return Mathf.Lerp(floor, 1f, ReconIntelSnapshotRegistry.Staleness(age));
         }
 
         // `attackNeed` — a live Attack operation's target (AttackNeedRefresh): stale and relevant
@@ -433,8 +431,7 @@ namespace Game.Ai.V2
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
             int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, distBase);
-            float staleRaw = attackNeed ? 1f : Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
-                AiConfigV2.scoutSurveilStaleTurnsHi);
+            float staleRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.Staleness(age);
 
             float strategicRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.RefreshRelevance(snap, hex);
             direction = direction ?? ReconDirectionModel.Build(snap);
@@ -493,8 +490,7 @@ namespace Game.Ai.V2
 
             HexCoord pos = c.Position.Value;
             int age = c.AgeTurns(snap.TurnNumber);
-            float stalenessRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
-                AiConfigV2.scoutSurveilStaleTurnsHi);
+            float stalenessRaw = ReconIntelSnapshotRegistry.Staleness(age);
 
             float maxSeverity = 0f;
             if (threats != null)

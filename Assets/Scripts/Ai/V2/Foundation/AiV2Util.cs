@@ -32,7 +32,7 @@ namespace Game.Ai.V2
         // Canonical "find this player's live army by id" lookup — was copy-pasted verbatim in
         // ReconAssignmentPlanner and twice in ProvisioningManager (Ground + RaidProvisioner).
         internal static ArmyData ResolveArmy(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
 
         // Turns an army needs to cover `distance`: this turn's remaining movement first, then its
         // full movement per turn (a distance within reach is one turn).

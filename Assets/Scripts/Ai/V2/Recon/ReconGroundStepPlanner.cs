@@ -206,8 +206,7 @@ namespace Game.Ai.V2
                 // Refresh only values actually-known information age. Never-observed is Explore,
                 // not a fake 999-turn Refresh target.
                 float stale = intelAge < 0 ? 0f
-                    : Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
-                        AiConfigV2.scoutSurveilStaleTurnsHi, intelAge);
+                    : ReconIntelSnapshotRegistry.Staleness(intelAge);
                 information = stale + AiConfigV2.scoutStepRefreshFreshNeighborWeight
                     * Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
             }
@@ -303,8 +302,7 @@ namespace Game.Ai.V2
                         + Mathf.Clamp01(fresh / Math.Max(1f, AiConfigV2.scoutInfoGainNorm));
                 else
                     local = AiReconIntelMemory.TryGetIntelAge(player, h, turn, out int age)
-                        ? Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
-                            AiConfigV2.scoutSurveilStaleTurnsHi, age)
+                        ? ReconIntelSnapshotRegistry.Staleness(age)
                         : 0f;
 
                 int nearbyClaims = ReconPatrolStateRegistry.OtherNearbyAnchorClaims(player, army.Id, h,

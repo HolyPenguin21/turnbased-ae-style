@@ -32,6 +32,14 @@ namespace Game.Ai.V2
 
         public static void Clear() => ByPlayer.Clear();
 
+        // THE Recon staleness rule for one piece of intel: age under scoutSurveilStaleTurnsLo is
+        // current (0 / not stale), ramping to fully stale (1) at scoutSurveilStaleTurnsHi. Every
+        // Recon score and validity gate reads these two, never its own copy of the thresholds.
+        public static float Staleness(float ageTurns) =>
+            Curves.Ramp(ageTurns, AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi);
+
+        public static bool IsStaleAge(int ageTurns) => ageTurns >= AiConfigV2.scoutSurveilStaleTurnsLo;
+
         public static void Capture(PlayerSetupData player, int turn,
             IReadOnlyDictionary<HexCoord, int> lastObserved)
         {
@@ -94,8 +102,7 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<HexCoord, int> kv in observed)
             {
                 int age = Mathf.Max(0, snapshot.TurnNumber - kv.Value);
-                float stale = Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
-                    AiConfigV2.scoutSurveilStaleTurnsHi, age);
+                float stale = Staleness(age);
                 float w = floor + RefreshRelevance(snapshot, kv.Key);
                 sum += stale * w;
                 weight += w;

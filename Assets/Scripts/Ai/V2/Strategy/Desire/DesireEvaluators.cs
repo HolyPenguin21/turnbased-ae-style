@@ -565,8 +565,7 @@ namespace Game.Ai.V2
                 foreach (HexCoord h in HexGridMath.HexesInRange(c, Mathf.Max(1, radius)))
                     if (observed.TryGetValue(h, out int obs))
                     {
-                        sum += Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
-                            AiConfigV2.scoutSurveilStaleTurnsHi, turn - obs);
+                        sum += ReconIntelSnapshotRegistry.Staleness(turn - obs);
                         n++;
                     }
             return n > 0 ? sum / n : 0f;

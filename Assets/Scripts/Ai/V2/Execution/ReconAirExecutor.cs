@@ -943,7 +943,7 @@ namespace Game.Ai.V2
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
         {
