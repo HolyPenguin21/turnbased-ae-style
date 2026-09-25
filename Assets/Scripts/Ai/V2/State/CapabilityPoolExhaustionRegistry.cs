@@ -195,8 +195,15 @@ namespace Game.Ai.V2
             // ATK §41 — an Attack draws on exactly the same field-combat pool a Raid does.
             if (mission.Kind == MissionKind.Raid || mission.Kind == MissionKind.Attack)
                 return CapabilityPoolKind.FieldCombat;
+            // Only a hero builder draws on the hero-builder pool. A collector (MobileCollection /
+            // ReturnCollector) is a hero-less field army pinned by its own intent: its failure is
+            // never evidence about the builder pool, and an exhausted builder pool must never stop
+            // it (Economy audit B5).
             if (mission.Kind == MissionKind.Economy)
-                return CapabilityPoolKind.EconomyHeroBuilder;
+                return mission.Target is EconomyMissionTarget economy
+                    && (economy.Kind == EconomyTaskKind.MobileCollection
+                        || economy.Kind == EconomyTaskKind.ReturnCollector)
+                    ? CapabilityPoolKind.None : CapabilityPoolKind.EconomyHeroBuilder;
             return CapabilityPoolKind.None;
         }
 
@@ -233,7 +240,8 @@ namespace Game.Ai.V2
                         && inv.AvailableHeroes <= 0;
                 }
                 case MissionKind.Economy:
-                    return !PoolHasEligibleActor(snap, player, CapabilityPoolKind.EconomyHeroBuilder);
+                    return PoolFor(mission) == CapabilityPoolKind.EconomyHeroBuilder
+                        && !PoolHasEligibleActor(snap, player, CapabilityPoolKind.EconomyHeroBuilder);
                 default:
                     return false;
             }

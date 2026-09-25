@@ -526,8 +526,12 @@ namespace Game.Ai.V2
                             ei.ArrivalTurn = snap.TurnNumber;
                         if (arrived && snap.TurnNumber > ei.ArrivalTurn)
                             ei.LastConfirmedIncomeTick = snap.TurnNumber;
+                        // Economy audit B12 — the SAME usefulness test Analysis admits a collector
+                        // with (UsefulMarginalIncomeGain), judged without the income this collector
+                        // itself now produces; a second "income below target" rule sent a still
+                        // useful collector home and Analysis sent it straight back.
                         bool useful = capable && ei.ResourceType.HasValue
-                            && snap.Economy.IsIncomeDeficient(snap.Self, ei.ResourceType.Value)
+                            && CollectorStillUseful(snap, ei.ResourceType.Value, ei.ExpectedMarginalYield)
                             && WorldAnalysis.KnownExtractionYields(snap).Any(x =>
                                 x.Hex.Equals(ei.TargetHex) && x.Type == ei.ResourceType.Value
                                 && x.Yield > 0);
@@ -578,6 +582,13 @@ namespace Game.Ai.V2
                             AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire return "
                                 + $"{intent.IntentKey} arrived={(completed ? 1 : 0)}");
                             continue;
+                        }
+                        // Economy audit B3 — a transient capability suspension is re-tested every
+                        // pass (the planner only proposes Active intents); AdvanceIntent ages it.
+                        if (intent.Status == IntentStatus.Suspended)
+                        {
+                            intent.Status = IntentStatus.Active;
+                            intent.Suspended = SuspendReason.None;
                         }
                         active.Add(intent);
                         continue;
@@ -1307,7 +1318,7 @@ namespace Game.Ai.V2
 
                 if (ShouldReap(intent))
                 {
-                    state.Remove(intent.IntentKey);
+                    RetireOutcomeIntent(state, intent, null, turn);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedIdle");
                     AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} reaped (idle: "
                         + $"stall {intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, "
@@ -1536,8 +1547,7 @@ namespace Game.Ai.V2
                     intent.LastReconciledTurn = turn;
                     return;
                 }
-                RepayEconomyLoan(state, intent, o);
-                if (intent != null) state.Remove(o.IntentKey);
+                RetireOutcomeIntent(state, intent, o, turn);
                 string reason = o.ProvisionFailureKindValue?.ToString() ?? "StructuralFailure";
                 StartPersistentCooldown(allocState, o.AttemptKey, o.MissionKind, turn, reason);
                 AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} structural failure ({reason}), retired + cooldown");
@@ -1553,12 +1563,9 @@ namespace Game.Ai.V2
                     intent.LastReconciledTurn = turn;
                     return;
                 }
-                RepayEconomyLoan(state, intent, o);
                 if (intent != null)
-                {
-                    state.Remove(o.IntentKey);
                     AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} failed ({Describe(o)}), retired");
-                }
+                RetireOutcomeIntent(state, intent, o, turn);
                 return;
             }
 
@@ -1570,23 +1577,15 @@ namespace Game.Ai.V2
                     intent.StallTurns = 0;
                     return;
                 }
-                // Outbound Economy commitments (BuildExtraction/FoundBase) preserve their assigned
-                // builder only on genuinely transient capability failures (NoMoverExists /
-                // MoverContended) — AdvanceIntent suspends+preserves the intent for exactly this
-                // case (SuspendReason.CapabilityUnavailable), and these two kinds do NOT age out
-                // through StallTurns/ShouldReap on purpose (retiring here would let a fresh
-                // materialization hand a second builder the same target next admission pass while
-                // the first was still mid-route). Provisioning reports a missing committed actor as
-                // TargetInvalidated, which is handled by the Failed branch above (Outcome.Failed,
-                // not routed through transientCapability at all). A missing live safe route is
-                // reported as NoExecutableStep and, for an outbound Economy outcome with no
-                // progress, is not transientCapability either, so it reaches the cleanup below.
-                // Neither NoMoverExists nor MoverContended is claimed to be always-transient in some
-                // absolute sense — this fix only stops a proven route failure from being mistaken
-                // for one; a mover that stays stuck for some other eligibility reason with a route
-                // that does exist is unaffected. ReturnBuilder (the return-trip leg) has its own,
-                // deliberately unconditional preservation rule above (returnBuilderOutcome) and is
-                // not affected by any of this.
+                // A no-progress Economy outcome ends its outbound commitment only on a PROVEN
+                // route failure: Provisioning's NoExecutableStep (no live safe route for the
+                // committed mover) or an executed step that found no safe / legal move. Every
+                // other no-progress outcome is transient — NoMoverExists / MoverContended
+                // suspend the intent (AdvanceIntent, CapabilityUnavailable, bounded by the
+                // per-project delivery-failure streaks), anything else (an AP / resource
+                // envelope that did not fit this pass, a stale plan or activation) ages it
+                // through StallTurns/ShouldReap like any idle intent (Economy audit B1/B2).
+                // ReturnBuilder (the return-trip leg) keeps its own preservation rule above.
                 bool capabilityFailure = o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
                     || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended;
 
@@ -1601,14 +1600,12 @@ namespace Game.Ai.V2
                     && freshTarget.Kind == EconomyTaskKind.FoundBase)
                     state.RecordBaseExpansionDeliveryFailure(turn, freshTarget.BuildCard, freshTarget.TargetHex);
 
-                bool transientCapability = intent != null && capabilityFailure;
-                if (transientCapability)
+                if (intent != null && !IsEconomyRouteFailure(o))
                 {
                     AdvanceIntent(intent, o, turn, state, allocState);
                     return;
                 }
-                RepayEconomyLoan(state, intent, o);
-                if (intent != null) state.Remove(intent.IntentKey);
+                RetireEconomyIntent(state, intent, o, turn);
                 return;
             }
 
@@ -1815,7 +1812,7 @@ namespace Game.Ai.V2
             }
             else if (firstReconcileThisTurn && !poolExhausted
                 && (!capabilityUnavailable || intent.Kind == MissionKind.Development
-                    || IsMoverlessScoutRole(intent)))
+                    || IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent)))
             {
                 intent.StallTurns++;
             }
@@ -1844,7 +1841,7 @@ namespace Game.Ai.V2
                     && state.RecordBaseExpansionDeliveryFailure(
                         turn, intent.Economy.BuildCard, intent.Economy.TargetHex))
                 {
-                    state.Remove(intent.IntentKey);
+                    RetireEconomyIntent(state, intent, o, turn);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                         "BaseExpansionDeliverySuppressed");
                     AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
@@ -1867,10 +1864,7 @@ namespace Game.Ai.V2
                     && state.RecordExtractionDeliveryFailure(
                         turn, intent.Economy.ResourceType, intent.Economy.TargetHex))
                 {
-                    // Terminal Economy retirement: return a borrowed Recon/Raid owner
-                    // atomically before removing the borrowing Extraction intent.
-                    RepayEconomyLoan(state, intent, o);
-                    state.Remove(intent.IntentKey);
+                    RetireEconomyIntent(state, intent, o, turn);
                     StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn,
                         "ExtractionDeliverySuppressed");
                     AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] "
@@ -1885,10 +1879,10 @@ namespace Game.Ai.V2
             // on a support no stage can bind was held — primary claimed — forever.
             if ((!capabilityUnavailable || intent.Kind == MissionKind.Development
                     || intent.Kind == MissionKind.Raid
-                    || IsMoverlessScoutRole(intent))
+                    || IsMoverlessScoutRole(intent) || IsCollectorEconomyIntent(intent))
                 && ShouldReap(intent))
             {
-                state.Remove(intent.IntentKey);
+                RetireOutcomeIntent(state, intent, o, turn);
                 StartPersistentCooldown(allocState, intent.LastAttemptKey, intent.Kind, turn, "IntentReapedStall");
                 AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} reaped (stall "
                     + $"{intent.StallTurns}/{AiConfigV2.commitmentStallTurns}, age "
@@ -2154,7 +2148,7 @@ namespace Game.Ai.V2
         private static void RepayEconomyLoan(MissionIntentState state, MissionIntent economy,
             MissionTurnOutcome outcome)
         {
-            MissionIntentKey? source = outcome.EconomyLoanSource;
+            MissionIntentKey? source = outcome?.EconomyLoanSource;
             if (!source.HasValue && economy?.Economy?.Loaned == true)
                 source = economy.Economy.LoanSource;
             if (!source.HasValue || !state.TryGet(source.Value, out MissionIntent lender))
@@ -2165,6 +2159,60 @@ namespace Game.Ai.V2
                 lender.Suspended = SuspendReason.None;
                 AiDebugLog.Write($"[AI][V2][Economy][Loan] repay actor=#{lender.PreferredMoverArmyId} to={lender.IntentKey}");
             }
+        }
+
+        // The ONE retirement of an Economy intent: a borrowed Recon/Raid owner gets its actor back,
+        // this owner's turn-scoped H/E/M/T/AP holds are released (Phase B may spend them for the
+        // rest of the turn), then the intent goes. `outcome` may carry the loan of a mission that
+        // never became durable. Economy audit B8.
+        private static void RetireEconomyIntent(MissionIntentState state, MissionIntent intent,
+            MissionTurnOutcome outcome, int turn)
+        {
+            RepayEconomyLoan(state, intent, outcome);
+            if (intent == null)
+                return;
+            StrategicResourceReservationLedger.ReleaseByOwner(state.Owner, turn,
+                EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
+            state.Remove(intent.IntentKey);
+        }
+
+        // Retirement of whatever intent an outcome names: an Economy intent through its own owner
+        // above, any other kind is simply removed (a loan can only point at an Economy borrower).
+        private static void RetireOutcomeIntent(MissionIntentState state, MissionIntent intent,
+            MissionTurnOutcome outcome, int turn)
+        {
+            if (intent == null || intent.Kind == MissionKind.Economy)
+            {
+                RetireEconomyIntent(state, intent, outcome, turn);
+                return;
+            }
+            state.Remove(intent.IntentKey);
+        }
+
+        // A proven route failure of an outbound Economy step (see ReconcileOutcome).
+        private static bool IsEconomyRouteFailure(MissionTurnOutcome o) =>
+            o.ProvisionFailureKindValue == ProvisionFailureKind.NoExecutableStep
+            || (!o.ProvisionFailureKindValue.HasValue
+                && (o.StopReason == ExecutionStopReason.NoSafeStep
+                    || o.StopReason == ExecutionStopReason.MoveRejected));
+
+        internal static bool IsCollectorEconomyIntent(MissionIntent i) =>
+            i != null && i.Kind == MissionKind.Economy
+            && (i.Economy?.Kind == EconomyTaskKind.MobileCollection
+                || i.Economy?.Kind == EconomyTaskKind.ReturnCollector);
+
+        // Is an already-collecting actor still worth its site? Analysis' admission test for a
+        // NEW collector (UsefulMarginalIncomeGain), judged against own income without this
+        // collector's own contribution.
+        internal static bool CollectorStillUseful(WorldSnapshot snap, ResourceType type,
+            float contribution)
+        {
+            foreach (EconomyResourceStanding standing in snap?.Economy?.PerType
+                         ?? System.Array.Empty<EconomyResourceStanding>())
+                if (standing.Type == type)
+                    return standing.UsefulRetainedIncomeGain(contribution)
+                        > AiConfigV2.allocatorSliceEpsilon;
+            return false;
         }
 
         private static bool ShouldReap(MissionIntent i)

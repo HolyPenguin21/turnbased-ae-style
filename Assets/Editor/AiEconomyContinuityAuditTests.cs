@@ -1,0 +1,354 @@
+#if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
+using System.Linq;
+using Game.Ai.V2;
+using Game.Cards;
+using Game.Economy;
+using Game.HexGrid;
+using Game.Players;
+using NUnit.Framework;
+
+namespace Game.EditorTests
+{
+    // Regression cover for the Economy-branch audit (lifecycle of durable Economy intents).
+    // Pure ledger / Continuity / registry level: no map, no PlayerRoot, no live ArmyData.
+    public class AiEconomyContinuityAuditTests
+    {
+        private const int Actor = 21;
+        private static readonly HexCoord Site = new HexCoord(6, -2);
+        private static readonly HexCoord Home = new HexCoord(0, 0);
+
+        [TearDown]
+        public void TearDown()
+        {
+            MissionIntentRegistry.Clear();
+            AiAllocatorStateRegistry.Clear();
+            StrategicResourceReservationLedger.ClearAll();
+        }
+
+        private static MissionProposal Proposal(EconomyTaskKind kind, HexCoord target,
+            CardData card = null)
+        {
+            bool mobile = kind == EconomyTaskKind.MobileCollection
+                || kind == EconomyTaskKind.ReturnCollector;
+            var m = new MissionProposal
+            {
+                Kind = MissionKind.Economy,
+                Target = new EconomyMissionTarget
+                {
+                    Kind = kind, TargetHex = target,
+                    ResourceType = kind == EconomyTaskKind.FoundBase
+                        || kind == EconomyTaskKind.ReturnBuilder
+                        || kind == EconomyTaskKind.ReturnCollector
+                        ? (ResourceType?)null : ResourceType.Materials,
+                    BuilderArmyId = Actor,
+                    CollectorArmyId = mobile ? Actor : (int?)null,
+                    BuildCard = card,
+                    BuildResourceCost = new ResourceCost(materials: 3),
+                    ExpectedMarginalYield = 2,
+                },
+                PreferredMoverArmyId = Actor,
+                FromDurableIntent = true,
+                BaseValue = 5f,
+                Requirements = new MissionRequirements(),
+            };
+            m.Axes.Value[DesireAxis.Economy] = 1f;
+            return m;
+        }
+
+        private static MissionIntent DurableIntent(PlayerSetupData player, MissionProposal m,
+            int turn)
+        {
+            var t = (EconomyMissionTarget)m.Target;
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Funding = CommitmentTier.Soft,
+                Status = IntentStatus.Active,
+                PreferredMoverArmyId = Actor,
+                CreatedTurn = turn,
+                TurnsActive = 1,
+                LastReconciledTurn = turn,
+                LastProgressTurn = turn,
+                Objective = new EconomyIntent
+                {
+                    Kind = t.Kind, TargetHex = t.TargetHex, ResourceType = t.ResourceType,
+                    BuilderArmyId = Actor, CollectorArmyId = t.CollectorArmyId,
+                    BuildCard = t.BuildCard, BuildResourceCost = t.BuildResourceCost,
+                    ExpectedMarginalYield = t.ExpectedMarginalYield,
+                },
+                IntentKey = MissionIntentKey.For(m),
+                LastAttemptKey = StableMissionKey.For(m),
+            };
+            MissionIntentRegistry.GetOrCreate(player).Put(intent);
+            return intent;
+        }
+
+        private static MissionTurnOutcome Settle(PlayerSetupData player, MissionProposal m, int turn,
+            ProvisionFailure? failure = null, ExecutionResult execution = null)
+        {
+            var ledger = new MissionOutcomeLedger();
+            ledger.RegisterProposals(new[] { m });
+            if (failure.HasValue)
+                ledger.RecordProvisionFailure(m, failure.Value);
+            else
+            {
+                var pm = new ProvisionedMission
+                {
+                    Mission = m, Key = StableMissionKey.For(m), Kind = MissionKind.Economy,
+                    MoverArmyId = Actor, EconomyTarget = (EconomyMissionTarget)m.Target,
+                };
+                ledger.RecordProvisionSuccess(m, pm);
+                if (execution != null)
+                {
+                    execution.Key = pm.Key;
+                    execution.Source = pm;
+                    ledger.RecordExecution(execution);
+                }
+            }
+            List<MissionTurnOutcome> outcomes = ledger.Finalize();
+            MissionContinuityLayer.ReconcileAfterTurn(player, turn, outcomes);
+            return outcomes.Single();
+        }
+
+        private static bool Has(PlayerSetupData player, MissionIntent intent) =>
+            MissionIntentRegistry.GetOrCreate(player).TryGet(intent.IntentKey, out _);
+
+        // --- B1: productive hold on target is progress, not a failure ------------------------
+
+        [Test]
+        public void B1_BuildDeliveryReadyOnTarget_KeepsTheDurableBuild()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            intent.StallTurns = 1;
+
+            MissionTurnOutcome o = Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, EconomyDeliveryReady = true,
+                FinalHex = Site,
+            });
+
+            Assert.That(o.MadeProgress, Is.True);
+            Assert.That(Has(player, intent), Is.True,
+                "a builder standing on its site for Phase A's build must keep its commitment");
+            Assert.That(intent.StallTurns, Is.EqualTo(0));
+            Assert.That(intent.LastProgressTurn, Is.EqualTo(4));
+        }
+
+        [Test]
+        public void B1_MobileCollectorHoldingItsSite_KeepsItsIntent()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.MobileCollection, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+
+            Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.StepCompleted, EconomyHolding = true,
+                FinalHex = Site,
+            });
+
+            Assert.That(Has(player, intent), Is.True,
+                "a collector holding its site keeps its lifecycle (useful/safe -> ReturnCollector)");
+        }
+
+        // --- B2: transient no-progress outcomes age the intent, route failure retires it -----
+
+        [Test]
+        public void B2_EnvelopeTooSmall_AgesTheDurableBuildInsteadOfRetiringIt()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+
+            Settle(player, m, 4, failure: ProvisionFailure.EnvelopeTooSmall(4f, "ap"));
+            Assert.That(Has(player, intent), Is.True, "one short AP pass is not an abandoned build");
+            Assert.That(intent.StallTurns, Is.EqualTo(1));
+
+            Settle(player, m, 5, failure: ProvisionFailure.EnvelopeTooSmall(4f, "ap"));
+            Assert.That(Has(player, intent), Is.False, "the stall bound still ends a stuck build");
+        }
+
+        [Test]
+        public void B2_StaleExecutionTargetInvalidated_IsBlockedAndKeepsTheBuild()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.FoundBase, Site,
+                new CardData(new CardDefinition { cardType = CardType.Base }));
+            MissionIntent intent = DurableIntent(player, m, 3);
+
+            MissionTurnOutcome o = Settle(player, m, 4, execution: new ExecutionResult
+            {
+                StopReason = ExecutionStopReason.TargetInvalidated,
+            });
+
+            Assert.That(o.Outcome, Is.EqualTo(ExecutionOutcome.Blocked));
+            Assert.That(Has(player, intent), Is.True);
+        }
+
+        [Test]
+        public void ProvenRouteFailure_StillRetiresTheOutboundBuild()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+
+            Settle(player, m, 4, failure: ProvisionFailure.NoExecutableStep("no safe route"));
+
+            Assert.That(Has(player, intent), Is.False);
+        }
+
+        // --- B3: a suspended ReturnCollector is re-tested, never parked forever --------------
+
+        [Test]
+        public void B3_SuspendedReturnCollector_IsResumedByResolveActive()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.ReturnCollector, Home);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            intent.Status = IntentStatus.Suspended;
+            intent.Suspended = SuspendReason.CapabilityUnavailable;
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 4,
+                Self = new SelfSnapshot
+                {
+                    BaseHexes = new List<HexCoord> { Home },
+                    Armies = new List<ArmySnapshot>
+                    {
+                        new ArmySnapshot { ArmyId = Actor, Hex = Site, MemberCount = 1 },
+                    },
+                },
+            };
+
+            List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player, snap);
+
+            Assert.That(active, Does.Contain(intent));
+            Assert.That(intent.Status, Is.EqualTo(IntentStatus.Active));
+        }
+
+        [Test]
+        public void B3_ReturnCollectorContendedEveryTurn_IsEventuallyReaped()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.ReturnCollector, Home);
+            MissionIntent intent = DurableIntent(player, m, 3);
+
+            for (int turn = 4; turn <= 6 && Has(player, intent); turn++)
+            {
+                intent.Status = IntentStatus.Active;   // what ResolveActive now does each pass
+                Settle(player, m, turn, failure: ProvisionFailure.MoverContended("claimed"));
+            }
+
+            Assert.That(Has(player, intent), Is.False,
+                "a collector that can never move home must not hold its army forever");
+        }
+
+        // --- B4: two stuck Base projects each reach their own suppression -------------------
+
+        [Test]
+        public void B4_TwoStuckBaseProjects_DoNotResetEachOthersStreak()
+        {
+            var state = new MissionIntentState();
+            var cardA = new CardData(new CardDefinition { cardType = CardType.Base });
+            var cardB = new CardData(new CardDefinition { cardType = CardType.Base });
+            var hexA = new HexCoord(3, 0);
+            var hexB = new HexCoord(-3, 2);
+
+            bool a = false, b = false;
+            for (int turn = 1; turn <= 3; turn++)
+            {
+                a |= state.RecordBaseExpansionDeliveryFailure(turn, cardA, hexA);
+                b |= state.RecordBaseExpansionDeliveryFailure(turn, cardB, hexB);
+            }
+
+            Assert.That(a && b, Is.True);
+            Assert.That(state.IsBaseExpansionDeliverySuppressed(3, cardA, hexA), Is.True);
+            Assert.That(state.IsBaseExpansionDeliverySuppressed(3, cardB, hexB), Is.True);
+        }
+
+        // --- B5: collectors do not draw on the hero-builder pool ----------------------------
+
+        [Test]
+        public void B5_CollectorMissions_AreOutsideTheHeroBuilderPool()
+        {
+            Assert.That(CapabilityPoolExhaustionRegistry.PoolFor(
+                Proposal(EconomyTaskKind.MobileCollection, Site)), Is.EqualTo(CapabilityPoolKind.None));
+            Assert.That(CapabilityPoolExhaustionRegistry.PoolFor(
+                Proposal(EconomyTaskKind.ReturnCollector, Home)), Is.EqualTo(CapabilityPoolKind.None));
+            Assert.That(CapabilityPoolExhaustionRegistry.PoolFor(
+                Proposal(EconomyTaskKind.BuildExtraction, Site)),
+                Is.EqualTo(CapabilityPoolKind.EconomyHeroBuilder));
+        }
+
+        // --- B8: retiring an Economy intent releases its holds and repays its loan ----------
+
+        [Test]
+        public void B8_FailedDurableBuild_ReleasesItsDeferredResourceHold()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 4);
+            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(player, 4, intent);
+            Assert.That(StrategicResourceReservationLedger.Active(player, 4,
+                StrategicReservedResource.Materials), Is.EqualTo(3f));
+
+            Settle(player, m, 4, failure: ProvisionFailure.TargetInvalidated("builder gone"));
+
+            Assert.That(Has(player, intent), Is.False);
+            Assert.That(StrategicResourceReservationLedger.Active(player, 4,
+                StrategicReservedResource.Materials), Is.Zero,
+                "an abandoned build must not keep Phase B from spending its resources");
+        }
+
+        [Test]
+        public void B8_SuppressedFoundBase_RepaysItsBorrowedDonor()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.FoundBase, Site,
+                new CardData(new CardDefinition { cardType = CardType.Base }));
+            MissionIntent intent = DurableIntent(player, m, 3);
+            var donor = new MissionIntent
+            {
+                Kind = MissionKind.Scout, PreferredMoverArmyId = Actor,
+                Status = IntentStatus.Suspended, Suspended = SuspendReason.EconomyLoan,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore, FocusHex = new HexCoord(9, 9) },
+            };
+            donor.IntentKey = MissionIntentKey.For(donor);
+            MissionIntentRegistry.GetOrCreate(player).Put(donor);
+            intent.Economy.Loaned = true;
+            intent.Economy.LoanSource = donor.IntentKey;
+
+            for (int turn = 4; turn <= 6 && Has(player, intent); turn++)
+            {
+                intent.Status = IntentStatus.Active;
+                Settle(player, m, turn, failure: ProvisionFailure.MoverContended("cannot advance"));
+            }
+
+            Assert.That(Has(player, intent), Is.False);
+            Assert.That(donor.Status, Is.EqualTo(IntentStatus.Active),
+                "a retired borrower returns its actor at once, not after an orphan repair");
+        }
+
+        // --- B12: collector usefulness is judged without its own contribution ---------------
+
+        [Test]
+        public void B12_ArrivedCollectorStaysUsefulWhileItsOwnIncomeCoversTheNeed()
+        {
+            var standing = new EconomyResourceStanding
+            {
+                Type = ResourceType.Materials,
+                HandResourceNeed = 12f, SpendableStockpile = 0f,
+                OwnIncome = 4f,   // includes the arrived collector's 2
+            };
+
+            Assert.That(standing.UsefulMarginalIncomeGain(2f), Is.Zero,
+                "with its own income counted the collector looks surplus");
+            Assert.That(standing.UsefulRetainedIncomeGain(2f), Is.GreaterThan(0f),
+                "without it the need is uncovered: the collector is still worth its site");
+        }
+    }
+}
+#endif

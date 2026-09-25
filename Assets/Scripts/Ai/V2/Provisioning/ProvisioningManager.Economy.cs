@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -534,6 +534,10 @@ namespace Game.Ai.V2
                     EconomyBuildApCost = target.BuildApCost,
                     MinimumFollowupAp = target.MinimumFollowupAp,
                     EconomySiteValue = target.BuildValue,
+                    // The admitted mission's canonical TaskScore — the intent's IntrinsicValue.
+                    // Without it the handoff recorded 0 (not "unknown"), and a later turn with no
+                    // refreshed demand priced the durable build at zero (Economy audit B9).
+                    Value = m.BaseValue,
                 }, hero.Id, ctx.TurnNumber);
                 if (delivery == null)
                     return ProvisioningResult.Fail(ProvisionFailure.MoverContended(

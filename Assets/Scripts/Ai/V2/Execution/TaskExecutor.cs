@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -68,6 +68,9 @@ namespace Game.Ai.V2
         // WorldSnapshot changed yet, so without this explicit fact PublishStepObservationDelta sees
         // no typed invalidation and the typed loop stops before Phase A ever gets a chance to build.
         public bool EconomyDeliveryReady;
+        // A MobileCollection collector standing on its site for the income tick: productive
+        // work with no mutation of its own (same role as EconomyDeliveryReady for a build).
+        public bool EconomyHolding;
         // A concrete Researcher/Assembler reached its exact Facility; Phase A must see the
         // newly executable source immediately, not wait for an unrelated resource mutation.
         public bool DevelopmentDeliveryReady;
@@ -1375,8 +1378,11 @@ namespace Game.Ai.V2
                 else
                 {
                     if (target.Kind == EconomyTaskKind.MobileCollection)
+                    {
+                        result.EconomyHolding = true;
                         AiDebugLog.Write($"[AI][V2][Economy][Mobile] collector #{army.Id} holding "
                             + $"@({army.Hex.Q},{army.Hex.R}) for global income tick");
+                    }
                     else
                     {
                         result.EconomyDeliveryReady = true;
