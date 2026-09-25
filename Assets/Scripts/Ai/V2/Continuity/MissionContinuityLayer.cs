@@ -1319,11 +1319,6 @@ namespace Game.Ai.V2
             bool returnBuilderOutcome = o.MissionKind == MissionKind.Economy
                 && (o.EconomyTarget.Kind == EconomyTaskKind.ReturnBuilder
                     || intent?.Economy?.Kind == EconomyTaskKind.ReturnBuilder);
-            bool raidReinforcementOutcome = o.MissionKind == MissionKind.Raid
-                && (o.HasRaidPayload
-                    ? o.RaidPhase == RaidMissionPhase.Reinforcement
-                    : o.Proposal?.Target is RaidMissionTarget reinforcementTarget
-                        && reinforcementTarget.Phase == RaidMissionPhase.Reinforcement);
             AiDebugLog.Write($"[AI][V2] [{aid}] outcome {o.Outcome}"
                 + (o.ObjectiveSatisfied ? " satisfied" : "")
                 + (o.StructuralFailure ? " structural" : "")
@@ -1335,17 +1330,15 @@ namespace Game.Ai.V2
             // read from the next snapshot (ResolveGatherReturns / ResolveAttackAirSupport); a
             // failed leg releases just that donor or wing (an airborne wing then lands through
             // GroundCombatAirSupport.ReleaseOrphanStrikes).
-            // A leg that failed in Provisioning carries no payload (MissionOutcomeLedger fills it
-            // only from a ProvisionedMission), so the leg is read from the proposal as well; the
-            // leg shares the operation's IntentKey, and the generic retire/suspend branches below
-            // would otherwise end the whole operation for a failed side or support leg.
-            AttackMissionTarget? attackLeg = o.HasAttackPayload ? o.AttackTarget
-                : o.Proposal?.Target is AttackMissionTarget proposedLeg
-                    ? proposedLeg : (AttackMissionTarget?)null;
+            // The leg is read from the payload or, when Provisioning failed before one existed,
+            // from the proposal (GroundCombatLegs.AttackLegOf): it shares the operation's
+            // IntentKey, so the generic branches below would otherwise end the whole operation.
+            AttackMissionTarget? attackLeg = GroundCombatLegs.AttackLegOf(o);
             if (attackLeg.HasValue && GroundCombatLegs.IsAttackSideLeg(attackLeg.Value.Phase))
             {
                 AttackMissionTarget leg = attackLeg.Value;
-                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed;
+                bool failed = o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed
+                    || o.ProvisionFailureKindValue == ProvisionFailureKind.TargetInvalidated;
                 if (failed && intent?.Attack != null
                     && leg.Phase == AttackMissionPhase.GatherReturn
                     && leg.SupportArmyId.HasValue)
@@ -1365,28 +1358,19 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // A support leg (convoy / gather / support walk home) whose Provisioning failed is a
-            // support-local fact, like Raid's reinforcement exception below: a support that no longer
-            // improves the primary is released; a vanished mover or primary is left to the next
-            // ResolveActive pass, which owns support loss and primary loss.
-            if (attackLeg.HasValue && !o.HasAttackPayload && intent?.Attack != null
-                && GroundCombatLegs.IsAttackSupportLeg(attackLeg.Value.Phase)
-                && (o.StructuralFailure || o.Outcome == ExecutionOutcome.Failed))
+            // A support whose roster no longer improves the primary (Provisioning AssemblyInfeasible
+            // on a convoy / gather leg) invalidates only that assignment, never the durable
+            // operation or its target: the support is released and the operation stays in its
+            // reinforcement / gather phase. One edge for Raid and Attack (GroundCombatLegs.IsSupportLeg).
+            if (o.StructuralFailure && intent != null
+                && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible
+                && GroundCombatLegs.IsSupportLeg(o) && ReleaseInvalidSupport(intent, o))
             {
-                AttackMissionTarget leg = attackLeg.Value;
-                AttackIntent a = intent.Attack;
-                if (o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible)
-                {
-                    if (leg.Phase == AttackMissionPhase.Gather && leg.SupportArmyId.HasValue)
-                        a.GatherSupportArmyIds.Remove(leg.SupportArmyId.Value);
-                    else if (leg.Phase == AttackMissionPhase.Reinforcement)
-                    {
-                        a.SupportArmyId = null;
-                        a.ReinforcementRequestedTurn = -1;
-                    }
-                }
-                AiDebugLog.Write($"[AI][V2][Attack] continuity — [{aid}] {o.IntentKey} {leg.Phase} leg "
-                    + $"failed in provisioning ({o.ProvisionFailureKindValue}); operation kept");
+                intent.Status = IntentStatus.Active;
+                intent.Suspended = SuspendReason.None;
+                intent.LastReconciledTurn = turn;
+                AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} support assembly "
+                    + "invalid; support released, operation kept");
                 return;
             }
 
@@ -1521,23 +1505,6 @@ namespace Game.Ai.V2
 
             if (o.StructuralFailure)
             {
-                // A failed support roster invalidates only that reinforcement assignment, not the
-                // durable Raid campaign or its neutral target. Provisioning classifies a missing
-                // primary/target separately; AssemblyInfeasible here is therefore support-local.
-                if (raidReinforcementOutcome && intent?.Raid != null
-                    && o.ProvisionFailureKindValue == ProvisionFailureKind.AssemblyInfeasible)
-                {
-                    intent.Raid.SupportArmyId = null;
-                    intent.Raid.ReinforcementRequestedTurn = -1;
-                    intent.Raid.Phase = RaidMissionPhase.Reinforcement;
-                    intent.Status = IntentStatus.Active;
-                    intent.Suspended = SuspendReason.None;
-                    intent.LastReconciledTurn = turn;
-                    AiDebugLog.Write($"[AI][V2][Raid] continuity — [{aid}] {o.IntentKey} "
-                        + "support assembly invalid; support released, campaign kept in Reinforcement");
-                    return;
-                }
-
                 if (returnBuilderOutcome && intent != null)
                 {
                     intent.Status = IntentStatus.Active;
@@ -1651,6 +1618,35 @@ namespace Game.Ai.V2
                 CreateDevelopmentIntent(state, o, turn);
             }
 
+        }
+
+        // Releases the support an AssemblyInfeasible convoy / gather leg named. False when the leg
+        // is not one whose support can be released this way (the generic failure path applies).
+        private static bool ReleaseInvalidSupport(MissionIntent intent, MissionTurnOutcome o)
+        {
+            if (intent.Raid != null
+                && GroundCombatLegs.RaidLegOf(o) == RaidMissionPhase.Reinforcement)
+            {
+                intent.Raid.SupportArmyId = null;
+                intent.Raid.ReinforcementRequestedTurn = -1;
+                intent.Raid.Phase = RaidMissionPhase.Reinforcement;
+                return true;
+            }
+            AttackMissionTarget? leg = GroundCombatLegs.AttackLegOf(o);
+            if (intent.Attack == null || !leg.HasValue)
+                return false;
+            if (leg.Value.Phase == AttackMissionPhase.Gather && leg.Value.SupportArmyId.HasValue)
+            {
+                intent.Attack.GatherSupportArmyIds.Remove(leg.Value.SupportArmyId.Value);
+                return true;
+            }
+            if (leg.Value.Phase == AttackMissionPhase.Reinforcement)
+            {
+                intent.Attack.SupportArmyId = null;
+                intent.Attack.ReinforcementRequestedTurn = -1;
+                return true;
+            }
+            return false;
         }
 
         private static void AdvanceIntent(MissionIntent intent, MissionTurnOutcome o, int turn,

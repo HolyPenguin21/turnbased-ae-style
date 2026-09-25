@@ -437,14 +437,9 @@ namespace Game.Ai.V2
                         break;
                     case ExecutionStopReason.MoverLost:
                     case ExecutionStopReason.TargetInvalidated:
-                        // Reinforcement and SupportReturn are support-mover legs of a durable Raid.
-                        // A missing/stale support must not retire the primary campaign; ResolveActive
-                        // owns the canonical support cleanup/replacement on the next reaction pass.
-                        // The same stop remains fatal for Assault/Return where the mover is primary.
-                        o.Outcome = o.HasRaidPayload
-                            && (o.RaidPhase == RaidMissionPhase.AirSupport
-                                || o.RaidPhase == RaidMissionPhase.Reinforcement
-                                || o.RaidPhase == RaidMissionPhase.SupportReturn)
+                        // Support-local for a support leg (GroundCombatLegs.IsSupportLeg); fatal for
+                        // Assault/Return, where the mover is the primary.
+                        o.Outcome = GroundCombatLegs.IsSupportLeg(o)
                             ? ExecutionOutcome.Blocked
                             : ExecutionOutcome.Failed;
                         break;
@@ -455,12 +450,8 @@ namespace Game.Ai.V2
                 return;
             }
 
-            // A support-mover leg of an Attack (convoy, gather, walk home, donor, wing) that lost its
-            // mover or its primary must not retire the whole operation — the same rule Raid applies
-            // to its support legs above. ResolveActive's next pass detects the loss and cleans up
-            // only that support (or, for a lost primary, retires the operation itself).
-            if (o.MissionKind == MissionKind.Attack && o.HasAttackPayload
-                && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase)
+            // The same support-local rule for Attack (GroundCombatLegs.IsSupportLeg).
+            if (o.MissionKind == MissionKind.Attack && GroundCombatLegs.IsSupportLeg(o)
                 && (e.StopReason == ExecutionStopReason.MoverLost
                     || e.StopReason == ExecutionStopReason.TargetInvalidated))
             {
@@ -604,22 +595,15 @@ namespace Game.Ai.V2
                     o.ObjectiveSatisfiedExternally = true;
                     break;
                 case ProvisionFailureKind.TargetInvalidated:
-                    // ProvisionReturn uses TargetInvalidated when the SupportReturn mover vanished
-                    // or stopped being a usable field army. That invalidates only the support leg,
-                    // not the durable primary Raid. Return/Assault/Reinforcement target invalidation
-                    // keeps its existing failure semantics (notably a lost primary in Reinforcement).
-                    // The same holds for the AirSupport wing leg (as the execution-side
-                    // Classify already treats it): ResolveActive releases the wing and moves the
-                    // Raid to its next recovery phase instead of retiring the campaign.
-                    if (o.MissionKind == MissionKind.Raid
-                        && o.Proposal?.Target is RaidMissionTarget invalidRaidTarget
-                        && (invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn
-                            || invalidRaidTarget.Phase == RaidMissionPhase.AirSupport))
-                    {
-                        o.Outcome = ExecutionOutcome.Blocked;
-                        break;
-                    }
-                    o.Outcome = ExecutionOutcome.Failed;
+                    // The same support-local rule the execution-side Classify applies
+                    // (GroundCombatLegs.IsSupportLeg): a vanished support mover, a stale wing target
+                    // or a lost primary behind a support leg never retires the operation from here —
+                    // ResolveActive's next pass releases that support, moves the operation to its
+                    // next phase, or retires it if the primary itself is gone. Assault / Return
+                    // (the primary's own legs) keep their failure semantics.
+                    o.Outcome = GroundCombatLegs.IsSupportLeg(o)
+                        ? ExecutionOutcome.Blocked
+                        : ExecutionOutcome.Failed;
                     break;
                 default:
                     o.Outcome = ExecutionOutcome.Blocked;
