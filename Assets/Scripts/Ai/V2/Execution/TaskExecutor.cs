@@ -222,9 +222,10 @@ namespace Game.Ai.V2
             result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
             result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
             result.DurableRoleContinues = result.ReachedGoal
-                && pm.Mission?.FromDurableIntent == true
                 && pm.Kind == MissionKind.Scout
-                && pm.ScoutKind != ScoutTargetKind.Surveil;
+                && ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(pm.ScoutKind,
+                    pm.Mission?.FromDurableIntent == true, AiArmyRoles.IsSoloRecce(army),
+                    actedThisTurn: false);
             result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
             result.StopReason = validity == MissionValidity.StaleMoverLost
                 ? ExecutionStopReason.MoverLost

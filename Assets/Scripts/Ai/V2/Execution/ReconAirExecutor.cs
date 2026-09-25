@@ -520,8 +520,9 @@ namespace Game.Ai.V2
             if (satisfied)
             {
                 er.ReachedGoal = true;
-                er.DurableRoleContinues = pm.Mission?.FromDurableIntent == true
-                    && pm.ScoutKind != ScoutTargetKind.Surveil;
+                er.DurableRoleContinues = ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
+                    pm.ScoutKind, pm.Mission?.FromDurableIntent == true, actorStillScout: true,
+                    actedThisTurn: false);
             }
         }
 
@@ -536,8 +537,9 @@ namespace Game.Ai.V2
             er.ReachedGoal = true;
             er.StaleNoOp = true;
             er.StopReason = ExecutionStopReason.ReachedGoal;
-            er.DurableRoleContinues = pm?.Mission?.FromDurableIntent == true
-                && pm.ScoutKind != ScoutTargetKind.Surveil;
+            er.DurableRoleContinues = pm != null && ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
+                pm.ScoutKind, pm.Mission?.FromDurableIntent == true, actorStillScout: true,
+                actedThisTurn: false);
         }
 
         // Thin execute loop. Every decision comes from AirReconStepDirector; the executor only

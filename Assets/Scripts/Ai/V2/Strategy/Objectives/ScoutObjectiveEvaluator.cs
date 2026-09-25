@@ -64,6 +64,16 @@ namespace Game.Ai.V2
             }
         }
 
+        // THE "a met objective is only a waypoint" rule (D5): a ground Explore / Refresh role whose
+        // focus is met keeps its durable role (ProductiveStop -> re-focused next pass) when its
+        // actor can still scout AND the role is already durable or the actor really acted this
+        // turn. A fresh mission met before it ever acted is not turned into a role; Surveil
+        // completion and AirSweep (never met) end.
+        public static bool RoleContinuesAtWaypoint(ScoutTargetKind kind, bool durableIntent,
+            bool actorStillScout, bool actedThisTurn) =>
+            (kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh)
+            && actorStillScout && (durableIntent || actedThisTurn);
+
         // ---- SNAPSHOT (mission-layer re-materialisation) ------------------------------------
 
         // Is a durable intent still coherent against THIS frozen snapshot? This also folds in

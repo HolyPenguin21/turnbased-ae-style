@@ -225,6 +225,8 @@ reactivate when important contact becomes stale or blind again.
 | A Scout job needs the stealth lane (`Required` or positive `DetectionRisk`) | `ReconScoutKinds.NeedsStealth` (`ScoutMissionTarget.NeedsStealth` / `ReconObjective.NeedsStealth`) |
 | A scout can serve stealth (this turn / at all) | `ScoutMoverSelector.StealthReadyThisTurn` (Assignment eligibility, garrison extraction) / `CanServeStealth` (continuity claim, vantage choice). `StructuralCandidates` keeps its own diagnostic rule on purpose |
 | Scout exposure and stealth-detector risk | `Recon/ScoutRiskModel` (`IsExposed` / `CountDetectors` / `DetectorRisk`, snapshot or live sightings) — frontier annotation, objective scan, vantage ranking, optional-stealth leg risk |
+| A met Scout objective is only a waypoint (the durable ground role continues) | `ScoutObjectiveEvaluator.RoleContinuesAtWaypoint` — ground executor, `TaskExecutor` stale-goal path, air executor |
+| An air sortie must turn for home (endurance deadline / used-up outbound leg) | `ReconAirSortieState.OutboundCapReached` + must-recover, applied identically by `AirReconStepDirector.PlanStep` and the read-only `ReconAirReservationPrepass.ProjectScoringSortie` (mandatory recovery, capacity) |
 | Scout objective met live | `ScoutObjectiveEvaluator.IsSatisfiedLive` — post-execution ledger, ground and air executors, `MissionRevalidator` |
 | A durable Scout intent's current objective | `ReconObjectiveEvaluator.ForIntent` — mission re-materialisation and `ActorCommitments`' off-list stealth requirement |
 | Writing a Scout outcome into its durable intent (create / advance / absorb) | `MissionContinuityLayer.ApplyScoutPayload` |
