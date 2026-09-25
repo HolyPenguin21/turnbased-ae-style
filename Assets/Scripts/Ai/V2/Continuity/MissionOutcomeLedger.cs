@@ -188,6 +188,27 @@ namespace Game.Ai.V2
                 {
                     satisfied = EconomyObjectiveSatisfied(player, pm.EconomyTarget);
                 }
+                else if (pm.Kind == MissionKind.Attack)
+                {
+                    // ATK §25 — same answer as MissionRevalidator's Attack branch. Without it an
+                    // Attack fell through to the Explore rule below, where the already-seen target
+                    // hex read as "objective met" after every single assault step.
+                    AttackMissionTarget attack = pm.AttackTarget;
+                    if (attack.Phase == AttackMissionPhase.RecoveryReturn
+                        || attack.Phase == AttackMissionPhase.SupportReturn)
+                    {
+                        ArmyData actor = ArmyRegistry.AllForOwner(player)
+                            .FirstOrDefault(a => a != null && a.Id == pm.MoverArmyId);
+                        satisfied = actor != null && actor.Hex.Equals(attack.DestinationHex);
+                    }
+                    else
+                    {
+                        // Reinforcement is a rendezvous with the primary, never the site's capture.
+                        satisfied = attack.Phase == AttackMissionPhase.Assault
+                            && AttackObjectiveEvaluator.EvaluateTargetLive(player, attack.Target)
+                                == AttackObjectiveEvaluator.AttackTargetStatus.Captured;
+                    }
+                }
                 else if (pm.Kind == MissionKind.Development)
                 {
                     satisfied = ResearchProductionSystem.ActorStillQualifies(player,

@@ -171,7 +171,8 @@ namespace Game.EditorTests
             plan.Generation = new GenerationStep { CardDef = equipment, ProducesEquipment = true };
             plan.GeneratedEquipmentDef = equipment;
             float resourceCost = StrategicCardEvaluator.StrategicResourceCostValue(plan.ResCost, snapshot);
-            float expected = 0.75f * 2f
+            // No recipient => no WorthIt matchup witness: value = delta x persistence, applied ONCE.
+            float expected = 0.75f * 2f * AiConfigV2.equipmentUpgradePersistence
                 - resourceCost - 3f * AiConfigV2.stratCardApCostWeight
                 - AiConfigV2.stratChainGenerationStepPenalty
                 - AiConfigV2.stratChainAttachStepPenalty;
@@ -206,7 +207,8 @@ namespace Game.EditorTests
                 opportunity, plan, null, null, null, null);
             Assert.That(zeroGain, Is.LessThan(0f),
                 "Production cannot turn a zero-benefit equipment attachment into a useful action");
-            Assert.That(useful - zeroGain, Is.EqualTo(0.8f).Within(0.0001f),
+            Assert.That(useful - zeroGain,
+                Is.EqualTo(0.8f * AiConfigV2.equipmentUpgradePersistence).Within(0.0001f),
                 "Only the expected marginal gain separates a useful attachment from a useless one");
         }
 
@@ -330,7 +332,7 @@ namespace Game.EditorTests
             {
                 stat = EquipmentStat.MoveMax, amount = 3,
             });
-            Assert.That(DevelopmentOpportunityEvaluator.ImprovesGroundCombatOutcome(
+            Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
                 primary, new[] { primary }, moveOnly, guards), Is.False,
                 "Mobility alone cannot claim a WorthIt combat improvement against known guards");
             var weapon = new EquipmentGrant();
@@ -338,10 +340,10 @@ namespace Game.EditorTests
             {
                 stat = EquipmentStat.Attack, amount = 20,
             });
-            Assert.That(DevelopmentOpportunityEvaluator.ImprovesGroundCombatOutcome(
+            Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
                 primary, new[] { primary }, weapon, guards), Is.True,
                 "A proven improvement in the recipient army's combat outcome counts");
-            Assert.That(DevelopmentOpportunityEvaluator.ImprovesGroundCombatOutcome(
+            Assert.That(StrategicCardEvaluator.ImprovesGroundCombatOutcome(
                 primary, new[] { primary }, weapon, Array.Empty<WorthIt.DefenderProfile>()), Is.False,
                 "An unobserved enemy cannot justify speculative equipment");
             Assert.That(primary.Attack, Is.EqualTo(1),

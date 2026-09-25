@@ -352,6 +352,9 @@ namespace Game.Ai.V2
             if (pm.Kind == MissionKind.Attack)
             {
                 yield return AttackExecutor.RunStep(player, root, ctx, pm, result, snapshot);
+                // §2.1 — same physical turn-pool delta every other executor reports (activation
+                // AP is spent inside the move routine; RunStep never reported it).
+                result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
                 ApCheck(pm, apBefore, root, result);
                 StampVersion(result);
                 CompleteResult(result, root);

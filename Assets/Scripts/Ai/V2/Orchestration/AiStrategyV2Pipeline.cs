@@ -236,7 +236,8 @@ namespace Game.Ai.V2
                             CultureInfo.InvariantCulture)));
                     if (axis == DesireAxis.Development)
                         return DevelopmentAdmissionFingerprint(snapshot, activeIntents,
-                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand, player);
+                            root?.ActionPoints ?? 0, resources, hand?.MutationVersion ?? -1, hand, player,
+                            root, ctx);
                     // Economy only from here on (Development returned above). The key carries what
                     // Economy's decision reads and nothing that ticks on every executed step: no
                     // global state version, and position/movement/activation only for armies the

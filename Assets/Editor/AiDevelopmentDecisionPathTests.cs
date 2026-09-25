@@ -104,8 +104,7 @@ namespace Game.EditorTests
                 BaseValue = 8f,
             };
             // The READY CardUpgrade demand exactly as DemandLayer.Development shapes it.
-            var devScore = new TaskScore(
-                upgradeMatchupValue: TaskScoreEvaluator.UpgradeMatchupValue(opportunity.MatchupFit));
+            var devScore = new TaskScore();
             var demand = new AxisDemand
             {
                 RequestingAxis = DesireAxis.Development,

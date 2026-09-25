@@ -56,7 +56,7 @@ namespace Game.EditorTests
                 },
             };
 
-            float observedFit = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            float observedFit = StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snapshot);
             Assert.That(observedFit, Is.EqualTo(1f),
                 "An observed defender is a legitimate composition witness");
@@ -67,17 +67,17 @@ namespace Game.EditorTests
                 new WorthIt.DefenderProfile(defense: 100, hasCeramicArmor: false,
                     attack: 100, hitPoints: 80),
             };
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snapshot), Is.EqualTo(observedFit).Within(0.0001f),
                 "Unobserved changes to the live neutral roster must not affect valuation");
 
             snapshot.TrueWorld.NeutralArmies = System.Array.Empty<ArmySnapshot>();
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snapshot), Is.EqualTo(observedFit).Within(0.0001f),
                 "Last observed neutral profiles remain legitimate even when the live roster disappears");
 
             snapshot.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snapshot), Is.Zero,
                 "Without a known witness, an unseen neutral must provide no matchup information");
         }

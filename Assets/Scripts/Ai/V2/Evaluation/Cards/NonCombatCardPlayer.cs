@@ -351,9 +351,8 @@ namespace Game.Ai.V2
                     blocked.Add($"{def.displayName}:equipment(noLegalDeployedHost)");
                     return null;
                 }
-                // review-r2 — host is chosen by the REAL predicted before/after stat delta on that
-                // carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor), not by raw host
-                // power, and that same delta is the RoleFit.
+                // Host is chosen by StrategicCardEvaluator.EquipmentUpgradeValue, not by raw host
+                // power, and that same value is the RoleFit.
                 return new NonCombatPlay
                 {
                     Card = card, Kind = PlayKind.Equipment, EquipHost = host.Value.unit,
@@ -543,8 +542,7 @@ namespace Game.Ai.V2
             moverOpportunityCost: routeOpportunity,
             hexThreatRisk: s.HexThreatRisk + airfieldThreatRisk,
             detectionRisk: s.DetectionRisk,
-            economicExpansionValue: s.EconomicExpansionValue,
-            upgradeMatchupValue: s.UpgradeMatchupValue);
+            economicExpansionValue: s.EconomicExpansionValue);
         }
 
         // A structured result. A generated non-combat play is NOT atomic
@@ -703,9 +701,9 @@ namespace Game.Ai.V2
             return set.OrderBy(h => h.Q).ThenBy(h => h.R).ToList();
         }
 
-        // review-r2 — the legal (host) that maximises the REAL predicted equipment delta on that
-        // carrier (StrategicCardEvaluator.EquipmentUpgradeUtilityFor via EquipmentSystem.Predict),
-        // name only as the final deterministic tie-break.
+        // The legal host that maximises StrategicCardEvaluator.EquipmentUpgradeValue (the ONE
+        // equipment value: predicted delta x known-threat matchup x persistence), name only as
+        // the final deterministic tie-break.
         private static (UnitData unit, HexCoord hex, float upgrade, string stableKey)? BestEquipmentHost(
             PlayerSetupData player, PlayerRoot root, CardData equipCard, WorldSnapshot snap)
         {
@@ -721,8 +719,8 @@ namespace Game.Ai.V2
                         continue;
                     if (!EquipmentSystem.CanAttach(equipCard, u, root, out _))
                         continue;
-                    float delta = StrategicCardEvaluator.EquipmentUpgradeUtilityFor(
-                        equipCard.Definition, u, snap, inv);
+                    float delta = StrategicCardEvaluator.EquipmentUpgradeValue(
+                        equipCard.Definition, u, army, snap, inv);
                     string stableKey = $"{army.Id}:{army.Members.IndexOf(u)}";
                     if (best == null || delta > best.Value.upgrade + 0.0001f
                         || (System.Math.Abs(delta - best.Value.upgrade) <= 0.0001f

@@ -52,11 +52,10 @@ namespace Game.Ai.V2
             foreach (DevelopmentOpportunity op in opportunities.Where(o => !o.IsPreparation))
             {
                 upgrades++;
-                // The upgrade's world relevance is the share of known threats it improves the
-                // outcome against; its own stat gain is priced by the card scorer
-                // (StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade), never here.
-                var devScore = new TaskScore(
-                    upgradeMatchupValue: TaskScoreEvaluator.UpgradeMatchupValue(op.MatchupFit));
+                // The upgrade's whole value — stat delta AND known-threat matchup — is priced ONCE
+                // by StrategicCardEvaluator.EquipmentUpgradeValue inside the card scorer. A
+                // world-task urgency here would count the matchup a second time.
+                var devScore = new TaskScore();
                 yield return new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Development,
