@@ -56,15 +56,19 @@ namespace Game.Ai.V2
         // Continuity is the sole owner of durable build-site leases. Physical placement may
         // allow a completed extraction site to become a Base later; two unfinished owners of
         // the SAME site are nevertheless incompatible. Recovery/collection is not construction.
-        internal static bool HoldsEconomyBuildSite(MissionIntent intent, HexCoord hex)
-        {
-            return intent != null && intent.Kind == MissionKind.Economy
-                && (intent.Status == IntentStatus.Active || intent.Status == IntentStatus.Suspended)
-                && intent.Economy != null
-                && (intent.Economy.Kind == EconomyTaskKind.FoundBase
-                    || intent.Economy.Kind == EconomyTaskKind.BuildExtraction)
-                && intent.Economy.TargetHex.Equals(hex);
-        }
+        internal static bool HoldsEconomyBuildSite(MissionIntent intent, HexCoord hex) =>
+            IsLiveEconomyBuild(intent) && intent.Economy.TargetHex.Equals(hex);
+
+        // A build obligation (BuildExtraction / FoundBase) that still holds its site lease: Active,
+        // or Suspended on a transient reason ResolveActive re-tests. The one predicate behind the
+        // lease grant AND every Demand / Phase A "is this build committed" read — a transiently
+        // suspended build is not a free site to originate a second builder for (audit B11).
+        internal static bool IsLiveEconomyBuild(MissionIntent intent) =>
+            intent != null && intent.Kind == MissionKind.Economy
+            && (intent.Status == IntentStatus.Active || intent.Status == IntentStatus.Suspended)
+            && intent.Economy != null
+            && (intent.Economy.Kind == EconomyTaskKind.FoundBase
+                || intent.Economy.Kind == EconomyTaskKind.BuildExtraction);
 
         // Same actor, same objective and same physical card use existing takeover ownership
         // policy. An independent actor/card/objective cannot acquire an already-leased site.

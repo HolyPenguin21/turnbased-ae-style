@@ -465,6 +465,63 @@ namespace Game.EditorTests
             Assert.That(donor.Status, Is.EqualTo(IntentStatus.Active));
         }
 
+        // --- B11 / B13: suspended builds keep their lease; durable routes come from Analysis --
+
+        [Test]
+        public void B11_TransientlySuspendedBuild_KeepsItsResourceHold()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 4);
+            intent.Status = IntentStatus.Suspended;
+            intent.Suspended = SuspendReason.CapabilityUnavailable;
+
+            InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(player, 4, intent);
+
+            Assert.That(StrategicResourceReservationLedger.Active(player, 4,
+                StrategicReservedResource.Materials), Is.EqualTo(3f),
+                "a build that still leases its site is still committed to its resources");
+        }
+
+        [Test]
+        public void B13_DurableBuildWithoutRefreshedDemand_ProvisionsOverAnalysisRoutes()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            var routes = new[]
+            {
+                new EconomyBuilderRouteSnapshot { ArmyId = Actor, TravelCost = 3, MaxMovement = 2 },
+            };
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 4,
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot>
+                    {
+                        new ArmySnapshot { ArmyId = Actor, Hex = Home, MemberCount = 1,
+                            CurrentMovement = 2, MaxMovement = 2, HasHero = true },
+                    },
+                },
+                Economy = new EconomyStanding
+                {
+                    ExtractionOpportunities = new[]
+                    {
+                        new EconomyExtractionOpportunity
+                        {
+                            Hex = Site, ResourceType = ResourceType.Materials, BuilderRoutes = routes,
+                        },
+                    },
+                },
+            };
+
+            MissionProposal proposed = EconomyMissionPlanner.Propose(snap, null, new[] { intent }, null)
+                .Single();
+
+            Assert.That(((EconomyMissionTarget)proposed.Target).BuilderRoutes, Is.SameAs(routes));
+        }
+
         // --- B12: collector usefulness is judged without its own contribution ---------------
 
         [Test]

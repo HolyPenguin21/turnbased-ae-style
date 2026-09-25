@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Combat;
@@ -77,10 +77,9 @@ namespace Game.Ai.V2
 
                 // Continuity owns the actor for an existing objective. A later, cheaper builder
                 // must not supply a different delivery cost for that same durable operation.
-                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
-                    && i.Economy?.Kind == EconomyTaskKind.BuildExtraction
-                    && i.Economy.TargetHex.Equals(site.Hex)
+                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
+                    MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                    && i.Economy.Kind == EconomyTaskKind.BuildExtraction
                     && i.Economy.ResourceType == site.ResourceType
                     && i.PreferredMoverArmyId.HasValue);
                 EconomyBuilderChoice builder = SelectEconomyBuilder(
@@ -1121,10 +1120,8 @@ namespace Game.Ai.V2
                     }
 
                     MissionIntent pinnedBase = committed ? activeIntents?.FirstOrDefault(i =>
-                        i != null && i.Status == IntentStatus.Active
-                        && i.Kind == MissionKind.Economy
-                        && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                        && i.Economy.TargetHex.Equals(site.Hex)
+                        MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                        && i.Economy.Kind == EconomyTaskKind.FoundBase
                         && (i.Economy.BuildCard == null || i.Economy.BuildCard == card)
                         && i.PreferredMoverArmyId.HasValue) : null;
                     EconomyBuilderChoice builder = SelectEconomyBuilder(
@@ -1382,9 +1379,12 @@ namespace Game.Ai.V2
         {
             if (!target.HasValue || intents == null)
                 return false;
-            return intents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
-                && i.Economy.TargetHex.Equals(target.Value));
+            bool build = kind == EconomyTaskKind.BuildExtraction || kind == EconomyTaskKind.FoundBase;
+            return intents.Any(i => (build
+                    ? MissionContinuityLayer.HoldsEconomyBuildSite(i, target.Value)
+                    : i != null && i.Status == IntentStatus.Active && i.Kind == MissionKind.Economy
+                        && i.Economy?.TargetHex.Equals(target.Value) == true)
+                && i.Economy.Kind == kind);
         }
 
         private static bool IsActiveBaseCommitment(IReadOnlyList<MissionIntent> intents,
@@ -1392,9 +1392,8 @@ namespace Game.Ai.V2
         {
             if (!target.HasValue || intents == null)
                 return false;
-            return intents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.Economy?.Kind == EconomyTaskKind.FoundBase
-                && i.Economy.TargetHex.Equals(target.Value)
+            return intents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, target.Value)
+                && i.Economy.Kind == EconomyTaskKind.FoundBase
                 && (i.Economy.BuildCard == null || i.Economy.BuildCard == card));
         }
 
@@ -1405,10 +1404,8 @@ namespace Game.Ai.V2
                 return false;
             EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
                 ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
-            return intents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.PreferredMoverArmyId.HasValue
-                && i.Economy?.Kind == kind
-                && i.Economy.TargetHex.Equals(demand.TargetHex.Value)
+            return intents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, demand.TargetHex.Value)
+                && i.PreferredMoverArmyId.HasValue && i.Economy.Kind == kind
                 && (kind == EconomyTaskKind.FoundBase
                     || i.Economy.ResourceType == demand.EconomyResourceType));
         }

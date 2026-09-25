@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
@@ -297,10 +297,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, int turn, MissionIntent intent)
         {
             EconomyIntent economy = intent?.Economy;
-            if (player == null || intent == null || intent.Status != IntentStatus.Active
-                || intent.Kind != MissionKind.Economy || economy == null
-                || (economy.Kind != EconomyTaskKind.BuildExtraction
-                    && economy.Kind != EconomyTaskKind.FoundBase)
+            if (player == null || !MissionContinuityLayer.IsLiveEconomyBuild(intent)
                 || economy.BuildResourceCost == null)
                 return;
 

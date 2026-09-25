@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using Game.Cards;
@@ -121,10 +121,11 @@ namespace Game.Ai.V2
             // StrategicResourceReservationLedger is per-owner, so each keeps its own reserved
             // resources and idle clock.
             List<MissionIntent> ProtectedActiveBuilds(EconomyTaskKind kind) => (activeIntents?
-                .Where(i => i != null && i.Status == IntentStatus.Active
-                    && i.Kind == MissionKind.Economy && i.Economy != null
-                    && i.Economy.Kind == kind)
-                .OrderByDescending(i => i.Funding)
+                .Where(i => MissionContinuityLayer.IsLiveEconomyBuild(i) && i.Economy.Kind == kind)
+                // a transiently suspended build keeps its hold, but the retarget slot goes to an
+                // Active one (CanReplaceCommittedBase only switches an Active commitment)
+                .OrderByDescending(i => i.Status == IntentStatus.Active)
+                .ThenByDescending(i => i.Funding)
                 .ThenByDescending(i => i.Economy.BuildValue)
                 .ThenBy(i => i.CreatedTurn)
                 .ThenBy(i => i.IntentKey)
@@ -826,9 +827,8 @@ namespace Game.Ai.V2
             if (activeIntents == null || demand?.TargetHex == null)
                 return false;
             EconomyTaskKind kind = ResolveEconomyTaskKind(demand);
-            return activeIntents.Any(i => i != null && i.Status == IntentStatus.Active
-                && i.Kind == MissionKind.Economy && i.Economy?.Kind == kind
-                && i.Economy.TargetHex.Equals(demand.TargetHex.Value)
+            return activeIntents.Any(i => MissionContinuityLayer.HoldsEconomyBuildSite(i, demand.TargetHex.Value)
+                && i.Economy.Kind == kind
                 && (kind != EconomyTaskKind.FoundBase || i.Economy.BuildCard == null
                     || i.Economy.BuildCard == demand.EconomyBuildCard));
         }

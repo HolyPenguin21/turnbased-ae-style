@@ -76,7 +76,14 @@ namespace Game.Ai.V2
                     BuildApCost = refreshed?.EconomyBuildApCost ?? e.BuildApCost,
                     BuildValue = refreshed != null ? refreshed.EconomySiteValue : e.BuildValue,
                     MinimumFollowupAp = refreshed?.MinimumFollowupAp ?? e.MinimumFollowupAp,
-                    BuilderRoutes = refreshed?.EconomyBuilderRoutes,
+                    // Provisioning ranks builders over the SAME witnessed routes Requirements prices
+                    // below — never the raw-distance fallback a missing refreshed demand used to
+                    // leave it with (audit B13).
+                    BuilderRoutes = refreshed?.EconomyBuilderRoutes
+                        ?? CurrentBuilderRoutes(snapshot, new EconomyMissionTarget
+                        {
+                            Kind = e.Kind, TargetHex = e.TargetHex, ResourceType = e.ResourceType,
+                        }),
                     ProjectedActivationApCost = refreshed?.EconomyProjectedActivationApCost
                         ?? e.ProjectedActivationApCost,
                     ProjectedMaxMovement = refreshed?.EconomyProjectedMaxMovement
