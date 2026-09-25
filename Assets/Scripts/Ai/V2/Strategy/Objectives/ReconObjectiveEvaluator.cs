@@ -257,6 +257,26 @@ namespace Game.Ai.V2
             };
         }
 
+        // THE objective a durable Scout intent stands for right now, re-materialised from the
+        // snapshot (null when it no longer exists, or for an unknown kind). Mission planning prices
+        // it against the incumbent's own actor; ActorCommitments reads its stealth requirement.
+        public static ReconObjective ForIntent(WorldSnapshot snap, ScoutIntent si,
+            int? preferredMoverArmyId = null)
+        {
+            if (si == null)
+                return null;
+            switch (si.Kind)
+            {
+                case ScoutTargetKind.Explore: return ExploreAt(snap, si.FocusHex, preferredMoverArmyId);
+                case ScoutTargetKind.Refresh: return RefreshAt(snap, si.FocusHex, preferredMoverArmyId);
+                case ScoutTargetKind.Surveil:
+                    return SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
+                        preferredMoverArmyId);
+                case ScoutTargetKind.AirSweep: return AirSweepOf(snap);
+                default: return null;
+            }
+        }
+
         public static ReconObjective SurveilOf(WorldSnapshot snap, EnemyContactSnapshot c,
             int? preferredMoverArmyId = null) =>
             c == null ? null : BuildSurveil(snap, c, preferredMoverArmyId);

@@ -190,26 +190,7 @@ namespace Game.Ai.V2
                     // exposure and can return Stealth.Required. Mirror that per-kind (a re-focused
                     // Refresh must NOT fall through to SurveilOf — it has no TrackedArmyId, so that
                     // path returns null and silently drops a real stealth requirement).
-                    ReconObjective o = null;
-                    if (i.Scout != null)
-                    {
-                        switch (i.Scout.Kind)
-                        {
-                            case ScoutTargetKind.Explore:
-                                o = ReconObjectiveEvaluator.ExploreAt(snap, i.Scout.FocusHex);
-                                break;
-                            case ScoutTargetKind.Refresh:
-                                o = ReconObjectiveEvaluator.RefreshAt(snap, i.Scout.FocusHex);
-                                break;
-                            case ScoutTargetKind.AirSweep:
-                                o = ReconObjectiveEvaluator.AirSweepOf(snap);
-                                break;
-                            default:
-                                o = ReconObjectiveEvaluator.SurveilOf(snap,
-                                    ScoutObjectiveEvaluator.SurveilContact(snap, i.Scout.TrackedArmyId));
-                                break;
-                        }
-                    }
+                    ReconObjective o = ReconObjectiveEvaluator.ForIntent(snap, i.Scout);
                     req = o?.Stealth ?? StealthRequirement.None;
                 }
 
