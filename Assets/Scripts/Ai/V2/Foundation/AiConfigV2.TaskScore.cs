@@ -31,10 +31,6 @@ namespace Game.Ai.V2
         // Base existing at all when direct income is not yet needed, it must not outrank a site
         // that is ALSO immediately income-positive.
         public const float taskScoreEconomicExpansionMax = 6f;
-        // Development-only: a CardUpgrade that improves the outcome against EVERY known threat
-        // (EquipmentMatchupFit = 1) reaches the shared taskScoreUrgencyRampLo..Hi band (5..12) by
-        // itself; one that turns no known fight carries no urgency, only its card score.
-        public const float taskScoreUpgradeMatchupMax = 10f;
         // The expected resource/card reward of completing a Raid. Constant per eligible Raid,
         // never derived from defender power and never applied to Recon/Economy or Raid return legs.
         public const float RaidReward = 8f;
@@ -53,8 +49,9 @@ namespace Game.Ai.V2
         public const float taskScoreDetectionRiskMax = 8f;
 
         // Phase-A/Phase-B Play-vs-Hold urgency is lifecycle policy, not an intrinsic TaskScore slot,
-        // but every migrated demand family (world-map AND Development, since its UpgradeMatchupValue
-        // migration) feeds it with TaskScore.Value. Keep one shared conversion band instead of
+        // but every migrated world-map demand family feeds it with TaskScore.Value (a Development
+        // CardUpgrade carries none: its whole value is StrategicCardEvaluator.EquipmentUpgradeValue
+        // inside the card score). Keep one shared conversion band instead of
         // resurrecting per-axis multipliers. The 5..12 band is a provisional policy calibration, NOT
         // a conversion from a retired Economy deficit weight. Revalidate against measured
         // Play-vs-Hold choices.

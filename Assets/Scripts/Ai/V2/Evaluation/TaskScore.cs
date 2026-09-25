@@ -31,12 +31,6 @@ namespace Game.Ai.V2
         // that cluster's income is currently useful (EconomicHexBenefit prices that separately).
         // Base-only slot; never populated by Extraction/Recon/Raid.
         public readonly float EconomicExpansionValue;
-        // How relevant a Development/Production CardUpgrade is to the known world: the share of
-        // known threats against which it improves the recipient's WorthIt outcome
-        // (DevelopmentOpportunityEvaluator.EquipmentMatchupFit), not the equipment's own raw stat
-        // gain (that stays priced separately by StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade).
-        // Development-only slot.
-        public readonly float UpgradeMatchupValue;
         // Legacy storage name retained for existing score transport and tests. Raid now fills this
         // ONE slot from the fixed reward, not from defender power. Never add both contributions.
         public readonly float MilitaryTargetRelevance;
@@ -69,8 +63,7 @@ namespace Game.Ai.V2
             float moverOpportunityCost = 0f,
             float hexThreatRisk = 0f,
             float detectionRisk = 0f,
-            float economicExpansionValue = 0f,
-            float upgradeMatchupValue = 0f)
+            float economicExpansionValue = 0f)
         {
             EconomicHexBenefit = economicHexBenefit;
             Payback = payback;
@@ -93,7 +86,6 @@ namespace Game.Ai.V2
             HexThreatRisk = hexThreatRisk;
             DetectionRisk = detectionRisk;
             EconomicExpansionValue = economicExpansionValue;
-            UpgradeMatchupValue = upgradeMatchupValue;
         }
 
         public float Value => TaskScoreEvaluator.Fold(this);
@@ -122,7 +114,6 @@ namespace Game.Ai.V2
             + score.MilitaryTargetRelevance
             + score.WinChance
             + score.EconomicExpansionValue
-            + score.UpgradeMatchupValue
             - score.CardPrice
             - score.Delivery
             - score.MoverOpportunityCost
@@ -157,8 +148,7 @@ namespace Game.Ai.V2
                 moverOpportunityCost: to.MoverOpportunityCost - from.MoverOpportunityCost,
                 hexThreatRisk: to.HexThreatRisk - from.HexThreatRisk,
                 detectionRisk: to.DetectionRisk - from.DetectionRisk,
-                economicExpansionValue: to.EconomicExpansionValue - from.EconomicExpansionValue,
-                upgradeMatchupValue: to.UpgradeMatchupValue - from.UpgradeMatchupValue);
+                economicExpansionValue: to.EconomicExpansionValue - from.EconomicExpansionValue);
 
         internal static float ResourcePriority(EconomyResourceStanding standing,
             float externalStarvationPressure = 0f)
@@ -309,9 +299,6 @@ namespace Game.Ai.V2
 
         internal static float EconomicExpansionValue(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreEconomicExpansionMax;
-
-        internal static float UpgradeMatchupValue(float matchupFit) =>
-            Mathf.Clamp01(matchupFit) * AiConfigV2.taskScoreUpgradeMatchupMax;
     }
 
 }

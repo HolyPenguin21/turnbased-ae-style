@@ -1,6 +1,8 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Economy;
+using Game.Map;
 using Game.Players;
 
 using Game.Cards;
@@ -16,6 +18,9 @@ namespace Game.Ai.V2
     //   * which resources are inside the investment window (DevelopmentInvestmentGate) —
     //     fixed for the turn once observed;
     //   * AP thresholds, resources and hand version;
+    //   * the resource facts the ONE card price reads (StrategicCardEvaluator.ResourceCost via
+    //     ScoreGeneratedEquipmentUpgrade / ScoreSurplus for PREPARE outputs): owner-aware
+    //     spendable amount, per-turn income and this turn's verified starvation block;
     //   * facilities, offerings and bases;
     //   * every own army's composition (any unit may be the best Equipment recipient) and, for
     //     Research/Production operator armies, their position (remote-hero delivery cost);
@@ -29,12 +34,38 @@ namespace Game.Ai.V2
         //   * per Unit card in hand: CardData.EffectivePlayApCost.
         internal static string DevelopmentAdmissionFingerprint(WorldSnapshot snapshot,
             IReadOnlyList<MissionIntent> activeIntents, int actionPoints,
-            string resources, int handVersion, AiHandData hand = null, PlayerSetupData player = null) =>
+            string resources, int handVersion, AiHandData hand = null, PlayerSetupData player = null,
+            PlayerRoot root = null, AiTurnContext ctx = null) =>
             $"axis={DesireAxis.Development}"
             + $"|window={(snapshot != null ? DevelopmentInvestmentGate.OpenMask(player, snapshot.TurnNumber) : "----")}"
             + $"|apfit={DevelopmentApAffordability(snapshot, hand, actionPoints)}"
             + $"|res={resources}"
+            + $"|price={DevelopmentPriceInputs(snapshot, player, root, ctx)}"
             + $"|hand={handVersion}|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
+
+        // Per resource: spendable (stock net of other owners' holds), income, and the current
+        // verified starvation block — every resource fact the canonical card price reads.
+        internal static string DevelopmentPriceInputs(WorldSnapshot snapshot, PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx)
+        {
+            int turn = snapshot?.TurnNumber ?? ctx?.TurnNumber ?? 0;
+            return string.Join(";", ResourceBundle.All.Select(t =>
+            {
+                string spend = root != null && ctx != null
+                    ? StrategicSpendability.SpendableAmount(player, root, ctx, t)
+                        .ToString("0.###", CultureInfo.InvariantCulture)
+                    : "-";
+                string income = snapshot?.Self != null
+                    ? snapshot.Self.PerTurnIncome.Get(t).ToString("0.###", CultureInfo.InvariantCulture)
+                    : "-";
+                string block = ResourceStarvationRegistry.TryGetCurrentBlock(
+                        player, t, turn, out ResourceBlockEvidence b)
+                    ? string.Format(CultureInfo.InvariantCulture, "{0:0.###}/{1:0.###}/{2:0.###}",
+                        b.Required, b.IncomePerTurn, b.DemandValue)
+                    : "0";
+                return $"{spend}:{income}:{block}";
+            }));
+        }
 
         // The complete, ordered set of AP thresholds Development can cross (see above).
         internal static string DevelopmentApAffordability(WorldSnapshot snapshot, AiHandData hand,

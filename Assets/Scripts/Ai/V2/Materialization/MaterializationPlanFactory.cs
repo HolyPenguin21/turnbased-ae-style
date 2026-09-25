@@ -60,13 +60,19 @@ namespace Game.Ai.V2
             return p;
         }
 
-        internal static MaterializationPlan MakeDevelopmentUpgradePlan(AxisDemand demand)
+        internal static MaterializationPlan MakeDevelopmentUpgradePlan(AxisDemand demand) =>
+            demand == null ? null
+                : MakeDevelopmentUpgradePlan(demand.DevOpportunity, demand.DevOpportunity?.Generation,
+                    demand.RequestingAxis);
+
+        // `g` is the READY opportunity's real source, or Development PREPARE's projected preview
+        // source (never executed) so the future output is priced by the SAME plan + scorer.
+        internal static MaterializationPlan MakeDevelopmentUpgradePlan(DevelopmentOpportunity op,
+            GenerationStep g, DesireAxis ownerAxis)
         {
-            DevelopmentOpportunity op = demand?.DevOpportunity;
-            GenerationStep g = op?.Generation;
             // Only a generated Equipment card can upgrade an existing recipient.
             // Unit/Hero generation is a different materialization outcome, never an upgrade.
-            if (g?.CardDef == null || g.CardDef.cardType != CardType.Equipment
+            if (op == null || g?.CardDef == null || g.CardDef.cardType != CardType.Equipment
                 || !g.ProducesEquipment || !object.ReferenceEquals(g.CardDef, op.Card)
                 || (op.RecipientCard == null && op.RecipientUnit == null))
                 return null;
@@ -75,7 +81,7 @@ namespace Game.Ai.V2
             var p = new MaterializationPlan
             {
                 Kind = MaterializationChainKind.GenerateAttachUpgrade,
-                OwnerAxis = demand.RequestingAxis,
+                OwnerAxis = ownerAxis,
                 FinalCapability = CapabilityKind.CardUpgrade,
                 ExpectedTraits = TraitPreference.None,
                 Generation = g,

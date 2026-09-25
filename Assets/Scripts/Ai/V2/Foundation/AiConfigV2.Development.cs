@@ -34,10 +34,8 @@ namespace Game.Ai.V2
         // opportunity: expected output value minus Challenge and prerequisite costs.
         public const float devEvToBaseValue = 2.5f;    // EV (AiPower units) -> 0..100 BaseValue
         public const float devEvMargin = 0.05f;        // keep an opportunity only if EV exceeds this
-        public const float devApValue = 1f;            // value of 1 AP, for the EV apCost term
-        // Equipment persists across turns/battles, while Challenge + attach costs are paid once.
-        // Applied only to the equipment power delta at Development's EV boundary; AiPower remains
-        // a canonical current-force scalar and is not inflated globally.
-        public const float devEquipmentPersistenceMultiplier = 3f;
+        // Prerequisite AP (facility / operator / hero travel) is priced with the card scorer's ONE
+        // AP weight (stratCardApCostWeight); equipment output value is
+        // StrategicCardEvaluator.EquipmentUpgradeValue's (equipmentUpgradePersistence).
     }
 }

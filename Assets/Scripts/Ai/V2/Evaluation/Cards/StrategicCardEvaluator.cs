@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.Combat;
 using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
@@ -283,9 +284,10 @@ namespace Game.Ai.V2
 
     internal static class StrategicCardEvaluator
     {
-        // Generated Equipment strengthens an EXISTING host: price its marginal signed gain,
-        // never the host's total combat power. DevelopmentOpportunity.Ev remains the separate
-        // owner of prerequisite investment ranking. WHEN Research/Production may spend at all is
+        // Generated Equipment strengthens an EXISTING host: price its marginal value through the
+        // ONE EquipmentUpgradeValue, never the host's total combat power. Development PREPARE
+        // prices its projected output through this same method; its Ev only adds the
+        // prerequisite investment. WHEN Research/Production may spend at all is
         // DevelopmentInvestmentGate's decision (resources the main deck does not absorb), so no
         // displaced-alternative or economy multiplier is priced here a second time. Phase A and
         // other card chains share this evaluator's ONE AP/resource/chain cost function.
@@ -300,8 +302,7 @@ namespace Game.Ai.V2
                 || !object.ReferenceEquals(plan.Generation?.CardDef, op.Card))
                 return float.NegativeInfinity;
 
-            float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
-            float marginalBenefit = op.SuccessChance * op.ExpectedGain / powerUnit;
+            float marginalBenefit = op.SuccessChance * EquipmentUpgradeValue(op);
             System.Func<ResourceType, float> spendable = root == null ? null
                 : (System.Func<ResourceType, float>)(type =>
                     StrategicSpendability.SpendableAmount(player, root, ctx, type));
@@ -344,7 +345,7 @@ namespace Game.Ai.V2
             bool heroCard = pdef != null && pdef.cardType == CardType.Hero;
             IReadOnlyList<string> pabil = plan.ProjectedAbilities ?? pdef?.grantedAbilities;
             bool recceCard = AbilityParams.AbilitiesHaveAnyRecce(pabil);
-            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan, snap, inv) : 0f;
+            float equipUpgrade = plan.UsesEquipment ? EquipmentUpgradeValue(plan, snap, inv) : 0f;
 
             // Built before RoleFitCore so HeroLeadershipFit can read the destination army's capacity
             // off the SAME EffectEvaluationContext.ResolveDestination walk the ability registry uses
@@ -459,7 +460,7 @@ namespace Game.Ai.V2
             // here. It is a second explicit descriptor contribution (EffectField.ImmediateTempo on
             // the ApBonus row) and arrives below via ec.ImmediateTempo, counted exactly once and
             // identically in Phase A. The evaluator no longer knows RecurringResource is special.
-            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeUtility(plan, snap, inv) : 0f;
+            float equipmentUpgrade = plan.UsesEquipment ? EquipmentUpgradeValue(plan, snap, inv) : 0f;
 
             // Built before RoleFitCore — see ScoreForDemand's comment on the same ordering.
             var ectx = new EffectEvaluationContext(snap, plan, witnessedUsefulApDemand);
@@ -681,21 +682,11 @@ namespace Game.Ai.V2
                                  + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
                     break;
                 default:
-                    // Equipment's stat-delta value only shows through when the Development pipeline
-                    // that produces/sustains equipment (Assembler facility MANNED by an operator
-                    // hero, the same HasDevFacility/HasDevOperator pair Support and the Development
-                    // axis gate on) is live; without it, a found/one-off item is capped at the
-                    // floor regardless of how strong its stat delta looks.
                     role = IntendedRole.EquipmentUpgrade;
-                    bool devPipelineLive = snap?.Self != null
-                        && snap.Self.HasDevFacility && snap.Self.HasDevOperator;
-                    bd.RoleFit = devPipelineLive
-                        ? Mathf.Max(AiConfigV2.nonCombatEquipmentValueFloor, bestEquipmentUpgrade)
-                        : AiConfigV2.nonCombatEquipmentValueFloor;
-                    calibrationDetail = $"equip devPipeline={devPipelineLive} "
-                        + $"(facility={snap?.Self?.HasDevFacility == true} operator={snap?.Self?.HasDevOperator == true}) "
-                        + $"rawDelta={bestEquipmentUpgrade.ToString("0.00", CultureInfo.InvariantCulture)} "
-                        + $"roleFit={bd.RoleFit.ToString("0.00", CultureInfo.InvariantCulture)}";
+                    // bestEquipmentUpgrade is EquipmentUpgradeValue for the chosen host — the ONE
+                    // equipment value every other equipment path also prices.
+                    bd.RoleFit = bestEquipmentUpgrade;
+                    calibrationDetail = $"equip value={bestEquipmentUpgrade.ToString("0.00", CultureInfo.InvariantCulture)}";
                     break;
             }
 
@@ -926,7 +917,7 @@ namespace Game.Ai.V2
                 return 0f;
             float v = 0f;
             if (plan.UsesEquipment)
-                v += EquipmentUpgradeUtility(plan, snap, inv);
+                v += EquipmentUpgradeValue(plan, snap, inv);
             if ((plan.ExpectedTraits & TraitPreference.Stealth) != 0)
                 v += AiConfigV2.stratTraitMatchBonus * 0.5f;
             return v;
@@ -1083,26 +1074,261 @@ namespace Game.Ai.V2
             return Mathf.Clamp(marginal / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate), 0f, 2f);
         }
 
-        internal static float EquipmentUpgradeUtility(MaterializationPlan p, WorldSnapshot snap = null,
+        // =======================================================================================
+        //  EQUIPMENT UPGRADE VALUE — the ONE value of attaching equipment E to recipient R
+        // =======================================================================================
+        //  Every consumer reads this and nothing else: hand Equipment onto a deployed unit
+        //  (NonCombatCardPlayer / ScoreNonCombat), equipment riding a deploy (AttachDeploy /
+        //  GenerateAttachDeploy Synergy + EquipmentUpgrade RoleFit), a READY generated upgrade
+        //  (ScoreGeneratedEquipmentUpgrade) and Development PREPARE (which prices its output through
+        //  ScoreGeneratedEquipmentUpgrade). Costs stay with ResourceCost; this is value only.
+        //    statDelta  — EquipmentUpgradeUtilityFor: signed predicted stat/ability delta, body units.
+        //    matchupFit — EquipmentMatchupFit: share of known threats the upgrade turns.
+        //  A ground-combat recipient is the one whose need the WorthIt matchup can witness:
+        //  Production amplifies a justified need, so an upgrade that turns no known fight is worth
+        //  nothing there. Heroes / non-ground bodies have no WorthIt witness (fit is 0 by design);
+        //  their Fate / Command / tactical delta keeps its value without the matchup amplifier.
+        //  Only the COMBAT part (what WorthIt witnesses) is matchup-amplified and matchup-gated;
+        //  the TACTICAL part (Move/Range/AP/Command/roles) has no WorthIt witness and keeps its
+        //  value. A loss (negative combat part) is never amplified or erased.
+        internal static float EquipmentUpgradeValue(EquipmentDelta delta, float matchupFit, bool combatRecipient)
+        {
+            float fit = Mathf.Clamp01(matchupFit);
+            float combat = delta.Combat <= 0f || !combatRecipient ? delta.Combat
+                : fit > 0f ? delta.Combat * (1f + fit) : 0f;
+            return (combat + delta.Tactical) * AiConfigV2.equipmentUpgradePersistence;
+        }
+
+        // Development's bound opportunity: ExpectedGain is the recipient's whole delta and
+        // TacticalGain its tactical share, both in AiPower units.
+        internal static float EquipmentUpgradeValue(DevelopmentOpportunity op)
+        {
+            if (op == null)
+                return 0f;
+            float powerUnit = Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
+            float tactical = op.TacticalGain / powerUnit;
+            var delta = new EquipmentDelta(op.ExpectedGain / powerUnit - tactical, tactical);
+            return EquipmentUpgradeValue(delta, op.MatchupFit, IsCombatRecipient(op.RecipientCard, op.RecipientUnit));
+        }
+
+        // A materialization chain carrying equipment onto the body it deploys.
+        internal static float EquipmentUpgradeValue(MaterializationPlan p, WorldSnapshot snap = null,
             CapabilityInventory inv = null)
         {
             CardDefinition host = p?.BaseCardInHand?.Definition ?? p?.GeneratedBaseDef;
             CardDefinition eq = p?.GeneratedEquipmentDef ?? p?.EquipmentInHand?.Definition;
             if (host == null || eq?.equipment == null)
                 return 0f;
-            return EquipmentUpgradeUtilityFor(eq, p?.BaseCardInHand, host, snap, inv);
+            EquipmentDelta delta = EquipmentDeltaParts(eq, p?.BaseCardInHand, host, snap, inv);
+            float fit = HandCardMatchupFit(eq.equipment, host, p?.BaseCardInHand?.Equipment?.equipment, snap);
+            return EquipmentUpgradeValue(delta, fit, host.cardType == CardType.Unit);
+        }
+
+        // A deployed unit inside `army` (hand Equipment played onto the map).
+        internal static float EquipmentUpgradeValue(CardDefinition equipDef, UnitData host, ArmyData army,
+            WorldSnapshot snap = null, CapabilityInventory inv = null)
+        {
+            if (equipDef?.equipment == null || host == null)
+                return 0f;
+            EquipmentDelta delta = EquipmentDeltaParts(equipDef, host, snap, inv);
+            float fit = army?.Members != null
+                ? UnitMatchupFit(equipDef.equipment, host, army.Members, snap) : 0f;
+            return EquipmentUpgradeValue(delta, fit, IsCombatRecipient(null, host));
+        }
+
+        private static bool IsCombatRecipient(CardData card, UnitData unit) =>
+            unit != null ? !unit.IsHero && unit.IsGroundCombatant
+                : card?.Definition != null && card.Definition.cardType == CardType.Unit;
+
+        // [0..1] share of known threats against which the upgrade improves the recipient's outcome.
+        internal static float EquipmentMatchupFit(DevelopmentOpportunity cand, ArmyData army,
+            WorldSnapshot snap)
+        {
+            EquipmentGrant grant = cand?.Card?.equipment;
+            if (grant == null)
+                return 0f;
+            if (cand.RecipientUnit != null && army?.Members != null)
+                return UnitMatchupFit(grant, cand.RecipientUnit, army.Members, snap);
+            if (cand.RecipientKind == DevRecipientKind.HandCard)
+                return HandCardMatchupFit(grant, cand.RecipientCard?.Definition,
+                    cand.RecipientCard?.Equipment?.equipment, snap);
+            return 0f;
+        }
+
+        private static float UnitMatchupFit(EquipmentGrant grant, UnitData recipient,
+            IReadOnlyCollection<UnitData> members, WorldSnapshot snap)
+        {
+            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            int comparable = 0;
+            int improved = 0;
+            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            {
+                if (defenders == null || defenders.Count == 0)
+                    continue;
+                comparable++;
+                if (ImprovesGroundCombatOutcome(recipient, members, grant, defenders))
+                    improved++;
+            }
+            return comparable > 0 ? (float)improved / comparable : 0f;
+        }
+
+        // Only a Unit card is a new WorthIt combat body; a hand Hero is not (fit 0 by design).
+        private static float HandCardMatchupFit(EquipmentGrant grant, CardDefinition host,
+            EquipmentGrant existing, WorldSnapshot snap)
+        {
+            if (grant == null || host == null || host.cardType != CardType.Unit)
+                return 0f;
+            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            if (threats.Count == 0)
+                return 0f;
+            AiPower.ProjectedStrategicLine before = AiPower.EffectiveLine(host, existing);
+            AiPower.ProjectedStrategicLine after = AiPower.EffectiveLine(host, existing, grant);
+            WorthIt.DefenderProfile Profile(AiPower.ProjectedStrategicLine line) =>
+                new WorthIt.DefenderProfile(line.Defense,
+                    line.EffectiveAbilities.Contains(UnitAbilities.CeramicArmor),
+                    host.unitTypeTags, line.Attack, line.HitPoints, line.Initiative,
+                    line.EffectiveAbilities);
+            var beforeRoster = new[] { Profile(before) };
+            var afterRoster = new[] { Profile(after) };
+
+            int comparable = 0;
+            int improved = 0;
+            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            {
+                if (defenders == null || defenders.Count == 0)
+                    continue;
+                comparable++;
+                bool coversBefore = WorthIt.CanDamageAll(beforeRoster, defenders);
+                bool coversAfter = WorthIt.CanDamageAll(afterRoster, defenders);
+                if (!coversAfter)
+                    continue;
+                if (!coversBefore)
+                {
+                    improved++;
+                    continue;
+                }
+
+                // If this card already has enough penetration, defensive HP/Defense/Initiative
+                // changes can still be the real reason the attachment matters. Reuse the SAME
+                // full-roster WorthIt read as deployed recipients; never fall back to a private
+                // Attack+Defense heuristic.
+                WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f);
+                WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f);
+                if (next.WinChance > previous.WinChance
+                    || (next.WinChance == previous.WinChance
+                        && (next.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
+                            || next.CriticalAfterBattleChance < previous.CriticalAfterBattleChance)))
+                    improved++;
+            }
+            return comparable > 0 ? (float)improved / comparable : 0f;
+        }
+
+        // WorthIt owns combat rules and simulation. EquipmentSystem owns the exact stat/ability
+        // projection. Compare the SAME army's roster before/after replacing only its recipient,
+        // without mutating gameplay UnitData or pretending the grant created a new combat body.
+        internal static bool ImprovesGroundCombatOutcome(UnitData recipient,
+            IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
+        {
+            if (recipient == null || recipient.IsHero || grant == null || members == null
+                || defenders == null || defenders.Count == 0 || !members.Contains(recipient))
+                return false;
+
+            var before = new List<WorthIt.DefenderProfile>();
+            var after = new List<WorthIt.DefenderProfile>();
+            var stats = new Dictionary<EquipmentStat, int>
+            {
+                [EquipmentStat.Attack] = recipient.Attack,
+                [EquipmentStat.Defense] = recipient.Defense,
+                [EquipmentStat.HitPoints] = recipient.HitPointsMax,
+                [EquipmentStat.Initiative] = recipient.Initiative,
+            };
+            PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, stats, recipient.Abilities);
+            int attack = predicted.Stats.TryGetValue(EquipmentStat.Attack, out int atk)
+                ? atk : recipient.Attack;
+            int defense = predicted.Stats.TryGetValue(EquipmentStat.Defense, out int def)
+                ? def : recipient.Defense;
+            int maxHp = predicted.Stats.TryGetValue(EquipmentStat.HitPoints, out int hp)
+                ? hp : recipient.HitPointsMax;
+            int currentHp = Mathf.Clamp(recipient.HitPointsCurrent
+                + Mathf.Max(0, maxHp - recipient.HitPointsMax), 1, maxHp);
+            int initiative = predicted.Stats.TryGetValue(EquipmentStat.Initiative, out int init)
+                ? init : recipient.Initiative;
+            var projected = new WorthIt.DefenderProfile(defense,
+                predicted.Abilities.Contains(UnitAbilities.CeramicArmor), recipient.TypeTags.ToList(),
+                attack, currentHp, initiative, predicted.Abilities, maxHp);
+
+            foreach (UnitData unit in members)
+            {
+                // A non-combatant recipient's projected profile is built by hand above and would
+                // otherwise default to a combatant — skip it on the domain rule, not a hero check.
+                if (unit == null || !unit.IsGroundCombatant)
+                    continue;
+                before.Add(WorthIt.FromLiveUnit(unit));
+                after.Add(object.ReferenceEquals(unit, recipient) ? projected : WorthIt.FromLiveUnit(unit));
+            }
+            bool coversBefore = WorthIt.CanDamageAll(before, defenders, hexBonus);
+            bool coversAfter = WorthIt.CanDamageAll(after, defenders, hexBonus);
+            if (!coversAfter)
+                return false;
+            if (!coversBefore)
+                return true;
+
+            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus);
+            WorthIt.BattleEstimate improvedEstimate = WorthIt.Estimate(after, defenders, hexBonus);
+            return improvedEstimate.WinChance > previous.WinChance
+                || (improvedEstimate.WinChance == previous.WinChance
+                    && (improvedEstimate.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
+                        || improvedEstimate.CriticalAfterBattleChance < previous.CriticalAfterBattleChance));
+        }
+
+        private static List<IReadOnlyList<WorthIt.DefenderProfile>> EquipmentValuationThreats(WorldSnapshot snap)
+        {
+            var result = new List<IReadOnlyList<WorthIt.DefenderProfile>>();
+            // Only composition crosses the TrueWorld boundary. Ground and aviation rosters are
+            // both legitimate Production valuation inputs; neither hidden coordinates nor army
+            // identity is passed to recipient selection or Mission planning.
+            if (snap?.TrueWorld?.EnemyArmies != null)
+                result.AddRange(snap.TrueWorld.EnemyArmies
+                    .Where(a => a != null && a.Members != null && a.Members.Count > 0)
+                    .Select(a => a.Members));
+
+            // A neutral's last honestly observed defender profiles are the only permitted
+            // composition witness. After it disappears into fog, its hidden live roster may
+            // change; matching a known ArmyId back into TrueWorld would silently cheat.
+            if (snap?.Known?.NeutralSightings != null)
+                result.AddRange(snap.Known.NeutralSightings
+                    .Where(s => s.Defenders != null && s.Defenders.Count > 0)
+                    .Select(s => s.Defenders));
+
+            // An event guard is not a live ArmyData until triggered. Its legitimately observed
+            // defender profiles already belong to Known, so use those directly for WorthIt;
+            // never invent a synthetic army or read hidden live event state/positions.
+            if (snap?.Known?.EventGuards != null)
+                result.AddRange(snap.Known.EventGuards
+                    .Where(g => g.Defenders != null && g.Defenders.Count > 0)
+                    .Select(g => g.Defenders));
+            return result;
         }
 
         internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData host,
             WorldSnapshot snap = null, CapabilityInventory inv = null)
             => EquipmentUpgradeUtilityFor(equipDef, host, host?.Definition, snap, inv);
 
+        internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData host,
+            WorldSnapshot snap = null, CapabilityInventory inv = null)
+            => EquipmentDeltaParts(equipDef, host, host?.Definition, snap, inv);
+
         private static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData hostCard,
+            CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)
+            => EquipmentDeltaParts(equipDef, hostCard, host, snap, inv).Total;
+
+        private static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardData hostCard,
             CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)
         {
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
-                return 0f;
+                return default;
             var before = DefinitionStats(host);
             IReadOnlyList<string> abilities = host.grantedAbilities != null
                 ? new List<string>(host.grantedAbilities)
@@ -1139,10 +1365,14 @@ namespace Game.Ai.V2
         // host) pair that maximises this.
         internal static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, UnitData host,
             WorldSnapshot snap = null, CapabilityInventory inv = null)
+            => EquipmentDeltaParts(equipDef, host, snap, inv).Total;
+
+        internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, UnitData host,
+            WorldSnapshot snap = null, CapabilityInventory inv = null)
         {
             EquipmentGrant grant = equipDef?.equipment;
             if (grant == null || host == null)
-                return 0f;
+                return default;
             var before = new Dictionary<EquipmentStat, int>
             {
                 [EquipmentStat.Attack] = host.Attack,
@@ -1161,7 +1391,10 @@ namespace Game.Ai.V2
             return ScoreEquipmentDelta(grant, before, ab, host.IsHero, snap, inv);
         }
 
-        private static float ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
+        // Combat = what WorthIt can witness (Attack/Defense/HP/Initiative/Resistance, hero Fate,
+        // added/lost damage abilities); Tactical = what it cannot (Move, Range, activation AP,
+        // Command, strategic roles - roles already gate themselves on a present threat).
+        private static EquipmentDelta ScoreEquipmentDelta(EquipmentGrant grant, Dictionary<EquipmentStat, int> before,
             IReadOnlyList<string> hostAbilities, bool isHero, WorldSnapshot snap, CapabilityInventory inv)
         {
             PredictedEquipmentState predicted = EquipmentSystem.Predict(grant, before, hostAbilities);
@@ -1191,10 +1424,22 @@ namespace Game.Ai.V2
                 hostAbilities == null || !hostAbilities.Contains(a)) ?? 0;
             int lostAbilities = hostAbilities?.Count(a =>
                 predicted.Abilities == null || !predicted.Abilities.Contains(a)) ?? 0;
-            tactical += (addedAbilities - lostAbilities) * 0.15f;
+            float combat = combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate)
+                + (addedAbilities - lostAbilities) * 0.15f;
 
-            return Mathf.Clamp(combatDelta / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate) + tactical,
-                -1.5f, 1.5f);
+            // The whole delta keeps its [-1.5, 1.5] bound; both parts shrink proportionally.
+            float raw = combat + tactical;
+            float bounded = Mathf.Clamp(raw, -1.5f, 1.5f);
+            float scale = Mathf.Abs(raw) > 1e-6f ? bounded / raw : 1f;
+            return new EquipmentDelta(combat * scale, tactical * scale);
+        }
+
+        internal readonly struct EquipmentDelta
+        {
+            public readonly float Combat;
+            public readonly float Tactical;
+            public EquipmentDelta(float combat, float tactical) { Combat = combat; Tactical = tactical; }
+            public float Total => Combat + Tactical;
         }
 
         private static float EquipmentRoleDelta(IReadOnlyList<string> beforeAbilities,

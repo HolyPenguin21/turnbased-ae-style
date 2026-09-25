@@ -45,7 +45,7 @@ namespace Game.EditorTests
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } },
             };
 
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.EqualTo(1f),
                 "A weapon that makes an otherwise impenetrable enemy damageable must improve fit");
 
@@ -58,7 +58,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Equipment, equipment = mobility,
             };
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.Zero,
                 "Movement alone cannot masquerade as an improvement in the battle roster");
             Assert.That(host.Equipment, Is.Null,
@@ -106,7 +106,7 @@ namespace Game.EditorTests
                 new[] { new WorthIt.DefenderProfile(1, false, attack: 20, hitPoints: 8, initiative: 2) },
                 snap.TrueWorld.EnemyArmies[0].Members), Is.True,
                 "The host must already have penetration so this regression exercises defensive value");
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.EqualTo(1f),
                 "A large defensive improvement must be visible through canonical WorthIt outcomes");
             Assert.That(host.Equipment, Is.Null,
@@ -151,7 +151,7 @@ namespace Game.EditorTests
                     },
                 },
             };
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, army, snap), Is.EqualTo(1f),
                 "An existing field unit should benefit when its real army gains a new counter");
 
@@ -164,7 +164,7 @@ namespace Game.EditorTests
             {
                 cardType = CardType.Equipment, equipment = mobility,
             };
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, army, snap), Is.Zero,
                 "Movement must not be mistaken for a combat improvement in a deployed roster");
             Assert.That(unit.Attack, Is.EqualTo(1));
@@ -191,9 +191,9 @@ namespace Game.EditorTests
                 ExpectedGain = 10f,
             };
 
-            float handValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(hand);
-            float garrisonValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(garrison);
-            float fieldValue = DevelopmentOpportunityEvaluator.RecipientSelectionValue(field);
+            float handValue = StrategicCardEvaluator.EquipmentUpgradeValue(hand);
+            float garrisonValue = StrategicCardEvaluator.EquipmentUpgradeValue(garrison);
+            float fieldValue = StrategicCardEvaluator.EquipmentUpgradeValue(field);
 
             Assert.That(garrisonValue, Is.EqualTo(handValue).Within(0.0001f));
             Assert.That(fieldValue, Is.EqualTo(handValue).Within(0.0001f),
@@ -246,17 +246,17 @@ namespace Game.EditorTests
                 },
             };
 
-            float known = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float known = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
             Assert.That(known, Is.EqualTo(1f),
                 "A legitimately sighted neutral may contribute its current composition to Production valuation");
 
             neutral.Hex = new HexCoord(-20, 19);
-            float movedBehindFog = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float movedBehindFog = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
             Assert.That(movedBehindFog, Is.EqualTo(known).Within(0.0001f),
                 "The neutral's hidden live Hex must not enter Production valuation once identity is known");
 
             snap.Known.NeutralSightings = System.Array.Empty<AiMapMemory.KnownEnemySighting>();
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.Zero,
                 "An unknown neutral must not become a Production threat merely because TrueWorld can see it");
         }
@@ -295,19 +295,19 @@ namespace Game.EditorTests
                 },
             };
 
-            float visible = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float visible = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
             Assert.That(visible, Is.EqualTo(1f),
                 "An honestly observed event guard is a legitimate neutral composition witness");
             snap.Known.EventGuards = new[]
             {
                 new KnownEventGuardSnapshot(new HexCoord(-15, 12), guard, "event guard", 1),
             };
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.EqualTo(visible).Within(0.0001f),
                 "Location must not leak from an event witness into production valuation");
 
             snap.Known.EventGuards = System.Array.Empty<KnownEventGuardSnapshot>();
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.Zero,
                 "An undiscovered event must not be fabricated as a Production target");
         }
@@ -345,19 +345,19 @@ namespace Game.EditorTests
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { airArmy } },
             };
 
-            float withAir = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            float withAir = StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap);
             Assert.That(withAir, Is.EqualTo(1f),
                 "Enemy aviation composition must reach the same canonical WorthIt valuation as ground composition");
 
             airArmy.ArmyId = 999;
             airArmy.Hex = new HexCoord(-30, 22);
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.EqualTo(withAir).Within(0.0001f),
                 "Aviation composition may affect valuation, but its hidden identity/position must not");
 
             snap.TrueWorld.EnemyArmies = System.Array.Empty<ArmySnapshot>();
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.Zero,
                 "Without the aviation composition witness the matchup bonus must disappear");
         }
@@ -392,15 +392,15 @@ namespace Game.EditorTests
             {
                 TrueWorld = new TrueWorldSnapshot { EnemyArmies = new[] { enemy } },
             };
-            float before = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float before = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
             enemy.ArmyId = 900;
             enemy.Hex = new HexCoord(-10, 11);
-            float after = DevelopmentOpportunityEvaluator.EquipmentMatchupFit(opportunity, null, snap);
+            float after = StrategicCardEvaluator.EquipmentMatchupFit(opportunity, null, snap);
             Assert.That(after, Is.EqualTo(before).Within(0.0001f),
                 "Only composition is permitted to reach equipment valuation, not a hidden target");
 
             snap.TrueWorld = null;
-            Assert.That(DevelopmentOpportunityEvaluator.EquipmentMatchupFit(
+            Assert.That(StrategicCardEvaluator.EquipmentMatchupFit(
                 opportunity, null, snap), Is.Zero,
                 "With no composition available the original intrinsic equipment score must stand");
         }

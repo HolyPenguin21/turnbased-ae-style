@@ -361,6 +361,9 @@
         public const float nonCombatAviationNoAirGap = 0.6f;   // added when the AI has zero air observation capacity (no wing, no launchable storage)
         public const float nonCombatFacilityValue = 1.1f;
         public const float nonCombatEconomyRunwayBonus = 1.0f; // scales Facility RoleFit by (1 - EconomicSecurity)
-        public const float nonCombatEquipmentValueFloor = 0.15f;
+        // StrategicCardEvaluator.EquipmentUpgradeValue — the ONE value of attaching equipment to a
+        // recipient (hand Equipment, AttachDeploy, generated upgrade, Development preparation).
+        // Equipment persists across turns/battles while its Challenge/attach cost is paid once.
+        public const float equipmentUpgradePersistence = 3f;
     }
 }
