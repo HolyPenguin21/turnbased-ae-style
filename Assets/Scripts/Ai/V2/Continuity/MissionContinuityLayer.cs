@@ -564,6 +564,14 @@ namespace Game.Ai.V2
                                 + $"#{actor.ArmyId} -> ({home.Value.Q},{home.Value.R})");
                             continue;
                         }
+                        // Holding the site IS the collector's activity (the planner proposes no
+                        // step for it): record it as progress so it neither stalls nor ages out.
+                        if (arrived)
+                        {
+                            intent.LastProgressTurn = snap.TurnNumber;
+                            intent.LastProtectedTurn = snap.TurnNumber;
+                            intent.StallTurns = 0;
+                        }
                         if (intent.Status == IntentStatus.Suspended)
                         {
                             intent.Status = IntentStatus.Active;

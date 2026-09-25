@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
 using Game.Economy;
@@ -36,6 +36,13 @@ namespace Game.Ai.V2
                     && a.ArmyId == intent.PreferredMoverArmyId.Value);
                 if (pinnedBuilder != null && pinnedBuilder.CurrentMovement <= 0
                     && !pinnedBuilder.Hex.Equals(e.TargetHex))
+                    continue;
+                // A collector already on its site holds it for the income tick: there is no step
+                // to execute. Continuity records the hold (ResolveActive); proposing it would make
+                // a zero-AP commitment the first funded task of every typed admission, settle with
+                // no invalidation and stop the loop for everything else.
+                if (e.Kind == EconomyTaskKind.MobileCollection && pinnedBuilder != null
+                    && pinnedBuilder.Hex.Equals(e.TargetHex))
                     continue;
                 AxisDemand refreshed = mobile ? null : demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue

@@ -154,6 +154,31 @@ namespace Game.EditorTests
                 "a collector holding its site keeps its lifecycle (useful/safe -> ReturnCollector)");
         }
 
+        [Test]
+        public void B1_CollectorAlreadyOnItsSite_IsNotProposedAsAStep()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = Proposal(EconomyTaskKind.MobileCollection, Site);
+            MissionIntent intent = DurableIntent(player, m, 3);
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 4,
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot>
+                    {
+                        new ArmySnapshot { ArmyId = Actor, Hex = Site, MemberCount = 1, CurrentMovement = 2 },
+                    },
+                },
+            };
+
+            List<MissionProposal> proposals = EconomyMissionPlanner.Propose(snap, null,
+                new[] { intent }, null);
+
+            Assert.That(proposals, Is.Empty,
+                "a zero-AP hold would be the first funded task of every admission and stop the loop");
+        }
+
         // --- B2: transient no-progress outcomes age the intent, route failure retires it -----
 
         [Test]
