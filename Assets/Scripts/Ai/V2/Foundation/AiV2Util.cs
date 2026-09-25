@@ -56,18 +56,23 @@ namespace Game.Ai.V2
         // legitimate army id (see ArmyData identity sequencing), so absence is expressed only by
         // RaidTargetRef.HasValue == false or "not found in the sighting/guard list", never by a
         // numeric sentinel.
-        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target)
+        internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, RaidTargetRef target) =>
+            WorthIt.UnitsOf(KnownOpposition(snap, target));
+
+        // The same target as the fight it is: one defending army (or event guard) with its
+        // observed commander. Empty when nothing is known.
+        internal static IReadOnlyList<WorthIt.DefendingArmy> KnownOpposition(WorldSnapshot snap, RaidTargetRef target)
         {
             if (snap?.Known == null || !target.HasValue)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
+                return System.Array.Empty<WorthIt.DefendingArmy>();
 
             if (target.Kind == RaidTargetKind.EventGuard)
             {
                 if (snap.Known.EventGuards != null)
                     foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
                         if (g.Hex.Equals(target.Hex))
-                            return g.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-                return System.Array.Empty<WorthIt.DefenderProfile>();
+                            return new[] { new WorthIt.DefendingArmy(g.Defenders, g.Commander) };
+                return System.Array.Empty<WorthIt.DefendingArmy>();
             }
 
             IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
@@ -75,8 +80,8 @@ namespace Game.Ai.V2
                 .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
                 if (s.ArmyId == target.ArmyId)
-                    return s.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
-            return System.Array.Empty<WorthIt.DefenderProfile>();
+                    return new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander) };
+            return System.Array.Empty<WorthIt.DefendingArmy>();
         }
 
         // Legacy overload for non-Raid callers that only ever deal with a physical army. Raid

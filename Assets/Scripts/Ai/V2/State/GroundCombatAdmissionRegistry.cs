@@ -40,10 +40,10 @@ namespace Game.Ai.V2
             if (target.Phase != RaidMissionPhase.Assault)
                 return;
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, target.Target);
-            List<int> ids = EnumerateEligible(snap, defenders, unavailableArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, target.Target);
+            List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
                 GroundCombatAdmissionPolicy.FreshStartWinChanceGate, 0f);
-            ApplyDurableIncumbentPin(proposal, snap, defenders, 0f, ids,
+            ApplyDurableIncumbentPin(proposal, snap, opposition, 0f, ids,
                 "RaidAdmission", target.Target.DiagnosticLabel);
 
             ByProposal.Remove(proposal);
@@ -54,7 +54,7 @@ namespace Game.Ai.V2
         // durable-incumbent rule as Raid's. The only lane-specific inputs are which defenders are
         // being fought and what defence bonus the site gives them (§30).
         public static void RecordAttack(MissionProposal proposal, WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             ISet<int> unavailableArmyIds)
         {
             if (proposal == null || snap == null
@@ -62,10 +62,10 @@ namespace Game.Ai.V2
                 || target.Phase != AttackMissionPhase.Assault)
                 return;
 
-            defenders = defenders ?? Array.Empty<WorthIt.DefenderProfile>();
-            List<int> ids = EnumerateEligible(snap, defenders, unavailableArmyIds,
+            opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
+            List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
                 GroundCombatAdmissionPolicy.FreshStartWinChanceGate, defenderHexDefenseBonus);
-            ApplyDurableIncumbentPin(proposal, snap, defenders, defenderHexDefenseBonus, ids,
+            ApplyDurableIncumbentPin(proposal, snap, opposition, defenderHexDefenseBonus, ids,
                 "AttackAdmission", target.Target.DiagnosticLabel);
 
             ByProposal.Remove(proposal);
@@ -76,11 +76,11 @@ namespace Game.Ai.V2
         // is GroundCombatAssemblyPlanner.EligibleActorIds (single pass, same eligibility and
         // WorthIt rules as Plan). This wrapper only fixes the lane-agnostic request shape.
         private static List<int> EnumerateEligible(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds,
             float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
-                Defenders = defenders ?? Array.Empty<WorthIt.DefenderProfile>(),
+                Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
                 WinChanceGate = winChanceGate,
                 ExcludedArmyIds = unavailableArmyIds,
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
@@ -100,7 +100,7 @@ namespace Game.Ai.V2
         // another army and orphan the physical force continuity just protected. If the incumbent
         // fails the continuation gate, the strict fresh set remains a legitimate fallback.
         private static void ApplyDurableIncumbentPin(MissionProposal proposal, WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             List<int> ids, string logTag, string targetLabel)
         {
             if (!proposal.FromDurableIntent
@@ -109,7 +109,7 @@ namespace Game.Ai.V2
                 return;
             int incumbentId = proposal.PreferredMoverArmyId.Value;
             GroundCombatAssemblyPlan incumbent = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, defenders, incumbentId,
+                snap, opposition, incumbentId,
                 GroundCombatAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
             if (!incumbent.Feasible)
                 return;
@@ -136,7 +136,7 @@ namespace Game.Ai.V2
                 return;
 
             int primaryArmyId;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders;
+            IReadOnlyList<WorthIt.DefendingArmy> opposition;
             float hexBonus = 0f;
             if (proposal.Target is RaidMissionTarget raid)
             {
@@ -144,7 +144,7 @@ namespace Game.Ai.V2
                     || !raid.PrimaryArmyId.HasValue)
                     return;
                 primaryArmyId = raid.PrimaryArmyId.Value;
-                defenders = AiV2Util.KnownDefenders(snap, raid.Target);
+                opposition = AiV2Util.KnownOpposition(snap, raid.Target);
             }
             else if (proposal.Target is AttackMissionTarget attack)
             {
@@ -152,7 +152,7 @@ namespace Game.Ai.V2
                     || !attack.PrimaryArmyId.HasValue)
                     return;
                 primaryArmyId = attack.PrimaryArmyId.Value;
-                defenders = AttackObjectiveEvaluator.KnownSiteDefenders(snap, attack.Target.Hex);
+                opposition = AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex);
                 hexBonus = attack.DefenderHexDefenseBonus;
             }
             else
@@ -161,20 +161,20 @@ namespace Game.Ai.V2
             }
 
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primaryArmyId, defenders, null, hexBonus);
+                snap, primaryArmyId, opposition, null, hexBonus);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
         }
 
         public static void RecordActiveDefence(MissionProposal proposal, WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds)
         {
             if (proposal == null || snap == null
                 || !(proposal.Target is ActiveDefenceMissionTarget target)
                 || target.Phase != ActiveDefencePhase.Intercept)
                 return;
-            List<int> ids = EnumerateEligible(snap, defenders, unavailableArmyIds,
+            List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
                 proposal.FromDurableIntent
                     ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                     : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,

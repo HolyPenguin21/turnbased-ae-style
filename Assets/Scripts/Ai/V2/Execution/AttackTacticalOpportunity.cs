@@ -208,7 +208,8 @@ namespace Game.Ai.V2
             // new fight has to clear. The defender's own hex bonus is a real property of the fight
             // and comes from the one fog-honest owner.
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, map, s.Hex);
-            if (!GroundCombatFeasibility.Clears(attackers, s.Defenders,
+            if (!GroundCombatFeasibility.Clears(attackers, WorthIt.SideCommander.Of(army.Commander),
+                    new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander) },
                     GroundCombatAdmissionPolicy.FreshStartWinChanceGate, hexBonus,
                     out float win, out bool cover))
                 return Reject(s, target, cover ? "win_chance_too_low" : "cannot_cover_defenders",

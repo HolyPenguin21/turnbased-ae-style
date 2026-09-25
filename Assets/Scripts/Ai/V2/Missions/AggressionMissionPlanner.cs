@@ -302,13 +302,13 @@ namespace Game.Ai.V2
                     c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
                     && c.Source == ContactSource.Honest && c.Position.HasValue);
                 if (contact == null) continue;
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = contact.Army.Members
-                    ?? System.Array.Empty<WorthIt.DefenderProfile>();
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = new[]
+                    { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) };
 
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest
                     {
-                        Defenders = defenders,
+                        Opposition = opposition,
                         WinChanceGate = pinnedActor.HasValue
                             ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                             : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
@@ -352,7 +352,7 @@ namespace Game.Ai.V2
                         GroundCombatAssemblyPlan borrowed = GroundCombatAssemblyPlanner.Plan(snap,
                             new GroundCombatAssemblyRequest
                             {
-                                Defenders = defenders,
+                                Opposition = opposition,
                                 WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                                 PreferredPrimaryArmyId = candidate.ArmyId,
                                 PinToPreferred = true,
@@ -431,7 +431,7 @@ namespace Game.Ai.V2
                         + $"task {actorScore.Value:0.00} win {plan.ProjectedWinChance:0.00} eta {eta}",
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;
-                GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, defenders, excluded);
+                GroundCombatAdmissionRegistry.RecordActiveDefence(proposal, snap, opposition, excluded);
                 if (GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible)
                     && eligible.Count > 0)
                 {
@@ -495,9 +495,9 @@ namespace Game.Ai.V2
 
             if (!ri.SupportArmyId.HasValue)
             {
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, ri.Target);
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    snap, primaryId, defenders, null);
+                    snap, primaryId, opposition, null);
                 if (candidates.Count == 0)
                     return null;
 
@@ -632,12 +632,12 @@ namespace Game.Ai.V2
                 excluded = ownExcluded;
             }
             RaidMissionTarget target = o.ToTarget();
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = AiV2Util.KnownDefenders(snap, o.Target);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, o.Target);
 
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
                 ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = opposition,
                     PreferredPrimaryArmyId = pinnedPrimaryArmyId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
@@ -645,7 +645,7 @@ namespace Game.Ai.V2
                         ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                         : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 })
-                : GroundCombatAssemblyPlanner.Plan(snap, target, defenders, excluded);
+                : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;

@@ -31,8 +31,9 @@ namespace Game.Ai.V2
         public FundedEntry Funded;
         public StableMissionKey Key;
         public HexCoord TargetHex;
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
-            System.Array.Empty<WorthIt.DefenderProfile>();
+        // The opposition this fight is against (every defending army with its commander).
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition =
+            System.Array.Empty<WorthIt.DefendingArmy>();
         // §30 — the defence the DEFENDERS enjoy where this fight will happen. 0 for open ground;
         // an assault on a known Base/Citadel passes what honest memory observed.
         public float DefenderHexDefenseBonus;
@@ -146,7 +147,7 @@ namespace Game.Ai.V2
         internal static GroundCombatLegCheck ValidateReinforcement(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
             StableMissionKey key, float eps, ArmyData primary, int supportArmyId,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             string lane, out bool atRendezvous)
         {
             atRendezvous = false;
@@ -167,7 +168,7 @@ namespace Game.Ai.V2
 
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
-            if (!GroundCombatReinforcement.ImprovesOdds(primary, support, defenders,
+            if (!GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
                     defenderHexDefenseBonus, out string why))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
@@ -205,10 +206,10 @@ namespace Game.Ai.V2
     internal static class GroundCombatReinforcement
     {
         // Would merging the support's transferable bodies into the primary raise its WorthIt win
-        // chance against the current defenders, on the hex where the fight will happen? A convoy
+        // chance against the current opposition, on the hex where the fight will happen? A convoy
         // that cannot help is never provisioned.
         internal static bool ImprovesOdds(ArmyData primary, ArmyData support,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             out string why)
         {
             List<UnitData> sparable = SparableSupportBodies(support);
@@ -222,7 +223,8 @@ namespace Game.Ai.V2
             int capacity = ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison);
             return GroundCombatAssemblyPlanner.TryProjectReinforcement(
                 primaryBodies, supportBodies, capacity, primary.Members.Count,
-                defenders, out _, out why, defenderHexDefenseBonus);
+                WorthIt.SideCommander.Of(primary.Commander), opposition, out _, out why,
+                defenderHexDefenseBonus);
         }
 
         // A support container is never emptied and never gives up its own hero.
@@ -255,7 +257,7 @@ namespace Game.Ai.V2
         // regression tests. The batch solver owns actor identity; the combat assembly kernel
         // owns feasibility of THAT actor and donors, never a replacement actor search.
         internal static GroundCombatAssemblyPlan PlanAssignedAssault(ProvisioningSession session,
-            MissionProposal proposal, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            MissionProposal proposal, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             out ProvisionFailure failure, float defenderHexDefenseBonus = 0f, string lane = "raid")
         {
             failure = default;
@@ -281,7 +283,7 @@ namespace Game.Ai.V2
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(session.Snapshot,
                 new GroundCombatAssemblyRequest
                 {
-                    Defenders = defenders,
+                    Opposition = opposition,
                     PreferredPrimaryArmyId = actorId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
@@ -314,8 +316,8 @@ namespace Game.Ai.V2
             MissionProposal m = funded.Mission;
             StableMissionKey key = r.Key;
             HexCoord targetHex = r.TargetHex;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders = r.Defenders
-                ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = r.Opposition
+                ?? System.Array.Empty<WorthIt.DefendingArmy>();
             string lane = r.LaneLabel;
             float eps = r.Eps;
 
@@ -324,7 +326,7 @@ namespace Game.Ai.V2
             // ExcludedForGroundCombat ownership view the batch solver used, so a mission can never
             // steal a durable Economy/Recon/Raid actor after the batch solver correctly rejected it.
             GroundCombatAssemblyPlan plan = PlanAssignedAssault(session, m,
-                defenders, out ProvisionFailure assignmentFailure, r.DefenderHexDefenseBonus, lane);
+                opposition, out ProvisionFailure assignmentFailure, r.DefenderHexDefenseBonus, lane);
             if (plan == null)
                 return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(assignmentFailure));
 
@@ -406,7 +408,8 @@ namespace Game.Ai.V2
                 }
                 // §29 — the site's own defence is part of THIS fight, so the pre-mutation re-check
                 // must ask the estimator the same question the plan was admitted on.
-                if (!GroundCombatFeasibility.Clears(projectedProfiles, defenders,
+                if (!GroundCombatFeasibility.Clears(projectedProfiles,
+                        WorthIt.SideCommander.Of(projectedUnits), opposition,
                         AiConfigV2.raidMinViableWinChance, r.DefenderHexDefenseBonus,
                         out float projectedWin, out _))
                     return GroundCombatAssaultOutcome.Failed(ProvisioningResult.Fail(

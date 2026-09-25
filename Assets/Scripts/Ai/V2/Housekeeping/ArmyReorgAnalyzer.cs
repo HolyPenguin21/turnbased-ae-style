@@ -166,6 +166,7 @@ namespace Game.Ai.V2
                     IsAviation = u.IsAviation,
                     IsCommitted = false,
                     CombatProfile = WorthIt.FromLiveUnit(u),
+                    AsCommander = u.IsHero ? WorthIt.SideCommander.Of(u) : default,
                 });
             }
 
@@ -290,6 +291,7 @@ namespace Game.Ai.V2
                     EtaToGroup = groupEta,
                     EtaToNearestBase = baseEta,
                     Members = enemy.Members,
+                    Commander = enemy.Commander,
                     TargetableUnitKeys = targetable,
                 });
             }

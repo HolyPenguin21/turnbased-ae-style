@@ -105,6 +105,9 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             List<WorthIt.DefenderProfile> readyRoster = bestReadyArmy?.Members?.ToList()
                 ?? new List<WorthIt.DefenderProfile>();
+            // The ready army's own commander. The assemblable roster is led by the same one here —
+            // a best-hero potential belongs to ForcePotential (strike-force step 3).
+            WorthIt.SideCommander readyCommander = bestReadyArmy?.Commander ?? default;
 
             List<WorthIt.DefenderProfile> assemblableRoster = ownBodies.Concat(handBodies)
                 .OrderByDescending(ProfilePower)
@@ -130,8 +133,10 @@ namespace Game.Ai.V2
             {
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = t.Defenders
                     ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                    readyCommander, t.Commander);
+                float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                    readyCommander, t.Commander);
                 bool cover = WorthIt.CanDamageAll(assemblableRoster, defenders, 0f);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
                 int eta = CeilDiv(minDist, moverBudget);
@@ -174,8 +179,10 @@ namespace Game.Ai.V2
                 {
                     IReadOnlyList<WorthIt.DefenderProfile> defenders = g.Defenders
                         ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
-                    float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f);
+                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                        readyCommander, g.Commander);
+                    float asmWin = WorthIt.WinChance(assemblableRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                        readyCommander, g.Commander);
                     bool cover = WorthIt.CanDamageAll(assemblableRoster, defenders, 0f);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
                     int eta = CeilDiv(minDist, moverBudget);

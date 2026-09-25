@@ -258,17 +258,17 @@ namespace Game.Ai.V2
             RaidIntent ri = intent.Raid;
             AttackIntent ai = intent.Attack;
             int primaryId;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders;
+            IReadOnlyList<WorthIt.DefendingArmy> opposition;
             float hexBonus = 0f;
             if (ri != null && ri.PrimaryArmyId.HasValue)
             {
                 primaryId = ri.PrimaryArmyId.Value;
-                defenders = AiV2Util.KnownDefenders(afterSnap, ri.Target);
+                opposition = AiV2Util.KnownOpposition(afterSnap, ri.Target);
             }
             else if (ai != null && ai.PrimaryArmyId.HasValue && ai.Target.HasValue)
             {
                 primaryId = ai.PrimaryArmyId.Value;
-                defenders = AttackObjectiveEvaluator.KnownSiteDefenders(afterSnap, ai.Target.Hex);
+                opposition = AttackObjectiveEvaluator.KnownSiteOpposition(afterSnap, ai.Target.Hex);
                 hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
                     afterSnap, null, ai.Target.Hex);
             }
@@ -282,7 +282,7 @@ namespace Game.Ai.V2
             // never weaken that contract back to the generic IsStructuralRaidActor shape.
             var admissible = new HashSet<int>(
                 GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    afterSnap, primaryId, defenders, null, hexBonus));
+                    afterSnap, primaryId, opposition, null, hexBonus));
             int? support = leased
                 .Where(id => id != primaryId && admissible.Contains(id))
                 .OrderBy(id => id)

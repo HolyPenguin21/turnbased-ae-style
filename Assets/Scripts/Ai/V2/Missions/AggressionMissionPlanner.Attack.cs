@@ -59,7 +59,7 @@ namespace Game.Ai.V2
                 if (pinnedActor.HasValue)
                     excluded.Remove(pinnedActor.Value);
 
-                IReadOnlyList<WorthIt.DefenderProfile> defenders = objective.Defenders;
+                IReadOnlyList<WorthIt.DefendingArmy> opposition = objective.Opposition;
                 // §30 — the honest, knowledge-scoped answer to "what defence does a defender on
                 // that hex actually get". Never a live BuildingRegistry read.
                 float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
@@ -68,7 +68,7 @@ namespace Game.Ai.V2
                 GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                     new GroundCombatAssemblyRequest
                     {
-                        Defenders = defenders,
+                        Opposition = opposition,
                         WinChanceGate = pinnedActor.HasValue
                             ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                             : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
@@ -82,7 +82,7 @@ namespace Game.Ai.V2
                 {
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
                     // may still be taken by free armies spread over several hexes: gather them.
-                    if (incumbent == null && TryAppendFreshAttackGather(snap, objective, defenders,
+                    if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
                             hexBonus, excluded, proposals))
                         continue;
                     // §24 — a started operation whose primary can no longer clear the site is a
@@ -153,7 +153,7 @@ namespace Game.Ai.V2
                 };
                 proposal.Axes.Value[DesireAxis.Aggression] = 1f;
 
-                GroundCombatAdmissionRegistry.RecordAttack(proposal, snap, defenders, hexBonus, excluded);
+                GroundCombatAdmissionRegistry.RecordAttack(proposal, snap, opposition, hexBonus, excluded);
                 if (!GroundCombatAdmissionRegistry.TryGet(proposal, out HashSet<int> eligible)
                     || eligible.Count == 0)
                 {
@@ -177,10 +177,10 @@ namespace Game.Ai.V2
         // durable lifecycle work by AppendAttackGather. The lead leg is the critical path: the
         // support with the longest walk that can act this turn.
         private static bool TryAppendFreshAttackGather(WorldSnapshot snap, AttackObjective objective,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float hexBonus, ISet<int> excluded,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
             List<MissionProposal> proposals)
         {
-            GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, defenders,
+            GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
@@ -407,11 +407,11 @@ namespace Game.Ai.V2
             MissionIntent intent, AttackIntent a, ArmySnapshot primary, ISet<int> committed,
             List<MissionProposal> proposals, AiTurnContext ctx)
         {
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, a.PrimaryArmyId.Value, defenders, committed, hexBonus);
+                snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus);
             if (candidates.Count == 0)
             {
                 AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
@@ -440,7 +440,7 @@ namespace Game.Ai.V2
                 SupportArmyId = null,
                 DestinationHex = primary.Hex,
                 DefenderHexDefenseBonus = hexBonus,
-                DefenderCount = defenders.Count,
+                DefenderCount = WorthIt.UnitsOf(opposition).Count,
                 EstimatedEta = eta,
                 OpportunisticStrikeTurn = a.LastOpportunisticStrikeTurn,
             };

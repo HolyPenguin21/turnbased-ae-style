@@ -1103,11 +1103,10 @@ namespace Game.Ai.V2
 
             // §9/§10 — the roster is re-verified against the shared estimator, and ONLY a verified
             // roster returns the operation to Assault. Continuity owns that state transition.
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiMapMemoryDefenders(player, pm.RaidTarget);
             bool verified = GroundCombatFeasibility.Clears(
-                primary.Members.Select(WorthIt.FromLiveUnit).ToList(), defenders,
-                AiConfigV2.raidMinViableWinChance, out float win, out bool cover);
+                primary.Members.Select(WorthIt.FromLiveUnit).ToList(),
+                WorthIt.SideCommander.Of(primary.Commander), AiMapMemoryOpposition(player, pm.RaidTarget),
+                AiConfigV2.raidMinViableWinChance, 0f, out float win, out bool cover);
             MissionContinuityLayer.CompleteRaidReinforcement(player, primary.Id, verified,
                 $"win={win.ToString("0.00", CultureInfo.InvariantCulture)} cover={(cover ? 1 : 0)} "
                 + $"transferred={transferred}");
@@ -1197,20 +1196,24 @@ namespace Game.Ai.V2
             return false;
         }
 
-        private static IReadOnlyList<WorthIt.DefenderProfile> AiMapMemoryDefenders(
+        // The Raid target as the fight it is — one army or guard with its observed commander —
+        // read straight from memory (execution has no fresh snapshot to ask AiV2Util).
+        private static IReadOnlyList<WorthIt.DefendingArmy> AiMapMemoryOpposition(
             PlayerSetupData player, RaidTargetRef target)
         {
             if (!target.HasValue)
-                return System.Array.Empty<WorthIt.DefenderProfile>();
+                return System.Array.Empty<WorthIt.DefendingArmy>();
             if (target.Kind == RaidTargetKind.EventGuard)
             {
                 AiMapMemory.GuardStrength? g = AiMapMemory.KnownEventGuardStrengthAt(player, target.Hex);
-                return g?.Defenders ?? (IReadOnlyList<WorthIt.DefenderProfile>)
-                    System.Array.Empty<WorthIt.DefenderProfile>();
+                return g.HasValue
+                    ? new[] { new WorthIt.DefendingArmy(g.Value.Defenders, g.Value.Commander) }
+                    : System.Array.Empty<WorthIt.DefendingArmy>();
             }
             AiMapMemory.KnownEnemySighting? s = FindRaidSighting(player, target.ArmyId);
-            return s?.Defenders ?? (IReadOnlyList<WorthIt.DefenderProfile>)
-                System.Array.Empty<WorthIt.DefenderProfile>();
+            return s.HasValue
+                ? new[] { new WorthIt.DefendingArmy(s.Value.Defenders, s.Value.Commander) }
+                : System.Array.Empty<WorthIt.DefendingArmy>();
         }
 
         private static AiMapMemory.KnownEnemySighting? FindRaidSighting(

@@ -246,7 +246,10 @@ namespace Game.Ai.V2
                 MemberCount = a.Members.Count,
                 HasHero = a.Members.Any(m => m.IsHero),
                 BestHeroCommandRating = a.Members.Where(m => m.IsHero).Select(m => m.CommandRating).DefaultIfEmpty(0).Max(),
-                Commander = isOwn ? WorthIt.SideCommander.Of(a.Commander) : default,
+                // A hero is public battle information once seen; a stealth-hidden commander is not.
+                Commander = a.Commander != null
+                    && (isOwn || !StealthSystem.IsHiddenFrom(a.Commander, viewer))
+                    ? WorthIt.SideCommander.Of(a.Commander) : default,
                 HasAntiAir = a.Members.Any(m => m.HasAbility(UnitAbilities.AntiAir)),
                 // review-r4 P1 ARCH — the coverage roles come from StrategicEffectRegistry, so a new
                 // counter/support/mobility mechanic flows in without editing this file.

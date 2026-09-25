@@ -57,6 +57,8 @@ namespace Game.Ai.V2
         // Exact immutable combat profile consumed by WorthIt. Heroes keep a profile for
         // diagnostics but are excluded from Ground Combat roster estimates.
         public WorthIt.DefenderProfile CombatProfile;
+        // What this hero gives a formation it commands (initiative bonus, battle Fate).
+        public WorthIt.SideCommander AsCommander;
     }
 
     public sealed class ReorgContainer
@@ -90,6 +92,8 @@ namespace Game.Ai.V2
         // threats belongs to Defence (Analysis/Threat → Defence Demand → Mission → Provisioning).
         public int EtaToNearestBase;
         public IReadOnlyList<WorthIt.DefenderProfile> Members = Array.Empty<WorthIt.DefenderProfile>();
+        // The enemy army's commander as the snapshot knows it.
+        public WorthIt.SideCommander Commander;
         // §Task4 — observer-specific projection: the friendly non-hero ReorgUnit.Key set this
         // specific enemy can actually target as far as WE know — every unit not in our own stealth
         // (UnitData.IsHidden; enemy detection is unknown to the owner, so never IsHiddenFrom),

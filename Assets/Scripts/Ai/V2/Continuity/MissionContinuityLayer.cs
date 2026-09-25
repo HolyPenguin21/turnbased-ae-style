@@ -1548,8 +1548,9 @@ namespace Game.Ai.V2
             if (primary == null) return 0f;
             var roster = (primary.RecoveryMembers ?? System.Array.Empty<RaidRecoveryMemberSnapshot>())
                 .Where(m => m.IsGroundBattleBody).Select(m => m.CurrentProfile).ToList();
-            GroundCombatFeasibility.Clears(roster, AiV2Util.KnownDefenders(snap, raid.Target),
-                AiConfigV2.raidMinViableWinChance, out float win, out _);
+            GroundCombatFeasibility.Clears(roster, primary.Commander,
+                AiV2Util.KnownOpposition(snap, raid.Target),
+                AiConfigV2.raidMinViableWinChance, 0f, out float win, out _);
             return win;
         }
 
@@ -1688,7 +1689,7 @@ namespace Game.Ai.V2
             if (snap == null || !primaryArmyId.HasValue || !target.HasValue)
                 return false;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                snap, AiV2Util.KnownDefenders(snap, target), primaryArmyId.Value,
+                snap, AiV2Util.KnownOpposition(snap, target), primaryArmyId.Value,
                 AiConfigV2.raidMinViableWinChance);
             return plan.Feasible;
         }

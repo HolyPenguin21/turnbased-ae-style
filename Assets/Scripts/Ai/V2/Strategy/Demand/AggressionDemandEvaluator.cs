@@ -122,9 +122,10 @@ namespace Game.Ai.V2
 
                     if (ri.Target.HasValue) coveredTargets.Add(ri.Target);
 
-                    IReadOnlyList<WorthIt.DefenderProfile> defenders = RaidDefenders(snap, ri.Target);
+                    IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
+                    List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
                     GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                        snap, defenders, primaryId, AiConfigV2.raidMinViableWinChance);
+                        snap, opposition, primaryId, AiConfigV2.raidMinViableWinChance);
                     if (primaryPlan.Feasible)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
@@ -155,7 +156,7 @@ namespace Game.Ai.V2
                     // Provisioning pick the concrete actor through the normal ground-combat batch
                     // solve once this evaluation reports the target still uncovered.
                     List<int> existingSupportCandidates = GroundCombatAssemblyPlanner
-                        .ReinforcementSupportCandidates(snap, primaryId, defenders, commitments?.ClaimedArmyIdSet);
+                        .ReinforcementSupportCandidates(snap, primaryId, opposition, commitments?.ClaimedArmyIdSet);
                     if (existingSupportCandidates.Count > 0)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
@@ -254,7 +255,7 @@ namespace Game.Ai.V2
                 }
 
                 RaidOperationalReadiness readiness = RaidOperationalReadiness.Evaluate(
-                    snap, o, RaidDefenders(snap, o.Target), commitments, inv);
+                    snap, o, AiV2Util.KnownOpposition(snap, o.Target), commitments, inv);
                 if (readiness.ReadyExecutable)
                 {
                     readyList.Add((o, readiness.ReadyPlan));
@@ -413,8 +414,7 @@ namespace Game.Ai.V2
 
                 var request = new GroundCombatAssemblyRequest
                 {
-                    Defenders = contact.Army.Members
-                        ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                    Opposition = new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) },
                     WinChanceGate = pinnedActor.HasValue
                         ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                         : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
@@ -436,7 +436,7 @@ namespace Game.Ai.V2
                 // temporary ownership/assembly scheduling. Buying another army would be phantom.
                 var unclaimedRequest = new GroundCombatAssemblyRequest
                 {
-                    Defenders = request.Defenders,
+                    Opposition = request.Opposition,
                     WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                     ExcludedArmyIds = new HashSet<int>(),
                 };
@@ -520,7 +520,5 @@ namespace Game.Ai.V2
         internal static StableMissionKey RaidKey(AggressionObjective o) =>
             StableMissionKey.ForRaidAssault(o.Target);
 
-        internal static IReadOnlyList<WorthIt.DefenderProfile> RaidDefenders(WorldSnapshot snap, RaidTargetRef target) =>
-            AiV2Util.KnownDefenders(snap, target);
     }
 }

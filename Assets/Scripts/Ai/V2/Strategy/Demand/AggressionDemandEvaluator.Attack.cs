@@ -65,13 +65,14 @@ namespace Game.Ai.V2
                     continue;
                 int primaryId = ai.PrimaryArmyId.Value;
 
-                IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                    AttackObjectiveEvaluator.KnownSiteDefenders(snap, ai.Target.Hex);
+                IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                    AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex);
+                List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
                 float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(
                     snap, null, ai.Target.Hex);
 
                 GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                    snap, defenders, primaryId, AiConfigV2.raidMinViableWinChance, hexBonus);
+                    snap, opposition, primaryId, AiConfigV2.raidMinViableWinChance, hexBonus);
                 if (primaryPlan.Feasible)
                 {
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
@@ -99,7 +100,7 @@ namespace Game.Ai.V2
 
                 // §41 — an EXISTING free army may already fix this. Nothing needs materialising.
                 List<int> existing = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    snap, primaryId, defenders, commitments.ClaimedArmyIdSet, hexBonus);
+                    snap, primaryId, opposition, commitments.ClaimedArmyIdSet, hexBonus);
                 if (existing.Count > 0)
                 {
                     diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "

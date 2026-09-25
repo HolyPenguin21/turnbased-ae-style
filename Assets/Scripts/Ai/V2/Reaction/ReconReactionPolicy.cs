@@ -215,7 +215,8 @@ namespace Game.Ai.V2
                 // the hex it would end on must not sit under a second known threat it cannot beat.
                 if (!WorthIt.CanDamageAll(army, profiles, hexBonus))
                     continue;
-                WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus);
+                WorthIt.BattleEstimate est = WorthIt.Estimate(army, profiles, hexBonus,
+                    visible.Contains(target.Commander) ? WorthIt.SideCommander.Of(target.Commander) : default);
                 if (est.WinChance < bestWin)
                     continue;
                 if (est.CriticalAfterBattleChance > AiConfigV2.scoutReactionAttackMaxCriticalAfter)

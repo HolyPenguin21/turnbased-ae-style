@@ -96,24 +96,24 @@ namespace Game.Ai.V2
                 && a.ArmyId == raid.PrimaryArmyId.Value);
             if (primary == null)
                 return RaidRecoveryProjection.None(0f, "primary no longer exists");
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiV2Util.KnownDefenders(snap, raid.Target);
-            float currentWin = Win(CombatRoster(primary), defenders, out _);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AiV2Util.KnownOpposition(snap, raid.Target);
+            float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, out _);
 
             RaidRecoveryProjection field = fixedBase.HasValue
                 ? RaidRecoveryProjection.None(currentWin,
                     "field comparison suppressed by fixed recovery base")
-                : ProjectField(snap, primary, defenders, unavailableArmyIds, currentWin,
+                : ProjectField(snap, primary, opposition, unavailableArmyIds, currentWin,
                     safeRouteCost);
             RaidRecoveryProjection air = fixedBase.HasValue
                 ? RaidRecoveryProjection.None(currentWin,
                     "air comparison suppressed by fixed recovery base")
-                : ProjectAirSupport(snap, raid, primary, defenders,
+                : ProjectAirSupport(snap, raid, primary, opposition,
                     unavailableArmyIds, currentWin);
             RaidRecoveryProjection atBase = fixedBase.HasValue
-                ? ProjectBase(snap, raid, primary, defenders, unavailableArmyIds, currentWin,
+                ? ProjectBase(snap, raid, primary, opposition, unavailableArmyIds, currentWin,
                     fixedBase, safeRouteCost)
-                : ProjectBestBase(snap, raid, primary, defenders, unavailableArmyIds,
+                : ProjectBestBase(snap, raid, primary, opposition, unavailableArmyIds,
                     currentWin, safeRouteCost);
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
                 "no viable field, air, or base recovery plan");
@@ -132,21 +132,21 @@ namespace Game.Ai.V2
                 && x.ArmyId == raid.PrimaryArmyId.Value);
             if (primary == null)
                 return RaidRecoveryProjection.None(0f, "primary no longer exists");
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiV2Util.KnownDefenders(snap, raid.Target);
-            float currentWin = Win(CombatRoster(primary), defenders, out _);
-            return ProjectAirSupport(snap, raid, primary, defenders,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AiV2Util.KnownOpposition(snap, raid.Target);
+            float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, out _);
+            return ProjectAirSupport(snap, raid, primary, opposition,
                 null, currentWin, wingArmyId);
         }
 
         private static RaidRecoveryProjection ProjectAirSupport(WorldSnapshot snap,
             RaidIntent raid, ArmySnapshot primary,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> unavailableArmyIds, float currentWin,
             int? fixedWingArmyId = null)
         {
             if (raid.Target.Kind != RaidTargetKind.NeutralArmy
-                || raid.AirSupportAttemptedTurn == snap.TurnNumber || defenders.Count <= 1)
+                || raid.AirSupportAttemptedTurn == snap.TurnNumber || WorthIt.UnitsOf(opposition).Count <= 1)
                 return RaidRecoveryProjection.None(currentWin,
                     "air support is not eligible for this recovery decision");
 
@@ -187,13 +187,13 @@ namespace Game.Ai.V2
 
                 AviationCombatEstimator.AirStrikeEstimate estimate =
                     AviationCombatEstimator.EstimateAirStrike(attacks,
-                        sighting.Value.DefenseSum, sighting.Value.AttackSum, defenders,
+                        sighting.Value.DefenseSum, sighting.Value.AttackSum, WorthIt.UnitsOf(opposition),
                         AirStrikePolicy.RaidSupport(raid.Target.ArmyId));
                 if (estimate.ExpectedDamage <= AiConfigV2.allocatorSliceEpsilon
                     || estimate.ExpectedDefendersAfter.Count < 1)
                     continue;
-                float after = Win(CombatRoster(primary),
-                    estimate.ExpectedDefendersAfter, out _);
+                float after = Win(CombatRoster(primary), primary.Commander,
+                    AfterStrike(opposition, estimate.ExpectedDefendersAfter), out _);
                 if (after <= currentWin + AiConfigV2.allocatorSliceEpsilon)
                     continue;
 
@@ -219,8 +219,8 @@ namespace Game.Ai.V2
                     if (second.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon
                         && second.ExpectedDefendersAfter.Count >= 1)
                     {
-                        float after2 = Win(CombatRoster(primary),
-                            second.ExpectedDefendersAfter, out _);
+                        float after2 = Win(CombatRoster(primary), primary.Commander,
+                            AfterStrike(opposition, second.ExpectedDefendersAfter), out _);
                         if (after2 > finalAfter + AiConfigV2.allocatorSliceEpsilon)
                         {
                             finalAfter = after2;
@@ -256,7 +256,7 @@ namespace Game.Ai.V2
         }
 
         private static RaidRecoveryProjection ProjectBestBase(WorldSnapshot snap, RaidIntent raid,
-            ArmySnapshot primary, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            ArmySnapshot primary, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> unavailableArmyIds, float currentWin,
             Func<HexCoord, HexCoord, int, int> safeRouteCost)
         {
@@ -266,7 +266,7 @@ namespace Game.Ai.V2
                 .Distinct().OrderBy(h => h.Q).ThenBy(h => h.R);
             foreach (HexCoord baseHex in bases)
             {
-                RaidRecoveryProjection option = ProjectBase(snap, raid, primary, defenders,
+                RaidRecoveryProjection option = ProjectBase(snap, raid, primary, opposition,
                     unavailableArmyIds, currentWin, baseHex, safeRouteCost);
                 if (option.Viable && (!best.Viable || Compare(option, best) < 0))
                     best = option;
@@ -275,7 +275,7 @@ namespace Game.Ai.V2
         }
 
         internal static RaidRecoveryProjection ProjectBase(WorldSnapshot snap, RaidIntent raid,
-            ArmySnapshot primary, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            ArmySnapshot primary, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ISet<int> unavailableArmyIds, float currentWin, HexCoord? fixedBase = null,
             Func<HexCoord, HexCoord, int, int> safeRouteCost = null)
         {
@@ -315,14 +315,14 @@ namespace Game.Ai.V2
             RaidRefitAction first = default;
             float win = currentWin;
             bool cover;
-            GroundCombatFeasibility.Clears(roster.Select(x => x.Profile).ToList(), defenders,
-                AiConfigV2.raidMinViableWinChance, out win, out cover);
+            GroundCombatFeasibility.Clears(roster.Select(x => x.Profile).ToList(), primary.Commander,
+                opposition, AiConfigV2.raidMinViableWinChance, 0f, out win, out cover);
 
             int bound = roster.Count + donors.Count;
             while (!(cover && win >= AiConfigV2.raidMinViableWinChance) && actions < bound)
             {
                 List<Candidate> candidates = BuildCandidates(snap, primary, baseHex.Value,
-                    roster, initialCombatBodyCount, donors, usedDonors, defenders, spent, win);
+                    roster, initialCombatBodyCount, donors, usedDonors, opposition, spent, win);
                 Candidate best = candidates
                     .OrderByDescending(c => c.Score.Value)
                     // Gain is an eligibility fact below, not a second ranking scale.
@@ -337,8 +337,8 @@ namespace Game.Ai.V2
                 spent += best.Action.ResourceCost;
                 ap += best.Action.ApCost;
                 actions++;
-                GroundCombatFeasibility.Clears(roster.Select(x => x.Profile).ToList(), defenders,
-                    AiConfigV2.raidMinViableWinChance, out win, out cover);
+                GroundCombatFeasibility.Clears(roster.Select(x => x.Profile).ToList(), primary.Commander,
+                    opposition, AiConfigV2.raidMinViableWinChance, 0f, out win, out cover);
             }
 
             if (!first.HasValue || !cover || win < AiConfigV2.raidMinViableWinChance)
@@ -385,20 +385,20 @@ namespace Game.Ai.V2
                 && x.ArmyId == raid.PrimaryArmyId.Value);
             if (primary == null)
                 return RaidRecoveryProjection.None(0f, "primary no longer exists");
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiV2Util.KnownDefenders(snap, raid.Target);
-            float currentWin = Win(CombatRoster(primary), defenders, out _);
-            return ProjectField(snap, primary, defenders, null, currentWin,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AiV2Util.KnownOpposition(snap, raid.Target);
+            float currentWin = Win(CombatRoster(primary), primary.Commander, opposition, out _);
+            return ProjectField(snap, primary, opposition, null, currentWin,
                 null, supportArmyId);
         }
 
         private static RaidRecoveryProjection ProjectField(WorldSnapshot snap, ArmySnapshot primary,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> unavailableArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds,
             float currentWin, Func<HexCoord, HexCoord, int, int> safeRouteCost,
             int? fixedSupportArmyId = null)
         {
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primary.ArmyId, defenders, unavailableArmyIds);
+                snap, primary.ArmyId, opposition, unavailableArmyIds);
             if (fixedSupportArmyId.HasValue)
                 ids = ids.Where(x => x == fixedSupportArmyId.Value).ToList();
             RaidRecoveryProjection best = RaidRecoveryProjection.None(currentWin,
@@ -414,11 +414,11 @@ namespace Game.Ai.V2
                     .ThenBy(m => m.UnitIndex)
                     .Select(m => m.CurrentProfile).ToList();
                 if (!GroundCombatAssemblyPlanner.TryProjectReinforcement(CombatRoster(primary),
-                        supportBodies, primary.Capacity, primary.MemberCount, defenders,
+                        supportBodies, primary.Capacity, primary.MemberCount, primary.Commander, opposition,
                         out List<WorthIt.DefenderProfile> projected, out _))
                     continue;
-                bool clears = GroundCombatFeasibility.Clears(projected, defenders,
-                    AiConfigV2.raidMinViableWinChance, out float after, out _);
+                bool clears = GroundCombatFeasibility.Clears(projected, primary.Commander, opposition,
+                    AiConfigV2.raidMinViableWinChance, 0f, out float after, out _);
                 if (!clears) continue;
                 int routeDistance = RouteCost(support.Hex, primary.Hex, support.MaxMovement, safeRouteCost,
                     HexGridMath.Distance(support.Hex, primary.Hex));
@@ -441,7 +441,7 @@ namespace Game.Ai.V2
         private static List<Candidate> BuildCandidates(WorldSnapshot snap, ArmySnapshot primary,
             HexCoord baseHex, List<SimMember> roster, int initialCombatBodyCount,
             List<(ArmySnapshot Army, RaidRecoveryMemberSnapshot Member)> donors,
-            HashSet<int> usedDonors, IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            HashSet<int> usedDonors, IReadOnlyList<WorthIt.DefendingArmy> opposition,
             ResourceVector spent, float winBefore)
         {
             var result = new List<Candidate>();
@@ -454,7 +454,7 @@ namespace Game.Ai.V2
                     continue;
                 var projected = roster.Select(x => x.Profile).ToList();
                 projected[roster.IndexOf(member)] = source.FullHealthProfile;
-                float after = Win(projected, defenders, out _);
+                float after = Win(projected, primary.Commander, opposition, out _);
                 float gain = after - winBefore;
                 var action = new RaidRefitAction
                 {
@@ -482,7 +482,7 @@ namespace Game.Ai.V2
                 {
                     var projected = roster.Select(x => x.Profile).ToList();
                     projected.Add(donor.CurrentProfile);
-                    float after = Win(projected, defenders, out _);
+                    float after = Win(projected, primary.Commander, opposition, out _);
                     var action = new RaidRefitAction
                     {
                         Kind = RaidRefitActionKind.TransferUnit,
@@ -504,7 +504,7 @@ namespace Game.Ai.V2
                 {
                     var projected = roster.Select(x => x.Profile).ToList();
                     projected[roster.IndexOf(displaced)] = donor.CurrentProfile;
-                    float after = Win(projected, defenders, out _);
+                    float after = Win(projected, primary.Commander, opposition, out _);
                     int transferAp = JoinActivationAp(primary, donor)
                         + JoinActivationAp(donorArmy, displaced.Source);
                     var action = new RaidRefitAction
@@ -571,12 +571,20 @@ namespace Game.Ai.V2
             .Where(m => m.IsGroundBattleBody).Select(m => m.CurrentProfile).ToList();
 
         private static float Win(IReadOnlyList<WorthIt.DefenderProfile> roster,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, out bool cover)
+            WorthIt.SideCommander commander, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            out bool cover)
         {
-            GroundCombatFeasibility.Clears(roster, defenders,
-                AiConfigV2.raidMinViableWinChance, out float win, out cover);
+            GroundCombatFeasibility.Clears(roster, commander, opposition,
+                AiConfigV2.raidMinViableWinChance, 0f, out float win, out cover);
             return win;
         }
+
+        // The Raid target after an air strike: the same army (same commander), fewer bodies.
+        private static IReadOnlyList<WorthIt.DefendingArmy> AfterStrike(
+            IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            IReadOnlyList<WorthIt.DefenderProfile> survivors) =>
+            new[] { new WorthIt.DefendingArmy(survivors,
+                opposition != null && opposition.Count > 0 ? opposition[0].Commander : default) };
 
         internal static int JoinActivationAp(ArmySnapshot target,
             RaidRecoveryMemberSnapshot incoming)

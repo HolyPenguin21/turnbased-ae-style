@@ -89,10 +89,11 @@ namespace Game.Ai.V2
     // constraint the caller owns.
     public sealed class GroundCombatAssemblyRequest
     {
-        // Defenders the assembled force must be able to beat. Empty == "no fight to win" (a pure
-        // escort / rendezvous request), which trivially clears the estimator.
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
-            System.Array.Empty<WorthIt.DefenderProfile>();
+        // The opposition the assembled force must beat: every defending army with its own
+        // commander (AiV2Util.KnownOpposition / AttackObjectiveEvaluator.KnownSiteOpposition).
+        // Empty == "no fight to win" (a pure escort / rendezvous request), which trivially clears.
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition =
+            System.Array.Empty<WorthIt.DefendingArmy>();
         // Fresh-start vs continuation win gate. Callers pass GroundCombatAdmissionPolicy's two constants.
         public float WinChanceGate = AiConfigV2.raidMinViableWinChance;
         // When set, this actor is tried first and (with PinToPreferred) exclusively.
@@ -116,13 +117,13 @@ namespace Game.Ai.V2
 
     public static class GroundCombatAssemblyPlanner
     {
-        // Legacy/raid-shaped facade. `target` is identity only; the kernel needs the defenders.
+        // Legacy/raid-shaped facade. `target` is identity only; the kernel needs the opposition.
         public static GroundCombatAssemblyPlan Plan(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> excludeArmyIds,
             float defenderHexDefenseBonus = 0f) =>
             Plan(snap, new GroundCombatAssemblyRequest
             {
-                Defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                Opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(),
                 WinChanceGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 ExcludedArmyIds = excludeArmyIds,
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
@@ -137,8 +138,8 @@ namespace Game.Ai.V2
             if (request == null)
                 return GroundCombatAssemblyPlan.Infeasible("no ground-combat assembly request");
 
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                request.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                request.Opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             List<ArmySnapshot> eligible = OrderedEligible(snap, request);
             if (eligible.Count == 0)
                 return GroundCombatAssemblyPlan.Infeasible("no free, mobile ground combat army exists this cycle");
@@ -147,7 +148,7 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot a in eligible)
             {
                 GroundCombatAssemblyPlan exact = PlanForArmyAtThreshold(
-                    snap, defenders, a.ArmyId, request.WinChanceGate,
+                    snap, opposition, a.ArmyId, request.WinChanceGate,
                     request.DefenderHexDefenseBonus);
                 if (exact.Feasible)
                     return exact;
@@ -164,7 +165,7 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot a in eligible)
             {
                 GroundCombatAssemblyPlan assembled = TryAssembleForHost(
-                    snap, defenders, a, request.ExcludedArmyIds, request.WinChanceGate,
+                    snap, opposition, a, request.ExcludedArmyIds, request.WinChanceGate,
                     request.DefenderHexDefenseBonus);
                 if (assembled.Feasible)
                     return assembled;
@@ -185,11 +186,11 @@ namespace Game.Ai.V2
             var ids = new List<int>();
             if (snap?.Self?.Armies == null || request == null)
                 return ids;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                request.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                request.Opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             List<ArmySnapshot> eligible = OrderedEligible(snap, request);
             foreach (ArmySnapshot a in eligible)
-                if (PlanForArmyAtThreshold(snap, defenders, a.ArmyId, request.WinChanceGate,
+                if (PlanForArmyAtThreshold(snap, opposition, a.ArmyId, request.WinChanceGate,
                         request.DefenderHexDefenseBonus).Feasible)
                     ids.Add(a.ArmyId);
             if (!request.AllowSameHexAssembly)
@@ -202,7 +203,7 @@ namespace Game.Ai.V2
             {
                 if (excluded.Contains(a.ArmyId))
                     continue;
-                if (TryAssembleForHost(snap, defenders, a, excluded, request.WinChanceGate,
+                if (TryAssembleForHost(snap, opposition, a, excluded, request.WinChanceGate,
                         request.DefenderHexDefenseBonus).Feasible)
                 {
                     ids.Add(a.ArmyId);
@@ -294,13 +295,13 @@ namespace Game.Ai.V2
         // Reinforcement support-actor candidates. An EXISTING free ground-combat
         // army (already on the map, needing no card play / materialization) qualifies as a
         // Reinforcement support actor when merging its roster into the primary's would improve the
-        // primary's projected WorthIt win chance against the current defenders — the same economics
+        // primary's projected WorthIt win chance against the current opposition — the same economics
         // ProvisioningManager.ReinforcementImprovesOdds re-checks live at execution time, evaluated
         // here at snapshot granularity so Missions can propose a concrete leg before an actor is
         // physically claimed. Demand reads this to decide whether a NEW army even needs to be
         // materialized; Missions/Provisioning read it to run the normal actor-contention batch solve.
         public static List<int> ReinforcementSupportCandidates(WorldSnapshot snap, int primaryArmyId,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ISet<int> excludeArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> excludeArmyIds,
             float defenderHexDefenseBonus = 0f)
         {
             var ids = new List<int>();
@@ -313,7 +314,7 @@ namespace Game.Ai.V2
             var excluded = excludeArmyIds != null ? new HashSet<int>(excludeArmyIds) : new HashSet<int>();
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
-                if (SupportImprovesPrimary(primary, candidate, defenders, defenderHexDefenseBonus))
+                if (SupportImprovesPrimary(primary, candidate, opposition, defenderHexDefenseBonus))
                     ids.Add(candidate.ArmyId);
             return ids;
         }
@@ -322,7 +323,7 @@ namespace Game.Ai.V2
         // primary's win chance? The one per-candidate test behind ReinforcementSupportCandidates,
         // also used by Continuity to drop a planned Gather support that no longer helps.
         internal static bool SupportImprovesPrimary(ArmySnapshot primary, ArmySnapshot candidate,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus = 0f)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus = 0f)
         {
             if (primary == null || candidate == null)
                 return false;
@@ -341,7 +342,7 @@ namespace Game.Ai.V2
                 .Take(transferable)
                 .ToList();
             return TryProjectReinforcement(NonAviationProfiles(primary), sparable, primary.Capacity,
-                primary.MemberCount, defenders ?? System.Array.Empty<WorthIt.DefenderProfile>(),
+                primary.MemberCount, primary.Commander, opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(),
                 out _, out _, defenderHexDefenseBonus);
         }
 
@@ -362,13 +363,13 @@ namespace Game.Ai.V2
         // (GroundCombatActorEligibility) minus `excludeArmyIds`; rosters are read live, exactly as
         // TryAssembleForHost does. `pinnedHostArmyId` re-plans a started gather around its host.
         internal static GroundCombatGatherPlan PlanGather(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate,
             int? pinnedHostArmyId = null)
         {
             if (snap?.Self?.Armies == null)
                 return GroundCombatGatherPlan.Infeasible("no own-force snapshot");
-            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
 
             List<ArmySnapshot> free = GroundCombatActorEligibility.EligibleReadyArmies(snap, excludeArmyIds);
             List<ArmySnapshot> hosts = pinnedHostArmyId.HasValue
@@ -380,7 +381,7 @@ namespace Game.Ai.V2
             string why = "no free field army can host a gather";
             foreach (ArmySnapshot hostSnap in hosts)
             {
-                GroundCombatGatherPlan p = PlanGatherForHost(snap, defenders, defenderHexDefenseBonus,
+                GroundCombatGatherPlan p = PlanGatherForHost(snap, opposition, defenderHexDefenseBonus,
                     targetHex, hostSnap, free.Where(s => s.ArmyId != hostSnap.ArmyId).ToList(),
                     winChanceGate);
                 if (!p.Feasible)
@@ -398,7 +399,7 @@ namespace Game.Ai.V2
         }
 
         private static GroundCombatGatherPlan PlanGatherForHost(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, float defenderHexDefenseBonus,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ArmySnapshot hostSnap, List<ArmySnapshot> supportSnaps,
             float winChanceGate)
         {
@@ -415,6 +416,8 @@ namespace Game.Ai.V2
                 .ToList();
             int capacity = ArmyData.ComputeCapacity(host.Members, host.IsGarrison);
             int memberCount = host.Members.Count;
+            // Handoffs move ground bodies only, so the host's commander leads the formation.
+            WorthIt.SideCommander commander = WorthIt.SideCommander.Of(host.Commander);
 
             var pool = new List<GatherSupport>();
             foreach (ArmySnapshot s in supportSnaps)
@@ -445,13 +448,13 @@ namespace Game.Ai.V2
                 .OrderByDescending(ProfileCombatValue)
                 .Take(bodies.Count + System.Math.Max(0, capacity - memberCount))
                 .ToList();
-            if (!GroundCombatFeasibility.Clears(bound, defenders, winChanceGate,
+            if (!GroundCombatFeasibility.Clears(bound, commander, opposition, winChanceGate,
                     defenderHexDefenseBonus, out _, out _))
                 return GroundCombatGatherPlan.Infeasible(
                     $"gather host #{host.Id}: even the strongest pooled roster misses the "
                     + $"{winChanceGate:0.00} gate");
 
-            bool clears = GroundCombatFeasibility.Clears(bodies, defenders, winChanceGate,
+            bool clears = GroundCombatFeasibility.Clears(bodies, commander, opposition, winChanceGate,
                 defenderHexDefenseBonus, out float win, out bool cover);
             var chosen = new List<GatherSupport>();
             while (!clears)
@@ -463,7 +466,7 @@ namespace Game.Ai.V2
                 {
                     if (chosen.Contains(s)
                         || !TryProjectReinforcement(bodies, s.Bodies, capacity, memberCount,
-                            defenders, out List<WorthIt.DefenderProfile> projected, out _,
+                            commander, opposition, out List<WorthIt.DefenderProfile> projected, out _,
                             out float projectedWin, defenderHexDefenseBonus))
                         continue;
                     float rate = (projectedWin - win) / System.Math.Max(1, s.Ap);
@@ -490,7 +493,7 @@ namespace Game.Ai.V2
                 bodies = pickRoster;
                 win = pickWin;
                 chosen.Add(pick);
-                clears = GroundCombatFeasibility.Clears(bodies, defenders, winChanceGate,
+                clears = GroundCombatFeasibility.Clears(bodies, commander, opposition, winChanceGate,
                     defenderHexDefenseBonus, out win, out cover);
             }
 
@@ -538,12 +541,12 @@ namespace Game.Ai.V2
         internal static bool TryProjectReinforcement(
             IReadOnlyList<WorthIt.DefenderProfile> primaryBodies,
             IReadOnlyList<WorthIt.DefenderProfile> sparableSupportBodies,
-            int primaryCapacity, int primaryMemberCount,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            int primaryCapacity, int primaryMemberCount, WorthIt.SideCommander primaryCommander,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition,
             out List<WorthIt.DefenderProfile> projected, out string why,
             float defenderHexDefenseBonus = 0f) =>
             TryProjectReinforcement(primaryBodies, sparableSupportBodies, primaryCapacity,
-                primaryMemberCount, defenders, out projected, out why, out _,
+                primaryMemberCount, primaryCommander, opposition, out projected, out why, out _,
                 defenderHexDefenseBonus);
 
         // Same projection, also reporting the projected win chance it already computed (PlanGather
@@ -551,14 +554,14 @@ namespace Game.Ai.V2
         internal static bool TryProjectReinforcement(
             IReadOnlyList<WorthIt.DefenderProfile> primaryBodies,
             IReadOnlyList<WorthIt.DefenderProfile> sparableSupportBodies,
-            int primaryCapacity, int primaryMemberCount,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            int primaryCapacity, int primaryMemberCount, WorthIt.SideCommander primaryCommander,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition,
             out List<WorthIt.DefenderProfile> projected, out string why,
             out float projectedWin, float defenderHexDefenseBonus)
         {
             why = null;
             projectedWin = 0f;
-            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             var before = (primaryBodies ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
             projected = new List<WorthIt.DefenderProfile>(before);
             if (sparableSupportBodies == null || sparableSupportBodies.Count == 0)
@@ -595,12 +598,11 @@ namespace Game.Ai.V2
                 projected.Add(fresh);
             }
 
-            float winBefore = defenders.Count == 0 ? 1f
-                : WorthIt.WinChance(before,
-                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, defenderHexDefenseBonus);
-            float winAfter = defenders.Count == 0 ? 1f
-                : WorthIt.WinChance(projected,
-                    (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, defenderHexDefenseBonus);
+            // Handoffs move ground bodies only: the primary's commander leads before and after.
+            float winBefore = WorthIt.EstimateSequential(before, primaryCommander, opposition,
+                defenderHexDefenseBonus).WinChance;
+            float winAfter = WorthIt.EstimateSequential(projected, primaryCommander, opposition,
+                defenderHexDefenseBonus).WinChance;
             projectedWin = winAfter;
             if (winAfter <= winBefore + 0.001f)
             {
@@ -643,21 +645,21 @@ namespace Game.Ai.V2
         // continuation hysteresis so a valid multi-turn operation is not destroyed by the stricter
         // start gate on every subsequent turn.
         public static GroundCombatAssemblyPlan PlanForArmy(WorldSnapshot snap, RaidMissionTarget target,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId,
             float defenderHexDefenseBonus = 0f) =>
-            PlanForArmyAtThreshold(snap, defenders, armyId,
+            PlanForArmyAtThreshold(snap, opposition, armyId,
                 GroundCombatAdmissionPolicy.ContinuationWinChanceFloor, defenderHexDefenseBonus);
 
         // The exact gate the Aggression demand layer re-runs against the NEXT
         // objective before it may call an active Raid "covered". Threshold is explicit: a fresh
         // target is a fresh start decision even for an incumbent army.
         public static GroundCombatAssemblyPlan PlanForArmyAt(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId, float minWinChance,
             float defenderHexDefenseBonus = 0f) =>
-            PlanForArmyAtThreshold(snap, defenders, armyId, minWinChance, defenderHexDefenseBonus);
+            PlanForArmyAtThreshold(snap, opposition, armyId, minWinChance, defenderHexDefenseBonus);
 
         internal static GroundCombatAssemblyPlan PlanForArmyAtThreshold(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, int armyId, float minWinChance,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, int armyId, float minWinChance,
             float defenderHexDefenseBonus = 0f)
         {
             if (snap?.Self?.Armies == null)
@@ -667,10 +669,10 @@ namespace Game.Ai.V2
             if (a == null || !a.IsStructuralRaidActor)
                 return GroundCombatAssemblyPlan.Infeasible($"raid actor #{armyId} is not a free mobile ground combat army");
 
-            defenders = defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
             List<WorthIt.DefenderProfile> roster =
                 (a.Members ?? System.Array.Empty<WorthIt.DefenderProfile>()).ToList();
-            if (!GroundCombatFeasibility.Clears(roster, defenders, minWinChance,
+            if (!GroundCombatFeasibility.Clears(roster, a.Commander, opposition, minWinChance,
                     defenderHexDefenseBonus, out float win, out bool cover))
                 return GroundCombatAssemblyPlan.Infeasible(
                     $"raid actor #{armyId} does not clear the assigned-actor raid estimator "
@@ -687,7 +689,7 @@ namespace Game.Ai.V2
         }
 
         private static GroundCombatAssemblyPlan TryAssembleForHost(WorldSnapshot snap,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ArmySnapshot hostSnap, ISet<int> excludeArmyIds,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ArmySnapshot hostSnap, ISet<int> excludeArmyIds,
             float minWinChance, float defenderHexDefenseBonus)
         {
             PlayerSetupData owner = hostSnap?.Owner;
@@ -718,7 +720,7 @@ namespace Game.Ai.V2
                         projectedUnits.Add(hero);
                         projectedProfiles.Add(WorthIt.FromLiveUnit(hero));
                         selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = heroDonor.Id, Unit = hero });
-                        if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance,
+                        if (GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition, minWinChance,
                                 defenderHexDefenseBonus, out float hWin, out bool hCover))
                             return FinishAssembly(host, selected, hWin, hCover);
                     }
@@ -771,14 +773,14 @@ namespace Game.Ai.V2
                     projectedUnits.Add(pick);
                     projectedProfiles.Add(WorthIt.FromLiveUnit(pick));
                     selected.Add(new GroundCombatAssemblyTransfer { DonorArmyId = donor.Id, Unit = pick });
-                    if (GroundCombatFeasibility.Clears(projectedProfiles, defenders, minWinChance,
+                    if (GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition, minWinChance,
                             defenderHexDefenseBonus, out float win, out bool cover))
                         return FinishAssembly(host, selected, win, cover);
                 }
             }
 
             // The hero alone (no bodies available/needed) may already clear.
-            if (selected.Count > 0 && GroundCombatFeasibility.Clears(projectedProfiles, defenders,
+            if (selected.Count > 0 && GroundCombatFeasibility.Clears(projectedProfiles, WorthIt.SideCommander.Of(projectedUnits), opposition,
                     minWinChance, defenderHexDefenseBonus, out float wOnly, out bool cOnly))
                 return FinishAssembly(host, selected, wOnly, cOnly);
 

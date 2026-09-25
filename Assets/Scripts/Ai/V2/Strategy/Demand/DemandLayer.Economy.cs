@@ -646,7 +646,7 @@ namespace Game.Ai.V2
                         || !army.NonHeroIsAviation[i]).ToList();
                 List<WorthIt.DefenderProfile> current = currentIndices
                     .Select(i => army.Members[i]).ToList();
-                if (EconomyRosterSafe(current, threats, minimumEscort))
+                if (EconomyRosterSafe(current, army.Commander, threats, minimumEscort))
                 {
                     List<int> retained = atBase
                         ? MinimumSafeEconomyEscortIndices(army, threats, minimumEscort)
@@ -704,7 +704,7 @@ namespace Game.Ai.V2
                     {
                         var projected = new List<WorthIt.DefenderProfile>(current);
                         projected.AddRange(subset.Select(i => reserve[i]));
-                        if (!EconomyRosterSafe(projected, threats, minimumEscort))
+                        if (!EconomyRosterSafe(projected, army.Commander, threats, minimumEscort))
                             continue;
                         int addedAp = subset.Sum(i => i < garrison.NonHeroActivationApCosts.Count
                             ? garrison.NonHeroActivationApCosts[i] : 0);
@@ -738,8 +738,10 @@ namespace Game.Ai.V2
             }
         }
 
+        // `commander` — the escorted formation's commander (the builder hero), who leads the
+        // escort in any fight on the way.
         internal static bool EconomyRosterSafe(
-            IReadOnlyList<WorthIt.DefenderProfile> roster,
+            IReadOnlyList<WorthIt.DefenderProfile> roster, WorthIt.SideCommander commander,
             IReadOnlyList<AiMapMemory.KnownEnemySighting> threats, int minimumEscort)
         {
             if ((roster?.Count ?? 0) < minimumEscort)
@@ -749,21 +751,8 @@ namespace Game.Ai.V2
             if (threats.Any(t => t.Defenders == null || t.Defenders.Count == 0))
                 return false;
             return threats.All(t => WorthIt.CanDamageAll(roster, t.Defenders)
-                && WorthIt.WinChance(roster, t.Defenders, 0f)
+                && WorthIt.WinChance(roster, t.Defenders, 0f, commander, t.Commander)
                     >= AiConfig.economyEscortMinWinChance);
-        }
-
-        internal static int MinimumSafeEconomyEscortCount(
-            IReadOnlyList<WorthIt.DefenderProfile> roster,
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> threats, int minimumEscort)
-        {
-            List<WorthIt.DefenderProfile> pool = roster?.ToList()
-                ?? new List<WorthIt.DefenderProfile>();
-            for (int count = Mathf.Max(0, minimumEscort); count <= pool.Count; count++)
-                if (Combinations(pool, count).Any(x =>
-                        EconomyRosterSafe(x, threats, minimumEscort)))
-                    return count;
-            return int.MaxValue;
         }
 
         private static List<int> MinimumSafeEconomyEscortIndices(ArmySnapshot army,
@@ -789,7 +778,7 @@ namespace Game.Ai.V2
                     if (best != null && (ap > bestAp || (ap == bestAp && move <= bestMove)))
                         continue;
                     List<WorthIt.DefenderProfile> roster = subset.Select(i => pool[i]).ToList();
-                    if (EconomyRosterSafe(roster, threats, minimumEscort))
+                    if (EconomyRosterSafe(roster, army.Commander, threats, minimumEscort))
                     {
                         best = subset;
                         bestAp = ap;

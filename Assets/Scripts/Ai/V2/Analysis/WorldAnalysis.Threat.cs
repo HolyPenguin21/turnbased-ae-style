@@ -108,9 +108,12 @@ namespace Game.Ai.V2
 
             foreach (BuildingSnapshot b in snap.TrueWorld.AllBuildings.Where(x => x.Owner == player))
             {
-                ArmySnapshot garrison = snap.Self.Armies.FirstOrDefault(a => a.IsGarrison && a.Hex.Equals(b.Hex));
-                var defenders = garrison?.Members ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                float garrisonDef = defenders.Sum(d => d.Defense);
+                List<WorthIt.DefendingArmy> opposition = snap.Self.Armies
+                    .Where(a => a != null && a.Hex.Equals(b.Hex) && !a.IsPrison && !a.IsAir
+                        && !a.IsAirfield && a.MemberCount > 0)
+                    .OrderBy(a => a.ArmyId)
+                    .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander))
+                    .ToList();
 
                 AssetKind kind = ClassifyBuildingAsset(b);
                 if (kind == AssetKind.Base || kind == AssetKind.Citadel)
@@ -123,8 +126,7 @@ namespace Game.Ai.V2
                     Hex = b.Hex,
                     Kind = kind,
                     HexDefenseBonus = b.Defense,
-                    Defense = b.Defense + garrisonDef,
-                    Defenders = defenders,
+                    Opposition = opposition,
                     Value = BuildingAssetValue(kind, b, snap, totalIncome),
                 });
             }
@@ -136,8 +138,7 @@ namespace Game.Ai.V2
                     Hex = a.Hex,
                     Kind = AssetKind.Army,
                     HexDefenseBonus = 0f,
-                    Defense = a.DefenseSum,
-                    Defenders = a.Members,
+                    Opposition = new[] { new WorthIt.DefendingArmy(a.Members, a.Commander) },
                     Value = Mathf.Min(AiConfigV2.assetValueArmyCap, a.EffectiveArmyPower / AiConfigV2.assetValueArmyPowerDivisor),
                 });
             }
@@ -151,11 +152,10 @@ namespace Game.Ai.V2
             {
                 foreach (StrategicAssetSnapshot asset in assets)
                 {
-                    bool canDamage = WorthIt.CanDamageAll(c.Army.Members, asset.Defenders, asset.HexDefenseBonus);
-                    float winChance = WorthIt.WinChance(
-                        (IReadOnlyCollection<WorthIt.DefenderProfile>)c.Army.Members,
-                        (IReadOnlyCollection<WorthIt.DefenderProfile>)asset.Defenders,
-                        asset.HexDefenseBonus);
+                    bool canDamage = WorthIt.CanDamageAll(c.Army.Members,
+                        WorthIt.UnitsOf(asset.Opposition), asset.HexDefenseBonus);
+                    float winChance = WorthIt.EstimateSequential(c.Army.Members, c.Army.Commander,
+                        asset.Opposition, asset.HexDefenseBonus).WinChance;
 
                     int? enemyEta = null;
                     if (c.Position.HasValue)
@@ -273,6 +273,7 @@ namespace Game.Ai.V2
                 MemberCount = s.MemberCount,
                 HasAntiAir = s.HasAntiAir,
                 IsGarrison = s.IsGarrison,
+                Commander = s.Commander,
                 AttackSum = s.AttackSum,
                 DefenseSum = s.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),

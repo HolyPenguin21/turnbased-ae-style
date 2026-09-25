@@ -248,7 +248,7 @@ namespace Game.Ai.V2
                     var projected = bodies.Concat(subset)
                         .Select(WorthIt.FromLiveUnit).ToList();
                     if (!DemandLayer.EconomyRosterSafe(
-                            projected, threats, minimumEscort))
+                            projected, WorthIt.SideCommander.Of(builder.Commander), threats, minimumEscort))
                         continue;
                     if (!ArmyActions.CanTransferMembers(
                             subset, garrison, builder, out _))
@@ -335,7 +335,7 @@ namespace Game.Ai.V2
                     // WorthIt's ArmyData overloads apply the same non-hero boundary.
                     var roster = subset.Select(WorthIt.FromLiveUnit).ToList();
                     bool safe = DemandLayer.EconomyRosterSafe(
-                        roster, threats, minimumEscort);
+                        roster, WorthIt.SideCommander.Of(builder.Commander), threats, minimumEscort);
                     if (!safe)
                         continue;
                     int ap = subset.Sum(u => u.ActivationApCost);

@@ -176,7 +176,8 @@ namespace Game.Ai.V2
         // assemblable roster with it. Own armies only.
         public int BestHeroCommandRating;
         // The army's commander (ArmyData.Commander) — its initiative bonus and battle Fate for
-        // WorthIt. Own armies only; default when the army has no hero.
+        // WorthIt. Own armies: read live; an enemy contact: as observed (AiMapMemory). Default
+        // when the army has no (visible) hero.
         public WorthIt.SideCommander Commander;
         // HasAntiAir is DUAL-USE: for an own army it means "fields an AntiAir counter unit"; for an
         // enemy contact it means "fields AA guns" (aviation-routing danger). Kept as its own field
@@ -482,6 +483,7 @@ namespace Game.Ai.V2
         }
 
         public IReadOnlyList<WorthIt.DefenderProfile> Defenders => Strength.Defenders;
+        public WorthIt.SideCommander Commander => Strength.Commander;
     }
 
     // =======================================================================================
@@ -900,9 +902,11 @@ namespace Game.Ai.V2
         public HexCoord Hex;
         public AssetKind Kind;
         public float Value;                // importance to US, set by the snapshot
-        public float Defense;              // quick scalar: HexDefenseBonus + Σ Defenders' Defense
         public float HexDefenseBonus;      // the structural / terrain part alone (fed to WorthIt as its hexDefenseBonus)
-        public IReadOnlyList<WorthIt.DefenderProfile> Defenders; // garrison / the army's own roster
+        // Who an attacker must beat to take this asset: for a structure every own ground army on
+        // its hex (garrison and field armies, each its own battle with its commander — the rules'
+        // one-army-after-another fight); for a field army, that army alone.
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition = System.Array.Empty<WorthIt.DefendingArmy>();
     }
 
     // One Enemy x Asset pressure pairing above the listing cutoff.

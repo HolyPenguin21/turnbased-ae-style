@@ -30,12 +30,12 @@ namespace Game.Ai.V2
         public bool ReadyExecutable => ReadyPlan != null && ReadyPlan.Feasible;
 
         public static RaidOperationalReadiness Evaluate(WorldSnapshot snap, AggressionObjective objective,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders, ActorCommitments commitments,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, ActorCommitments commitments,
             CapabilityInventory inventory)
         {
             inventory = inventory ?? new CapabilityInventory();
             GroundCombatAssemblyPlan ready = GroundCombatAssemblyPlanner.Plan(
-                snap, objective.ToTarget(), defenders, commitments?.ClaimedArmyIdSet);
+                snap, objective.ToTarget(), opposition, commitments?.ClaimedArmyIdSet);
 
             float requiredPower = Mathf.Max(1f, objective.TargetPower * AiConfigV2.raidCombatPowerMargin);
             float numericDeficit = Mathf.Max(0f, requiredPower - inventory.RaidAvailableFieldPower);

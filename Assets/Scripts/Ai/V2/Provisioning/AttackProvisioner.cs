@@ -68,15 +68,15 @@ namespace Game.Ai.V2
             // Re-read the site from the CURRENT snapshot rather than trusting the proposal's frozen
             // copy: a fresh observation between planning and provisioning is exactly the kind of
             // honest news that must reach the estimator.
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, targetHex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, targetHex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, targetHex);
 
             GroundCombatAssaultOutcome assault = GroundCombatAssaultTransactionRunner.Run(
                 new GroundCombatAssaultRequest
                 {
                     Player = player, Root = root, Ctx = ctx, Session = session, Funded = funded,
-                    Key = key, TargetHex = targetHex, Defenders = defenders,
+                    Key = key, TargetHex = targetHex, Opposition = opposition,
                     DefenderHexDefenseBonus = hexBonus, LaneLabel = "attack", Eps = eps,
                 });
             if (!assault.Success)
@@ -85,7 +85,7 @@ namespace Game.Ai.V2
             target.PrimaryArmyId = assault.Host.Id;
             target.DestinationHex = targetHex;
             target.DefenderHexDefenseBonus = hexBonus;
-            target.DefenderCount = defenders.Count;
+            target.DefenderCount = WorthIt.UnitsOf(opposition).Count;
             target.ProjectedWinChance = assault.Plan.ProjectedWinChance;
             target.CoversAllDefenders = assault.Plan.CoversAllDefenders;
 
@@ -163,12 +163,12 @@ namespace Game.Ai.V2
 
             WorldSnapshot snap = session.Snapshot;
             HexCoord targetHex = target.Target.Hex;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, targetHex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, targetHex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, targetHex);
 
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
-                ctx, session, funded, key, eps, primary, supportArmyId, defenders, hexBonus,
+                ctx, session, funded, key, eps, primary, supportArmyId, opposition, hexBonus,
                 "attack", out bool atRendezvous);
             if (!check.Ok)
                 return check.Failure;
@@ -179,7 +179,7 @@ namespace Game.Ai.V2
             target.SupportArmyId = check.Mover.Id;
             target.DestinationHex = primary.Hex;
             target.DefenderHexDefenseBonus = hexBonus;
-            target.DefenderCount = defenders.Count;
+            target.DefenderCount = WorthIt.UnitsOf(opposition).Count;
 
             AiDebugLog.Write($"[AI][V2]   attack provision [{funded.Mission.AttemptId}] {key} — OK "
                 + $"{(target.Phase == AttackMissionPhase.Gather ? "GATHER" : "REINFORCE")} "

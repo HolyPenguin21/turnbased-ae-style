@@ -86,8 +86,10 @@ namespace Game.Ai.V2
     {
         public AggressionObjectiveKind Kind => AggressionObjectiveKind.Attack;
         public AttackTargetRef Target;
-        // The known defender package standing on the target site (§31): its garrison and every
-        // known enemy army on that same hex, as one fight. Never split into separate objectives.
+        // The known opposition on the target site (§31): its garrison and every known enemy army
+        // on that same hex, each its own battle with its own commander — one objective.
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition = Array.Empty<WorthIt.DefendingArmy>();
+        // Every defending body of that opposition (counts, power, coverage).
         public IReadOnlyList<WorthIt.DefenderProfile> Defenders =
             Array.Empty<WorthIt.DefenderProfile>();
         public int DefenderCount;
@@ -238,21 +240,22 @@ namespace Game.Ai.V2
         public static float KnownSiteDefenceBonus(WorldSnapshot snap, HexMap map, HexCoord hex) =>
             AiMapMemory.KnownHexDefenseBonus(snap?.Observer, map, hex);
 
-        // Every known hostile body standing on the site, as ONE defender package (§31). A garrison
-        // and two field armies sitting on the same Base are one fight, never three objectives.
-        public static List<WorthIt.DefenderProfile> KnownSiteDefenders(WorldSnapshot snap, HexCoord hex)
+        // Every known hostile body standing on the site (§31): a garrison and two field armies on
+        // the same Base are one objective. Flat roster for counts / power / coverage.
+        public static List<WorthIt.DefenderProfile> KnownSiteDefenders(WorldSnapshot snap, HexCoord hex) =>
+            WorthIt.UnitsOf(KnownSiteOpposition(snap, hex));
+
+        // The same site as the fights it really is: every known army on the hex is its own battle,
+        // with its own observed commander (WorthIt.EstimateSequential plays them strongest first).
+        public static List<WorthIt.DefendingArmy> KnownSiteOpposition(WorldSnapshot snap, HexCoord hex)
         {
-            var defenders = new List<WorthIt.DefenderProfile>();
             IEnumerable<AiMapMemory.KnownEnemySighting> sightings = snap?.Known?.EnemySightings
                 ?? Enumerable.Empty<AiMapMemory.KnownEnemySighting>();
-            foreach (AiMapMemory.KnownEnemySighting s in sightings
-                .Where(s => s.Hex.Equals(hex))
-                .OrderBy(s => s.ArmyId))
-            {
-                if (s.Defenders != null)
-                    defenders.AddRange(s.Defenders);
-            }
-            return defenders;
+            return sightings
+                .Where(s => s.Hex.Equals(hex) && s.Defenders != null)
+                .OrderBy(s => s.ArmyId)
+                .Select(s => new WorthIt.DefendingArmy(s.Defenders, s.Commander))
+                .ToList();
         }
 
         // ---- response terms (§35) -------------------------------------------------------------
@@ -349,7 +352,8 @@ namespace Game.Ai.V2
         {
             AttackTargetKind kind = b.IsStartingCitadel ? AttackTargetKind.Citadel
                 : b.IsBase ? AttackTargetKind.Base : AttackTargetKind.Facility;
-            List<WorthIt.DefenderProfile> defenders = KnownSiteDefenders(snap, b.Hex);
+            List<WorthIt.DefendingArmy> opposition = KnownSiteOpposition(snap, b.Hex);
+            List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
 
             // §34 — the site's own defence is NOT a positive term for the attacker. It is priced
             // exactly once, as a reduction of WinChance through the shared WorthIt estimator (the
@@ -396,6 +400,7 @@ namespace Game.Ai.V2
             return new AttackObjective
             {
                 Target = AttackTargetRef.For(b.Hex, b.Owner, kind),
+                Opposition = opposition,
                 Defenders = defenders,
                 DefenderCount = defenders.Count,
                 TargetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders),

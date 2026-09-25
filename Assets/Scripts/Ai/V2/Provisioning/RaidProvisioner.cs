@@ -51,7 +51,7 @@ namespace Game.Ai.V2
             // share one code path here instead of two parallel switches.
             RaidTargetRef raidTarget = target.Target;
             HexCoord targetHex;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders;
+            IReadOnlyList<WorthIt.DefendingArmy> opposition;
             bool targetIsNeutral;
             if (raidTarget.Kind == RaidTargetKind.EventGuard)
             {
@@ -64,7 +64,7 @@ namespace Game.Ai.V2
                             $"raid target {raidTarget.DiagnosticLabel} no longer has an active event"));
                 }
                 targetHex = raidTarget.Hex;
-                defenders = AiV2Util.KnownDefenders(snap, raidTarget);
+                opposition = AiV2Util.KnownOpposition(snap, raidTarget);
                 targetIsNeutral = true;
             }
             else
@@ -94,7 +94,7 @@ namespace Game.Ai.V2
                 }
 
                 targetHex = sighting.Value.Hex;
-                defenders = sighting.Value.Defenders ?? System.Array.Empty<WorthIt.DefenderProfile>();
+                opposition = new[] { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) };
                 targetIsNeutral = sighting.Value.Owner != null && sighting.Value.Owner.IsNeutral;
             }
 
@@ -105,7 +105,7 @@ namespace Game.Ai.V2
                 new GroundCombatAssaultRequest
                 {
                     Player = player, Root = root, Ctx = ctx, Session = session, Funded = funded,
-                    Key = key, TargetHex = targetHex, Defenders = defenders,
+                    Key = key, TargetHex = targetHex, Opposition = opposition,
                     DefenderHexDefenseBonus = 0f, LaneLabel = "raid", Eps = eps,
                 });
             if (!assault.Success)
@@ -192,10 +192,11 @@ namespace Game.Ai.V2
                         AirStrikePolicy.RaidSupport(target.Target.ArmyId));
                 ArmyData primary = ResolveArmy(player, target.PrimaryArmyId.Value);
                 float beforeWin = primary == null || defenders.Count == 0 ? 0f
-                    : WorthIt.WinChance(primary, defenders, 0f);
+                    : WorthIt.WinChance(primary, defenders, 0f, sighting.Value.Commander);
                 float afterWin = primary == null || estimate.ExpectedDefendersAfter.Count == 0
                     ? beforeWin
-                    : WorthIt.WinChance(primary, estimate.ExpectedDefendersAfter, 0f);
+                    : WorthIt.WinChance(primary, estimate.ExpectedDefendersAfter, 0f,
+                        sighting.Value.Commander);
                 if (estimate.ExpectedDamage <= eps
                     || estimate.ExpectedDefendersAfter.Count < 1
                     || afterWin <= beforeWin + eps)
@@ -317,11 +318,11 @@ namespace Game.Ai.V2
             }
 
             HexCoord rendezvous = primary.Hex;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AiV2Util.KnownDefenders(session.Snapshot, target.Target);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AiV2Util.KnownOpposition(session.Snapshot, target.Target);
             // ATK §28/§46 — the convoy checks are the shared ground-combat leg primitive.
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
-                ctx, session, funded, key, eps, primary, supportArmyId, defenders, 0f, "raid",
+                ctx, session, funded, key, eps, primary, supportArmyId, opposition, 0f, "raid",
                 out bool atRendezvous);
             if (!check.Ok)
                 return check.Failure;

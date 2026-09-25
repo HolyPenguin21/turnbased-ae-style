@@ -237,8 +237,8 @@ namespace Game.Ai.V2
         private static bool ResolveAttackGather(WorldSnapshot snap, MissionIntent intent,
             AttackIntent a, ISet<int> unavailableArmyIds)
         {
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
 
             // A support that stopped existing, or whose bodies no longer improve the host (arrival
@@ -251,7 +251,7 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
                 return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
-                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, defenders, hexBonus);
+                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus);
             }).ToList();
             if (dropped.Count > 0)
             {
@@ -277,7 +277,7 @@ namespace Game.Ai.V2
             var unavailable = unavailableArmyIds == null
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(a.PrimaryArmyId.Value);
-            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, defenders,
+            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
                 a.PrimaryArmyId);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
@@ -306,14 +306,14 @@ namespace Game.Ai.V2
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             // Continuity is snapshot-pure and has no map, so terrain is not in this read; the
             // remembered structural defence still is. The mission/provisioning layers, which do have
             // the map, apply the full bonus before anything is actually funded or executed.
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
-                snap, defenders, a.PrimaryArmyId.Value,
+                snap, opposition, a.PrimaryArmyId.Value,
                 a.OperationStarted && a.Phase != AttackMissionPhase.Gather
                     ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
                     : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
@@ -332,11 +332,11 @@ namespace Game.Ai.V2
         {
             if (!a.PrimaryArmyId.HasValue)
                 return false;
-            IReadOnlyList<WorthIt.DefenderProfile> defenders =
-                AttackObjectiveEvaluator.KnownSiteDefenders(snap, a.Target.Hex);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition =
+                AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
-                a.PrimaryArmyId.Value, defenders, null, hexBonus).Count > 0;
+                a.PrimaryArmyId.Value, opposition, null, hexBonus).Count > 0;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken

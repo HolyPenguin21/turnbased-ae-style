@@ -158,7 +158,9 @@ reactivate when important contact becomes stale or blind again.
 |---|---|
 | Cross-axis mission/task scoring | `Evaluation/TaskScore.cs` (`TaskScoreEvaluator`) — the only mission-candidate scorer; see "Unified task scoring" above |
 | Own-force power | `Evaluation/Power/AiPower` — no `ReactionPower` / `RaidPower` |
-| Tactical roster odds + per-defender penetration | `Game.Combat.WorthIt` — skill-aware; no Attack+Defense composition surrogate |
+| Tactical roster odds + per-defender penetration | `Game.Combat.WorthIt` — skill-aware; each side's commander (initiative bonus, Fate rerolls through `FateDuelAi`'s policy); a multi-army hex is `EstimateSequential` (strongest defender first, wounds carry, Fate refills). The aggregate-sum estimator is gone |
+| Who leads an army (capacity, battle initiative, Fate) | `ArmyData.Commander` — the army's first hero; battle, UI and AI read only this |
+| The opposition of a ground fight (each defending army + its observed commander) | `AiV2Util.KnownOpposition` (Raid/ActiveDefence target), `AttackObjectiveEvaluator.KnownSiteOpposition` (Attack site); flat defender lists are `WorthIt.UnitsOf` of these. `GroundCombatFeasibility.Clears` takes the attacker's commander + the opposition |
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |
 | Skills / effects semantics | `Evaluation/Effects/StrategicEffectRegistry` |
 | Materialization delivery ("can this satisfy demand X") | `Materialization/MaterializationDeliveryPolicy` (plan- and army-level) |

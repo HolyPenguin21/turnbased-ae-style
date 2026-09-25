@@ -140,7 +140,7 @@ namespace Game.Ai.V2
             foreach (ReorgThreatBenchmark threat in state.ThreatBenchmarks)
             {
                 var ranked = new List<(int containerId, WorthIt.BattleEstimate selection,
-                    List<WorthIt.DefenderProfile> defenders)>();
+                    List<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)>();
 
                 foreach (KeyValuePair<int, ReorgContainer> kv in state.Meta)
                 {
@@ -157,13 +157,18 @@ namespace Game.Ai.V2
                         .ToList();
                     if (defenders.Count == 0)
                         continue;
+                    // The container's commander: its first hero (ArmyData.Commander's rule).
+                    ReorgUnit commanderUnit = units.FirstOrDefault(u => u != null && u.IsHero);
+                    WorthIt.SideCommander commander = commanderUnit?.AsCommander ?? default;
 
-                    // BattleInitiator currently ranks contact candidates with a zero bonus.
-                    // Keep selection identical. The actual readiness read below applies the
-                    // group's terrain/base defence without changing which container is contacted.
-                    WorthIt.BattleEstimate selection =
-                        WorthIt.Estimate(threat.Members, defenders, 0f);
-                    ranked.Add((kv.Key, selection, defenders));
+                    // BattleInitiator ranks contact candidates with a zero bonus and only the
+                    // commander it can see. Keep selection identical. The actual readiness read
+                    // below applies the group's terrain/base defence and the real commander.
+                    WorthIt.BattleEstimate selection = WorthIt.Estimate(threat.Members, defenders, 0f,
+                        threat.Commander,
+                        commanderUnit != null && threat.TargetableUnitKeys.Contains(commanderUnit.Key)
+                            ? commander : default);
+                    ranked.Add((kv.Key, selection, defenders, commander));
                 }
 
                 // This attacker cannot contact any non-hero defender on the hex (for example every
@@ -174,11 +179,11 @@ namespace Game.Ai.V2
                 ranked.Sort((a, b) => BattleInitiator.CompareDefenderHardness(
                     a.selection, a.containerId, b.selection, b.containerId));
 
-                float first = ContactReadiness(state, threat, ranked[0].defenders);
+                float first = ContactReadiness(state, threat, ranked[0].defenders, ranked[0].commander);
                 // If the first army falls and no second contactable formation remains, the second
                 // defensive layer is empty: model certain passage at the same distance weighting.
                 float second = ranked.Count > 1
-                    ? ContactReadiness(state, threat, ranked[1].defenders)
+                    ? ContactReadiness(state, threat, ranked[1].defenders, ranked[1].commander)
                     : NoDefenderReadiness(threat.EtaToGroup);
                 rows.Add(new ThreatContactRow(threat.ArmyId, first, second));
             }
@@ -204,10 +209,10 @@ namespace Game.Ai.V2
         }
 
         private static float ContactReadiness(VState state, ReorgThreatBenchmark threat,
-            IReadOnlyList<WorthIt.DefenderProfile> defenders)
+            IReadOnlyList<WorthIt.DefenderProfile> defenders, WorthIt.SideCommander commander)
         {
-            WorthIt.BattleEstimate estimate =
-                WorthIt.Estimate(threat.Members, defenders, state.HexDefenseBonus);
+            WorthIt.BattleEstimate estimate = WorthIt.Estimate(threat.Members, defenders,
+                state.HexDefenseBonus, threat.Commander, commander);
             float success = WorthIt.CanDamageAll(
                     threat.Members, defenders, state.HexDefenseBonus)
                 ? estimate.WinChance

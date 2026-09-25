@@ -1158,15 +1158,15 @@ namespace Game.Ai.V2
         private static float UnitMatchupFit(EquipmentGrant grant, UnitData recipient,
             IReadOnlyCollection<UnitData> members, WorldSnapshot snap)
         {
-            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
             int comparable = 0;
             int improved = 0;
-            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            foreach (WorthIt.DefendingArmy threat in threats)
             {
-                if (defenders == null || defenders.Count == 0)
+                if (threat.Units == null || threat.Units.Count == 0)
                     continue;
                 comparable++;
-                if (ImprovesGroundCombatOutcome(recipient, members, grant, defenders))
+                if (ImprovesGroundCombatOutcome(recipient, members, grant, threat))
                     improved++;
             }
             return comparable > 0 ? (float)improved / comparable : 0f;
@@ -1178,7 +1178,7 @@ namespace Game.Ai.V2
         {
             if (grant == null || host == null || host.cardType != CardType.Unit)
                 return 0f;
-            List<IReadOnlyList<WorthIt.DefenderProfile>> threats = EquipmentValuationThreats(snap);
+            List<WorthIt.DefendingArmy> threats = EquipmentValuationThreats(snap);
             if (threats.Count == 0)
                 return 0f;
             AiPower.ProjectedStrategicLine before = AiPower.EffectiveLine(host, existing);
@@ -1193,8 +1193,9 @@ namespace Game.Ai.V2
 
             int comparable = 0;
             int improved = 0;
-            foreach (IReadOnlyList<WorthIt.DefenderProfile> defenders in threats)
+            foreach (WorthIt.DefendingArmy threat in threats)
             {
+                IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
                 if (defenders == null || defenders.Count == 0)
                     continue;
                 comparable++;
@@ -1212,8 +1213,10 @@ namespace Game.Ai.V2
                 // changes can still be the real reason the attachment matters. Reuse the SAME
                 // full-roster WorthIt read as deployed recipients; never fall back to a private
                 // Attack+Defense heuristic.
-                WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f);
-                WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f);
+                WorthIt.BattleEstimate previous = WorthIt.Estimate(beforeRoster, defenders, 0f,
+                    default, threat.Commander);
+                WorthIt.BattleEstimate next = WorthIt.Estimate(afterRoster, defenders, 0f,
+                    default, threat.Commander);
                 if (next.WinChance > previous.WinChance
                     || (next.WinChance == previous.WinChance
                         && (next.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
@@ -1228,8 +1231,9 @@ namespace Game.Ai.V2
         // without mutating gameplay UnitData or pretending the grant created a new combat body.
         internal static bool ImprovesGroundCombatOutcome(UnitData recipient,
             IReadOnlyCollection<UnitData> members, EquipmentGrant grant,
-            IReadOnlyCollection<WorthIt.DefenderProfile> defenders, float hexBonus = 0f)
+            WorthIt.DefendingArmy threat, float hexBonus = 0f)
         {
+            IReadOnlyCollection<WorthIt.DefenderProfile> defenders = threat.Units;
             if (recipient == null || recipient.IsHero || grant == null || members == null
                 || defenders == null || defenders.Count == 0 || !members.Contains(recipient))
                 return false;
@@ -1274,24 +1278,28 @@ namespace Game.Ai.V2
             if (!coversBefore)
                 return true;
 
-            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus);
-            WorthIt.BattleEstimate improvedEstimate = WorthIt.Estimate(after, defenders, hexBonus);
+            // Equipment never changes who leads: the same commanders on both sides of the compare.
+            WorthIt.SideCommander ownCommander = WorthIt.SideCommander.Of(members);
+            WorthIt.BattleEstimate previous = WorthIt.Estimate(before, defenders, hexBonus,
+                ownCommander, threat.Commander);
+            WorthIt.BattleEstimate improvedEstimate = WorthIt.Estimate(after, defenders, hexBonus,
+                ownCommander, threat.Commander);
             return improvedEstimate.WinChance > previous.WinChance
                 || (improvedEstimate.WinChance == previous.WinChance
                     && (improvedEstimate.ExpectedSurvivingHpRatioOnWin > previous.ExpectedSurvivingHpRatioOnWin
                         || improvedEstimate.CriticalAfterBattleChance < previous.CriticalAfterBattleChance));
         }
 
-        private static List<IReadOnlyList<WorthIt.DefenderProfile>> EquipmentValuationThreats(WorldSnapshot snap)
+        private static List<WorthIt.DefendingArmy> EquipmentValuationThreats(WorldSnapshot snap)
         {
-            var result = new List<IReadOnlyList<WorthIt.DefenderProfile>>();
+            var result = new List<WorthIt.DefendingArmy>();
             // Only composition crosses the TrueWorld boundary. Ground and aviation rosters are
             // both legitimate Production valuation inputs; neither hidden coordinates nor army
             // identity is passed to recipient selection or Mission planning.
             if (snap?.TrueWorld?.EnemyArmies != null)
                 result.AddRange(snap.TrueWorld.EnemyArmies
                     .Where(a => a != null && a.Members != null && a.Members.Count > 0)
-                    .Select(a => a.Members));
+                    .Select(a => new WorthIt.DefendingArmy(a.Members, a.Commander)));
 
             // A neutral's last honestly observed defender profiles are the only permitted
             // composition witness. After it disappears into fog, its hidden live roster may
@@ -1299,7 +1307,7 @@ namespace Game.Ai.V2
             if (snap?.Known?.NeutralSightings != null)
                 result.AddRange(snap.Known.NeutralSightings
                     .Where(s => s.Defenders != null && s.Defenders.Count > 0)
-                    .Select(s => s.Defenders));
+                    .Select(s => new WorthIt.DefendingArmy(s.Defenders, s.Commander)));
 
             // An event guard is not a live ArmyData until triggered. Its legitimately observed
             // defender profiles already belong to Known, so use those directly for WorthIt;
@@ -1307,7 +1315,7 @@ namespace Game.Ai.V2
             if (snap?.Known?.EventGuards != null)
                 result.AddRange(snap.Known.EventGuards
                     .Where(g => g.Defenders != null && g.Defenders.Count > 0)
-                    .Select(g => g.Defenders));
+                    .Select(g => new WorthIt.DefendingArmy(g.Defenders, g.Commander)));
             return result;
         }
 
