@@ -99,37 +99,24 @@ namespace Game.Combat
         // quietly cranks it back up on a hot path without weighing that cost again.
         private const int MonteCarloTrials = 25;
 
-        // Deterministic per-matchup seed (2026-08-24 fix, project owner's own report) — built ONLY
-        // from the raw numeric stats that describe the matchup itself (Attack/Defense/HP/
-        // Initiative/hex bonus), never from GetHashCode() of a string or object (not guaranteed
-        // stable call-to-call, see .NET's own documented caveat). The SAME matchup — same army
-        // composition, same HP, same enemy, same hex — therefore always seeds the SAME
-        // System.Random and always plays out the SAME MonteCarloTrials trials, so a caller that
-        // asks WinChance the same question twice in a row (e.g. this class's own log-vs-verdict
-        // double read) gets the same answer both times. A real change to any input (a unit takes
-        // damage, the roster changes, a different enemy, a different hex) changes the seed and
-        // rolls a fresh set of trials. Deliberately its OWN System.Random per call, never
-        // UnityEngine.Random — this evaluation is read-only strategic bookkeeping, not a real game
-        // event, and must never consume (or be affected by) the same global RNG stream the actual
-        // game systems roll real, game-affecting outcomes from.
-        private static int BuildSeed(params float[] values)
-        {
-            unchecked
-            {
-                int hash = 17;
-                foreach (float v in values)
-                    hash = hash * 31 + System.BitConverter.SingleToInt32Bits(v);
-                return hash;
-            }
-        }
-
+        // Deterministic per-matchup seed — built ONLY from the raw numbers that describe the
+        // matchup (rosters, commanders, hex bonus), never from GetHashCode() of an object. The
+        // SAME matchup always replays the SAME trials; any real change rolls fresh ones. Its own
+        // System.Random per call, never UnityEngine.Random (read-only strategic bookkeeping must
+        // not consume the game's RNG stream). A side without a commander adds nothing to the
+        // hash, so commander-less matchups keep exactly the seeds they always had.
         private static int BuildRosterSeed(IReadOnlyCollection<DefenderProfile> attackerUnits,
-            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus)
+            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus,
+            SideCommander attackerCommander = default, SideCommander defenderCommander = default)
         {
             unchecked
             {
                 int hash = 17;
                 hash = hash * 31 + System.BitConverter.SingleToInt32Bits(hexDefenseBonus);
+                if (attackerCommander.Present)
+                    hash = (hash * 31 + 101 + attackerCommander.Initiative) * 31 + attackerCommander.Fate;
+                if (defenderCommander.Present)
+                    hash = (hash * 31 + 211 + defenderCommander.Initiative) * 31 + defenderCommander.Fate;
                 foreach (DefenderProfile p in attackerUnits)
                     hash = AccumulateProfileHash(hash, p);
                 hash = hash * 31 + 12345; // separates the two rosters — an empty attacker side must
@@ -183,71 +170,106 @@ namespace Game.Combat
             return successes;
         }
 
-        // Net damage margin for ONE simulated exchange (positive = we came out ahead this trial) —
-        // both directions rolled for real: our Attack vs their Defense, AND their Attack vs our
-        // Defense, same two terms this class always compared, just each one an actual roll now
-        // instead of its flat expected value (N*0.5). Still a single simultaneous exchange, not a
-        // multi-round HP-depletion fight — the map only ever knows the OTHER side as an aggregate
-        // sum (no composition, no HP, no positions — see this class's own top comment), so there's
-        // no per-unit HP here to actually deplete round over round the way a real battle would.
-        private static float SimulateExchangeMargin(float ourAttack, float ourDefense, float enemyAttack, float enemyDefense,
+        // The same pool as RollSuccesses, die by die, so a Fate duel can reroll individual misses.
+        // Draws the RNG exactly like RollSuccesses: with no Fate on either side the simulated
+        // battle consumes the identical random stream it always did.
+        private static bool[] RollDice(float diceCount, System.Random rng)
+        {
+            var dice = new bool[Mathf.Max(0, Mathf.RoundToInt(diceCount))];
+            for (int i = 0; i < dice.Length; i++)
+                dice[i] = rng.NextDouble() < 0.5;
+            return dice;
+        }
+
+        private static int CountHits(bool[] dice)
+        {
+            int hits = 0;
+            foreach (bool d in dice)
+                if (d) hits++;
+            return hits;
+        }
+
+        // A side's battle commander (ArmyData.Commander — the army's first hero). Heroes never
+        // fight, but the commander's Initiative is added to every combatant of its side
+        // (BattleTurnOrder) and its Fate buys rerolls in every exchange (BattleAttackPopupUI's
+        // duel). Fate is FateMax: it refills at the start of every battle
+        // (UnitData.ReplenishFateForNewBattle), so any future fight starts with the full pool.
+        public readonly struct SideCommander
+        {
+            public readonly bool Present;
+            public readonly int Initiative;
+            public readonly int Fate;
+
+            public SideCommander(int initiative, int fate)
+            {
+                Present = true;
+                Initiative = initiative;
+                Fate = Mathf.Max(0, fate);
+            }
+
+            public static SideCommander Of(UnitData hero) =>
+                hero == null ? default : new SideCommander(hero.Initiative, hero.FateMax);
+            public static SideCommander Of(IEnumerable<UnitData> members) =>
+                Of(ArmyData.CommanderOf(members));
+        }
+
+        // One armed exchange as the real battle resolves it: both pools rolled, then the Fate duel
+        // (BattleAttackPopupUI.RunDuel — defender first, sides alternate while anyone spends; each
+        // spend rerolls the first miss with an ordinary die and a failed reroll ends that side's
+        // turn), every spend decided by the ONE policy FateDuelAi owns. Returns the damage after
+        // the canonical ability modifier chain.
+        private static int ResolveExchange(BattleUnit actor, BattleUnit target,
+            ref int actorFate, ref int targetFate, System.Random rng)
+        {
+            bool[] attackDice = RollDice(actor.Attack, rng);
+            bool[] defenceDice = RollDice(target.Defense, rng);
+            if (actorFate > 0 || targetFate > 0)
+            {
+                int defendingHp = Mathf.Max(1, Mathf.CeilToInt(target.Hp));
+                bool defenderDone = false, attackerDone = false, defenderTurn = true;
+                while (!defenderDone || !attackerDone)
+                {
+                    if (defenderTurn ? defenderDone : attackerDone)
+                    {
+                        defenderTurn = !defenderTurn;
+                        continue;
+                    }
+                    bool spent = defenderTurn
+                        ? DuelTurn(attackDice, defenceDice, defenceDice, true, ref targetFate, actor, target, defendingHp, rng)
+                        : DuelTurn(attackDice, defenceDice, attackDice, false, ref actorFate, actor, target, defendingHp, rng);
+                    if (defenderTurn) defenderDone = true; else attackerDone = true;
+                    if (spent)
+                    {
+                        if (defenderTurn) attackerDone = false; else defenderDone = false;
+                    }
+                    defenderTurn = !defenderTurn;
+                }
+            }
+            int raw = Mathf.Max(0, CountHits(attackDice) - CountHits(defenceDice));
+            return ChallengeResult.ApplyAbilityModifiers(raw, actor.Abilities, target.TypeTags,
+                target.Abilities, AbilityMagnitudes.Default);
+        }
+
+        private static bool DuelTurn(bool[] attackDice, bool[] defenceDice, bool[] ownDice,
+            bool isDefender, ref int fate, BattleUnit actor, BattleUnit target, int defendingHp,
             System.Random rng)
         {
-            int ourDamage = Mathf.Max(0, RollSuccesses(ourAttack, rng) - RollSuccesses(enemyDefense, rng));
-            int enemyDamage = Mathf.Max(0, RollSuccesses(enemyAttack, rng) - RollSuccesses(ourDefense, rng));
-            return ourDamage - enemyDamage;
-        }
-
-        // Graded two-sided net-advantage margin — MonteCarloTrials simulated exchanges (above),
-        // averaged. Positive = the attacker comes out ahead on average, magnitude = how lopsided; `enemyDefense`/
-        // `enemyAttack` are always the OTHER side's remembered aggregate sums (KnownEnemySighting.
-        // DefenseSum/AttackSum, or a Hex Event guard's card-stat sums — `enemyDefense` should
-        // already include HexDefenseBonus where the caller has a hex to add it from, same as
-        // before).
-        public static float ExpectedExchangeMargin(ArmyData attacker, float enemyDefense, float enemyAttack)
-        {
-            float ourAttack = AttackSum(attacker);
-            float ourDefense = DefenseSum(attacker);
-            var rng = new System.Random(BuildSeed(ourAttack, ourDefense, enemyAttack, enemyDefense));
-            float total = 0f;
-            for (int i = 0; i < MonteCarloTrials; i++)
-                total += SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense, rng);
-            return total / MonteCarloTrials;
-        }
-
-        // The single win-chance formula every category's army-vs-threat comparison must route
-        // through from now on (2026-08-22, project owner's own explicit call: "все сравнения армий
-        // на карте должны происходить только через worth it для всех задач и методов") — Оборона's
-        // Active posture sizes its own composition against this directly (AiConfig.
-        // economyEscortMinWinChance, a 60/40 target), and RaidWeakerArmyTask.IsReady routes its own
-        // two-sided edge check here too instead of keeping a second copy of the same math.
-        //
-        // Monte Carlo (2026-08-22, project owner's own call): MonteCarloTrials simulated exchanges
-        // (SimulateExchangeMargin above), the fraction we came out strictly ahead in; a tie
-        // (margin == 0 — a real outcome once both sides' rolled damage happens to land equal, not
-        // just an edge case) splits 50/50 into that fraction instead of favoring either side. This
-        // replaces the old closed-form ourPower/(ourPower+enemyPower) ratio, which was a smooth
-        // deterministic curve with no notion of variance at all — two equal armies still land
-        // close to 0.5 here (exactly 0.5 in expectation, same symmetry as before), just as a Monte
-        // Carlo estimate around that point rather than a bit-exact one. `ourAttack`/`ourDefense`
-        // let a caller substitute a discounted attack read (e.g. RaidWeakerArmyTask's own
-        // wounded-unit discount) without needing a live ArmyData; `enemyDefense` should already
-        // include any hex bonus, same convention Score above already uses.
-        public static float WinChance(float ourAttack, float ourDefense, float enemyAttack, float enemyDefense)
-        {
-            var rng = new System.Random(BuildSeed(ourAttack, ourDefense, enemyAttack, enemyDefense));
-            int wins = 0, ties = 0;
-            for (int i = 0; i < MonteCarloTrials; i++)
+            bool spent = false;
+            while (fate > 0 && FateDuelAi.ShouldSpendFate(attackDice, defenceDice, fate, isDefender,
+                       actor.Abilities, target.TypeTags, target.Abilities, AbilityMagnitudes.Default,
+                       defendingUnitHp: defendingHp))
             {
-                float margin = SimulateExchangeMargin(ourAttack, ourDefense, enemyAttack, enemyDefense, rng);
-                if (margin > 0f) wins++;
-                else if (margin == 0f) ties++;
+                int miss = System.Array.IndexOf(ownDice, false);
+                if (miss < 0)
+                    break;
+                ownDice[miss] = rng.NextDouble() < 0.5;
+                fate--;
+                spent = true;
+                if (!ownDice[miss])
+                    break;
             }
-            return (wins + ties * 0.5f) / MonteCarloTrials;
+            return spent;
         }
-
-        public static float WinChance(ArmyData attacker, float enemyDefense, float enemyAttack) =>
-            WinChance(AttackSum(attacker), DefenseSum(attacker), enemyAttack, enemyDefense);
 
         // ---- Full round-by-round Monte Carlo (2026-08-22, project owner's own call) ----
         //
@@ -290,7 +312,8 @@ namespace Game.Combat
         // generous headroom for a Monte Carlo trial to terminate, not a tuned balance number.
         private const int MaxSimulatedRounds = 50;
 
-        private static List<BattleUnit> ToBattleUnits(IReadOnlyCollection<DefenderProfile> profiles, float extraDefense = 0f)
+        private static List<BattleUnit> ToBattleUnits(IReadOnlyCollection<DefenderProfile> profiles,
+            float extraDefense = 0f, int initiativeBonus = 0)
         {
             var list = new List<BattleUnit>();
             if (profiles == null)
@@ -304,7 +327,7 @@ namespace Game.Combat
                     Defense = p.Defense + extraDefense,
                     Abilities = p.Abilities,
                     TypeTags = p.TypeTags,
-                    Initiative = p.Initiative,
+                    Initiative = p.Initiative + initiativeBonus,
                     Hp = hp,
                     MaxHp = Mathf.Max(hp, p.MaxHitPoints),
                 });
@@ -317,7 +340,7 @@ namespace Game.Combat
         // means CURRENT hp for our own side, so it can't also carry the unit's true MaxHp that
         // Estimate()'s CriticalAfterBattleChance needs. Non-hero only, same convention every other
         // attacker-side read in this file uses.
-        private static List<BattleUnit> ToAttackerBattleUnits(ArmyData attacker)
+        private static List<BattleUnit> ToAttackerBattleUnits(ArmyData attacker, int initiativeBonus)
         {
             var list = new List<BattleUnit>();
             if (attacker == null)
@@ -329,7 +352,7 @@ namespace Game.Combat
                     Defense = m.Defense,
                     Abilities = m.Abilities.ToList(),
                     TypeTags = m.TypeTags.ToList(),
-                    Initiative = m.Initiative,
+                    Initiative = m.Initiative + initiativeBonus,
                     Hp = Mathf.Max(1f, m.HitPointsCurrent),
                     MaxHp = Mathf.Max(1f, m.HitPointsMax),
                 });
@@ -404,7 +427,8 @@ namespace Game.Combat
         // MaxSimulatedRounds runs out. Returns +1 (attackers wiped the defenders), -1 (defenders
         // wiped the attackers), or 0 (mutual wipe, or neither side finished the other off in time —
         // same "draw" reading SimulateExchangeMargin's own tie already used).
-        private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders, System.Random rng)
+        private static int SimulateOneBattle(List<BattleUnit> attackers, List<BattleUnit> defenders,
+            System.Random rng, int attackerFate = 0, int defenderFate = 0)
         {
             for (int round = 0; round < MaxSimulatedRounds && AnyAlive(attackers) && AnyAlive(defenders); round++)
             {
@@ -455,10 +479,9 @@ namespace Game.Combat
                     int targetIndex = livingTargets[rng.Next(livingTargets.Count)];
                     BattleUnit target = enemyList[targetIndex];
 
-                    int rawDamage = Mathf.Max(0,
-                        RollSuccesses(actor.Attack, rng) - RollSuccesses(target.Defense, rng));
-                    int damage = ChallengeResult.ApplyAbilityModifiers(rawDamage, actor.Abilities,
-                        target.TypeTags, target.Abilities, AbilityMagnitudes.Default);
+                    int damage = turn.isAttacker
+                        ? ResolveExchange(actor, target, ref attackerFate, ref defenderFate, rng)
+                        : ResolveExchange(actor, target, ref defenderFate, ref attackerFate, rng);
                     target.Hp -= damage;
 
                     if (damage > 0 && actor.HasAbility(UnitAbilities.ShockAttack))
@@ -501,8 +524,9 @@ namespace Game.Combat
         // win (nothing known to fight — matches CanDamageAll's own "vacuously coverable" reading);
         // empty/null `attackerUnits` against a real enemy roster is a trivial loss.
         public static float WinChance(IReadOnlyCollection<DefenderProfile> attackerUnits,
-            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f) =>
-            Estimate(attackerUnits, enemyUnits, hexDefenseBonus).WinChance;
+            IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f,
+            SideCommander attackerCommander = default, SideCommander defenderCommander = default) =>
+            Estimate(attackerUnits, enemyUnits, hexDefenseBonus, attackerCommander, defenderCommander).WinChance;
 
         // Converts a real UnitData into the same per-combatant snapshot DefenderProfile carries for
         // a remembered/cheat-read enemy — used both for our own army (never behind fog of war) and
@@ -552,14 +576,16 @@ namespace Game.Combat
         // gates on this yet, callers just log it. Seeded identically to the pre-existing
         // WinChance(ArmyData, ...) call (same FromLiveUnit-derived profile list feeds
         // BuildRosterSeed) so this change doesn't shift which battles a given call used to roll.
+        // The attacker's commander is read off the live army itself (ArmyData.Commander).
         public static BattleEstimate Estimate(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits,
-            float hexDefenseBonus = 0f)
+            float hexDefenseBonus = 0f, SideCommander defenderCommander = default)
         {
             enemyUnits = CombatantsOf(enemyUnits);
             if (enemyUnits.Count == 0)
                 return new BattleEstimate(1f, 1f, 0f);
 
-            List<BattleUnit> baseline = ToAttackerBattleUnits(attacker);
+            SideCommander attackerCommander = SideCommander.Of(attacker?.Commander);
+            List<BattleUnit> baseline = ToAttackerBattleUnits(attacker, attackerCommander.Initiative);
             if (baseline.Count == 0)
                 return new BattleEstimate(0f, 0f, 0f);
 
@@ -567,8 +593,10 @@ namespace Game.Combat
             // MaxHp still comes from ToAttackerBattleUnits above (a wounded attacker's true max is
             // not recoverable from DefenderProfile.HitPoints, which only ever carries CURRENT hp).
             var seedProfiles = CombatantsOf(attacker.Members).Select(FromLiveUnit).ToList();
-            int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus);
-            return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed);
+            int seed = BuildRosterSeed(seedProfiles, enemyUnits, hexDefenseBonus,
+                attackerCommander, defenderCommander);
+            return EstimateCore(baseline, enemyUnits, hexDefenseBonus, seed,
+                attackerCommander, defenderCommander);
         }
 
         // Roster-vs-roster overload (2026-09-14, Housekeeping contact-selection sync) — the same
@@ -577,19 +605,104 @@ namespace Game.Combat
         // AiMapMemory, or a Housekeeping virtual defender roster). Both overloads now share the one
         // EstimateCore loop below — no second Monte Carlo copy.
         public static BattleEstimate Estimate(IReadOnlyCollection<DefenderProfile> attackerUnits,
-            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus)
+            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus,
+            SideCommander attackerCommander = default, SideCommander defenderCommander = default)
         {
             attackerUnits = CombatantsOf(attackerUnits);
             defenderUnits = CombatantsOf(defenderUnits);
             if (defenderUnits.Count == 0)
                 return new BattleEstimate(1f, 1f, 0f);
 
-            List<BattleUnit> baseline = ToBattleUnits(attackerUnits);
+            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
             if (baseline.Count == 0)
                 return new BattleEstimate(0f, 0f, 0f);
 
-            int seed = BuildRosterSeed(attackerUnits, defenderUnits, hexDefenseBonus);
-            return EstimateCore(baseline, defenderUnits, hexDefenseBonus, seed);
+            int seed = BuildRosterSeed(attackerUnits, defenderUnits, hexDefenseBonus,
+                attackerCommander, defenderCommander);
+            return EstimateCore(baseline, defenderUnits, hexDefenseBonus, seed,
+                attackerCommander, defenderCommander);
+        }
+
+        // One defending army of a multi-army hex: its fighting roster and its own commander.
+        public readonly struct DefendingArmy
+        {
+            public readonly IReadOnlyCollection<DefenderProfile> Units;
+            public readonly SideCommander Commander;
+
+            public DefendingArmy(IReadOnlyCollection<DefenderProfile> units, SideCommander commander)
+            {
+                Units = units ?? System.Array.Empty<DefenderProfile>();
+                Commander = commander;
+            }
+        }
+
+        // A hex held by several armies is taken the way the real rules take it: one battle per
+        // defending army, strongest defender first (BattleInitiator.FindEnemyAt — the army the
+        // attacker is least likely to beat), the surviving attacker carrying its wounds into the
+        // next battle (ResolveHexAfterVictory) while both sides' Fate refills for every battle
+        // (ReplenishFateForNewBattle). The attack wins only by winning every battle; the hex
+        // defence bonus applies to every defending army. A single army is exactly Estimate().
+        public static BattleEstimate EstimateSequential(IReadOnlyCollection<DefenderProfile> attackerUnits,
+            SideCommander attackerCommander, IReadOnlyList<DefendingArmy> defendingArmies,
+            float hexDefenseBonus)
+        {
+            var armies = (defendingArmies ?? System.Array.Empty<DefendingArmy>())
+                .Select(a => new DefendingArmy(CombatantsOf(a.Units), a.Commander))
+                .Where(a => a.Units.Count > 0)
+                .ToList();
+            if (armies.Count <= 1)
+                return armies.Count == 0
+                    ? new BattleEstimate(1f, 1f, 0f)
+                    : Estimate(attackerUnits, armies[0].Units, hexDefenseBonus, attackerCommander,
+                        armies[0].Commander);
+
+            attackerUnits = CombatantsOf(attackerUnits);
+            List<BattleUnit> baseline = ToBattleUnits(attackerUnits, 0f, attackerCommander.Initiative);
+            if (baseline.Count == 0)
+                return new BattleEstimate(0f, 0f, 0f);
+
+            // Strongest defender first, judged against the fresh attacker (stable for equal odds).
+            List<DefendingArmy> order = armies
+                .Select((a, i) => (a, i, win: Estimate(attackerUnits, a.Units, hexDefenseBonus,
+                    attackerCommander, a.Commander).WinChance))
+                .OrderBy(x => x.win).ThenBy(x => x.i)
+                .Select(x => x.a)
+                .ToList();
+
+            int seed = BuildRosterSeed(attackerUnits,
+                order.SelectMany(a => a.Units).ToList(), hexDefenseBonus, attackerCommander, default);
+            foreach (DefendingArmy a in order)
+                if (a.Commander.Present)
+                    seed = unchecked((seed * 31 + a.Commander.Initiative) * 31 + a.Commander.Fate);
+            var rng = new System.Random(seed);
+            float startHp = baseline.Sum(u => u.Hp);
+            int wins = 0, draws = 0, criticalOnWin = 0;
+            float survivingRatioSum = 0f;
+            for (int t = 0; t < MonteCarloTrials; t++)
+            {
+                var attackers = new List<BattleUnit>(baseline);
+                int result = 1;
+                foreach (DefendingArmy a in order)
+                {
+                    result = SimulateOneBattle(attackers,
+                        ToBattleUnits(a.Units, hexDefenseBonus, a.Commander.Initiative), rng,
+                        attackerCommander.Fate, a.Commander.Fate);
+                    if (result <= 0)
+                        break;
+                    attackers = attackers.Where(u => u.Hp > 0f).ToList();
+                }
+                if (result > 0)
+                {
+                    wins++;
+                    survivingRatioSum += startHp > 0f ? attackers.Sum(u => Mathf.Max(0f, u.Hp)) / startHp : 0f;
+                    if (attackers.Any(u => u.Hp > 0f && u.Hp <= u.MaxHp / 2f))
+                        criticalOnWin++;
+                }
+                else if (result == 0) draws++;
+            }
+            return new BattleEstimate((wins + draws * 0.5f) / MonteCarloTrials,
+                wins > 0 ? survivingRatioSum / wins : 0f,
+                wins > 0 ? (float)criticalOnWin / wins : 0f);
         }
 
         // Shared Monte Carlo readout loop — `baseline` is the attacker's own BattleUnit snapshot
@@ -597,7 +710,8 @@ namespace Game.Combat
         // trial; `defenderUnits`/`hexDefenseBonus` are rebuilt into BattleUnits per trial the same
         // way every existing caller here already expected.
         private static BattleEstimate EstimateCore(List<BattleUnit> baseline,
-            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus, int seed)
+            IReadOnlyCollection<DefenderProfile> defenderUnits, float hexDefenseBonus, int seed,
+            SideCommander attackerCommander, SideCommander defenderCommander)
         {
             var rng = new System.Random(seed);
             float startHp = baseline.Sum(u => u.Hp);
@@ -607,7 +721,9 @@ namespace Game.Combat
             for (int i = 0; i < MonteCarloTrials; i++)
             {
                 var attackers = new List<BattleUnit>(baseline);
-                int result = SimulateOneBattle(attackers, ToBattleUnits(defenderUnits, hexDefenseBonus), rng);
+                int result = SimulateOneBattle(attackers,
+                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative), rng,
+                    attackerCommander.Fate, defenderCommander.Fate);
                 if (result > 0)
                 {
                     wins++;
@@ -627,28 +743,9 @@ namespace Game.Combat
         // `attacker`'s own live non-hero roster as the same DefenderProfile snapshot shape —
         // ArmyData convenience overload of the full-roster WinChance above. Thin wrapper over
         // Estimate() (2026-08-24) — every pass/fail caller here keeps working unchanged.
-        public static float WinChance(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits, float hexDefenseBonus = 0f) =>
-            Estimate(attacker, enemyUnits, hexDefenseBonus).WinChance;
-
-        // Threshold-gated version — also requires CanDamageAll (below), same as every other real
-        // readiness check here: raw power alone can overstate a fight where nothing in `attacker`
-        // can actually scratch the toughest defender (see CanDamageAll's own comment). `hexBonus`
-        // — the defender's own terrain/Base-building bonus, applied per-unit the same way CanDamage
-        // already does; NOT the same value as `enemyDefense`'s own hex bonus fold-in (that one's
-        // already baked into the sum by the time it gets here).
-        //
-        // Routes through the full-roster WinChance whenever `defenders` actually carries a real
-        // per-unit snapshot (2026-08-22 — see this section's own header comment); falls back to
-        // the aggregate-sum WinChance only for the (now rare) case of a target with no remembered
-        // composition at all, same as before.
-        public static bool MeetsWinChance(ArmyData attacker, float enemyDefense, float enemyAttack,
-            IReadOnlyCollection<DefenderProfile> defenders, float threshold, float hexBonus = 0f)
-        {
-            float chance = defenders != null && defenders.Count > 0
-                ? WinChance(attacker, defenders, hexBonus)
-                : WinChance(attacker, enemyDefense, enemyAttack);
-            return chance >= threshold && CanDamageAll(attacker, defenders, hexBonus);
-        }
+        public static float WinChance(ArmyData attacker, IReadOnlyCollection<DefenderProfile> enemyUnits,
+            float hexDefenseBonus = 0f, SideCommander defenderCommander = default) =>
+            Estimate(attacker, enemyUnits, hexDefenseBonus, defenderCommander).WinChance;
 
         // Minimal per-defender read for the coverage check below — just enough to reuse the same
         // expected-damage step BattleTargetSelector.TryScoreTarget already uses for a real attack

@@ -170,11 +170,14 @@ namespace Game.Ai.V2
         public bool IsAirfield;
         public int MemberCount;
         public bool HasHero;
-        // Best CommandRating among this army's hero members (0 = no hero). Sets a real forming
-        // army's slot cap (ArmyData.ComputeCapacity) — the CombatOpportunityAnalyzer reads it to
-        // size an assemblable raid roster the way EvaluateAssemblablePlan does. Own armies only in
-        // practice (a fog/cheat-read enemy army never exposes its hero's rating).
-        public int HeroCommandRating;
+        // Best CommandRating among this army's hero members (0 = no hero): the capacity this army
+        // COULD have if its best hero were made commander. A potential, not the army's current
+        // cap (that is Capacity, set by the commander). CombatOpportunityAnalyzer sizes an
+        // assemblable roster with it. Own armies only.
+        public int BestHeroCommandRating;
+        // The army's commander (ArmyData.Commander) — its initiative bonus and battle Fate for
+        // WorthIt. Own armies only; default when the army has no hero.
+        public WorthIt.SideCommander Commander;
         // HasAntiAir is DUAL-USE: for an own army it means "fields an AntiAir counter unit"; for an
         // enemy contact it means "fields AA guns" (aviation-routing danger). Kept as its own field
         // because the aviation path (AirReconRouteCandidate) reads it independently.

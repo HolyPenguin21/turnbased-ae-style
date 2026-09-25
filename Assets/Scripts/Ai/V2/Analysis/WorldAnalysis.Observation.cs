@@ -277,7 +277,8 @@ namespace Game.Ai.V2
             && a.EffectiveArmyPower == b.EffectiveArmyPower
             && a.CompositionQuality == b.CompositionQuality
             && a.HasHero == b.HasHero
-            && a.HeroCommandRating == b.HeroCommandRating
+            && a.BestHeroCommandRating == b.BestHeroCommandRating
+            && a.Commander.Equals(b.Commander)
             && a.HasResearchOperator == b.HasResearchOperator
             && a.HasProductionOperator == b.HasProductionOperator
             && a.HasAntiAir == b.HasAntiAir

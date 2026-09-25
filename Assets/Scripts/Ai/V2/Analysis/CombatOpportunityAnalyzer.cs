@@ -80,7 +80,7 @@ namespace Game.Ai.V2
             {
                 if (a == null || a.IsPrison) continue;
                 if (a.Members != null) ownBodies.AddRange(a.Members);
-                if (a.HeroCommandRating > heroCap) heroCap = a.HeroCommandRating;
+                if (a.BestHeroCommandRating > heroCap) heroCap = a.BestHeroCommandRating;
             }
 
             var handBodies = new List<WorthIt.DefenderProfile>();

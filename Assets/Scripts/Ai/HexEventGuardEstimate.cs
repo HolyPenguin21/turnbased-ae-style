@@ -24,18 +24,23 @@ namespace Game.Ai
                 return true; // no guard — nothing to risk, always worth it
 
             var guardMembers = entry.ResolvedGuardMembers.Where(g => g.card != null && g.card.cardType != CardType.Hero).ToList();
-            float guardDefense = guardMembers.Sum(g => g.card.defenseRating * g.count);
-            float guardAttack = guardMembers.Sum(g => g.card.attack * g.count);
             var guardDefenders = guardMembers.SelectMany(g => Enumerable.Repeat(new WorthIt.DefenderProfile(g.card.defenseRating,
                 g.card.grantedAbilities != null && g.card.grantedAbilities.Contains(UnitAbilities.CeramicArmor), g.card.unitTypeTags,
                 g.card.attack, g.card.hitPoints, g.card.initiative, g.card.grantedAbilities), g.count)).ToList();
 
-            // Same verdict the former WorthIt.IsWorthIt(attacker, def, atk, defenders, hexBonus)
-            // gave: with a real per-unit roster, win chance over 50% AND able to scratch every
-            // defender; with no non-hero body to fight, the aggregate expected exchange margin.
-            if (guardDefenders.Count == 0)
-                return WorthIt.ExpectedExchangeMargin(mover, guardDefense, guardAttack) > 0f;
-            return WorthIt.WinChance(mover, guardDefenders) > 0.5f && WorthIt.CanDamageAll(mover, guardDefenders);
+            // Win chance over 50% AND able to scratch every defender. A guard with no fighting body
+            // is a trivial win for the roster estimator (nothing to fight).
+            return WorthIt.WinChance(mover, guardDefenders, 0f, GuardCommander(entry)) > 0.5f
+                && WorthIt.CanDamageAll(mover, guardDefenders);
+        }
+
+        // The guard's commander: its first hero card (the same "first hero leads" rule as
+        // ArmyData.Commander), so guard memory and this estimate read one answer.
+        public static WorthIt.SideCommander GuardCommander(HexEventRegistry.Entry entry)
+        {
+            var hero = entry?.ResolvedGuardMembers?
+                .FirstOrDefault(g => g.card != null && g.card.cardType == CardType.Hero).card;
+            return hero == null ? default : new WorthIt.SideCommander(hero.initiative, hero.fate);
         }
     }
 }

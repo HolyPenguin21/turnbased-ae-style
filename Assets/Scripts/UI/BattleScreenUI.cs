@@ -184,7 +184,7 @@ namespace Game.UI
             return null;
         }
 
-        private static UnitData OwningHero(ArmyData army) => army?.Members.FirstOrDefault(m => m.IsHero);
+        private static UnitData OwningHero(ArmyData army) => army?.Commander;
 
         private bool _arranging;
         // True only once the "Arrange your units" intro popup has been dismissed — the grid
@@ -531,7 +531,7 @@ namespace Game.UI
             BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(_grid, army, enemy, defendingOwnCitadel,
                 attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default);
             _aiFavorableThisRound[army] = assessment.FavorableForAdvance;
-            UnitData sideHero = BattleTurnOrder.FindHero(_grid, army == _attacker);
+            UnitData sideHero = army.Commander;
 
             if (assessment.IsCitadelDefense)
             {

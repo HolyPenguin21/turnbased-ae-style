@@ -887,7 +887,7 @@ namespace Game.UI
             List<UnitData> members = VisibleMembers();
             int effectiveCapacity = EffectiveCapacityFor(members);
 
-            UnitData hero = members.FirstOrDefault(m => m.IsHero);
+            UnitData hero = ArmyData.CommanderOf(members);
             string leaderLine = hero != null
                 ? $"{hero.Name} Commanding ({effectiveCapacity})"
                 : $"No Hero Commanding ({effectiveCapacity})";

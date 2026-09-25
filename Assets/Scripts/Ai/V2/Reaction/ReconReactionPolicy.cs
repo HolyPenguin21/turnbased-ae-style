@@ -120,9 +120,7 @@ namespace Game.Ai.V2
                 // fog. Terrain is immutable/public and safe; structural defence is added only when
                 // the hex is currently visible to this player.
                 float hexBonus = HonestHexDefenseBonus(player, map, sighting.Hex);
-                float win = sighting.Defenders != null && sighting.Defenders.Count > 0
-                    ? WorthIt.WinChance(army, sighting.Defenders, hexBonus)
-                    : WorthIt.WinChance(army, sighting.DefenseSum + hexBonus, sighting.AttackSum);
+                float win = WorthIt.WinChance(army, sighting.Defenders, hexBonus, sighting.Commander);
                 if (win < worstWin)
                 {
                     worstWin = win;
@@ -284,9 +282,7 @@ namespace Game.Ai.V2
                 if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral || s.IsGarrison)
                     continue;
                 float hexBonus = HonestHexDefenseBonus(player, map, s.Hex);
-                float win = s.Defenders != null && s.Defenders.Count > 0
-                    ? WorthIt.WinChance(army, s.Defenders, hexBonus)
-                    : WorthIt.WinChance(army, s.DefenseSum + hexBonus, s.AttackSum);
+                float win = WorthIt.WinChance(army, s.Defenders, hexBonus, s.Commander);
                 if (win < StrongEnemyFleeWinChance)
                     return true;
             }
