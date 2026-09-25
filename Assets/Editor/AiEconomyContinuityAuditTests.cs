@@ -544,6 +544,46 @@ namespace Game.EditorTests
                     Proposal(EconomyTaskKind.FoundBase, Site, card)))));
         }
 
+        [Test]
+        public void BuilderCandidateGate_ReportsEachStructuralRejection()
+        {
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 1,
+                Self = new SelfSnapshot
+                {
+                    Armies = new List<ArmySnapshot>
+                    {
+                        new ArmySnapshot { ArmyId = 1, Hex = Home, IsGarrison = true, HasHero = true },
+                        new ArmySnapshot { ArmyId = 2, Hex = Home },
+                        new ArmySnapshot { ArmyId = 3, Hex = Home, IsMobileEconomyBuilder = true, HasHero = true },
+                        new ArmySnapshot { ArmyId = 4, Hex = Home, IsMobileEconomyBuilder = true, HasHero = true },
+                        new ArmySnapshot { ArmyId = 5, Hex = Home, IsMobileEconomyBuilder = true, HasHero = true },
+                    },
+                },
+            };
+            var routes = Enumerable.Range(1, 5).Select(id => new EconomyBuilderRouteSnapshot
+                { ArmyId = id, TravelCost = 4 }).ToList();
+            var surveil = new MissionIntent
+            {
+                Kind = MissionKind.Scout, Status = IntentStatus.Active, PreferredMoverArmyId = 3,
+                Funding = CommitmentTier.Soft,
+                Objective = new ScoutIntent { Kind = ScoutTargetKind.Surveil },
+            };
+            var commitments = new ActorCommitments();
+            commitments.Claim(4);
+
+            string Why(int id) => DemandLayer.EconomyBuilderCandidateRejection(snap, Site, routes, id,
+                new[] { surveil }, commitments);
+
+            Assert.That(Why(1), Is.EqualTo("garrison_without_extraction_route"));
+            Assert.That(Why(2), Is.EqualTo("not_mobile_economy_builder"));
+            Assert.That(Why(3), Does.StartWith("protected_assignment="));
+            Assert.That(Why(4), Is.EqualTo("claimed"));
+            Assert.That(Why(5), Does.StartWith("ranking_rejected"), "the gate passes a free builder");
+            Assert.That(Why(6), Is.EqualTo("no_witnessed_route"));
+        }
+
         // --- B12: collector usefulness is judged without its own contribution ---------------
 
         [Test]

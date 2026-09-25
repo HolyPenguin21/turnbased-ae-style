@@ -846,41 +846,66 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot army = snap?.Self?.Armies?.FirstOrDefault(
                     a => a != null && a.ArmyId == route.ArmyId);
-                if (army == null)
-                    continue;
-                if (route.IsOnTarget && army.IsGarrison && army.HasHero)
-                {
+                if (CandidateRejection(snap, target, route, army, activeIntents, commitments) == null)
                     yield return (route, army);
-                    continue;
-                }
-                if (army.IsGarrison)
-                {
-                    if (!route.RequiresGarrisonExtraction)
-                        continue;
-                }
-                else if (!army.IsMobileEconomyBuilder)
-                    continue;
-
-                MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
-                bool claimed = commitments != null && commitments.IsArmyClaimed(army.ArmyId);
-                if (assignment != null)
-                {
-                    if (assignment.Kind == MissionKind.Economy)
-                    {
-                        if (!EconomyDonorStructurallyEligible(assignment)
-                            && (assignment.Economy == null
-                                || !assignment.Economy.TargetHex.Equals(target)))
-                            continue;
-                    }
-                    else if (!EconomyDonorStructurallyEligible(assignment))
-                        continue;
-                }
-                if (claimed && assignment == null)
-                    continue;
-                if (EconomyBuilderUnderImmediateThreat(snap, army.Hex))
-                    continue;
-                yield return (route, army);
             }
+        }
+
+        // Why a witnessed route's army is not a structural builder candidate for `target`, or
+        // null when it is. The ONE candidate gate of EconomyBuilderCandidates, also printed by
+        // Provisioning's diagnostic trace (EconomyBuilderCandidateRejection).
+        private static string CandidateRejection(WorldSnapshot snap, HexCoord target,
+            EconomyBuilderRouteSnapshot route, ArmySnapshot army,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        {
+            if (army == null)
+                return "not_in_snapshot";
+            if (route.IsOnTarget && army.IsGarrison && army.HasHero)
+                return null;
+            if (army.IsGarrison)
+            {
+                if (!route.RequiresGarrisonExtraction)
+                    return "garrison_without_extraction_route";
+            }
+            else if (!army.IsMobileEconomyBuilder)
+                return "not_mobile_economy_builder";
+
+            MissionIntent assignment = ActiveAssignment(activeIntents, army.ArmyId);
+            if (assignment != null)
+            {
+                if (assignment.Kind == MissionKind.Economy)
+                {
+                    if (!EconomyDonorStructurallyEligible(assignment)
+                        && (assignment.Economy == null
+                            || !assignment.Economy.TargetHex.Equals(target)))
+                        return $"economy_assignment_elsewhere={assignment.IntentKey}";
+                }
+                else if (!EconomyDonorStructurallyEligible(assignment))
+                    return $"protected_assignment={assignment.IntentKey}";
+            }
+            if (assignment == null && commitments != null && commitments.IsArmyClaimed(army.ArmyId))
+                return "claimed";
+            if (EconomyBuilderUnderImmediateThreat(snap, army.Hex))
+                return "under_immediate_threat";
+            return null;
+        }
+
+        // Diagnostics: why `armyId` never became a ranked builder for `target` — the candidate
+        // gate's answer, or the later ranking stage (suitability / loan) when the gate passed.
+        internal static string EconomyBuilderCandidateRejection(WorldSnapshot snap, HexCoord target,
+            IReadOnlyList<EconomyBuilderRouteSnapshot> routes, int armyId,
+            IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments)
+        {
+            foreach (EconomyBuilderRouteSnapshot route in routes ?? SnapshotFallbackRoutes(snap, target))
+            {
+                if (route.ArmyId != armyId)
+                    continue;
+                ArmySnapshot army = snap?.Self?.Armies?.FirstOrDefault(
+                    a => a != null && a.ArmyId == armyId);
+                return CandidateRejection(snap, target, route, army, activeIntents, commitments)
+                    ?? "ranking_rejected (suitability or loan gate)";
+            }
+            return "no_witnessed_route";
         }
 
         private static IReadOnlyList<EconomyBuilderRouteSnapshot> SnapshotFallbackRoutes(
