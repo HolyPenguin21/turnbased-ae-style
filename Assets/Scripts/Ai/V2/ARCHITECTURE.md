@@ -83,6 +83,15 @@ existing `MilitaryTargetRelevance` slot before the fold. It does not enter the
 common Aggression desire, so it cannot raise Raid or ActiveDefence value. Its
 coefficient is a calibration point pending gameplay logs.
 
+The force measures all live on `SelfSnapshot`, on one scale — the AiPower strength of
+one composed ground stack — and are built in one pass by
+`WorldAnalysis.BuildForceMeasures`: `FieldPotential` (P_field, map only),
+`BestStackPotential` (map + hand), `TotalMilitaryPotential` (P_deck, + deck), `FistPower`
+(strongest existing army), `StartPotential` (P_start, `ForceBaselineRegistry`) and
+`Reserve` (units / hero / equipment / aviation that hand + deck can still add). The pools
+are nested, so P_field + Reserve.Units + Reserve.Hero = P_deck. Aviation is support and
+never joins a ground stack.
+
 One completed Raid target is one completed strategic objective. Continuity never
 selects or mutates the intent to a second neutral target. It exposes the surviving
 army to fresh mission construction/allocation; a new Raid, Attack or ActiveDefence
@@ -160,7 +169,8 @@ reactivate when important contact becomes stale or blind again.
 | Own-force power | `Evaluation/Power/AiPower` — no `ReactionPower` / `RaidPower` |
 | Tactical roster odds + per-defender penetration | `Game.Combat.WorthIt` — skill-aware; each side's commander (initiative bonus, Fate rerolls through `FateDuelAi`'s policy); a multi-army hex is `EstimateSequential` (strongest defender first, wounds carry, Fate refills). The aggregate-sum estimator is gone |
 | Who leads an army (capacity, battle initiative, Fate) | `ArmyData.Commander` — the army's first hero; battle, UI and AI read only this |
-| Which hero SHOULD lead a formation | `HeroRoleEvaluator.ProjectCommand` + `CompareCandidates` — the formation's fight under that hero (WorthIt, with its capacity/initiative/Fate) against the opposition, then capacity, then role/leadership. Same-hex assembly (`GroundCombatDonorPolicy.PickAttachableHero`), Housekeeping's commander reorder, bench pick and `CommanderMismatch` all use it |
+| Which hero SHOULD lead a formation | `HeroRoleEvaluator.ProjectCommand` + `CompareCandidates` — the formation's fight under that hero (WorthIt, with its capacity/initiative/Fate) against the opposition, then capacity, then role/leadership. Same-hex assembly (`GroundCombatDonorPolicy.PickAttachableHero`), Housekeeping's commander reorder, bench pick and `CommanderMismatch` all use it; so does `CombatOpportunityAnalyzer` for the assemblable roster, over `SelfSnapshot.CommandHeroes` (map and hand heroes, a hero card through `HeroRoleEvaluator.Profile(CardDefinition)`) |
+| Own force measures (P_field, best stack, P_deck, Fist, P_start, reinforcement reserve) | `WorldAnalysis.BuildForceMeasures` → `SelfSnapshot`, on `AiPower`'s one-stack scale. P_start is player memory in `State/ForceBaselineRegistry`, written once by the pipeline after the first scan |
 | A body's quick combat value (Attack+Defense+HP+0.25·Initiative) | `WorthIt.CombatValue` |
 | The opposition of a ground fight (each defending army + its observed commander) | `AiV2Util.KnownOpposition` (Raid/ActiveDefence target), `AttackObjectiveEvaluator.KnownSiteOpposition` (Attack site); flat defender lists are `WorthIt.UnitsOf` of these. `GroundCombatFeasibility.Clears` takes the attacker's commander + the opposition |
 | Strategic card value | `Evaluation/Cards/StrategicCardEvaluator` — the only strategic scorer |

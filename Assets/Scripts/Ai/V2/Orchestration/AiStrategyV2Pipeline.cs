@@ -107,6 +107,8 @@ namespace Game.Ai.V2
 
             // 2. One shared scan.
             WorldSnapshot snapshot = WorldAnalysis.Scan(player, root, hand, ctx);
+            // P_start: the first scanned force ceiling is this player's baseline for the game.
+            ForceBaselineRegistry.RecordStart(player, snapshot.Self.TotalMilitaryPotential);
             AiFrameLog.GameState(snapshot, hand);
             AiFrameLog.WorldAnalysis(snapshot);
 

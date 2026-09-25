@@ -27,7 +27,7 @@
 |---|---|---|
 | `fix/ai-v2-final-audit-20260925` | запушена | исправления аудита, F7 Gather, S3/S5 |
 | `refactor/ai-v2-ground-combat-lifecycle` | запушена, от аудита | S4: `GroundCombatLegs`, `GroundCombatLegStep`, `IGroundCombatOperation` |
-| `feature/ai-attack-strike-force` | **локальная, не запушена**, от refactor | шаги 1–2 кулака + фикс тестов |
+| `feature/ai-attack-strike-force` | запушена, от refactor (refactor влит) | шаги 1–3 кулака + фикс тестов |
 
 Коммиты `feature/ai-attack-strike-force`:
 - `d7efd6e1` **шаг 1a.** Правило командира в бою:
@@ -79,7 +79,6 @@
 ### Сознательные приближения (не дефекты, записать в ARCHITECTURE при случае)
 
 - **Порядок боёв в `EstimateSequential`** фиксируется один раз, против свежего атакующего. Реальный `FindEnemyAt` перевыбирает самого сильного против уже раненого.
-- **`CombatOpportunityAnalyzer`:** для «собираемого» ростера берётся командир готовой армии. Заменяется на шаге 3.
 - **`CompareCandidates`** с эпсилоном нетранзитивен, но вход у всех вызывающих упорядочен детерминированно, поэтому результат стабилен.
 - **Перестановка командира теперь зависит от сильнейшей угрозы группы** (`CommandContext`). Если угроза меняется ход от хода, командир может переключаться. Перестановка бесплатна по AP, но при игровом тесте это стоит смотреть.
 
@@ -139,27 +138,28 @@
 - **После захвата:** гарнизон из руки, иначе раненый или самый слабый боец кулака; дальше по скору — давить или перегруппироваться.
 - **Цитадель:** её координаты — чит-якорь, её защитники — только из разведки.
 
-### Шаг 3 — меры силы (Analysis)
+### Шаг 3 — меры силы (Analysis) — СДЕЛАНО
 
-**Уже есть (расширять, не дублировать):**
-- `SelfSnapshot.BestStackPotential` (карта + рука, CR = max по герою);
-- `SelfSnapshot.TotalMilitaryPotential` (карта + рука + колода — это и есть P_deck);
-- считаются в `WorldAnalysis.Self` через `AiPower.BestStackPotential`/`TotalMilitaryPotential`/`ComposeStack`;
-- читатели: `AttackObjectiveEvaluator.Build` (`potentialSaturation`), `DesireEvaluators`, `TempoCandidateProvider`, `StrategicEffectRegistry`, логи кадра.
+Решения пользователя: шкала — `AiPower` (одна составленная наземная армия, `ComposeStack`); авиация в наземные меры не входит, только в запас.
 
-**Добавить:**
-- **P_field** — только то, что на карте (армии + гарнизоны).
-- **Fist** — сила текущей сильнейшей армии.
-- **P_start** — P_deck, запомненный на 1-м ходу. Это память игрока (класс C): ключ по игроку, сброс в `CitadelSetupController` вместе с остальными `Clear`.
-- **Запас усиления** — что реально есть в руке и колоде и может усилить кулак: юниты, экипировка, лучший герой, авиация.
+**Где:** `WorldAnalysis.BuildForceMeasures` (один проход, вложенные пулы) → `SelfSnapshot`:
+- `FieldPotential` — **P_field**: только карта (армии + гарнизоны, без авиации и пленных), лимит — CR героев на карте;
+- `BestStackPotential` — карта + рука (комментарий «+ колода» был неверен, исправлен);
+- `TotalMilitaryPotential` — **P_deck**: + колода;
+- `FistPower` — **Fist**: `max EffectiveArmyPower` среди `IsStructuralRaidActor`;
+- `StartPotential` — **P_start**: `State/ForceBaselineRegistry` (класс C, ключ по игроку). Пишет только пайплайн сразу после первого `Scan`, `Analysis` читает; до записи = P_deck. Сброс в `CitadelSetupController`;
+- `Reserve` (`ForceReserve`): `Units` (юниты руки/колоды под лимитом карты), `Hero` (герои руки/колоды и их вместимость), `Equipment` (на каждую карту экипировки — лучший `Combat` из `StrategicCardEvaluator.EquipmentDeltaParts` на свободном законном наземном носителе, один носитель на предмет), `Aviation` (Σ `BasePower` карт авиации). P_field + Units + Hero = P_deck;
+- `CommandHeroes` — все герои (карта / рука / колода) как `HeroRoleEvaluator.HeroProfile`.
 
-**Вопрос к пользователю:** все меры — в шкале `AiPower.EffectiveArmyPower` (дёшево, композиционно) или по `WorthIt` против эталона? Рекомендация: `AiPower`. `WorthIt` оставить для решений против конкретного противника.
+**`HeroRoleEvaluator`:** общее ядро по статам; перегрузки `CombatLeadershipScore`/`HasSupportVocation`/`Classify` для карты героя; `HeroProfile` + `Profile(UnitData|CardDefinition)`; `Candidate(HeroProfile, projection)`; `CommandProjection.Roster`.
 
-**Заменить:** приближение командира в `CombatOpportunityAnalyzer` (`readyCommander` для «собираемого» ростера) на лучшего героя через `HeroRoleEvaluator`.
+**`CombatOpportunityAnalyzer`:** «собираемый» ростер строится под лучшим командиром (карта + рука) на каждую цель — `ProjectCommand` + `CompareCandidates` (`BestAssembly`). Тела ранжируются `WorthIt.CombatValue` (локальный `ProfilePower` удалён).
 
-**Опционально:** перевести ценность карты героя в Phase B (`HeroCommandMarginalValue`) на `HeroRoleEvaluator.ProjectCommand`.
+**Лог:** строка `self.power` — `pField fist bestStack pDeck pStart reserve units/hero/equip/air`. Потери P_start/P_deck — только в лог.
 
-**P_start / P_deck** (потери) — только в лог.
+**Влияние на нынешних читателей:** `BestStackPotential`/`TotalMilitaryPotential` больше не включают авиацию и пленных (`AttackObjectiveEvaluator`, `DesireEvaluators`, `TempoCandidateProvider`, `StrategicEffectRegistry`).
+
+**Следующий коммит (одобрен):** ценность карты героя в Phase B (`StrategicCardEvaluator.HeroCommandMarginalValue`) — на `HeroRoleEvaluator.ProjectCommand` через `Profile(CardDefinition)`.
 
 ### Шаг 4 — скор атаки и готовность
 
@@ -223,8 +223,7 @@
 
 ## 7. Побочные хвосты
 
-- **Тесты в запушенных ветках.** В `fix/ai-v2-final-audit-20260925` и `refactor/ai-v2-ground-combat-lifecycle` editor-тесты не компилируются (сигнатура `ResolveAttackIntent`, F7). Фикс есть только в `b3b09d54`. Решить с пользователем: перенести в обе ветки или вливать ветки по порядку.
-- **Push `feature/ai-attack-strike-force`** — шаг 0 сделан; пушить после самопроверки и с разрешения пользователя.
+- **Тесты в запушенных ветках — СДЕЛАНО.** `a9139613` в `fix/…` (только `AiAttackLaneTests.cs`), `fix` влит в `refactor` (`96c6439f`), `refactor` — в `feature` (`3d2d6533`, содержимое не изменилось). Все три ветки запушены, в каждой обе сборки 0/0.
 - **Два цикла дуэли Fate.** Дуэль в UI (`BattleAttackPopupUI.RunDuel`) и в оценке (`WorthIt.ResolveExchange`) — два цикла одного порядка ходов; решение у них общее (`FateDuelAi`). Вынести порядок в `FateDuelAi` — отдельным шагом, по желанию.
 - **Открыто из аудита V2:** выравнивание Raid/Attack. Смена фазы (исполнитель против outcome), потеря поддержки (сразу против через проход), `HexEventOccurred` на ногах возврата.
 
@@ -233,6 +232,6 @@
 ## 8. Порядок на следующую сессию
 
 1. Шаг 0 (R1–R5) сделан — `a85d8196`.
-2. Решить пункт про тесты в запушенных ветках и пуш feature-ветки.
-3. Шаг 3: перечитать `WorldAnalysis.Self`, `AiPower.ComposeStack`, `CombatOpportunityAnalyzer` → план → одобрение → реализация.
+2. Тесты в запушенных ветках и пуш — сделано.
+3. Шаг 3 — сделано. Следом — Phase B: ценность карты героя через `ProjectCommand` (отдельный коммит).
 4. Дальше по одному шагу 4 → 5 → 6 → 7, затем авиация. Каждый шаг — отдельный коммит, обе сборки 0/0.

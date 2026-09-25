@@ -19,7 +19,7 @@
 |---|---|---|
 | **A. Кадр хода** | строится целиком, дальше только читается; замена целиком, не мутация | `WorldSnapshot` (+ `Self`, `Known`, `MapKnowledge`, `TrueWorld`, `Economy`, `Development`, `Threat`) |
 | **B. Реестры хода** | живут один ход, обязаны умирать на выходе | `AxisBudgetLedger`, `StrategicResourceReservationLedger`, `ActorCommitments`, `CapabilityInventory`, `StrategicTempoBudget`, `CapabilityPoolExhaustionRegistry`, `GroundCombatAdmissionRegistry`, `StrategicInterruptRegistry`, `StrategicCapabilityLeaseRegistry`, `AiAllocatorStateRegistry`, `V2StateVersion` |
-| **C. Память игрока** | переживает ход, обязана быть изолирована по игроку | `AiMapMemory`, `AiReconIntelMemory`, `AiReconMemory`, `ReconIntelSnapshotRegistry`, `ScoutTrailRegistry`, `ReconPatrolStateRegistry`, `ReconAirSortieRegistry`, `AirReconCoverageRegistry`, `ReconCapacityDeficitRegistry`, `AirSortieRegistry`, `ResourceStarvationRegistry`, `MissionIntentRegistry`/`MissionIntentState`, `AiRadarStateRegistry`, `InitiativeAnalyticsHistory` |
+| **C. Память игрока** | переживает ход, обязана быть изолирована по игроку | `AiMapMemory`, `AiReconIntelMemory`, `AiReconMemory`, `ReconIntelSnapshotRegistry`, `ScoutTrailRegistry`, `ReconPatrolStateRegistry`, `ReconAirSortieRegistry`, `AirReconCoverageRegistry`, `ReconCapacityDeficitRegistry`, `AirSortieRegistry`, `ResourceStarvationRegistry`, `MissionIntentRegistry`/`MissionIntentState`, `AiRadarStateRegistry`, `InitiativeAnalyticsHistory`, `ForceBaselineRegistry` (P_start: пишет только пайплайн после первого скана, `Analysis` читает) |
 
 Объём: 18 основных узлов, ~140 методов API, ~510 обращений из кода
 (`AiMapMemory` 251, `StrategicInterruptRegistry` 47, `MissionIntentRegistry` 44,

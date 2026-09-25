@@ -31,18 +31,24 @@ namespace Game.Ai.V2
         // Combat-leadership merit from canonical hero data: CommandRating (leadership capacity)
         // plus the hero's own AiPower contribution (HitPoints / Initiative / Resistance / Fate —
         // heroes carry no Attack/Defense). Higher = better field commander.
-        public static float CombatLeadershipScore(UnitData hero)
+        public static float CombatLeadershipScore(UnitData hero) =>
+            hero == null || !hero.IsHero ? 0f
+                : LeadershipScore(AiPower.ToPowerUnit(hero).BasePower, hero.CommandRating, hero.MoveMax);
+
+        // The same merit for a hero that is still a card (hand / deck).
+        public static float CombatLeadershipScore(CardDefinition hero) =>
+            !IsHeroCard(hero) ? 0f
+                : LeadershipScore(AiPower.ToPowerUnit(hero).BasePower, hero.commandRating, hero.moveMax);
+
+        private static float LeadershipScore(float ownContribution, int commandRating, int moveMax)
         {
-            if (hero == null || !hero.IsHero)
-                return 0f;
-            float ownContribution = AiPower.ToPowerUnit(hero).BasePower;
-            float staticLeadership = hero.CommandRating * AiConfigV2.heroRoleCommandWeight
+            float staticLeadership = commandRating * AiConfigV2.heroRoleCommandWeight
                  + ownContribution * AiConfigV2.heroRoleCombatContributionWeight;
             // A commander only contributes this leadership to a field force it can keep pace with.
             // Reuse the canonical MobileCombat movement line instead of inventing another cutoff:
             // MoveMax 2 is materially worse than 5, while faster heroes receive no extra inflation.
             float mobility = Mathf.Clamp01(
-                (float)Mathf.Max(0, hero.MoveMax) / Mathf.Max(1, AiConfigV2.mobileCombatMoveMax));
+                (float)Mathf.Max(0, moveMax) / Mathf.Max(1, AiConfigV2.mobileCombatMoveMax));
             return staticLeadership * mobility;
         }
 
@@ -52,19 +58,27 @@ namespace Game.Ai.V2
         // (homeHeroMoveMaxThreshold). The MoveMax floor applies regardless of ability tags — a
         // slow hero with no support abilities is still a home hero by design.
         public static bool HasSupportVocation(UnitData hero) =>
-            hero != null && hero.IsHero
-            && (hero.HasAbility(UnitAbilities.Researcher) || hero.HasAbility(UnitAbilities.Assembler)
-                || hero.HasAbility(UnitAbilities.ApBonus)
-                || hero.MoveMax <= AiConfigV2.homeHeroMoveMaxThreshold);
+            hero != null && hero.IsHero && SupportVocation(hero.HasAbility, hero.MoveMax);
 
-        public static HeroOperationalRole Classify(UnitData hero)
+        public static bool HasSupportVocation(CardDefinition hero) =>
+            IsHeroCard(hero) && SupportVocation(
+                a => hero.grantedAbilities != null && hero.grantedAbilities.Contains(a), hero.moveMax);
+
+        private static bool SupportVocation(Func<string, bool> hasAbility, int moveMax) =>
+            hasAbility(UnitAbilities.Researcher) || hasAbility(UnitAbilities.Assembler)
+            || hasAbility(UnitAbilities.ApBonus)
+            || moveMax <= AiConfigV2.homeHeroMoveMaxThreshold;
+
+        public static HeroOperationalRole Classify(UnitData hero) =>
+            hero == null || !hero.IsHero ? HeroOperationalRole.Flexible
+                : ClassifyCore(HasSupportVocation(hero), CombatLeadershipScore(hero));
+
+        public static HeroOperationalRole Classify(CardDefinition hero) =>
+            !IsHeroCard(hero) ? HeroOperationalRole.Flexible
+                : ClassifyCore(HasSupportVocation(hero), CombatLeadershipScore(hero));
+
+        private static HeroOperationalRole ClassifyCore(bool support, float combat)
         {
-            if (hero == null || !hero.IsHero)
-                return HeroOperationalRole.Flexible;
-
-            bool support = HasSupportVocation(hero);
-            float combat = CombatLeadershipScore(hero);
-
             if (support)
                 return combat < AiConfigV2.heroRoleFlexibleCombatFloor
                     ? HeroOperationalRole.SupportOperator
@@ -81,6 +95,9 @@ namespace Game.Ai.V2
         {
             return RolePreference(Classify(hero));
         }
+
+        private static bool IsHeroCard(CardDefinition def) =>
+            def != null && def.cardType == CardType.Hero;
 
         // ---- THE commander evaluation (strike force step 2) -------------------------------------
         //
@@ -101,11 +118,15 @@ namespace Game.Ai.V2
         {
             public readonly float WinChance;
             public readonly int BodySlots;
+            // The bodies that fill those slots — the roster the win chance was judged on.
+            public readonly IReadOnlyList<WorthIt.DefenderProfile> Roster;
 
-            public CommandProjection(float winChance, int bodySlots)
+            public CommandProjection(float winChance, int bodySlots,
+                IReadOnlyList<WorthIt.DefenderProfile> roster)
             {
                 WinChance = winChance;
                 BodySlots = bodySlots;
+                Roster = roster ?? Array.Empty<WorthIt.DefenderProfile>();
             }
         }
 
@@ -125,8 +146,38 @@ namespace Game.Ai.V2
             float win = opposition == null || opposition.Count == 0
                 ? 1f
                 : WorthIt.EstimateSequential(roster, commander, opposition, defenderHexDefenseBonus).WinChance;
-            return new CommandProjection(win, slots);
+            return new CommandProjection(win, slots, roster);
         }
+
+        // The static, fight-independent side of one commander option, whatever form the hero is
+        // in — on the map or still a card. Built once (WorldAnalysis.BuildSelf) and projected
+        // against each fight by the caller.
+        public readonly struct HeroProfile
+        {
+            public readonly int CommandRating;
+            public readonly WorthIt.SideCommander Commander;
+            public readonly int RolePreference;
+            public readonly float Leadership;
+            public readonly int StableKey;
+
+            public HeroProfile(int commandRating, WorthIt.SideCommander commander, int rolePreference,
+                float leadership, int stableKey)
+            {
+                CommandRating = commandRating;
+                Commander = commander;
+                RolePreference = rolePreference;
+                Leadership = leadership;
+                StableKey = stableKey;
+            }
+        }
+
+        public static HeroProfile Profile(UnitData hero, int stableKey) =>
+            new HeroProfile(hero?.CommandRating ?? 0, WorthIt.SideCommander.Of(hero),
+                FieldCommandPreference(hero), CombatLeadershipScore(hero), stableKey);
+
+        public static HeroProfile Profile(CardDefinition hero, int stableKey) =>
+            new HeroProfile(hero?.commandRating ?? 0, WorthIt.SideCommander.Of(hero),
+                RolePreference(Classify(hero)), CombatLeadershipScore(hero), stableKey);
 
         // One commander candidate, whatever form the caller holds the hero in.
         public readonly struct CommandCandidate
@@ -151,8 +202,11 @@ namespace Game.Ai.V2
         }
 
         public static CommandCandidate Candidate(UnitData hero, CommandProjection projection, int stableKey) =>
-            new CommandCandidate(projection, FieldCommandPreference(hero), CombatLeadershipScore(hero),
-                hero?.CommandRating ?? 0, hero?.FateMax ?? 0, stableKey);
+            Candidate(Profile(hero, stableKey), projection);
+
+        public static CommandCandidate Candidate(HeroProfile hero, CommandProjection projection) =>
+            new CommandCandidate(projection, hero.RolePreference, hero.Leadership,
+                hero.CommandRating, hero.Commander.Fate, hero.StableKey);
 
         public static int RolePreference(HeroOperationalRole role) =>
             role == HeroOperationalRole.CombatLeader ? 2 : role == HeroOperationalRole.Flexible ? 1 : 0;

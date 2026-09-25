@@ -1327,6 +1327,10 @@ namespace Game.Ai.V2
             WorldSnapshot snap = null, CapabilityInventory inv = null)
             => EquipmentDeltaParts(equipDef, host, host?.Definition, snap, inv);
 
+        // A host that is still only a definition (a deck card): nothing is attached to it yet.
+        internal static EquipmentDelta EquipmentDeltaParts(CardDefinition equipDef, CardDefinition host)
+            => EquipmentDeltaParts(equipDef, null, host, null, null);
+
         private static float EquipmentUpgradeUtilityFor(CardDefinition equipDef, CardData hostCard,
             CardDefinition host, WorldSnapshot snap, CapabilityInventory inv)
             => EquipmentDeltaParts(equipDef, hostCard, host, snap, inv).Total;

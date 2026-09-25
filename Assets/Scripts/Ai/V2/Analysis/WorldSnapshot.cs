@@ -390,6 +390,49 @@ namespace Game.Ai.V2
         public float EstimatedAirApDemand;         // apAirSortieApProxy per structurally-available recon-air sortie/wing
     }
 
+    // Where a force element is now: already on the map, in hand, or still in the deck.
+    public enum ForceSource { Map, Hand, Deck }
+
+    // One commander option (HeroRoleEvaluator.HeroProfile) and where the hero is.
+    public readonly struct OwnCommandHero
+    {
+        public readonly HeroRoleEvaluator.HeroProfile Profile;
+        public readonly ForceSource Source;
+
+        public OwnCommandHero(HeroRoleEvaluator.HeroProfile profile, ForceSource source)
+        {
+            Profile = profile;
+            Source = source;
+        }
+    }
+
+    // Reinforcement reserve (strike force step 3): what the cards in hand + deck can still add
+    // to the field, on the SelfSnapshot force-measure scale. Built as nested pools on the map
+    // stack, so FieldPotential + Units + Hero == TotalMilitaryPotential.
+    //   Units     — unit cards added under the map's own command capacity;
+    //   Hero      — hero cards added on top (their bodies and the capacity they lift);
+    //   Equipment — Σ, per equipment card, its best combat gain on a free legal host
+    //               (StrategicCardEvaluator.EquipmentDeltaParts, one host per item);
+    //   Aviation  — Σ power of aviation cards: support that may or may not help a ground fight.
+    public readonly struct ForceReserve
+    {
+        public readonly float Units;
+        public readonly float Hero;
+        public readonly float Equipment;
+        public readonly float Aviation;
+
+        public ForceReserve(float units, float hero, float equipment, float aviation)
+        {
+            Units = units;
+            Hero = hero;
+            Equipment = equipment;
+            Aviation = aviation;
+        }
+
+        // What can strengthen a ground stack.
+        public float Ground => Units + Hero + Equipment;
+    }
+
     // =======================================================================================
     //  SELF
     // =======================================================================================
@@ -403,15 +446,35 @@ namespace Game.Ai.V2
         public float GarrisonPower;
         public float TotalPower;
 
-        // Best single stack the player could assemble RIGHT NOW from on-map units + hand + deck,
-        // capped at the best available hero's CommandRating. Dynamic — loses a strong unit in a
-        // battle and this drops. Comparison / "how strong am I" only; gates nothing.
+        // ---- Force measures (strike force step 3) ----------------------------------------------
+        // One scale for all of them: the AiPower strength of ONE composed ground stack
+        // (AiPower.ComposeStack, capped by the best available hero's CommandRating). Aviation is
+        // support, not part of a ground stack — it only shows up as Reserve.Aviation.
+
+        // P_field — best single stack from what is on the map now (field armies + garrisons).
+        public float FieldPotential;
+
+        // Best single stack the player could assemble RIGHT NOW from on-map units + hand.
+        // Dynamic — loses a strong unit in a battle and this drops.
         public float BestStackPotential;
 
-        // Near-static ceiling: every military unit already on the map plus every unit card still
-        // in hand or deck, composition-adjusted. "If we can't get stronger than this even in
-        // theory, there is nothing left to wait for before striking the enemy citadel."
+        // P_deck — near-static ceiling: on-map units plus every unit/hero card still in hand or
+        // deck, composition-adjusted. "If we can't get stronger than this even in theory, there
+        // is nothing left to wait for before striking the enemy citadel."
         public float TotalMilitaryPotential;
+
+        // Fist — the strongest army that exists now (EffectiveArmyPower of a structural raid actor).
+        public float FistPower;
+
+        // P_start — TotalMilitaryPotential as recorded on this player's first V2 turn
+        // (ForceBaselineRegistry); this turn's TotalMilitaryPotential until one is recorded.
+        public float StartPotential;
+
+        // What hand + deck can still add to the field (see ForceReserve).
+        public ForceReserve Reserve;
+
+        // Every hero that could command a formation: on the map, in hand, in the deck.
+        public IReadOnlyList<OwnCommandHero> CommandHeroes = System.Array.Empty<OwnCommandHero>();
 
         public ResourceBundle Stockpile;
         public ResourceBundle PerTurnIncome;
