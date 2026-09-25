@@ -577,17 +577,28 @@ namespace Game.Ai.V2
             {
                 MissionProposal m = c?.Mission;
                 if (m == null) continue;
-                // Active Defence may interrupt only the exact Raid commitment that owns the same
-                // physical primary. The comparison uses the global EffectiveValue scale plus the
-                // Raid's real switching cost; no family-local bonus leaks into this decision.
+                // Active Defence may interrupt only the exact offensive Assault commitment (Raid or
+                // Attack — ATK §49/§73, MissionContinuityLayer.TryOffensiveAssaultOperation) whose
+                // physical primary its borrow proposal names. The comparison uses the global
+                // EffectiveValue scale plus the commitment's real switching cost; no family-local
+                // bonus leaks into this decision. A Raid Assault leg names its primary through
+                // PreferredMoverArmyId (AggressionObjective.ToTarget leaves PrimaryArmyId unset).
                 MissionProposal defencePreemptor = null;
-                if (m.Kind == MissionKind.Raid && m.Target is RaidMissionTarget raid
-                    && raid.PrimaryArmyId.HasValue)
+                int? offensivePrimary = m.Target is RaidMissionTarget raid
+                        && raid.Phase == RaidMissionPhase.Assault
+                    ? raid.PrimaryArmyId ?? m.PreferredMoverArmyId
+                    : m.Target is AttackMissionTarget attack
+                        && attack.Phase == AttackMissionPhase.Assault
+                        ? attack.PrimaryArmyId
+                        : null;
+                if ((m.Kind == MissionKind.Raid || m.Kind == MissionKind.Attack)
+                    && offensivePrimary.HasValue)
                 {
                     defencePreemptor = _missions.FirstOrDefault(candidate =>
                         candidate?.Kind == MissionKind.ActiveDefence
                         && candidate.Target is ActiveDefenceMissionTarget defence
-                        && defence.PrimaryArmyId == raid.PrimaryArmyId
+                        && defence.SuspendedOffensiveIntentKey.HasValue
+                        && defence.PrimaryArmyId == offensivePrimary
                         && !_rejectedThisTurn.Contains(StableMissionKey.For(candidate))
                         && !_state.OnCooldown(StableMissionKey.For(candidate), turn)
                         && ResourceAllocator.ActiveDefencePreemptsRaid(candidate.EffectiveValue,

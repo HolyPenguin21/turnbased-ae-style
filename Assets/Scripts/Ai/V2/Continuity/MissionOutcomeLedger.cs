@@ -608,9 +608,13 @@ namespace Game.Ai.V2
                     // or stopped being a usable field army. That invalidates only the support leg,
                     // not the durable primary Raid. Return/Assault/Reinforcement target invalidation
                     // keeps its existing failure semantics (notably a lost primary in Reinforcement).
+                    // The same holds for the AirSupport wing leg (as the execution-side
+                    // Classify already treats it): ResolveActive releases the wing and moves the
+                    // Raid to its next recovery phase instead of retiring the campaign.
                     if (o.MissionKind == MissionKind.Raid
                         && o.Proposal?.Target is RaidMissionTarget invalidRaidTarget
-                        && invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn)
+                        && (invalidRaidTarget.Phase == RaidMissionPhase.SupportReturn
+                            || invalidRaidTarget.Phase == RaidMissionPhase.AirSupport))
                     {
                         o.Outcome = ExecutionOutcome.Blocked;
                         break;

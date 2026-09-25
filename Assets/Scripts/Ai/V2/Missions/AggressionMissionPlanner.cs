@@ -135,7 +135,7 @@ namespace Game.Ai.V2
                     }
                     if (intent.Raid.Phase == RaidMissionPhase.Reinforcement)
                     {
-                        RaidCandidate? sup = ReinforcementCandidate(snap, intent);
+                        RaidCandidate? sup = ReinforcementCandidate(snap, intent, committed);
                         if (sup.HasValue) incumbents.Add(sup.Value);
                         else
                             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
@@ -482,7 +482,10 @@ namespace Game.Ai.V2
 
         // Reinforcement is a durable continuation leg. Target discovery/value is not recomputed here;
         // its Hard commitment, not a synthetic strategic value, owns continuation priority.
-        private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent)
+        // `committed` — armies claimed by other operations; the same exclusion Demand and
+        // Provisioning apply, so an unpinned leg is proposed only while a bindable support exists.
+        private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent,
+            ISet<int> committed)
         {
             RaidIntent ri = intent.Raid;
             if (!ri.PrimaryArmyId.HasValue)
@@ -497,7 +500,7 @@ namespace Game.Ai.V2
             {
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    snap, primaryId, opposition, null);
+                    snap, primaryId, opposition, committed);
                 if (candidates.Count == 0)
                     return null;
 
@@ -738,7 +741,7 @@ namespace Game.Ai.V2
                 GroundCombatAdmissionRegistry.Record(proposal, snap, excluded);
             else if (c.Target.Phase == RaidMissionPhase.Reinforcement
                 && !c.Target.SupportArmyId.HasValue)
-                GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap);
+                GroundCombatAdmissionRegistry.RecordReinforcement(proposal, snap, excluded);
             return proposal;
         }
 
