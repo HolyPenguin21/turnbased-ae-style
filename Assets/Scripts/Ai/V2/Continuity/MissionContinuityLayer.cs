@@ -2834,7 +2834,10 @@ namespace Game.Ai.V2
             // Explore/Refresh are durable roles whose waypoint is re-focused by ResolveActive.
             // Productive movement resets StallTurns; absolute age must not turn that success into
             // IntentReapedStall. Objective exhaustion/invalidity is handled separately above.
-            if (i.Kind == MissionKind.Scout)
+            // Attack owns its full lifecycle (target validity, live primary, Gather/Reinforcement/
+            // RecoveryReturn) and a gather plus a long march legitimately outlives the generic age
+            // cap; only a real stall ends it here.
+            if (i.Kind == MissionKind.Scout || i.Kind == MissionKind.Attack)
                 return i.StallTurns >= AiConfigV2.commitmentStallTurns;
             return i.StallTurns >= AiConfigV2.commitmentStallTurns
                 || i.TurnsActive >= AiConfigV2.commitmentMaxTurns;
