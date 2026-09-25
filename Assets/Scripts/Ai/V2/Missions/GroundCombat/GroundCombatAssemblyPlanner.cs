@@ -331,9 +331,12 @@ namespace Game.Ai.V2
         // here at snapshot granularity so Missions can propose a concrete leg before an actor is
         // physically claimed. Demand reads this to decide whether a NEW army even needs to be
         // materialized; Missions/Provisioning read it to run the normal actor-contention batch solve.
+        // `allowCommandHandover` — the lane hands command over at the rendezvous (Attack: the
+        // provisioner validates with GroundCombatReinforcement.ImprovesOdds(allowCommandHandover:
+        // true)), so a support whose hero would take command qualifies exactly as execution admits it.
         public static List<int> ReinforcementSupportCandidates(WorldSnapshot snap, int primaryArmyId,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> excludeArmyIds,
-            float defenderHexDefenseBonus = 0f)
+            float defenderHexDefenseBonus = 0f, bool allowCommandHandover = false)
         {
             var ids = new List<int>();
             if (snap?.Self?.Armies == null)
@@ -345,19 +348,28 @@ namespace Game.Ai.V2
             var excluded = excludeArmyIds != null ? new HashSet<int>(excludeArmyIds) : new HashSet<int>();
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
-                if (SupportImprovesPrimary(primary, candidate, opposition, defenderHexDefenseBonus))
+                if (SupportImprovesPrimary(primary, candidate, opposition, defenderHexDefenseBonus,
+                        allowCommandHandover))
                     ids.Add(candidate.ArmyId);
             return ids;
         }
 
         // Snapshot-level: would handing `candidate`'s sparable bodies to `primary` raise the
-        // primary's win chance? The one per-candidate test behind ReinforcementSupportCandidates,
-        // also used by Continuity to drop a planned Gather support that no longer helps.
+        // primary's win chance — or, for a lane that hands command over, would its hero take
+        // command of the primary (GroundCombatReinforcement.CommandHandover, the rule the
+        // rendezvous leg's ImprovesOdds admits on)? The one per-candidate test behind
+        // ReinforcementSupportCandidates, also used by Continuity to drop a planned Gather
+        // support that no longer helps.
         internal static bool SupportImprovesPrimary(ArmySnapshot primary, ArmySnapshot candidate,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus = 0f)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus = 0f,
+            bool allowCommandHandover = false)
         {
             if (primary == null || candidate == null)
                 return false;
+            if (allowCommandHandover && GroundCombatReinforcement.CommandHandover(LiveArmy(primary),
+                    LiveArmy(candidate), opposition ?? System.Array.Empty<WorthIt.DefendingArmy>(),
+                    defenderHexDefenseBonus, null) != null)
+                return true;
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
             // Mirrors SparableSupportBodies' minimum-container invariant at snapshot level:
             // leave at least one total member (a hero may be that retained member). Previously

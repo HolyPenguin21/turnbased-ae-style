@@ -396,13 +396,10 @@ namespace Game.Ai.V2
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
                 // A support stays while its bodies improve the host OR its hero would take command
-                // (GroundCombatReinforcement.CommandHandover — the plan may keep it for that alone).
+                // (the plan may keep it for that alone).
                 return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
-                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus)
-                        && GroundCombatReinforcement.CommandHandover(
-                            AiV2Util.ResolveArmy(snap.Observer, a.PrimaryArmyId.Value),
-                            AiV2Util.ResolveArmy(snap.Observer, id),
-                            opposition, hexBonus, null) == null;
+                    || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
+                        allowCommandHandover: true);
             }).ToList();
             if (dropped.Count > 0)
             {
@@ -489,7 +486,8 @@ namespace Game.Ai.V2
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
-                a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus).Count > 0;
+                a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus,
+                allowCommandHandover: true).Count > 0;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken

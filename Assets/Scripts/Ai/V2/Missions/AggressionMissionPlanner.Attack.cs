@@ -480,7 +480,8 @@ namespace Game.Ai.V2
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, ctx?.Map, a.Target.Hex);
             List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus);
+                snap, a.PrimaryArmyId.Value, opposition, committed, hexBonus,
+                allowCommandHandover: true);
             if (candidates.Count == 0)
             {
                 AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),

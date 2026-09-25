@@ -325,7 +325,8 @@ namespace Game.Ai.V2
                 return null;
             }
             List<int> existing = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primaryId, opposition, commitments?.ClaimedArmyIdSet, hexBonus);
+                snap, primaryId, opposition, commitments?.ClaimedArmyIdSet, hexBonus,
+                allowCommandHandover: consumerKind == MissionKind.Attack);
             if (existing.Count > 0)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "

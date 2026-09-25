@@ -280,7 +280,8 @@ namespace Game.Ai.V2
             // never weaken that contract back to the generic IsStructuralRaidActor shape.
             var admissible = new HashSet<int>(
                 GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    afterSnap, primaryId, opposition, null, hexBonus));
+                    afterSnap, primaryId, opposition, null, hexBonus,
+                    allowCommandHandover: ri == null));
             int? support = leased
                 .Where(id => id != primaryId && admissible.Contains(id))
                 .OrderBy(id => id)

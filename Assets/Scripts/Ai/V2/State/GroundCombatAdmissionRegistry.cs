@@ -144,6 +144,7 @@ namespace Game.Ai.V2
             int primaryArmyId;
             IReadOnlyList<WorthIt.DefendingArmy> opposition;
             float hexBonus = 0f;
+            bool allowCommandHandover = false;
             if (proposal.Target is RaidMissionTarget raid)
             {
                 if (raid.Phase != RaidMissionPhase.Reinforcement || raid.SupportArmyId.HasValue
@@ -160,6 +161,7 @@ namespace Game.Ai.V2
                 primaryArmyId = attack.PrimaryArmyId.Value;
                 opposition = AttackObjectiveEvaluator.KnownSiteOpposition(snap, attack.Target.Hex);
                 hexBonus = attack.DefenderHexDefenseBonus;
+                allowCommandHandover = true;
             }
             else
             {
@@ -167,7 +169,7 @@ namespace Game.Ai.V2
             }
 
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primaryArmyId, opposition, unavailableArmyIds, hexBonus);
+                snap, primaryArmyId, opposition, unavailableArmyIds, hexBonus, allowCommandHandover);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
