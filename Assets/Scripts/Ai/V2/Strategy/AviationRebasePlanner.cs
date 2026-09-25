@@ -50,7 +50,9 @@ namespace Game.Ai.V2
         // choice. It survives turn boundaries in AirSortieRegistry and is resumed before optional
         // spending; the exact route, capacity, ownership, AA and fuel proof are still re-derived by
         // ContinueSortie on every step.
-        internal static List<ArmyData> FindMandatoryContinuations(PlayerSetupData player)
+        // `turn` excludes a continuation that already could not take a step this turn (Recon audit
+        // B1, AviationObligationStallRegistry); it is re-tried from the next turn.
+        internal static List<ArmyData> FindMandatoryContinuations(PlayerSetupData player, int turn)
         {
             var result = new List<ArmyData>();
             foreach (AirSortie sortie in AirSortieRegistry.For(player).ToList())
@@ -66,7 +68,8 @@ namespace Game.Ai.V2
                     AirSortieRegistry.Remove(player, sortie);
                     continue;
                 }
-                if (army.CurrentMovement > 0)
+                if (army.CurrentMovement > 0
+                    && !AviationObligationStallRegistry.IsStalled(player, turn, army.Id))
                     result.Add(army);
             }
             return result.Distinct().OrderBy(a => a.Id).ToList();

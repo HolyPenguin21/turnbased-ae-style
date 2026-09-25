@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -199,9 +200,12 @@ namespace Game.Ai.V2
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconAirSortieState> byArmy))
                 return 0;
+            // Recon audit B8 — a sortie of an army that no longer exists is not a live claim.
+            var live = new HashSet<int>(ArmyRegistry.AllForOwner(player).Where(a => a != null).Select(a => a.Id));
             int n = 0;
             foreach (KeyValuePair<int, ReconAirSortieState> kv in byArmy)
-                if (kv.Key != armyId && kv.Value.HasClaim && kv.Value.ClaimedSector == sector)
+                if (kv.Key != armyId && kv.Value.HasClaim && kv.Value.ClaimedSector == sector
+                    && live.Contains(kv.Key))
                     n++;
             return n;
         }

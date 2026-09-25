@@ -764,13 +764,18 @@ namespace Game.Ai.V2
                 // TrimSurplusReconLanes never counts it as a physical lane (2026-09-25 audit F4:
                 // Vex Intent(Refresh 1,-2) outlived scout #8 from T8 and displaced live scout #7 at
                 // T13). AirSweep is exempt: its wing legitimately leaves the army list while stored.
+                // Recon audit B11 — an actor that still exists but can no longer serve the role at all
+                // (no longer a solo Recce, a prison, empty) is the same case: the structural test is
+                // ActorCommitments.HasCapableActor, whose answer also decides the actor claim.
+                // Stealth is deliberately not part of it (a scout that cannot hide THIS turn keeps
+                // its role; the claim itself applies the objective's stealth requirement).
                 if (intent.PreferredMoverArmyId.HasValue && !ReconScoutKinds.IsAirSweep(s.Kind)
                     && snap?.Self?.Armies != null
-                    && !snap.Self.Armies.Any(a => a != null
-                        && a.ArmyId == intent.PreferredMoverArmyId.Value))
+                    && !ActorCommitments.HasCapableActor(intent, snap, StealthRequirement.None))
                 {
                     AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} actor "
-                        + $"#{intent.PreferredMoverArmyId.Value} no longer exists; role unbound");
+                        + $"#{intent.PreferredMoverArmyId.Value} no longer exists or can no longer "
+                        + "scout; role unbound");
                     intent.PreferredMoverArmyId = null;
                 }
 
@@ -1934,6 +1939,9 @@ namespace Game.Ai.V2
             owner.Scout.Kind = o.ScoutKind;
             owner.Scout.RequiresStealth = o.ScoutRequiresStealth;
             owner.Scout.TrackedArmyId = o.ScoutKind == ScoutTargetKind.Surveil ? o.TrackedArmyId : null;
+            // A Surveil role is valid only while its contact is not re-observed past this baseline
+            // (ScoutObjectiveEvaluator.IsIntentStillValid); the re-pointed role needs the new one.
+            owner.Scout.BaselineObservedTurn = o.BaselineObservedTurn;
             // A durable Surveil role keeps the Soft funding that marks it as a bound surveillance
             // commitment; switching to Explore/Refresh drops back to an unfunded frontier role.
             owner.Funding = o.ScoutKind == ScoutTargetKind.Surveil

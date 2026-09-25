@@ -505,6 +505,17 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // Recon audit B5 — a Scout's TargetInvalidated is tactical (an opportunistic attack /
+            // sabotage target gone, a stale vantage or plan), never proof the durable objective is
+            // invalid. Continuity re-validates the objective itself next pass (IsIntentStillValid ->
+            // re-focus or retire); Failed would drop the whole durable role here.
+            if (o.MissionKind == MissionKind.Scout
+                && e.StopReason == ExecutionStopReason.TargetInvalidated)
+            {
+                o.Outcome = ExecutionOutcome.Blocked;
+                return;
+            }
+
             switch (e.StopReason)
             {
                 case ExecutionStopReason.OutOfMovement:
@@ -601,7 +612,9 @@ namespace Game.Ai.V2
                     // ResolveActive's next pass releases that support, moves the operation to its
                     // next phase, or retires it if the primary itself is gone. Assault / Return
                     // (the primary's own legs) keep their failure semantics.
-                    o.Outcome = GroundCombatLegs.IsSupportLeg(o)
+                    // A Scout target is re-validated by Continuity itself (Recon audit B5, same
+                    // rule as the execution-side Classify).
+                    o.Outcome = GroundCombatLegs.IsSupportLeg(o) || o.MissionKind == MissionKind.Scout
                         ? ExecutionOutcome.Blocked
                         : ExecutionOutcome.Failed;
                     break;

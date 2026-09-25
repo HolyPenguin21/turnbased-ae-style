@@ -152,6 +152,7 @@ namespace Game.Setup
             AiMapMemory.Clear();
             AiMapMemory.EnsureSubscribed(map);
             Game.Ai.V2.AirSortieRegistry.Clear();
+            Game.Ai.V2.AviationObligationStallRegistry.Clear(); // Recon audit B1 — per-turn stalled air obligations
             Game.Ai.V2.AiRadarStateRegistry.Clear(); // Strategy V2 per-player smoothing / loss-pulse state
             Game.Ai.V2.ForceBaselineRegistry.Clear(); // Strategy V2 per-player first-turn force ceiling (P_start)
             Game.Ai.V2.AiReconMemory.Clear();        // Strategy V2 long recon observation history

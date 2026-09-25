@@ -194,6 +194,9 @@ namespace Game.Ai.V2
                     && a.Controller != null && a.CurrentMovement > 0
                     && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
                     && !entitled.Contains(a.Id)
+                    // Recon audit B1 — a recovery that could not progress this turn is not
+                    // re-admitted (nor protected by StrategicSpendability) until the next turn.
+                    && !AviationObligationStallRegistry.IsStalled(player, ctx?.TurnNumber ?? -1, a.Id)
                     && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
                 .Where(a =>
                 {

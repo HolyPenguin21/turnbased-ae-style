@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -136,12 +137,16 @@ namespace Game.Ai.V2
         }
 
         // Snapshot of active actor claims for live multi-scout deconfliction. Values are durable
-        // assignments only — no target hex reservation is invented here.
+        // assignments only — no target hex reservation is invented here. Recon audit B8 — a state
+        // is retired only on explicit executor paths, so an actor lost outside execution (killed in
+        // the enemy's turn, merged away) would otherwise claim its sector forever: only a state
+        // whose own army still exists is a live claim.
         public static IReadOnlyList<ReconPatrolState> ActiveFor(PlayerSetupData player)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconPatrolState> byArmy))
                 return System.Array.Empty<ReconPatrolState>();
-            return byArmy.Values.ToList();
+            var live = new HashSet<int>(ArmyRegistry.AllForOwner(player).Where(a => a != null).Select(a => a.Id));
+            return byArmy.Values.Where(a => live.Contains(a.PreferredMoverArmyId)).ToList();
         }
 
         public static int OtherSectorClaims(PlayerSetupData player, int armyId, ReconSector sector)

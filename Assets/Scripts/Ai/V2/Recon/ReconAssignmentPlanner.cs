@@ -169,8 +169,24 @@ namespace Game.Ai.V2
             ScoutMoverSelector.HasStructuralCandidate(snap, target);
 
         // The one sanctioned boolean "is this pool empty right now" door (CapabilityPoolExhaustionRegistry).
-        internal static bool HasEligibleMover(WorldSnapshot snap, ScoutMissionTarget target) =>
-            EligibleMovers(snap, target, null).Count > 0;
+        // Recon audit B9 — the SAME actor model BuildCandidates assigns from: a garrison Recce with a
+        // real destination shell is a usable mover too, so a garrison-only pool is never "exhausted".
+        // Durable claims are respected; this cycle's tentative claims are ignored on purpose (a
+        // pool-wide proof, CapabilityPoolExhaustionRegistry.ProvenPoolWideUnable).
+        internal static bool HasEligibleMover(WorldSnapshot snap, ScoutMissionTarget target)
+        {
+            if (EligibleMovers(snap, target, null).Count > 0)
+                return true;
+            PlayerSetupData player = snap?.Self?.Armies?.FirstOrDefault(a => a?.Owner != null)?.Owner;
+            if (player == null)
+                return false;
+            ActorCommitments commitments = ActorCommitments.FromIntents(
+                MissionIntentRegistry.GetOrCreate(player).All
+                    .Where(i => i != null && i.Status == IntentStatus.Active).ToList(),
+                snap, null);
+            return MaterializableGarrisonActors(snap, player, target, commitments.ClaimedArmyIdSet,
+                commitments, new HashSet<int>()).Count > 0;
+        }
 
         // =======================================================================================
         //  E. ResolveExecutionHex — Explore/Refresh execute AT the target; Surveil executes from the
@@ -479,7 +495,12 @@ namespace Game.Ai.V2
                     : new HashSet<int>();
                 if (fe.Mission.PreferredMoverArmyId.HasValue)
                 {
-                    excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
+                    // Recon audit B10 — PreferredMoverArmyId may be only a planning witness (the
+                    // cheapest actor ScoutCostModel priced, claims ignored), so it relaxes durable
+                    // ownership only when it IS this durable intent's own actor — the same rule
+                    // ground combat applies (ProvisioningSession.ExcludedForGroundCombat).
+                    if (IsOwnDurableActor(player, fe.Mission, fe.Mission.PreferredMoverArmyId.Value))
+                        excluded.Remove(fe.Mission.PreferredMoverArmyId.Value);
                 }
                 else
                 {
@@ -603,6 +624,13 @@ namespace Game.Ai.V2
             return result;
         }
 
+        // A continuing mission may re-bind exactly the actor its own durable intent owns.
+        private static bool IsOwnDurableActor(PlayerSetupData player, MissionProposal mission, int armyId) =>
+            mission != null && mission.FromDurableIntent && player != null
+            && MissionIntentRegistry.GetOrCreate(player).TryGet(MissionIntentKey.For(mission),
+                out MissionIntent own)
+            && own.PreferredMoverArmyId == armyId;
+
         // Round 3 (Problem 2) — moved verbatim from ProvisioningManager.ClassifyNoAssignment: the
         // ONE place that decides WHY a Scout job with zero executable candidates has none. Only
         // called when BuildCandidates already came back empty for this exact (target, exclude) pair
@@ -611,6 +639,13 @@ namespace Game.Ai.V2
         private static ScoutAssignmentFailureReason DiagnoseEmpty(WorldSnapshot snap, AiTurnContext ctx,
             PlayerSetupData player, ScoutMissionTarget target, ISet<int> excludeArmyIds)
         {
+            // Recon audit B3 — AirSweep is aviation-only: no ground scout (free, busy or absent) is
+            // ever its capacity, so a ground capability diagnosis would park it forever under
+            // CapabilityUnavailable. No air candidate = no executable air step this pass; the
+            // ordinary Blocked/stall path then ages and reaps an AirSweep that can never fly.
+            if (ReconScoutKinds.IsAirSweep(target.Kind))
+                return ScoutAssignmentFailureReason.NoExecutableStep;
+
             bool surveil = target.Kind == ScoutTargetKind.Surveil;
 
             if (!HasStructuralCandidate(snap, target))

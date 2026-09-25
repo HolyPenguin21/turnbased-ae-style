@@ -36,7 +36,7 @@ namespace Game.Ai.V2
             int energy = 0;
             IEnumerable<ArmyData> obligations =
                 ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx)
-                    .Concat(AviationRebasePlanner.FindMandatoryContinuations(player))
+                    .Concat(AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber))
                     .GroupBy(a => a.Id).Select(g => g.First()).OrderBy(a => a.Id);
             foreach (ArmyData wing in obligations)
             {
