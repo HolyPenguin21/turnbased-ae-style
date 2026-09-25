@@ -1065,84 +1065,26 @@ namespace Game.Ai.V2
             transferred = 0;
             wasSwap = false;
             displacedUnitName = null;
-            detail = "";
-            if (commandOpposition != null)
+            // The one handoff decision (GroundCombatReinforcement.PlanHandoff) — the same plan the
+            // leg's AP was provisioned on — applied as one atomic transfer / exchange.
+            HandoffPlan plan = GroundCombatReinforcement.PlanHandoff(primary, support,
+                commandOpposition, commandHexBonus, out string why);
+            if (plan == null)
             {
-                CommandHandoverPlan plan = GroundCombatReinforcement.CommandHandover(primary, support,
-                    commandOpposition, commandHexBonus, null);
-                if (plan != null)
-                {
-                    if (ArmyActions.TransferMembersAtomic(plan.Incoming, support, primary, ctx.HexSelection,
-                            out string handoverWhy, plan.Hero, plan.Displaced))
-                    {
-                        transferred = plan.Incoming.Count;
-                        wasSwap = plan.Displaced.Count > 0;
-                        displacedUnitName = wasSwap
-                            ? string.Join(",", plan.Displaced.Select(u => u.Name)) : null;
-                        detail = $"hero {plan.Hero.Name} took command"
-                            + (plan.HeroExchangedFor != null ? $" in exchange for {plan.HeroExchangedFor.Name}" : "")
-                            + $"; {plan.Incoming.Count - 1} body(ies) in, {plan.Displaced.Count} out";
-                        return true;
-                    }
-                    detail = $"command handover of {plan.Hero.Name} rejected ({handoverWhy}); ";
-                }
-            }
-            List<UnitData> sparable = RaidProvisioner.SparableSupportBodies(support);
-            if (sparable.Count == 0)
-            {
-                detail += "support has no sparable body";
+                detail = why;
                 return false;
             }
-
-            int freeSlots = Mathf.Max(0,
-                ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison) - primary.Members.Count);
-            if (freeSlots > 0)
+            if (!ArmyActions.TransferMembersAtomic(plan.Incoming, support, primary, ctx.HexSelection,
+                    out string failWhy, plan.Promote, plan.Displaced))
             {
-                List<UnitData> batch = sparable.Take(freeSlots).ToList();
-                if (ArmyActions.TransferMembersAtomic(batch, support, primary, ctx.HexSelection,
-                        out string why))
-                {
-                    transferred = batch.Count;
-                    detail = $"transferred {batch.Count} into free slot(s)";
-                    return true;
-                }
-                detail += $"atomic transfer rejected: {why}";
+                detail = $"{why}atomic handoff rejected: {failWhy}";
                 return false;
             }
-
-            // Primary is full — trade out its most critically wounded member for the best fresh
-            // body the support can spare (a straight swap needs no free slot on either side). A
-            // successful swap here is the SupportReturn trigger: the displaced unit only
-            // exists in support now, so the whole support army must walk itself home afterward.
-            UnitData weakest = primary.Members
-                .Where(u => AiArmyRoles.IsGroundBattleBody(u))
-                .OrderBy(u => u.HitPointsMax > 0 ? (float)u.HitPointsCurrent / u.HitPointsMax : 1f)
-                .ThenBy(u => GroundCombatDonorPolicy.UnitCombatValue(u))
-                .FirstOrDefault();
-            if (weakest == null)
-            {
-                detail = "primary is full and has no swappable non-hero body";
-                return false;
-            }
-            foreach (UnitData fresh in sparable)
-            {
-                if (GroundCombatDonorPolicy.UnitCombatValue(fresh)
-                    <= GroundCombatDonorPolicy.UnitCombatValue(weakest))
-                    continue;
-                if (ArmyActions.SwapMembers(fresh, support, weakest, primary, ctx.HexSelection,
-                        out string swapWhy))
-                {
-                    transferred = 1;
-                    wasSwap = true;
-                    displacedUnitName = weakest.Name;
-                    detail = $"swapped {weakest.Name} out for {fresh.Name}";
-                    return true;
-                }
-                detail = $"swap rejected: {swapWhy}";
-            }
-            if (string.IsNullOrEmpty(detail))
-                detail = "primary is full and no support body improves on its weakest member";
-            return false;
+            transferred = plan.Incoming.Count;
+            wasSwap = plan.Displaced.Count > 0;
+            displacedUnitName = wasSwap ? string.Join(",", plan.Displaced.Select(u => u.Name)) : null;
+            detail = why + plan.Detail;
+            return true;
         }
 
         // The Raid target as the fight it is — one army or guard with its observed commander —

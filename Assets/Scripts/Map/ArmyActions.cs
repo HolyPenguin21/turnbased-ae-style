@@ -377,6 +377,14 @@ namespace Game.Map
             ArmyData target, out string failReason)
             => CanTransferMembers(units, source, target, null, null, out _, out _, out _, out failReason);
 
+        // The exact check TransferMembersAtomic(units, source, target, …, promoteToCommander,
+        // displaced) will run — for a caller that plans the exchange before committing to it.
+        public static bool CanExchangeMembers(IReadOnlyList<UnitData> units, ArmyData source,
+            ArmyData target, UnitData promoteToCommander, IReadOnlyList<UnitData> displaced,
+            out string failReason)
+            => CanTransferMembers(units, source, target, promoteToCommander, displaced,
+                out _, out _, out _, out failReason);
+
         public static int TransferMembersApCost(IEnumerable<UnitData> units, ArmyData target)
         {
             if (units == null || target == null)

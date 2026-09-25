@@ -190,6 +190,13 @@ namespace Game.Ai.V2
             }
 
             int activationAp = support.HasActivatedThisTurn ? 0 : support.ActivationApCost;
+            // At the rendezvous the step IS the handoff: its own activation charges (newcomers to
+            // an army that already acted, both directions) are part of this leg's AP.
+            if (atRendezvous)
+                activationAp += GroundCombatReinforcement.HandoffApCost(
+                    GroundCombatReinforcement.PlanHandoff(primary, support,
+                        allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out _),
+                    primary, support);
             if (activationAp > funded.Tentative.Ap + eps)
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.EnvelopeTooSmall(activationAp,
@@ -220,6 +227,27 @@ namespace Game.Ai.V2
             HeroExchangedFor = heroExchangedFor;
             Incoming = incoming;
             Displaced = displaced;
+        }
+    }
+
+    // What one reinforcement / gather handoff will do, decided once (GroundCombatReinforcement.
+    // PlanHandoff): who goes support -> primary, who goes primary -> support, and the hero that
+    // takes command, if any. The leg's AP (HandoffApCost) and the executed transfer read the same
+    // plan.
+    internal sealed class HandoffPlan
+    {
+        internal readonly IReadOnlyList<UnitData> Incoming;
+        internal readonly IReadOnlyList<UnitData> Displaced;
+        internal readonly UnitData Promote;
+        internal readonly string Detail;
+
+        internal HandoffPlan(IReadOnlyList<UnitData> incoming, IReadOnlyList<UnitData> displaced,
+            UnitData promote, string detail)
+        {
+            Incoming = incoming;
+            Displaced = displaced ?? System.Array.Empty<UnitData>();
+            Promote = promote;
+            Detail = detail;
         }
     }
 
@@ -347,6 +375,86 @@ namespace Game.Ai.V2
             }
             return null;
         }
+
+        // THE handoff decision, in order: a command handover (only when the lane passes its fight,
+        // `commandOpposition` — Attack) when CommandHandover finds one the armies can take; else the
+        // support's sparable bodies into the primary's free slots; else, the primary being full,
+        // one fresh support body for the primary's most wounded / weakest body (the first fresh
+        // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
+        internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
+            IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
+            out string why)
+        {
+            why = "";
+            if (primary == null || support == null)
+            {
+                why = "primary or support is gone";
+                return null;
+            }
+            if (commandOpposition != null)
+            {
+                CommandHandoverPlan c = CommandHandover(primary, support, commandOpposition,
+                    commandHexBonus, null);
+                if (c != null)
+                {
+                    if (ArmyActions.CanExchangeMembers(c.Incoming, support, primary, c.Hero,
+                            c.Displaced, out string cWhy))
+                        return new HandoffPlan(c.Incoming, c.Displaced, c.Hero,
+                            $"hero {c.Hero.Name} took command"
+                            + (c.HeroExchangedFor != null ? $" in exchange for {c.HeroExchangedFor.Name}" : "")
+                            + $"; {c.Incoming.Count - 1} body(ies) in, {c.Displaced.Count} out");
+                    why = $"command handover of {c.Hero.Name} rejected ({cWhy}); ";
+                }
+            }
+
+            List<UnitData> sparable = SparableSupportBodies(support);
+            if (sparable.Count == 0)
+            {
+                why += "support has no sparable body";
+                return null;
+            }
+            int freeSlots = System.Math.Max(0,
+                ArmyData.ComputeCapacity(primary.Members, primary.IsGarrison) - primary.Members.Count);
+            if (freeSlots > 0)
+            {
+                List<UnitData> batch = sparable.Take(freeSlots).ToList();
+                if (ArmyActions.CanExchangeMembers(batch, support, primary, null, null, out string fWhy))
+                    return new HandoffPlan(batch, null, null, $"transferred {batch.Count} into free slot(s)");
+                why += $"atomic transfer rejected: {fWhy}";
+                return null;
+            }
+
+            // Primary is full — trade out its most critically wounded member for the best fresh
+            // body the support can spare (a straight exchange needs no free slot on either side).
+            // An exchange is the SupportReturn trigger: the displaced unit only exists in the
+            // support now, so the whole support army walks itself home afterward.
+            UnitData weakest = WeakestBodies(primary.Members).FirstOrDefault();
+            if (weakest == null)
+            {
+                why += "primary is full and has no swappable non-hero body";
+                return null;
+            }
+            foreach (UnitData fresh in sparable)
+            {
+                if (GroundCombatDonorPolicy.UnitCombatValue(fresh)
+                    <= GroundCombatDonorPolicy.UnitCombatValue(weakest))
+                    continue;
+                if (ArmyActions.CanExchangeMembers(new[] { fresh }, support, primary, null,
+                        new[] { weakest }, out string sWhy))
+                    return new HandoffPlan(new[] { fresh }, new[] { weakest }, null,
+                        $"swapped {weakest.Name} out for {fresh.Name}");
+                why += $"swap rejected: {sWhy}; ";
+            }
+            why += "primary is full and no support body improves on its weakest member";
+            return null;
+        }
+
+        // The AP the handoff itself charges: every newcomer to an army that already acted this
+        // turn pays its activation (ArmyActions.TransferMembersApCost), in both directions.
+        internal static int HandoffApCost(HandoffPlan plan, ArmyData primary, ArmyData support) =>
+            plan == null ? 0
+                : ArmyActions.TransferMembersApCost(plan.Incoming, primary)
+                    + ArmyActions.TransferMembersApCost(plan.Displaced, support);
 
         // The primary's ground bodies, most wounded first, then weakest (the one "who gives way"
         // order of every exchange).

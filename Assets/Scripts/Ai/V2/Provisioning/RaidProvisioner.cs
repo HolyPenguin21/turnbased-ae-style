@@ -317,11 +317,6 @@ namespace Game.Ai.V2
             });
         }
 
-        // ATK §28/§46 — both halves moved to the GroundCombatReinforcement kernel; nothing in
-        // either was Raid-specific and Attack must not get a copy.
-        internal static List<UnitData> SparableSupportBodies(ArmyData support) =>
-            GroundCombatReinforcement.SparableSupportBodies(support);
-
         // Both lanes share the one GroundCombatAssemblyTransaction primitive so "did the world
         // really change" is measured identically.
         private static bool RollbackAssembly(PlayerSetupData player, ArmyData host,
