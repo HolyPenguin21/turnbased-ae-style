@@ -190,7 +190,7 @@ namespace Game.Ai.V2
                 && ReconScoutKinds.IsAirSweep(sw.Kind))
                 return CapabilityPoolKind.None;
             if (mission.Kind == MissionKind.Scout && mission.Target is ScoutMissionTarget st)
-                return st.Stealth == StealthRequirement.Required || st.DetectionRisk > 0f
+                return st.NeedsStealth
                     ? CapabilityPoolKind.StealthScout : CapabilityPoolKind.Scout;
             // ATK §41 — an Attack draws on exactly the same field-combat pool a Raid does.
             if (mission.Kind == MissionKind.Raid || mission.Kind == MissionKind.Attack)

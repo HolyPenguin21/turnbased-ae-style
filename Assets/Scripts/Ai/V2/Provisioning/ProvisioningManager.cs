@@ -337,7 +337,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
                 if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                        target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f))
+                        target.NeedsStealth))
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
             }
@@ -357,7 +357,7 @@ namespace Game.Ai.V2
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
                     if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                            target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f))
+                            target.NeedsStealth))
                         return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                             $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
                 }
@@ -473,7 +473,7 @@ namespace Game.Ai.V2
                 ClaimedAp = realNeed,
                 ClaimedPhysical = funded.PhysicalDraw,
                 StealthApReserved = stealthAp > 0,
-                RequiresStealth = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f,
+                RequiresStealth = target.NeedsStealth,
             }, extractedUnit != null ? 1 : 0);
         }
 

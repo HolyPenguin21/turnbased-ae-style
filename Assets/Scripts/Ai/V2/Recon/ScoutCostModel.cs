@@ -211,8 +211,7 @@ namespace Game.Ai.V2
 
             // Aviation serves only the AirSweep pass (ReconAirCapacityPolicy.IsAirServiceable):
             // a mover-less ground Refresh/Surveil must not ask for a launch it can never fly.
-            bool airPlausible = ReconScoutKinds.IsAirSweep(target.Kind)
-                && target.Stealth != StealthRequirement.Required && !(target.DetectionRisk > 0f);
+            bool airPlausible = ReconScoutKinds.IsAirSweep(target.Kind) && !target.NeedsStealth;
 
             int fleetBudget = snap?.Self?.Armies != null
                 ? snap.Self.Armies.Select(a => a.MaxMovement).DefaultIfEmpty(0).Max() : 0;

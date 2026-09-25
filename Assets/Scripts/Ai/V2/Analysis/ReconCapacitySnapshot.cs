@@ -69,8 +69,7 @@ namespace Game.Ai.V2
             + $"ground[genLanes={GenericGroundLaneActors.Count} idleScouts={IdleGroundScouts.Count}] "
             + $"=> obsDeficit={ObservationDeficit} groundTraversalDeficit={GroundTraversalDeficit}";
 
-        private static bool IsStealth(ReconObjective o) =>
-            o != null && (o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+        private static bool IsStealth(ReconObjective o) => o != null && o.NeedsStealth;
 
         // observationRunnable — runnable Refresh/Surveil objectives; groundVisitRunnable — runnable
         // Explore objectives.

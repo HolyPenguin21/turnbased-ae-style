@@ -48,6 +48,22 @@ namespace Game.Ai.V2
             return false;
         }
 
+        // THE live "is this Scout job's objective met" dispatch, read by the post-execution ledger,
+        // the ground and air executors and MissionRevalidator. AirSweep is never met by observation
+        // (each sortie ends by its own refuel endurance).
+        public static bool IsSatisfiedLive(PlayerSetupData player, ScoutTargetKind kind, HexCoord focus,
+            int? trackedArmyId, int baselineObservedTurn)
+        {
+            switch (kind)
+            {
+                case ScoutTargetKind.Explore: return IsExploreSatisfiedLive(player, focus);
+                case ScoutTargetKind.Refresh: return IsRefreshSatisfiedLive(player, focus);
+                case ScoutTargetKind.Surveil:
+                    return IsSurveilSatisfiedLive(player, focus, trackedArmyId, baselineObservedTurn);
+                default: return false;
+            }
+        }
+
         // ---- SNAPSHOT (mission-layer re-materialisation) ------------------------------------
 
         // Is a durable intent still coherent against THIS frozen snapshot? This also folds in

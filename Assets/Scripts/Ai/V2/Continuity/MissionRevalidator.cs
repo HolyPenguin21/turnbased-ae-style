@@ -194,11 +194,14 @@ namespace Game.Ai.V2
                 }
             }
 
+            // Scout: the objective met live (one dispatch for every kind), then each kind's own
+            // invalidation of the provisioned execution hex.
+            if (ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
+                    pm.TrackedArmyId, pm.BaselineObservedTurn))
+                return MissionValidity.StaleGoalMet;
+
             if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
             {
-                if (ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex, pm.TrackedArmyId,
-                        pm.BaselineObservedTurn))
-                    return MissionValidity.StaleGoalMet;
                 if (ctx != null && ScoutExecutionSafety.VantageBlockedNow(player, pm.ExecutionHex,
                         ctx.TurnNumber, pm.RequiresStealth))
                     return MissionValidity.StaleTargetInvalidated;
@@ -212,8 +215,6 @@ namespace Game.Ai.V2
 
             if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
             {
-                if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex))
-                    return MissionValidity.StaleGoalMet;
                 if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
                     return MissionValidity.StaleTargetInvalidated;
                 return MissionValidity.Valid;
@@ -227,10 +228,8 @@ namespace Game.Ai.V2
                 return MissionValidity.StaleTargetInvalidated;
             }
 
-            // Explore only. Physical visitation is completion here; generic Refresh intentionally
-            // does NOT share this shortcut.
-            if (VisionSystem.IsVisited(player, pm.ExecutionHex))
-                return MissionValidity.StaleGoalMet;
+            // Explore only (physical visitation completion is checked above; generic Refresh
+            // intentionally does NOT share that rule).
             if (AiMapMemory.KnownEnemySightingAt(player, pm.ExecutionHex).HasValue)
                 return MissionValidity.StaleTargetInvalidated;
             return MissionValidity.Valid;

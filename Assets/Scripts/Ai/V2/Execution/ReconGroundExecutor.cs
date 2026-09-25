@@ -459,24 +459,8 @@ namespace Game.Ai.V2
             if (result.ReachedGoal)
                 return;
 
-            bool met;
-            if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
-            {
-                met = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
-                    pm.TrackedArmyId, pm.BaselineObservedTurn);
-            }
-            else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
-            {
-                met = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
-            }
-            else if (ReconScoutKinds.IsExplore(pm.ScoutKind))
-            {
-                met = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
-            }
-            else
-            {
-                met = false;
-            }
+            bool met = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
+                pm.TrackedArmyId, pm.BaselineObservedTurn);
 
             if (met)
             {

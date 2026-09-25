@@ -376,8 +376,7 @@ namespace Game.Ai.V2
             // Aviation serves only the aviation-only AirSweep pass (ReconAirCapacityPolicy.
             // IsAirServiceable): generic Refresh / Surveil stay with ground scouts.
             bool observationClass = ReconScoutKinds.IsAirSweep(target.Kind);
-            bool stealthOrRisky = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f;
-            if (!observationClass || stealthOrRisky)
+            if (!observationClass || target.NeedsStealth)
                 return;
 
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
@@ -846,9 +845,7 @@ namespace Game.Ai.V2
             if (selected.ExecutorKind != ScoutExecutorKind.Ground)
                 return false;
             bool observationClass = ReconScoutKinds.IsAirSweep(target.Kind);
-            bool compatible = observationClass
-                && target.Stealth != StealthRequirement.Required
-                && target.DetectionRisk <= 0f;
+            bool compatible = observationClass && !target.NeedsStealth;
             return compatible && candidates != null
                 && candidates.Any(c => c.ExecutorKind != ScoutExecutorKind.Ground);
         }

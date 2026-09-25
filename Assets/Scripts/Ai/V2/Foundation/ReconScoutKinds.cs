@@ -13,6 +13,12 @@
         // Aviation-only observation pass (support, never a ground visit). See ScoutTargetKind.
         public static bool IsAirSweep(ScoutTargetKind kind) => kind == ScoutTargetKind.AirSweep;
 
+        // THE stealth-lane rule: a job whose objective requires stealth OR where a known enemy can
+        // detect a scout is served only by a stealth-capable ground scout — never by a generic
+        // scout's capacity, never by aviation (which cannot go hidden).
+        public static bool NeedsStealth(StealthRequirement requirement, float detectionRisk) =>
+            requirement == StealthRequirement.Required || detectionRisk > 0f;
+
         public static bool IsGround(ScoutTargetKind kind) =>
             kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh;
 

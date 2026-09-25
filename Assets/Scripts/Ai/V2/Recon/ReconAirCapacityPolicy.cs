@@ -100,8 +100,7 @@ namespace Game.Ai.V2
         internal static bool IsAirServiceable(ReconObjective o)
             => o != null
                && o.Kind == ReconObjectiveKind.AirSweep
-               && o.Stealth != StealthRequirement.Required
-               && !(o.DetectionRisk > 0f);
+               && !o.NeedsStealth;
 
         // How far one sortie of these aircraft reaches outbound, by the refuel-endurance rule
         // (ReconAirSortieState.OutboundCapFor): the slowest aircraft's movement, halved unless

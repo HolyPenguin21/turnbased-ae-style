@@ -55,6 +55,8 @@ namespace Game.Ai.V2
             }
         }
 
+        public bool NeedsStealth => ReconScoutKinds.NeedsStealth(Stealth, DetectionRisk);
+
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,

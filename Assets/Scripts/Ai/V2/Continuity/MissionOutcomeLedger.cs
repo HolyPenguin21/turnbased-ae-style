@@ -236,22 +236,10 @@ namespace Game.Ai.V2
                             player, pm.ActiveDefenceTarget.EnemyArmyId);
                     }
                 }
-                else if (pm.ScoutKind == ScoutTargetKind.Surveil)
-                {
-                    satisfied = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
-                        pm.TrackedArmyId, pm.BaselineObservedTurn);
-                }
-                else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
-                {
-                    satisfied = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
-                }
-                else if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
-                {
-                    satisfied = false; // ends by sortie endurance, never by observation
-                }
                 else
                 {
-                    satisfied = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+                    satisfied = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind,
+                        pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn);
                 }
 
                 if (satisfied)

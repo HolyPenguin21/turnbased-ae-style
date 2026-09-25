@@ -103,8 +103,7 @@ namespace Game.Ai.V2
             // aviation serves only the AirSweep pass and is never capacity here. A new Scout is materialised only when a USABLE, requirement-scoped
             // deficit has persisted (spec §7), never merely because Recon desire is high. Stealth
             // objectives are their own lane — neither aviation nor a generic scout can serve them.
-            bool IsStealthObjective(ReconObjective o) =>
-                o != null && (o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+            bool IsStealthObjective(ReconObjective o) => o != null && o.NeedsStealth;
 
             var observationRunnable = runnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
             var groundVisitRunnable = runnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
