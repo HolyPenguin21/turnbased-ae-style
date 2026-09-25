@@ -1445,7 +1445,7 @@ namespace Game.Ai.V2
                 // Demand/Missions run this same pass.
                 else if (ri.Phase == RaidMissionPhase.Assault && ri.PrimaryArmyId.HasValue
                     && !PrimaryClearsTarget(snap, player, ri.PrimaryArmyId, ri.Target,
-                        RaidStayInAssaultGate(ri)))
+                        GroundCombatAdmissionPolicy.RaidPrimaryGate(ri)))
                 {
                     if (ri.OperationStarted)
                         return TransitionToBestRecovery(player, snap, intent, ri,
@@ -1720,11 +1720,6 @@ namespace Game.Ai.V2
                 winChanceGate ?? GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
             return plan.Feasible;
         }
-
-        internal static float RaidStayInAssaultGate(RaidIntent ri) =>
-            ri != null && ri.OperationStarted
-                ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                : GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
 
         // §11 — is the fixed return base still ours AND still structurally
         // reachable? "Structurally" is the key word: this reads the GENUINE, any-number-of-turns

@@ -498,11 +498,8 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
-            var excluded = unavailableArmyIds == null
-                ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
-            excluded.Remove(a.PrimaryArmyId.Value);
             return GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(snap,
-                a.PrimaryArmyId.Value, opposition, excluded, hexBonus).Count > 0;
+                a.PrimaryArmyId.Value, opposition, unavailableArmyIds, hexBonus).Count > 0;
         }
 
         // §70 — a durable intent is created only once the operation has REALLY begun (a step taken

@@ -166,11 +166,8 @@ namespace Game.Ai.V2
                 return;
             }
 
-            HashSet<int> excluded = unavailableArmyIds == null
-                ? null : new HashSet<int>(unavailableArmyIds);
-            excluded?.Remove(primaryArmyId);
             List<int> ids = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                snap, primaryArmyId, opposition, excluded, hexBonus);
+                snap, primaryArmyId, opposition, unavailableArmyIds, hexBonus);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -184,9 +181,7 @@ namespace Game.Ai.V2
                 || target.Phase != ActiveDefencePhase.Intercept)
                 return;
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                proposal.FromDurableIntent
-                    ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                    : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                GroundCombatAdmissionPolicy.PinnedOrFreshGate(proposal.FromDurableIntent),
                 0f,
                 proposal.FromDurableIntent ? proposal.PreferredMoverArmyId : null);
             ByProposal.Remove(proposal);

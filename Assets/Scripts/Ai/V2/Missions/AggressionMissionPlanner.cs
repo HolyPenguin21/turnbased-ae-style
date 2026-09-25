@@ -309,9 +309,8 @@ namespace Game.Ai.V2
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
-                        WinChanceGate = pinnedActor.HasValue
-                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                        WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(
+                            pinnedActor.HasValue),
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -640,9 +639,7 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = pinnedPrimaryArmyId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    WinChanceGate = operationStarted
-                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(operationStarted),
                 })
                 : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded);
 

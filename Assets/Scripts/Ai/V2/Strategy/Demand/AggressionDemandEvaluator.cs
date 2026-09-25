@@ -124,15 +124,9 @@ namespace Game.Ai.V2
 
                     IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
                     List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
-                    // The same gates Continuity applies (AdvanceRaidPhase): a started raid stays in
-                    // Assault down to the continuation floor, while every other phase returns to
-                    // Assault only at the fresh gate — so a shortage is reported exactly when
-                    // Continuity will not let the primary assault on its own.
-                    float primaryGate = ri.Phase == RaidMissionPhase.Assault
-                        ? MissionContinuityLayer.RaidStayInAssaultGate(ri)
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
+                    // The same gate Continuity's phase machine applies (RaidPrimaryGate).
                     GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                        snap, opposition, primaryId, primaryGate);
+                        snap, opposition, primaryId, GroundCombatAdmissionPolicy.RaidPrimaryGate(ri));
                     if (primaryPlan.Feasible)
                     {
                         diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
@@ -422,9 +416,7 @@ namespace Game.Ai.V2
                 var request = new GroundCombatAssemblyRequest
                 {
                     Opposition = new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) },
-                    WinChanceGate = pinnedActor.HasValue
-                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
                     PreferredPrimaryArmyId = pinnedActor,
                     PinToPreferred = pinnedActor.HasValue,
                     ExcludedArmyIds = excluded,
