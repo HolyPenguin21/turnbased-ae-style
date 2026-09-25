@@ -166,6 +166,11 @@ namespace Game.Ai.V2
 
                 if (i.Kind == MissionKind.ActiveDefence)
                 {
+                    // Audit F6 — the Return leg is a zero-value fallback (Funding None), exactly
+                    // like a completed Raid's Return above: the actor is exposed to fresh Raid /
+                    // Attack / ActiveDefence allocation instead of being hidden from assembly.
+                    if (i.ActiveDefence?.Phase == ActiveDefencePhase.Return)
+                        continue;
                     int actorId = i.PreferredMoverArmyId.Value;
                     if (GroundCombatActorStillValid(actorId, snap, out _))
                         c.Claim(actorId);

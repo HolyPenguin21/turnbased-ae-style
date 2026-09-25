@@ -120,6 +120,9 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
             new Dictionary<PlayerSetupData, Entry>();
 
+        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        internal static void ClearAll() => ByPlayer.Clear();
+
         public static void CaptureTurnContext(PlayerSetupData player, int turn, AiHandData hand)
         {
             if (player == null) return;

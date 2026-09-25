@@ -696,7 +696,9 @@ namespace Game.Ai.V2
             var threats = new List<AiMapMemory.KnownEnemySighting>();
             foreach (AiMapMemory.KnownEnemySighting enemy in snap?.Known?.EnemySightings
                          ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                if (path.Any(hex => HexGridMath.Distance(hex, enemy.Hex) <= 1))
+                // A building-bound garrison cannot sortie onto the route (audit F1: it is now
+                // remembered permanently); only mobile enemies demand an escort.
+                if (!enemy.IsGarrison && path.Any(hex => HexGridMath.Distance(hex, enemy.Hex) <= 1))
                     threats.Add(enemy);
             foreach (AiMapMemory.KnownEnemySighting neutral in snap?.Known?.NeutralSightings
                          ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())

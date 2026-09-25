@@ -164,6 +164,12 @@ namespace Game.Setup
             Game.Ai.V2.AiV2Trace.Clear();                        // Strategy V2 per-player debuggability trace scopes (correlation ids)
             Game.Turns.InitiativePublicHistory.Clear();          // public previous-initiative results (opponent estimate)
             Game.Ai.V2.Initiative.InitiativeAnalyticsHistory.Clear(); // per-player initiative AP telemetry
+            // Turn-stamped V2 state keyed by player (audit P3): not a logic leak (players are new
+            // objects every match) but they would otherwise retain the previous match's players.
+            Game.Ai.V2.StrategicInterruptRegistry.ClearAll();
+            Game.Ai.V2.StrategicResourceReservationLedger.ClearAll();
+            Game.Ai.V2.StrategicTempoBudget.ClearAll();
+            Game.Ai.V2.StrategicCapabilityLeaseRegistry.ClearAll();
             AssignStartingHexes(GameSession.Players);
 
             _allPlayers.Clear();

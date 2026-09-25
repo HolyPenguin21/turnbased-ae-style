@@ -26,7 +26,12 @@ namespace Game.Ai.V2
             var model = new ThreatModel();
             var contacts = new List<EnemyContactSnapshot>();
 
-            foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings)
+            // A building-bound garrison cannot leave its structure, so it never threatens OUR
+            // assets; it is that site's defender package, read directly from the sightings by
+            // AttackObjectiveEvaluator.KnownSiteDefenders. Same rule the cheat branch below already
+            // applies (ea.IsGarrison) — keeps a permanently remembered garrison (AiMapMemory, audit
+            // F1) from inflating the defensive reserve / ActiveDefence / Recon contact tracking.
+            foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings.Where(x => !x.IsGarrison))
             {
                 bool visibleNow = VisionSystem.IsVisible(player, s.Hex);
                 contacts.Add(new EnemyContactSnapshot
@@ -42,7 +47,8 @@ namespace Game.Ai.V2
             }
 
             var liveArmyIds = new HashSet<int>(snap.Known.EnemySightings.Select(s => s.ArmyId));
-            foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds))
+            foreach (ReconObservation obs in AiReconMemory.Historical(player, liveArmyIds)
+                .Where(o => !o.IsGarrison))
             {
                 int age = System.Math.Max(0, snap.TurnNumber - obs.LastObservedTurn);
                 contacts.Add(new EnemyContactSnapshot
@@ -266,6 +272,7 @@ namespace Game.Ai.V2
                 Hex = s.Hex,
                 MemberCount = s.MemberCount,
                 HasAntiAir = s.HasAntiAir,
+                IsGarrison = s.IsGarrison,
                 AttackSum = s.AttackSum,
                 DefenseSum = s.DefenseSum,
                 EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),

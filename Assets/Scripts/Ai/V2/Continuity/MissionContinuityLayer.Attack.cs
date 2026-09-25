@@ -279,7 +279,7 @@ namespace Game.Ai.V2
                     ? turn : t.OpportunisticStrikeTurn,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Attack, CommitmentTier.Hard, payload);
-            RetireCompletedRaidFallbackForActor(state, payload.PrimaryArmyId,
+            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh Attack admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Attack] continuity — "

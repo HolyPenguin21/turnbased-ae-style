@@ -39,6 +39,11 @@ namespace Game.Ai
             {
                 if (sighting.Owner != null && sighting.Owner.IsNeutral)
                     continue; // neutrals never threaten a scout — same rule as VisitHexTask.TryFlee
+                // A building-bound garrison (remembered permanently since the 2026-09-25 audit F1)
+                // cannot engage; stealth only pays against it when it can actually roll detection.
+                if (sighting.IsGarrison && !sighting.CanDetectStealthAt(army.Hex)
+                    && !sighting.CanDetectStealthAt(nextStep))
+                    continue;
                 return true;
             }
             return false;

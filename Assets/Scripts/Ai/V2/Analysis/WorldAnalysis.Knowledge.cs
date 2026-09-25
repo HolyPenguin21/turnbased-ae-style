@@ -243,8 +243,11 @@ namespace Game.Ai.V2
             bool VisibleArrivalBlocked(HexCoord h) => visibleArrivalBlocked.Contains(h);
             bool EnemyExposed(HexCoord h)
             {
+                // Exposure = a force that can come and engage the scout. A building-bound garrison
+                // cannot (it is remembered permanently since audit F1); its Recce still counts in
+                // DetectorsAt below.
                 foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
-                    if (HexGridMath.Distance(e.Hex, h) <= exposureR) return true;
+                    if (!e.IsGarrison && HexGridMath.Distance(e.Hex, h) <= exposureR) return true;
                 return false;
             }
             int DetectorsAt(HexCoord h)

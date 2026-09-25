@@ -1635,7 +1635,9 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm?.Mission)}] {pm?.Key} — raid "
                 + $"({result.StartHex.Q},{result.StartHex.R})→({result.FinalHex.Q},{result.FinalHex.R}) "
                 + $"steps {result.StepsMoved} ap −{result.ApSpent.ToString("0.#", CultureInfo.InvariantCulture)} "
-                + $"stop {stop}" + (result.ReachedGoal ? " (target gone)" : ""));
+                + $"stop {stop}" + (!result.ReachedGoal ? ""
+                    : pm?.Mission?.Target is RaidMissionTarget rt && rt.Phase != RaidMissionPhase.Assault
+                        ? " (arrived at destination)" : " (target gone)"));
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>

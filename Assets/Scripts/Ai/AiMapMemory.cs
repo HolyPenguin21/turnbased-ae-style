@@ -87,6 +87,11 @@ namespace Game.Ai
             // simply unknown.
             public int RecceRadius;
             public int RecceSpotStrength;
+            // True for a building-bound garrison army (ArmyData.IsGarrison, observed fact). A
+            // garrison is part of its structure's defence, not a roaming force: it never expires by
+            // elapsed turns (see OnTurnStarted) and is corrected only by re-observing its hex, the
+            // same "видимость с памятью" rule neutral sightings and KnownBuildings follow.
+            public bool IsGarrison;
         }
 
         public readonly struct KnownEnemySighting
@@ -114,11 +119,15 @@ namespace Game.Ai
             // (currentTurn - SeenTurn). 0 for a sighting recorded before the first OnTurnStarted
             // (initial placement) — turn numbering starts at 1, so that default reads as "very old".
             public readonly int SeenTurn;
+            // Building-bound garrison (see EnemySighting.IsGarrison). Consumers that model a
+            // roaming threat skip it; consumers that price a site's defender package keep it.
+            public readonly bool IsGarrison;
 
             public KnownEnemySighting(HexCoord hex, PlayerSetupData owner, string name, int memberCount, float defenseSum, float attackSum,
                 IReadOnlyList<WorthIt.DefenderProfile> defenders, bool hasAntiAir = false, int recceRadius = 0, int recceSpotStrength = 0,
-                int seenTurn = 0, int armyId = 0)
+                int seenTurn = 0, int armyId = 0, bool isGarrison = false)
             {
+                IsGarrison = isGarrison;
                 ArmyId = armyId;
                 Hex = hex;
                 Owner = owner;
@@ -496,6 +505,12 @@ namespace Game.Ai
                     // looked at it in enemySightingMemoryTurns turns.
                     if (IsNeutralSightingOwner(kv.Value.Owner))
                         continue;
+                    // A player-owned GARRISON is building-bound: it cannot walk away, so elapsed
+                    // turns are no evidence it is gone. Expiring it turned "not re-looked at" into
+                    // "undefended" for every site-defender read (Attack objective, 2026-09-25 audit
+                    // F1). Re-observation of its hex still corrects it (OnVisibilityChanged).
+                    if (kv.Value.IsGarrison)
+                        continue;
                     if (turnNumber - kv.Value.SeenTurn > AiConfig.enemySightingMemoryTurns)
                         (stale ?? (stale = new List<int>())).Add(kv.Key);
                 }
@@ -729,6 +744,7 @@ namespace Game.Ai
                         // there's no reason to narrow it the way the DefenderProfile list above does.
                         HasAntiAir = enemy.Members.Any(m => !StealthSystem.IsHiddenFrom(m, player) && AntiAirRules.TryGetRadius(m, out _)),
                         SeenTurn = _currentTurn,
+                        IsGarrison = enemy.IsGarrison,
                         RecceRadius = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
                             .Select(m => AbilityParams.GetBestRecceRadius(m)).DefaultIfEmpty(0).Max(),
                         RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
@@ -915,7 +931,7 @@ namespace Game.Ai
                 if (IsNeutralSightingOwner(sighting.Owner))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison);
         }
 
         // Every known non-neutral-army hex on the whole map, no radius — AiDefencePlanner's own
@@ -931,7 +947,7 @@ namespace Game.Ai
                 if (!IsNeutralSightingOwner(sighting.Owner))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison);
         }
 
         // HasObservedEnemyAntiAir (AirRecon's own former global "any AA seen anywhere" gate)
@@ -948,7 +964,7 @@ namespace Game.Ai
                 if (ownHexes.Any(own => HexGridMath.Distance(own, sighting.Hex) <= radius))
                     yield return new KnownEnemySighting(sighting.Hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison);
         }
 
         // One specific hex's own last-known sighting, if any — RaidWeakerArmyTask's own
@@ -965,7 +981,7 @@ namespace Game.Ai
                 if (sighting.Hex.Equals(hex))
                     return new KnownEnemySighting(hex, sighting.Owner, sighting.Name, sighting.MemberCount, sighting.DefenseSum,
                         sighting.AttackSum, sighting.Defenders, sighting.HasAntiAir, sighting.RecceRadius, sighting.RecceSpotStrength,
-                        sighting.SeenTurn, sighting.ArmyId);
+                        sighting.SeenTurn, sighting.ArmyId, sighting.IsGarrison);
             return null;
         }
 

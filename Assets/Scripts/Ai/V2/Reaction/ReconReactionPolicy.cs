@@ -105,7 +105,10 @@ namespace Game.Ai.V2
             foreach (AiMapMemory.KnownEnemySighting sighting in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { army.Hex }, AiConfig.scoutFleeRadius))
             {
-                if (sighting.Owner == null || sighting.Owner.IsNeutral)
+                // A building-bound garrison cannot leave its structure to catch the scout
+                // (AiMapMemory keeps it permanently since audit F1); it is detection risk only,
+                // which DetectorRisk still counts.
+                if (sighting.Owner == null || sighting.Owner.IsNeutral || sighting.IsGarrison)
                     continue;
                 // Own stealth state only — whether this enemy has DETECTED the scout is unknown to
                 // its owner (stealth design), so it is never read here.
@@ -277,7 +280,8 @@ namespace Game.Ai.V2
             foreach (AiMapMemory.KnownEnemySighting s in
                      AiMapMemory.KnownEnemySightingsNear(player, new[] { hex }, AiConfig.scoutFleeRadius))
             {
-                if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral)
+                // A garrison cannot move out to punish the post-combat position (audit F1).
+                if (s.ArmyId == excludeArmyId || s.Owner == null || s.Owner.IsNeutral || s.IsGarrison)
                     continue;
                 float hexBonus = HonestHexDefenseBonus(player, map, s.Hex);
                 float win = s.Defenders != null && s.Defenders.Count > 0

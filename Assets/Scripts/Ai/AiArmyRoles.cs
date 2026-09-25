@@ -221,7 +221,13 @@ namespace Game.Ai
         // defenders over a few of those trips. Passing false applies the SAME secureCitadelMinNonHeroUnits
         // floor to the citadel that non-citadel bases already get (kept as its OWN constant, not
         // reused from secureBaseMinNonHeroUnits, so the two can be tuned independently later).
-        public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit, bool allowCitadelEmergency = true)
+        //
+        // 2026-09-25 (V2 final audit F2): the default is now FALSE. Every V2 lane (Raid / Attack /
+        // ActiveDefence donors, Economy / Development / Recon garrison extraction, Analysis' free-
+        // power projection) called this without the argument, so the citadel had NO floor at all
+        // and a single raid could leave it with zero non-hero defenders (Vashti T11: "+3 body from
+        // 1 donor" took all three). One rule for every caller keeps planner == executor.
+        public static bool CanSpareGarrisonMember(PlayerSetupData player, ArmyData source, UnitData unit, bool allowCitadelEmergency = false)
             => CanSpareGarrisonMembers(player, source,
                 unit == null ? null : new[] { unit }, allowCitadelEmergency);
 
@@ -229,7 +235,7 @@ namespace Game.Ai
         // candidates one-by-one against the unchanged source could approve several removals that
         // collectively cross the protected garrison floor.
         public static bool CanSpareGarrisonMembers(PlayerSetupData player, ArmyData source,
-            IEnumerable<UnitData> units, bool allowCitadelEmergency = true)
+            IEnumerable<UnitData> units, bool allowCitadelEmergency = false)
         {
             if (player == null || source == null || units == null)
                 return false;
@@ -250,6 +256,13 @@ namespace Game.Ai
                 return true;
 
             int removedNonHero = selected.Count(u => u.IsGroundCombatant);
+            // Heroes never count toward the secure headcount (see IsBaseGarrisonSecure), so a
+            // hero-only departure is governed by the "never the literal last body" rule above
+            // alone — exactly what the header comment promises. Without this, a garrison already
+            // below the non-hero floor could not release even its heroes (Economy / Development
+            // operator extraction), which the floor was never meant to protect.
+            if (removedNonHero == 0)
+                return true;
             int remainingNonHero = source.Members.Count(m => m.IsGroundCombatant) - removedNonHero;
             int floor = isCitadel ? AiConfig.secureCitadelMinNonHeroUnits : AiConfig.secureBaseMinNonHeroUnits;
             return remainingNonHero >= floor;

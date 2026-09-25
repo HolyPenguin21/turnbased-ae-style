@@ -156,7 +156,11 @@ namespace Game.Ai.V2
             // touching its per-owner reserves. Demand-level dedup is not a durable ownership gate.
             if (!CanGrantEconomyBuildSite(player, objective.TargetHex, intent.IntentKey,
                     builderArmyId, objective.BuildCard))
+            {
+                AiDebugLog.Write($"[AI][V2][Economy] ownership refused {intent.IntentKey} "
+                    + $"actor=#{builderArmyId} reason=site_owned_by_independent_contender");
                 return null;
+            }
 
             // This is the ONE place
             // Economy ownership is granted, so it is the one place that resolves ownership
@@ -720,6 +724,10 @@ namespace Game.Ai.V2
                             }
                             defence.Phase = ActiveDefencePhase.Return;
                             defence.ReturnHex = completedHome;
+                            // Audit F6 — the walk home is a zero-value fallback exactly like a
+                            // completed Raid's Return: no commitment protection, the actor competes
+                            // in fresh allocation (ActorCommitments does not claim it).
+                            intent.Funding = CommitmentTier.None;
                             active.Add(intent);
                             continue;
                         }
@@ -773,6 +781,7 @@ namespace Game.Ai.V2
                         }
                         defence.Phase = ActiveDefencePhase.Return;
                         defence.ReturnHex = home;
+                        intent.Funding = CommitmentTier.None; // audit F6, see above
                         intent.Status = IntentStatus.Active;
                         intent.Suspended = SuspendReason.None;
                         active.Add(intent);
@@ -1099,6 +1108,22 @@ namespace Game.Ai.V2
                     && intent.Suspended == SuspendReason.EconomyLoan)
                     continue;
 
+                // A ground Recon role whose bound actor no longer exists (killed / merged away) is
+                // not a lane any more. Unbind it so AdvanceIntent ages it like any idle intent
+                // instead of parking it forever under the CapabilityUnavailable exemption, and so
+                // TrimSurplusReconLanes never counts it as a physical lane (2026-09-25 audit F4:
+                // Vex Intent(Refresh 1,-2) outlived scout #8 from T8 and displaced live scout #7 at
+                // T13). AirSweep is exempt: its wing legitimately leaves the army list while stored.
+                if (intent.PreferredMoverArmyId.HasValue && !ReconScoutKinds.IsAirSweep(s.Kind)
+                    && snap?.Self?.Armies != null
+                    && !snap.Self.Armies.Any(a => a != null
+                        && a.ArmyId == intent.PreferredMoverArmyId.Value))
+                {
+                    AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} actor "
+                        + $"#{intent.PreferredMoverArmyId.Value} no longer exists; role unbound");
+                    intent.PreferredMoverArmyId = null;
+                }
+
                 if (!ScoutObjectiveEvaluator.IsIntentStillValid(snap, s))
                 {
                     // Spec §1/§7/§50-52 — the focus hex is a live waypoint, not the durable
@@ -1212,6 +1237,14 @@ namespace Game.Ai.V2
             intent != null && intent.Kind == MissionKind.Scout && intent.Scout != null
             && intent.PreferredMoverArmyId.HasValue && intent.LastProgressTurn == turn;
 
+        // The CapabilityUnavailable stall exemption protects a Recon lane whose OWN actor is only
+        // momentarily busy / out of MP. A Scout intent with no bound actor has no such actor to wait
+        // for: every failed turn is genuine idleness and must age toward ShouldReap (audit F4).
+        internal static bool IsMoverlessScoutRole(MissionIntent intent) =>
+            intent != null && intent.Kind == MissionKind.Scout && intent.Scout != null
+            && !ReconScoutKinds.IsAirSweep(intent.Scout.Kind)
+            && !intent.PreferredMoverArmyId.HasValue;
+
         // §P1 — GRADUAL contraction of durable Scout lanes toward desired concurrency: at most
         // maxReconLaneTrimPerTurn shed per turn, only Soft/None-funded lanes, and the target floor
         // already accounts for any Hard-funded lanes that are being kept regardless.
@@ -1240,7 +1273,12 @@ namespace Game.Ai.V2
             var shedable = scoutLanes
                 .Where(i => i.Funding < CommitmentTier.Hard
                     && !IsProductiveReconLaneThisTurn(i, snap.TurnNumber))
-                .OrderBy(i => (int)i.Funding)
+                // A lane without a bound actor occupies no physical scout, so it is shed first;
+                // then the lane that has gone longest without progress (audit F4). Only after
+                // that the original Funding / newest-first order.
+                .OrderByDescending(i => i.PreferredMoverArmyId.HasValue ? 0 : 1)
+                .ThenBy(i => i.LastProgressTurn)
+                .ThenBy(i => (int)i.Funding)
                 .ThenByDescending(i => i.CreatedTurn)
                 .ThenByDescending(i => i.StallTurns)
                 .ThenByDescending(i => i.IntentKey)
@@ -2369,7 +2407,8 @@ namespace Game.Ai.V2
                 intent.StallTurns = 0;
             }
             else if (firstReconcileThisTurn && !poolExhausted
-                && (!capabilityUnavailable || intent.Kind == MissionKind.Development))
+                && (!capabilityUnavailable || intent.Kind == MissionKind.Development
+                    || IsMoverlessScoutRole(intent)))
             {
                 intent.StallTurns++;
             }
@@ -2434,7 +2473,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            if ((!capabilityUnavailable || intent.Kind == MissionKind.Development)
+            if ((!capabilityUnavailable || intent.Kind == MissionKind.Development
+                    || IsMoverlessScoutRole(intent))
                 && ShouldReap(intent))
             {
                 state.Remove(intent.IntentKey);
@@ -2625,7 +2665,7 @@ namespace Game.Ai.V2
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.ActiveDefence,
                 CommitmentTier.Hard, payload);
-            RetireCompletedRaidFallbackForActor(state, payload.PrimaryArmyId,
+            RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh ActiveDefence admitted");
             state.Put(intent);
             if (t.SuspendedOffensiveIntentKey.HasValue
@@ -2650,23 +2690,29 @@ namespace Game.Ai.V2
                 OperationStarted = true,
             };
             MissionIntent intent = NewIntent(o, turn, MissionKind.Raid, CommitmentTier.Hard, ri);
-            RetireCompletedRaidFallbackForActor(state, intent.PreferredMoverArmyId,
+            RetireReturnFallbacksForActor(state, intent.PreferredMoverArmyId,
                 "fresh Raid admitted");
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] {intent.IntentKey} created (Hard raid, mover #{o.MoverArmyId})");
         }
 
-        private static void RetireCompletedRaidFallbackForActor(MissionIntentState state,
+        // The zero-value walk-home legs that leave their actor to fresh global allocation: a
+        // completed Raid target's Return and (audit F6) an ActiveDefence Return. When that actor
+        // is bound to a new ground-combat operation the fallback leg is retired, never kept as a
+        // second owner of the same army.
+        private static void RetireReturnFallbacksForActor(MissionIntentState state,
             int? actorId, string reason)
         {
             if (state == null || !actorId.HasValue)
                 return;
-            foreach (MissionIntent fallback in state.All.Where(i => i?.Raid != null
-                && i.Raid.CompletedTargetAwaitingFreshDecision
-                && i.Raid.PrimaryArmyId == actorId).ToList())
+            foreach (MissionIntent fallback in state.All.Where(i =>
+                (i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
+                    && i.Raid.PrimaryArmyId == actorId)
+                || (i?.ActiveDefence != null && i.ActiveDefence.Phase == ActiveDefencePhase.Return
+                    && i.ActiveDefence.PrimaryArmyId == actorId)).ToList())
             {
                 state.Remove(fallback.IntentKey);
-                AiDebugLog.Write($"[AI][V2][Raid] {fallback.IntentKey} return fallback retired — "
+                AiDebugLog.Write($"[AI][V2][{fallback.Kind}] {fallback.IntentKey} return fallback retired — "
                     + $"actor #{actorId.Value} reassigned by global allocation ({reason})");
             }
         }

@@ -495,8 +495,10 @@ namespace Game.Ai.V2
             IReadOnlyList<AiMapMemory.KnownEnemySighting> s = snap?.Known?.EnemySightings;
             if (s == null) return false;
             int r = AiConfigV2.frontierEnemyExposureRadius;
+            // Same exposure rule as WorldAnalysis.Knowledge: a garrison cannot engage (audit F1);
+            // its detection is counted by DetectorsAt.
             foreach (AiMapMemory.KnownEnemySighting e in s)
-                if (HexGridMath.Distance(e.Hex, hex) <= r) return true;
+                if (!e.IsGarrison && HexGridMath.Distance(e.Hex, hex) <= r) return true;
             return false;
         }
 

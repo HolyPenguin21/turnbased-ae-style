@@ -128,12 +128,25 @@ namespace Game.Ai.V2
                 var intents = MissionIntentRegistry.GetOrCreate(player).All
                     .Where(i => i != null && i.Status == IntentStatus.Active).ToList();
                 var commitments = ActorCommitments.FromIntents(intents, afterSnap, null);
+                // Audit F5: both "not delivered" exits below used to be silent, so a hero card that
+                // passed the plan-level check (projected army) and then failed the post-deployment
+                // check (real army) left no trace of WHY. Diagnostics only — no decision changes.
+                if (leased.Count == 0)
+                    AiDebugLog.Write($"[AI][V2][Economy][Delivery] demand={demand} decision=NOT_DELIVERED "
+                        + "reason=no_deployed_army_is_a_mobile_economy_builder");
                 foreach (int builderId in leased)
                 {
                     DemandLayer.EconomyBuilderChoice choice = EconomyDeliveryChoice(
                         afterSnap, demand, builderId, intents, commitments,
                         out IReadOnlyList<EconomyBuilderRouteSnapshot> routes);
-                    if (choice == null) continue;
+                    if (choice == null)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Economy][Delivery] demand={demand} builder=#{builderId} "
+                            + "decision=NOT_DELIVERED reason=" + (routes.Count == 0
+                                ? "no_witnessed_builder_route_in_refreshed_snapshot"
+                                : "builder_ranking_rejected_actor"));
+                        continue;
+                    }
                     demand.EconomyPreferredBuilderArmyId = builderId;
                     demand.EconomyBuilderRoutes = routes;
                     demand.EconomyProjectedActivationApCost = choice.ProjectedActivationApCost;
@@ -144,7 +157,11 @@ namespace Game.Ai.V2
                     MissionIntent delivery = MissionContinuityLayer.BeginEconomyDelivery(
                         player, demand, builderId, ctx.TurnNumber);
                     if (delivery == null)
+                    {
+                        AiDebugLog.Write($"[AI][V2][Economy][Delivery] demand={demand} builder=#{builderId} "
+                            + "decision=NOT_DELIVERED reason=continuity_refused_ownership_grant");
                         continue;
+                    }
                     // The delivery is now a durable intent: protect it through the ONE deferred
                     // writer for active builds, same owner key and rules as every later Phase A.
                     InfrastructureFulfillment.ReserveDeferredEconomyResourcesForActiveIntent(
