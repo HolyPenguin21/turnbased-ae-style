@@ -27,6 +27,48 @@ namespace Game.Combat
     // The companion "stop trying after any single failed reroll" rule (per the user's own spec)
     // lives in BattleAttackPopupUI.RunAiTurn instead of here — it's a turn-loop control decision
     // (react to what a reroll's OWN result was), not a fresh "should I spend" evaluation.
+    // THE turn order of a Fate duel (one owner for the live battle, BattleAttackPopupUI.RunDuel,
+    // and the estimator, WorthIt.ResolveExchange): the defender decides first, the sides
+    // alternate, a side that is done is skipped, and a side that spent re-opens the other one.
+    // The duel ends when both sides are done. A plain mutable struct on purpose — the estimator
+    // plays it inside a Monte-Carlo loop and must not allocate:
+    //     var order = new FateDuelOrder();
+    //     while (order.TryNext(out bool defenderTurn)) { ...one side's turn...; order.Report(spent); }
+    public struct FateDuelOrder
+    {
+        private bool _defenderDone;
+        private bool _attackerDone;
+        private bool _attackerTurn;   // default false: the defender opens the duel
+
+        // The side that decides next; false once both are done.
+        public bool TryNext(out bool isDefenderTurn)
+        {
+            while (!_defenderDone || !_attackerDone)
+            {
+                if (_attackerTurn ? _attackerDone : _defenderDone)
+                {
+                    _attackerTurn = !_attackerTurn;
+                    continue;
+                }
+                isDefenderTurn = !_attackerTurn;
+                return true;
+            }
+            isDefenderTurn = false;
+            return false;
+        }
+
+        // The side TryNext named has finished its turn; `spent` — it spent Fate at least once.
+        public void Report(bool spent)
+        {
+            if (_attackerTurn) _attackerDone = true; else _defenderDone = true;
+            if (spent)
+            {
+                if (_attackerTurn) _defenderDone = false; else _attackerDone = false;
+            }
+            _attackerTurn = !_attackerTurn;
+        }
+    }
+
     public static class FateDuelAi
     {
         // isDefender: true when evaluating the DEFENDER's own spend, false for the ATTACKER's.

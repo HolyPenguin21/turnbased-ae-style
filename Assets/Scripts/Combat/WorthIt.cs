@@ -191,7 +191,7 @@ namespace Game.Combat
         }
 
         // One armed exchange as the real battle resolves it: both pools rolled, then the Fate duel
-        // (BattleAttackPopupUI.RunDuel — defender first, sides alternate while anyone spends; each
+        // (FateDuelOrder — defender first, sides alternate while anyone spends; each
         // spend rerolls the first miss with an ordinary die and a failed reroll ends that side's
         // turn), every spend decided by the ONE policy FateDuelAi owns. Returns the damage after
         // the canonical ability modifier chain.
@@ -203,24 +203,11 @@ namespace Game.Combat
             if (actorFate > 0 || targetFate > 0)
             {
                 int defendingHp = Mathf.Max(1, Mathf.CeilToInt(target.Hp));
-                bool defenderDone = false, attackerDone = false, defenderTurn = true;
-                while (!defenderDone || !attackerDone)
-                {
-                    if (defenderTurn ? defenderDone : attackerDone)
-                    {
-                        defenderTurn = !defenderTurn;
-                        continue;
-                    }
-                    bool spent = defenderTurn
+                var order = new FateDuelOrder();
+                while (order.TryNext(out bool defenderTurn))
+                    order.Report(defenderTurn
                         ? DuelTurn(attackDice, defenceDice, defenceDice, true, ref targetFate, actor, target, defendingHp, rng)
-                        : DuelTurn(attackDice, defenceDice, attackDice, false, ref actorFate, actor, target, defendingHp, rng);
-                    if (defenderTurn) defenderDone = true; else attackerDone = true;
-                    if (spent)
-                    {
-                        if (defenderTurn) attackerDone = false; else defenderDone = false;
-                    }
-                    defenderTurn = !defenderTurn;
-                }
+                        : DuelTurn(attackDice, defenceDice, attackDice, false, ref actorFate, actor, target, defendingHp, rng));
             }
             int raw = Mathf.Max(0, CountHits(attackDice) - CountHits(defenceDice));
             return ChallengeResult.ApplyAbilityModifiers(raw, actor.Abilities, target.TypeTags,
