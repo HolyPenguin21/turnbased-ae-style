@@ -130,6 +130,10 @@
         public const float scoutStepHomeInwardBonusWeight = 0.10f;  // small reward for a step that closes home distance while local gaps remain
         public const int scoutSurveilStaleTurnsLo = 2;           // AgeTurns under this -> staleness 0
         public const int scoutSurveilStaleTurnsHi = 8;           // AgeTurns over this -> staleness 1
+        // Strike force step 6 — the target of a live Attack operation needs fresher intel than
+        // generic Refresh: once its last observation is older than this, Recon treats it as fully
+        // stale and maximally relevant (AttackObjectiveEvaluator.ObservationNeeds).
+        public const int attackIntelMaxAgeTurns = 1;
 
         // Spec AI-INTEL-01 — Observed != GroundVisited. `GroundVisited == false` on its own must
         // not keep an Explore focus an attractive target: if the cell and the unvisited neighbours

@@ -409,6 +409,27 @@ namespace Game.Ai.V2
             };
         }
 
+        // Strike force step 6 — the observation Attack publishes for Recon: the target site of every
+        // live operation that is still going to fight there (Gather / Assault / Reinforcement).
+        // Recon closes it with its own Refresh objective (ReconObjectiveEvaluator); Attack never
+        // moves a scout itself.
+        internal static IEnumerable<HexCoord> ObservationNeeds(WorldSnapshot snap)
+        {
+            PlayerSetupData player = snap?.Observer;
+            if (player == null)
+                yield break;
+            foreach (MissionIntent i in MissionIntentRegistry.GetOrCreate(player).All)
+            {
+                AttackIntent a = i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
+                    ? i.Attack : null;
+                if (a == null || !a.Target.HasValue)
+                    continue;
+                if (a.Phase == AttackMissionPhase.Gather || a.Phase == AttackMissionPhase.Assault
+                    || a.Phase == AttackMissionPhase.Reinforcement)
+                    yield return a.Target.Hex;
+            }
+        }
+
         // Strike force step 4 — Attack readiness from the SelfSnapshot force measures. Not a gate:
         // how much of the available force already stands in one fist (assembly: Fist / P_field) and
         // how much of the reachable ceiling is already on the map (deployment: P_field against

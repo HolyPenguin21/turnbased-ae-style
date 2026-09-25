@@ -189,6 +189,7 @@ reactivate when important contact becomes stale or blind again.
 | Projected army capacity rule (planner == executor) | `Materialization/ArmyCapacityRules` |
 | Air-recon actor/target selection (round 4 — same owner as ground) | `Recon/ReconAssignmentPlanner` (`AppendAirCandidates`) |
 | Air-recon execution-input assembly (mode / launch-subset re-derivation / first-step gate / energy) | `Recon/AirReconPlanner` |
+| What a live Attack needs observed, and how Recon serves it | `AttackObjectiveEvaluator.ObservationNeeds` publishes the operation's target site; `ReconObjectiveEvaluator.AttackNeedRefresh` turns it into an ordinary Refresh (stale past `attackIntelMaxAgeTurns`, full relevance). No new Recon kind |
 | Typed strategic invalidations | `State/StrategicInterruptRegistry` — factual reason mask plus per-reason payload; no second event bus |
 | Execution state-version counter | `State/V2StateVersion` |
 | Materialization action cost | `Materialization/MaterializationPlan` accounting fields (`ApCost` / `ResCost` / `HandSlotsNeededAtPeak` / `Generation`) — the canonical `StrategicActionCost` |

@@ -108,6 +108,16 @@ namespace Game.Ai.V2
             // hexes by construction and current-visible hexes naturally have age 0.
             ReconDirectionSnapshot direction = null;
             List<ReconObjective> refresh = BuildRefreshObjectives(snap, ref direction);
+            // Strike force step 6 — Attack's observation needs join as Refresh objectives of the
+            // same identity, replacing a generic Refresh of the same hex.
+            foreach (HexCoord need in AttackObjectiveEvaluator.ObservationNeeds(snap).Distinct())
+            {
+                ReconObjective o = AttackNeedRefresh(snap, need, null, ref direction);
+                if (o == null)
+                    continue;
+                refresh.RemoveAll(r => r.FocusHex.Equals(need));
+                refresh.Add(o);
+            }
             list.AddRange(refresh);
 
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
@@ -162,6 +172,11 @@ namespace Game.Ai.V2
         public static ReconObjective RefreshAt(WorldSnapshot snap, HexCoord hex,
             int? preferredMoverArmyId = null)
         {
+            if (AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(hex))
+            {
+                ReconDirectionSnapshot direction = null;
+                return AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction);
+            }
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
                 || age < AiConfigV2.scoutSurveilStaleTurnsLo)
                 return null;
@@ -233,6 +248,21 @@ namespace Game.Ai.V2
         public static ReconObjective SurveilOf(WorldSnapshot snap, EnemyContactSnapshot c,
             int? preferredMoverArmyId = null) =>
             c == null ? null : BuildSurveil(snap, c, preferredMoverArmyId);
+
+        // Strike force step 6 — the one rule for an Attack observation need: a site last seen more
+        // than attackIntelMaxAgeTurns ago is refreshed as fully stale and maximally relevant.
+        private static ReconObjective AttackNeedRefresh(WorldSnapshot snap, HexCoord hex,
+            int? preferredMoverArmyId, ref ReconDirectionSnapshot direction)
+        {
+            if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
+                || age <= AiConfigV2.attackIntelMaxAgeTurns)
+                return null;
+            if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
+                return null;
+            if (direction == null)
+                direction = ReconDirectionModel.Build(snap);
+            return BuildRefresh(snap, hex, age, preferredMoverArmyId, direction, attackNeed: true);
+        }
 
         private static List<ReconObjective> BuildRefreshObjectives(WorldSnapshot snap,
             ref ReconDirectionSnapshot direction)
@@ -379,16 +409,19 @@ namespace Game.Ai.V2
                 AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi));
         }
 
+        // `attackNeed` — a live Attack operation's target (AttackNeedRefresh): stale and relevant
+        // for its purpose regardless of the generic staleness ramp.
         private static ReconObjective BuildRefresh(WorldSnapshot snap, HexCoord hex, int age,
-            int? preferredMoverArmyId = null, ReconDirectionSnapshot direction = null)
+            int? preferredMoverArmyId = null, ReconDirectionSnapshot direction = null,
+            bool attackNeed = false)
         {
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
             int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, distBase);
-            float staleRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
+            float staleRaw = attackNeed ? 1f : Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
                 AiConfigV2.scoutSurveilStaleTurnsHi);
 
-            float strategicRaw = ReconIntelSnapshotRegistry.RefreshRelevance(snap, hex);
+            float strategicRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.RefreshRelevance(snap, hex);
             direction = direction ?? ReconDirectionModel.Build(snap);
             ReconSector sector = ReconDirectionModel.Sector(snap.Self.Citadel, hex);
             float directionalRaw = direction?.EnemyDirectionSectors != null
