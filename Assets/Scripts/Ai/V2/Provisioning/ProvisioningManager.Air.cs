@@ -36,32 +36,13 @@ namespace Game.Ai.V2
             ProvisioningSession session, FundedEntry funded, ScoutExecutionCandidate exec,
             ScoutMissionTarget target, StableMissionKey key)
         {
+            // Aviation serves only AirSweep (ReconAssignmentPlanner.AppendAirCandidates), whose focus
+            // is its moving ANCHOR, not an observation goal: seeing the enemy concentration never
+            // "satisfies" the pass (the sortie ends by its refuel endurance), so there is no
+            // objective check here.
             MissionProposal m = funded.Mission;
-            bool surveil = target.Kind == ScoutTargetKind.Surveil;
             HexCoord focus = target.FocusHex;
             HexCoord executionHex = exec.ExecutionHex;
-
-            if (surveil)
-            {
-                int trackedId = target.Contact?.Army?.ArmyId ?? -1;
-                if (trackedId < 0 || target.Contact.Source != ContactSource.Honest
-                    || target.Contact.Knowledge != ContactKnowledge.LastKnown)
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                        "surveil target is no longer an honest last-known contact"));
-                int baseline = target.Contact.LastObservedTurn;
-                if (VisionSystem.IsVisible(player, focus) || HasFresherSighting(player, trackedId, baseline))
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                        $"tracked #{trackedId} already re-observed (focus ({focus.Q},{focus.R}), baseline turn {baseline})"));
-            }
-            else if (!ReconScoutKinds.IsAirSweep(target.Kind))
-            {
-                // An AirSweep's focus is its moving ANCHOR, not an observation goal: seeing the
-                // enemy concentration never "satisfies" the pass (the sortie ends by its refuel
-                // endurance), so only a legacy Refresh target is checked here.
-                if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, focus))
-                    return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
-                        $"refresh focus ({focus.Q},{focus.R}) is already visible again"));
-            }
 
             int moverArmyId;
             HexCoord airfieldHex = default;
@@ -185,8 +166,6 @@ namespace Game.Ai.V2
                 MoverArmyId = moverArmyId,
                 FocusHex = focus,
                 ExecutionHex = executionHex,
-                TrackedArmyId = surveil ? target.Contact.Army.ArmyId : (int?)null,
-                BaselineObservedTurn = surveil ? target.Contact.LastObservedTurn : 0,
                 ClaimedAp = realAp,
                 ClaimedEnergy = realEnergy,
                 ClaimedPhysical = new ResourceVector(0f, 0f, realEnergy, 0f, 0f),

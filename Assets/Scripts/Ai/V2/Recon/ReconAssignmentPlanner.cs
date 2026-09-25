@@ -394,19 +394,8 @@ namespace Game.Ai.V2
                     if (live == null)
                         continue;
 
-                    HexCoord anchorTarget;
-                    if (target.Kind == ScoutTargetKind.Surveil)
-                    {
-                        SurveilVantageCandidate? vantage = SurveilVantageSelector.Rank(snap, mover, target)
-                            .Select(v => (SurveilVantageCandidate?)v).FirstOrDefault();
-                        if (!vantage.HasValue)
-                            continue; // no reachable vantage — round-3/4 NoObservationVantage territory
-                        anchorTarget = vantage.Value.ExecutionHex;
-                    }
-                    else
-                    {
-                        anchorTarget = target.FocusHex;
-                    }
+                    // Only AirSweep reaches here (gate above): its anchor IS the focus.
+                    HexCoord anchorTarget = target.FocusHex;
 
                     AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
                         player, ctx, snap, mode, slot, null, anchorTarget);
@@ -423,8 +412,6 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    if (!ReconScoutKinds.IsAirSweep(target.Kind))
-                        continue; // a hangar launch serves only the AirSweep pass
                     ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
                     if (airfield == null)
                         continue;
@@ -1034,8 +1021,7 @@ namespace Game.Ai.V2
                          snap, player, genericProbeTarget, claimedForGarrison, commitments, reservedShellIds))
                 idleActors.Add(g.Mover);
             int remainingGroundSlots = Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundLaneWitnessed);
-            int remainingObsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency - obsLaneWitnessed
-                - capacity.AirborneReconLanes - capacity.SpareAirObservationSorties);
+            int remainingObsSlots = Mathf.Max(0, capacity.DesiredObservationConcurrency - obsLaneWitnessed);
 
             (int groundP1, int obsP1, var usedActors, var usedGroundIdx, var usedObsIdx) = SolveReconFlow(
                 ctx, player, snap, idleActors, groundVisitRunnable, observationRunnable,
@@ -1089,11 +1075,8 @@ namespace Game.Ai.V2
         // actor structurally exist" (SlotWouldFly proves a route/energy opportunity exists RIGHT
         // NOW), never "is it funded" — funding is Generic Funding's job.
         //
-        // Two call sites (DemandLayer.ReconDemands calls this, then MeasureCapacity) because
-        // ReconCapacitySnapshot.Build needs these numbers as an INPUT to size its Desired/deficit
-        // fields, which MeasureCapacity's ground witness then reads back
-        // (capacity.AirborneReconLanes / SpareAirObservationSorties) — an ordering dependency, not
-        // a second capacity authority.
+        // Read by StrategicPhaseA's committed non-card AP estimate. Aviation serves only AirSweep,
+        // so it is never Recon ground/observation capacity (ReconCapacitySnapshot).
         public static (int AirborneWitnessed, int SpareLaunchWitnessed) MeasureAirCapacity(
             AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, WorldSnapshot snap,
             IReadOnlyList<ReconObjective> reconObjectives, IReadOnlyList<MissionIntent> activeIntents,
@@ -1270,21 +1253,8 @@ namespace Game.Ai.V2
                 if (o == null || consumedObjectiveKeys.Contains(o.IntentKey))
                     continue;
 
-                HexCoord anchor;
-                if (o.Kind == ReconObjectiveKind.Surveil)
-                {
-                    if (mover == null)
-                        continue; // launch subset — Refresh-only (round-4 scope)
-                    SurveilVantageCandidate? v = SurveilVantageSelector.Rank(snap, mover, o.ToTarget())
-                        .Select(x => (SurveilVantageCandidate?)x).FirstOrDefault();
-                    if (!v.HasValue)
-                        continue;
-                    anchor = v.Value.ExecutionHex;
-                }
-                else
-                {
-                    anchor = o.FocusHex;
-                }
+                // obsRunnable holds only aviation-serviceable AirSweep jobs: the anchor is the focus.
+                HexCoord anchor = o.FocusHex;
 
                 AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
                     player, ctx, snap, mode, slot, provisionalWedges, anchor);
