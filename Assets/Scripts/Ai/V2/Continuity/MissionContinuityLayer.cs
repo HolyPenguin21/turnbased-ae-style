@@ -178,19 +178,14 @@ namespace Game.Ai.V2
                 if (i.IntentKey.Equals(intent.IntentKey)) return true;
                 return objective.BuildCard != null && i.Economy?.BuildCard == objective.BuildCard;
             }
+            // A takeover/redirect conflict retires the DISPLACED intent through the ordinary
+            // retirement, releasing its own reservation, so a forced handoff cannot leave this
+            // turn's H/E/M/T hold reserved for an owner key nothing will ever complete or release.
+            // Only a superseded ReturnBuilder returns its loan here: its actor goes back to the
+            // lender's side of the ledger; a superseded build's actor stays on Economy work.
             foreach (MissionIntent stale in state.All.Where(ConflictsWithGrant).ToList())
-            {
-                if (stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder && stale.Economy.Loaned
-                    && state.TryGet(stale.Economy.LoanSource, out MissionIntent staleLender))
-                    ResumeEconomyLender(staleLender);
-                // A takeover/redirect conflict releases the DISPLACED intent's own
-                // reservation the same way its normal retirement path does (see Continuity's retire
-                // branch in ReconcileAfterTurn), so a forced handoff cannot leave this turn's H/E/M/T
-                // hold reserved for an owner key nothing will ever complete or release again.
-                StrategicResourceReservationLedger.ReleaseByOwner(player, turn,
-                    EconomyMissionPlanner.OwnerKey(stale.LastAttemptKey));
-                state.Remove(stale.IntentKey);
-            }
+                RetireEconomyIntent(state, stale, null, turn,
+                    returnLoan: stale.Economy?.Kind == EconomyTaskKind.ReturnBuilder);
             state.Put(intent);
             AiDebugLog.Write($"[AI][V2][Economy] materialization handoff {intent.IntentKey} "
                 + $"actor=#{builderArmyId} funding=Soft");
@@ -285,7 +280,7 @@ namespace Game.Ai.V2
             if (actor == null)
             {
                 ResumeEconomyLender(lender);
-                if (economy != null) state.Remove(economy.IntentKey);
+                RetireEconomyIntent(state, economy, null, turn, returnLoan: false);
                 return;
             }
 
@@ -299,7 +294,7 @@ namespace Game.Ai.V2
                     alreadyProtected, target.HasValue))
             {
                 ResumeEconomyLender(lender);
-                if (economy != null) state.Remove(economy.IntentKey);
+                RetireEconomyIntent(state, economy, null, turn, returnLoan: false);
                 AiDebugLog.Write($"[AI][V2][Economy][Recovery] actor=#{builderArmyId} "
                     + "released at safe build hex / resumed scout");
                 return;
@@ -348,6 +343,7 @@ namespace Game.Ai.V2
             PlayerSetupData player, HexCoord hex) =>
             snap?.Self?.BaseHexes != null && snap.Self.BaseHexes.Contains(hex);
 
+        // The ONE EconomyLoan -> Active transition (repayment, supersede, orphan repair).
         private static void ResumeEconomyLender(MissionIntent lender)
         {
             if (lender != null && lender.Status == IntentStatus.Suspended
@@ -355,6 +351,8 @@ namespace Game.Ai.V2
             {
                 lender.Status = IntentStatus.Active;
                 lender.Suspended = SuspendReason.None;
+                AiDebugLog.Write($"[AI][V2][Economy][Loan] resume actor=#{lender.PreferredMoverArmyId} "
+                    + $"to={lender.IntentKey}");
             }
         }
 
@@ -394,9 +392,8 @@ namespace Game.Ai.V2
                 && i.Status == IntentStatus.Suspended && i.Suspended == SuspendReason.EconomyLoan
                 && !liveLoanSources.Contains(i.IntentKey)))
             {
-                orphanedDonor.Status = IntentStatus.Active;
-                orphanedDonor.Suspended = SuspendReason.None;
                 AiDebugLog.Write($"[AI][V2][Economy][Loan] orphan repair donor={orphanedDonor.IntentKey}");
+                ResumeEconomyLender(orphanedDonor);
             }
 
             // Strike force — a Raid / ActiveDefence whose primary an Attack gather bought ends here.
@@ -528,7 +525,7 @@ namespace Game.Ai.V2
                         bool safe = !WorldAnalysis.KnownHostileAtHex(snap, ei.TargetHex);
                         if (!capable)
                         {
-                            dead.Add(intent.IntentKey);
+                            RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
                             AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire {intent.IntentKey} "
                                 + "reason=collector_lost_or_capability_lost");
                             continue;
@@ -540,7 +537,7 @@ namespace Game.Ai.V2
                                 home = SelectEconomyRecoveryTarget(snap, player, actor);
                             if (!home.HasValue)
                             {
-                                dead.Add(intent.IntentKey);
+                                RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
                                 continue;
                             }
                             MissionIntentKey oldKey = intent.IntentKey;
@@ -576,7 +573,7 @@ namespace Game.Ai.V2
                         bool targetValid = IsProtectedEconomyHex(snap, player, ei.TargetHex);
                         if (completed || actor == null || !targetValid)
                         {
-                            dead.Add(intent.IntentKey);
+                            RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
                             AiDebugLog.Write($"[AI][V2][Economy][Mobile] retire return "
                                 + $"{intent.IntentKey} arrived={(completed ? 1 : 0)}");
                             continue;
@@ -611,10 +608,7 @@ namespace Game.Ai.V2
                         }
                         if (completed || actor == null || !targetValid)
                         {
-                            MissionIntent lender = null;
-                            if (ei?.Loaned == true) state.TryGet(ei.LoanSource, out lender);
-                            ResumeEconomyLender(lender);
-                            dead.Add(intent.IntentKey);
+                            RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
                             AiDebugLog.Write($"[AI][V2][Economy][Recovery] retire {intent.IntentKey} "
                                 + $"arrived={(completed ? 1 : 0)} actor={(actor != null ? 1 : 0)} "
                                 + $"target={(targetValid ? 1 : 0)}");
@@ -640,12 +634,7 @@ namespace Game.Ai.V2
                             ei.TargetHex, ei.ResourceType.Value) == true);
                     if (completedBuild || actor == null || !targetValidBuild)
                     {
-                        MissionIntent lender = null;
-                        if (ei?.Loaned == true) state.TryGet(ei.LoanSource, out lender);
-                        ResumeEconomyLender(lender);
-                        StrategicResourceReservationLedger.ReleaseByOwner(player,
-                            snap?.TurnNumber ?? 0, EconomyMissionPlanner.OwnerKey(intent.LastAttemptKey));
-                        dead.Add(intent.IntentKey);
+                        RetireEconomyIntent(state, intent, null, snap?.TurnNumber ?? 0);
                         AiDebugLog.Write($"[AI][V2][Economy] retire {intent.IntentKey} "
                             + $"completed={(completedBuild ? 1 : 0)} actor={(actor != null ? 1 : 0)} "
                             + $"target={(targetValidBuild ? 1 : 0)}");
@@ -1486,7 +1475,6 @@ namespace Game.Ai.V2
                     }
                 }
 
-                RepayEconomyLoan(state, intent, o);
                 // Review P1 #1/#2 (+ follow-up) — an Explore/Refresh focus hex met by something
                 // OTHER than this actor's own execution reaching goal (another scout opened it
                 // mid-turn, or provisioning found it already live-satisfied) is a satisfied
@@ -1529,10 +1517,8 @@ namespace Game.Ai.V2
                     }
                 }
                 if (intent != null)
-                {
-                    state.Remove(o.IntentKey);
                     AiDebugLog.Write($"[AI][V2] continuity — [{aid}] {o.IntentKey} COMPLETED, retired");
-                }
+                RetireOutcomeIntent(state, intent, o, turn);
                 return;
             }
 
@@ -2142,14 +2128,8 @@ namespace Game.Ai.V2
             MissionIntentKey? source = outcome?.EconomyLoanSource;
             if (!source.HasValue && economy?.Economy?.Loaned == true)
                 source = economy.Economy.LoanSource;
-            if (!source.HasValue || !state.TryGet(source.Value, out MissionIntent lender))
-                return;
-            if (lender.Status == IntentStatus.Suspended && lender.Suspended == SuspendReason.EconomyLoan)
-            {
-                lender.Status = IntentStatus.Active;
-                lender.Suspended = SuspendReason.None;
-                AiDebugLog.Write($"[AI][V2][Economy][Loan] repay actor=#{lender.PreferredMoverArmyId} to={lender.IntentKey}");
-            }
+            if (source.HasValue && state.TryGet(source.Value, out MissionIntent lender))
+                ResumeEconomyLender(lender);
         }
 
         // The ONE retirement of an Economy intent: a borrowed Recon/Raid owner gets its actor back,
@@ -2157,9 +2137,10 @@ namespace Game.Ai.V2
         // rest of the turn), then the intent goes. `outcome` may carry the loan of a mission that
         // never became durable. Economy audit B8.
         private static void RetireEconomyIntent(MissionIntentState state, MissionIntent intent,
-            MissionTurnOutcome outcome, int turn)
+            MissionTurnOutcome outcome, int turn, bool returnLoan = true)
         {
-            RepayEconomyLoan(state, intent, outcome);
+            if (returnLoan)
+                RepayEconomyLoan(state, intent, outcome);
             if (intent == null)
                 return;
             StrategicResourceReservationLedger.ReleaseByOwner(state.Owner, turn,
