@@ -131,12 +131,8 @@ namespace Game.Ai.V2
                 PreferredMoverArmyId = builderArmyId,
             };
             intent.IntentKey = MissionIntentKey.For(intent);
-            intent.LastAttemptKey = new StableMissionKey(MissionKind.Economy,
-                (int)kind,
-                kind == EconomyTaskKind.ReturnBuilder ? builderArmyId
-                    : demand.EconomyResourceType.HasValue
-                        ? (int)demand.EconomyResourceType.Value + 1 : 0,
-                objective.TargetHex.Q, objective.TargetHex.R);
+            intent.LastAttemptKey = StableMissionKey.ForEconomy(kind, intent.IntentKey.ObjectiveId,
+                objective.TargetHex);
 
             MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
 
@@ -218,8 +214,7 @@ namespace Game.Ai.V2
                 || !object.ReferenceEquals(owned, incumbent))
                 return false;
             HexCoord target = challenger.TargetHex.Value;
-            var newKey = new MissionIntentKey(MissionKind.Economy,
-                (int)EconomyTaskKind.FoundBase, 0, target.Q, target.R);
+            var newKey = MissionIntentKey.ForEconomy(EconomyTaskKind.FoundBase, 0, target);
             if (state.TryGet(newKey, out MissionIntent occupied)
                 && !object.ReferenceEquals(occupied, incumbent))
                 return false;
@@ -250,8 +245,7 @@ namespace Game.Ai.V2
             objective.BuildValue = challenger.EconomySiteValue;
             objective.BuilderArmyId = incumbent.PreferredMoverArmyId;
             incumbent.IntentKey = newKey;
-            incumbent.LastAttemptKey = new StableMissionKey(MissionKind.Economy,
-                (int)EconomyTaskKind.FoundBase, 0, target.Q, target.R);
+            incumbent.LastAttemptKey = StableMissionKey.ForEconomy(EconomyTaskKind.FoundBase, 0, target);
             incumbent.CreatedTurn = turn;
             incumbent.TurnsActive = 1;
             incumbent.LastProgressTurn = turn;
@@ -336,9 +330,8 @@ namespace Game.Ai.V2
                 Loaned = lender != null, LoanSource = lender?.IntentKey ?? default,
             };
             recovery.IntentKey = MissionIntentKey.For(recovery);
-            recovery.LastAttemptKey = new StableMissionKey(MissionKind.Economy,
-                (int)EconomyTaskKind.ReturnBuilder, builderArmyId,
-                target.Value.Q, target.Value.R);
+            recovery.LastAttemptKey = StableMissionKey.ForEconomy(EconomyTaskKind.ReturnBuilder,
+                recovery.IntentKey.ObjectiveId, target.Value);
             if (economy != null && !oldKey.Equals(recovery.IntentKey))
                 state.Remove(oldKey);
             if (lender != null)

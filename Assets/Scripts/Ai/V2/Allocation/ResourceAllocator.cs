@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Game.HexGrid;
 using Game.Players;
 using UnityEngine;
 
@@ -115,6 +116,10 @@ namespace Game.Ai.V2
             TargetKind = targetKind; ActorId = actorId; DetailId = detailId;
         }
 
+        // Same objective encoding as MissionIntentKey.ForEconomy (EconomyObjectiveId).
+        public static StableMissionKey ForEconomy(EconomyTaskKind kind, int objectiveId, HexCoord hex) =>
+            new StableMissionKey(MissionKind.Economy, (int)kind, objectiveId, hex.Q, hex.R);
+
         public static StableMissionKey ForRaidAssault(RaidTargetRef target) =>
             target.Kind == RaidTargetKind.NeutralArmy
                 ? new StableMissionKey(MissionKind.Raid, (int)RaidMissionPhase.Assault, target.ArmyId, 0, 0, RaidTargetKind.NeutralArmy)
@@ -196,13 +201,8 @@ namespace Game.Ai.V2
                 return new StableMissionKey(MissionKind.ActiveDefence, (int)ad.Phase,
                     ad.EnemyArmyId, 0, 0);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
-                return new StableMissionKey(MissionKind.Economy, (int)et.Kind,
-                    et.Kind == EconomyTaskKind.ReturnBuilder
-                        ? et.BuilderArmyId ?? 0
-                        : et.Kind == EconomyTaskKind.ReturnCollector
-                            ? et.CollectorArmyId ?? 0
-                        : et.ResourceType.HasValue ? (int)et.ResourceType.Value + 1 : 0,
-                    et.TargetHex.Q, et.TargetHex.R);
+                return ForEconomy(et.Kind, MissionIntentKey.EconomyObjectiveId(et.Kind,
+                    et.BuilderArmyId, et.CollectorArmyId, et.ResourceType), et.TargetHex);
             if (m != null && m.Kind == MissionKind.Development && m.Target is DevelopmentMissionTarget dt)
                 return new StableMissionKey(MissionKind.Development, (int)dt.Mode,
                     0, dt.FacilityHex.Q, dt.FacilityHex.R);

@@ -234,11 +234,9 @@ namespace Game.Ai.V2
                 return null;
             EconomyTaskKind kind = demand.Capability == CapabilityKind.EconomicExpansionBase
                 ? EconomyTaskKind.FoundBase : EconomyTaskKind.BuildExtraction;
-            int targetId = demand.EconomyResourceType.HasValue
-                ? (int)demand.EconomyResourceType.Value + 1 : 0;
-            HexCoord h = demand.TargetHex.Value;
-            return EconomyMissionPlanner.OwnerKey(new StableMissionKey(MissionKind.Economy,
-                (int)kind, targetId, h.Q, h.R));
+            return EconomyMissionPlanner.OwnerKey(StableMissionKey.ForEconomy(kind,
+                MissionIntentKey.EconomyObjectiveId(kind, null, null, demand.EconomyResourceType),
+                demand.TargetHex.Value));
         }
 
         // A selected infrastructure demand already has a valuable legal site and a
