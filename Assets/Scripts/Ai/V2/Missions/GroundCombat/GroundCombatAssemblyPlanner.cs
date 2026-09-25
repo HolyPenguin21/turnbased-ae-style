@@ -95,11 +95,22 @@ namespace Game.Ai.V2
         // continuation floor for the pinned Hard incumbent and the fresh gate for anything new.
         internal static float AssaultGate(MissionProposal proposal, int actorId) =>
             proposal != null && proposal.Kind == MissionKind.Attack ? AttackWinChanceFloor
-            : proposal != null && proposal.FromDurableIntent
+            : PinnedOrFreshGate(proposal != null && proposal.FromDurableIntent
                 && proposal.DurableFundingTier == CommitmentTier.Hard
-                && proposal.PreferredMoverArmyId == actorId
-                ? ContinuationWinChanceFloor
-                : FreshStartWinChanceGate;
+                && proposal.PreferredMoverArmyId == actorId);
+
+        // Raid / ActiveDefence: the continuation floor for the durable operation's own pinned
+        // actor, the fresh gate for anything new. Every stage selects through this one predicate.
+        internal static float PinnedOrFreshGate(bool continuesPinnedOperation) =>
+            continuesPinnedOperation ? ContinuationWinChanceFloor : FreshStartWinChanceGate;
+
+        // Raid: a started operation stays in Assault down to the continuation floor; every other
+        // phase (and an unstarted one) returns to Assault only at the fresh gate. Continuity's
+        // phase machine and the Demand layer's shortage test both read this, so a shortage is
+        // reported exactly when Continuity will not let the primary assault on its own.
+        internal static float RaidPrimaryGate(RaidIntent raid) =>
+            PinnedOrFreshGate(raid != null && raid.OperationStarted
+                && raid.Phase == RaidMissionPhase.Assault);
     }
 
     // The generalized ground-combat assembly REQUEST. The kernel below is shared by Raid,

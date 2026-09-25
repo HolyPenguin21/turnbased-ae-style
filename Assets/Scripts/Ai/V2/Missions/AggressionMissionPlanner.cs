@@ -169,11 +169,11 @@ namespace Game.Ai.V2
                         // does not make its last-known position less valuable.
                         int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
                             snap, intent.Raid.LastKnownHex);
-                        var staleTask = new TaskScore(
-                            ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                            cardPrice: staleCost.ApDesired * AiConfigV2.taskScoreReactivationApWeight,
-                            delivery: TaskScoreEvaluator.DeliveryFromEta(staleEstimate.RecurringActivationAp,
-                                staleCost.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
+                        TaskScore staleTask = TaskScoreEvaluator.WithResponse(
+                            new TaskScore(ownTerritoryProximity:
+                                TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
+                            0f, staleCost.ApDesired, staleEstimate.RecurringActivationAp,
+                            staleCost.EtaTurns);
                         float staleValue = staleTask.Value;
                         incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
@@ -309,9 +309,8 @@ namespace Game.Ai.V2
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
-                        WinChanceGate = pinnedActor.HasValue
-                            ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                            : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                        WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(
+                            pinnedActor.HasValue),
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -640,9 +639,7 @@ namespace Game.Ai.V2
                     PreferredPrimaryArmyId = pinnedPrimaryArmyId,
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
-                    WinChanceGate = operationStarted
-                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(operationStarted),
                 })
                 : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded);
 
@@ -673,15 +670,8 @@ namespace Game.Ai.V2
             float currentActivationAp = UnityEngine.Mathf.Max(0f, req?.ApDesired ?? 0f);
             float recurringActivationAp = UnityEngine.Mathf.Max(0f, estimate.RecurringActivationAp);
             float etaTurns = UnityEngine.Mathf.Max(0f, req?.EtaTurns ?? 0f);
-            var score = new TaskScore(
-                staleness: o.TaskScore.Staleness,
-                ownTerritoryProximity: o.TaskScore.OwnTerritoryProximity,
-                militaryTargetRelevance: o.TaskScore.MilitaryTargetRelevance,
-                winChance: TaskScoreEvaluator.WinChance(readyWin),
-                cardPrice: currentActivationAp * AiConfigV2.taskScoreReactivationApWeight,
-                delivery: TaskScoreEvaluator.DeliveryFromEta(recurringActivationAp, etaTurns,
-                    AiConfigV2.taskScoreReactivationApWeight),
-                moverOpportunityCost: 0f);
+            TaskScore score = TaskScoreEvaluator.WithResponse(o.TaskScore, readyWin,
+                currentActivationAp, recurringActivationAp, etaTurns);
             float las = score.Value;
 
             string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "

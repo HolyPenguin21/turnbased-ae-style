@@ -122,118 +122,24 @@ namespace Game.Ai.V2
 
                     if (ri.Target.HasValue) coveredTargets.Add(ri.Target);
 
-                    IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
-                    List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
-                    // The same gates Continuity applies (AdvanceRaidPhase): a started raid stays in
-                    // Assault down to the continuation floor, while every other phase returns to
-                    // Assault only at the fresh gate — so a shortage is reported exactly when
-                    // Continuity will not let the primary assault on its own.
-                    float primaryGate = ri.Phase == RaidMissionPhase.Assault
-                        ? MissionContinuityLayer.RaidStayInAssaultGate(ri)
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
-                    GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
-                        snap, opposition, primaryId, primaryGate);
-                    if (primaryPlan.Feasible)
-                    {
-                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} "
-                            + $"win={primaryPlan.ProjectedWinChance:0.00} "
-                            + "reason=primary_clears_worthit_against_current_target");
-                        continue;
-                    }
-
-                    if (ri.SupportArmyId.HasValue)
-                    {
-                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} support={ri.SupportArmyId.Value} "
-                            + "reason=reinforcement_already_assigned_or_en_route");
-                        continue;
-                    }
-
-                    if (ri.ReinforcementRequestedTurn == snap.TurnNumber)
-                    {
-                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + "reason=reinforcement_already_requested_this_turn");
-                        continue;
-                    }
-
-                    // An EXISTING free army may already be able to serve as
-                    // reinforcement (no materialization needed at all). Only request a NEW
-                    // IndependentFieldArmy when no such existing candidate is available; Missions /
-                    // Provisioning pick the concrete actor through the normal ground-combat batch
-                    // solve once this evaluation reports the target still uncovered.
-                    List<int> existingSupportCandidates = GroundCombatAssemblyPlanner
-                        .ReinforcementSupportCandidates(snap, primaryId, opposition, commitments?.ClaimedArmyIdSet);
-                    if (existingSupportCandidates.Count > 0)
-                    {
-                        diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED intent={i.IntentKey} "
-                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} "
-                            + $"candidates={existingSupportCandidates.Count} "
-                            + "reason=existing_free_army_available_as_support");
-                        continue;
-                    }
-
-                    ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
-                    float targetPower = AiPower.EffectiveArmyPowerFromProfiles(defenders);
-                    float required = UnityEngine.Mathf.Max(1f, targetPower * AiConfigV2.raidCombatPowerMargin);
-                    float deficit = UnityEngine.Mathf.Max(1f, required - (primary?.EffectiveArmyPower ?? 0f));
-
-                    // §6 — if the power exists numerically but cannot PHYSICALLY be delivered as a
-                    // separate army (no free field army, no reusable shell, no deployable unit
-                    // card), emit a bounded DEFER instead of a phantom +1 power claim.
-                    if (!CanDeliverIndependentFieldArmy(snap, inv))
-                    {
-                        diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER intent={i.IntentKey} "
-                            + $"target={ri.Target.DiagnosticLabel} primary={primaryId} "
-                            + $"reason=no_independent_field_army_deliverable deficit={deficit:0.#} "
-                            + $"freePower={inv.RaidAvailableFieldPower:0.#} shells={inv.ReusableEmptyArmies.Count}");
-                        continue;
-                    }
-
-                    // Build is a pure snapshot read; it never mutates the real
-                    // RaidIntent. The Assault -> Reinforcement phase transition is
-                    // MissionContinuityLayer.AdvanceRaidPhase's job (it independently re-verifies
-                    // the primary's state every reconciliation pass); the ReinforcementRequestedTurn
-                    // dedup stamp is written only once a materialization for this exact
-                    // ConsumerIntentKey is actually accepted/funded
-                    // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build is called from both
-                    // the main Phase-A pass and the bounded reaction probe — a diagnostic evaluation
-                    // must never be able to commit the real mission to state it may never fund.
-                    AggressionObjective reinforcementObjective = objectives
-                        .Where(o => o != null && o.Target.Equals(ri.Target))
-                        .OrderByDescending(o => o.BaseValue)
-                        .FirstOrDefault();
-                    TaskScore reinforcementScore = reinforcementObjective?.TaskScore ?? default;
-                    float reinforcementValue = reinforcementScore.Value;
-                    diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE intent={i.IntentKey} "
-                        + $"target={ri.Target.DiagnosticLabel} capability=FieldCombatPower "
-                        + $"shape=IndependentFieldArmy desired={deficit:0.#} primary={primaryId} "
-                        + $"required={required:0.#} have={(primary?.EffectiveArmyPower ?? 0f):0.#} "
-                        + $"task={reinforcementValue:0.##} "
-                        + $"rendezvous=({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}) "
-                        + "reason=weakened_primary_needs_separate_support_army");
-                    reinforcementDemands.Add(new AxisDemand
-                    {
-                        RequestingAxis = DesireAxis.Aggression,
-                        Capability = CapabilityKind.FieldCombatPower,
-                        DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
-                        ConsumerIntentKey = i.IntentKey,
-                        ConsumerMissionKind = MissionKind.Raid,
-                        DesiredAmount = deficit,
-                        RequiredCapabilityPower = deficit,
-                        RequiredTraits = TraitPreference.None,
-                        MinimumFollowupAp = 0f,
-                        TargetHex = primary?.Hex,
-                        // This is still the same world objective, so carry its canonical intrinsic
-                        // TaskScore. The active Raid's Hard commitment owns continuity separately;
-                        // no synthetic lifecycle value is injected into this transport.
-                        WorldTaskScore = reinforcementScore,
-                        Value = reinforcementScore.Value,
-                        Explain = $"raid {ri.Target.DiagnosticLabel}: primary #{primaryId} no longer clears WorthIt "
-                            + $"({(primary?.EffectiveArmyPower ?? 0f):0.#} of {required:0.#} needed); "
-                            + $"deliver ~{deficit:0.#} field power as a SEPARATE support army to "
-                            + $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)}); task={reinforcementValue:0.##}",
-                    });
+                    // Build is a pure snapshot read; it never mutates the real RaidIntent. The
+                    // Assault -> Reinforcement transition is MissionContinuityLayer.AdvanceRaidPhase's
+                    // job; the ReinforcementRequestedTurn dedup stamp is written only once a
+                    // materialization for this exact ConsumerIntentKey is accepted/funded
+                    // (CapabilityDeliveryEvaluator.TryHandoffRaidSupport). Build also serves the
+                    // bounded reaction probe, which must never commit the real mission to anything.
+                    AxisDemand raidShortage = BoundPrimaryShortage(snap, inv, commitments, i,
+                        MissionKind.Raid, ri.Target.DiagnosticLabel, primaryId, ri.SupportArmyId,
+                        ri.ReinforcementRequestedTurn, AiV2Util.KnownOpposition(snap, ri.Target), 0f,
+                        GroundCombatAdmissionPolicy.RaidPrimaryGate(ri),
+                        // The same world objective, so its canonical intrinsic TaskScore.
+                        () => objectives
+                            .Where(o => o != null && o.Target.Equals(ri.Target))
+                            .OrderByDescending(o => o.BaseValue)
+                            .FirstOrDefault()?.TaskScore ?? default,
+                        diag);
+                    if (raidShortage != null)
+                        reinforcementDemands.Add(raidShortage);
                 }
             // ATK §41 — the Attack lane's proven shortages join the SAME demand list, through the
             // same rules, in AggressionDemandEvaluator.Attack.cs.
@@ -383,6 +289,91 @@ namespace Game.Ai.V2
             return eval;
         }
 
+        // §41 — the ONE "does a bound ground-combat primary need a NEW support army" chain, shared
+        // by Raid and Attack. It is NOT a shortage while the primary still clears its gate, a
+        // support is already bound or was requested this turn, or an EXISTING free army could join
+        // it (Missions/Provisioning bind that one through the batch solve). Power that exists but
+        // cannot physically be delivered as a separate army is a bounded DEFER, never a phantom
+        // claim. Otherwise: one IndependentFieldArmy demand sized to the deficit, carrying the
+        // objective's canonical TaskScore (no synthetic lifecycle value). Returns null when no
+        // demand is due; every decision is written to `diag`.
+        private static AxisDemand BoundPrimaryShortage(WorldSnapshot snap, CapabilityInventory inv,
+            ActorCommitments commitments, MissionIntent intent, MissionKind consumerKind,
+            string targetLabel, int primaryId, int? supportArmyId, int reinforcementRequestedTurn,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, float gate,
+            System.Func<TaskScore> objectiveScore, List<string> diag)
+        {
+            string at = $"intent={intent.IntentKey} target={targetLabel} primary={primaryId}";
+            GroundCombatAssemblyPlan primaryPlan = GroundCombatAssemblyPlanner.PlanForArmyAt(
+                snap, opposition, primaryId, gate, hexBonus);
+            if (primaryPlan.Feasible)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
+                    + $"win={primaryPlan.ProjectedWinChance:0.00} reason=primary_clears_its_gate");
+                return null;
+            }
+            if (supportArmyId.HasValue)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
+                    + $"support={supportArmyId.Value} reason=reinforcement_already_assigned_or_en_route");
+                return null;
+            }
+            if (reinforcementRequestedTurn == snap.TurnNumber)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
+                    + "reason=reinforcement_already_requested_this_turn");
+                return null;
+            }
+            List<int> existing = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
+                snap, primaryId, opposition, commitments?.ClaimedArmyIdSet, hexBonus);
+            if (existing.Count > 0)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED {at} "
+                    + $"candidates={existing.Count} reason=existing_free_army_available_as_support");
+                return null;
+            }
+
+            ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
+            float have = primary?.EffectiveArmyPower ?? 0f;
+            float required = Mathf.Max(1f, AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition))
+                * AiConfigV2.raidCombatPowerMargin);
+            float deficit = Mathf.Max(1f, required - have);
+            if (!CanDeliverIndependentFieldArmy(snap, inv))
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at} "
+                    + $"reason=no_independent_field_army_deliverable deficit={deficit:0.#} "
+                    + $"freePower={inv.RaidAvailableFieldPower:0.#} shells={inv.ReusableEmptyArmies.Count}");
+                return null;
+            }
+
+            TaskScore score = objectiveScore();
+            string lane = consumerKind.ToString().ToLowerInvariant();
+            string rendezvous = $"({(primary?.Hex.Q ?? 0)},{(primary?.Hex.R ?? 0)})";
+            diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE {at} capability=FieldCombatPower "
+                + $"shape=IndependentFieldArmy desired={deficit:0.#} required={required:0.#} "
+                + $"have={have:0.#} hexDef={hexBonus:0.#} task={score.Value:0.##} rendezvous={rendezvous} "
+                + "reason=bound_primary_needs_separate_support_army");
+            return new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                DeliveryShape = CapabilityDeliveryShape.IndependentFieldArmy,
+                ConsumerIntentKey = intent.IntentKey,
+                ConsumerMissionKind = consumerKind,
+                DesiredAmount = deficit,
+                RequiredCapabilityPower = deficit,
+                RequiredTraits = TraitPreference.None,
+                MinimumFollowupAp = 0f,
+                TargetHex = primary?.Hex,
+                WorldTaskScore = score,
+                Value = score.Value,
+                Explain = $"{lane} {targetLabel}: primary #{primaryId} no longer clears its gate "
+                    + $"({have:0.#} of {required:0.#} needed, hex defence {hexBonus:0.#}); deliver "
+                    + $"~{deficit:0.#} field power as a SEPARATE support army to {rendezvous}; "
+                    + $"task={score.Value:0.##}",
+            };
+        }
+
         // ActiveDefence shares Aggression's one capability-demand owner. The mission happy path
         // remains in AggressionMissionPlanner; this method only translates a proven STRUCTURAL
         // response shortage into the same FieldCombatPower contract Phase A already materializes.
@@ -422,9 +413,7 @@ namespace Game.Ai.V2
                 var request = new GroundCombatAssemblyRequest
                 {
                     Opposition = new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) },
-                    WinChanceGate = pinnedActor.HasValue
-                        ? GroundCombatAdmissionPolicy.ContinuationWinChanceFloor
-                        : GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
                     PreferredPrimaryArmyId = pinnedActor,
                     PinToPreferred = pinnedActor.HasValue,
                     ExcludedArmyIds = excluded,
