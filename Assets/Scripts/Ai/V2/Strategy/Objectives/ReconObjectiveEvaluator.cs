@@ -268,7 +268,11 @@ namespace Game.Ai.V2
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
                 || age <= AiConfigV2.attackIntelMaxAgeTurns)
                 return null;
-            if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
+            // Recon audit B2 — only a HARD block (off-map / scout-danger zone) stops the look. A known
+            // hostile site is always a visible-arrival block (its garrison would fight, an
+            // undefended one would be taken over), so testing that block here dropped EVERY Attack
+            // need; the job is observed from a vantage instead (SurveilVantageSelector.UsesVantage).
+            if (!ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
                 return null;
             if (direction == null)
                 direction = ReconDirectionModel.Build(snap);

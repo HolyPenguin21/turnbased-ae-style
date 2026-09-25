@@ -133,7 +133,7 @@ namespace Game.Ai.V2
             if (live == null)
                 return ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.ActorMissing);
 
-            if (target.Kind != ScoutTargetKind.Surveil)
+            if (!SurveilVantageSelector.UsesVantage(snap, target))
                 return SafeStepPathing.FindNextSafeStep(ctx.Map, live, target.FocusHex) != null
                     ? ReconAssignmentCandidateResult.Ok
                     : ReconAssignmentCandidateResult.Blocked(ReconAssignmentBlockReason.NoRoute);
@@ -194,7 +194,7 @@ namespace Game.Ai.V2
         // =======================================================================================
         internal static HexCoord ResolveExecutionHex(WorldSnapshot snap, ArmySnapshot mover, ScoutMissionTarget target)
         {
-            if (target.Kind != ScoutTargetKind.Surveil)
+            if (!SurveilVantageSelector.UsesVantage(snap, target))
                 return target.FocusHex;
             var vantages = SurveilVantageSelector.Rank(snap, mover, target).ToList();
             return vantages.Count > 0 ? vantages[0].ExecutionHex : target.FocusHex;
@@ -244,7 +244,7 @@ namespace Game.Ai.V2
             ActorCommitments commitments, HashSet<int> reservedShellIds)
         {
             var result = new List<GarrisonGroundActor>();
-            if (probeTarget.Kind == ScoutTargetKind.Surveil)
+            if (SurveilVantageSelector.UsesVantage(snap, probeTarget))
                 return result;
             foreach (ArmySnapshot mover in
                      ScoutMoverSelector.EligibleGarrisonExtraction(snap, player, probeTarget, excludeArmyIds))
@@ -271,7 +271,8 @@ namespace Game.Ai.V2
                 return list;
             }
             bool stealthRequired = target.Stealth == StealthRequirement.Required;
-            bool surveil = target.Kind == ScoutTargetKind.Surveil;
+            // Surveil, and a Refresh of a site a visible scout may not stand on, run from a vantage.
+            bool surveil = SurveilVantageSelector.UsesVantage(snap, target);
 
             List<ArmySnapshot> movers = ScoutMoverSelector.Eligible(snap, target, excludeArmyIds);
             foreach (ArmySnapshot mover in movers)
@@ -297,7 +298,7 @@ namespace Game.Ai.V2
                 {
                     if (SafeStepPathing.FindNextSafeStep(ctx?.Map, live, v.ExecutionHex) == null)
                         continue;
-                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, v.ExecutionHex, stealthRequired: true);
+                    ScoutPairCost pc = ScoutCostModel.PairCost(snap, mover, v.ExecutionHex, stealthRequired);
                     list.Add(new ScoutExecutionCandidate(mover, v.ExecutionHex, pc.EffActivationAp,
                         pc.EtaTurns, pc.Distance, v.DetectionRisk, v.StandOff, pc.AlreadyHidden, pc.RequiredAp));
                     break;
@@ -646,7 +647,7 @@ namespace Game.Ai.V2
             if (ReconScoutKinds.IsAirSweep(target.Kind))
                 return ScoutAssignmentFailureReason.NoExecutableStep;
 
-            bool surveil = target.Kind == ScoutTargetKind.Surveil;
+            bool surveil = SurveilVantageSelector.UsesVantage(snap, target);
 
             if (!HasStructuralCandidate(snap, target))
                 return ScoutAssignmentFailureReason.NoMoverExists;
@@ -1352,7 +1353,7 @@ namespace Game.Ai.V2
             {
                 if (!a.RequiresGarrisonExtraction)
                     return CanExecute(ctx, player, snap, a, job.ToTarget());
-                if (job.Kind == ReconObjectiveKind.Surveil)
+                if (SurveilVantageSelector.UsesVantage(snap, job.ToTarget()))
                     return false;
                 return ctx?.Map == null
                     || SafeStepPathing.FindSafePath(ctx.Map, player, a.Hex, job.FocusHex, a.MaxMovement) != null;

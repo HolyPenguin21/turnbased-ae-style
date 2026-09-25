@@ -177,7 +177,10 @@ namespace Game.Ai.V2
                 RequestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
                     ? ReconMode.Explore
                     : ReconMode.Refresh,
+                // The hex the scout works FROM: the vantage of a Surveil or of a vantage Refresh
+                // (Recon audit B2 — ExecutionHex != FocusHex), otherwise the focus itself.
                 StrategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
+                    || (ReconScoutKinds.IsRefresh(pm.ScoutKind) && !pm.ExecutionHex.Equals(pm.FocusHex))
                     ? pm.ExecutionHex
                     : pm.FocusHex,
             };

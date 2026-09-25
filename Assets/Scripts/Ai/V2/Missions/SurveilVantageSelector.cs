@@ -48,6 +48,16 @@ namespace Game.Ai.V2
 
     public static class SurveilVantageSelector
     {
+        // Which Scout jobs execute FROM a vantage rather than ON their focus hex: every Surveil
+        // (never step onto a stale enemy's last-known hex), and a Refresh whose focus a visible
+        // scout may not arrive on (a known army / undefended foreign structure — the Attack
+        // observation need on a known hostile site, Recon audit B2). Observation completes by
+        // seeing the focus, so standing next to it within vision is the whole job.
+        public static bool UsesVantage(WorldSnapshot snap, ScoutMissionTarget target) =>
+            target.Kind == ScoutTargetKind.Surveil
+            || (ReconScoutKinds.IsRefresh(target.Kind)
+                && snap?.MapKnowledge?.IsBlockedForScout(target.FocusHex, stealthCapable: false) == true);
+
         public static List<SurveilVantageCandidate> Rank(WorldSnapshot snap, ArmySnapshot mover, ScoutMissionTarget target)
         {
             var result = new List<SurveilVantageCandidate>();

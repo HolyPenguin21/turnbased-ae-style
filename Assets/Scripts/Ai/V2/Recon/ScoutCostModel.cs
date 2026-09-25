@@ -170,7 +170,7 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot mover in ScoutMoverSelector.Eligible(snap, target, null))
             {
                 HexCoord executionHex = target.FocusHex;
-                if (target.Kind == ScoutTargetKind.Surveil)
+                if (SurveilVantageSelector.UsesVantage(snap, target))
                 {
                     SurveilVantageCandidate? vantage = SurveilVantageSelector.Rank(snap, mover, target)
                         .Cast<SurveilVantageCandidate?>().FirstOrDefault();
