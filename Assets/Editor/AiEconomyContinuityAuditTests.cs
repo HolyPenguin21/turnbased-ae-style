@@ -332,6 +332,54 @@ namespace Game.EditorTests
                 "a retired borrower returns its actor at once, not after an orphan repair");
         }
 
+        // --- B7: the allocator funds an Economy completion from the pool Provisioning checks --
+
+        private static TentativeAllocation PackEconomyCompletion(PlayerSetupData player,
+            StrategicReservationReason otherOwnersReason)
+        {
+            MissionProposal m = Proposal(EconomyTaskKind.BuildExtraction, Site);
+            m.FromDurableIntent = false;
+            m.Requirements = new MissionRequirements
+            {
+                ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
+                MaterialsMinimum = 3f, MaterialsDesired = 3f, MaterialsMaximum = 3f,
+            };
+            InfrastructureFulfillment.ReserveEconomyCost(player, 1, "Economy:another-build",
+                new ResourceCost(materials: 2), 0f, otherOwnersReason);
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = 1,
+                Self = new SelfSnapshot
+                {
+                    ActionPoints = 5,
+                    Stockpile = new ResourceBundle { Materials = 4f },
+                },
+            };
+            return ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { m }, new List<Commitment>(), player).Pack();
+        }
+
+        [Test]
+        public void B7_AnotherOwnersCompletionHold_IsNotAvailableToAnEconomyBuild()
+        {
+            TentativeAllocation a = PackEconomyCompletion(new PlayerSetupData(),
+                StrategicReservationReason.EconomyBuildCompletion);
+
+            Assert.That(a.Funded, Is.Empty,
+                "4 Materials minus another build's completion hold of 2 cannot fund 3");
+            Assert.That(a.Deferred.Single().Reason, Is.EqualTo(DeferReason.InsufficientPhysical));
+        }
+
+        [Test]
+        public void B7_AnotherOwnersDeferredHold_DoesNotBlockACompletingBuild()
+        {
+            TentativeAllocation a = PackEconomyCompletion(new PlayerSetupData(),
+                StrategicReservationReason.EconomyDeferredBuild);
+
+            Assert.That(a.Funded.Count, Is.EqualTo(1),
+                "a build completing now outranks other builds' deferred holds, as in Provisioning");
+        }
+
         // --- B12: collector usefulness is judged without its own contribution ---------------
 
         [Test]
