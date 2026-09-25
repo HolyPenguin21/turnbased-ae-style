@@ -356,6 +356,21 @@ namespace Game.Ai.V2
             }
         }
 
+        // A transient suspension (the pool or a capability was unavailable on an earlier pass) is
+        // re-tested on every ResolveActive pass: the planner only proposes Active intents, and
+        // AdvanceIntent / ShouldReap bound how long the retry may go on. Siege, EconomyLoan and
+        // ActiveDefencePreemption are owned by their own resume edges, never by this one.
+        private static void ResumeTransientSuspension(MissionIntent intent)
+        {
+            if (intent.Status == IntentStatus.Suspended
+                && (intent.Suspended == SuspendReason.PoolExhausted
+                    || intent.Suspended == SuspendReason.CapabilityUnavailable))
+            {
+                intent.Status = IntentStatus.Active;
+                intent.Suspended = SuspendReason.None;
+            }
+        }
+
         // `aggressionObjectives` is the freshly sorted, neutral-only objective list,
         // handed in exactly the way `reconObjectives` already is. It is what lets a durable Raid
         // role be RE-ORIENTED onto the next neutral once its current target is confirmed gone,
@@ -488,11 +503,7 @@ namespace Game.Ai.V2
                             + $"valid={valid} arrived={arrived} stall={intent.StallTurns}");
                         continue;
                     }
-                    if (intent.Status == IntentStatus.Suspended)
-                    {
-                        intent.Status = IntentStatus.Active;
-                        intent.Suspended = SuspendReason.None;
-                    }
+                    ResumeTransientSuspension(intent);
                     active.Add(intent);
                     continue;
                 }
@@ -559,11 +570,7 @@ namespace Game.Ai.V2
                             intent.LastProtectedTurn = snap.TurnNumber;
                             intent.StallTurns = 0;
                         }
-                        if (intent.Status == IntentStatus.Suspended)
-                        {
-                            intent.Status = IntentStatus.Active;
-                            intent.Suspended = SuspendReason.None;
-                        }
+                        ResumeTransientSuspension(intent);
                         active.Add(intent);
                         continue;
                     }
@@ -580,11 +587,7 @@ namespace Game.Ai.V2
                         }
                         // Economy audit B3 — a transient capability suspension is re-tested every
                         // pass (the planner only proposes Active intents); AdvanceIntent ages it.
-                        if (intent.Status == IntentStatus.Suspended)
-                        {
-                            intent.Status = IntentStatus.Active;
-                            intent.Suspended = SuspendReason.None;
-                        }
+                        ResumeTransientSuspension(intent);
                         active.Add(intent);
                         continue;
                     }
@@ -614,11 +617,7 @@ namespace Game.Ai.V2
                                 + $"target={(targetValid ? 1 : 0)}");
                             continue;
                         }
-                        if (intent.Status == IntentStatus.Suspended)
-                        {
-                            intent.Status = IntentStatus.Active;
-                            intent.Suspended = SuspendReason.None;
-                        }
+                        ResumeTransientSuspension(intent);
                         active.Add(intent);
                         continue;
                     }
@@ -676,13 +675,7 @@ namespace Game.Ai.V2
                         break;
                     }
                     if (recoveredBuilder) continue;
-                    if (intent.Status == IntentStatus.Suspended
-                        && (intent.Suspended == SuspendReason.PoolExhausted
-                            || intent.Suspended == SuspendReason.CapabilityUnavailable))
-                    {
-                        intent.Status = IntentStatus.Active;
-                        intent.Suspended = SuspendReason.None;
-                    }
+                    ResumeTransientSuspension(intent);
                     if (intent.Status == IntentStatus.Active) active.Add(intent);
                     continue;
                 }
@@ -718,13 +711,7 @@ namespace Game.Ai.V2
                     // A transient capability / pool suspension is re-tested every pass, exactly as
                     // Raid and ActiveDefence do. Without this an Attack suspended once was never
                     // resumed, never aged by ReconcileAfterTurn and never reaped.
-                    if (intent.Status == IntentStatus.Suspended
-                        && (intent.Suspended == SuspendReason.PoolExhausted
-                            || intent.Suspended == SuspendReason.CapabilityUnavailable))
-                    {
-                        intent.Status = IntentStatus.Active;
-                        intent.Suspended = SuspendReason.None;
-                    }
+                    ResumeTransientSuspension(intent);
                     if (intent.Status == IntentStatus.Active) active.Add(intent);
                     continue;
                 }
@@ -803,13 +790,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                if (intent.Status == IntentStatus.Suspended
-                    && (intent.Suspended == SuspendReason.PoolExhausted
-                        || intent.Suspended == SuspendReason.CapabilityUnavailable))
-                {
-                    intent.Status = IntentStatus.Active;
-                    intent.Suspended = SuspendReason.None;
-                }
+                ResumeTransientSuspension(intent);
 
                 if (intent.Funding == CommitmentTier.Soft && underSiege)
                 {
