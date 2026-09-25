@@ -273,7 +273,10 @@ namespace Game.Ai.V2
             return true;
         }
 
-        private static bool GroundContainerStillValid(int armyId, WorldSnapshot snap)
+        // A support/return actor only has to be a live, non-air, non-empty ground container —
+        // during transit legs it carries bodies or itself home, not qualifying for fresh combat.
+        // One owner for Continuity (support loss) and commitments (support claims).
+        internal static bool GroundContainerStillValid(int armyId, WorldSnapshot snap)
         {
             ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                 && a.ArmyId == armyId);

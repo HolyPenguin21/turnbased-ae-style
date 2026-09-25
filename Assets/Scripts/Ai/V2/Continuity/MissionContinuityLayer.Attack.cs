@@ -55,7 +55,7 @@ namespace Game.Ai.V2
             if (a.Phase != AttackMissionPhase.SupportReturn)
             {
                 if (!a.PrimaryArmyId.HasValue
-                    || !RaidPrimaryActorAlive(snap, a.PrimaryArmyId.Value))
+                    || !GroundCombatPrimaryAlive(snap, a.PrimaryArmyId.Value))
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} retired — primary "
                         + $"#{a.PrimaryArmyId} is no longer a structural ground actor in phase {a.Phase}");
@@ -67,7 +67,7 @@ namespace Game.Ai.V2
             if (a.SupportArmyId.HasValue
                 && (a.Phase == AttackMissionPhase.Reinforcement
                     || a.Phase == AttackMissionPhase.SupportReturn)
-                && !RaidSupportActorAlive(snap, a.SupportArmyId.Value))
+                && !ActorCommitments.GroundContainerStillValid(a.SupportArmyId.Value, snap))
             {
                 int lostSupportId = a.SupportArmyId.Value;
                 a.SupportArmyId = null;
@@ -85,8 +85,7 @@ namespace Game.Ai.V2
             {
                 if (!a.SupportArmyId.HasValue)
                 {
-                    a.SupportReturnHex = null;
-                    a.Phase = AttackMissionPhase.Assault;
+                    ReleaseAttackSupport(a);
                     return true;
                 }
                 // The leg was entered by an execution fact (a full/full swap); THIS is where the
@@ -101,9 +100,7 @@ namespace Game.Ai.V2
                 {
                     AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support "
                         + $"#{a.SupportArmyId} released after SupportReturn");
-                    a.SupportArmyId = null;
-                    a.SupportReturnHex = null;
-                    a.Phase = AttackMissionPhase.Assault;
+                    ReleaseAttackSupport(a);
                 }
                 else if (!ReturnBaseStillValid(snap, player, a.SupportArmyId, a.SupportReturnHex))
                 {
@@ -114,9 +111,7 @@ namespace Game.Ai.V2
                         // let the primary carry on being re-evaluated.
                         AiDebugLog.Write($"[AI][V2][Attack] {intent.IntentKey} support "
                             + $"#{a.SupportArmyId} has no reachable home base — released");
-                        a.SupportArmyId = null;
-                        a.SupportReturnHex = null;
-                        a.Phase = AttackMissionPhase.Assault;
+                        ReleaseAttackSupport(a);
                     }
                     else
                     {
@@ -221,6 +216,16 @@ namespace Game.Ai.V2
             return true;
         }
 
+        // The one "support leaves an Attack" edge after SupportReturn: release the claim and hand
+        // the operation back to the Assault / Reinforcement decision below (§24), which re-reads
+        // whether the primary clears the site on its own.
+        private static void ReleaseAttackSupport(AttackIntent a)
+        {
+            a.SupportArmyId = null;
+            a.SupportReturnHex = null;
+            a.Phase = AttackMissionPhase.Assault;
+        }
+
         // Audit F7 — the Gather phase. The host (PrimaryArmyId) holds; every support in
         // GatherSupportArmyIds walks to it and hands over (AdvanceIntent drops a support once its
         // handoff was attempted). The operation turns into an Assault the moment the host clears
@@ -245,7 +250,7 @@ namespace Game.Ai.V2
             List<int> dropped = a.GatherSupportArmyIds.Where(id =>
             {
                 ArmySnapshot s = snap?.Self?.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id);
-                return s == null || !RaidSupportActorAlive(snap, id)
+                return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, defenders, hexBonus);
             }).ToList();
             if (dropped.Count > 0)
