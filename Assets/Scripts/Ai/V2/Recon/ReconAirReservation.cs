@@ -198,7 +198,13 @@ namespace Game.Ai.V2
                     phase = wouldBeNewTurn
                         ? (mustRecover ? ReconAirPhase.Return : ReconAirPhase.Outbound)
                         : ReconAirPhase.Hold;
-                if (mustRecover && phase == ReconAirPhase.Outbound)
+                // Recon S1 — the same two "turn for home" triggers AirReconStepDirector.PlanStep
+                // applies: the endurance deadline and the used-up outbound leg. Without the second, a
+                // wing whose launch step already spent its cap projected as Outbound, so it was
+                // neither a mandatory recovery nor protected, and could end the turn aloft.
+                bool atAirfield = AviationRules.IsOwnedAirfieldAt(wing.Hex, player);
+                if (!atAirfield && phase == ReconAirPhase.Outbound
+                    && (mustRecover || real.OutboundCapReached))
                     phase = ReconAirPhase.Return;
                 proj.Phase = phase;
             }

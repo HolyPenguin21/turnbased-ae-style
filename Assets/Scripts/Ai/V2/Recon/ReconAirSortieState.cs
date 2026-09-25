@@ -62,6 +62,11 @@ namespace Game.Ai.V2
         public int LaunchMovementBudget;
         public int OutboundMovementSpent;
         public int OutboundMovementCap;
+
+        // THE "outbound leg is used up" rule — the refuel-endurance cap has been flown, so the
+        // sortie must turn for home. Read by the step director (live) AND by the read-only phase
+        // projection that decides mandatory recovery, so the two cannot disagree (Recon S1).
+        public bool OutboundCapReached => OutboundMovementSpent >= OutboundMovementCap;
         public int LaunchSafeUnlandedEnds;
 
         public void EnsureLaunchProfile(ArmyData airArmy)

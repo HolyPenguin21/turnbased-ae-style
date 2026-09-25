@@ -362,7 +362,9 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
                     + "— planned launch no longer affordable (earlier sortie spent it); skip, no replan");
-                ReportNoLaunch(ExecutionStopReason.MoverLost);
+                // Recon S5 — the same verdict AirReconPlanner gives this condition: no executable
+                // step this pass, not a lost actor (MoverLost would retire the durable AirSweep).
+                ReportNoLaunch(ExecutionStopReason.NoSafeStep);
                 yield break;
             }
 

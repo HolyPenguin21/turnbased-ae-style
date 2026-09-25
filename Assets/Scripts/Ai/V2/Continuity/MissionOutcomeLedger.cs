@@ -271,7 +271,11 @@ namespace Game.Ai.V2
 
                 if (r.Provisioned != null)
                 {
-                    o.MoverArmyId = r.Provisioned.MoverArmyId;
+                    // An AirLaunch is bound to a synthetic per-airfield key until the aircraft
+                    // actually form (ExecutionResult.ActualActorArmyId below). That key is never an
+                    // army: it must not reach Continuity as a durable mover (Recon S5).
+                    o.MoverArmyId = r.Provisioned.ExecutorKind == ScoutExecutorKind.AirLaunch
+                        ? (int?)null : r.Provisioned.MoverArmyId;
                     if (r.Provisioned.Kind == MissionKind.Raid)
                     {
                         o.HasRaidPayload = true;
