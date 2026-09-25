@@ -71,16 +71,11 @@ namespace Game.Ai.V2
                 //     lifecycle is Mandatory Flight Recovery's — ReconAirExecutor flies it
                 //     unconditionally, outside funding — never strategic Recon progress). A null
                 //     projected state is NOT a silent pass: no valid live Recon sortie => reject.
-                bool onOwnAirfield = AviationRules.IsOwnedAirfieldAt(wing.Hex, player);
                 AirSortie liveSortie = AirSortieRegistry.ForArmy(player, wing);
-                bool hasPatrolState = ReconPatrolStateRegistry.TryGet(player, wing.Id, out _);
-
-                bool ready = onOwnAirfield && liveSortie == null;
-                bool continuing = !onOwnAirfield
-                    && wing.Controller != null
+                bool ready = ReconAirCapacityPolicy.IsReadyStandaloneWing(player, wing);
+                bool continuing = ReconAirCapacityPolicy.IsAirborneReconWing(player, wing)
                     && liveSortie != null
-                    && liveSortie.Kind == AirSortieKind.Recon
-                    && hasPatrolState;
+                    && liveSortie.Kind == AirSortieKind.Recon;
 
                 if (continuing)
                 {
