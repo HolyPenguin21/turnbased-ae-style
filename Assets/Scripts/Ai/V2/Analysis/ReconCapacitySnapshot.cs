@@ -10,18 +10,14 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  Observation capacity and ground-traversal capacity are DIFFERENT resources:
     //
-    //    · An OBSERVATION lane (Refresh / Surveil — keep fresh eyes on a hex or a contact) can be
-    //      served by a ground scout, an airborne recon wing, or a launchable air sortie.
+    //    · An OBSERVATION lane (Refresh / Surveil — keep fresh eyes on a hex or a contact) is
+    //      served by a ground scout.
     //    · A GROUND-TRAVERSAL lane (Explore — a frontier hex that must be physically stood on to
     //      count as visited) can ONLY be served by a ground actor. Aviation reveals a hex; it
     //      never visits it, so it is NEVER counted here.
     //
-    //  BUDGET DISCIPLINE: all air observation capacity comes from ONE place,
-    //  ReconAirCapacityPolicy (WorldSnapshot.SelfSnapshot.AirborneReconWings /
-    //  SpareAirObservationSorties). That policy runs a single greedy AP/Energy pass bounded by the
-    //  per-turn air-recon actor slot cap, so the same AP/Energy is never counted for two aircraft
-    //  and the executor's own MaxAirReconActorsPerTurn ceiling is honoured here too. This class
-    //  never re-derives air readiness itself.
+    //  AVIATION is not capacity here: it serves only the aviation-only AirSweep pass
+    //  (ReconAirCapacityPolicy.IsAirServiceable), which never sizes a ground/observation lane.
     //
     //  STEALTH: deficits here are sized for GENERIC (non-stealth) lanes only. Neither aviation nor
     //  an ordinary scout can serve a stealth-required objective, so stealth is DemandLayer's
@@ -35,10 +31,6 @@ namespace Game.Ai.V2
         public readonly HashSet<int> GenericObservationLaneActors = new HashSet<int>();
         // Idle-usable ground solo Recce (can serve either generic class, counted once).
         public readonly HashSet<int> IdleGroundScouts = new HashSet<int>();
-
-        // Air observation capacity — counts, not ids (a hangar sortie has no army id yet).
-        public int AirborneReconLanes;          // wings already flying a durable ReconPatrolState
-        public int SpareAirObservationSorties;  // ADDITIONAL sorties launchable this turn (slot + AP/Energy bounded)
 
         // Sized for GENERIC lanes only.
         public int DesiredObservationConcurrency;
@@ -73,13 +65,11 @@ namespace Game.Ai.V2
         public string Explain =>
             $"desiredObs={DesiredObservationConcurrency} desiredGround={DesiredGroundTraversalConcurrency} "
             + $"combinedCeiling={CombinedDesiredConcurrency} existingGroundUsable={ExistingGroundUsableCapacity} "
-            + $"obs[genLanes={GenericObservationLaneActors.Count} airborne={AirborneReconLanes} "
-            + $"spareAir={SpareAirObservationSorties}] "
+            + $"obs[genLanes={GenericObservationLaneActors.Count}] "
             + $"ground[genLanes={GenericGroundLaneActors.Count} idleScouts={IdleGroundScouts.Count}] "
             + $"=> obsDeficit={ObservationDeficit} groundTraversalDeficit={GroundTraversalDeficit}";
 
-        private static bool IsStealth(ReconObjective o) =>
-            o != null && (o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+        private static bool IsStealth(ReconObjective o) => o != null && o.NeedsStealth;
 
         // observationRunnable — runnable Refresh/Surveil objectives; groundVisitRunnable — runnable
         // Explore objectives.
@@ -88,9 +78,7 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> groundVisitRunnable,
             IReadOnlyList<MissionIntent> activeIntents,
             ActorCommitments commitments,
-            PlayerSetupData player,
-            int airborneWitnessed = 0,
-            int spareLaunchWitnessed = 0)
+            PlayerSetupData player)
         {
             var obsGeneric = (observationRunnable ?? System.Array.Empty<ReconObjective>())
                 .Where(o => !IsStealth(o)).ToList();
@@ -107,14 +95,6 @@ namespace Game.Ai.V2
                     snap, groundGeneric, ReconConcurrencyPolicy.ReconCoverageClass.GroundTraversal),
                 CombinedDesiredConcurrency = Mathf.Min(allGeneric.Count, ReconConcurrencyPolicy.DesiredForClass(
                     snap, allGeneric, ReconConcurrencyPolicy.ReconCoverageClass.Combined)),
-                // Air observation capacity is the WITNESSED count
-                // ReconAssignmentPlanner.MeasureAirCapacity just computed (the same "does a usable
-                // actor structurally exist" question MeasureCapacity answers for ground), never a
-                // fresh unpinned ReconAirCapacityPolicy re-evaluation the pipeline did not commit to:
-                // that would let the model count a helicopter nothing reserved AP/Energy for, Phase A
-                // spend it, and the sortie fail to launch.
-                AirborneReconLanes = Mathf.Max(0, airborneWitnessed),
-                SpareAirObservationSorties = Mathf.Max(0, spareLaunchWitnessed),
             };
 
             HashSet<int> claimed = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
@@ -183,24 +163,17 @@ namespace Game.Ai.V2
                 Mathf.Max(0, cap.DesiredGroundTraversalConcurrency - cap.GenericGroundLaneActors.Count));
             int idleGroundForObs = cap.IdleGroundScouts.Count - idleConsumedByTraversal;
 
-            int obsSupply = cap.GenericObservationLaneActors.Count
-                + cap.AirborneReconLanes
-                + cap.SpareAirObservationSorties
-                + idleGroundForObs;
+            int obsSupply = cap.GenericObservationLaneActors.Count + idleGroundForObs;
             cap.ObservationSupply = obsSupply;
             cap.ObservationDeficit = Mathf.Max(0, cap.DesiredObservationConcurrency - obsSupply);
 
             // The bootstrap horizon mirrors the same ground-first sharing rule, but uses physical
-            // idle scouts rather than only movers that can execute right now. Air stays on the
-            // canonical air-capacity counts: this change fixes the proven ground-scout time-horizon
-            // bug without introducing a second air-readiness authority.
+            // idle scouts rather than only movers that can execute right now.
             int structuralIdleConsumedByTraversal = Mathf.Min(structuralIdleGroundScouts.Count,
                 Mathf.Max(0, cap.DesiredGroundTraversalConcurrency - cap.GenericGroundLaneActors.Count));
             int structuralIdleGroundForObs =
                 structuralIdleGroundScouts.Count - structuralIdleConsumedByTraversal;
             cap.StructuralObservationSupply = cap.GenericObservationLaneActors.Count
-                + cap.AirborneReconLanes
-                + cap.SpareAirObservationSorties
                 + structuralIdleGroundForObs;
 
             var distinctGround = new HashSet<int>(cap.GenericGroundLaneActors);

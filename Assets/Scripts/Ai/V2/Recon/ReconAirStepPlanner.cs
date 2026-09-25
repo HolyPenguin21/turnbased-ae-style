@@ -245,8 +245,7 @@ namespace Game.Ai.V2
                 }
 
                 observed++;
-                staleInformation += Mathf.InverseLerp(AiConfigV2.scoutSurveilStaleTurnsLo,
-                    AiConfigV2.scoutSurveilStaleTurnsHi, age);
+                staleInformation += ReconIntelSnapshotRegistry.Staleness(age);
             }
 
             if (observed > 0)

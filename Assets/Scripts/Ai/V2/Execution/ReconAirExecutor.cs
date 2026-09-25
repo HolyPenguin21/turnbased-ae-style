@@ -190,11 +190,11 @@ namespace Game.Ai.V2
         {
             var entitled = new HashSet<int>(entitledActorIds ?? Enumerable.Empty<int>());
             return ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && AviationRules.IsValidAirArmy(a)
-                    && a.Controller != null && a.CurrentMovement > 0
-                    && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+                .Where(a => ReconAirCapacityPolicy.IsAirborneReconWing(player, a)
                     && !entitled.Contains(a.Id)
-                    && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
+                    // Recon audit B1 — a recovery that could not progress this turn is not
+                    // re-admitted (nor protected by StrategicSpendability) until the next turn.
+                    && !AviationObligationStallRegistry.IsStalled(player, ctx?.TurnNumber ?? -1, a.Id))
                 .Where(a =>
                 {
                     ReconAirSortieState projected =
@@ -362,7 +362,9 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
                     + "— planned launch no longer affordable (earlier sortie spent it); skip, no replan");
-                ReportNoLaunch(ExecutionStopReason.MoverLost);
+                // Recon S5 — the same verdict AirReconPlanner gives this condition: no executable
+                // step this pass, not a lost actor (MoverLost would retire the durable AirSweep).
+                ReportNoLaunch(ExecutionStopReason.NoSafeStep);
                 yield break;
             }
 
@@ -518,26 +520,26 @@ namespace Game.Ai.V2
             if (satisfied)
             {
                 er.ReachedGoal = true;
-                er.DurableRoleContinues = pm.Mission?.FromDurableIntent == true
-                    && pm.ScoutKind != ScoutTargetKind.Surveil;
+                er.DurableRoleContinues = ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
+                    pm.ScoutKind, pm.Mission?.FromDurableIntent == true, actorStillScout: true,
+                    actedThisTurn: false);
             }
         }
 
         // An AirSweep is never "met" by seeing its anchor: the sortie ends by its own refuel
         // endurance (AirReconStepDirector outbound cap -> Return), not by an observation check.
         private static bool ObjectiveSatisfied(PlayerSetupData player, ProvisionedMission pm) =>
-            pm != null && !ReconScoutKinds.IsAirSweep(pm.ScoutKind) && (pm.ScoutKind == ScoutTargetKind.Surveil
-                ? ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(
-                    player, pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn)
-                : ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex));
+            pm != null && ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
+                pm.TrackedArmyId, pm.BaselineObservedTurn);
 
         private static void MarkSatisfiedNoOp(ProvisionedMission pm, ExecutionResult er)
         {
             er.ReachedGoal = true;
             er.StaleNoOp = true;
             er.StopReason = ExecutionStopReason.ReachedGoal;
-            er.DurableRoleContinues = pm?.Mission?.FromDurableIntent == true
-                && pm.ScoutKind != ScoutTargetKind.Surveil;
+            er.DurableRoleContinues = pm != null && ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
+                pm.ScoutKind, pm.Mission?.FromDurableIntent == true, actorStillScout: true,
+                actedThisTurn: false);
         }
 
         // Thin execute loop. Every decision comes from AirReconStepDirector; the executor only
@@ -940,7 +942,7 @@ namespace Game.Ai.V2
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a != null && a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
         {

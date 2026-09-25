@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Game.HexGrid;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -46,8 +47,7 @@ namespace Game.Ai.V2
         public static void ClearAll() => ByPlayer.Clear();
 
         public static ReconPatrolState GetOrCreate(PlayerSetupData player, int armyId, HexCoord currentHex,
-            HexCoord strategicAnchor, ReconMode requestedMode, int turn,
-            float exploreScore = 0f, float refreshScore = 0f)
+            HexCoord strategicAnchor, ReconMode requestedMode, int turn)
         {
             if (player == null)
                 return New(armyId, currentHex, strategicAnchor, requestedMode, turn);
@@ -64,31 +64,19 @@ namespace Game.Ai.V2
 
             // Mission objectives are strategic priors, never durable destination identities.
             // Mode switching and strategic heading reassignment are separate hysteresis decisions.
-            // Spec §25 — a mode switch needs BOTH the time hold to have elapsed AND the requested
-            // mode's strategic score to beat the current mode's by reconModeSwitchMargin, so a
-            // small score wobble cannot ping-pong Explore<->Refresh. When no scores are supplied
-            // (both 0, e.g. the single-mode air caller) the margin test fails closed and mode is
-            // effectively pinned to whatever it was created with.
+            // Recon S4 — the mode follows the kind of the mission the actor is bound to (an Explore
+            // job explores, a Refresh / Surveil job refreshes); only the time hold stops two
+            // proposals of one pass from ping-ponging it. A map-wide score margin used to pin a
+            // Refresh job to Explore scoring for as long as the map was mostly unexplored.
             bool modeChanged = false;
             if (assignment.Mode != requestedMode
                 && turn - assignment.LastModeSwitchTurn >= ModeHoldTurns)
             {
-                float currentScore = assignment.Mode == ReconMode.Explore ? exploreScore : refreshScore;
-                float requestedScore = requestedMode == ReconMode.Explore ? exploreScore : refreshScore;
-                if (requestedScore > currentScore + AiConfigV2.reconModeSwitchMargin)
-                {
-                    ReconMode old = assignment.Mode;
-                    assignment.Mode = requestedMode;
-                    assignment.LastModeSwitchTurn = turn;
-                    modeChanged = true;
-                    AiDebugLog.Write($"[AI][V2][Recon][Patrol] actor=#{armyId} mode {old}→{requestedMode} "
-                        + $"turn={turn} score {currentScore:0.00}->{requestedScore:0.00}");
-                }
-                else
-                {
-                    AiDebugLog.Write($"[AI][V2][Recon][Patrol] actor=#{armyId} mode-switch suppressed: "
-                        + $"{requestedMode} score {requestedScore:0.00} <= {assignment.Mode} {currentScore:0.00} + margin");
-                }
+                ReconMode old = assignment.Mode;
+                assignment.Mode = requestedMode;
+                assignment.LastModeSwitchTurn = turn;
+                modeChanged = true;
+                AiDebugLog.Write($"[AI][V2][Recon][Patrol] actor=#{armyId} mode {old}→{requestedMode} turn={turn}");
             }
 
             if (!assignment.StrategicAnchor.Equals(strategicAnchor))
@@ -136,12 +124,16 @@ namespace Game.Ai.V2
         }
 
         // Snapshot of active actor claims for live multi-scout deconfliction. Values are durable
-        // assignments only — no target hex reservation is invented here.
+        // assignments only — no target hex reservation is invented here. Recon audit B8 — a state
+        // is retired only on explicit executor paths, so an actor lost outside execution (killed in
+        // the enemy's turn, merged away) would otherwise claim its sector forever: only a state
+        // whose own army still exists is a live claim.
         public static IReadOnlyList<ReconPatrolState> ActiveFor(PlayerSetupData player)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Dictionary<int, ReconPatrolState> byArmy))
                 return System.Array.Empty<ReconPatrolState>();
-            return byArmy.Values.ToList();
+            var live = new HashSet<int>(ArmyRegistry.AllForOwner(player).Where(a => a != null).Select(a => a.Id));
+            return byArmy.Values.Where(a => live.Contains(a.PreferredMoverArmyId)).ToList();
         }
 
         public static int OtherSectorClaims(PlayerSetupData player, int armyId, ReconSector sector)

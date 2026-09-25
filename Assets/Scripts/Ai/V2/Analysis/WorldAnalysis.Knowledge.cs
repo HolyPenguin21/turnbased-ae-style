@@ -245,7 +245,6 @@ namespace Game.Ai.V2
             }
             List<AiMapMemory.KnownEnemySighting> nonNeutral =
                 (snap.Known.EnemySightings ?? new List<AiMapMemory.KnownEnemySighting>()).ToList();
-            int exposureR = AiConfigV2.frontierEnemyExposureRadius;
 
             bool OnMap(HexCoord h) => map.TryGetTerrainAt(h, out _);
             // Spec §19 — arrival outcomes (a known army to fight, a known undefended structure to
@@ -255,22 +254,10 @@ namespace Game.Ai.V2
             bool HardBlocked(HexCoord h) =>
                 !OnMap(h) || AiMapMemory.IsScoutDangerous(player, h);
             bool VisibleArrivalBlocked(HexCoord h) => visibleArrivalBlocked.Contains(h);
-            bool EnemyExposed(HexCoord h)
-            {
-                // Exposure = a force that can come and engage the scout. A building-bound garrison
-                // cannot (it is remembered permanently since audit F1); its Recce still counts in
-                // DetectorsAt below.
-                foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
-                    if (!e.IsGarrison && HexGridMath.Distance(e.Hex, h) <= exposureR) return true;
-                return false;
-            }
-            int DetectorsAt(HexCoord h)
-            {
-                int n = 0;
-                foreach (AiMapMemory.KnownEnemySighting e in nonNeutral)
-                    if (HexGridMath.Distance(e.Hex, h) <= exposureR && e.CanDetectStealthAt(h)) n++;
-                return n;
-            }
+            // Exposure and detection are ScoutRiskModel's one rule (a garrison detects but cannot
+            // engage — audit F1).
+            bool EnemyExposed(HexCoord h) => ScoutRiskModel.IsExposed(nonNeutral, h);
+            int DetectorsAt(HexCoord h) => ScoutRiskModel.CountDetectors(nonNeutral, h);
             int NearestBaseDist(HexCoord h) =>
                 baseHexes.Count > 0 ? baseHexes.Min(b => HexGridMath.Distance(b, h)) : 0;
 

@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -47,6 +48,32 @@ namespace Game.Ai.V2
             return false;
         }
 
+        // THE live "is this Scout job's objective met" dispatch, read by the post-execution ledger,
+        // the ground and air executors and MissionRevalidator. AirSweep is never met by observation
+        // (each sortie ends by its own refuel endurance).
+        public static bool IsSatisfiedLive(PlayerSetupData player, ScoutTargetKind kind, HexCoord focus,
+            int? trackedArmyId, int baselineObservedTurn)
+        {
+            switch (kind)
+            {
+                case ScoutTargetKind.Explore: return IsExploreSatisfiedLive(player, focus);
+                case ScoutTargetKind.Refresh: return IsRefreshSatisfiedLive(player, focus);
+                case ScoutTargetKind.Surveil:
+                    return IsSurveilSatisfiedLive(player, focus, trackedArmyId, baselineObservedTurn);
+                default: return false;
+            }
+        }
+
+        // THE "a met objective is only a waypoint" rule (D5): a ground Explore / Refresh role whose
+        // focus is met keeps its durable role (ProductiveStop -> re-focused next pass) when its
+        // actor can still scout AND the role is already durable or the actor really acted this
+        // turn. A fresh mission met before it ever acted is not turned into a role; Surveil
+        // completion and AirSweep (never met) end.
+        public static bool RoleContinuesAtWaypoint(ScoutTargetKind kind, bool durableIntent,
+            bool actorStillScout, bool actedThisTurn) =>
+            (kind == ScoutTargetKind.Explore || kind == ScoutTargetKind.Refresh)
+            && actorStillScout && (durableIntent || actedThisTurn);
+
         // ---- SNAPSHOT (mission-layer re-materialisation) ------------------------------------
 
         // Is a durable intent still coherent against THIS frozen snapshot? This also folds in
@@ -73,8 +100,10 @@ namespace Game.Ai.V2
                 // genuinely stale. If another observer refreshed it before this scan, age is 0 and
                 // the intent is already complete. Never-observed is not Refresh and returns false.
                 return ReconIntelSnapshotRegistry.TryGetIntelAge(snap, intent.FocusHex, out int age)
-                    && age >= AiConfigV2.scoutSurveilStaleTurnsLo
-                    && IsRefreshFocusRunnable(snap, intent.FocusHex);
+                    && ReconIntelSnapshotRegistry.IsStaleAge(age)
+                    && (IsRefreshFocusRunnable(snap, intent.FocusHex)
+                        || (AttackObjectiveEvaluator.ObservationNeeds(snap).Contains(intent.FocusHex)
+                            && IsAttackObservationFocusRunnable(snap, intent.FocusHex)));
             }
 
             return IsExploreFocusRunnable(snap, intent.FocusHex);
@@ -108,6 +137,18 @@ namespace Game.Ai.V2
             if (!onMap.Contains(focus))
                 return false;
             return !mk.IsBlockedForScout(focus, stealthCapable: false);
+        }
+
+        // An Attack observation need (Recon audit B2) is looked at from a vantage, so only the hard
+        // gates apply: a real map hex outside every scout-danger zone. The visible-arrival block
+        // (the site's own defenders / takeover) is exactly what the vantage avoids.
+        public static bool IsAttackObservationFocusRunnable(WorldSnapshot snap, HexCoord focus)
+        {
+            MapKnowledgeSnapshot mk = snap?.MapKnowledge;
+            if (mk?.AllHexes == null)
+                return false;
+            var onMap = mk.AllHexes as HashSet<HexCoord> ?? new HashSet<HexCoord>(mk.AllHexes);
+            return onMap.Contains(focus) && !mk.IsBlockedForScout(focus, stealthCapable: true);
         }
 
         // The honest, positioned, last-known contact a Surveil intent tracks — or null if the AI no

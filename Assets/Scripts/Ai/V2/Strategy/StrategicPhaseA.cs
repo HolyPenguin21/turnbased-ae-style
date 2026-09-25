@@ -916,6 +916,9 @@ namespace Game.Ai.V2
                     foreach (ArmySnapshot a in armies)
                         if (a != null && a.ArmyId == moverId) { army = a; break; }
                     if (army == null || army.HasActivatedThisTurn) continue;
+                    // Recon audit B7 — an air mover (AirSweep wing) is priced once, through the air
+                    // witness below; counting it here as well double-reserved its activation.
+                    if (army.IsAir) continue;
                     ap += Mathf.Max(1f, army.ActivationApCost);
                 }
             }

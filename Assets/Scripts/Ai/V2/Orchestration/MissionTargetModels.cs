@@ -85,5 +85,7 @@ namespace Game.Ai.V2
 
         public StealthRequirement Stealth;
         public float DetectionRisk;            // [0..1] — 0 unless the enemy can actually detect stealth here
+
+        public bool NeedsStealth => ReconScoutKinds.NeedsStealth(Stealth, DetectionRisk);
     }
 }

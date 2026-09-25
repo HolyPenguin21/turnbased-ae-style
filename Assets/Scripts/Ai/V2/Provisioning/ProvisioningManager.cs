@@ -337,7 +337,7 @@ namespace Game.Ai.V2
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
                 if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
-                        target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f))
+                        target.NeedsStealth))
                     return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
                         $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
             }
@@ -348,7 +348,20 @@ namespace Game.Ai.V2
                 if (ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, focus))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(
                         $"refresh focus ({focus.Q},{focus.R}) is already visible again"));
-                if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
+                if (!executionHex.Equals(focus))
+                {
+                    // Recon audit B2 — a vantage Refresh (the Attack observation need on a known
+                    // hostile site): its defenders are the point of the look, never a reason to
+                    // cancel it. The vantage itself gets Surveil's live checks.
+                    if (HexGridMath.Distance(executionHex, focus) > exec.Army.EffectiveVisionRadius)
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                            $"mover #{moverArmyId} vision {exec.Army.EffectiveVisionRadius} no longer covers focus from vantage"));
+                    if (ScoutExecutionSafety.VantageBlockedNow(player, executionHex, ctx.TurnNumber,
+                            target.NeedsStealth))
+                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                            $"vantage ({executionHex.Q},{executionHex.R}) is now occupied by a current force / foreign building"));
+                }
+                else if (AiMapMemory.KnownEnemySightingAt(player, focus).HasValue)
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                         $"refresh focus ({focus.Q},{focus.R}) now holds a known army"));
             }
@@ -460,7 +473,7 @@ namespace Game.Ai.V2
                 ClaimedAp = realNeed,
                 ClaimedPhysical = funded.PhysicalDraw,
                 StealthApReserved = stealthAp > 0,
-                RequiresStealth = target.Stealth == StealthRequirement.Required || target.DetectionRisk > 0f,
+                RequiresStealth = target.NeedsStealth,
             }, extractedUnit != null ? 1 : 0);
         }
 

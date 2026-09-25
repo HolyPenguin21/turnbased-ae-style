@@ -222,9 +222,10 @@ namespace Game.Ai.V2
             result.ReachedGoal = validity == MissionValidity.StaleGoalMet;
             result.StaleNoOp = validity == MissionValidity.StaleGoalMet;
             result.DurableRoleContinues = result.ReachedGoal
-                && pm.Mission?.FromDurableIntent == true
                 && pm.Kind == MissionKind.Scout
-                && pm.ScoutKind != ScoutTargetKind.Surveil;
+                && ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(pm.ScoutKind,
+                    pm.Mission?.FromDurableIntent == true, AiArmyRoles.IsSoloRecce(army),
+                    actedThisTurn: false);
             result.StateVersionAfter = V2StateVersion.Current;   // nothing mutated
             result.StopReason = validity == MissionValidity.StaleMoverLost
                 ? ExecutionStopReason.MoverLost
@@ -1505,7 +1506,7 @@ namespace Game.Ai.V2
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         // §2.1 — the real AP the turn's pool lost while this mission executed must equal the AP the
         // ExecutionResult reports it spent. Both executors derive ApSpent from the same physical

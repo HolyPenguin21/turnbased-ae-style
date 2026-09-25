@@ -71,6 +71,8 @@ namespace Game.Ai.V2
             if (activeIntents != null)
                 foreach (MissionIntent intent in activeIntents)
                 {
+                    if (intent?.Scout == null)
+                        continue;   // another lane's intent — not a Recon incumbent (no log noise)
                     ScoutCandidate? c = TryMaterializeIntent(snap, breakdown, intent);
                     if (c.HasValue)
                         incumbents.Add(c.Value);
@@ -144,22 +146,7 @@ namespace Game.Ai.V2
             // Task 5 (Problem B) — price BaseValue against the SAME preferred mover BuildProposal()
             // will price Requirements against below, so a durable incumbent's TaskScore never
             // silently reflects a cheaper, unrelated actor's envelope.
-            ReconObjective o;
-            if (ReconScoutKinds.IsExplore(si.Kind))
-                o = ReconObjectiveEvaluator.ExploreAt(snap, si.FocusHex, intent.PreferredMoverArmyId);
-            else if (ReconScoutKinds.IsRefresh(si.Kind))
-                o = ReconObjectiveEvaluator.RefreshAt(snap, si.FocusHex, intent.PreferredMoverArmyId);
-            else if (ReconScoutKinds.IsSurveil(si.Kind))
-                o = ReconObjectiveEvaluator.SurveilOf(snap,
-                    ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
-                    intent.PreferredMoverArmyId);
-            else if (ReconScoutKinds.IsAirSweep(si.Kind))
-                o = ReconObjectiveEvaluator.AirSweepOf(snap);
-            else
-            {
-                AiDebugLog.Write($"[AI][V2][Recon] intent materialize reject — unknown Scout kind {(int)si.Kind}");
-                return null;
-            }
+            ReconObjective o = ReconObjectiveEvaluator.ForIntent(snap, si, intent.PreferredMoverArmyId);
 
             if (o == null)
                 return null;

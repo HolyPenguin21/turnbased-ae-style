@@ -48,8 +48,6 @@ namespace Game.Ai.V2
         {
             public ReconMode RequestedMode;
             public HexCoord StrategicAnchor;
-            public float ExploreScore;
-            public float RefreshScore;
         }
 
         // Compatibility adapter for the current flag-off pipeline. It preserves the old bounded
@@ -172,19 +170,19 @@ namespace Game.Ai.V2
 
             prepared = new PreparedStep
             {
-                ExploreScore = snapshot?.MapKnowledge?.ExplorableUnknownFrac ?? 0f,
-                RefreshScore = ReconIntelSnapshotRegistry.StalePressure(snapshot),
                 RequestedMode = ReconScoutKinds.IsExplore(pm.ScoutKind)
                     ? ReconMode.Explore
                     : ReconMode.Refresh,
+                // The hex the scout works FROM: the vantage of a Surveil or of a vantage Refresh
+                // (Recon audit B2 — ExecutionHex != FocusHex), otherwise the focus itself.
                 StrategicAnchor = ReconScoutKinds.IsSurveil(pm.ScoutKind)
+                    || (ReconScoutKinds.IsRefresh(pm.ScoutKind) && !pm.ExecutionHex.Equals(pm.FocusHex))
                     ? pm.ExecutionHex
                     : pm.FocusHex,
             };
 
             ReconPatrolStateRegistry.GetOrCreate(player, army.Id, army.Hex,
-                prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber,
-                prepared.ExploreScore, prepared.RefreshScore);
+                prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             // Required stealth is preparatory state in the same admitted task transaction. The
             // operation is idempotent when the actor is already hidden and can never be charged
@@ -233,8 +231,7 @@ namespace Game.Ai.V2
 
             RefreshObjectiveSatisfied(player, pm, result);
             ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, army.Id,
-                army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber,
-                prepared.ExploreScore, prepared.RefreshScore);
+                army.Hex, prepared.StrategicAnchor, prepared.RequestedMode, ctx.TurnNumber);
 
             ReconReactionDecision reaction = ReconReactionPolicy.Evaluate(
                 player, ctx.Map, army, assignment);
@@ -456,24 +453,8 @@ namespace Game.Ai.V2
             if (result.ReachedGoal)
                 return;
 
-            bool met;
-            if (ReconScoutKinds.IsSurveil(pm.ScoutKind))
-            {
-                met = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
-                    pm.TrackedArmyId, pm.BaselineObservedTurn);
-            }
-            else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
-            {
-                met = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
-            }
-            else if (ReconScoutKinds.IsExplore(pm.ScoutKind))
-            {
-                met = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
-            }
-            else
-            {
-                met = false;
-            }
+            bool met = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind, pm.FocusHex,
+                pm.TrackedArmyId, pm.BaselineObservedTurn);
 
             if (met)
             {
@@ -481,8 +462,10 @@ namespace Game.Ai.V2
                 // Spec §1 — for a ground Explore/Refresh actor this is a satisfied WAYPOINT, not a
                 // finished role: the durable ReconPatrolState persists and the MissionIntent should
                 // be re-focused next turn, not retired. Surveil completion is a genuine done.
-                result.DurableRoleContinues = !ReconScoutKinds.IsSurveil(pm.ScoutKind)
-                    && AiArmyRoles.IsSoloRecce(Resolve(player, pm.MoverArmyId));
+                result.DurableRoleContinues = ScoutObjectiveEvaluator.RoleContinuesAtWaypoint(
+                    pm.ScoutKind, pm.Mission?.FromDurableIntent == true,
+                    AiArmyRoles.IsSoloRecce(Resolve(player, pm.MoverArmyId)),
+                    result.StepsMoved > 0 || result.EnteredStealth);
                 AiDebugLog.Write($"[AI][V2][Recon][Objective] [{pm.Mission?.AttemptId}] {pm.Key} "
                     + $"kind={ReconScoutKinds.Name(pm.ScoutKind)} met; "
                     + $"durableRoleContinues={(result.DurableRoleContinues ? 1 : 0)}");
@@ -490,7 +473,7 @@ namespace Game.Ai.V2
         }
 
         private static ArmyData Resolve(PlayerSetupData player, int armyId) =>
-            ArmyRegistry.AllForOwner(player).FirstOrDefault(a => a.Id == armyId);
+            AiV2Util.ResolveArmy(player, armyId);
 
         private static HashSet<int> KnownIds(IEnumerable<AiMapMemory.KnownEnemySighting> sightings)
         {
@@ -618,14 +601,7 @@ namespace Game.Ai.V2
             shorten = Mathf.Clamp01(occupiedNearby / 4f);
         }
 
-        private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex)
-        {
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            int detectors = 0;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(player))
-                if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
-                    detectors++;
-            return Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
-        }
+        private static float LegDetectionRisk(PlayerSetupData player, HexCoord hex) =>
+            ScoutRiskModel.DetectorRisk(AiMapMemory.AllKnownEnemySightings(player), hex);
     }
 }

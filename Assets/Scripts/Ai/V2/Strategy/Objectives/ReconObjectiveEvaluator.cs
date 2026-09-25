@@ -55,6 +55,8 @@ namespace Game.Ai.V2
             }
         }
 
+        public bool NeedsStealth => ReconScoutKinds.NeedsStealth(Stealth, DetectionRisk);
+
         public ScoutMissionTarget ToTarget() => new ScoutMissionTarget
         {
             FocusHex = FocusHex,
@@ -189,7 +191,7 @@ namespace Game.Ai.V2
                 return AttackNeedRefresh(snap, hex, preferredMoverArmyId, ref direction);
             }
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
-                || age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                || !ReconIntelSnapshotRegistry.IsStaleAge(age))
                 return null;
             if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
                 return null;
@@ -228,8 +230,7 @@ namespace Game.Ai.V2
                     staleWeighted += w;
                     continue;
                 }
-                staleWeighted += w * Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
-                    AiConfigV2.scoutSurveilStaleTurnsHi);
+                staleWeighted += w * ReconIntelSnapshotRegistry.Staleness(age);
             }
             if (samples == 0)
                 return null;
@@ -256,6 +257,26 @@ namespace Game.Ai.V2
             };
         }
 
+        // THE objective a durable Scout intent stands for right now, re-materialised from the
+        // snapshot (null when it no longer exists, or for an unknown kind). Mission planning prices
+        // it against the incumbent's own actor; ActorCommitments reads its stealth requirement.
+        public static ReconObjective ForIntent(WorldSnapshot snap, ScoutIntent si,
+            int? preferredMoverArmyId = null)
+        {
+            if (si == null)
+                return null;
+            switch (si.Kind)
+            {
+                case ScoutTargetKind.Explore: return ExploreAt(snap, si.FocusHex, preferredMoverArmyId);
+                case ScoutTargetKind.Refresh: return RefreshAt(snap, si.FocusHex, preferredMoverArmyId);
+                case ScoutTargetKind.Surveil:
+                    return SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
+                        preferredMoverArmyId);
+                case ScoutTargetKind.AirSweep: return AirSweepOf(snap);
+                default: return null;
+            }
+        }
+
         public static ReconObjective SurveilOf(WorldSnapshot snap, EnemyContactSnapshot c,
             int? preferredMoverArmyId = null) =>
             c == null ? null : BuildSurveil(snap, c, preferredMoverArmyId);
@@ -268,7 +289,11 @@ namespace Game.Ai.V2
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age)
                 || age <= AiConfigV2.attackIntelMaxAgeTurns)
                 return null;
-            if (snap?.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(hex, stealthCapable: false))
+            // Recon audit B2 — only a HARD block (off-map / scout-danger zone) stops the look. A known
+            // hostile site is always a visible-arrival block (its garrison would fight, an
+            // undefended one would be taken over), so testing that block here dropped EVERY Attack
+            // need; the job is observed from a vantage instead (SurveilVantageSelector.UsesVantage).
+            if (!ScoutObjectiveEvaluator.IsAttackObservationFocusRunnable(snap, hex))
                 return null;
             if (direction == null)
                 direction = ReconDirectionModel.Build(snap);
@@ -282,7 +307,7 @@ namespace Game.Ai.V2
             foreach (KeyValuePair<HexCoord, int> kv in ReconIntelSnapshotRegistry.LastObservedFor(snap))
             {
                 int age = Mathf.Max(0, snap.TurnNumber - kv.Value);
-                if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
                     continue;
                 if (snap.MapKnowledge != null && snap.MapKnowledge.IsBlockedForScout(kv.Key, stealthCapable: false))
                     continue;
@@ -416,8 +441,7 @@ namespace Game.Ai.V2
         {
             if (!ReconIntelSnapshotRegistry.TryGetIntelAge(snap, hex, out int age))
                 return 1f;
-            return Mathf.Lerp(floor, 1f, Curves.Ramp(age,
-                AiConfigV2.scoutSurveilStaleTurnsLo, AiConfigV2.scoutSurveilStaleTurnsHi));
+            return Mathf.Lerp(floor, 1f, ReconIntelSnapshotRegistry.Staleness(age));
         }
 
         // `attackNeed` — a live Attack operation's target (AttackNeedRefresh): stale and relevant
@@ -429,8 +453,7 @@ namespace Game.Ai.V2
             IReadOnlyList<HexCoord> bases = snap.Self.BaseHexes;
             int distBase = bases != null && bases.Count > 0 ? MinDist(bases, hex) : 0;
             int homeDist = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, hex, distBase);
-            float staleRaw = attackNeed ? 1f : Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
-                AiConfigV2.scoutSurveilStaleTurnsHi);
+            float staleRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.Staleness(age);
 
             float strategicRaw = attackNeed ? 1f : ReconIntelSnapshotRegistry.RefreshRelevance(snap, hex);
             direction = direction ?? ReconDirectionModel.Build(snap);
@@ -489,8 +512,7 @@ namespace Game.Ai.V2
 
             HexCoord pos = c.Position.Value;
             int age = c.AgeTurns(snap.TurnNumber);
-            float stalenessRaw = Curves.Ramp(age, AiConfigV2.scoutSurveilStaleTurnsLo,
-                AiConfigV2.scoutSurveilStaleTurnsHi);
+            float stalenessRaw = ReconIntelSnapshotRegistry.Staleness(age);
 
             float maxSeverity = 0f;
             if (threats != null)
@@ -534,26 +556,10 @@ namespace Game.Ai.V2
 
         private static int MinDist(IReadOnlyList<HexCoord> hexes, HexCoord to) => AiV2Util.MinDist(hexes, to);
 
-        private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex)
-        {
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> s = snap?.Known?.EnemySightings;
-            if (s == null) return false;
-            int r = AiConfigV2.frontierEnemyExposureRadius;
-            // Same exposure rule as WorldAnalysis.Knowledge: a garrison cannot engage (audit F1);
-            // its detection is counted by DetectorsAt.
-            foreach (AiMapMemory.KnownEnemySighting e in s)
-                if (!e.IsGarrison && HexGridMath.Distance(e.Hex, hex) <= r) return true;
-            return false;
-        }
+        private static bool EnemyExposedAt(WorldSnapshot snap, HexCoord hex) =>
+            ScoutRiskModel.IsExposed(snap?.Known?.EnemySightings, hex);
 
-        private static int DetectorsAt(WorldSnapshot snap, HexCoord hex)
-        {
-            IReadOnlyList<AiMapMemory.KnownEnemySighting> s = snap?.Known?.EnemySightings;
-            if (s == null) return 0;
-            int r = AiConfigV2.frontierEnemyExposureRadius, n = 0;
-            foreach (AiMapMemory.KnownEnemySighting e in s)
-                if (HexGridMath.Distance(e.Hex, hex) <= r && e.CanDetectStealthAt(hex)) n++;
-            return n;
-        }
+        private static int DetectorsAt(WorldSnapshot snap, HexCoord hex) =>
+            ScoutRiskModel.CountDetectors(snap?.Known?.EnemySightings, hex);
     }
 }

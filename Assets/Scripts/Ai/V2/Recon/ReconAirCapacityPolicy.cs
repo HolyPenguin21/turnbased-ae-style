@@ -100,8 +100,7 @@ namespace Game.Ai.V2
         internal static bool IsAirServiceable(ReconObjective o)
             => o != null
                && o.Kind == ReconObjectiveKind.AirSweep
-               && o.Stealth != StealthRequirement.Required
-               && !(o.DetectionRisk > 0f);
+               && !o.NeedsStealth;
 
         // How far one sortie of these aircraft reaches outbound, by the refuel-endurance rule
         // (ReconAirSortieState.OutboundCapFor): the slowest aircraft's movement, halved unless
@@ -156,6 +155,22 @@ namespace Game.Ai.V2
                 .ToList();
         }
 
+        // THE two air-recon actor states (D13 — one owner for capacity, Provisioning and flight
+        // recovery), explicitly mutually exclusive by the airfield test:
+        //   ReadyStandaloneWing — a formed wing on its own airfield, flying no sortie, MP left.
+        //   AirborneReconWing   — off the airfield, controllable, MP left, a durable Recon patrol.
+        internal static bool IsReadyStandaloneWing(PlayerSetupData player, ArmyData a) =>
+            a != null && AviationRules.IsValidAirArmy(a)
+            && AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+            && AirSortieRegistry.ForArmy(player, a) == null
+            && a.CurrentMovement > 0;
+
+        internal static bool IsAirborneReconWing(PlayerSetupData player, ArmyData a) =>
+            a != null && AviationRules.IsValidAirArmy(a)
+            && !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
+            && a.Controller != null && a.CurrentMovement > 0
+            && ReconPatrolStateRegistry.TryGet(player, a.Id, out _);
+
         public static ReconAirObservationCapacity Evaluate(PlayerSetupData player, PlayerRoot root)
         {
             ReconAirObservationDetail d = EvaluateDetailed(player, root);
@@ -176,9 +191,7 @@ namespace Game.Ai.V2
             // A wing without a Controller / with no movement left is NOT guaranteed capacity — it is
             // stuck, and the executor will not drive it this turn.
             foreach (ArmyData a in ownAir
-                .Where(a => !AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && a.Controller != null && a.CurrentMovement > 0
-                    && ReconPatrolStateRegistry.TryGet(player, a.Id, out _))
+                .Where(a => IsAirborneReconWing(player, a))
                 .OrderBy(a => a.Id))
             {
                 detail.AirborneWings.Add(new AirObservationSlot(a.Id, default,
@@ -198,9 +211,7 @@ namespace Game.Ai.V2
             // wings first (executor sort), then one hangar launch subset per owned airfield in
             // OwnedAirfieldHexes order. Not budget-filtered / not capped — the prepass owns that.
             foreach (ArmyData a in ownAir
-                .Where(a => AviationRules.IsOwnedAirfieldAt(a.Hex, player)
-                    && AirSortieRegistry.ForArmy(player, a) == null
-                    && a.CurrentMovement > 0)
+                .Where(a => IsReadyStandaloneWing(player, a))
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost))
                 .ThenBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationApCost))
                 .ThenBy(a => a.Id))

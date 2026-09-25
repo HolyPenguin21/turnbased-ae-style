@@ -236,22 +236,10 @@ namespace Game.Ai.V2
                             player, pm.ActiveDefenceTarget.EnemyArmyId);
                     }
                 }
-                else if (pm.ScoutKind == ScoutTargetKind.Surveil)
-                {
-                    satisfied = ScoutObjectiveEvaluator.IsSurveilSatisfiedLive(player, pm.FocusHex,
-                        pm.TrackedArmyId, pm.BaselineObservedTurn);
-                }
-                else if (ReconScoutKinds.IsRefresh(pm.ScoutKind))
-                {
-                    satisfied = ScoutObjectiveEvaluator.IsRefreshSatisfiedLive(player, pm.FocusHex);
-                }
-                else if (ReconScoutKinds.IsAirSweep(pm.ScoutKind))
-                {
-                    satisfied = false; // ends by sortie endurance, never by observation
-                }
                 else
                 {
-                    satisfied = ScoutObjectiveEvaluator.IsExploreSatisfiedLive(player, pm.FocusHex);
+                    satisfied = ScoutObjectiveEvaluator.IsSatisfiedLive(player, pm.ScoutKind,
+                        pm.FocusHex, pm.TrackedArmyId, pm.BaselineObservedTurn);
                 }
 
                 if (satisfied)
@@ -283,7 +271,11 @@ namespace Game.Ai.V2
 
                 if (r.Provisioned != null)
                 {
-                    o.MoverArmyId = r.Provisioned.MoverArmyId;
+                    // An AirLaunch is bound to a synthetic per-airfield key until the aircraft
+                    // actually form (ExecutionResult.ActualActorArmyId below). That key is never an
+                    // army: it must not reach Continuity as a durable mover (Recon S5).
+                    o.MoverArmyId = r.Provisioned.ExecutorKind == ScoutExecutorKind.AirLaunch
+                        ? (int?)null : r.Provisioned.MoverArmyId;
                     if (r.Provisioned.Kind == MissionKind.Raid)
                     {
                         o.HasRaidPayload = true;
@@ -505,6 +497,17 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // Recon audit B5 — a Scout's TargetInvalidated is tactical (an opportunistic attack /
+            // sabotage target gone, a stale vantage or plan), never proof the durable objective is
+            // invalid. Continuity re-validates the objective itself next pass (IsIntentStillValid ->
+            // re-focus or retire); Failed would drop the whole durable role here.
+            if (o.MissionKind == MissionKind.Scout
+                && e.StopReason == ExecutionStopReason.TargetInvalidated)
+            {
+                o.Outcome = ExecutionOutcome.Blocked;
+                return;
+            }
+
             switch (e.StopReason)
             {
                 case ExecutionStopReason.OutOfMovement:
@@ -601,7 +604,9 @@ namespace Game.Ai.V2
                     // ResolveActive's next pass releases that support, moves the operation to its
                     // next phase, or retires it if the primary itself is gone. Assault / Return
                     // (the primary's own legs) keep their failure semantics.
-                    o.Outcome = GroundCombatLegs.IsSupportLeg(o)
+                    // A Scout target is re-validated by Continuity itself (Recon audit B5, same
+                    // rule as the execution-side Classify).
+                    o.Outcome = GroundCombatLegs.IsSupportLeg(o) || o.MissionKind == MissionKind.Scout
                         ? ExecutionOutcome.Blocked
                         : ExecutionOutcome.Failed;
                     break;

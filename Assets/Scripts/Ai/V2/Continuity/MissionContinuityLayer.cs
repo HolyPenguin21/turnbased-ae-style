@@ -764,13 +764,18 @@ namespace Game.Ai.V2
                 // TrimSurplusReconLanes never counts it as a physical lane (2026-09-25 audit F4:
                 // Vex Intent(Refresh 1,-2) outlived scout #8 from T8 and displaced live scout #7 at
                 // T13). AirSweep is exempt: its wing legitimately leaves the army list while stored.
+                // Recon audit B11 — an actor that still exists but can no longer serve the role at all
+                // (no longer a solo Recce, a prison, empty) is the same case: the structural test is
+                // ActorCommitments.HasCapableActor, whose answer also decides the actor claim.
+                // Stealth is deliberately not part of it (a scout that cannot hide THIS turn keeps
+                // its role; the claim itself applies the objective's stealth requirement).
                 if (intent.PreferredMoverArmyId.HasValue && !ReconScoutKinds.IsAirSweep(s.Kind)
                     && snap?.Self?.Armies != null
-                    && !snap.Self.Armies.Any(a => a != null
-                        && a.ArmyId == intent.PreferredMoverArmyId.Value))
+                    && !ActorCommitments.HasCapableActor(intent, snap, StealthRequirement.None))
                 {
                     AiDebugLog.Write($"[AI][V2] continuity — {intent.IntentKey} actor "
-                        + $"#{intent.PreferredMoverArmyId.Value} no longer exists; role unbound");
+                        + $"#{intent.PreferredMoverArmyId.Value} no longer exists or can no longer "
+                        + "scout; role unbound");
                     intent.PreferredMoverArmyId = null;
                 }
 
@@ -980,6 +985,25 @@ namespace Game.Ai.V2
             HexCoord old = s.FocusHex;
             HexCoord? pick = null;
             int bestDist = int.MaxValue;
+            // Recon S3 — prefer a waypoint at least scoutTargetMinSeparation from every other
+            // scout's focus (the spacing Assignment keeps between lanes); only when none exists
+            // fall back to the nearest runnable hex.
+            HexCoord? spacedPick = null;
+            int spacedDist = int.MaxValue;
+            bool Spaced(HexCoord h)
+            {
+                foreach (HexCoord other in ownedFoci)
+                    if (!other.Equals(old)
+                        && HexGridMath.Distance(other, h) < AiConfigV2.scoutTargetMinSeparation)
+                        return false;
+                return true;
+            }
+            void Consider(HexCoord h)
+            {
+                int d = HexGridMath.Distance(old, h);
+                if (d < bestDist) { bestDist = d; pick = h; }
+                if (d < spacedDist && Spaced(h)) { spacedDist = d; spacedPick = h; }
+            }
 
             if (ReconScoutKinds.IsRefresh(s.Kind))
             {
@@ -988,12 +1012,11 @@ namespace Game.Ai.V2
                     if (kv.Key.Equals(old) || ownedFoci.Contains(kv.Key))
                         continue;
                     int age = System.Math.Max(0, snap.TurnNumber - kv.Value);
-                    if (age < AiConfigV2.scoutSurveilStaleTurnsLo)
+                    if (!ReconIntelSnapshotRegistry.IsStaleAge(age))
                         continue;
                     if (!ScoutObjectiveEvaluator.IsRefreshFocusRunnable(snap, kv.Key))
                         continue;
-                    int d = HexGridMath.Distance(old, kv.Key);
-                    if (d < bestDist) { bestDist = d; pick = kv.Key; }
+                    Consider(kv.Key);
                 }
             }
             else
@@ -1006,11 +1029,12 @@ namespace Game.Ai.V2
                         continue;
                     if (!ScoutObjectiveEvaluator.IsExploreFocusRunnable(snap, f.Hex))
                         continue;
-                    int d = HexGridMath.Distance(old, f.Hex);
-                    if (d < bestDist) { bestDist = d; pick = f.Hex; }
+                    Consider(f.Hex);
                 }
             }
 
+            if (spacedPick.HasValue)
+                pick = spacedPick;
             if (pick == null)
                 return false;
             ownedFoci.Remove(old);
@@ -1714,13 +1738,7 @@ namespace Game.Ai.V2
             }
 
             if (o.HasScoutPayload && intent.Scout != null)
-            {
-                intent.Scout.FocusHex = o.FocusHex;
-                intent.Scout.Kind = o.ScoutKind;
-                intent.Scout.RequiresStealth = o.ScoutRequiresStealth;
-                if (o.TrackedArmyId.HasValue)
-                    intent.Scout.TrackedArmyId = o.TrackedArmyId;
-            }
+                ApplyScoutPayload(intent.Scout, o);
 
             if (o.HasAttackPayload && intent.Attack != null)
             {
@@ -1930,10 +1948,7 @@ namespace Game.Ai.V2
                 return false;
 
             MissionIntentKey oldKey = owner.IntentKey;
-            owner.Scout.FocusHex = o.FocusHex;
-            owner.Scout.Kind = o.ScoutKind;
-            owner.Scout.RequiresStealth = o.ScoutRequiresStealth;
-            owner.Scout.TrackedArmyId = o.ScoutKind == ScoutTargetKind.Surveil ? o.TrackedArmyId : null;
+            ApplyScoutPayload(owner.Scout, o);
             // A durable Surveil role keeps the Soft funding that marks it as a bound surveillance
             // commitment; switching to Explore/Refresh drops back to an unfunded frontier role.
             owner.Funding = o.ScoutKind == ScoutTargetKind.Surveil
@@ -1948,6 +1963,20 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] continuity — [{AiV2Trace.FormatCorrelation(o.Proposal)}] actor #{o.MoverArmyId} already "
                 + $"owns {oldKey}; absorbed fresh {o.IntentKey} into that durable role (no duplicate intent)");
             return true;
+        }
+
+        // THE one writer of a Scout outcome's provisioned payload into a durable ScoutIntent — used
+        // when a role is created, advanced and when an actor's existing role absorbs a fresh
+        // mission, so the three can never drift apart again (Recon audit B4: the absorb copy lost
+        // the Surveil baseline). Contact identity and baseline belong to Surveil only.
+        private static void ApplyScoutPayload(ScoutIntent s, MissionTurnOutcome o)
+        {
+            s.FocusHex = o.FocusHex;
+            s.Kind = o.ScoutKind;
+            s.RequiresStealth = o.ScoutRequiresStealth;
+            bool surveil = o.ScoutKind == ScoutTargetKind.Surveil;
+            s.TrackedArmyId = surveil ? o.TrackedArmyId : null;
+            s.BaselineObservedTurn = surveil ? o.BaselineObservedTurn : 0;
         }
 
         // Shared skeleton for the three Create*Intent methods below — was three independent,
@@ -1980,14 +2009,8 @@ namespace Game.Ai.V2
 
         private static void CreateIntent(MissionIntentState state, MissionTurnOutcome o, int turn)
         {
-            var si = new ScoutIntent
-            {
-                Kind = o.ScoutKind,
-                RequiresStealth = o.ScoutRequiresStealth,
-                FocusHex = o.FocusHex,
-                TrackedArmyId = o.TrackedArmyId,
-                BaselineObservedTurn = o.BaselineObservedTurn,
-            };
+            var si = new ScoutIntent();
+            ApplyScoutPayload(si, o);
             CommitmentTier funding = o.ScoutKind == ScoutTargetKind.Surveil ? CommitmentTier.Soft : CommitmentTier.None;
             MissionIntent intent = NewIntent(o, turn, MissionKind.Scout, funding, si);
             state.Put(intent);

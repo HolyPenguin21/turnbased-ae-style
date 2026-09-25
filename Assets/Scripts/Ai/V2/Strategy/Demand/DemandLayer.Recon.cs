@@ -98,14 +98,12 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            // AI-RECON-02 — unified recon capacity. Observation lanes (Refresh / Surveil) may be
-            // covered by ground scouts, launched wings that can still fly, airborne recon wings, or
-            // a launchable hangar aircraft; ground-traversal lanes (Explore — a physical visit) only
-            // by ground actors. A new Scout is materialised only when a USABLE, requirement-scoped
+            // AI-RECON-02 — unified recon capacity. Observation lanes (Refresh / Surveil) and
+            // ground-traversal lanes (Explore — a physical visit) are both served by ground actors;
+            // aviation serves only the AirSweep pass and is never capacity here. A new Scout is materialised only when a USABLE, requirement-scoped
             // deficit has persisted (spec §7), never merely because Recon desire is high. Stealth
             // objectives are their own lane — neither aviation nor a generic scout can serve them.
-            bool IsStealthObjective(ReconObjective o) =>
-                o != null && (o.Stealth == StealthRequirement.Required || o.DetectionRisk > 0f);
+            bool IsStealthObjective(ReconObjective o) => o != null && o.NeedsStealth;
 
             var observationRunnable = runnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
             var groundVisitRunnable = runnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
@@ -113,17 +111,10 @@ namespace Game.Ai.V2
             var stealthObsRunnable = stealthRunnable.Where(o => o.Kind != ReconObjectiveKind.Explore).ToList();
             var stealthGroundRunnable = stealthRunnable.Where(o => o.Kind == ReconObjectiveKind.Explore).ToList();
 
-            // DemandLayer's ONLY calls for Recon capacity, both ground and
-            // air, are to ReconAssignmentPlanner (the one canonical Assignment/capacity owner). The
-            // air witness is measured first because ReconCapacitySnapshot.Build needs it as an INPUT
-            // to size its own Desired/deficit fields (see MeasureAirCapacity's header comment).
-            (int airborneWitnessed, int spareLaunchWitnessed) = ReconAssignmentPlanner.MeasureAirCapacity(
-                ctx, player, root, snap, objectives, activeIntents, commitments);
-            // Aviation now serves only AirSweep (ReconAirCapacityPolicy.IsAirServiceable), so its
-            // witnessed wings are NOT capacity for these ground-served observation lanes.
+            // DemandLayer's ONLY calls for Recon capacity are to ReconAssignmentPlanner (the one
+            // canonical Assignment/capacity owner).
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
-                snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player,
-                0, 0);
+                snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player);
             AiDebugLog.Write($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
                 + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
                 + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "
@@ -179,8 +170,7 @@ namespace Game.Ai.V2
                 activeIntents, commitments, groundVisitGeneric, observationGeneric,
                 stealthGroundRunnable, stealthObsRunnable);
             int groundWitnessedSupply = witness.GroundLaneWitnessed + witness.GroundIdleWitnessed;
-            int obsWitnessedSupply = witness.ObsLaneWitnessed
-                + capacity.AirborneReconLanes + capacity.SpareAirObservationSorties + witness.ObsIdleWitnessed;
+            int obsWitnessedSupply = witness.ObsLaneWitnessed + witness.ObsIdleWitnessed;
             int groundEffectiveDeficit =
                 Mathf.Max(0, capacity.DesiredGroundTraversalConcurrency - groundWitnessedSupply);
             int obsEffectiveDeficit =
@@ -398,7 +388,6 @@ namespace Game.Ai.V2
                     + $"profile=generic-observation desired={matObs} "
                     + $"reason={(obsPersist ? "persistent_observation_deficit" : "zero_capacity_bootstrap")} "
                     + $"obsDeficit(effective)={obsEffectiveDeficit}(streak={obsStreak}) "
-                    + $"airborneAir={capacity.AirborneReconLanes} spareAir={capacity.SpareAirObservationSorties} "
                     + $"combinedCeiling={capacity.CombinedDesiredConcurrency} existingGroundUsable={capacity.ExistingGroundUsableCapacity} "
                     + $"matGround={matGround} matObs={matObs} runnable={runnable.Count} blocked={blocked} "
                     + $"target=({best.FocusHex.Q},{best.FocusHex.R})");
@@ -414,8 +403,7 @@ namespace Game.Ai.V2
                     WorldTaskScore = best.TaskScore,
                     Value = best.TaskScore.Value,
                     ScoutContext = ScoutCapabilityContext.FromReconObjective(best, snap),
-                    Explain = $"persistent Observation effective deficit {obsEffectiveDeficit} "
-                        + $"(net of airborne {capacity.AirborneReconLanes} + spare air {capacity.SpareAirObservationSorties}); "
+                    Explain = $"persistent Observation effective deficit {obsEffectiveDeficit}; "
                         + $"want {matObs}; blocked {blocked}",
                 };
             }

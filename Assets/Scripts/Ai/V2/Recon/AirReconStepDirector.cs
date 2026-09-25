@@ -195,8 +195,7 @@ namespace Game.Ai.V2
                 && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
             bool mustRecoverThisTurn = !atAirfield && airborneTurns >= 1 && !canRemainAirborne;
 
-            if (!atAirfield && workingPhase == ReconAirPhase.Outbound
-                && sortie.OutboundMovementSpent >= sortie.OutboundMovementCap)
+            if (!atAirfield && workingPhase == ReconAirPhase.Outbound && sortie.OutboundCapReached)
             {
                 workingPhase = ReconAirPhase.Return;
                 decisionReason = "outbound_cap_reached";

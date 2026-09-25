@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Game.HexGrid;
 using UnityEngine;
 
@@ -16,17 +17,40 @@ namespace Game.Ai.V2
     // ===========================================================================================
     public static class ScoutRiskModel
     {
-        public static float DetectorRisk(WorldSnapshot snap, HexCoord hex)
+        public static float DetectorRisk(WorldSnapshot snap, HexCoord hex) =>
+            DetectorRisk(snap?.Known?.EnemySightings, hex);
+
+        // The same number from any honest sighting list — the frozen snapshot above, or live
+        // AiMapMemory at execution time (ReconGroundExecutor's optional-stealth leg risk).
+        public static float DetectorRisk(IEnumerable<AiMapMemory.KnownEnemySighting> sightings, HexCoord hex) =>
+            Mathf.Clamp01(CountDetectors(sightings, hex) / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
+
+        // Known non-neutral forces within frontierEnemyExposureRadius that could roll a stealth
+        // challenge on `hex` (KnownEnemySighting.CanDetectStealthAt) — garrisons included.
+        public static int CountDetectors(IEnumerable<AiMapMemory.KnownEnemySighting> sightings, HexCoord hex)
         {
-            var sightings = snap?.Known?.EnemySightings;
             if (sightings == null)
-                return 0f;
+                return 0;
             int r = AiConfigV2.frontierEnemyExposureRadius;
             int detectors = 0;
             foreach (AiMapMemory.KnownEnemySighting s in sightings)
                 if (HexGridMath.Distance(s.Hex, hex) <= r && s.CanDetectStealthAt(hex))
                     detectors++;
-            return Mathf.Clamp01(detectors / Mathf.Max(0.0001f, AiConfigV2.scoutDetectionRiskNorm));
+            return detectors;
+        }
+
+        // Exposure = a known non-neutral force within frontierEnemyExposureRadius that can come and
+        // engage the scout. A building-bound garrison cannot (audit F1); its Recce still counts as a
+        // detector above. The ONE rule for the frontier annotation and the Explore/Refresh scan.
+        public static bool IsExposed(IEnumerable<AiMapMemory.KnownEnemySighting> sightings, HexCoord hex)
+        {
+            if (sightings == null)
+                return false;
+            int r = AiConfigV2.frontierEnemyExposureRadius;
+            foreach (AiMapMemory.KnownEnemySighting s in sightings)
+                if (!s.IsGarrison && HexGridMath.Distance(s.Hex, hex) <= r)
+                    return true;
+            return false;
         }
     }
 }

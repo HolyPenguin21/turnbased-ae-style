@@ -550,7 +550,7 @@ namespace Game.Ai.V2
                     // strategic phases. Route safety and destination validity are live-rechecked
                     // inside ExecuteContinuation rather than trusting last turn's projection.
                     List<ArmyData> rebaseContinuations =
-                        AviationRebasePlanner.FindMandatoryContinuations(player);
+                        AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber);
                     List<ArmyData> recoveries =
                         ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx);
                     bool rebaseFirst = rebaseContinuations.Count > 0
@@ -586,8 +586,11 @@ namespace Game.Ai.V2
                             + $"strategicTriggers={rebaseStrategicReasons}");
                         if (!rebaseProgress)
                         {
-                            AiDebugLog.Write("[AI][V2][Loop] stop — aviation rebase could not take a safe step");
-                            break;
+                            // Recon audit B1 — the obligation is skipped for the rest of this turn;
+                            // it must not stop every mission's admission with it.
+                            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, rebaseWing.Id);
+                            AiDebugLog.Write($"[AI][V2][Loop] aviation rebase #{rebaseWing.Id} could not take "
+                                + "a safe step — deferred to next turn, missions continue");
                         }
                         continue;
                     }
@@ -640,11 +643,13 @@ namespace Game.Ai.V2
                             + $"progress={(recoveryProgress ? 1 : 0)} "
                             + $"operationalTriggers={recoveryOperationalReasons} "
                             + $"strategicTriggers={recoveryStrategicReasons}");
-                        if (recoveryOperationalReasons == StrategicInvalidationReason.None
-                            && !recoveryStrategicChanged)
+                        if (!recoveryProgress)
                         {
-                            AiDebugLog.Write("[AI][V2][Loop] stop — recovery produced no typed invalidation");
-                            break;
+                            // Recon audit B1 — a recovery that changed nothing is skipped for the rest
+                            // of this turn; it must not stop every mission's admission with it.
+                            AviationObligationStallRegistry.MarkStalled(player, ctx.TurnNumber, recovery.Id);
+                            AiDebugLog.Write($"[AI][V2][Loop] recovery #{recovery.Id} made no progress — "
+                                + "deferred to next turn, missions continue");
                         }
                         continue;
                     }
