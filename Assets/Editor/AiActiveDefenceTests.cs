@@ -37,12 +37,64 @@ namespace Game.EditorTests
             Assert.That(StableMissionKey.For(first), Is.EqualTo(StableMissionKey.For(moved)));
         }
 
+        // Case 8 — three armies withdrawing from ONE threat are three independent legs: each
+        // Return is identified by its own mover and destination, never by the enemy.
         [Test]
-        public void Preemption_IsStrictAndIncludesSwitchingCost()
+        public void ReturnIdentity_IsPerMoverAndDestination_NotPerThreat()
         {
-            const float eps = 0.001f;
-            Assert.That(ResourceAllocator.ActiveDefencePreemptsRaid(12.001f, 10f, 2f, eps), Is.False);
-            Assert.That(ResourceAllocator.ActiveDefencePreemptsRaid(12.002f, 10f, 2f, eps), Is.True);
+            var citadel = new HexCoord(0, 0);
+            MissionProposal Return(int mover) => new MissionProposal
+            {
+                Kind = MissionKind.ActiveDefence,
+                PreferredMoverArmyId = mover,
+                Target = new ActiveDefenceMissionTarget
+                {
+                    Phase = ActiveDefencePhase.Return, EnemyArmyId = 42,
+                    PrimaryArmyId = mover, ReturnHex = citadel,
+                },
+            };
+            MissionProposal[] legs = { Return(5), Return(8), Return(11) };
+
+            Assert.That(new HashSet<StableMissionKey>(
+                System.Array.ConvertAll(legs, l => StableMissionKey.For(l))).Count, Is.EqualTo(3));
+            Assert.That(new HashSet<MissionIntentKey>(
+                System.Array.ConvertAll(legs, l => MissionIntentKey.For(l))).Count, Is.EqualTo(3));
+            Assert.That(MissionIntentKey.For(legs[0]),
+                Is.Not.EqualTo(MissionIntentKey.ForActiveDefence(42)),
+                "a withdrawal never takes the intercept's identity");
+            Assert.That(MissionIntentKey.For(legs[0]), Is.Not.EqualTo(MissionIntentKey.For(
+                new MissionProposal
+                {
+                    Kind = MissionKind.ActiveDefence,
+                    Target = new ActiveDefenceMissionTarget
+                    {
+                        Phase = ActiveDefencePhase.Intercept, EnemyArmyId = 5,
+                    },
+                })), "mover #5's Return and an intercept of enemy #5 are different operations");
+
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.ActiveDefence,
+                Objective = new ActiveDefenceIntent
+                {
+                    Phase = ActiveDefencePhase.Return, EnemyArmyId = 42,
+                    PrimaryArmyId = 8, ReturnHex = citadel,
+                },
+            };
+            Assert.That(MissionIntentKey.For(intent), Is.EqualTo(MissionIntentKey.For(legs[1])),
+                "the durable intent keys exactly like the proposal that created it");
+        }
+
+        // The ActiveDefence operation owns exactly one army: no support state exists on it.
+        [Test]
+        public void ActiveDefenceIntent_HoldsNoSupportArmy()
+        {
+            IGroundCombatOperation defence = new ActiveDefenceIntent { PrimaryArmyId = 7 };
+            Assert.That(defence.SupportArmyId, Is.Null);
+            Assert.That(typeof(ActiveDefenceIntent).GetField("SupportArmyId"), Is.Null);
+            Assert.That(typeof(ActiveDefenceMissionTarget).GetField("SupportArmyId"), Is.Null);
+            Assert.That(System.Enum.GetNames(typeof(ActiveDefencePhase)),
+                Is.EquivalentTo(new[] { "Intercept", "Return" }));
         }
 
         [Test]

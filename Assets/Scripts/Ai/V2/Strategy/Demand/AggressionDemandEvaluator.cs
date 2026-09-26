@@ -391,11 +391,12 @@ namespace Game.Ai.V2
             };
         }
 
-        // ActiveDefence shares Aggression's one capability-demand owner. The mission happy path
-        // remains in AggressionMissionPlanner; this method only translates a proven STRUCTURAL
-        // response shortage into the same FieldCombatPower contract Phase A already materializes.
-        // A force hidden merely by commitments, a spent/AP-exhausted actor, or enough physical
-        // power split across incompatible same-hex packages is deliberately DEFER, not production.
+        // ActiveDefence shares Aggression's one capability-demand owner. The response itself is
+        // decided once, by ActiveDefenceObjectiveEvaluator.AssessResponse (the same answer the
+        // Mission planner acts on); this method only translates a proven capability SHORTAGE into
+        // the FieldCombatPower contract Phase A already materializes. A direct response, a
+        // capable force that is merely unavailable this pass, and enough power that only has to
+        // regroup at the Citadel are never production.
         internal static IReadOnlyList<AxisDemand> BuildActiveDefenceDemands(WorldSnapshot snap,
             IReadOnlyList<ActiveDefenceObjective> objectives,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
@@ -408,111 +409,47 @@ namespace Game.Ai.V2
                 return demands;
 
             objectives ??= ActiveDefenceObjectiveEvaluator.Enumerate(snap);
+            HashSet<int> withdrawing = ActiveDefenceObjectiveEvaluator.WithdrawingArmyIds(activeIntents);
             foreach (ActiveDefenceObjective objective in objectives
                 .Where(o => o != null)
                 .OrderByDescending(o => o.BaseValue)
                 .ThenBy(o => o.Target.EnemyArmyId))
             {
-                EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c =>
-                    c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
-                    && c.Position.HasValue);
-                if (contact?.Army == null)
+                int? pinnedActor = ActiveDefenceObjectiveEvaluator.IncumbentIntercept(
+                    activeIntents, objective.Target.EnemyArmyId)?.ActiveDefence?.PrimaryArmyId;
+                ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                    snap, objective, commitments?.ClaimedArmyIdSet, withdrawing, pinnedActor);
+                if (response == null)
                     continue;
-
-                MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
-                    && i.Status == IntentStatus.Active && i.Kind == MissionKind.ActiveDefence
-                    && i.ActiveDefence?.EnemyArmyId == objective.Target.EnemyArmyId);
-                int? pinnedActor = incumbent?.ActiveDefence?.PrimaryArmyId;
-                var excluded = commitments?.ClaimedArmyIdSet ?? new HashSet<int>();
-                if (pinnedActor.HasValue)
-                    excluded.Remove(pinnedActor.Value);
-
-                var request = new GroundCombatAssemblyRequest
+                string label = $"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
+                    + $"asset={objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
+                    + $"{objective.Target.ProtectedAssetHex.R})";
+                switch (response.Kind)
                 {
-                    Opposition = new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) },
-                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
-                    PreferredPrimaryArmyId = pinnedActor,
-                    PinToPreferred = pinnedActor.HasValue,
-                    ExcludedArmyIds = excluded,
-                };
-                GroundCombatAssemblyPlan ready = GroundCombatAssemblyPlanner.Plan(snap, request);
-                if (ready.Feasible)
-                {
-                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
-                        + $"asset={objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
-                        + $"{objective.Target.ProtectedAssetHex.R}) decision=SATISFIED reason=direct_response actor=#{ready.BaseArmyId} "
-                        + $"win={ready.ProjectedWinChance:0.00}");
-                    continue;
+                    case ActiveDefenceResponseKind.Intercept:
+                        diag.Add($"{label} decision=SATISFIED reason={response.Reason} "
+                            + $"actor=#{response.Plan.BaseArmyId} win={response.Plan.ProjectedWinChance:0.00}");
+                        continue;
+                    case ActiveDefenceResponseKind.Defer:
+                        diag.Add($"{label} decision=DEFER reason={response.Reason}");
+                        continue;
+                    case ActiveDefenceResponseKind.Regroup:
+                        diag.Add($"{label} decision=NONE reason={response.Reason} "
+                            + $"power={response.AvailablePower:0.#}/{response.RequiredPower:0.#}");
+                        continue;
                 }
 
-                // Existing armies can be ASSEMBLED into the response: the same shared cross-hex
-                // gather the Mission layer proposes (AggressionMissionPlanner
-                // .TryAppendActiveDefenceReinforcement), with the same claims and gate. Assembly,
-                // not production, closes this gap.
-                GroundCombatGatherPlan assembly = GroundCombatAssemblyPlanner.PlanGather(snap,
-                    request.Opposition, 0f, objective.Target.LastKnownHex, excluded,
-                    request.WinChanceGate, pinnedActor);
-                if (assembly.Feasible)
-                {
-                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
-                        + $"decision=ASSEMBLY planned host=#{assembly.HostArmyId} "
-                        + $"supports=[{string.Join(",", assembly.SupportArmyIds)}] "
-                        + $"win={assembly.ProjectedWinChance:0.00}");
-                    continue;
-                }
-
-                // If the same physical force can respond or be assembled when contention is
-                // ignored — every claim released and spent MP restored (it moves next turn) — the
-                // gap is temporary. Buying another army would be phantom.
-                float freshGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
-                GroundCombatAssemblyPlan physical = GroundCombatAssemblyPlanner.Plan(snap,
-                    new GroundCombatAssemblyRequest
-                    {
-                        Opposition = request.Opposition,
-                        WinChanceGate = freshGate,
-                        ExcludedArmyIds = new HashSet<int>(),
-                    });
-                if (!physical.Feasible)
-                    physical = snap.Self.Armies
-                        .Where(a => a != null && a.IsStructuralRaidActor)
-                        .Select(a => GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
-                            request.Opposition, a.ArmyId, freshGate))
-                        .FirstOrDefault(p => p.Feasible) ?? physical;
-                GroundCombatGatherPlan physicalAssembly = physical.Feasible ? null
-                    : GroundCombatAssemblyPlanner.PlanGather(snap, request.Opposition, 0f,
-                        objective.Target.LastKnownHex, new HashSet<int>(), freshGate,
-                        requireMovementNow: false);
-                if (physical.Feasible || physicalAssembly.Feasible)
-                {
-                    diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
-                        + "decision=DEFER reason=mover_contended "
-                        + (physical.Feasible ? $"physicalActor=#{physical.BaseArmyId}"
-                            : $"physicalHost=#{physicalAssembly.HostArmyId} "
-                                + $"supports=[{string.Join(",", physicalAssembly.SupportArmyIds)}]"));
-                    continue;
-                }
-
-                // A real capability shortage: no legal response and no assembly path, even with
-                // every claim released. Sized by the one ground-combat requirement owner.
-                float required = GroundCombatFeasibility.RequiredPower(
-                    WorthIt.UnitsOf(request.Opposition), 0f);
-                List<ArmySnapshot> structural = snap.Self.Armies
-                    .Where(a => a != null && a.IsStructuralRaidActor).ToList();
-                float physicalPower = structural.Sum(a => Mathf.Max(0f, a.EffectiveArmyPower));
-                // Aggregate power that cannot be assembled (capacity, no sparable bodies, no path)
-                // is not capability: once the total already reaches `required`, the new army is
-                // sized against the strongest single force it would stand beside instead.
-                float strongest = structural.Count == 0 ? 0f
-                    : structural.Max(a => Mathf.Max(0f, a.EffectiveArmyPower));
-                float deficit = Mathf.Max(1f, physicalPower + AiConfigV2.allocatorSliceEpsilon < required
-                    ? required - physicalPower : required - strongest);
+                // A real capability shortage, sized by the one ground-combat requirement owner:
+                // the missing total, or — when the total is already there but no formation of it
+                // clears (regroup exhausted) — what the strongest force it joins still lacks.
+                float required = response.RequiredPower;
+                float available = response.AvailablePower;
+                float deficit = Mathf.Max(1f, available + AiConfigV2.allocatorSliceEpsilon < required
+                    ? required - available : required - response.StrongestPower);
                 MissionIntentKey consumer = MissionIntentKey.ForActiveDefence(
                     objective.Target.EnemyArmyId);
-                diag.Add($"[AI][V2][ActiveDefence][Demand] enemy={objective.Target.EnemyArmyId} "
-                    + $"asset={objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
-                    + $"{objective.Target.ProtectedAssetHex.R}) decision=CREATE "
-                    + $"capability=FieldCombatPower required={required:0.#} physical={physicalPower:0.#} "
-                    + $"deficit={deficit:0.#} reason=no_feasible_response_force detail=\"{assembly.Reason}\"");
+                diag.Add($"{label} decision=CREATE capability=FieldCombatPower required={required:0.#} "
+                    + $"available={available:0.#} deficit={deficit:0.#} reason={response.Reason}");
                 demands.Add(new AxisDemand
                 {
                     RequestingAxis = DesireAxis.Aggression,
@@ -530,7 +467,7 @@ namespace Game.Ai.V2
                     Explain = $"ActiveDefence enemy #{objective.Target.EnemyArmyId} threatening "
                         + $"{objective.Target.ProtectedAssetKind}@({objective.Target.ProtectedAssetHex.Q},"
                         + $"{objective.Target.ProtectedAssetHex.R}) needs ~{deficit:0.#} field power "
-                        + $"({physicalPower:0.#}/{required:0.#}); consumer={consumer}",
+                        + $"({available:0.#}/{required:0.#}); consumer={consumer}",
                 });
             }
             return demands;

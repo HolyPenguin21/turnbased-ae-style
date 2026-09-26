@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
 using Game.Aviation;
 using Game.Cards;
@@ -17,10 +16,6 @@ namespace Game.Ai.V2
 {
     internal static class ActiveDefenceProvisioner
     {
-        // Same invariant AP formatting RaidProvisioner logs with — the two lanes' provisioning
-        // lines are read side by side.
-        private static string N(float v) => v.ToString("0.##", CultureInfo.InvariantCulture);
-
         internal static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
         {
@@ -39,9 +34,6 @@ namespace Game.Ai.V2
             if (!sighting.HasValue)
                 return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
                     $"active defence enemy #{target.EnemyArmyId} has no honest sighting"));
-            if (target.Phase == ActiveDefencePhase.Reinforcement)
-                return ProvisionReinforcement(player, root, ctx, session, funded, target,
-                    new[] { new WorthIt.DefendingArmy(sighting.Value.Defenders, sighting.Value.Commander) });
             // AiMapMemory.OnVisibilityChanged is the single canonical, fog-honest writer for
             // EnemySightings: it removes an entry the instant its hex is re-observed empty and
             // otherwise leaves a last-known sighting untouched while the hex stays fogged.
@@ -95,43 +87,6 @@ namespace Game.Ai.V2
                 // this one number exactly once.
                 ClaimedAp = assault.ActualAp,
             }, assault.AppliedTransfers, otherMutation: assault.CommanderReordered);
-        }
-
-        // The Reinforcement convoy: exactly the shared ground-combat leg check Raid and Attack use
-        // (GroundCombatLegChecks.ValidateReinforcement) — the support is live, free, separate from
-        // the primary, has a safe step (or stands on it) and still improves the primary's odds.
-        private static ProvisioningResult ProvisionReinforcement(PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, ProvisioningSession session, FundedEntry funded,
-            ActiveDefenceMissionTarget target, IReadOnlyList<WorthIt.DefendingArmy> opposition)
-        {
-            if (!target.PrimaryArmyId.HasValue || !target.SupportArmyId.HasValue)
-                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "active defence reinforcement has no primary or support"));
-            ArmyData primary = AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value);
-            if (primary == null || primary.Owner != player || primary.Members.Count == 0)
-                return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                    "active defence reinforcement primary is gone"));
-            StableMissionKey key = StableMissionKey.For(funded.Mission);
-            GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
-                ctx, session, funded, key, AiConfigV2.allocatorSliceEpsilon, primary,
-                target.SupportArmyId.Value, opposition, 0f, "active-defence", out bool atRendezvous,
-                // The support was chosen by the shared gather (PlanGather), which counts a hero
-                // taking command of the primary; the leg admits and prices exactly that handoff.
-                allowCommandHandover: true);
-            if (!check.Ok)
-                return check.Failure;
-            // The primary must not be handed to another mission while the convoy is in transit.
-            session.ClaimedArmyIds.Add(primary.Id);
-            AiDebugLog.Write($"[AI][V2][ActiveDefence][Provision] decision=OK_REINFORCE enemy={target.EnemyArmyId} "
-                + $"support=#{check.Mover.Id} -> primary=#{primary.Id} at ({primary.Hex.Q},{primary.Hex.R}) "
-                + $"{(atRendezvous ? "HANDOFF" : "TRANSIT")} ap {N(check.ActivationAp)}");
-            return ProvisioningResult.Ok(new ProvisionedMission
-            {
-                Mission = funded.Mission, Key = key, Kind = MissionKind.ActiveDefence,
-                MoverArmyId = check.Mover.Id, FocusHex = primary.Hex, ExecutionHex = primary.Hex,
-                ActiveDefenceTarget = target, ClaimedPhysical = funded.PhysicalDraw,
-                ClaimedAp = check.ActivationAp,
-            });
         }
 
         private static ProvisioningResult ProvisionReturn(PlayerSetupData player, PlayerRoot root,

@@ -118,10 +118,7 @@ namespace Game.Ai.V2
                 {
                     bool ownIncumbent = proposal != null && proposal.FromDurableIntent
                         && proposal.PreferredMoverArmyId == id;
-                    bool exactOffensiveBorrow = proposal?.Target is ActiveDefenceMissionTarget defence
-                        && defence.SuspendedOffensiveIntentKey.HasValue
-                        && proposal.PreferredMoverArmyId == id;
-                    if (!ownIncumbent && !exactOffensiveBorrow)
+                    if (!ownIncumbent)
                         excluded.Add(id);
                 }
             // Batch-assigned Raid hosts/support are also unavailable as donors, even before

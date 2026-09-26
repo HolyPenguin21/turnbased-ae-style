@@ -66,6 +66,21 @@ namespace Game.Ai.V2
             System.Math.Max(1f, AiPower.EffectiveArmyPowerFromProfiles(defenders,
                 System.Math.Max(0f, defenderHexDefenseBonus)) * AiConfigV2.raidCombatPowerMargin);
 
+        // THE aggregate ground-combat power a set of own armies brings, on the same
+        // EffectiveArmyPower scale RequiredPower answers in. It is the "could these armies,
+        // gathered in one place, reach the requirement" reading — never a battle verdict, which
+        // stays Clears' alone.
+        internal static float AggregatePower(IEnumerable<ArmySnapshot> armies)
+        {
+            float sum = 0f;
+            if (armies == null)
+                return sum;
+            foreach (ArmySnapshot a in armies)
+                if (a != null)
+                    sum += System.Math.Max(0f, a.EffectiveArmyPower);
+            return sum;
+        }
+
         private static float PowerSum(IReadOnlyList<WorthIt.DefenderProfile> profiles)
         {
             float sum = 0f;

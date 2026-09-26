@@ -14,7 +14,8 @@ namespace Game.Ai.V2
     internal static class GroundCombatDonorPolicy
     {
         // Strike force — the armies an Attack gather may BUY as supports: the primary of every
-        // active Raid / ActiveDefence, priced at what abandoning that operation costs (its
+        // active Raid / ActiveDefence Intercept (an army withdrawing on an ActiveDefence Return is
+        // not for sale until it arrives), priced at what abandoning that operation costs (its
         // LastIntrinsicValue) in AP-equivalents at the one activation rate TaskScore charges
         // (taskScoreReactivationApWeight per AP). The gather adds the price to that donor's AP,
         // so its own TaskScore carries the loss and the allocator arbitrates; Continuity retires
@@ -27,6 +28,7 @@ namespace Game.Ai.V2
             {
                 if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
                     || (i.Kind != MissionKind.Raid && i.Kind != MissionKind.ActiveDefence)
+                    || i.ActiveDefence?.Phase == ActiveDefencePhase.Return
                     || i.LastIntrinsicValue <= 0f)
                     continue;
                 prices[i.PreferredMoverArmyId.Value] = i.LastIntrinsicValue / rate;

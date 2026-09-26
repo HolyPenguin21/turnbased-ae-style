@@ -15,7 +15,7 @@ namespace Game.Ai.V2
     // not a partial class.
     public enum CommitmentTier { None, Soft, Hard }
     public enum IntentStatus { Active, Suspended }
-    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan, ActiveDefencePreemption }
+    public enum SuspendReason { None, Siege, PoolExhausted, CapabilityUnavailable, EconomyLoan }
 
     public readonly struct MissionIntentKey : IEquatable<MissionIntentKey>, IComparable<MissionIntentKey>
     {
@@ -48,9 +48,20 @@ namespace Game.Ai.V2
             new MissionIntentKey(MissionKind.Attack, (int)AggressionObjectiveKind.Attack,
                 target.ExpectedOwnerId, target.Hex.Q, target.Hex.R);
 
+        // Single owner of ActiveDefence key encoding; SubKind is the phase. An Intercept is
+        // identified by the enemy army it answers. A Return (a withdrawal to a regroup point or an
+        // own base) is identified by its own mover and destination: several armies may withdraw
+        // from one threat at once, and each is an independent one-actor leg.
         public static MissionIntentKey ForActiveDefence(int enemyArmyId) =>
             new MissionIntentKey(MissionKind.ActiveDefence,
-                (int)AggressionObjectiveKind.ActiveDefence, enemyArmyId, 0, 0);
+                (int)ActiveDefencePhase.Intercept, enemyArmyId, 0, 0);
+
+        public static MissionIntentKey ForActiveDefence(ActiveDefencePhase phase, int enemyArmyId,
+            int? moverArmyId, HexCoord? returnHex) =>
+            phase == ActiveDefencePhase.Return
+                ? new MissionIntentKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Return,
+                    moverArmyId ?? 0, returnHex?.Q ?? 0, returnHex?.R ?? 0)
+                : ForActiveDefence(enemyArmyId);
 
         // The ONE Economy objective encoding, shared by MissionIntentKey, StableMissionKey (and
         // so every Economy reservation owner key): a recovery walk is identified by its actor, a
@@ -72,7 +83,7 @@ namespace Game.Ai.V2
                 return ForRaid(rt.Target);
             if (m != null && m.Kind == MissionKind.ActiveDefence
                 && m.Target is ActiveDefenceMissionTarget ad)
-                return ForActiveDefence(ad.EnemyArmyId);
+                return ForActiveDefence(ad.Phase, ad.EnemyArmyId, ad.PrimaryArmyId, ad.ReturnHex);
             if (m != null && m.Kind == MissionKind.Attack && m.Target is AttackMissionTarget at)
                 return ForAttack(at.Target);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
@@ -105,7 +116,7 @@ namespace Game.Ai.V2
                 return ForAttack(ai.Target);
             ActiveDefenceIntent ad = intent?.ActiveDefence;
             if (ad != null)
-                return ForActiveDefence(ad.EnemyArmyId);
+                return ForActiveDefence(ad.Phase, ad.EnemyArmyId, ad.PrimaryArmyId, ad.ReturnHex);
             EconomyIntent ei = intent?.Economy;
             if (ei != null)
                 return ForEconomy(ei.Kind, EconomyObjectiveId(ei.Kind,
@@ -159,7 +170,9 @@ namespace Game.Ai.V2
                     ? $"Intent(Raid Guard@{Q},{R})"
                     : $"Intent(Raid Army#{ObjectiveId})";
             if (Kind == MissionKind.ActiveDefence)
-                return $"Intent(ActiveDefence Army#{ObjectiveId})";
+                return SubKind == (int)ActiveDefencePhase.Return
+                    ? $"Intent(ActiveDefence Return #{ObjectiveId} -> {Q},{R})"
+                    : $"Intent(ActiveDefence Army#{ObjectiveId})";
             if (Kind == MissionKind.Economy)
                 return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
             if (Kind == MissionKind.Development)
@@ -300,6 +313,8 @@ namespace Game.Ai.V2
         public float IntrinsicValue;
     }
 
+    // One ActiveDefence operation, one actor: an Intercept of one enemy army, or one army's
+    // Return (withdrawal) to a regroup point / own base. It never holds a support army.
     public sealed class ActiveDefenceIntent : IGroundCombatOperation
     {
         public ActiveDefencePhase Phase;
@@ -312,22 +327,11 @@ namespace Game.Ai.V2
         public float ProtectedAssetValue;
         public float ThreatSeverity;
         public int? PrimaryArmyId { get; set; }
-        // The one support walking to the primary during Reinforcement; null otherwise.
-        public int? SupportArmyId;
-        int? IGroundCombatOperation.SupportArmyId => SupportArmyId;
-        // ATK §49 — the offensive ground-combat intent this defence preempted for its actor, so
-        // Continuity can resume exactly that one when the threat is gone. Deliberately NOT named
-        // after a single lane: Raid and Attack are both offensive owners of the same armies, and a
-        // second parallel SuspendedAttackIntentKey would split one ownership fact in two.
-        public MissionIntentKey? SuspendedOffensiveIntentKey;
+        int? IGroundCombatOperation.SupportArmyId => null;
         public HexCoord? ReturnHex;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public int EstimatedEta;
-        // Set only by a completed intercept outcome. ResolveActive then either releases the actor
-        // in place for Housekeeping to stabilize an under-garrisoned Base, or sends it through the
-        // existing Return phase once local security is already sufficient.
-        public bool ObjectiveCompleted;
     }
 
     // ATK §22 — the durable Attack operation. ONE intent is ONE target structure (§7): a hostile

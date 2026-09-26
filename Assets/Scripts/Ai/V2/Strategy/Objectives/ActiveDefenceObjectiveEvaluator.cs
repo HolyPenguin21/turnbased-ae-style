@@ -10,11 +10,10 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Reinforcement — the intercept's primary alone misses the gate while existing free armies
-    // can bring it over (the shared cross-hex gather, GroundCombatAssemblyPlanner.PlanGather):
-    // one support at a time walks to the primary and hands its bodies over; the operation
-    // intercepts once the primary clears, or pulls the gather's next support in.
-    public enum ActiveDefencePhase { Intercept, Return, Reinforcement }
+    // Intercept — one capable army (or a same-hex assembly around it) meets the enemy.
+    // Return — one army withdraws: to the Citadel to regroup when the defensive power exists but is
+    // spread over several field armies, or to its own base when the power does not exist at all.
+    public enum ActiveDefencePhase { Intercept, Return }
 
     public struct ActiveDefenceMissionTarget
     {
@@ -28,14 +27,40 @@ namespace Game.Ai.V2
         public float ProtectedAssetValue;
         public float ThreatSeverity;
         public int? PrimaryArmyId;
-        // The Reinforcement leg's walker (its mover); null on Intercept / Return.
-        public int? SupportArmyId;
-        // ATK §49 — see ActiveDefenceIntent.SuspendedOffensiveIntentKey.
-        public MissionIntentKey? SuspendedOffensiveIntentKey;
         public HexCoord? ReturnHex;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
         public int EstimatedEta;
+    }
+
+    // The ONE answer to "how does this player respond to this threat", shared by the Mission
+    // planner (what to propose) and Demand (whether to buy). See AssessResponse.
+    public enum ActiveDefenceResponseKind
+    {
+        Intercept,  // a concrete army / same-hex assembly clears the combat gate now
+        Defer,      // a capable force exists but cannot act this pass (spent MP, claimed, pinned)
+        Regroup,    // enough usable power, but spread over field armies: they gather at the Citadel
+        Shortage,   // not enough usable power (or regroup exhausted): withdraw home and buy power
+    }
+
+    public sealed class ActiveDefenceResponse
+    {
+        public ActiveDefenceResponseKind Kind;
+        public IReadOnlyList<WorthIt.DefendingArmy> Opposition;
+        // Intercept only: the plan and the exclusion set it was solved under (the same set the
+        // proposal's admission fingerprint must use).
+        public GroundCombatAssemblyPlan Plan;
+        public ISet<int> ExcludedArmyIds;
+        public float RequiredPower;
+        public float AvailablePower;
+        // Power of the strongest single usable army (sizes a composition shortage).
+        public float StrongestPower;
+        // Regroup / Shortage: usable field armies that still have to walk; each gets its own
+        // one-actor Return leg. Armies already withdrawing are never listed again.
+        public readonly List<ArmySnapshot> Movers = new List<ArmySnapshot>();
+        // Regroup only: the canonical Citadel hex.
+        public HexCoord? RegroupHex;
+        public string Reason;
     }
 
     public sealed class ActiveDefenceObjective
@@ -132,6 +157,143 @@ namespace Game.Ai.V2
 
         public static ActiveDefenceObjective ForTrackedEnemy(WorldSnapshot snap, int enemyArmyId) =>
             Enumerate(snap).FirstOrDefault(o => o.Target.EnemyArmyId == enemyArmyId);
+
+        // The fight an intercept of this enemy is: its honestly-known roster and commander.
+        // Null when the contact carries no position (nothing to intercept).
+        internal static IReadOnlyList<WorthIt.DefendingArmy> Opposition(WorldSnapshot snap,
+            int enemyArmyId)
+        {
+            EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
+                c?.Army != null && c.Army.ArmyId == enemyArmyId && c.Position.HasValue);
+            return contact == null ? null
+                : new[] { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) };
+        }
+
+        // Armies already walking an ActiveDefence Return leg (a regroup or a withdrawal).
+        internal static HashSet<int> WithdrawingArmyIds(IEnumerable<MissionIntent> intents) =>
+            new HashSet<int>((intents ?? Enumerable.Empty<MissionIntent>())
+                .Where(i => i != null && i.Status == IntentStatus.Active
+                    && i.ActiveDefence?.Phase == ActiveDefencePhase.Return
+                    && i.ActiveDefence.PrimaryArmyId.HasValue)
+                .Select(i => i.ActiveDefence.PrimaryArmyId.Value));
+
+        // The live Intercept intent answering this enemy, if any.
+        internal static MissionIntent IncumbentIntercept(IEnumerable<MissionIntent> intents,
+            int enemyArmyId) =>
+            intents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
+                && i.Kind == MissionKind.ActiveDefence
+                && i.ActiveDefence?.Phase == ActiveDefencePhase.Intercept
+                && i.ActiveDefence.EnemyArmyId == enemyArmyId);
+
+        // THE ActiveDefence response decision (Mission planner and Demand read the same answer):
+        //  1. a concrete army or same-hex assembly clears the gate  -> Intercept;
+        //  2. a capable army exists but cannot act this pass (spent MP, owned by another operation,
+        //     or this objective's pinned incumbent still waiting)    -> Defer (no retreat, no buy);
+        //  3. the usable field armies together reach RequiredPower   -> Regroup at the Citadel,
+        //     where the existing same-hex owners (GroundCombatAssemblyPlanner, Housekeeping) form
+        //     the force; once every usable army already stands there the regroup is exhausted;
+        //  4. otherwise (or regroup exhausted)                        -> Shortage: withdraw home,
+        //     Demand publishes FieldCombatPower.
+        // `committed` — armies other operations own; `withdrawing` — armies already on an
+        // ActiveDefence Return leg: they count as usable power but are never proposed again, and
+        // never pulled off their withdrawal into an intercept. Usable power is summed over
+        // GroundCombatActorEligibility's structural set through GroundCombatFeasibility.
+        internal static ActiveDefenceResponse AssessResponse(WorldSnapshot snap,
+            ActiveDefenceObjective objective, ISet<int> committed, ICollection<int> withdrawing,
+            int? pinnedActor)
+        {
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = objective == null ? null
+                : Opposition(snap, objective.Target.EnemyArmyId);
+            if (opposition == null || snap?.Self?.Armies == null)
+                return null;
+            // An enemy standing on a known foreign structure is the Attack owner's site, never a
+            // defence response (see OnKnownForeignStructure): no intercept, no withdrawal, no buy.
+            if (OnKnownForeignStructure(snap, objective.Target.LastKnownHex))
+                return null;
+            var response = new ActiveDefenceResponse { Opposition = opposition };
+
+            var planExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            if (withdrawing != null) planExcluded.UnionWith(withdrawing);
+            if (pinnedActor.HasValue) planExcluded.Remove(pinnedActor.Value);
+            GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
+                new GroundCombatAssemblyRequest
+                {
+                    Opposition = opposition,
+                    WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedActor.HasValue),
+                    PreferredPrimaryArmyId = pinnedActor,
+                    PinToPreferred = pinnedActor.HasValue,
+                    ExcludedArmyIds = planExcluded,
+                });
+            if (plan.Feasible)
+            {
+                response.Kind = ActiveDefenceResponseKind.Intercept;
+                response.Plan = plan;
+                response.ExcludedArmyIds = planExcluded;
+                response.Reason = "direct_response";
+                return response;
+            }
+            if (pinnedActor.HasValue)
+            {
+                // Continuity already re-tested the incumbent's capability this pass; failing the
+                // ready plan here only means it cannot move right now.
+                response.Kind = ActiveDefenceResponseKind.Defer;
+                response.Reason = "incumbent_waits";
+                return response;
+            }
+
+            // Capable but temporarily unavailable: one physical army clears the gate on its own
+            // once its MP returns or its current operation releases it. Buying or retreating
+            // against that would be phantom.
+            float freshGate = GroundCombatAdmissionPolicy.FreshStartWinChanceGate;
+            ArmySnapshot capable = snap.Self.Armies.FirstOrDefault(a => a != null
+                && a.IsStructuralRaidActor
+                && (withdrawing == null || !withdrawing.Contains(a.ArmyId))
+                && GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap, opposition,
+                    a.ArmyId, freshGate).Feasible);
+            if (capable != null)
+            {
+                response.Kind = ActiveDefenceResponseKind.Defer;
+                response.Reason = $"capable_actor_unavailable actor=#{capable.ArmyId}";
+                return response;
+            }
+
+            var powerExcluded = committed == null ? new HashSet<int>() : new HashSet<int>(committed);
+            if (withdrawing != null) powerExcluded.ExceptWith(withdrawing);
+            List<ArmySnapshot> usable = GroundCombatActorEligibility.EligibleArmies(snap,
+                powerExcluded, requireMovementNow: false);
+            response.RequiredPower = GroundCombatFeasibility.RequiredPower(
+                WorthIt.UnitsOf(opposition), 0f);
+            response.AvailablePower = GroundCombatFeasibility.AggregatePower(usable);
+            response.StrongestPower = usable.Count == 0 ? 0f
+                : usable.Max(a => Mathf.Max(0f, a.EffectiveArmyPower));
+            IEnumerable<ArmySnapshot> walkers = usable.Where(a =>
+                withdrawing == null || !withdrawing.Contains(a.ArmyId));
+
+            if (response.AvailablePower + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower)
+            {
+                HexCoord citadel = snap.Observer == null ? default
+                    : AiTurnController.GarrisonHexFor(snap.Observer);
+                if (usable.Any(a => !a.Hex.Equals(citadel)))
+                {
+                    response.Kind = ActiveDefenceResponseKind.Regroup;
+                    response.RegroupHex = citadel;
+                    response.Movers.AddRange(walkers.Where(a => !a.Hex.Equals(citadel)));
+                    response.Reason = "regroup_required";
+                    return response;
+                }
+                // Every usable army already stands in the Citadel and the same-hex assembly still
+                // misses the gate: the gap is composition, not distribution.
+                response.Kind = ActiveDefenceResponseKind.Shortage;
+                response.Reason = "regroup_exhausted";
+                return response;
+            }
+
+            IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
+            response.Kind = ActiveDefenceResponseKind.Shortage;
+            response.Movers.AddRange(walkers.Where(a => !bases.Contains(a.Hex)));
+            response.Reason = "insufficient_power";
+            return response;
+        }
 
         // ---- LIVE (revalidation / post-execution ledger pass) --------------------------------
 

@@ -145,8 +145,6 @@ namespace Game.Ai.V2
         // travel is slower than a scout leg).
         public const int raidIntentStallTurns = 3;
         public const int raidIntentMaxTurns = 10;
-        // Active Defence may borrow the exact primary actor of a Raid only for a one-turn detour.
-        public const int activeDefenceRaidMaxDetourTurns = 1;
         // Structural-failure cooldown for a Raid mission key (assembly infeasible / no mover).
         public const int raidRejectCooldownTurns = 3;
 

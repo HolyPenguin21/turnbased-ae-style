@@ -221,6 +221,118 @@ namespace Game.EditorTests
             Assert.That(demands, Is.Empty);
         }
 
+        // ---- ActiveDefence response: intercept / regroup / shortage --------------------------
+
+        // Case 2 — enough power, but only spread over several field armies: they regroup at the
+        // Citadel (one independent Return each) and nothing is bought.
+        [Test]
+        public void ActiveDefence_DistributedSufficientPower_RegroupsAtCitadelWithoutDemand()
+        {
+            PlayerSetupData owner = DefenceOwner();
+            EnemyContactSnapshot enemy = StrongContact(28);
+            float required = RequiredToBeat(enemy);
+            WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[]
+            {
+                WeakArmy(owner, 5, new HexCoord(3, 0), required * 0.5f),
+                WeakArmy(owner, 8, new HexCoord(-2, 3), required * 0.35f),
+                WeakArmy(owner, 11, new HexCoord(1, 1), required * 0.3f),
+            });
+            ActiveDefenceObjective objective = DefenceObjective(28, new HexCoord(-2, 3));
+
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, new HashSet<int>(), new HashSet<int>(), null);
+            IReadOnlyList<AxisDemand> demands = AggressionDemandEvaluator.BuildActiveDefenceDemands(
+                snap, new[] { objective }, System.Array.Empty<MissionIntent>(),
+                new ActorCommitments(), owner, out _);
+
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup));
+            Assert.That(response.RegroupHex, Is.EqualTo(new HexCoord(0, 0)),
+                "the regroup point is the canonical Citadel");
+            Assert.That(response.Movers.Select(m => m.ArmyId), Is.EquivalentTo(new[] { 5, 8, 11 }));
+            Assert.That(demands, Is.Empty, "spatial distribution is not a capability shortage");
+        }
+
+        // An army already walking its Return is counted as power but never re-proposed, and never
+        // pulled into an intercept mid-walk.
+        [Test]
+        public void ActiveDefence_WithdrawingArmyCountsAsPowerButIsNotReassigned()
+        {
+            PlayerSetupData owner = DefenceOwner();
+            EnemyContactSnapshot enemy = StrongContact(28);
+            float required = RequiredToBeat(enemy);
+            WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[]
+            {
+                WeakArmy(owner, 5, new HexCoord(3, 0), required * 0.6f),
+                WeakArmy(owner, 8, new HexCoord(-2, 3), required * 0.6f),
+            });
+
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, DefenceObjective(28, new HexCoord(-2, 3)),
+                committed: new HashSet<int> { 5 }, withdrawing: new HashSet<int> { 5 }, null);
+
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Regroup),
+                "#5's power still counts while it walks to the Citadel");
+            Assert.That(response.Movers.Select(m => m.ArmyId), Is.EqualTo(new[] { 8 }));
+        }
+
+        // Case 3 — real shortage: field armies withdraw to their own bases and FieldCombatPower
+        // is published; an army already standing on an own base does not move.
+        [Test]
+        public void ActiveDefence_InsufficientPower_RetreatsHomeAndCreatesDemand()
+        {
+            PlayerSetupData owner = DefenceOwner();
+            EnemyContactSnapshot enemy = StrongContact(28);
+            float required = RequiredToBeat(enemy);
+            WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[]
+            {
+                WeakArmy(owner, 5, new HexCoord(3, 0), required * 0.3f),
+                WeakArmy(owner, 8, new HexCoord(-2, 3), required * 0.25f),
+            });
+            ActiveDefenceObjective objective = DefenceObjective(28, new HexCoord(-2, 3));
+
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, new HashSet<int>(), new HashSet<int>(), null);
+            IReadOnlyList<AxisDemand> demands = AggressionDemandEvaluator.BuildActiveDefenceDemands(
+                snap, new[] { objective }, System.Array.Empty<MissionIntent>(),
+                new ActorCommitments(), owner, out _);
+
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(response.Movers.Select(m => m.ArmyId), Is.EqualTo(new[] { 5 }),
+                "#8 already stands on its own base (-2,3)");
+            Assert.That(demands, Has.Count.EqualTo(1));
+            Assert.That(demands[0].Capability, Is.EqualTo(CapabilityKind.FieldCombatPower));
+            Assert.That(demands[0].DesiredAmount,
+                Is.EqualTo(required - required * 0.55f).Within(0.01f));
+        }
+
+        // Case 4 — every usable army already stands in the Citadel and still cannot form a
+        // winning force: no endless regroup, the gap is bought.
+        [Test]
+        public void ActiveDefence_RegroupExhaustedAtCitadel_CreatesDemandInsteadOfRegroup()
+        {
+            PlayerSetupData owner = DefenceOwner();
+            EnemyContactSnapshot enemy = StrongContact(28);
+            float required = RequiredToBeat(enemy);
+            var citadel = new HexCoord(0, 0);
+            WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[]
+            {
+                WeakArmy(owner, 5, citadel, required * 0.6f),
+                WeakArmy(owner, 8, citadel, required * 0.6f),
+            });
+            ActiveDefenceObjective objective = DefenceObjective(28, new HexCoord(-2, 3));
+
+            ActiveDefenceResponse response = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, new HashSet<int>(), new HashSet<int>(), null);
+            IReadOnlyList<AxisDemand> demands = AggressionDemandEvaluator.BuildActiveDefenceDemands(
+                snap, new[] { objective }, System.Array.Empty<MissionIntent>(),
+                new ActorCommitments(), owner, out _);
+
+            Assert.That(response.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(response.Reason, Is.EqualTo("regroup_exhausted"));
+            Assert.That(response.Movers, Is.Empty);
+            Assert.That(demands, Has.Count.EqualTo(1));
+        }
+
         [Test]
         public void ActiveDefence_DoesNotTurnEnemyBaseIntoImplicitAttack()
         {
@@ -290,55 +402,6 @@ namespace Game.EditorTests
             Assert.That(coverage, Is.Zero);
             Assert.That(witness, Is.Null);
             Assert.That(score.Value, Is.Zero);
-        }
-
-        [Test]
-        public void ActiveDefenceCompletion_HoldsLocalActorForUnderGarrisonedBase()
-        {
-            HexCoord forward = new HexCoord(2, 0);
-            var actor = new ArmySnapshot
-            {
-                ArmyId = 7, Hex = forward,
-                Members = new[] { default(WorthIt.DefenderProfile) },
-            };
-            var snap = new WorldSnapshot
-            {
-                Self = new SelfSnapshot
-                {
-                    BaseHexes = new[] { forward },
-                    Armies = new[]
-                    {
-                        actor,
-                        new ArmySnapshot
-                        {
-                            ArmyId = 8, Hex = forward, IsGarrison = true,
-                            Members = System.Array.Empty<WorthIt.DefenderProfile>(),
-                        },
-                    },
-                },
-            };
-            var defence = new ActiveDefenceIntent
-            {
-                ProtectedAssetKind = AssetKind.Base,
-                ProtectedAssetHex = forward,
-            };
-
-            Assert.That(MissionContinuityLayer.RequiresLocalBaseStabilization(
-                snap, defence, actor), Is.True);
-            snap.Self.Armies = new[]
-            {
-                actor,
-                new ArmySnapshot
-                {
-                    ArmyId = 8, Hex = forward, IsGarrison = true,
-                    Members = new WorthIt.DefenderProfile[AiConfig.secureBaseMinNonHeroUnits],
-                },
-            };
-            Assert.That(MissionContinuityLayer.RequiresLocalBaseStabilization(
-                snap, defence, actor), Is.False);
-
-            snap.Self.BaseHexes = System.Array.Empty<HexCoord>();
-            Assert.That(MissionContinuityLayer.ProtectedBaseWasLost(snap, defence), Is.True);
         }
 
         [Test]
@@ -684,6 +747,7 @@ namespace Game.EditorTests
             EnemyContactSnapshot contact, IReadOnlyList<ArmySnapshot> armies) =>
             new WorldSnapshot
             {
+                Observer = owner,
                 Self = new SelfSnapshot
                 {
                     Armies = armies,
@@ -695,6 +759,34 @@ namespace Game.EditorTests
                     Threats = System.Array.Empty<AssetThreatSnapshot>(),
                 },
             };
+
+        private static PlayerSetupData DefenceOwner() =>
+            new PlayerSetupData { CitadelHexQ = 0, CitadelHexR = 0 };
+
+        private static readonly WorthIt.DefenderProfile StrongBody =
+            new WorthIt.DefenderProfile(20f, false, null, 20f, 60f, 5);
+
+        private static EnemyContactSnapshot StrongContact(int id)
+        {
+            EnemyContactSnapshot contact = Contact(id, 100f);
+            contact.Army.Members = new[] { StrongBody };
+            contact.Army.MemberCount = 1;
+            return contact;
+        }
+
+        private static float RequiredToBeat(EnemyContactSnapshot contact) =>
+            GroundCombatFeasibility.RequiredPower(WorthIt.UnitsOf(new[]
+                { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) }), 0f);
+
+        // A field army that cannot win alone (its body is far below the enemy's), carrying the
+        // given share of the requirement as its snapshot power.
+        private static ArmySnapshot WeakArmy(PlayerSetupData owner, int id, HexCoord hex,
+            float power) => new ArmySnapshot
+        {
+            ArmyId = id, Owner = owner, Hex = hex, IsStructuralRaidActor = true,
+            EffectiveArmyPower = power, MemberCount = 1, CurrentMovement = 3, MaxMovement = 3,
+            Members = new[] { new WorthIt.DefenderProfile(1f, false, null, 1f, 1f, 0) },
+        };
 
         private static ActiveDefenceObjective DefenceObjective(int enemyId, HexCoord assetHex) =>
             new ActiveDefenceObjective

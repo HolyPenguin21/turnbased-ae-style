@@ -230,12 +230,6 @@ namespace Game.Ai.V2
                         satisfied = actor != null && pm.ActiveDefenceTarget.ReturnHex.HasValue
                             && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
                     }
-                    else if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement)
-                    {
-                        // A delivered convoy is a step of the intercept, never its objective:
-                        // Continuity moves the phase on to Intercept (AdvanceIntent).
-                        satisfied = false;
-                    }
                     else
                     {
                         // Same fog-of-war seam as MissionRevalidator: the post-execution
@@ -357,10 +351,9 @@ namespace Game.Ai.V2
                         || e.EconomyDeliveryReady || e.EconomyHolding;
                     o.StopReason = e.StopReason;
                     // The ground-combat roster handoff (GroundCombatReinforcement) is one shared
-                    // lifecycle fact: Raid, Attack and ActiveDefence continuity all read it to
-                    // release the support role, so it is published for every ground-combat kind.
-                    if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack
-                        || o.MissionKind == MissionKind.ActiveDefence)
+                    // lifecycle fact: Raid and Attack continuity both read it to release the
+                    // support role, so it is published for every lane that runs a convoy.
+                    if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack)
                         o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
                     if (o.MissionKind == MissionKind.Raid)
                     {

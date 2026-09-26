@@ -164,13 +164,15 @@ namespace Game.Ai.V2
 
                 if (i.Kind == MissionKind.ActiveDefence)
                 {
-                    // Audit F6 — the Return leg is a zero-value fallback (Funding None), exactly
-                    // like a completed Raid's Return above: the actor is exposed to fresh Raid /
-                    // Attack / ActiveDefence allocation instead of being hidden from assembly.
-                    if (i.ActiveDefence?.Phase == ActiveDefencePhase.Return)
-                        continue;
+                    // A Return is a real withdrawal (regroup at the Citadel / retreat home), not a
+                    // fallback: its army stays claimed until it arrives, so no Raid, Attack or
+                    // Housekeeping pass can take it mid-walk. Like Attack's RecoveryReturn it only
+                    // has to stay a live ground container.
                     int actorId = i.PreferredMoverArmyId.Value;
-                    if (GroundCombatActorStillValid(actorId, snap, out _))
+                    bool valid = i.ActiveDefence?.Phase == ActiveDefencePhase.Return
+                        ? GroundContainerStillValid(actorId, snap)
+                        : GroundCombatActorStillValid(actorId, snap, out _);
+                    if (valid)
                         c.Claim(actorId);
                     continue;
                 }

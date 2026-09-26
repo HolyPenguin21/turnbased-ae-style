@@ -1,8 +1,5 @@
-using System;
 using System.Collections.Generic;
 using System.Linq;
-using Game.Aviation;
-using Game.Combat;
 using Game.HexGrid;
 using Game.Players;
 
@@ -10,86 +7,63 @@ namespace Game.Ai.V2
 {
     // ===========================================================================================
     //  ACTIVE DEFENCE CONTINUITY — a mechanical partial of MissionContinuityLayer, beside
-    //  MissionContinuityLayer.Attack.cs / .Raid.cs: the ActiveDefence lane's own lifecycle answers
-    //  (Intercept -> Return, the borrowed offensive's suspend/resume, local base stabilisation).
+    //  MissionContinuityLayer.Attack.cs / .Raid.cs: the ActiveDefence lane's own lifecycle answers.
+    //  Two independent one-actor intents and nothing else:
+    //    Intercept — kept while its honest objective and its capable actor both exist; a victory,
+    //                a vanished threat or a lost / no longer capable actor ends it, and the next
+    //                global replan decides afresh.
+    //    Return    — one army's withdrawal (regroup at the Citadel, or retreat home): kept until
+    //                it arrives, whatever became of the threat that started it.
     // ===========================================================================================
     internal static partial class MissionContinuityLayer
     {
-        private enum DefenceResolution
-        {
-            Retire,         // the intent ends this pass
-            Keep,           // kept and active this pass (a Return leg, a freshly begun Return)
-            KeepIfActive,   // kept; active this pass only while its Status is Active
-        }
-
-        // The ActiveDefence lane's own lifecycle answers for ResolveActive (the counterpart of
-        // ResolveAttackIntent / ResolveRaidIntent).
-        private static DefenceResolution ResolveActiveDefenceIntent(PlayerSetupData player,
-            WorldSnapshot snap, MissionIntentState state, MissionIntent intent)
+        // The ActiveDefence lane's own lifecycle answer for ResolveActive (the counterpart of
+        // ResolveAttackIntent / ResolveRaidIntent). False retires the intent. A Return whose home
+        // had to be re-picked is re-keyed through `rekeys` (its identity is mover + destination).
+        private static bool ResolveActiveDefenceIntent(PlayerSetupData player, WorldSnapshot snap,
+            MissionIntent intent, List<(MissionIntentKey Old, MissionIntent Intent)> rekeys)
         {
             ActiveDefenceIntent defence = intent.ActiveDefence;
             ArmySnapshot actor = snap?.Self?.Armies?.FirstOrDefault(a => a != null
                 && defence?.PrimaryArmyId == a.ArmyId && a.IsStructuralRaidActor);
-            ActiveDefenceObjective objective = defence == null ? null
-                : ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
-            if (defence != null && defence.Phase == ActiveDefencePhase.Intercept
-                && objective == null && ProtectedBaseWasLost(snap, defence))
-            {
-                // Ownership is authoritative on the fresh Self snapshot. Treat a lost Base like a
-                // completed/invalidated protection objective so the actor returns or is released;
-                // never keep pursuing on behalf of foreign infrastructure.
-                defence.ObjectiveCompleted = true;
-            }
             if (defence == null || actor == null || ShouldReap(intent, snap?.TurnNumber ?? 0))
             {
-                TryResumePreemptedOffensive(state, defence, "defence_ended");
-                return DefenceResolution.Retire;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END {intent.IntentKey} "
+                    + $"reason={(defence == null ? "no_payload" : actor == null ? "actor_lost" : "reaped")}");
+                return false;
             }
-            if (defence.Phase == ActiveDefencePhase.Reinforcement
-                && (!defence.SupportArmyId.HasValue || !snap.Self.Armies.Any(a => a != null
-                    && a.ArmyId == defence.SupportArmyId.Value && a.IsStructuralRaidActor)))
-            {
-                // The convoy is gone: the operation falls back to its primary alone; the
-                // planner re-plans the intercept (or rejects it) from there.
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=SUPPORT_LOST "
-                    + $"enemy={defence.EnemyArmyId} support={defence.SupportArmyId}");
-                defence.SupportArmyId = null;
-                defence.Phase = ActiveDefencePhase.Intercept;
-            }
+
             if (defence.Phase == ActiveDefencePhase.Return)
             {
-                // The same walk-home rule every lifecycle leg uses: a home base that was lost or
+                // The same walk-home rule every lifecycle leg uses: a destination that was lost or
                 // became unreachable is re-picked, never walked to.
                 HexCoord? home = KeepOrReselectHome(snap, player, defence.PrimaryArmyId,
-                    defence.ReturnHex, out _);
+                    defence.ReturnHex, out bool reselected);
                 if (!home.HasValue || actor.Hex.Equals(home.Value))
-                    return DefenceResolution.Retire;
-                defence.ReturnHex = home;
-                return DefenceResolution.Keep;
+                {
+                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=ARRIVED "
+                        + $"actor={actor.ArmyId} claim released");
+                    return false;
+                }
+                if (reselected)
+                {
+                    MissionIntentKey oldKey = intent.IntentKey;
+                    defence.ReturnHex = home;
+                    intent.IntentKey = MissionIntentKey.For(intent);
+                    intent.StallTurns = 0;
+                    if (!oldKey.Equals(intent.IntentKey))
+                        rekeys.Add((oldKey, intent));
+                }
+                ResumeTransientSuspension(intent);
+                return true;
             }
+
+            ActiveDefenceObjective objective =
+                ActiveDefenceObjectiveEvaluator.ForTrackedEnemy(snap, defence.EnemyArmyId);
             if (objective == null)
             {
-                if (defence.ObjectiveCompleted)
-                {
-                    if (RequiresLocalBaseStabilization(snap, defence, actor))
-                    {
-                        // Releasing the mission claim is the hand-off to the existing same-hex
-                        // Housekeeping owner. It may package eligible members into the garrison;
-                        // Continuity never mutates rosters itself.
-                        AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=STABILIZE_RELEASE "
-                            + $"actor={actor.ArmyId} base=({actor.Hex.Q},{actor.Hex.R})");
-                        return DefenceResolution.Retire;
-                    }
-                    defence.ObjectiveCompleted = false;
-                    return BeginDefenceReturn(snap, player, intent, defence, actor)
-                        ? DefenceResolution.Keep : DefenceResolution.Retire;
-                }
-                // No listed objective means no Intercept proposal at all: the planner
-                // (AppendActiveDefence) proposes only from ActiveDefenceObjectiveEvaluator.Enumerate.
-                // Keeping the intent Active here only held its actor claimed — and a borrowed
-                // offensive suspended — with nothing moving it, until it was reaped with a cooldown
-                // on this enemy. The intercept ends now: the borrowed offensive resumes, otherwise
-                // the actor returns home. A threat that is listed again is a fresh objective.
+                // No listed objective means no Intercept proposal at all. The intercept simply
+                // ends; a threat that is listed again is a fresh objective.
                 EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                     c?.Army != null && c.Army.ArmyId == defence.EnemyArmyId
                     && c.Position.HasValue);
@@ -100,11 +74,20 @@ namespace Game.Ai.V2
                     + $"enemy={defence.EnemyArmyId} reason="
                     + (handedOffToAttack ? "enemy_on_known_foreign_structure"
                         : contact == null ? "honest_contact_lost" : "threat_no_longer_listed"));
-                if (TryResumePreemptedOffensive(state, defence, "threat_ended"))
-                    return DefenceResolution.Retire;
-                return BeginDefenceReturn(snap, player, intent, defence, actor)
-                    ? DefenceResolution.Keep : DefenceResolution.Retire;
+                return false;
             }
+            // The actor must still be able to win this fight on its own roster (the continuation
+            // floor it was admitted under). A weakened defender is released, never reinforced:
+            // the fresh replan re-assesses the threat (another responder, regroup or retreat).
+            if (!GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
+                    ActiveDefenceObjectiveEvaluator.Opposition(snap, defence.EnemyArmyId),
+                    actor.ArmyId, GroundCombatAdmissionPolicy.ContinuationWinChanceFloor).Feasible)
+            {
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=END "
+                    + $"enemy={defence.EnemyArmyId} actor={actor.ArmyId} reason=actor_no_longer_capable");
+                return false;
+            }
+
             ActiveDefenceMissionTarget current = objective.Target;
             defence.LastKnownHex = current.LastKnownHex;
             defence.LastObservedTurn = current.LastObservedTurn;
@@ -114,99 +97,24 @@ namespace Game.Ai.V2
             defence.ProtectedAssetValue = current.ProtectedAssetValue;
             defence.ThreatSeverity = current.ThreatSeverity;
             defence.EstimatedEta = current.EstimatedEta;
-            if (intent.Status == IntentStatus.Suspended
-                && intent.Suspended != SuspendReason.ActiveDefencePreemption)
-            {
-                intent.Status = IntentStatus.Active;
-                intent.Suspended = SuspendReason.None;
-            }
-            return DefenceResolution.KeepIfActive;
-        }
-
-        // The ONE "resume exactly the offensive this defence preempted" edge. An offensive
-        // suspended for another reason (Siege, pool exhaustion) is not this defence's to revive.
-        // Returns true when it resumed one.
-        private static bool TryResumePreemptedOffensive(MissionIntentState state,
-            ActiveDefenceIntent defence, string reason)
-        {
-            if (defence?.SuspendedOffensiveIntentKey.HasValue != true
-                || !state.TryGet(defence.SuspendedOffensiveIntentKey.Value, out MissionIntent offensive)
-                || !IsOffensiveGroundCombatIntent(offensive)
-                || offensive.Suspended != SuspendReason.ActiveDefencePreemption)
-                return false;
-            offensive.Status = IntentStatus.Active;
-            offensive.Suspended = SuspendReason.None;
-            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME "
-                + $"offensive={offensive.IntentKey} reason={reason}");
+            ResumeTransientSuspension(intent);
             return true;
         }
-
-        // The ONE ended-intercept walk home. Audit F6 — a zero-value fallback exactly like a
-        // completed Raid's Return: no commitment protection, the actor competes in fresh
-        // allocation (ActorCommitments does not claim it). False when there is no own base to walk
-        // to or the actor already stands on it (the intent then simply ends).
-        private static bool BeginDefenceReturn(WorldSnapshot snap, PlayerSetupData player,
-            MissionIntent intent, ActiveDefenceIntent defence, ArmySnapshot actor)
-        {
-            HexCoord? home = SelectReturnBase(snap, player, defence.PrimaryArmyId);
-            if (!home.HasValue || actor.Hex.Equals(home.Value))
-                return false;
-            defence.Phase = ActiveDefencePhase.Return;
-            defence.ReturnHex = home;
-            intent.Funding = CommitmentTier.None;
-            intent.Status = IntentStatus.Active;
-            intent.Suspended = SuspendReason.None;
-            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RETURN "
-                + $"actor={actor.ArmyId} home=({home.Value.Q},{home.Value.R})");
-            return true;
-        }
-
-        // Snapshot-pure hand-off gate between ActiveDefence and the existing Housekeeping owner.
-        // Only a defender already standing on the protected, still-owned secondary Base is held
-        // locally; Continuity never drags a remote army there and never edits a garrison roster.
-        internal static bool RequiresLocalBaseStabilization(WorldSnapshot snap,
-            ActiveDefenceIntent defence, ArmySnapshot actor)
-        {
-            if (snap?.Self == null || defence == null || actor == null
-                || defence.ProtectedAssetKind != AssetKind.Base
-                || !actor.Hex.Equals(defence.ProtectedAssetHex)
-                || snap.Self.BaseHexes == null
-                || !snap.Self.BaseHexes.Contains(defence.ProtectedAssetHex))
-                return false;
-            int garrisonNonHeroes = snap.Self.Armies?
-                .Where(a => a != null && a.IsGarrison
-                    && a.Hex.Equals(defence.ProtectedAssetHex))
-                .Sum(a => a.Members?.Count ?? 0) ?? 0;
-            return garrisonNonHeroes < AiConfig.secureBaseMinNonHeroUnits
-                && (actor.Members?.Count ?? 0) > 0;
-        }
-
-        internal static bool ProtectedBaseWasLost(WorldSnapshot snap, ActiveDefenceIntent defence) =>
-            defence != null && defence.ProtectedAssetKind == AssetKind.Base
-            && (snap?.Self?.BaseHexes == null
-                || !snap.Self.BaseHexes.Contains(defence.ProtectedAssetHex));
 
         private static void CreateActiveDefenceIntent(MissionIntentState state,
             MissionTurnOutcome o, int turn)
         {
             ActiveDefenceMissionTarget t = o.ActiveDefenceTarget;
-            // A Reinforcement step is executed by the SUPPORT: the primary is the target's, never
-            // the mover. A convoy whose very first step already handed over goes straight on to
-            // Intercept.
-            bool reinforcing = t.Phase == ActiveDefencePhase.Reinforcement;
-            bool delivered = reinforcing && o.ReinforcementHandoffAttempted;
             var payload = new ActiveDefenceIntent
             {
-                Phase = delivered ? ActiveDefencePhase.Intercept : t.Phase,
+                Phase = t.Phase,
                 EnemyArmyId = t.EnemyArmyId,
                 LastKnownHex = t.LastKnownHex, LastObservedTurn = t.LastObservedTurn,
                 Confidence = t.Confidence, ProtectedAssetHex = t.ProtectedAssetHex,
                 ProtectedAssetKind = t.ProtectedAssetKind,
                 ProtectedAssetValue = t.ProtectedAssetValue,
                 ThreatSeverity = t.ThreatSeverity,
-                PrimaryArmyId = reinforcing ? t.PrimaryArmyId : o.MoverArmyId ?? t.PrimaryArmyId,
-                SupportArmyId = reinforcing && !delivered ? t.SupportArmyId : null,
-                SuspendedOffensiveIntentKey = t.SuspendedOffensiveIntentKey,
+                PrimaryArmyId = o.MoverArmyId ?? t.PrimaryArmyId,
                 ReturnHex = t.ReturnHex, ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,
             };
@@ -214,17 +122,15 @@ namespace Game.Ai.V2
                 CommitmentTier.Hard, payload);
             RetireReturnFallbacksForActor(state, payload.PrimaryArmyId,
                 "fresh ActiveDefence admitted");
+            if (payload.Phase == ActiveDefencePhase.Return)
+                // The army withdraws: an intercept it still held is over.
+                foreach (MissionIntent held in state.All.Where(i => i?.ActiveDefence != null
+                    && i.ActiveDefence.Phase == ActiveDefencePhase.Intercept
+                    && i.ActiveDefence.PrimaryArmyId == payload.PrimaryArmyId).ToList())
+                    state.Remove(held.IntentKey);
             state.Put(intent);
-            if (t.SuspendedOffensiveIntentKey.HasValue
-                && state.TryGet(t.SuspendedOffensiveIntentKey.Value, out MissionIntent offensive)
-                && IsOffensiveGroundCombatIntent(offensive)
-                && offensive.PreferredMoverArmyId == payload.PrimaryArmyId)
-            {
-                offensive.Status = IntentStatus.Suspended;
-                offensive.Suspended = SuspendReason.ActiveDefencePreemption;
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=SUSPEND offensive={offensive.IntentKey} actor={payload.PrimaryArmyId}");
-            }
-            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
+            AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=CREATE {intent.IntentKey} "
+                + $"phase={payload.Phase} enemy={t.EnemyArmyId} actor={payload.PrimaryArmyId}");
         }
     }
 }

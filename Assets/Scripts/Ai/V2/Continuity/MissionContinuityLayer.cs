@@ -361,8 +361,8 @@ namespace Game.Ai.V2
 
         // A transient suspension (the pool or a capability was unavailable on an earlier pass) is
         // re-tested on every ResolveActive pass: the planner only proposes Active intents, and
-        // AdvanceIntent / ShouldReap bound how long the retry may go on. Siege, EconomyLoan and
-        // ActiveDefencePreemption are owned by their own resume edges, never by this one.
+        // AdvanceIntent / ShouldReap bound how long the retry may go on. Siege and EconomyLoan
+        // are owned by their own resume edges, never by this one.
         private static void ResumeTransientSuspension(MissionIntent intent)
         {
             if (intent.Status == IntentStatus.Suspended
@@ -417,9 +417,7 @@ namespace Game.Ai.V2
             // Strike force — a Raid / ActiveDefence whose primary an Attack gather bought ends here.
             // The gather priced the abandoned operation into its own score
             // (GroundCombatDonorPolicy.BorrowableDonorApPrices) and won the allocation; the army now
-            // walks to the host and, after the handoff, home. Runs before the orphan repair below,
-            // so a Raid an ActiveDefence had borrowed is resumed (and, if its army is the one given
-            // away, retired by this same rule on the next pass).
+            // walks to the host and, after the handoff, home.
             var givenToGather = new HashSet<int>(state.All
                 .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
                     && i.Attack?.Phase == AttackMissionPhase.Gather)
@@ -435,31 +433,6 @@ namespace Game.Ai.V2
                 AiDebugLog.Write($"[AI][V2][Attack][Gather] continuity — {lender.IntentKey} retired: "
                     + $"its army #{lender.PreferredMoverArmyId} was given to an Attack gather "
                     + $"(abandoned value {lender.LastIntrinsicValue:0.00})");
-            }
-
-            // The same orphan repair for the Raid an ActiveDefence borrowed.
-            // Every ordinary ActiveDefence exit resumes its lender explicitly, but if the defending
-            // intent is gone without one of those exits having run (retired on another path, or its
-            // record dropped), the Raid would stay ActiveDefencePreemption-suspended forever while
-            // its army is free. Repair reuses the SAME suspend/resume state machine; it never
-            // resumes a Raid that a LIVE defence still borrows, so a raid can never be resumed
-            // twice into an active defence.
-            var liveBorrowedRaids = new HashSet<MissionIntentKey>(state.All
-                .Where(i => i?.Kind == MissionKind.ActiveDefence
-                    && i.ActiveDefence?.SuspendedOffensiveIntentKey.HasValue == true)
-                .Select(i => i.ActiveDefence.SuspendedOffensiveIntentKey.Value));
-            // ATK §49/§73 — the same repair covers every OFFENSIVE intent a defence may borrow
-            // from, not Raid alone, so a preempted Attack can never be stranded suspended while its
-            // army is free.
-            foreach (MissionIntent orphaned in state.All.Where(i => i != null
-                && IsOffensiveGroundCombatIntent(i) && i.Status == IntentStatus.Suspended
-                && i.Suspended == SuspendReason.ActiveDefencePreemption
-                && !liveBorrowedRaids.Contains(i.IntentKey)))
-            {
-                orphaned.Status = IntentStatus.Active;
-                orphaned.Suspended = SuspendReason.None;
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=RESUME "
-                    + $"offensive={orphaned.IntentKey} reason=orphan_repair");
             }
 
             // Spec §1 — foci currently owned by ground scout intents, so a re-focus never lands two
@@ -684,11 +657,9 @@ namespace Game.Ai.V2
                 }
                 if (intent.Kind == MissionKind.ActiveDefence)
                 {
-                    DefenceResolution resolution = ResolveActiveDefenceIntent(player, snap, state, intent);
-                    if (resolution == DefenceResolution.Retire)
+                    if (!ResolveActiveDefenceIntent(player, snap, intent, rekeys))
                         dead.Add(intent.IntentKey);
-                    else if (resolution == DefenceResolution.Keep
-                        || intent.Status == IntentStatus.Active)
+                    else if (intent.Status == IntentStatus.Active)
                         active.Add(intent);
                     continue;
                 }
@@ -1277,8 +1248,7 @@ namespace Game.Ai.V2
                 if (intent.Status == IntentStatus.Suspended
                     && (intent.Suspended == SuspendReason.Siege
                         || intent.Suspended == SuspendReason.CapabilityUnavailable
-                        || intent.Suspended == SuspendReason.EconomyLoan
-                        || intent.Suspended == SuspendReason.ActiveDefencePreemption)
+                        || intent.Suspended == SuspendReason.EconomyLoan)
                     && intent.Kind != MissionKind.Development)
                     continue;
 
@@ -1391,30 +1361,6 @@ namespace Game.Ai.V2
 
             if (o.Outcome == ExecutionOutcome.Completed && o.ObjectiveSatisfied)
             {
-                if (o.MissionKind == MissionKind.ActiveDefence && intent?.ActiveDefence != null)
-                {
-                    if (TryResumePreemptedOffensive(state, intent.ActiveDefence, "defence_completed"))
-                    {
-                        state.Remove(intent.IntentKey);
-                        return;
-                    }
-                    intent.ActiveDefence.ObjectiveCompleted = true;
-                    intent.Status = IntentStatus.Active;
-                    intent.Suspended = SuspendReason.None;
-                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=REANALYZE_STABILIZATION actor={intent.PreferredMoverArmyId}");
-                    return;
-                }
-                if (o.MissionKind == MissionKind.ActiveDefence && intent == null
-                    && o.HasActiveDefencePayload && o.MoverArmyId.HasValue
-                    && !o.ActiveDefenceTarget.SuspendedOffensiveIntentKey.HasValue)
-                {
-                    CreateActiveDefenceIntent(state, o, turn);
-                    if (state.TryGet(MissionIntentKey.ForActiveDefence(
-                            o.ActiveDefenceTarget.EnemyArmyId), out MissionIntent created)
-                        && created?.ActiveDefence != null)
-                        created.ActiveDefence.ObjectiveCompleted = true;
-                    return;
-                }
                 // Raid completion ends only the CURRENT neutral target, not the durable campaign.
                 // Keep (or create, when the first attack completed immediately) the operation so
                 // the next ResolveActive pass can re-orient the same primary onto another neutral
@@ -1626,13 +1572,6 @@ namespace Game.Ai.V2
                 intent.Raid.Phase = RaidMissionPhase.Reinforcement;
                 return true;
             }
-            if (intent.ActiveDefence != null
-                && GroundCombatLegs.ActiveDefenceLegOf(o) == ActiveDefencePhase.Reinforcement)
-            {
-                intent.ActiveDefence.SupportArmyId = null;
-                intent.ActiveDefence.Phase = ActiveDefencePhase.Intercept;
-                return true;
-            }
             AttackMissionTarget? leg = GroundCombatLegs.AttackLegOf(o);
             if (intent.Attack == null || !leg.HasValue)
                 return false;
@@ -1707,8 +1646,6 @@ namespace Game.Ai.V2
                 // army: like Raid's support legs above it must never overwrite the primary.
                 else if (!(intent.Attack != null && o.HasAttackPayload
                         && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase))
-                    && !(intent.ActiveDefence != null && o.HasActiveDefencePayload
-                        && o.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement)
                     && ((intent.Kind != MissionKind.Economy
                             && intent.Kind != MissionKind.Development)
                         || !intent.PreferredMoverArmyId.HasValue
@@ -1718,35 +1655,6 @@ namespace Game.Ai.V2
 
             if (o.HasScoutPayload && intent.Scout != null)
                 ApplyScoutPayload(intent.Scout, o);
-
-            // A multi-army response continues: the pinned primary still misses the gate, so the
-            // next gather support (AggressionMissionPlanner.TryAppendActiveDefenceReinforcement)
-            // walks in. Its transit step binds it as the operation's current support.
-            if (o.HasActiveDefencePayload && intent.ActiveDefence != null
-                && o.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement
-                && intent.ActiveDefence.Phase == ActiveDefencePhase.Intercept
-                && !o.ReinforcementHandoffAttempted && o.MadeProgress
-                && o.ActiveDefenceTarget.PrimaryArmyId == intent.ActiveDefence.PrimaryArmyId
-                && o.ActiveDefenceTarget.SupportArmyId.HasValue)
-            {
-                intent.ActiveDefence.SupportArmyId = o.ActiveDefenceTarget.SupportArmyId;
-                intent.ActiveDefence.Phase = ActiveDefencePhase.Reinforcement;
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=NEXT_SUPPORT "
-                    + $"enemy={intent.ActiveDefence.EnemyArmyId} primary={intent.ActiveDefence.PrimaryArmyId} "
-                    + $"support={intent.ActiveDefence.SupportArmyId}");
-            }
-
-            // An attempted handoff (full, partial or rejected) ends the ActiveDefence convoy: the
-            // reinforced primary intercepts; a leftover support container is simply free again.
-            if (o.HasActiveDefencePayload && intent.ActiveDefence != null
-                && o.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement
-                && o.ReinforcementHandoffAttempted)
-            {
-                intent.ActiveDefence.SupportArmyId = null;
-                intent.ActiveDefence.Phase = ActiveDefencePhase.Intercept;
-                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=REINFORCED "
-                    + $"enemy={intent.ActiveDefence.EnemyArmyId} primary={intent.ActiveDefence.PrimaryArmyId}");
-            }
 
             if (o.HasAttackPayload && intent.Attack != null)
             {
@@ -2028,54 +1936,10 @@ namespace Game.Ai.V2
                 + $"mover #{o.MoverArmyId}, {o.StepsMoved} step(s))");
         }
 
-        // ATK §49 — the ONE predicate for "this intent is an offensive ground-combat operation an
-        // ActiveDefence may preempt and later resume". Raid today; Attack becomes eligible by
-        // adding its payload check here, so the five preempt/resume sites above never grow a
-        // per-lane branch and no second suspended-key field is needed.
-        internal static bool IsOffensiveGroundCombatIntent(MissionIntent i) =>
-            i != null
-            && ((i.Kind == MissionKind.Raid && i.Raid != null)
-                || (i.Kind == MissionKind.Attack && i.Attack != null));
-
-        // ATK §49/§73 — the ONE answer to "this offensive operation is marching on its objective
-        // right now, with actor X, toward hex Y". ActiveDefence's preemption arithmetic (how far
-        // off its route would borrowing this army drag it) needs exactly those two facts and must
-        // not care which lane owns them: a Raid's own target hex and an Attack's target-structure hex
-        // are the same kind of fact. A leg that is reinforcing, returning or recovering is NOT
-        // borrowable here — its actor is already mid-handoff or walking home.
-        internal static bool TryOffensiveAssaultOperation(MissionIntent i, out int primaryArmyId,
-            out HexCoord operationHex)
-        {
-            primaryArmyId = 0;
-            operationHex = default;
-            if (i == null || i.Status != IntentStatus.Active)
-                return false;
-            RaidIntent raid = i.Raid;
-            if (raid != null)
-            {
-                if (raid.Phase != RaidMissionPhase.Assault || !raid.PrimaryArmyId.HasValue)
-                    return false;
-                primaryArmyId = raid.PrimaryArmyId.Value;
-                operationHex = raid.LastKnownHex;
-                return true;
-            }
-            AttackIntent attack = i.Attack;
-            if (attack != null)
-            {
-                if (attack.Phase != AttackMissionPhase.Assault || !attack.PrimaryArmyId.HasValue
-                    || !attack.Target.HasValue)
-                    return false;
-                primaryArmyId = attack.PrimaryArmyId.Value;
-                operationHex = attack.Target.Hex;
-                return true;
-            }
-            return false;
-        }
-
-        // The zero-value walk-home legs that leave their actor to fresh global allocation: a
-        // completed Raid target's Return and (audit F6) an ActiveDefence Return. When that actor
-        // is bound to a new ground-combat operation the fallback leg is retired, never kept as a
-        // second owner of the same army.
+        // The zero-value walk-home leg that leaves its actor to fresh global allocation: a
+        // completed Raid target's Return. When that actor is bound to a new ground-combat
+        // operation the fallback leg is retired, never kept as a second owner of the same army.
+        // (An ActiveDefence Return is a real, claimed withdrawal — not a fallback.)
         private static HashSet<int> AttackGatherUnavailable(MissionIntentState state,
             ISet<int> claims)
         {
@@ -2085,9 +1949,6 @@ namespace Game.Ai.V2
                 if (i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
                     && i.Raid.PrimaryArmyId.HasValue)
                     unavailable.Add(i.Raid.PrimaryArmyId.Value);
-                if (i?.ActiveDefence != null && i.ActiveDefence.Phase == ActiveDefencePhase.Return
-                    && i.ActiveDefence.PrimaryArmyId.HasValue)
-                    unavailable.Add(i.ActiveDefence.PrimaryArmyId.Value);
             }
             return unavailable;
         }
@@ -2098,10 +1959,8 @@ namespace Game.Ai.V2
             if (state == null || !actorId.HasValue)
                 return;
             foreach (MissionIntent fallback in state.All.Where(i =>
-                (i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
-                    && i.Raid.PrimaryArmyId == actorId)
-                || (i?.ActiveDefence != null && i.ActiveDefence.Phase == ActiveDefencePhase.Return
-                    && i.ActiveDefence.PrimaryArmyId == actorId)).ToList())
+                i?.Raid != null && i.Raid.CompletedTargetAwaitingFreshDecision
+                    && i.Raid.PrimaryArmyId == actorId).ToList())
             {
                 state.Remove(fallback.IntentKey);
                 AiDebugLog.Write($"[AI][V2][{fallback.Kind}] {fallback.IntentKey} return fallback retired — "

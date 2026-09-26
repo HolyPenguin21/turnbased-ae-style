@@ -19,17 +19,16 @@ namespace Game.Ai.V2
         // Does this leg carry Continuity-pinned actors that every OTHER ground-combat proposal in
         // the same batch solve must treat as taken? `primary` / `support` are those actors.
         // Raid: every non-Assault leg (its AirSupport aircraft is deliberately not a ground pin).
-        // Attack: every non-Assault leg. ActiveDefence: the Return leg's primary.
+        // Attack: every non-Assault leg. ActiveDefence: the Return leg's own mover.
         internal static bool PinsActors(MissionProposal mission, out int? primary, out int? support)
         {
             primary = null;
             support = null;
             if (mission?.Target is ActiveDefenceMissionTarget ad)
             {
-                if (ad.Phase == ActiveDefencePhase.Intercept || !ad.PrimaryArmyId.HasValue)
+                if (ad.Phase != ActiveDefencePhase.Return || !ad.PrimaryArmyId.HasValue)
                     return false;
                 primary = ad.PrimaryArmyId;
-                support = ad.Phase == ActiveDefencePhase.Reinforcement ? ad.SupportArmyId : null;
                 return true;
             }
             if (mission?.Kind == MissionKind.Attack && mission.Target is AttackMissionTarget at)
@@ -86,8 +85,8 @@ namespace Game.Ai.V2
                     || (attack.Phase == AttackMissionPhase.RecoveryReturn
                         && attack.PrimaryArmyId == armyId);
             if (mission?.Target is ActiveDefenceMissionTarget defence)
-                return defence.Phase == ActiveDefencePhase.Reinforcement
-                    && defence.SupportArmyId == armyId;
+                return defence.Phase == ActiveDefencePhase.Return
+                    && defence.PrimaryArmyId == armyId;
             return false;
         }
 
@@ -110,11 +109,6 @@ namespace Game.Ai.V2
             : o.HasRaidPayload ? o.RaidPhase
             : o.Proposal?.Target is RaidMissionTarget rt ? rt.Phase : (RaidMissionPhase?)null;
 
-        internal static ActiveDefencePhase? ActiveDefenceLegOf(MissionTurnOutcome o) =>
-            o == null || o.MissionKind != MissionKind.ActiveDefence ? (ActiveDefencePhase?)null
-            : o.HasActiveDefencePayload ? o.ActiveDefenceTarget.Phase
-            : o.Proposal?.Target is ActiveDefenceMissionTarget ad ? ad.Phase : (ActiveDefencePhase?)null;
-
         internal static AttackMissionTarget? AttackLegOf(MissionTurnOutcome o) =>
             o == null || o.MissionKind != MissionKind.Attack ? (AttackMissionTarget?)null
             : o.HasAttackPayload ? o.AttackTarget
@@ -122,8 +116,8 @@ namespace Game.Ai.V2
 
         // THE "support-local" rule, one answer for every ground-combat lane: a leg moved by a
         // SUPPORT actor of the operation (Raid convoy / support walk home / wing; every Attack
-        // support leg) that loses its mover, its primary or its target never ends the operation.
-        // The ledger reports it Blocked and ResolveActive's next pass cleans up only that support
+        // support leg; ActiveDefence has none) that loses its mover, its primary or its target
+        // never ends the operation. The ledger reports it Blocked and ResolveActive's next pass cleans up only that support
         // (or, for a lost primary, retires the operation itself).
         internal static bool IsSupportLeg(MissionTurnOutcome o)
         {
@@ -133,9 +127,7 @@ namespace Game.Ai.V2
                     || raid.Value == RaidMissionPhase.Reinforcement
                     || raid.Value == RaidMissionPhase.SupportReturn;
             AttackMissionTarget? attack = AttackLegOf(o);
-            if (attack.HasValue)
-                return IsAttackSupportLeg(attack.Value.Phase);
-            return ActiveDefenceLegOf(o) == ActiveDefencePhase.Reinforcement;
+            return attack.HasValue && IsAttackSupportLeg(attack.Value.Phase);
         }
 
         internal static bool IsAttackSideLeg(AttackMissionPhase phase) =>
@@ -181,10 +173,6 @@ namespace Game.Ai.V2
                 && (raid.Phase == RaidMissionPhase.Reinforcement
                     || raid.Phase == RaidMissionPhase.SupportReturn))
                 yield return raid.SupportArmyId.Value;
-            ActiveDefenceIntent defence = intent?.ActiveDefence;
-            if (defence != null && defence.Phase == ActiveDefencePhase.Reinforcement
-                && defence.SupportArmyId.HasValue)
-                yield return defence.SupportArmyId.Value;
             AttackIntent attack = intent?.Attack;
             if (attack == null)
                 yield break;

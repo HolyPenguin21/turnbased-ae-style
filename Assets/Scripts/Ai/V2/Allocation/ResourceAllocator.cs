@@ -182,6 +182,16 @@ namespace Game.Ai.V2
             }
         }
 
+        // The same identity MissionIntentKey.ForActiveDefence encodes: an Intercept is its enemy
+        // army; a Return is its own mover and destination, so several armies withdrawing from one
+        // threat are several legs, never one duplicated key.
+        private static StableMissionKey ForActiveDefence(ActiveDefenceMissionTarget ad) =>
+            ad.Phase == ActiveDefencePhase.Return
+                ? new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Return,
+                    ad.PrimaryArmyId ?? 0, ad.ReturnHex?.Q ?? 0, ad.ReturnHex?.R ?? 0)
+                : new StableMissionKey(MissionKind.ActiveDefence, (int)ActiveDefencePhase.Intercept,
+                    ad.EnemyArmyId, 0, 0);
+
         public static StableMissionKey For(MissionProposal m)
         {
             if (m != null && m.Kind == MissionKind.Scout && m.Target is ScoutMissionTarget t)
@@ -199,8 +209,7 @@ namespace Game.Ai.V2
                 return ForAttack(at);
             if (m != null && m.Kind == MissionKind.ActiveDefence
                 && m.Target is ActiveDefenceMissionTarget ad)
-                return new StableMissionKey(MissionKind.ActiveDefence, (int)ad.Phase,
-                    ad.EnemyArmyId, 0, 0);
+                return ForActiveDefence(ad);
             if (m != null && m.Kind == MissionKind.Economy && m.Target is EconomyMissionTarget et)
                 return ForEconomy(et.Kind, MissionIntentKey.EconomyObjectiveId(et.Kind,
                     et.BuilderArmyId, et.CollectorArmyId, et.ResourceType), et.TargetHex);
@@ -242,7 +251,9 @@ namespace Game.Ai.V2
                             ? $"Attack(Base@{Q},{R}#P{TargetId})"
                             : $"Attack({(AttackMissionPhase)SubKind} #{TargetId} {Q},{R})")
                     : Kind == MissionKind.ActiveDefence
-                        ? $"ActiveDefence({(ActiveDefencePhase)SubKind} #{TargetId})"
+                        ? (SubKind == (int)ActiveDefencePhase.Return
+                            ? $"ActiveDefence(Return #{TargetId} {Q},{R})"
+                            : $"ActiveDefence(Intercept #{TargetId})")
                     : Kind == MissionKind.Economy
                         ? $"Economy({(EconomyTaskKind)SubKind} {Q},{R} res#{TargetId})"
                         : Kind == MissionKind.Development
@@ -385,10 +396,6 @@ namespace Game.Ai.V2
 
     internal static class ResourceAllocator
     {
-        internal static bool ActiveDefencePreemptsRaid(float activeEffectiveValue,
-            float raidEffectiveValue, float switchingCost, float epsilon) =>
-            activeEffectiveValue > raidEffectiveValue + switchingCost + epsilon;
-
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
             ApBudgetLedger ledger = null, PlayerRoot root = null, AiTurnContext ctx = null)
@@ -590,45 +597,6 @@ namespace Game.Ai.V2
             {
                 MissionProposal m = c?.Mission;
                 if (m == null) continue;
-                // Active Defence may interrupt only the exact offensive Assault commitment (Raid or
-                // Attack — ATK §49/§73, MissionContinuityLayer.TryOffensiveAssaultOperation) whose
-                // physical primary its borrow proposal names. The comparison uses the global
-                // EffectiveValue scale plus the commitment's real switching cost; no family-local
-                // bonus leaks into this decision. A Raid Assault leg names its primary through
-                // PreferredMoverArmyId (AggressionObjective.ToTarget leaves PrimaryArmyId unset).
-                MissionProposal defencePreemptor = null;
-                int? offensivePrimary = m.Target is RaidMissionTarget raid
-                        && raid.Phase == RaidMissionPhase.Assault
-                    ? raid.PrimaryArmyId ?? m.PreferredMoverArmyId
-                    : m.Target is AttackMissionTarget attack
-                        && attack.Phase == AttackMissionPhase.Assault
-                        ? attack.PrimaryArmyId
-                        : null;
-                if ((m.Kind == MissionKind.Raid || m.Kind == MissionKind.Attack)
-                    && offensivePrimary.HasValue)
-                {
-                    defencePreemptor = _missions.FirstOrDefault(candidate =>
-                        candidate?.Kind == MissionKind.ActiveDefence
-                        && candidate.Target is ActiveDefenceMissionTarget defence
-                        && defence.SuspendedOffensiveIntentKey.HasValue
-                        && defence.PrimaryArmyId == offensivePrimary
-                        && !_rejectedThisTurn.Contains(StableMissionKey.For(candidate))
-                        && !_state.OnCooldown(StableMissionKey.For(candidate), turn)
-                        && ResourceAllocator.ActiveDefencePreemptsRaid(candidate.EffectiveValue,
-                            m.EffectiveValue, c.SwitchingCost, eps));
-                }
-                if (defencePreemptor != null)
-                {
-                    alloc.Deferred.Add(new DeferredEntry
-                    {
-                        Mission = m, Reason = DeferReason.MissionConflict,
-                    });
-                    AiDebugLog.Write($"[AI][V2][ActiveDefence][Preemption] decision=PREEMPT "
-                        + $"raid={StableMissionKey.For(m)} active={StableMissionKey.For(defencePreemptor)} "
-                        + $"activeValue={defencePreemptor.EffectiveValue:0.00} "
-                        + $"raidThreshold={(m.EffectiveValue + c.SwitchingCost):0.00}");
-                    continue;
-                }
                 StableMissionKey ckey = StableMissionKey.For(m);
                 if (_lockedClaims.ContainsKey(ckey) || _rejectedThisTurn.Contains(ckey) || _state.OnCooldown(ckey, turn))
                     continue;

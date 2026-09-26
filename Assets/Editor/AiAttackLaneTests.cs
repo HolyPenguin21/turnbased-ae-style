@@ -449,15 +449,6 @@ namespace Game.EditorTests
                 "no strike this turn leaves the operation free to take one");
         }
 
-        // ---- §49/§73 Attack is preemptable by ActiveDefence ------------------------------
-
-        [Test]
-        public void AttackCountsAsAnOffensiveOperationADefenceMayBorrowFrom()
-        {
-            Assert.That(MissionContinuityLayer.IsOffensiveGroundCombatIntent(
-                    AttackIntent(AttackMissionPhase.Assault, 7)), Is.True);
-        }
-
         // ---- ATK review P0-1 — the per-cycle provisioning key is per OPERATION ------------
 
         // Every Attack proposal used to fall through StableMissionKey.For onto one fallback key.
@@ -548,26 +539,6 @@ namespace Game.EditorTests
             Assert.That(proposals.Exists(p => p.Target is AttackMissionTarget t
                     && t.Phase == AttackMissionPhase.Reinforcement), Is.False,
                 "asking for a NEW capability is the Demand layer's decision, not the planner's");
-        }
-
-        // ---- ATK review P1-4 — ActiveDefence may borrow an Attack primary -----------------
-
-        [Test]
-        public void OffensiveAssaultOperation_CoversBothOffensiveLanes()
-        {
-            Assert.That(MissionContinuityLayer.TryOffensiveAssaultOperation(
-                    AttackIntent(AttackMissionPhase.Assault, 7), out int primary,
-                    out HexCoord hex), Is.True);
-            Assert.That(primary, Is.EqualTo(7));
-            Assert.That(hex, Is.EqualTo(RedBase), "the site is the operation's own hex");
-
-            Assert.That(MissionContinuityLayer.TryOffensiveAssaultOperation(
-                    AttackIntent(AttackMissionPhase.Reinforcement, 7), out _, out _), Is.False,
-                "a leg mid-handoff is not borrowable");
-            Assert.That(MissionContinuityLayer.TryOffensiveAssaultOperation(
-                    AttackIntent(AttackMissionPhase.RecoveryReturn, 7, recoveryBase: OurBase),
-                    out _, out _), Is.False,
-                "an army already walking home is not borrowable");
         }
 
         // ---- ATK review P2-5/P2-6 — Attack rides the Aggression lane/axis and pool --------

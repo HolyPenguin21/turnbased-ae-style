@@ -578,12 +578,6 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement)
-            {
-                yield return RunActiveDefenceReinforcementStep(player, ctx, pm, result, army);
-                yield break;
-            }
-
             int enemyId = pm.ActiveDefenceTarget.EnemyArmyId;
             // The canonical sighting store below is the ONLY admissible source of strategic
             // knowledge about this enemy — never a global ArmyRegistry sweep, which would let an
@@ -1067,89 +1061,6 @@ namespace Game.Ai.V2
         // `commandOpposition` (optional, the lane's fight) — when given, the support's hero may be
         // handed over to lead the primary (GroundCombatReinforcement.CommandHandover), in the same
         // atomic transfer as the bodies its Command makes room for.
-        // ActiveDefence Reinforcement — the same two shared primitives the Raid and Attack convoys
-        // run: exactly ONE transit step of the support toward the primary, or (once on its hex)
-        // exactly ONE atomic roster handoff with no movement in the same step.
-        private static IEnumerator RunActiveDefenceReinforcementStep(PlayerSetupData player,
-            AiTurnContext ctx, ProvisionedMission pm, ExecutionResult result, ArmyData support)
-        {
-            ActiveDefenceMissionTarget target = pm.ActiveDefenceTarget;
-            ArmyData primary = target.PrimaryArmyId.HasValue
-                ? AiV2Util.ResolveArmy(player, target.PrimaryArmyId.Value) : null;
-            if (primary == null || primary.Owner != player || primary.Members.Count == 0)
-            {
-                result.StopReason = ExecutionStopReason.TargetInvalidated;
-                result.NeedsReplan = true;
-                yield break;
-            }
-            HexCoord rendezvous = primary.Hex;
-            pm.ExecutionHex = rendezvous;
-            result.ActualActorArmyId = pm.MoverArmyId;
-
-            if (!support.Hex.Equals(rendezvous))
-            {
-                var leg = new GroundLegStepResult();
-                yield return GroundCombatLegStep.Transit(player, ctx, support, rendezvous,
-                    $"V2 active defence — reinforcement convoy to primary #{primary.Id}", leg);
-                if (leg.Blocked.HasValue)
-                {
-                    result.StopReason = leg.Blocked.Value;
-                    result.NeedsReplan = leg.NeedsReplan;
-                    yield break;
-                }
-                support = leg.Army;
-                if (leg.Moved) result.StepsMoved++;
-                result.FinalHex = leg.EndHex;
-                if (leg.BattleOccurred)
-                {
-                    result.CombatChanged = true;
-                    result.StopReason = ExecutionStopReason.BattleStarted;
-                    yield break;
-                }
-                if (leg.HexEventOccurred) { result.StopReason = ExecutionStopReason.HexEventStarted; yield break; }
-                if (support == null)
-                {
-                    result.StopReason = ExecutionStopReason.MoverLost;
-                    result.NeedsReplan = true;
-                    yield break;
-                }
-                // A transfer is a SEPARATE step: never move and hand off in the same one.
-                result.StopReason = leg.Moved ? ExecutionStopReason.StepCompleted
-                    : ExecutionStopReason.MoveRejected;
-                yield break;
-            }
-
-            result.ReinforcementHandoffAttempted = true;
-            // The same fight the gather planned and the leg was provisioned on (command handover
-            // included), read from honest memory of the enemy army.
-            AiMapMemory.KnownEnemySighting? enemy = FindRaidSighting(player, target.EnemyArmyId);
-            IReadOnlyList<WorthIt.DefendingArmy> opposition = enemy.HasValue
-                ? new[] { new WorthIt.DefendingArmy(enemy.Value.Defenders, enemy.Value.Commander) }
-                : null;
-            bool handoffOk = ApplyReinforcementHandoff(player, ctx, pm, support, primary,
-                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
-                opposition);
-            AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — active defence "
-                + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
-                + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
-                + $"{(wasSwap ? $"displaced={displacedUnitName} " : "")}{detail}");
-            if (transferred > 0)
-            {
-                result.CombatChanged = true;
-                V2StateVersion.Bump();
-                StrategicInterruptRegistry.Mark(player, ctx.TurnNumber,
-                    StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
-                    actorIds: new[] { primary.Id, support.Id });
-            }
-            // The RENDEZVOUS is satisfied, the DEFENCE is not: the enemy is still to be intercepted.
-            // DurableRoleContinues makes the ledger classify this as a ProductiveStop, and
-            // Continuity advances Reinforcement -> Intercept with the original primary.
-            result.ReachedGoal = handoffOk;
-            result.DurableRoleContinues = handoffOk;
-            result.StopReason = handoffOk ? ExecutionStopReason.ReachedGoal
-                : ExecutionStopReason.MoveRejected;
-        }
-
         internal static bool ApplyReinforcementHandoff(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ArmyData support, ArmyData primary,
             out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
