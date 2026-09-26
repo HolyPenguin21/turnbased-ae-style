@@ -279,8 +279,7 @@ namespace Game.Ai.V2
                 citadel = null;
             List<ArmySnapshot> gatherable = !citadel.HasValue ? new List<ArmySnapshot>()
                 : usable.Where(a => a.Hex.Equals(citadel.Value)
-                    || a.ReachableOwnBaseHexes == null || a.ReachableOwnBaseHexes.Count == 0
-                    || a.ReachableOwnBaseHexes.Contains(citadel.Value)).ToList();
+                    || a.ReachableOwnBaseHexes?.Contains(citadel.Value) == true).ToList();
 
             if (GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
                 >= response.RequiredPower)
@@ -343,11 +342,6 @@ namespace Game.Ai.V2
                     return false;
             return true;
         }
-
-        internal static bool ShouldStopPursuit(bool hasListedThreat, bool movingAway,
-            bool homeDistanceAtFullNegative, bool activeStillBeatsAlternative) =>
-            !hasListedThreat && movingAway && homeDistanceAtFullNegative
-            && !activeStillBeatsAlternative;
 
         // `projectedActivationAp` — the activation AP of the roster the assembly plan will really
         // field, when the caller has that projection (GroundCombatAssemblyPlanner is its one
