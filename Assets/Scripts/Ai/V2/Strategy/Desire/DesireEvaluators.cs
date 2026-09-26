@@ -40,17 +40,9 @@ namespace Game.Ai.V2
     //  The frozen IntelAge snapshot is captured during WorldAnalysis and therefore cannot change
     //  retroactively while the operational phase is moving scouts one hex at a time.
     //
-    //  AGGRESSION is ONE axis with TWO internal drivers, combined by max():
-    //    raidOpportunity — "a profitable target I can take right now" (opportunity + surplus +
-    //                      relativeEdge + momentum).  `opportunity` comes from the shared
-    //                      CombatOpportunityAnalyzer — never a private aggression-only estimator.
-    //    warPressure     — "economy secure and free force available against a KNOWN target"
-    //                      (surplus + ecoGate + relativeEdge). Military-potential saturation is
-    //                      Attack-only intrinsic value in AttackObjectiveEvaluator.
-    //    raw = knownTargetGate * max(raidOpportunity, warPressure)
-    //          * (UnderSiege ? aggSiegeDamp : 1).
-    //    Military readiness without a known raid target is NOT aggression; in the blind opening it
-    //    must leave budget to Recon so a neutral/enemy target can actually be discovered first.
+    //  AGGRESSION is one strategic axis. Its desire reads broad military readiness and the
+    //  existing general threat scalar, never the merit of a Raid, ActiveDefence or Attack task.
+    //  Their concrete values are compared only by TaskScore after the common Radar scale.
     //
     //  The breakdown (DesireBreakdown) is returned alongside the vector so MissionLayer picks the
     //  RIGHT mission from it (exploration -> VisitHex, surveillance -> watch a stale zone,
@@ -78,21 +70,8 @@ namespace Game.Ai.V2
         public float ReconExplorePressure;
         public float ReconRefreshPressure;
 
-        public float AggRaidOpportunity;
-        // ATK §37 — an OPERATIONAL Attack lane pressure inside the existing Aggression axis, for
-        // diagnostics and for the offensive gate below. Explicitly not a new Radar axis: Radar
-        // still normalises exactly the same four DesireAxis values it always has.
-        public float AggAttackPressure;
-        // The normalised canonical TaskScore of the best currently-known Attack objective, and how
-        // many such objectives exist. Both are plain world facts carried for the gate and the log.
-        public float AggBestAttackOpportunity;
-        public int AggAttackTargetCount;
-        public float AggActiveDefencePressure;
-        public float AggWarPressure;
-        public float AggOpportunity;
         public float AggSurplus;
         public float AggRelativeEdge;
-        public float AggMomentum;
 
         public CombatOpportunity BestOpportunity = CombatOpportunity.None;
         public CombatOpportunityReport OpportunityReport = new CombatOpportunityReport();
@@ -128,18 +107,7 @@ namespace Game.Ai.V2
     public sealed class AiRadarState
     {
         public readonly Dictionary<DesireAxis, float> Smoothed = new Dictionary<DesireAxis, float>();
-        public float PrevOwnPower;
-        public float EnemyLossPulse;
-        public float OwnLossPulse;
         public int LastTurn = -1;
-        public List<ObservedContact> PrevObservedEnemies = new List<ObservedContact>();
-
-        public struct ObservedContact
-        {
-            public PlayerSetupData Owner;
-            public HexCoord Hex;
-            public float Power;
-        }
     }
 
     public static class AiRadarStateRegistry
@@ -181,13 +149,6 @@ namespace Game.Ai.V2
 
             // Reaction refreshes objective facts but never advances Radar twice in one turn.
             bool firstEvaluationThisTurn = state.LastTurn != snapshot.TurnNumber;
-            float enemyDropFrac, ownDropFrac;
-            if (firstEvaluationThisTurn)
-                UpdateLossPulses(snapshot, state, out enemyDropFrac, out ownDropFrac);
-            else
-                enemyDropFrac = ownDropFrac = 0f;
-            float momentum = Mathf.Clamp01(0.5f + 0.5f * state.EnemyLossPulse - 0.5f * state.OwnLossPulse);
-
             float exploration = ReconExploration(snapshot);
             float surveillance = ReconSurveillance(snapshot);
             float blindness = ReconEnemyBlindness(snapshot);
@@ -205,11 +166,6 @@ namespace Game.Ai.V2
             breakdown.ReconRefreshPressure = refreshPressure;
 
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
-            // Raid opportunity is computed only from neutral targets. Hostile field armies do not
-            // manufacture Raid pressure; their honest threat severity feeds ActiveDefence below,
-            // within this same Aggression axis.
-            float opportunity = opp.BestNeutralOpportunity.HasTarget
-                ? opp.BestNeutralOpportunity.OpportunityScore : 0f;
 
             ComputeSurplus(snapshot, out float requiredReserve, out float freePower);
             float surplus = Curves.Ramp(freePower / Mathf.Max(1f, snapshot.Self.TotalPower),
@@ -224,54 +180,14 @@ namespace Game.Ai.V2
             float ecoSecurity = snapshot.Economy != null ? snapshot.Economy.EconomicSecurity : 0.5f;
             float ecoGate = Mathf.Lerp(AiConfigV2.aggEcoGateLo, 1f, Mathf.Clamp01(ecoSecurity));
 
-            float raidOpportunity =
-                AiConfigV2.aggRaidOppWeightOpportunity * opportunity
-                + AiConfigV2.aggRaidOppWeightSurplus * surplus
-                + AiConfigV2.aggRaidOppWeightRelEdge * relativeEdge
-                + AiConfigV2.aggRaidOppWeightMomentum * momentum;
-            float warPressure =
-                AiConfigV2.aggWarWeightSurplus * surplus
-                + AiConfigV2.aggWarWeightEcoGate * ecoGate
-                + AiConfigV2.aggWarWeightRelEdge * relativeEdge;
+            float readiness = (surplus + ecoGate + relativeEdge) / 3f;
+            float strategicThreat = MilitaryThreat(snapshot, underSiege);
+            float rawAggression = Mathf.Clamp01(Mathf.Max(strategicThreat,
+                HasKnownCombatActivity(snapshot)
+                    ? readiness * (underSiege ? AiConfigV2.aggSiegeDamp : 1f) : 0f));
 
-            // ATK §36 — the offensive gate is no longer "a neutral target exists". A known hostile
-            // Base/Citadel or Facility (any Attack objective) is an equally real reason to want to be offensive, and while the gate
-            // was neutral-only the whole war half of Aggression could never fire on a map whose
-            // neutrals had all been cleared.
-            List<AttackObjective> attackObjectives = AttackObjectiveEvaluator.Enumerate(snapshot);
-            float attackOpportunity = BestAttackOpportunity(attackObjectives);
-            float attackPressure =
-                AiConfigV2.aggAttackWeightOpportunity * attackOpportunity
-                + AiConfigV2.aggAttackWeightWarPressure * warPressure
-                + AiConfigV2.aggAttackWeightSurplus * surplus
-                + AiConfigV2.aggAttackWeightRelEdge * relativeEdge;
-
-            bool hasKnownCombatTarget = HasOffensiveTarget(opp, attackObjectives);
-            float offensivePressure = hasKnownCombatTarget
-                ? Mathf.Clamp01(Mathf.Max(raidOpportunity,
-                        Mathf.Max(warPressure, attackPressure)))
-                    * (underSiege ? AiConfigV2.aggSiegeDamp : 1f)
-                : 0f;
-            float activeDefencePressure = snapshot.Threat?.Threats?
-                .Where(t => t?.Contact?.Army != null
-                    && t.Contact.Army.ArmyId >= 0
-                    && t.Contact.Position.HasValue
-                    && t.Contact.Army.Owner != null
-                    && !t.Contact.Army.Owner.IsNeutral)
-                .Select(t => t.Severity).DefaultIfEmpty(0f).Max() ?? 0f;
-            float rawAggression = Mathf.Clamp01(Mathf.Max(offensivePressure,
-                activeDefencePressure));
-
-            breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
-            breakdown.AggAttackPressure = Mathf.Clamp01(attackPressure);
-            breakdown.AggBestAttackOpportunity = attackOpportunity;
-            breakdown.AggAttackTargetCount = attackObjectives.Count;
-            breakdown.AggActiveDefencePressure = Mathf.Clamp01(activeDefencePressure);
-            breakdown.AggWarPressure = Mathf.Clamp01(warPressure);
-            breakdown.AggOpportunity = opportunity;
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
-            breakdown.AggMomentum = momentum;
             breakdown.BestOpportunity = opp.Best;
             breakdown.OpportunityReport = opp;
             breakdown.RequiredDefensiveReserve = requiredReserve;
@@ -288,20 +204,17 @@ namespace Game.Ai.V2
             desires.Raw[DesireAxis.Economy] = Smooth(state, DesireAxis.Economy, rawEconomy, firstEvaluationThisTurn);
             desires.Raw[DesireAxis.Development] = Smooth(state, DesireAxis.Development, rawDev, firstEvaluationThisTurn);
 
-            desires.MilitaryThreat = MilitaryThreat(snapshot, underSiege);
+            desires.MilitaryThreat = strategicThreat;
             desires.EconomicRunway = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(ecoSecurity));
 
             if (firstEvaluationThisTurn)
             {
-                state.PrevOwnPower = snapshot.Self.TotalPower;
-                state.PrevObservedEnemies = CurrentObservedEnemies(snapshot);
                 state.LastTurn = snapshot.TurnNumber;
             }
 
             Radar radar = Radar.Normalize(desires);
             LogDesires(desires, breakdown, radar, rawRecon, rawAggression, rawEconomy, rawDev,
-                enemyDropFrac, ownDropFrac,
-                state, opp);
+                opp);
 
             return new RadarAssessment { Desires = desires, Breakdown = breakdown, Radar = radar };
         }
@@ -329,20 +242,13 @@ namespace Game.Ai.V2
             breakdown.ReconRefreshPressure = refreshPressure;
         }
 
-        // The Aggression counterpart of RefreshReconLanePressures. After a settled
-        // combat/movement step, the frozen turn-start CombatOpportunityReport can describe a target
-        // that is already dead (or a neutral that just became reachable). Rebuild ONLY the
-        // operational Aggression facts from the fresh snapshot: the opportunity report, the
-        // best/neutral reads and the raidOpportunity sub-driver. Radar is NOT renormalized
-        // mid-turn — exactly the same discipline the Recon lane refresh follows.
-        public static void RefreshAggressionLanePressures(WorldSnapshot snapshot, DesireBreakdown breakdown)
+        // Refresh perishable opportunity and force facts without advancing the turn's Radar.
+        public static void RefreshAggressionOperationalFacts(WorldSnapshot snapshot, DesireBreakdown breakdown)
         {
             if (snapshot?.Self == null || breakdown == null)
                 return;
 
             CombatOpportunityReport opp = CombatOpportunityAnalyzer.Analyze(snapshot);
-            float opportunity = opp.BestNeutralOpportunity.HasTarget
-                ? opp.BestNeutralOpportunity.OpportunityScore : 0f;
 
             ComputeSurplus(snapshot, out float requiredReserve, out float freePower);
             float surplus = Curves.Ramp(freePower / Mathf.Max(1f, snapshot.Self.TotalPower),
@@ -354,64 +260,21 @@ namespace Game.Ai.V2
                 ? AiConfigV2.aggRelEdgeNoIntel
                 : Curves.Ramp(ownPower / enemyPower, AiConfigV2.aggRelEdgeRampLo, AiConfigV2.aggRelEdgeRampHi);
 
-            // Momentum is a cross-turn smoothed signal owned by the once-per-turn Evaluate; reuse
-            // the already-frozen value rather than re-pulsing it mid-turn.
-            float raidOpportunity =
-                AiConfigV2.aggRaidOppWeightOpportunity * opportunity
-                + AiConfigV2.aggRaidOppWeightSurplus * surplus
-                + AiConfigV2.aggRaidOppWeightRelEdge * relativeEdge
-                + AiConfigV2.aggRaidOppWeightMomentum * breakdown.AggMomentum;
-
             breakdown.OpportunityReport = opp;
             breakdown.BestOpportunity = opp.Best;
-            breakdown.AggOpportunity = opportunity;
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
-            breakdown.AggRaidOpportunity = Mathf.Clamp01(raidOpportunity);
-            // ATK §36/§67 — the Attack lane's operational facts are exactly as perishable as the
-            // Raid lane's within one turn: a settled step can capture the target, reveal a fresh
-            // one or change the defender package. Rebuild them from the fresh snapshot on the same
-            // terms, and — like raidOpportunity above — reuse the turn-frozen cross-turn signals
-            // (warPressure's force/eco terms) rather than re-pulsing Radar mid-turn.
-            List<AttackObjective> attackObjectives = AttackObjectiveEvaluator.Enumerate(snapshot);
-            float attackOpportunity = BestAttackOpportunity(attackObjectives);
-            breakdown.AggBestAttackOpportunity = attackOpportunity;
-            breakdown.AggAttackTargetCount = attackObjectives.Count;
-            breakdown.AggAttackPressure = Mathf.Clamp01(
-                AiConfigV2.aggAttackWeightOpportunity * attackOpportunity
-                + AiConfigV2.aggAttackWeightWarPressure * breakdown.AggWarPressure
-                + AiConfigV2.aggAttackWeightSurplus * surplus
-                + AiConfigV2.aggAttackWeightRelEdge * relativeEdge);
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
         }
 
-        // ATK §38 — an easy capture must be able to raise offensive pressure on its own merit, but
-        // only through the SAME canonical world score every other task is measured on. There is no
-        // Attack-local scale here: DemandUrgencyPolicy.NormalizedWorldValue is the existing owner
-        // of "how urgent is a world value", already used by Development and StrategicCardEvaluator.
-        // ATK §36 — the ONE offensive gate for the Aggression axis. Either family of offensive
-        // target is sufficient on its own: a neutral army/event guard Raid can pursue, or a known
-        // hostile Base/Citadel Attack can capture or hostile Facility Attack can destroy. While this asked only about neutrals, the whole
-        // war half of Aggression was silently unreachable on a map whose neutrals were cleared.
-        internal static bool HasOffensiveTarget(CombatOpportunityReport opp,
-            List<AttackObjective> attackObjectives) =>
-            (opp?.NeutralOpportunities != null && opp.NeutralOpportunities.Count > 0)
-            || (attackObjectives != null && attackObjectives.Count > 0);
-
-        internal static float BestAttackOpportunity(List<AttackObjective> objectives)
-        {
-            float best = 0f;
-            if (objectives == null)
-                return best;
-            foreach (AttackObjective o in objectives)
-            {
-                float normalized = DemandUrgencyPolicy.NormalizedWorldValue(o.BaseValue);
-                if (normalized > best)
-                    best = normalized;
-            }
-            return best;
-        }
+        // Presence only: no objectives, viability, threat severity or task value is read here.
+        internal static bool HasKnownCombatActivity(WorldSnapshot snap) =>
+            (snap?.Known?.NeutralSightings?.Count ?? 0) > 0
+            || (snap?.Known?.EventGuards?.Count ?? 0) > 0
+            || (snap?.Known?.EnemySightings?.Count ?? 0) > 0
+            || (snap?.Known?.Buildings?.Any(b => b.Owner != null && b.Owner != snap.Observer
+                && !b.Owner.IsNeutral && !b.Owner.IsEliminated) ?? false);
 
         private static float ReconExploration(WorldSnapshot snap)
         {
@@ -647,67 +510,6 @@ namespace Game.Ai.V2
             return Mathf.Clamp01(top);
         }
 
-        private static void UpdateLossPulses(WorldSnapshot snap, AiRadarState state,
-            out float enemyDropFrac, out float ownDropFrac)
-        {
-            float curOwn = snap.Self.TotalPower;
-            ownDropFrac = (state.LastTurn >= 0 && state.PrevOwnPower > 1f)
-                ? Mathf.Clamp01((state.PrevOwnPower - curOwn) / state.PrevOwnPower)
-                : 0f;
-            state.OwnLossPulse = Mathf.Max(state.OwnLossPulse * AiConfigV2.lossPulseDecay,
-                Curves.Ramp(ownDropFrac, AiConfigV2.lossPulseRampLo, AiConfigV2.lossPulseRampHi));
-
-            enemyDropFrac = 0f;
-            List<AiRadarState.ObservedContact> current = CurrentObservedEnemies(snap);
-            if (state.LastTurn >= 0 && state.PrevObservedEnemies != null && state.PrevObservedEnemies.Count > 0)
-            {
-                var pool = new List<AiRadarState.ObservedContact>(current);
-                float drop = 0f, matchedPrevTotal = 0f;
-                foreach (AiRadarState.ObservedContact prev in state.PrevObservedEnemies)
-                {
-                    int bestIdx = -1, bestDist = int.MaxValue;
-                    for (int i = 0; i < pool.Count; i++)
-                    {
-                        if (!ReferenceEquals(pool[i].Owner, prev.Owner)) continue;
-                        int dd = HexGridMath.Distance(pool[i].Hex, prev.Hex);
-                        if (dd <= AiConfigV2.enemyLossMatchRadius && dd < bestDist)
-                        {
-                            bestDist = dd;
-                            bestIdx = i;
-                        }
-                    }
-                    if (bestIdx < 0) continue;
-                    matchedPrevTotal += prev.Power;
-                    drop += Mathf.Max(0f, prev.Power - pool[bestIdx].Power);
-                    pool.RemoveAt(bestIdx);
-                }
-                if (matchedPrevTotal > 1f)
-                    enemyDropFrac = Mathf.Clamp01(drop / matchedPrevTotal);
-            }
-            state.EnemyLossPulse = Mathf.Max(state.EnemyLossPulse * AiConfigV2.lossPulseDecay,
-                Curves.Ramp(enemyDropFrac, AiConfigV2.lossPulseRampLo, AiConfigV2.lossPulseRampHi));
-        }
-
-        private static List<AiRadarState.ObservedContact> CurrentObservedEnemies(WorldSnapshot snap)
-        {
-            var list = new List<AiRadarState.ObservedContact>();
-            IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
-            if (contacts == null)
-                return list;
-            foreach (EnemyContactSnapshot c in contacts)
-            {
-                if (!c.Position.HasValue || c.Army == null)
-                    continue;
-                list.Add(new AiRadarState.ObservedContact
-                {
-                    Owner = c.Army.Owner,
-                    Hex = c.Position.Value,
-                    Power = c.Army.EffectiveArmyPower,
-                });
-            }
-            return list;
-        }
-
         private static float Smooth(AiRadarState state, DesireAxis axis, float raw, bool advance)
         {
             if (!advance && state.Smoothed.TryGetValue(axis, out float frozen))
@@ -727,23 +529,16 @@ namespace Game.Ai.V2
 
         private static void LogDesires(DesireVector d, DesireBreakdown b, Radar radar,
             float rawRecon, float rawAggression, float rawEconomy, float rawDev,
-            float enemyDropFrac, float ownDropFrac,
-            AiRadarState state, CombatOpportunityReport opp)
+            CombatOpportunityReport opp)
         {
             AiDebugLog.Write($"[AI][V2]   desires — RCN raw {F(rawRecon)} smoothed {F(d.Raw[DesireAxis.Recon])} "
                 + $"(explRaw {F(b.ReconExploration)} exploreP {F(b.ReconExplorePressure)} "
                 + $"survRaw {F(b.ReconSurveillance)} refreshP {F(b.ReconRefreshPressure)} "
                 + $"blind {F(b.ReconEnemyBlindness)})");
-            AiDebugLog.Write($"[AI][V2]   desires — AGG attack lane targets={b.AggAttackTargetCount} "
-                + $"bestOpportunity={F(b.AggBestAttackOpportunity)} pressure={F(b.AggAttackPressure)}");
             AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
-                + $"= max(offence=max(raid {F(b.AggRaidOpportunity)}, war {F(b.AggWarPressure)})*siegeDamp, "
-                + $"activeDefence {F(b.AggActiveDefencePressure)}) "
-                + $"[opp {F(b.AggOpportunity)} surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)} "
-                + $"mom {F(b.AggMomentum)}]");
-            AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)} "
-                + $"| lossPulse enemy {F(state.EnemyLossPulse)} (drop {F(enemyDropFrac)}) "
-                + $"own {F(state.OwnLossPulse)} (drop {F(ownDropFrac)})");
+                + $"radar {F(radar.Weight[DesireAxis.Aggression])} scale {F(RadarValueScale.For(radar, DesireAxis.Aggression))} "
+                + $"[surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)} threat {F(d.MilitaryThreat)}]");
+            AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)}");
             AiDebugLog.Write($"[AI][V2][Economy][Desire] resource={b.EconomyPrimaryResource} "
                 + $"max={F(b.EconomyMaxDeficit)} mean={F(b.EconomyMeanDeficit)} "
                 + $"incomeGap={F(b.EconomyIncomeGap)} relativeGap={F(b.EconomyRelativeGap)} "

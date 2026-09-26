@@ -120,7 +120,7 @@ namespace Game.Ai.V2
                 // Full-mode Reaction keeps the turn's Radar fixed, but Phase A can reinforce a
                 // Raid or change the set of visible targets. Rebuild the operational report first,
                 // then every derivative that consumes its Aggression objectives.
-                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                 aggressionPressureFresh = true;
                 aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                     snapshot, assessment.Breakdown.OpportunityReport);
@@ -134,7 +134,7 @@ namespace Game.Ai.V2
             // — Missions must receive current Recon pressures, not trigger their recomputation.
             StrategyLayer.RefreshReconLanePressures(snapshot, assessment.Breakdown);
             if (!aggressionPressureFresh)
-                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, assessment.Breakdown,
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, assessment.Breakdown,

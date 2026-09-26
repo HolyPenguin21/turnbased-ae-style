@@ -686,7 +686,7 @@ namespace Game.Ai.V2
             string explain = $"Raid {o.Target.DiagnosticLabel} @{o.LastKnownHex.Q},{o.LastKnownHex.R} "
                 + $"task {F(score.Value)} readyWin {F(readyWin)} frozenReady {F(o.ReadyWinChance)} "
                 + $"asmWin {F(o.AssemblableWinChance)} def {o.DefenderCount} eta {req?.EtaTurns ?? o.EstimatedEta} "
-                + $"aggRaidPolicy {F(bd.AggRaidOpportunity)} gate {(o.GatePassed ? 1 : 0)}"
+                + $"gate {(o.GatePassed ? 1 : 0)}"
                 + $"{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}{(o.NeedsHero ? " NEEDS-HERO" : "")}";
             return new RaidCandidate(target, score.Value, las, explain,
                 costedMover: estimate.PlannedMoverArmyId ?? costedMover,

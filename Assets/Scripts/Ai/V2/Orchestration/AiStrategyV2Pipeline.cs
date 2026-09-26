@@ -188,7 +188,7 @@ namespace Game.Ai.V2
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                 aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                     snapshot, assessment.Breakdown.OpportunityReport);
                 // Direct Economy construction can atomically turn the builder's existing intent
@@ -402,7 +402,7 @@ namespace Game.Ai.V2
                         .ToDictionary(axis => axis, StrategicAdmissionFingerprint);
 
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                    StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                     aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
@@ -436,7 +436,7 @@ namespace Game.Ai.V2
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                             snapshot, player, root, hand, ctx);
                         reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                        StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                        StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                         aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport);
                         activeIntents = MissionContinuityLayer.ResolveActive(
@@ -511,7 +511,7 @@ namespace Game.Ai.V2
                         // Rebuild the operational Aggression facts from THIS
                         // settled snapshot before re-enumerating objectives, so a neutral destroyed
                         // during the previous step is gone from the report in the same turn.
-                        StrategyLayer.RefreshAggressionLanePressures(
+                        StrategyLayer.RefreshAggressionOperationalFacts(
                             snapshot, assessment.Breakdown);
                         aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                             snapshot, assessment.Breakdown.OpportunityReport);
@@ -1021,7 +1021,7 @@ namespace Game.Ai.V2
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                    StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                    StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                     aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                         snapshot, assessment.Breakdown.OpportunityReport);
                     activeIntents = MissionContinuityLayer.ResolveActive(
@@ -1060,7 +1060,7 @@ namespace Game.Ai.V2
                             WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                                 beforeCold, afterCold, null);
                             reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
-                            StrategyLayer.RefreshAggressionLanePressures(snapshot, assessment.Breakdown);
+                            StrategyLayer.RefreshAggressionOperationalFacts(snapshot, assessment.Breakdown);
                             aggressionObjectives = AggressionObjectiveEvaluator.Enumerate(
                                 snapshot, assessment.Breakdown.OpportunityReport);
                             activeIntents = MissionContinuityLayer.ResolveActive(
@@ -1204,7 +1204,7 @@ namespace Game.Ai.V2
             // The same discipline for the Aggression lane: refresh only the
             // operational opportunity facts from the current snapshot, never the radar.
             if (!aggressionPressureAlreadyRefreshed)
-                StrategyLayer.RefreshAggressionLanePressures(snapshot, breakdown);
+                StrategyLayer.RefreshAggressionOperationalFacts(snapshot, breakdown);
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
                 activeIntents, reconObjectives);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,

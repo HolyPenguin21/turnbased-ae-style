@@ -314,22 +314,14 @@ namespace Game.EditorTests
                 "an unstamped record means 'age unknown', never 'observed on turn 0'");
         }
 
-        // ---- §36/§38 the offensive desire gate -------------------------------------------
-
+        // Presence of combat activity belongs to the Radar axis, independent of target score.
         [Test]
-        public void OffensiveGate_OpensOnAKnownHostileBaseWithNoNeutralsLeft()
+        public void AggressionActivity_RecognizesHostileStructureWithoutScoringAttack()
         {
-            List<AttackObjective> objectives = AttackObjectiveEvaluator.Enumerate(
-                Snap(new[] { B(RedBase, Red) }, new[] { OurBase }));
-            var noNeutrals = new CombatOpportunityReport();
-
-            Assert.That(StrategyLayer.HasOffensiveTarget(noNeutrals, objectives), Is.True,
-                "a cleared map of neutrals must not make the war half of Aggression unreachable");
-            Assert.That(StrategyLayer.HasOffensiveTarget(noNeutrals, new List<AttackObjective>()),
-                Is.False);
-            Assert.That(StrategyLayer.BestAttackOpportunity(objectives),
-                Is.GreaterThanOrEqualTo(StrategyLayer.BestAttackOpportunity(new List<AttackObjective>())),
-                "opportunity comes from the canonical world score, not a fixed capture bonus");
+            WorldSnapshot known = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            WorldSnapshot unknown = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            Assert.That(StrategyLayer.HasKnownCombatActivity(known), Is.True);
+            Assert.That(StrategyLayer.HasKnownCombatActivity(unknown), Is.False);
         }
 
         // ---- helpers ---------------------------------------------------------------------

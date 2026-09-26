@@ -26,6 +26,29 @@ namespace Game.EditorTests
             return r;
         }
 
+        [Test]
+        public void AggressionPeers_UseOneRadarScaleAndRetainTaskScoreOrder()
+        {
+            Radar radar = RadarOf((DesireAxis.Aggression, 0.6f),
+                (DesireAxis.Recon, 0.4f));
+            var raid = new MissionProposal { Kind = MissionKind.Raid,
+                BaseValue = new TaskScore(militaryTargetRelevance: 3f).Value };
+            var defence = new MissionProposal { Kind = MissionKind.ActiveDefence,
+                BaseValue = new TaskScore(militaryTargetRelevance: 9f).Value };
+            var attack = new MissionProposal { Kind = MissionKind.Attack,
+                BaseValue = new TaskScore(militaryTargetRelevance: 6f).Value };
+            foreach (MissionProposal proposal in new[] { raid, defence, attack })
+            {
+                Assert.That(AiStrategyV2Scope.AxisOf(proposal.Kind), Is.EqualTo(DesireAxis.Aggression));
+                proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+                Assert.That(RadarValueScale.For(radar, proposal),
+                    Is.EqualTo(RadarValueScale.For(radar, DesireAxis.Aggression)).Within(Tol));
+                proposal.EffectiveValue = proposal.BaseValue * RadarValueScale.For(radar, proposal);
+            }
+            Assert.That(defence.EffectiveValue, Is.GreaterThan(attack.EffectiveValue));
+            Assert.That(attack.EffectiveValue, Is.GreaterThan(raid.EffectiveValue));
+        }
+
         // Phase A uses the SAME proportional preference, without mutating demand.Value
         // or the intrinsic Play - Hold + urgency decision score.
         [Test]

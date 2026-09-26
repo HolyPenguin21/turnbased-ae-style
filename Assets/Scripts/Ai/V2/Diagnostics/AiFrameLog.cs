@@ -128,10 +128,11 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"{P}   recon drivers:  explore {N2(b.ReconExploration)}  surveil {N2(b.ReconSurveillance)}  "
                     + $"blindness {N2(b.ReconEnemyBlindness)}  explore-press {N2(b.ReconExplorePressure)}  refresh-press {N2(b.ReconRefreshPressure)}");
-                AiDebugLog.Write($"{P}   agg drivers:    opp {N2(b.AggOpportunity)}  raid-opp {N2(b.AggRaidOpportunity)}  "
-                    + $"war-press {N2(b.AggWarPressure)}  rel-edge {N2(b.AggRelativeEdge)}  momentum {N2(b.AggMomentum)}");
+                AiDebugLog.Write($"{P}   agg axis:       raw {N2(a.Desires.Raw[DesireAxis.Aggression])}  "
+                    + $"radar {N2(r.Weight[DesireAxis.Aggression])}  scale {N2(RadarValueScale.For(r, DesireAxis.Aggression))}  "
+                    + $"surplus {N2(b.AggSurplus)}  edge {N2(b.AggRelativeEdge)}");
                 // Own-power balance (AiPower scale, NOT AP, NOT a 0..1 desire) — feeds the Aggression
-                // surplus/free-power driver. home-guard = power kept back to defend bases (floored at
+                // readiness fact. home-guard = power kept back to defend bases (floored at
                 // AiConfigV2.aggHomeGuardFloor); free = TotalPower - home-guard, available to attack.
                 AiDebugLog.Write($"{P}   force balance:  home-guard {N2(b.RequiredDefensiveReserve)}  offensive-free {N2(b.OffensiveFreePower)}");
                 AiDebugLog.Write($"{P}   eco drivers:    resource {b.EconomyPrimaryResource} "

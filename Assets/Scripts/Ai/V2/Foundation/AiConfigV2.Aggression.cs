@@ -11,13 +11,7 @@ namespace Game.Ai.V2
         // contact; a small window lets it fire on a routine re-scout too, at the cost of striking a
         // roster that may be up to this many turns stale.
         public const int raidAirSupportSightingMaxAgeTurns = 2;
-        // ---- Aggression (single axis; two internal drivers, max()'d) -----------------------
-        //  raidOpportunity — "there is a profitable target I can take right now" (from the shared
-        //                    CombatOpportunityAnalyzer — same estimator MissionLayer/Provisioning
-        //                    will use, never a throwaway aggression-only one).
-        //  warPressure     — "economy is secure and free force exists against a known target"
-        //                    (surplus + relative edge + economy security).
-        //  rawAggression = max(raidOpportunity, warPressure) * (UnderSiege ? aggSiegeDamp : 1).
+        // Generic military readiness for the Aggression Radar axis.
         public const float aggRelEdgeRampLo = 0.80f;
         public const float aggRelEdgeRampHi = 2.20f;
         public const float aggRelEdgeNoIntel = 0.50f;   // "haven't seen them" != "I'm winning"
@@ -39,39 +33,7 @@ namespace Game.Ai.V2
         public const float aggHomeGuardFloor = 3f; // AiPower units (one Light Infantry alone = 4.85)
         public const float aggEcoGateLo = 0.50f;        // ecoGate = Lerp(this, 1, EconomicSecurity)
         public const float aggSiegeDamp = 0.20f;
-        public const float aggRaidOppWeightOpportunity = 0.50f;
-        public const float aggRaidOppWeightSurplus = 0.20f;
-        public const float aggRaidOppWeightRelEdge = 0.15f;
-        public const float aggRaidOppWeightMomentum = 0.15f;
         public const float attackReadinessScoreWeight = 0.45f;
-        public const float aggWarWeightSurplus = 0.25f;
-        public const float aggWarWeightEcoGate = 0.20f;
-        public const float aggWarWeightRelEdge = 0.10f;
-        // ---- Attack lane (ATK §36-§38) -----------------------------------------------------
-        //  Attack is NOT a new desire axis. These weights shape one more OPERATIONAL sub-driver
-        //  inside the existing Aggression axis, in exactly the shape aggRaidOppWeight* already
-        //  has, so an offensive opportunity against a known hostile Base/Citadel or Facility
-        //  competes with a Raid opportunity on one scale instead of through a private multiplier.
-        //  `Opportunity` here is the normalised canonical TaskScore of the best Attack objective
-        //  (DemandUrgencyPolicy.NormalizedWorldValue) — never a hand-tuned "free base" bonus:
-        //  §38's easy capture earns its pressure by actually scoring well as a world task.
-        //  WarPressure is carried as a real term because §37 makes AggWarPressure the strategic
-        //  driver of territorial war; it stays in the outer max() as well, so a strong global
-        //  war posture is still sufficient on its own.
-        public const float aggAttackWeightOpportunity = 0.50f;
-        public const float aggAttackWeightWarPressure = 0.25f;
-        public const float aggAttackWeightSurplus = 0.15f;
-        public const float aggAttackWeightRelEdge = 0.10f;
-        // ---- momentum (transient, both sides) ---------------------------------------------
-        //  momentum = Clamp01(0.5 + 0.5*enemyLossPulse - 0.5*ownLossPulse); 0.5 = neutral.
-        //  Each pulse is a decaying spike off a same-turn strength drop. Enemy losses are
-        //  OBSERVED-ONLY: matched contact-to-contact by owner within enemyLossMatchRadius, so a
-        //  force merely walking out of vision (contact vanishes) contributes nothing. Own losses
-        //  need no such guard (no fog on ourselves; TotalPower only moves on real roster change).
-        public const float lossPulseDecay = 0.60f;
-        public const float lossPulseRampLo = 0.12f;
-        public const float lossPulseRampHi = 0.50f;
-        public const int enemyLossMatchRadius = 3;
         // =======================================================================================
         //  AGGRESSION / RAID  (Strategy V2 build-order step 9 — the second objective/mission lane)
         //  Raid is the first Aggression Objective type. Objective discovery reuses the shared

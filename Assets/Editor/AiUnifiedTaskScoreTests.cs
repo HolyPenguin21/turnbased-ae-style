@@ -578,7 +578,6 @@ namespace Game.EditorTests
             var breakdown = new DesireBreakdown
             {
                 OpportunityReport = report,
-                AggRaidOpportunity = 1f,
             };
             AggressionObjective objective = AggressionObjectiveEvaluator.ForTrackedTarget(
                 snap, report, target);

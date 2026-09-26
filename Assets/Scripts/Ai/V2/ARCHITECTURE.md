@@ -70,6 +70,14 @@ Development, Raid, ActiveDefence and Attack alike. A new scoring fact must be ad
 `BaseValue` after the fact from planner- or allocator-local code. See the
 canonical-seams table below.
 
+Aggression contains exactly three peer task families: Raid (neutral armies and guarded
+events), ActiveDefence (hostile field armies threatening owned assets), and Attack
+(hostile Base/Citadel capture and Facility destruction for strategic war and game
+completion). Raid, ActiveDefence and Attack use the shared canonical TaskScore and
+receive the same Aggression Radar scale. There is no task-family pressure layer
+inside Aggression. Raw Aggression uses known combat activity, broad force readiness
+and the general asset-threat signal; it does not read an objective's TaskScore.
+
 Radar answers which **axis** matters now. `TaskScore` answers how good a concrete
 world task is. `EffectiveValue` is the intrinsic `BaseValue` multiplied by that
 task's axis weight. Radar never chooses Attack versus Raid: all three military
