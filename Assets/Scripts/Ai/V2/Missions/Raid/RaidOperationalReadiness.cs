@@ -34,10 +34,13 @@ namespace Game.Ai.V2
             CapabilityInventory inventory)
         {
             inventory = inventory ?? new CapabilityInventory();
+            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, objective.Target);
             GroundCombatAssemblyPlan ready = GroundCombatAssemblyPlanner.Plan(
-                snap, objective.ToTarget(), opposition, commitments?.ClaimedArmyIdSet);
+                snap, objective.ToTarget(), opposition, commitments?.ClaimedArmyIdSet, hexBonus);
 
-            float requiredPower = Mathf.Max(1f, objective.TargetPower * AiConfigV2.raidCombatPowerMargin);
+            // Sized against the same hex defence the readiness plan was built with.
+            float requiredPower = GroundCombatFeasibility.RequiredPower(
+                WorthIt.UnitsOf(opposition ?? System.Array.Empty<WorthIt.DefendingArmy>()), hexBonus);
             float numericDeficit = Mathf.Max(0f, requiredPower - inventory.RaidAvailableFieldPower);
             bool executable = ready.Feasible;
 

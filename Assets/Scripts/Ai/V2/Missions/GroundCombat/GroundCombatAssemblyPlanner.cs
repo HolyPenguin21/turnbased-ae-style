@@ -65,10 +65,38 @@ namespace Game.Ai.V2
         // Σ (support activation × walking turns + its handoff charge) + assembled activation ×
         // assault turns.
         public int TotalAp;
+        // The part of TotalAp paid THIS turn: the activation of every planned support that can
+        // act now and has not activated yet. The legs, not the host, are what move first — a
+        // host that already spent its own activation elsewhere makes the gather no cheaper.
+        public int CurrentTurnAp;
+        // Everything still to be paid on later turns (the rest of the walks, handoffs, assault).
+        public int FutureAp => System.Math.Max(0, TotalAp - CurrentTurnAp);
         public int TotalEta => GatherTurns + AssaultEta;
 
         public static GroundCombatGatherPlan Infeasible(string reason) =>
             new GroundCombatGatherPlan { Feasible = false, Reason = reason };
+    }
+
+    // ActiveDefence Reinforcement plan (GroundCombatAssemblyPlanner.PlanReinforcement).
+    public sealed class GroundCombatReinforcementPlan
+    {
+        public bool Feasible;
+        public string Reason;
+        public int PrimaryArmyId;
+        public HexCoord PrimaryHex;
+        public int SupportArmyId;
+        public float ProjectedWinChance;
+        public bool CoversAllDefenders;
+        // Turns until the support stands on the primary's hex, then the merged march.
+        public int WalkTurns;
+        public int MarchEta;
+        public int TotalEta => WalkTurns + MarchEta;
+        // The support's activation now; the rest of its walk plus the merged march later.
+        public int CurrentTurnAp;
+        public int FutureAp;
+
+        public static GroundCombatReinforcementPlan Infeasible(string reason) =>
+            new GroundCombatReinforcementPlan { Feasible = false, Reason = reason };
     }
 
     // ARCH-02 §29 — the fresh-start vs continuation win-chance gates. Starting a raid and
@@ -389,6 +417,72 @@ namespace Game.Ai.V2
                 out _, out _, defenderHexDefenseBonus);
         }
 
+        // ActiveDefence Reinforcement — ONE existing free army hands its sparable bodies to ONE
+        // free primary so the merged roster clears `winChanceGate` against the opposition. The
+        // same fill/swap projection the handoff executes (TryProjectReinforcement over
+        // GroundCombatReinforcement.SparableSupportBodies) and the same Clears the intercept is
+        // admitted on; the fastest pair (support walk + primary march to `targetHex`) wins.
+        // Deliberately not a gather: one support, no peak-seeking, no donors.
+        internal static GroundCombatReinforcementPlan PlanReinforcement(WorldSnapshot snap,
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
+            HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate)
+        {
+            if (snap?.Self?.Armies == null)
+                return GroundCombatReinforcementPlan.Infeasible("no own-force snapshot");
+            opposition = opposition ?? System.Array.Empty<WorthIt.DefendingArmy>();
+            List<ArmySnapshot> free = GroundCombatActorEligibility.EligibleReadyArmies(snap, excludeArmyIds);
+            if (free.Count < 2)
+                return GroundCombatReinforcementPlan.Infeasible(
+                    "fewer than two free field armies: nothing to reinforce with");
+
+            GroundCombatReinforcementPlan best = null;
+            foreach (ArmySnapshot primary in free)
+            {
+                ArmyData livePrimary = LiveArmy(primary);
+                if (livePrimary == null || livePrimary.Members.Count == 0)
+                    continue;
+                foreach (ArmySnapshot support in free)
+                {
+                    if (support.ArmyId == primary.ArmyId
+                        || (!support.Hex.Equals(primary.Hex) && support.CurrentMovement <= 0))
+                        continue;
+                    List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(LiveArmy(support));
+                    if (sparable == null || sparable.Count == 0)
+                        continue;
+                    if (!TryProjectReinforcement(NonAviationProfiles(primary),
+                            sparable.Select(WorthIt.FromLiveUnit).ToList(), primary.Capacity,
+                            primary.MemberCount, primary.Commander, opposition,
+                            out List<WorthIt.DefenderProfile> projected, out _, defenderHexDefenseBonus)
+                        || !GroundCombatFeasibility.Clears(projected, primary.Commander, opposition,
+                            winChanceGate, defenderHexDefenseBonus, out float win, out bool cover))
+                        continue;
+                    int walk = AiV2Util.CeilDiv(HexGridMath.Distance(support.Hex, primary.Hex),
+                        System.Math.Max(1, support.MaxMovement));
+                    int march = AiV2Util.CeilDiv(HexGridMath.Distance(primary.Hex, targetHex),
+                        System.Math.Max(AiConfigV2.etaFallbackMoveBudget, primary.MaxMovement));
+                    var p = new GroundCombatReinforcementPlan
+                    {
+                        Feasible = true,
+                        PrimaryArmyId = primary.ArmyId,
+                        PrimaryHex = primary.Hex,
+                        SupportArmyId = support.ArmyId,
+                        ProjectedWinChance = win,
+                        CoversAllDefenders = cover,
+                        WalkTurns = walk,
+                        MarchEta = march,
+                        CurrentTurnAp = support.HasActivatedThisTurn ? 0 : support.ActivationApCost,
+                        FutureAp = support.ActivationApCost * System.Math.Max(0, walk - 1)
+                            + primary.ActivationApCost * System.Math.Max(1, march),
+                    };
+                    if (best == null || p.TotalEta < best.TotalEta
+                        || (p.TotalEta == best.TotalEta && p.ProjectedWinChance > best.ProjectedWinChance + 0.001f))
+                        best = p;
+                }
+            }
+            return best ?? GroundCombatReinforcementPlan.Infeasible(
+                "no single free support brings any free primary over the gate");
+        }
+
         // Audit F7 — CROSS-HEX GATHER. Plan() knows an already-sufficient army or a SAME-HEX
         // package only. When the strength exists but is spread over free field armies on different
         // hexes, this answers which army HOSTS the formation and which others walk to it and hand
@@ -482,6 +576,7 @@ namespace Game.Ai.V2
                 pool.Add(new GatherSupport
                 {
                     ArmyId = s.ArmyId,
+                    Snapshot = s,
                     Live = live,
                     Units = sparable,
                     Bodies = sparable.Select(WorthIt.FromLiveUnit).ToList(),
@@ -647,6 +742,10 @@ namespace Game.Ai.V2
                         s.Incoming, s.Displaced, host, s.Live, supportWalks: s.Turns > 0))
                     + ArmyData.ComputeActivationApCost(roster) * System.Math.Max(1, assaultEta),
             };
+            plan.CurrentTurnAp = System.Math.Min(plan.TotalAp, chosen
+                .Where(s => !s.Snapshot.HasActivatedThisTurn
+                    && (s.Snapshot.Hex.Equals(host.Hex) || s.Snapshot.CurrentMovement > 0))
+                .Sum(s => s.Snapshot.ActivationApCost));
             foreach (GatherSupport s in chosen.OrderByDescending(s => s.Turns).ThenBy(s => s.ArmyId))
                 plan.SupportArmyIds.Add(s.ArmyId);
             return plan;
@@ -655,6 +754,7 @@ namespace Game.Ai.V2
         private sealed class GatherSupport
         {
             public int ArmyId;
+            public ArmySnapshot Snapshot;
             public ArmyData Live;
             // What its handoff moves: support -> host, and host -> support.
             public readonly List<UnitData> Incoming = new List<UnitData>();

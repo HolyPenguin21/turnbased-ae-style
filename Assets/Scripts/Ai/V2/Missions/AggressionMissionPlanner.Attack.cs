@@ -221,9 +221,11 @@ namespace Game.Ai.V2
             }
 
             int eta = Mathf.Max(1, gather.TotalEta);
-            int perTurnAp = AiV2Util.CeilDiv(gather.TotalAp, eta);
-            TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, host,
-                gather.ProjectedWinChance, eta, 0f, perTurnAp);
+            // Priced off the plan's own AP split, never off the host's activation state: the
+            // supports' legs are what this turn pays, the rest is spread over the operation.
+            TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
+                gather.ProjectedWinChance, gather.CurrentTurnAp,
+                AiV2Util.CeilDiv(gather.FutureAp, eta), eta);
             if (mustBeat.HasValue && score.Value <= mustBeat.Value)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",

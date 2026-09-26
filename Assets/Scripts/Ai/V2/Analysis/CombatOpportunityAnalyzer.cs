@@ -128,12 +128,14 @@ namespace Game.Ai.V2
             {
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = t.Defenders
                     ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                // The target defends on its own hex: terrain (and any known structure) counts.
+                float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap.Observer, t.Hex);
+                float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, hexBonus,
                     readyCommander, t.Commander);
                 HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
-                    new[] { new WorthIt.DefendingArmy(defenders, t.Commander) });
+                    new[] { new WorthIt.DefendingArmy(defenders, t.Commander) }, hexBonus);
                 float asmWin = assembly.WinChance;
-                bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, 0f);
+                bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
                 int eta = CeilDiv(minDist, moverBudget);
                 float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
@@ -175,12 +177,13 @@ namespace Game.Ai.V2
                 {
                     IReadOnlyList<WorthIt.DefenderProfile> defenders = g.Defenders
                         ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, 0f,
+                    float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap.Observer, g.Hex);
+                    float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, hexBonus,
                         readyCommander, g.Commander);
                     HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
-                        new[] { new WorthIt.DefendingArmy(defenders, g.Commander) });
+                        new[] { new WorthIt.DefendingArmy(defenders, g.Commander) }, hexBonus);
                     float asmWin = assembly.WinChance;
-                    bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, 0f);
+                    bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;
                     int eta = CeilDiv(minDist, moverBudget);
                     float targetValue = Mathf.Min(AiConfigV2.assetValueArmyCap,
@@ -240,14 +243,14 @@ namespace Game.Ai.V2
         // same projection with no commander slot to take (rating = capacity + 1).
         private static HeroRoleEvaluator.CommandProjection BestAssembly(
             List<HeroRoleEvaluator.HeroProfile> commanders, List<WorthIt.DefenderProfile> bodies,
-            IReadOnlyList<WorthIt.DefendingArmy> opposition)
+            IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus)
         {
             if (commanders.Count == 0)
                 return HeroRoleEvaluator.ProjectCommand(NoHeroStackCapacity + 1, 0, default,
-                    bodies, opposition, 0f);
+                    bodies, opposition, hexBonus);
             return commanders
                 .Select(h => HeroRoleEvaluator.Candidate(h, HeroRoleEvaluator.ProjectCommand(
-                    h.CommandRating, 0, h.Commander, bodies, opposition, 0f)))
+                    h.CommandRating, 0, h.Commander, bodies, opposition, hexBonus)))
                 .OrderBy(c => c, Comparer<HeroRoleEvaluator.CommandCandidate>.Create(
                     HeroRoleEvaluator.CompareCandidates))
                 .First().Projection;

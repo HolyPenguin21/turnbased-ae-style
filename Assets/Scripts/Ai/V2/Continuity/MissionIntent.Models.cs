@@ -164,6 +164,9 @@ namespace Game.Ai.V2
                 return $"Intent(Economy {(EconomyTaskKind)SubKind} {Q},{R} res#{ObjectiveId})";
             if (Kind == MissionKind.Development)
                 return $"Intent(Development {(ResearchProductionMode)SubKind} {Q},{R})";
+            // ForAttack's identity: target hex + the owner expected to hold it.
+            if (Kind == MissionKind.Attack)
+                return $"Intent(Attack @{Q},{R}#P{ObjectiveId})";
             return $"Intent({Kind})";
         }
     }
@@ -309,8 +312,9 @@ namespace Game.Ai.V2
         public float ProtectedAssetValue;
         public float ThreatSeverity;
         public int? PrimaryArmyId { get; set; }
-        // ActiveDefence intercepts with its primary alone.
-        int? IGroundCombatOperation.SupportArmyId => null;
+        // The one support walking to the primary during Reinforcement; null otherwise.
+        public int? SupportArmyId;
+        int? IGroundCombatOperation.SupportArmyId => SupportArmyId;
         // ATK §49 — the offensive ground-combat intent this defence preempted for its actor, so
         // Continuity can resume exactly that one when the threat is gone. Deliberately NOT named
         // after a single lane: Raid and Attack are both offensive owners of the same armies, and a

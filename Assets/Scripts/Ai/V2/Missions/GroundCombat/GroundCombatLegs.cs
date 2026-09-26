@@ -26,9 +26,10 @@ namespace Game.Ai.V2
             support = null;
             if (mission?.Target is ActiveDefenceMissionTarget ad)
             {
-                if (ad.Phase != ActiveDefencePhase.Return || !ad.PrimaryArmyId.HasValue)
+                if (ad.Phase == ActiveDefencePhase.Intercept || !ad.PrimaryArmyId.HasValue)
                     return false;
                 primary = ad.PrimaryArmyId;
+                support = ad.Phase == ActiveDefencePhase.Reinforcement ? ad.SupportArmyId : null;
                 return true;
             }
             if (mission?.Kind == MissionKind.Attack && mission.Target is AttackMissionTarget at)
@@ -58,7 +59,7 @@ namespace Game.Ai.V2
                 return rt.Phase == RaidMissionPhase.Assault
                     || (rt.Phase == RaidMissionPhase.Reinforcement && !rt.SupportArmyId.HasValue);
             if (mission?.Target is ActiveDefenceMissionTarget ad)
-                return ad.Phase != ActiveDefencePhase.Return;
+                return ad.Phase == ActiveDefencePhase.Intercept;
             if (mission?.Target is AttackMissionTarget at)
                 return at.Phase == AttackMissionPhase.Assault
                     || (at.Phase == AttackMissionPhase.Reinforcement && !at.SupportArmyId.HasValue);
@@ -84,6 +85,9 @@ namespace Game.Ai.V2
                         && attack.SupportArmyId == armyId)
                     || (attack.Phase == AttackMissionPhase.RecoveryReturn
                         && attack.PrimaryArmyId == armyId);
+            if (mission?.Target is ActiveDefenceMissionTarget defence)
+                return defence.Phase == ActiveDefencePhase.Reinforcement
+                    && defence.SupportArmyId == armyId;
             return false;
         }
 
@@ -106,6 +110,11 @@ namespace Game.Ai.V2
             : o.HasRaidPayload ? o.RaidPhase
             : o.Proposal?.Target is RaidMissionTarget rt ? rt.Phase : (RaidMissionPhase?)null;
 
+        internal static ActiveDefencePhase? ActiveDefenceLegOf(MissionTurnOutcome o) =>
+            o == null || o.MissionKind != MissionKind.ActiveDefence ? (ActiveDefencePhase?)null
+            : o.HasActiveDefencePayload ? o.ActiveDefenceTarget.Phase
+            : o.Proposal?.Target is ActiveDefenceMissionTarget ad ? ad.Phase : (ActiveDefencePhase?)null;
+
         internal static AttackMissionTarget? AttackLegOf(MissionTurnOutcome o) =>
             o == null || o.MissionKind != MissionKind.Attack ? (AttackMissionTarget?)null
             : o.HasAttackPayload ? o.AttackTarget
@@ -124,7 +133,9 @@ namespace Game.Ai.V2
                     || raid.Value == RaidMissionPhase.Reinforcement
                     || raid.Value == RaidMissionPhase.SupportReturn;
             AttackMissionTarget? attack = AttackLegOf(o);
-            return attack.HasValue && IsAttackSupportLeg(attack.Value.Phase);
+            if (attack.HasValue)
+                return IsAttackSupportLeg(attack.Value.Phase);
+            return ActiveDefenceLegOf(o) == ActiveDefencePhase.Reinforcement;
         }
 
         internal static bool IsAttackSideLeg(AttackMissionPhase phase) =>
@@ -170,6 +181,10 @@ namespace Game.Ai.V2
                 && (raid.Phase == RaidMissionPhase.Reinforcement
                     || raid.Phase == RaidMissionPhase.SupportReturn))
                 yield return raid.SupportArmyId.Value;
+            ActiveDefenceIntent defence = intent?.ActiveDefence;
+            if (defence != null && defence.Phase == ActiveDefencePhase.Reinforcement
+                && defence.SupportArmyId.HasValue)
+                yield return defence.SupportArmyId.Value;
             AttackIntent attack = intent?.Attack;
             if (attack == null)
                 yield break;

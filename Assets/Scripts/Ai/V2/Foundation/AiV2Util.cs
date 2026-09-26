@@ -93,6 +93,25 @@ namespace Game.Ai.V2
             return System.Array.Empty<WorthIt.DefendingArmy>();
         }
 
+        // THE hex defence a Raid target fights with — the companion of KnownOpposition, resolved
+        // the same way (event guard: its stable hex; neutral army: its last observed hex) and read
+        // through the one fog-honest owner. A field battle is still a battle on a hex: terrain
+        // defends the target exactly as WorthIt folds it into the live fight.
+        internal static float KnownRaidDefenceBonus(WorldSnapshot snap, RaidTargetRef target)
+        {
+            if (snap?.Known == null || !target.HasValue)
+                return 0f;
+            if (target.Kind == RaidTargetKind.EventGuard)
+                return Game.Ai.AiMapMemory.KnownHexDefenseBonus(snap.Observer, target.Hex);
+            IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
+                (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
+                .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
+            foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
+                if (s.ArmyId == target.ArmyId)
+                    return Game.Ai.AiMapMemory.KnownHexDefenseBonus(snap.Observer, s.Hex);
+            return 0f;
+        }
+
         // Legacy overload for non-Raid callers that only ever deal with a physical army. Raid
         // consumers must call the RaidTargetRef overload above instead of duplicating this switch.
         internal static IReadOnlyList<WorthIt.DefenderProfile> KnownDefenders(WorldSnapshot snap, int armyId) =>

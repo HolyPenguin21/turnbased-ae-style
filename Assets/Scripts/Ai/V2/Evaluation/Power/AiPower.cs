@@ -194,7 +194,11 @@ namespace Game.Ai.V2
         // remembered / fog-read enemy (no Range on a profile, so composition uses type coverage
         // and hero-count only, not front/reach balance). Used for enemy contacts in the
         // ThreatModel, where a full UnitData is never in hand.
-        public static float EffectiveArmyPowerFromProfiles(IReadOnlyList<WorthIt.DefenderProfile> profiles)
+        // `extraDefense` — a defender's hex bonus, folded into every unit's Defense exactly as
+        // WorthIt.WinChance folds `hexDefenseBonus`, so a power figure and the estimator it
+        // stands in for read the same fortified site.
+        public static float EffectiveArmyPowerFromProfiles(IReadOnlyList<WorthIt.DefenderProfile> profiles,
+            float extraDefense = 0f)
         {
             if (profiles == null || profiles.Count == 0)
                 return 0f;
@@ -202,7 +206,7 @@ namespace Game.Ai.V2
             foreach (WorthIt.DefenderProfile p in profiles)
             {
                 float line = p.Attack * AiConfigV2.powerAttackWeight
-                           + p.Defense * AiConfigV2.powerDefenseWeight
+                           + (p.Defense + extraDefense) * AiConfigV2.powerDefenseWeight
                            + p.HitPoints * AiConfigV2.powerHitPointsWeight
                            + p.Initiative * AiConfigV2.powerInitiativeWeight;
                 if (p.HasCeramicArmor)

@@ -1625,6 +1625,13 @@ namespace Game.Ai.V2
                 intent.Raid.Phase = RaidMissionPhase.Reinforcement;
                 return true;
             }
+            if (intent.ActiveDefence != null
+                && GroundCombatLegs.ActiveDefenceLegOf(o) == ActiveDefencePhase.Reinforcement)
+            {
+                intent.ActiveDefence.SupportArmyId = null;
+                intent.ActiveDefence.Phase = ActiveDefencePhase.Intercept;
+                return true;
+            }
             AttackMissionTarget? leg = GroundCombatLegs.AttackLegOf(o);
             if (intent.Attack == null || !leg.HasValue)
                 return false;
@@ -1699,6 +1706,8 @@ namespace Game.Ai.V2
                 // army: like Raid's support legs above it must never overwrite the primary.
                 else if (!(intent.Attack != null && o.HasAttackPayload
                         && GroundCombatLegs.IsAttackSupportLeg(o.AttackTarget.Phase))
+                    && !(intent.ActiveDefence != null && o.HasActiveDefencePayload
+                        && o.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement)
                     && ((intent.Kind != MissionKind.Economy
                             && intent.Kind != MissionKind.Development)
                         || !intent.PreferredMoverArmyId.HasValue
@@ -1708,6 +1717,18 @@ namespace Game.Ai.V2
 
             if (o.HasScoutPayload && intent.Scout != null)
                 ApplyScoutPayload(intent.Scout, o);
+
+            // An attempted handoff (full, partial or rejected) ends the ActiveDefence convoy: the
+            // reinforced primary intercepts; a leftover support container is simply free again.
+            if (o.HasActiveDefencePayload && intent.ActiveDefence != null
+                && o.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement
+                && o.ReinforcementHandoffAttempted)
+            {
+                intent.ActiveDefence.SupportArmyId = null;
+                intent.ActiveDefence.Phase = ActiveDefencePhase.Intercept;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=REINFORCED "
+                    + $"enemy={intent.ActiveDefence.EnemyArmyId} primary={intent.ActiveDefence.PrimaryArmyId}");
+            }
 
             if (o.HasAttackPayload && intent.Attack != null)
             {
@@ -1969,7 +1990,12 @@ namespace Game.Ai.V2
                 StallTurns = 0,
                 CumulativeApSpent = o.ApSpent,
                 StepsMovedTotal = o.StepsMoved,
-                PreferredMoverArmyId = o.MoverArmyId,
+                // For a ground-combat payload this setter IS the payload's PrimaryArmyId: keep a
+                // primary the payload already names (an Attack Gather is born from a SUPPORT's
+                // step, so the mover is not the host), and fall back to the mover only when the
+                // payload has none (Raid).
+                PreferredMoverArmyId = (objective as IGroundCombatOperation)?.PrimaryArmyId
+                    ?? o.MoverArmyId,
             };
         }
 

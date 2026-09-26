@@ -230,6 +230,12 @@ namespace Game.Ai.V2
                         satisfied = actor != null && pm.ActiveDefenceTarget.ReturnHex.HasValue
                             && actor.Hex.Equals(pm.ActiveDefenceTarget.ReturnHex.Value);
                     }
+                    else if (pm.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement)
+                    {
+                        // A delivered convoy is a step of the intercept, never its objective:
+                        // Continuity moves the phase on to Intercept (AdvanceIntent).
+                        satisfied = false;
+                    }
                     else
                     {
                         // Same fog-of-war seam as MissionRevalidator: the post-execution

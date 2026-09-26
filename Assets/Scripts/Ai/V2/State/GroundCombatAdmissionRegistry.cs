@@ -41,9 +41,10 @@ namespace Game.Ai.V2
                 return;
 
             IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, target.Target);
+            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, target.Target);
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                GroundCombatAdmissionPolicy.FreshStartWinChanceGate, 0f);
-            ApplyDurableIncumbentPin(proposal, snap, opposition, 0f, ids,
+                GroundCombatAdmissionPolicy.FreshStartWinChanceGate, hexBonus);
+            ApplyDurableIncumbentPin(proposal, snap, opposition, hexBonus, ids,
                 GroundCombatAdmissionPolicy.ContinuationWinChanceFloor,
                 "RaidAdmission", target.Target.DiagnosticLabel);
 
@@ -152,6 +153,7 @@ namespace Game.Ai.V2
                     return;
                 primaryArmyId = raid.PrimaryArmyId.Value;
                 opposition = AiV2Util.KnownOpposition(snap, raid.Target);
+                hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, raid.Target);
             }
             else if (proposal.Target is AttackMissionTarget attack)
             {

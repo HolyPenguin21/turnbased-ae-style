@@ -55,6 +55,17 @@ namespace Game.Ai.V2
             return cover && win >= minWinChance;
         }
 
+        // THE numeric "power needed to clear these defenders" every Aggression lane sizes a
+        // shortage by: the defenders' effective power with `defenderHexDefenseBonus` folded into
+        // their Defense (the same reading Clears gives the estimator) times the shared margin.
+        // Callers pass the SAME bonus they pass Clears — 0f for a field battle, the known site
+        // defence for an assault on a structure — so a power figure never answers a different
+        // fight than the estimator it stands in for.
+        internal static float RequiredPower(IReadOnlyList<WorthIt.DefenderProfile> defenders,
+            float defenderHexDefenseBonus) =>
+            System.Math.Max(1f, AiPower.EffectiveArmyPowerFromProfiles(defenders,
+                System.Math.Max(0f, defenderHexDefenseBonus)) * AiConfigV2.raidCombatPowerMargin);
+
         private static float PowerSum(IReadOnlyList<WorthIt.DefenderProfile> profiles)
         {
             float sum = 0f;

@@ -10,7 +10,10 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    public enum ActiveDefencePhase { Intercept, Return }
+    // Reinforcement — the intercept's primary alone misses the gate while an existing free army
+    // can bring it over: that support walks to the primary and hands its bodies over, then the
+    // operation intercepts. One support, never a multi-army gather (that is Attack's alone).
+    public enum ActiveDefencePhase { Intercept, Return, Reinforcement }
 
     public struct ActiveDefenceMissionTarget
     {
@@ -24,6 +27,8 @@ namespace Game.Ai.V2
         public float ProtectedAssetValue;
         public float ThreatSeverity;
         public int? PrimaryArmyId;
+        // The Reinforcement leg's walker (its mover); null on Intercept / Return.
+        public int? SupportArmyId;
         // ATK §49 — see ActiveDefenceIntent.SuspendedOffensiveIntentKey.
         public MissionIntentKey? SuspendedOffensiveIntentKey;
         public HexCoord? ReturnHex;

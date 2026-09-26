@@ -196,7 +196,7 @@ namespace Game.Ai.V2
             var picked = new List<RaidCandidate>();
 
             foreach (RaidCandidate c in incumbents
-                .Where(x => x.Tier != CommitmentTier.None)
+                .Where(x => x.Tier != CommitmentTier.None && !x.IsCompletedTargetFallback)
                 .OrderByDescending(x => x.LocalAdmissionScore)
                 .ThenBy(x => x.Target.Target.DiagnosticLabel))
                 picked.Add(c);
@@ -289,11 +289,47 @@ namespace Game.Ai.V2
                     proposal.Axes.Value[DesireAxis.Aggression] = 1f;
                     proposals.Add(proposal);
                 }
+            // The durable Reinforcement leg: the bound support walks to the bound primary (or hands
+            // over once there). Lifecycle work of a Hard operation, so its intrinsic score stays
+            // neutral, exactly like the Attack / Raid convoy.
+            if (activeIntents != null)
+                foreach (MissionIntent intent in activeIntents.Where(i => i?.ActiveDefence != null
+                    && i.Status == IntentStatus.Active
+                    && i.ActiveDefence.Phase == ActiveDefencePhase.Reinforcement
+                    && i.ActiveDefence.PrimaryArmyId.HasValue
+                    && i.ActiveDefence.SupportArmyId.HasValue))
+                {
+                    ActiveDefenceIntent d = intent.ActiveDefence;
+                    ArmySnapshot primary = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                        && a.ArmyId == d.PrimaryArmyId.Value);
+                    ArmySnapshot support = snap.Self?.Armies?.FirstOrDefault(a => a != null
+                        && a.ArmyId == d.SupportArmyId.Value);
+                    if (primary == null || support == null
+                        || (!support.Hex.Equals(primary.Hex) && support.CurrentMovement <= 0))
+                        continue;
+                    var legTarget = new ActiveDefenceMissionTarget
+                    {
+                        EnemyArmyId = d.EnemyArmyId, LastKnownHex = d.LastKnownHex,
+                        LastObservedTurn = d.LastObservedTurn, Confidence = d.Confidence,
+                        ProtectedAssetHex = d.ProtectedAssetHex,
+                        ProtectedAssetKind = d.ProtectedAssetKind,
+                        ProtectedAssetValue = d.ProtectedAssetValue,
+                        ThreatSeverity = d.ThreatSeverity,
+                        ProjectedWinChance = d.ProjectedWinChance,
+                        CoversAllDefenders = d.CoversAllDefenders,
+                        EstimatedEta = d.EstimatedEta,
+                    };
+                    proposals.Add(BuildActiveDefenceReinforcementLeg(legTarget, primary, support,
+                        0f, intent));
+                }
             foreach (ActiveDefenceObjective objective in ActiveDefenceObjectiveEvaluator.Enumerate(snap))
             {
                 MissionIntent incumbent = activeIntents?.FirstOrDefault(i => i != null
                     && i.Status == IntentStatus.Active && i.Kind == MissionKind.ActiveDefence
                     && i.ActiveDefence?.EnemyArmyId == objective.Target.EnemyArmyId);
+                // A reinforcing operation is proposed above; no second intercept this pass.
+                if (incumbent?.ActiveDefence?.Phase == ActiveDefencePhase.Reinforcement)
+                    continue;
                 int? pinnedActor = incumbent?.ActiveDefence?.PrimaryArmyId;
                 var excluded = committed == null
                     ? new HashSet<int>() : new HashSet<int>(committed);
@@ -369,6 +405,11 @@ namespace Game.Ai.V2
                 }
                 if (!plan.Feasible)
                 {
+                    // Enough strength exists but no single army nor same-hex package holds it:
+                    // bring ONE existing free support to ONE free primary, then intercept.
+                    if (incumbent == null && TryAppendActiveDefenceReinforcement(snap, objective,
+                            opposition, excluded, proposals))
+                        continue;
                     AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId.ToString(),
                         $"[AI][V2][ActiveDefence][Assembly] decision=REJECT enemy={objective.Target.EnemyArmyId} reason={plan.Reason}");
                     continue;
@@ -441,6 +482,71 @@ namespace Game.Ai.V2
             }
         }
 
+        // A fresh ActiveDefence that no ready force can take alone: the shared kernel picks the
+        // fastest free (primary, support) pair whose merged roster clears the fresh gate. The whole
+        // response is priced here (win of the merged roster, walk + march ETA, the support AP now
+        // and the rest later) so it competes honestly with every other lane. Its first step
+        // creates the Hard intent in the Reinforcement phase (CreateActiveDefenceIntent).
+        private static bool TryAppendActiveDefenceReinforcement(WorldSnapshot snap,
+            ActiveDefenceObjective objective, IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            ISet<int> excluded, List<MissionProposal> proposals)
+        {
+            GroundCombatReinforcementPlan plan = GroundCombatAssemblyPlanner.PlanReinforcement(snap,
+                opposition, 0f, objective.Target.LastKnownHex, excluded,
+                GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
+            if (!plan.Feasible)
+            {
+                AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#reinforce",
+                    $"[AI][V2][ActiveDefence][Reinforcement] decision=REJECT enemy={objective.Target.EnemyArmyId} "
+                    + $"reason={plan.Reason}");
+                return false;
+            }
+            ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(a => a != null
+                && a.ArmyId == plan.PrimaryArmyId);
+            ArmySnapshot support = snap.Self.Armies.FirstOrDefault(a => a != null
+                && a.ArmyId == plan.SupportArmyId);
+            if (primary == null || support == null)
+                return false;
+            int eta = UnityEngine.Mathf.Max(1, plan.TotalEta);
+            TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
+                plan.ProjectedWinChance, plan.CurrentTurnAp, AiV2Util.CeilDiv(plan.FutureAp, eta), eta);
+            ActiveDefenceMissionTarget target = objective.Target;
+            target.ProjectedWinChance = plan.ProjectedWinChance;
+            target.CoversAllDefenders = plan.CoversAllDefenders;
+            target.EstimatedEta = eta;
+            proposals.Add(BuildActiveDefenceReinforcementLeg(target, primary, support,
+                score.Value, null));
+            AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#reinforce",
+                $"[AI][V2][ActiveDefence][Reinforcement] decision=PROPOSE enemy={objective.Target.EnemyArmyId} "
+                + $"primary={primary.ArmyId} support={support.ArmyId} win={plan.ProjectedWinChance:0.00} "
+                + $"walk={plan.WalkTurns} march={plan.MarchEta} score={score.Value:0.00}");
+            return true;
+        }
+
+        private static MissionProposal BuildActiveDefenceReinforcementLeg(
+            ActiveDefenceMissionTarget target, ArmySnapshot primary, ArmySnapshot support,
+            float value, MissionIntent intent)
+        {
+            target.Phase = ActiveDefencePhase.Reinforcement;
+            target.PrimaryArmyId = primary.ArmyId;
+            target.SupportArmyId = support.ArmyId;
+            var proposal = new MissionProposal
+            {
+                Kind = MissionKind.ActiveDefence,
+                Target = target,
+                BaseValue = value,
+                LocalAdmissionScore = value,
+                PreferredMoverArmyId = support.ArmyId,
+                FromDurableIntent = intent != null,
+                DurableFundingTier = intent?.Funding ?? CommitmentTier.None,
+                Requirements = GroundCombatLegs.PinnedLegRequirements(support, primary.Hex, out _),
+                Explain = $"ActiveDefence enemy #{target.EnemyArmyId} Reinforcement support "
+                    + $"#{support.ArmyId} -> primary #{primary.ArmyId} at ({primary.Hex.Q},{primary.Hex.R})",
+            };
+            proposal.Axes.Value[DesireAxis.Aggression] = 1f;
+            return proposal;
+        }
+
         // Return/support-return are lifecycle/continuity legs, not fresh strategic target scoring.
         // Their execution priority is owned by the durable Hard commitment; intrinsic TaskScore
         // stays neutral so lifecycle work cannot out-rank unrelated lanes through a legacy scale.
@@ -475,7 +581,10 @@ namespace Game.Ai.V2
             return new RaidCandidate(target, value, value,
                 $"Raid {ri.Target.DiagnosticLabel} {phase}: {role} #{moverArmyId.Value} to base "
                 + $"({homeHex.Value.Q},{homeHex.Value.R}); intrinsic={F(value)}; {protection}",
-                true, intent.Funding, moverArmyId, moverArmyId,
+                // Hard lifecycle work XOR a fresh-decision fallback: the fallback after a completed
+                // objective carries no commitment protection, so it carries no Hard tier either.
+                true, ri.CompletedTargetAwaitingFreshDecision ? CommitmentTier.None : intent.Funding,
+                moverArmyId, moverArmyId,
                 isCompletedTargetFallback: ri.CompletedTargetAwaitingFreshDecision);
         }
 
@@ -499,7 +608,8 @@ namespace Game.Ai.V2
             {
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, ri.Target);
                 List<int> candidates = GroundCombatAssemblyPlanner.ReinforcementSupportCandidates(
-                    snap, primaryId, opposition, committed);
+                    snap, primaryId, opposition, committed,
+                    AiV2Util.KnownRaidDefenceBonus(snap, ri.Target));
                 if (candidates.Count == 0)
                     return null;
 
@@ -631,6 +741,7 @@ namespace Game.Ai.V2
             }
             RaidMissionTarget target = o.ToTarget();
             IReadOnlyList<WorthIt.DefendingArmy> opposition = AiV2Util.KnownOpposition(snap, o.Target);
+            float hexBonus = AiV2Util.KnownRaidDefenceBonus(snap, o.Target);
 
             GroundCombatAssemblyPlan live = pinnedPrimaryArmyId.HasValue
                 ? GroundCombatAssemblyPlanner.Plan(snap, new GroundCombatAssemblyRequest
@@ -640,8 +751,9 @@ namespace Game.Ai.V2
                     PinToPreferred = true,
                     ExcludedArmyIds = excluded,
                     WinChanceGate = GroundCombatAdmissionPolicy.PinnedOrFreshGate(operationStarted),
+                    DefenderHexDefenseBonus = hexBonus,
                 })
-                : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded);
+                : GroundCombatAssemblyPlanner.Plan(snap, target, opposition, excluded, hexBonus);
 
             float readyWin = live.Feasible
                 ? UnityEngine.Mathf.Clamp01(live.ProjectedWinChance) : 0f;

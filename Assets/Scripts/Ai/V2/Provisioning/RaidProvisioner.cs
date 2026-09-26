@@ -106,7 +106,9 @@ namespace Game.Ai.V2
                 {
                     Player = player, Root = root, Ctx = ctx, Session = session, Funded = funded,
                     Key = key, TargetHex = targetHex, Opposition = opposition,
-                    DefenderHexDefenseBonus = 0f, LaneLabel = "raid", Eps = eps,
+                    // The target's own hex (terrain + any known structure), read with the map.
+                    DefenderHexDefenseBonus = AiMapMemory.KnownHexDefenseBonus(player, ctx?.Map, targetHex),
+                    LaneLabel = "raid", Eps = eps,
                 });
             if (!assault.Success)
                 return assault.Failure;
@@ -286,7 +288,8 @@ namespace Game.Ai.V2
                 AiV2Util.KnownOpposition(session.Snapshot, target.Target);
             // ATK §28/§46 — the convoy checks are the shared ground-combat leg primitive.
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
-                ctx, session, funded, key, eps, primary, supportArmyId, opposition, 0f, "raid",
+                ctx, session, funded, key, eps, primary, supportArmyId, opposition,
+                AiV2Util.KnownRaidDefenceBonus(session.Snapshot, target.Target), "raid",
                 out bool atRendezvous);
             if (!check.Ok)
                 return check.Failure;

@@ -221,9 +221,10 @@ namespace Game.Ai.V2
             bool needsHero = !haveViable && !report.HeroAvailable;
             bool needsCombatPower = !haveViable;
 
-            float targetPower = AiPower.EffectiveArmyPowerFromProfiles(
-                AiV2Util.KnownDefenders(snap, o.Target));
-            float requiredPower = targetPower * AiConfigV2.raidCombatPowerMargin;
+            IReadOnlyList<WorthIt.DefenderProfile> knownDefenders = AiV2Util.KnownDefenders(snap, o.Target);
+            float targetPower = AiPower.EffectiveArmyPowerFromProfiles(knownDefenders);
+            float requiredPower = GroundCombatFeasibility.RequiredPower(knownDefenders,
+                AiV2Util.KnownRaidDefenceBonus(snap, o.Target));
             float deficit = needsCombatPower ? Mathf.Max(1f, requiredPower - snap.Self.FieldPower) : 0f;
 
             return new AggressionObjective

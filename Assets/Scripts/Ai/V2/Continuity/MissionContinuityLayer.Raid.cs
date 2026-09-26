@@ -445,7 +445,8 @@ namespace Game.Ai.V2
                 .Where(m => m.IsGroundBattleBody).Select(m => m.CurrentProfile).ToList();
             GroundCombatFeasibility.Clears(roster, primary.Commander,
                 AiV2Util.KnownOpposition(snap, raid.Target),
-                AiConfigV2.raidMinViableWinChance, 0f, out float win, out _);
+                AiConfigV2.raidMinViableWinChance, AiV2Util.KnownRaidDefenceBonus(snap, raid.Target),
+                out float win, out _);
             return win;
         }
 
@@ -588,7 +589,8 @@ namespace Game.Ai.V2
                 return false;
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAt(
                 snap, AiV2Util.KnownOpposition(snap, target), primaryArmyId.Value,
-                winChanceGate ?? GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
+                winChanceGate ?? GroundCombatAdmissionPolicy.FreshStartWinChanceGate,
+                AiV2Util.KnownRaidDefenceBonus(snap, target));
             return plan.Feasible;
         }
 

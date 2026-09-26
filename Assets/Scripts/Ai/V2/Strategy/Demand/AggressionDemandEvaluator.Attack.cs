@@ -188,17 +188,44 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // §41 — an army committed elsewhere that could take the site is actor contention, the
+            // allocator's problem, never a capability shortage for Production to buy.
+            GroundCombatAssemblyPlan contended = GroundCombatAssemblyPlanner.Plan(snap,
+                new GroundCombatAssemblyRequest
+                {
+                    Opposition = objective.Opposition,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                    ExcludedArmyIds = new HashSet<int>(),
+                    DefenderHexDefenseBonus = hexBonus,
+                });
+            if (contended.Feasible)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={objective.Target.DiagnosticLabel} "
+                    + $"physicalActor=#{contended.BaseArmyId} reason=unbound_attack_mover_contended");
+                return;
+            }
+
             ArmySnapshot fist = snap.Self.Armies?
                 .Where(a => a != null && a.IsStructuralRaidActor
                     && (claimed == null || !claimed.Contains(a.ArmyId)))
                 .OrderByDescending(a => a.EffectiveArmyPower).ThenBy(a => a.ArmyId)
                 .FirstOrDefault();
-            float required = Mathf.Max(1f, objective.TargetPower * AiConfigV2.raidCombatPowerMargin);
-            float deficit = Mathf.Max(1f, required - (fist?.EffectiveArmyPower ?? 0f));
+            float required = RequiredSitePower(objective.Opposition, hexBonus);
+            float have = fist?.EffectiveArmyPower ?? 0f;
+            // §11 — a fist that already has the numbers yet misses the gate is an assembly /
+            // composition gap: strengthening it by a phantom +1 from hand closes nothing.
+            if (required - have <= AiConfigV2.allocatorSliceEpsilon)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={objective.Target.DiagnosticLabel} "
+                    + $"fist={(fist?.ArmyId ?? 0)} required={required:0.#} have={have:0.#} hexDef={hexBonus:0.#} "
+                    + "reason=unbound_attack_power_suffices_gate_missed");
+                return;
+            }
+            float deficit = required - have;
             TaskScore score = objective.TaskScore;
             diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE target={objective.Target.DiagnosticLabel} "
                 + $"capability=FieldCombatPower shape=Any desired={deficit:0.#} fist={(fist?.ArmyId ?? 0)} "
-                + $"required={required:0.#} have={(fist?.EffectiveArmyPower ?? 0f):0.#} "
+                + $"required={required:0.#} have={have:0.#} hexDef={hexBonus:0.#} "
                 + $"task={score.Value:0.##} reason=unbound_attack_no_force_clears_the_floor");
             demands.Add(new AxisDemand
             {
@@ -214,7 +241,7 @@ namespace Game.Ai.V2
                 WorldTaskScore = score,
                 Value = score.Value,
                 Explain = $"attack {objective.Target.DiagnosticLabel}: no force clears the Attack floor "
-                    + $"({(fist?.EffectiveArmyPower ?? 0f):0.#} of {required:0.#}); strengthen the fist "
+                    + $"({have:0.#} of {required:0.#}, hex defence {hexBonus:0.#}); strengthen the fist "
                     + $"#{(fist?.ArmyId ?? 0)} from hand; task={score.Value:0.##}",
             });
         }

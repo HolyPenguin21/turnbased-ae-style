@@ -130,7 +130,8 @@ namespace Game.Ai.V2
                     // bounded reaction probe, which must never commit the real mission to anything.
                     AxisDemand raidShortage = BoundPrimaryShortage(snap, inv, commitments, i,
                         MissionKind.Raid, ri.Target.DiagnosticLabel, primaryId, ri.SupportArmyId,
-                        ri.ReinforcementRequestedTurn, AiV2Util.KnownOpposition(snap, ri.Target), 0f,
+                        ri.ReinforcementRequestedTurn, AiV2Util.KnownOpposition(snap, ri.Target),
+                        AiV2Util.KnownRaidDefenceBonus(snap, ri.Target),
                         GroundCombatAdmissionPolicy.RaidPrimaryGate(ri),
                         // The same world objective, so its canonical intrinsic TaskScore.
                         () => objectives
@@ -297,6 +298,13 @@ namespace Game.Ai.V2
         // claim. Otherwise: one IndependentFieldArmy demand sized to the deficit, carrying the
         // objective's canonical TaskScore (no synthetic lifecycle value). Returns null when no
         // demand is due; every decision is written to `diag`.
+        // A demand is sized with the SAME hex defence its gate was evaluated with
+        // (GroundCombatFeasibility.RequiredPower owns the formula): sized without it, it
+        // under-asks exactly on fortified targets, where the estimator rejected the fight.
+        private static float RequiredSitePower(IReadOnlyList<WorthIt.DefendingArmy> opposition,
+            float hexBonus) =>
+            GroundCombatFeasibility.RequiredPower(WorthIt.UnitsOf(opposition), hexBonus);
+
         private static AxisDemand BoundPrimaryShortage(WorldSnapshot snap, CapabilityInventory inv,
             ActorCommitments commitments, MissionIntent intent, MissionKind consumerKind,
             string targetLabel, int primaryId, int? supportArmyId, int reinforcementRequestedTurn,
@@ -336,9 +344,17 @@ namespace Game.Ai.V2
 
             ArmySnapshot primary = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == primaryId);
             float have = primary?.EffectiveArmyPower ?? 0f;
-            float required = Mathf.Max(1f, AiPower.EffectiveArmyPowerFromProfiles(WorthIt.UnitsOf(opposition))
-                * AiConfigV2.raidCombatPowerMargin);
-            float deficit = Mathf.Max(1f, required - have);
+            float required = RequiredSitePower(opposition, hexBonus);
+            // §11 — enough numeric power that still misses the estimator's gate is a composition
+            // gap more power cannot close; it never becomes a phantom +1 FieldCombatPower.
+            if (required - have <= AiConfigV2.allocatorSliceEpsilon)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at} "
+                    + $"reason=primary_power_suffices_gate_missed required={required:0.#} have={have:0.#} "
+                    + $"hexDef={hexBonus:0.#}");
+                return null;
+            }
+            float deficit = required - have;
             if (!CanDeliverIndependentFieldArmy(snap, inv))
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER {at} "

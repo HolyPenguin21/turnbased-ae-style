@@ -45,6 +45,17 @@ namespace Game.Ai.V2
                 TryResumePreemptedOffensive(state, defence, "defence_ended");
                 return DefenceResolution.Retire;
             }
+            if (defence.Phase == ActiveDefencePhase.Reinforcement
+                && (!defence.SupportArmyId.HasValue || !snap.Self.Armies.Any(a => a != null
+                    && a.ArmyId == defence.SupportArmyId.Value && a.IsStructuralRaidActor)))
+            {
+                // The convoy is gone: the operation falls back to its primary alone; the
+                // planner re-plans the intercept (or rejects it) from there.
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=SUPPORT_LOST "
+                    + $"enemy={defence.EnemyArmyId} support={defence.SupportArmyId}");
+                defence.SupportArmyId = null;
+                defence.Phase = ActiveDefencePhase.Intercept;
+            }
             if (defence.Phase == ActiveDefencePhase.Return)
             {
                 // The same walk-home rule every lifecycle leg uses: a home base that was lost or
@@ -179,15 +190,22 @@ namespace Game.Ai.V2
             MissionTurnOutcome o, int turn)
         {
             ActiveDefenceMissionTarget t = o.ActiveDefenceTarget;
+            // A Reinforcement step is executed by the SUPPORT: the primary is the target's, never
+            // the mover. A convoy whose very first step already handed over goes straight on to
+            // Intercept.
+            bool reinforcing = t.Phase == ActiveDefencePhase.Reinforcement;
+            bool delivered = reinforcing && o.ReinforcementHandoffAttempted;
             var payload = new ActiveDefenceIntent
             {
-                Phase = t.Phase, EnemyArmyId = t.EnemyArmyId,
+                Phase = delivered ? ActiveDefencePhase.Intercept : t.Phase,
+                EnemyArmyId = t.EnemyArmyId,
                 LastKnownHex = t.LastKnownHex, LastObservedTurn = t.LastObservedTurn,
                 Confidence = t.Confidence, ProtectedAssetHex = t.ProtectedAssetHex,
                 ProtectedAssetKind = t.ProtectedAssetKind,
                 ProtectedAssetValue = t.ProtectedAssetValue,
                 ThreatSeverity = t.ThreatSeverity,
-                PrimaryArmyId = o.MoverArmyId ?? t.PrimaryArmyId,
+                PrimaryArmyId = reinforcing ? t.PrimaryArmyId : o.MoverArmyId ?? t.PrimaryArmyId,
+                SupportArmyId = reinforcing && !delivered ? t.SupportArmyId : null,
                 SuspendedOffensiveIntentKey = t.SuspendedOffensiveIntentKey,
                 ReturnHex = t.ReturnHex, ProjectedWinChance = t.ProjectedWinChance,
                 CoversAllDefenders = t.CoversAllDefenders, EstimatedEta = t.EstimatedEta,

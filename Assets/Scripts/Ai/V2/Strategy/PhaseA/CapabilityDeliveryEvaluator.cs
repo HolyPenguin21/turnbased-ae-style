@@ -265,6 +265,7 @@ namespace Game.Ai.V2
             {
                 primaryId = ri.PrimaryArmyId.Value;
                 opposition = AiV2Util.KnownOpposition(afterSnap, ri.Target);
+                hexBonus = AiV2Util.KnownRaidDefenceBonus(afterSnap, ri.Target);
             }
             else if (ai != null && ai.PrimaryArmyId.HasValue && ai.Target.HasValue)
             {
