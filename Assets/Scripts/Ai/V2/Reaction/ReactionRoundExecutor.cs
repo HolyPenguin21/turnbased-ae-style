@@ -72,6 +72,13 @@ namespace Game.Ai.V2
                 yield break;
             }
 
+            // The Phase-B hold protected this round from the preceding tempo pass. The bounded
+            // round now owns that AP and resource envelope: release it before Phase A, allocation
+            // and Provisioning so its own Recon/Aggression/Economy/Development work can spend it.
+            // Other owners' Economy reservations remain in the ledger.
+            StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
+                StrategicReservationReason.StrategicReactionPass);
+
             int apAtStart = root.ActionPoints;
             AiDebugLog.Write($"[AI][V2] reaction — BEGIN round {round + 1}/2 bounded strategic replan "
                 + $"targets=[{string.Join(",", targetIds.OrderBy(x => x))}] ap={apAtStart}");
@@ -277,12 +284,6 @@ namespace Game.Ai.V2
             snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
             ActorCommitments postCommitments = ActorCommitments.FromIntents(
                 MissionIntentRegistry.GetOrCreate(player).All, snapshot, ReconObjectiveEvaluator.Enumerate(snapshot));
-            // §7 — the reaction round is NOW executing its own spend. The AP that
-            // Phase B reserved as a placeholder for "the reaction will need AP" must be released
-            // BEFORE this inner tempo arbitration, or the reaction cannot use the very AP it held
-            // back (and it would look stranded until end of turn).
-            StrategicResourceReservationLedger.ReleaseByReason(player, ctx.TurnNumber,
-                StrategicReservationReason.StrategicReactionPass);
             var phaseB = new StrategicPhaseResult();
             yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                 postCommitments, phaseA.Reservation, phaseB);

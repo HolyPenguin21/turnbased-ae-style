@@ -169,6 +169,57 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void ReactionRoundRelease_OpensItsBudgetWithoutReleasingEconomyCompletion()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 16;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            StrategicResourceReservationLedger.Upsert(player, turn,
+                new StrategicResourceReservation
+                {
+                    Owner = "reaction:round",
+                    Reason = StrategicReservationReason.StrategicReactionPass,
+                    Resource = StrategicReservedResource.ActionPoints,
+                    Amount = 3f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfReaction,
+                });
+            StrategicResourceReservationLedger.Upsert(player, turn,
+                new StrategicResourceReservation
+                {
+                    Owner = "Economy:build",
+                    Reason = StrategicReservationReason.EconomyBuildCompletion,
+                    Resource = StrategicReservedResource.ActionPoints,
+                    Amount = 2f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                });
+            var scout = new MissionProposal
+            {
+                Kind = MissionKind.Scout,
+                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore },
+                BaseValue = 10f,
+                EffectiveValue = 10f,
+                Requirements = new MissionRequirements
+                    { ApMinimum = 3f, ApDesired = 3f, ApMaximum = 3f },
+            };
+            scout.Axes.Value[DesireAxis.Recon] = 1f;
+            var snap = new WorldSnapshot
+                { TurnNumber = turn, Self = new SelfSnapshot { ActionPoints = 5 } };
+
+            TentativeAllocation before = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
+            Assert.That(before.Funded, Is.Empty);
+
+            // ReactionRoundExecutor releases this reason before its Phase A and mission pass.
+            StrategicResourceReservationLedger.ReleaseByReason(player, turn,
+                StrategicReservationReason.StrategicReactionPass);
+            TentativeAllocation during = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
+            Assert.That(during.Funded.Select(f => f.Mission), Does.Contain(scout));
+            Assert.That(StrategicResourceReservationLedger.SpendableAp(player, turn, 5f),
+                Is.EqualTo(3f), "the Economy owner's two AP remain protected");
+        }
+
+        [Test]
         public void MaterializationGuard_UsesSpendableApAndReleasesItWhenReservationEnds()
         {
             var owner = new PlayerSetupData();
