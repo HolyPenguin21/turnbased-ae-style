@@ -156,7 +156,7 @@ namespace Game.Ai.V2
                     + $"eff {m.EffectiveValue.ToString("0.0", CultureInfo.InvariantCulture)} | {m.Explain}");
             result.Missions += missions.Count;
 
-            List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions);
+            List<Commitment> commitments = MissionContinuityLayer.BindFunding(activeIntents, missions, snapshot);
             var outcomeLedger = new MissionOutcomeLedger();
             outcomeLedger.RegisterProposals(missions);
             outcomeLedger.RegisterCommitments(commitments);

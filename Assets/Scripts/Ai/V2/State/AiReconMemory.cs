@@ -56,14 +56,15 @@ namespace Game.Ai.V2
         // observation seam: first stamp CURRENT visibility into live IntelAge, then immediately
         // freeze a per-turn strategic copy. Downstream strategy/mission planning reads only that
         // frozen copy; tactical execution may continue to update AiReconIntelMemory after moves.
-        public static void Observe(PlayerSetupData player, int turn,
+        public static void Observe(PlayerSetupData player, int turn, int knowledgeVersion,
             IEnumerable<AiMapMemory.KnownEnemySighting> currentSightings)
         {
             if (player == null)
                 return;
 
             AiReconIntelMemory.ObserveCurrentVisibility(player, turn);
-            ReconIntelSnapshotRegistry.Capture(player, turn, AiReconIntelMemory.Snapshot(player));
+            ReconIntelSnapshotRegistry.Capture(player, turn, knowledgeVersion,
+                AiReconIntelMemory.Snapshot(player));
 
             if (!ByPlayer.TryGetValue(player, out Dictionary<int, ReconObservation> store))
                 ByPlayer[player] = store = new Dictionary<int, ReconObservation>();

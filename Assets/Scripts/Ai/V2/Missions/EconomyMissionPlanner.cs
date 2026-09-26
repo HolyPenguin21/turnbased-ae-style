@@ -10,6 +10,29 @@ namespace Game.Ai.V2
     // spend resources, or mutate reservations; those remain provisioning/execution concerns.
     internal static class EconomyMissionPlanner
     {
+        // Why an Active durable Economy intent has no step this pass (null = it has one). The one
+        // rule for this planner's own skip and for Continuity's funding diagnostics.
+        //  · actor_no_movement_this_cycle — travel needs MP the actor no longer has; completion on
+        //    the target hex is still allowed with zero MP, and refreshed movement admits it again.
+        //  · collector_holding_site — a collector already on its site holds it for the income
+        //    tick; Continuity records the hold (ResolveActive). Proposing it would make a zero-AP
+        //    commitment the first funded task of every typed admission and stop the loop.
+        internal static string DeferredThisPass(MissionIntent intent, WorldSnapshot snapshot)
+        {
+            EconomyIntent e = intent?.Economy;
+            if (e == null || !intent.PreferredMoverArmyId.HasValue)
+                return null;
+            ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == intent.PreferredMoverArmyId.Value);
+            if (actor == null)
+                return null;
+            if (actor.CurrentMovement <= 0 && !actor.Hex.Equals(e.TargetHex))
+                return "actor_no_movement_this_cycle";
+            if (e.Kind == EconomyTaskKind.MobileCollection && actor.Hex.Equals(e.TargetHex))
+                return "collector_holding_site";
+            return null;
+        }
+
         public static List<MissionProposal> Propose(WorldSnapshot snapshot,
             DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
             IReadOnlyList<AxisDemand> demands)
@@ -27,22 +50,10 @@ namespace Game.Ai.V2
                 EconomyIntent e = intent.Economy;
                 bool mobile = e.Kind == EconomyTaskKind.MobileCollection
                     || e.Kind == EconomyTaskKind.ReturnCollector;
-                // This is a per-pass execution admission, not cancellation of the durable intent.
-                // Phase B can re-enter the operational loop after changing the hand/resources,
-                // but neither change refills this committed builder's movement. Do not repeatedly
-                // fund the same impossible travel step; completion on the target hex is still
-                // allowed with zero MP, and a refreshed actor/movement state admits it again.
-                ArmySnapshot pinnedBuilder = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
-                    && a.ArmyId == intent.PreferredMoverArmyId.Value);
-                if (pinnedBuilder != null && pinnedBuilder.CurrentMovement <= 0
-                    && !pinnedBuilder.Hex.Equals(e.TargetHex))
-                    continue;
-                // A collector already on its site holds it for the income tick: there is no step
-                // to execute. Continuity records the hold (ResolveActive); proposing it would make
-                // a zero-AP commitment the first funded task of every typed admission, settle with
-                // no invalidation and stop the loop for everything else.
-                if (e.Kind == EconomyTaskKind.MobileCollection && pinnedBuilder != null
-                    && pinnedBuilder.Hex.Equals(e.TargetHex))
+                // A per-pass execution admission, not cancellation of the durable intent: Phase B
+                // can re-enter the loop after changing hand/resources, but that never refills the
+                // committed builder's movement, so the same impossible step is not re-funded.
+                if (DeferredThisPass(intent, snapshot) != null)
                     continue;
                 AxisDemand refreshed = mobile ? null : demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue

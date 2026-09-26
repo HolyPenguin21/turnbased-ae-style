@@ -1178,7 +1178,7 @@ namespace Game.Ai.V2
         }
 
         public static List<Commitment> BindFunding(IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<MissionProposal> proposals)
+            IReadOnlyList<MissionProposal> proposals, WorldSnapshot snapshot = null)
         {
             var commitments = new List<Commitment>();
             if (activeIntents == null || proposals == null)
@@ -1195,6 +1195,15 @@ namespace Game.Ai.V2
                     continue;
                 if (!byKey.TryGetValue(intent.IntentKey, out MissionProposal p))
                 {
+                    string deferred = intent.Kind == MissionKind.Economy
+                        ? EconomyMissionPlanner.DeferredThisPass(intent, snapshot) : null;
+                    if (deferred != null)
+                    {
+                        AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
+                            $"[AI][V2] continuity — DEFER {intent.IntentKey} ({intent.Funding}) "
+                            + $"no step this pass; reason={deferred}");
+                        continue;
+                    }
                     AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                         $"[AI][V2] continuity — WARN {intent.IntentKey} ({intent.Funding}) "
                         + "not materialised this turn; no funding bound");

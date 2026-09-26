@@ -531,7 +531,7 @@ namespace Game.Ai.V2
                         missions = missions.Where(m => m == null
                             || !retryNextTurnThisPass.Contains(StableMissionKey.For(m))).ToList();
                     List<Commitment> cycleCommitments =
-                        MissionContinuityLayer.BindFunding(activeIntents, missions);
+                        MissionContinuityLayer.BindFunding(activeIntents, missions, snapshot);
                     var cycleLedger = new MissionOutcomeLedger();
                     cycleLedger.RegisterProposals(missions);
                     cycleLedger.RegisterCommitments(cycleCommitments);

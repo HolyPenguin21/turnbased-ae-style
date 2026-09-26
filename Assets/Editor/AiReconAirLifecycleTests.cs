@@ -28,6 +28,49 @@ namespace Game.EditorTests
             Assert.That(sortie.OutboundCapReached, Is.True, "a launch step can already spend a small cap");
         }
 
+        // Owned airfield + departed wing: only a wing turning for home lands there.
+        [Test]
+        public void OwnedAirfieldDuringOutbound_DoesNotCompleteSortie()
+        {
+            var heli = new ReconAirSortieState
+            {
+                Phase = ReconAirPhase.Outbound, OutboundMovementCap = 6, OutboundMovementSpent = 2,
+            };
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(heli, atAirfield: true,
+                hasDeparted: true), Is.False, "intermediate airfield on the outbound route");
+        }
+
+        [Test]
+        public void ReturnPhaseAtOwnedAirfield_CompletesSortie()
+        {
+            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Return, OutboundMovementCap = 6 };
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, true), Is.True);
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, hasDeparted: false),
+                Is.False, "a wing that never left its airfield has not flown a sortie");
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, atAirfield: false, true),
+                Is.False);
+        }
+
+        [Test]
+        public void OutboundCapUsedUpOnAnAirfield_CompletesSortie()
+        {
+            var wing = new ReconAirSortieState
+            {
+                Phase = ReconAirPhase.Outbound, OutboundMovementCap = 3, OutboundMovementSpent = 3,
+            };
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, true), Is.True,
+                "PlanStep does not turn a wing for home while it stands on an airfield");
+        }
+
+        [Test]
+        public void OutboundCap_PlaneReservesHalf_HelicopterMayEndAloft()
+        {
+            Assert.That(ReconAirSortieState.OutboundCapFor(6, safeUnlandedEnds: 0), Is.EqualTo(3),
+                "plane: half the movement out, the other half back the same turn");
+            Assert.That(ReconAirSortieState.OutboundCapFor(6, safeUnlandedEnds: 1), Is.EqualTo(6),
+                "helicopter: full movement out, may end the turn aloft and return next turn");
+        }
+
         private static MissionTurnOutcome Finalize(int? actualArmyId)
         {
             var m = new MissionProposal

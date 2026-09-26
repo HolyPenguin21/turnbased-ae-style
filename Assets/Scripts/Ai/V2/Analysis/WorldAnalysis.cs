@@ -55,7 +55,8 @@ namespace Game.Ai.V2
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
-            AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
+            AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
+                snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, root, ctx, snap);
@@ -113,7 +114,8 @@ namespace Game.Ai.V2
             snap.Self = BuildSelf(player, root, hand, ctx);
             snap.Development = BuildDevelopment(player, root, hand, ctx);
             snap.Known = BuildKnown(player, snap.Self.BaseHexes);
-            AiReconMemory.Observe(player, ctx.TurnNumber, snap.Known.EnemySightings);
+            AiReconMemory.Observe(player, ctx.TurnNumber, snap.KnowledgeVersion,
+                snap.Known.EnemySightings);
             snap.TrueWorld = BuildTrueWorld(player, ctx);
             snap.MapKnowledge = BuildMapKnowledge(player, ctx, snap);
             snap.Economy = BuildEconomy(player, root, ctx, snap);

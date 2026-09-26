@@ -657,7 +657,7 @@ namespace Game.Ai.V2
                 player, armyId, air.Hex);
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
             bool hasDeparted = control.MovedAny || sortie.LaunchTurn >= 0 || sortie.Trail.Count > 1;
-            if (atAirfield && hasDeparted)
+            if (ReconAirSortieLifecycle.CompletesAtAirfield(sortie, atAirfield, hasDeparted))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Landing at "
                     + $"({air.Hex.Q},{air.Hex.R}); sortie complete");

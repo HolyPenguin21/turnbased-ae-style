@@ -41,6 +41,15 @@ namespace Game.Ai.V2
             }
         }
 
+        // An owned airfield ends the sortie only when the wing is turning for home: the Return
+        // phase, or the used-up outbound leg (PlanStep's own Return trigger, which it does not
+        // re-evaluate while standing on an airfield). An intermediate friendly airfield crossed
+        // during Outbound is just another hex of the route.
+        internal static bool CompletesAtAirfield(ReconAirSortieState sortie, bool atAirfield,
+            bool hasDeparted) =>
+            sortie != null && atAirfield && hasDeparted
+            && (sortie.Phase == ReconAirPhase.Return || sortie.OutboundCapReached);
+
         // Mark this AI turn as processed for the sortie (Hold-reopen-once semantics). Executor-owned.
         internal static bool BeginTurn(ReconAirSortieState sortie, int turn) => sortie.BeginTurn(turn);
 

@@ -16,15 +16,18 @@ namespace Game.Ai.V2
     // is satisfied from the same age — so a scout that just re-observed its target hex must be
     // visible here in the SAME turn, or the AI would keep re-proposing a job it already completed.
     //
-    // The copy is therefore "per knowledge revision", not "per turn". What it does guarantee is
-    // isolation: strategic readers never observe a half-updated tactical store, and every read is
-    // gated on Turn == snapshot.TurnNumber so a previous turn's copy can never be served.
+    // The copy is therefore "per knowledge revision", not "per turn": every revision captured this
+    // turn keeps its own copy, keyed Player + Turn + KnowledgeVersion — exactly the identity of the
+    // WorldSnapshot that reads it. A snapshot frozen at an earlier revision still reads its own
+    // copy after a later capture (never the newer one, never an empty one), and there is no
+    // fallback to another revision. A new turn drops the previous turn's revisions.
     internal static class ReconIntelSnapshotRegistry
     {
         private sealed class Entry
         {
             public int Turn;
-            public IReadOnlyDictionary<HexCoord, int> LastObserved;
+            public readonly Dictionary<int, IReadOnlyDictionary<HexCoord, int>> ByKnowledgeVersion =
+                new Dictionary<int, IReadOnlyDictionary<HexCoord, int>>();
         }
 
         private static readonly Dictionary<PlayerSetupData, Entry> ByPlayer =
@@ -40,29 +43,23 @@ namespace Game.Ai.V2
 
         public static bool IsStaleAge(int ageTurns) => ageTurns >= AiConfigV2.scoutSurveilStaleTurnsLo;
 
-        public static void Capture(PlayerSetupData player, int turn,
+        public static void Capture(PlayerSetupData player, int turn, int knowledgeVersion,
             IReadOnlyDictionary<HexCoord, int> lastObserved)
         {
             if (player == null)
                 return;
-            ByPlayer[player] = new Entry
-            {
-                Turn = turn,
-                LastObserved = lastObserved != null
-                    ? new Dictionary<HexCoord, int>(lastObserved)
-                    : new Dictionary<HexCoord, int>(),
-            };
+            if (!ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                ByPlayer[player] = e = new Entry { Turn = turn };
+            e.ByKnowledgeVersion[knowledgeVersion] = lastObserved != null
+                ? new Dictionary<HexCoord, int>(lastObserved)
+                : new Dictionary<HexCoord, int>();
         }
 
         public static bool TryGetLastObservedTurn(WorldSnapshot snapshot, HexCoord hex, out int lastObservedTurn)
         {
             lastObservedTurn = 0;
-            PlayerSetupData player = ResolvePlayer(snapshot);
-            return player != null
-                && ByPlayer.TryGetValue(player, out Entry e)
-                && e.Turn == snapshot.TurnNumber
-                && e.LastObserved != null
-                && e.LastObserved.TryGetValue(hex, out lastObservedTurn);
+            IReadOnlyDictionary<HexCoord, int> observed = Resolve(snapshot);
+            return observed != null && observed.TryGetValue(hex, out lastObservedTurn);
         }
 
         public static bool TryGetIntelAge(WorldSnapshot snapshot, HexCoord hex, out int age)
@@ -76,11 +73,20 @@ namespace Game.Ai.V2
 
         public static IReadOnlyDictionary<HexCoord, int> LastObservedFor(WorldSnapshot snapshot)
         {
+            return Resolve(snapshot) ?? new Dictionary<HexCoord, int>();
+        }
+
+        // The ONE lookup: the copy captured for exactly this snapshot's player, turn and
+        // knowledge revision, or null.
+        private static IReadOnlyDictionary<HexCoord, int> Resolve(WorldSnapshot snapshot)
+        {
             PlayerSetupData player = ResolvePlayer(snapshot);
-            if (player == null || !ByPlayer.TryGetValue(player, out Entry e)
-                || e.Turn != snapshot.TurnNumber || e.LastObserved == null)
-                return new Dictionary<HexCoord, int>();
-            return e.LastObserved;
+            return player != null
+                && ByPlayer.TryGetValue(player, out Entry e)
+                && e.Turn == snapshot.TurnNumber
+                && e.ByKnowledgeVersion.TryGetValue(snapshot.KnowledgeVersion,
+                    out IReadOnlyDictionary<HexCoord, int> observed)
+                    ? observed : null;
         }
 
         // Continuous [0..1] generic Refresh pressure across actually-observed map information,

@@ -21,12 +21,12 @@ namespace Game.EditorTests
         }
 
         private static void Capture(PlayerSetupData player, int turn,
-            IReadOnlyDictionary<HexCoord, int> observed)
+            IReadOnlyDictionary<HexCoord, int> observed, int knowledgeVersion = 0)
         {
             MethodInfo method = RegistryType.GetMethod("Capture",
                 BindingFlags.Public | BindingFlags.Static);
             Assert.That(method, Is.Not.Null);
-            method.Invoke(null, new object[] { player, turn, observed });
+            method.Invoke(null, new object[] { player, turn, knowledgeVersion, observed });
         }
 
         private static IReadOnlyDictionary<HexCoord, int> Read(WorldSnapshot snapshot)
@@ -73,6 +73,41 @@ namespace Game.EditorTests
 
             var unowned = new WorldSnapshot { TurnNumber = 4 };
             Assert.That(Read(unowned).Count, Is.Zero);
+        }
+
+        [Test]
+        public void EachKnowledgeRevisionKeepsItsOwnCopyWithinOneTurn()
+        {
+            var player = new PlayerSetupData();
+            var hexA = new HexCoord(1, 1);
+            var hexB = new HexCoord(3, -2);
+            Capture(player, 5, new Dictionary<HexCoord, int> { { hexA, 2 } }, knowledgeVersion: 10);
+            var snapshotA = new WorldSnapshot { Observer = player, TurnNumber = 5, KnowledgeVersion = 10 };
+            Capture(player, 5, new Dictionary<HexCoord, int> { { hexA, 5 }, { hexB, 5 } },
+                knowledgeVersion: 11);
+            var snapshotB = new WorldSnapshot { Observer = player, TurnNumber = 5, KnowledgeVersion = 11 };
+
+            IReadOnlyDictionary<HexCoord, int> readA = Read(snapshotA);
+            Assert.That(readA[hexA], Is.EqualTo(2), "V10 keeps its own value after V11 is captured");
+            Assert.That(readA.ContainsKey(hexB), Is.False, "V10 never sees V11 data");
+            IReadOnlyDictionary<HexCoord, int> readB = Read(snapshotB);
+            Assert.That(readB[hexA], Is.EqualTo(5));
+            Assert.That(readB.ContainsKey(hexB), Is.True);
+
+            var uncaptured = new WorldSnapshot { Observer = player, TurnNumber = 5, KnowledgeVersion = 12 };
+            Assert.That(Read(uncaptured).Count, Is.Zero, "no fallback to the latest revision");
+        }
+
+        [Test]
+        public void PreviousTurnRevisionIsNeverServed()
+        {
+            var player = new PlayerSetupData();
+            var hex = new HexCoord(0, 2);
+            Capture(player, 4, new Dictionary<HexCoord, int> { { hex, 4 } }, knowledgeVersion: 7);
+            Capture(player, 5, new Dictionary<HexCoord, int>(), knowledgeVersion: 8);
+
+            var old = new WorldSnapshot { Observer = player, TurnNumber = 4, KnowledgeVersion = 7 };
+            Assert.That(Read(old).Count, Is.Zero, "a new turn drops the previous turn's revisions");
         }
     }
 }

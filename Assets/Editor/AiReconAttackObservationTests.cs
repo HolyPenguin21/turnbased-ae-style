@@ -92,7 +92,7 @@ namespace Game.EditorTests
             attack.IntentKey = MissionIntentKey.For(attack);
             MissionIntentRegistry.GetOrCreate(player).Put(attack);
             // Last looked at on turn 7: three turns old, older than attackIntelMaxAgeTurns.
-            ReconIntelSnapshotRegistry.Capture(player, turn,
+            ReconIntelSnapshotRegistry.Capture(player, turn, knowledgeVersion: 0,
                 new Dictionary<HexCoord, int> { { Site, 7 } });
 
             var hexes = new HashSet<HexCoord>();
