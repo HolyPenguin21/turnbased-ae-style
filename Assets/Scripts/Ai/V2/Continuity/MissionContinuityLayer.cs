@@ -414,17 +414,18 @@ namespace Game.Ai.V2
                 ResumeEconomyLender(orphanedDonor);
             }
 
-            // Strike force — a Raid / ActiveDefence whose primary an Attack gather bought ends here.
-            // The gather priced the abandoned operation into its own score
+            // Strike force — a Raid whose primary an Attack gather bought ends here.
+            // The gather priced the abandoned Raid into its own score
             // (GroundCombatDonorPolicy.BorrowableDonorApPrices) and won the allocation; the army now
-            // walks to the host and, after the handoff, home.
+            // walks to the host and, after the handoff, home. ActiveDefence responders are never
+            // gather donors and therefore never enter this retirement path.
             var givenToGather = new HashSet<int>(state.All
                 .Where(i => i?.Kind == MissionKind.Attack && i.Status == IntentStatus.Active
                     && i.Attack?.Phase == AttackMissionPhase.Gather)
                 .SelectMany(i => i.Attack.GatherSupportArmyIds));
             var donatedOperations = new HashSet<MissionIntentKey>();
             foreach (MissionIntent lender in state.All.Where(i => i != null
-                && (i.Kind == MissionKind.Raid || i.Kind == MissionKind.ActiveDefence)
+                && i.Kind == MissionKind.Raid
                 && i.PreferredMoverArmyId.HasValue
                 && givenToGather.Contains(i.PreferredMoverArmyId.Value)))
             {
