@@ -353,6 +353,11 @@ namespace Game.EditorTests
                 "#8 can never reach the Citadel, so its power cannot complete the regroup");
 
             cutOff.ReachableOwnBaseHexes = System.Array.Empty<HexCoord>();
+            ActiveDefenceResponse noRoute = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, new HashSet<int>(), new HashSet<int>(), null);
+            Assert.That(noRoute.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage),
+                "an empty reachability set means no safe route, not unknown reachability");
+
             snap.Self.BaseHexes = new[] { new HexCoord(-2, 3) };
             ActiveDefenceResponse lost = ActiveDefenceObjectiveEvaluator.AssessResponse(
                 snap, objective, new HashSet<int>(), new HashSet<int>(), null);
@@ -813,6 +818,7 @@ namespace Game.EditorTests
         {
             ArmyId = id, Owner = owner, Hex = hex, IsStructuralRaidActor = true,
             EffectiveArmyPower = power, MemberCount = 1, CurrentMovement = 3, MaxMovement = 3,
+            ReachableOwnBaseHexes = new[] { new HexCoord(0, 0), new HexCoord(-2, 3) },
             Members = new[] { new WorthIt.DefenderProfile(1f, false, null, 1f, 1f, 0) },
         };
 
