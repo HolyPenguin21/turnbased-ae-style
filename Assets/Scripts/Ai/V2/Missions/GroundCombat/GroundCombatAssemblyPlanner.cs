@@ -505,7 +505,6 @@ namespace Game.Ai.V2
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
                 opposition, defenderHexDefenseBonus, pooledBodies) ?? host.Commander;
             GatherSupport heroDonor = null;
-            UnitData heroExchangedFor = null;
             foreach (GatherSupport s in pool.OrderBy(x => x.Ap).ThenBy(x => x.ArmyId))
             {
                 CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
@@ -514,19 +513,28 @@ namespace Game.Ai.V2
                     continue;
                 lead = handover.Hero;
                 heroDonor = s;
-                heroExchangedFor = handover.HeroExchangedFor;
-                roster.Add(handover.Hero);
-                s.Incoming.Add(handover.Hero);
-                // A hero exchanged for the host's weakest body: that body leaves the formation.
-                if (heroExchangedFor != null)
+                // The whole exchange the handoff will make (PlanHandoff takes this same plan): the
+                // hero and every body it brings join, every host body it exchanges leaves — the
+                // formation and the handoff's AP price read the same lists.
+                foreach (UnitData gone in handover.Displaced)
                 {
-                    int gone = bodyUnits.IndexOf(heroExchangedFor);
-                    roster.Remove(heroExchangedFor);
-                    s.Displaced.Add(heroExchangedFor);
-                    if (gone >= 0)
+                    int at = bodyUnits.IndexOf(gone);
+                    roster.Remove(gone);
+                    s.Displaced.Add(gone);
+                    if (at >= 0)
                     {
-                        bodies.RemoveAt(gone);
-                        bodyUnits.RemoveAt(gone);
+                        bodies.RemoveAt(at);
+                        bodyUnits.RemoveAt(at);
+                    }
+                }
+                foreach (UnitData joined in handover.Incoming)
+                {
+                    roster.Add(joined);
+                    s.Incoming.Add(joined);
+                    if (AiArmyRoles.IsGroundBattleBody(joined))
+                    {
+                        bodyUnits.Add(joined);
+                        bodies.Add(WorthIt.FromLiveUnit(joined));
                     }
                 }
                 break;
@@ -541,7 +549,7 @@ namespace Game.Ai.V2
             // One Monte-Carlo bound before the greedy loop: the host's slots filled with the
             // strongest bodies the whole pool holds. If even that misses the gate, skip this host.
             List<WorthIt.DefenderProfile> bound = bodies
-                .Concat(pool.SelectMany(x => x.Bodies))
+                .Concat(pool.Where(x => x != heroDonor).SelectMany(x => x.Bodies))
                 .OrderByDescending(ProfileCombatValue)
                 .Take(bodies.Count + System.Math.Max(0, capacity - memberCount))
                 .ToList();
@@ -567,7 +575,7 @@ namespace Game.Ai.V2
                 float pickWin = 0f, pickRate = 0f;
                 foreach (GatherSupport s in pool)
                 {
-                    if (chosen.Contains(s)
+                    if (chosen.Contains(s) || s == heroDonor
                         || !TryProjectReinforcement(bodies, s.Bodies, capacity, memberCount,
                             commander, opposition, out List<WorthIt.DefenderProfile> projected, out _,
                             out float projectedWin, out List<int> incomingIdx, out int displacedIdx,
