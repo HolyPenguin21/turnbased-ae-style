@@ -29,7 +29,7 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) }, 0f,
                 new HashSet<int>(), before, home);
 
             Assert.That(before, Is.LessThan(AiConfigV2.raidMinViableWinChance),
@@ -59,7 +59,7 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) }, 0f,
                 new HashSet<int>(), before, home);
 
             var expected = new TaskScore(
@@ -96,7 +96,7 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { weak }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) }, 0f,
                 new HashSet<int>(), before, home);
 
             Assert.That(plan.Viable, Is.True);
@@ -166,7 +166,7 @@ namespace Game.EditorTests
             float before = WorthIt.WinChance(new[] { wounded }, new[] { defender }, 0f);
 
             RaidRecoveryProjection plan = RaidRecoveryPlanner.ProjectBase(snap, raid,
-                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) },
+                primary, new[] { new WorthIt.DefendingArmy(new[] { defender }, default) }, 0f,
                 new HashSet<int>(), before, home,
                 (from, to, maxMovement) => to.Equals(target)
                     ? int.MaxValue : HexGridMath.Distance(from, to));
