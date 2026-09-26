@@ -343,6 +343,52 @@ namespace Game.EditorTests
                 "threat severity must not raise every Aggression peer through Radar");
         }
 
+        [Test]
+        public void AttackTaskScore_DoesNotFeedAggressionRadarDesire()
+        {
+            WorldSnapshot fresh = Snap(new[] { B(RedBase, Red, seenTurn: 6) }, new[] { OurBase });
+            WorldSnapshot stale = Snap(new[] { B(RedBase, Red, seenTurn: 1) }, new[] { OurBase });
+            float freshTask = AttackObjectiveEvaluator.Enumerate(fresh).Single().TaskScore.Value;
+            float staleTask = AttackObjectiveEvaluator.Enumerate(stale).Single().TaskScore.Value;
+
+            float freshAxis = StrategyLayer.Evaluate(fresh, new AiRadarState())
+                .Desires.Raw[DesireAxis.Aggression];
+            float staleAxis = StrategyLayer.Evaluate(stale, new AiRadarState())
+                .Desires.Raw[DesireAxis.Aggression];
+
+            Assert.That(freshTask, Is.Not.EqualTo(staleTask), "staleness changes Attack TaskScore");
+            Assert.That(staleAxis, Is.EqualTo(freshAxis).Within(0.0001f),
+                "Attack-specific score changes must not feed Radar and then all Aggression peers");
+        }
+
+        [Test]
+        public void RaidTaskScore_DoesNotFeedAggressionRadarDesire()
+        {
+            WorldSnapshot near = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            WorldSnapshot far = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
+            near.Known.NeutralSightings = new[]
+            {
+                Sighting(70, new HexCoord(1, 0), Neutral, Body(1f, 1f, 4f, 1)),
+            };
+            far.Known.NeutralSightings = new[]
+            {
+                Sighting(70, new HexCoord(12, 0), Neutral, Body(1f, 1f, 4f, 1)),
+            };
+            float nearTask = AggressionObjectiveEvaluator.Enumerate(near,
+                CombatOpportunityAnalyzer.Analyze(near)).Single().TaskScore.Value;
+            float farTask = AggressionObjectiveEvaluator.Enumerate(far,
+                CombatOpportunityAnalyzer.Analyze(far)).Single().TaskScore.Value;
+
+            float nearAxis = StrategyLayer.Evaluate(near, new AiRadarState())
+                .Desires.Raw[DesireAxis.Aggression];
+            float farAxis = StrategyLayer.Evaluate(far, new AiRadarState())
+                .Desires.Raw[DesireAxis.Aggression];
+
+            Assert.That(nearTask, Is.Not.EqualTo(farTask), "target proximity changes Raid TaskScore");
+            Assert.That(farAxis, Is.EqualTo(nearAxis).Within(0.0001f),
+                "Raid-specific score changes must not feed Radar and then all Aggression peers");
+        }
+
         // ---- helpers ---------------------------------------------------------------------
 
         private static AiMapMemory.KnownBuilding B(HexCoord hex, PlayerSetupData owner,
