@@ -405,6 +405,61 @@ namespace Game.EditorTests
                 "a build completing now outranks other builds' deferred holds, as in Provisioning");
         }
 
+        [Test]
+        public void B7_TwoFundedCompletions_DoNotDoubleSubtractFirstOwnersHold()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 9;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            MissionProposal Build(int armyId, HexCoord hex, float value)
+            {
+                var m = new MissionProposal
+                {
+                    Kind = MissionKind.Economy,
+                    Target = new EconomyMissionTarget
+                    {
+                        Kind = EconomyTaskKind.BuildExtraction,
+                        TargetHex = hex,
+                        ResourceType = ResourceType.Materials,
+                        BuilderArmyId = armyId,
+                    },
+                    PreferredMoverArmyId = armyId,
+                    BaseValue = value,
+                    EffectiveValue = value,
+                    Requirements = new MissionRequirements
+                    {
+                        ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
+                        MaterialsMinimum = 4f, MaterialsDesired = 4f, MaterialsMaximum = 4f,
+                    },
+                };
+                m.Axes.Value[DesireAxis.Economy] = 1f;
+                InfrastructureFulfillment.ReserveEconomyCost(player, turn,
+                    EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)),
+                    new ResourceCost(materials: 4), 1f);
+                return m;
+            }
+
+            MissionProposal first = Build(21, new HexCoord(6, -2), 20f);
+            MissionProposal second = Build(22, new HexCoord(7, -2), 10f);
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = turn,
+                Self = new SelfSnapshot
+                {
+                    ActionPoints = 5,
+                    Stockpile = new ResourceBundle { Materials = 8f },
+                },
+            };
+
+            TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { first, second }, new List<Commitment>(), player).Pack();
+
+            Assert.That(allocation.Funded.Select(f => f.Mission),
+                Is.EquivalentTo(new[] { first, second }),
+                "each owner has four Materials; funding one already accounts for its own hold");
+            Assert.That(allocation.PhysicalFunded.Materials, Is.EqualTo(8f));
+        }
+
         // --- B10 / S1: Economy age is time without progress ---------------------------------
 
         [Test]

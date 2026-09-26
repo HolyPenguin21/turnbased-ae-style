@@ -224,14 +224,15 @@ namespace Game.Ai.V2
                 .Distinct().OrderBy(owner => owner).ToList();
         }
 
-        internal static float CompletionApForOwner(PlayerSetupData player, int turn, string owner)
+        internal static float CompletionForOwner(PlayerSetupData player, int turn, string owner,
+            StrategicReservedResource resource)
         {
             if (player == null || string.IsNullOrEmpty(owner)
                 || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return 0f;
             return e.Reservations.Where(r => r.Owner == owner
                     && r.Reason == StrategicReservationReason.EconomyBuildCompletion
-                    && r.Resource == StrategicReservedResource.ActionPoints)
+                    && r.Resource == resource)
                 .Sum(r => Mathf.Max(0f, r.Amount));
         }
 

@@ -564,8 +564,8 @@ namespace Game.Ai.V2
                 float ownUnclaimed = 0f;
                 foreach (string owner in StrategicResourceReservationLedger.CompletionOwners(_player, turn))
                 {
-                    float ownerHold = StrategicResourceReservationLedger.CompletionApForOwner(
-                        _player, turn, owner);
+                    float ownerHold = StrategicResourceReservationLedger.CompletionForOwner(
+                        _player, turn, owner, StrategicReservedResource.ActionPoints);
                     float ownerClaim = 0f;
                     foreach (LockedAllocation locked in _lockedClaims.Values)
                         if (locked.Mission?.Kind == MissionKind.Economy
@@ -669,7 +669,7 @@ namespace Game.Ai.V2
                 }
 
                 ResourceVector cPhys = PhysicalDesired(m);
-                if (cPhys.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining).CoversPhysical(cPhys, eps))
+                if (cPhys.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining, alloc.Funded).CoversPhysical(cPhys, eps))
                 {
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.CommitmentPoolExhausted });
                     alloc.CommitmentsStarveFreshDecisions = true;
@@ -762,7 +762,7 @@ namespace Game.Ai.V2
 
                 ResourceVector physMin = PhysicalMinimum(m);
                 ResourceVector physDraw = PhysicalDesired(m);
-                ResourceVector physAvailable = PhysicalAvailableFor(m, physicalRemaining);
+                ResourceVector physAvailable = PhysicalAvailableFor(m, physicalRemaining, alloc.Funded);
                 if ((physMin.AnyPhysical || physDraw.AnyPhysical) && !physAvailable.CoversPhysical(physMin, eps))
                 {
                     alloc.Deferred.Add(new DeferredEntry
@@ -824,7 +824,7 @@ namespace Game.Ai.V2
                 ExecutionLane lane = MissionAdmissionPolicy.LaneFor(m);
                 if (ConflictsCurrentPortfolio(m) || AtCapacity(lane)) continue;
                 ResourceVector physMin = PhysicalMinimum(m);
-                if (physMin.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining).CoversPhysical(physMin, eps)) continue;
+                if (physMin.AnyPhysical && !PhysicalAvailableFor(m, physicalRemaining, alloc.Funded).CoversPhysical(physMin, eps)) continue;
 
                 var v = new ResourceVector(min);
                 var funded = new FundedEntry
@@ -956,20 +956,52 @@ namespace Game.Ai.V2
         // stock instead made Provisioning reject it, the reprice floor re-funded it from the same
         // raw stock, and the bounded re-pack ended the whole typed admission. Other missions keep
         // the raw pool and their Provisioning gates.
-        private ResourceVector PhysicalAvailableFor(MissionProposal m, ResourceVector remaining)
+        private ResourceVector PhysicalAvailableFor(MissionProposal m, ResourceVector remaining,
+            IReadOnlyList<FundedEntry> funded)
         {
             if (m?.Kind != MissionKind.Economy || _player == null)
                 return remaining;
             string owner = EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m));
             int turn = _snap?.TurnNumber ?? 0;
-            float Held(StrategicReservedResource r) => StrategicResourceReservationLedger.Active(
-                _player, turn, r, owner, StrategicReservationReason.EconomyDeferredBuild);
+            float Held(StrategicReservedResource r)
+            {
+                float held = StrategicResourceReservationLedger.Active(
+                    _player, turn, r, owner, StrategicReservationReason.EconomyDeferredBuild);
+                foreach (string other in StrategicResourceReservationLedger.CompletionOwners(_player, turn))
+                {
+                    if (other == owner) continue;
+                    float ownerHold = StrategicResourceReservationLedger.CompletionForOwner(
+                        _player, turn, other, r);
+                    if (ownerHold <= 0f) continue;
+                    float claimed = 0f;
+                    foreach (LockedAllocation locked in _lockedClaims.Values)
+                        if (locked.Mission?.Kind == MissionKind.Economy
+                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(locked.Mission)) == other)
+                            claimed += PhysicalAmount(locked.PhysicalClaim, r);
+                    foreach (FundedEntry entry in funded)
+                        if (entry.Mission?.Kind == MissionKind.Economy
+                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(entry.Mission)) == other)
+                            claimed += PhysicalAmount(entry.PhysicalDraw, r);
+                    held -= Mathf.Min(ownerHold, claimed);
+                }
+                return Mathf.Max(0f, held);
+            }
             var held = new ResourceVector(0f, Held(StrategicReservedResource.Human),
                 Held(StrategicReservedResource.Energy) + _recoveryEnergy,
                 Held(StrategicReservedResource.Materials),
                 Held(StrategicReservedResource.Tech));
             return (remaining - held).ClampLow0();
         }
+
+        private static float PhysicalAmount(ResourceVector amount, StrategicReservedResource resource) =>
+            resource switch
+            {
+                StrategicReservedResource.Human => amount.Human,
+                StrategicReservedResource.Energy => amount.Energy,
+                StrategicReservedResource.Materials => amount.Materials,
+                StrategicReservedResource.Tech => amount.Tech,
+                _ => 0f,
+            };
 
         private ResourceVector PhysicalDesired(MissionProposal m)
         {
