@@ -333,6 +333,34 @@ namespace Game.EditorTests
             Assert.That(demands, Has.Count.EqualTo(1));
         }
 
+        // No regroup at a Citadel that is no longer ours, and power that has no route to the
+        // Citadel cannot make a regroup "sufficient".
+        [Test]
+        public void ActiveDefence_RegroupNeedsAnOwnedReachableCitadel()
+        {
+            PlayerSetupData owner = DefenceOwner();
+            EnemyContactSnapshot enemy = StrongContact(28);
+            float required = RequiredToBeat(enemy);
+            ArmySnapshot near = WeakArmy(owner, 5, new HexCoord(3, 0), required * 0.6f);
+            ArmySnapshot cutOff = WeakArmy(owner, 8, new HexCoord(1, 1), required * 0.6f);
+            WorldSnapshot snap = DefenceSnapshot(owner, enemy, new[] { near, cutOff });
+            ActiveDefenceObjective objective = DefenceObjective(28, new HexCoord(-2, 3));
+
+            cutOff.ReachableOwnBaseHexes = new[] { new HexCoord(-2, 3) };
+            ActiveDefenceResponse unreachable = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, new HashSet<int>(), new HashSet<int>(), null);
+            Assert.That(unreachable.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage),
+                "#8 can never reach the Citadel, so its power cannot complete the regroup");
+
+            cutOff.ReachableOwnBaseHexes = System.Array.Empty<HexCoord>();
+            snap.Self.BaseHexes = new[] { new HexCoord(-2, 3) };
+            ActiveDefenceResponse lost = ActiveDefenceObjectiveEvaluator.AssessResponse(
+                snap, objective, new HashSet<int>(), new HashSet<int>(), null);
+            Assert.That(lost.Kind, Is.EqualTo(ActiveDefenceResponseKind.Shortage));
+            Assert.That(lost.Reason, Is.EqualTo("no_regroup_point"));
+            Assert.That(lost.RegroupHex, Is.Null);
+        }
+
         [Test]
         public void ActiveDefence_DoesNotTurnEnemyBaseIntoImplicitAttack()
         {

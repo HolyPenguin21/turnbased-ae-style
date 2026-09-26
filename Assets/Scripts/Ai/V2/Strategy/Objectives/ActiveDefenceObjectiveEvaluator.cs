@@ -269,29 +269,43 @@ namespace Game.Ai.V2
             IEnumerable<ArmySnapshot> walkers = usable.Where(a =>
                 withdrawing == null || !withdrawing.Contains(a.ArmyId));
 
-            if (response.AvailablePower + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower)
+            // The regroup point is the canonical Citadel, and only while it is still an own base.
+            // Only armies that stand there or have a route to it can join the regroup: power that
+            // can never arrive would keep the regroup from ever being exhausted.
+            IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
+            HexCoord? citadel = snap.Observer == null ? (HexCoord?)null
+                : AiTurnController.GarrisonHexFor(snap.Observer);
+            if (citadel.HasValue && !bases.Contains(citadel.Value))
+                citadel = null;
+            List<ArmySnapshot> gatherable = !citadel.HasValue ? new List<ArmySnapshot>()
+                : usable.Where(a => a.Hex.Equals(citadel.Value)
+                    || a.ReachableOwnBaseHexes == null || a.ReachableOwnBaseHexes.Count == 0
+                    || a.ReachableOwnBaseHexes.Contains(citadel.Value)).ToList();
+
+            if (GroundCombatFeasibility.AggregatePower(gatherable) + AiConfigV2.allocatorSliceEpsilon
+                >= response.RequiredPower)
             {
-                HexCoord citadel = snap.Observer == null ? default
-                    : AiTurnController.GarrisonHexFor(snap.Observer);
-                if (usable.Any(a => !a.Hex.Equals(citadel)))
+                if (gatherable.Any(a => !a.Hex.Equals(citadel.Value)))
                 {
                     response.Kind = ActiveDefenceResponseKind.Regroup;
                     response.RegroupHex = citadel;
-                    response.Movers.AddRange(walkers.Where(a => !a.Hex.Equals(citadel)));
+                    response.Movers.AddRange(walkers.Where(a => gatherable.Contains(a)
+                        && !a.Hex.Equals(citadel.Value)));
                     response.Reason = "regroup_required";
                     return response;
                 }
-                // Every usable army already stands in the Citadel and the same-hex assembly still
-                // misses the gate: the gap is composition, not distribution.
+                // Every army that can gather already stands in the Citadel and the same-hex
+                // assembly still misses the gate: the gap is composition, not distribution.
                 response.Kind = ActiveDefenceResponseKind.Shortage;
                 response.Reason = "regroup_exhausted";
                 return response;
             }
 
-            IEnumerable<HexCoord> bases = snap.Self.BaseHexes ?? Enumerable.Empty<HexCoord>();
             response.Kind = ActiveDefenceResponseKind.Shortage;
             response.Movers.AddRange(walkers.Where(a => !bases.Contains(a.Hex)));
-            response.Reason = "insufficient_power";
+            response.Reason = !citadel.HasValue && response.AvailablePower
+                    + AiConfigV2.allocatorSliceEpsilon >= response.RequiredPower
+                ? "no_regroup_point" : "insufficient_power";
             return response;
         }
 

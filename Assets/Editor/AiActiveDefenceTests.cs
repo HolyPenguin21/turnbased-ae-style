@@ -156,6 +156,130 @@ namespace Game.EditorTests
                 false, true, true, true), Is.False);
         }
 
+        // ---- lifecycle: Continuity ends an Intercept, keeps a started Return -----------------
+
+        // Case 6 — the threat is no longer honestly listed: the Intercept simply ends; no
+        // automatic Return is created for its army.
+        [Test]
+        public void Continuity_InterceptWithoutObjective_RetiresWithoutReturn()
+        {
+            var player = new PlayerSetupData { Nickname = "DefenceLifecycle6" };
+            MissionIntentRegistry.Clear();
+            try
+            {
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                MissionIntent intercept = DefenceIntent(ActiveDefencePhase.Intercept, 42, 7, null);
+                state.Put(intercept);
+
+                List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player,
+                    LifecycleWorld(player, new HexCoord(3, 0)));
+
+                Assert.That(active, Is.Empty);
+                Assert.That(state.All, Is.Empty, "no stabilisation, no post-defence Return");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        // Case 7 — a withdrawal that already started finishes, even though the threat that
+        // triggered it is gone; it retires on arrival.
+        [Test]
+        public void Continuity_StartedReturn_ContinuesAfterThreatVanishes_AndRetiresOnArrival()
+        {
+            var player = new PlayerSetupData { Nickname = "DefenceLifecycle7" };
+            var citadel = new HexCoord(0, 0);
+            MissionIntentRegistry.Clear();
+            try
+            {
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                MissionIntent withdrawal = DefenceIntent(ActiveDefencePhase.Return, 42, 7, citadel);
+                state.Put(withdrawal);
+
+                List<MissionIntent> active = MissionContinuityLayer.ResolveActive(player,
+                    LifecycleWorld(player, new HexCoord(3, 0)));
+                Assert.That(active, Does.Contain(withdrawal), "the walk continues without the threat");
+
+                active = MissionContinuityLayer.ResolveActive(player, LifecycleWorld(player, citadel));
+                Assert.That(active, Is.Empty);
+                Assert.That(state.All, Is.Empty, "arrival releases the claim");
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        // Case 5 — a won intercept is removed at once; the next threat is a fresh objective.
+        [Test]
+        public void Reconcile_CompletedIntercept_RemovesTheIntent()
+        {
+            var player = new PlayerSetupData { Nickname = "DefenceLifecycle5" };
+            MissionIntentRegistry.Clear();
+            try
+            {
+                MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+                MissionIntent intercept = DefenceIntent(ActiveDefencePhase.Intercept, 42, 7, null);
+                state.Put(intercept);
+
+                MissionContinuityLayer.ReconcileAfterTurn(player, 6, new List<MissionTurnOutcome>
+                {
+                    new MissionTurnOutcome
+                    {
+                        IntentKey = intercept.IntentKey,
+                        MissionKind = MissionKind.ActiveDefence,
+                        Outcome = ExecutionOutcome.Completed,
+                        ObjectiveSatisfied = true,
+                        MoverArmyId = 7,
+                    },
+                });
+
+                Assert.That(state.TryGet(MissionIntentKey.ForActiveDefence(42), out _), Is.False);
+                Assert.That(state.All, Is.Empty);
+            }
+            finally { MissionIntentRegistry.Clear(); }
+        }
+
+        private static MissionIntent DefenceIntent(ActiveDefencePhase phase, int enemyId,
+            int actorId, HexCoord? returnHex)
+        {
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.ActiveDefence,
+                Status = IntentStatus.Active,
+                Funding = CommitmentTier.Hard,
+                Objective = new ActiveDefenceIntent
+                {
+                    Phase = phase, EnemyArmyId = enemyId, PrimaryArmyId = actorId,
+                    ReturnHex = returnHex, LastKnownHex = new HexCoord(4, 0),
+                },
+            };
+            intent.IntentKey = MissionIntentKey.For(intent);
+            return intent;
+        }
+
+        private static WorldSnapshot LifecycleWorld(PlayerSetupData player, HexCoord actorHex) =>
+            new WorldSnapshot
+            {
+                TurnNumber = 6,
+                Observer = player,
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new[] { new HexCoord(0, 0) },
+                    Armies = new[]
+                    {
+                        new ArmySnapshot
+                        {
+                            ArmyId = 7, Owner = player, Hex = actorHex,
+                            IsStructuralRaidActor = true, MemberCount = 1,
+                            CurrentMovement = 3, MaxMovement = 3,
+                            Members = new[] { new WorthIt.DefenderProfile(1f, false, null, 1f, 1f, 0) },
+                        },
+                    },
+                },
+                Threat = new ThreatModel
+                {
+                    Contacts = new List<EnemyContactSnapshot>(),
+                    Threats = new List<AssetThreatSnapshot>(),
+                },
+            };
+
         private static WorldSnapshot DefenceWorld(float bestStack, float totalPotential)
         {
             var enemy = new PlayerSetupData { Nickname = "DefenceEnemy", ColorIndex = 2 };
