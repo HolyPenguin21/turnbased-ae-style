@@ -13,13 +13,14 @@ namespace Game.Ai.V2
     // canonical raid transaction. Bodies verbatim.
     internal static class GroundCombatDonorPolicy
     {
-        // Strike force — the armies an Attack gather may BUY as supports: the primary of every
-        // active Raid / ActiveDefence Intercept (an army withdrawing on an ActiveDefence Return is
-        // not for sale until it arrives), priced at what abandoning that operation costs (its
-        // LastIntrinsicValue) in AP-equivalents at the one activation rate TaskScore charges
-        // (taskScoreReactivationApWeight per AP). The gather adds the price to that donor's AP,
-        // so its own TaskScore carries the loss and the allocator arbitrates; Continuity retires
-        // the lender once the gather holds its army. An operation of unknown worth is not for sale.
+        // Strike force — the armies an Attack gather may BUY as supports: the primary of an
+        // active Raid, priced at what abandoning that operation costs (its LastIntrinsicValue) in
+        // AP-equivalents at the one activation rate TaskScore charges
+        // (taskScoreReactivationApWeight per AP). ActiveDefence owns its responder until that
+        // threat is completed/invalidated and is never an offensive gather donor. The gather adds
+        // the Raid price to that donor's AP, so its own TaskScore carries the loss and the allocator
+        // arbitrates; Continuity retires the Raid once the gather holds its army. An operation of
+        // unknown worth is not for sale.
         internal static Dictionary<int, float> BorrowableDonorApPrices(IEnumerable<MissionIntent> intents)
         {
             var prices = new Dictionary<int, float>();
@@ -27,8 +28,7 @@ namespace Game.Ai.V2
             foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
             {
                 if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
-                    || (i.Kind != MissionKind.Raid && i.Kind != MissionKind.ActiveDefence)
-                    || i.ActiveDefence?.Phase == ActiveDefencePhase.Return
+                    || i.Kind != MissionKind.Raid
                     || i.LastIntrinsicValue <= 0f)
                     continue;
                 prices[i.PreferredMoverArmyId.Value] = i.LastIntrinsicValue / rate;
