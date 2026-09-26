@@ -547,6 +547,41 @@ namespace Game.Ai.V2
             }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
 
+            // A completion reservation is still part of the physical AP pool. Credit only the
+            // portion already claimed by its own Economy mission; the rest must remain available
+            // to that owner alone. Other reservation reasons have no allocator mission owner.
+            float ApAvailableFor(MissionProposal candidate)
+            {
+                float allocated = lockedTotal + alloc.Funded.Sum(f => f.Tentative.Ap);
+                float held = StrategicResourceReservationLedger.Active(_player, turn,
+                    StrategicReservedResource.ActionPoints);
+                if (held <= eps)
+                    return float.PositiveInfinity;
+
+                string candidateOwner = candidate?.Kind == MissionKind.Economy
+                    ? EconomyMissionPlanner.OwnerKey(StableMissionKey.For(candidate)) : null;
+                float credited = 0f;
+                float ownUnclaimed = 0f;
+                foreach (string owner in StrategicResourceReservationLedger.CompletionOwners(_player, turn))
+                {
+                    float ownerHold = StrategicResourceReservationLedger.CompletionApForOwner(
+                        _player, turn, owner);
+                    float ownerClaim = 0f;
+                    foreach (LockedAllocation locked in _lockedClaims.Values)
+                        if (locked.Mission?.Kind == MissionKind.Economy
+                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(locked.Mission)) == owner)
+                            ownerClaim += Mathf.Min(locked.ClaimedAp, locked.GrantedAp);
+                    foreach (FundedEntry funded in alloc.Funded)
+                        if (funded.Mission?.Kind == MissionKind.Economy
+                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(funded.Mission)) == owner)
+                            ownerClaim += funded.Tentative.Ap;
+                    credited += Mathf.Min(ownerHold, ownerClaim);
+                    if (candidateOwner == owner)
+                        ownUnclaimed = Mathf.Max(0f, ownerHold - ownerClaim);
+                }
+                return Mathf.Max(0f, pool.Ap - allocated - held + credited + ownUnclaimed);
+            }
+
             float entitlement = _ledger != null ? Mathf.Min(_ledger.Balance(), pool.Ap) : pool.Ap;
             float budget = Mathf.Max(0f, entitlement - lockedStrict);
 
@@ -625,7 +660,8 @@ namespace Game.Ai.V2
                 }
 
                 float askAp = ApDesired(m);
-                if (lockedTotal + committedApSoFar + askAp > pool.Ap + eps)
+                if (lockedTotal + committedApSoFar + askAp > pool.Ap + eps
+                    || Mathf.Min(budget, ApAvailableFor(m)) + eps < askAp)
                 {
                     alloc.Deferred.Add(new DeferredEntry { Mission = m, Reason = DeferReason.CommitmentPoolExhausted });
                     alloc.CommitmentsStarveFreshDecisions = true;
@@ -716,7 +752,7 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                float affordable = Mathf.Max(0f, budget);
+                float affordable = Mathf.Max(0f, Mathf.Min(budget, ApAvailableFor(m)));
                 float min = ApMinimum(m);
                 if (affordable + eps < min)
                 {
@@ -741,7 +777,7 @@ namespace Game.Ai.V2
                     physDraw = physMin;
 
                 float fundAp = Mathf.Min(ApDesired(m), Mathf.Max(min, affordable));
-                if (budget + eps < fundAp)
+                if (affordable + eps < fundAp)
                 {
                     AddBudgetDeferred(alloc, m, min, Mathf.Max(0f, budget));
                     continue;
@@ -784,7 +820,7 @@ namespace Game.Ai.V2
                 if (remainder <= eps) break;
                 MissionProposal m = deferred.Mission;
                 float min = ApMinimum(m);
-                if (min <= eps || remainder + eps < min) continue;
+                if (min <= eps || Mathf.Min(remainder, ApAvailableFor(m)) + eps < min) continue;
                 ExecutionLane lane = MissionAdmissionPolicy.LaneFor(m);
                 if (ConflictsCurrentPortfolio(m) || AtCapacity(lane)) continue;
                 ResourceVector physMin = PhysicalMinimum(m);
@@ -832,7 +868,8 @@ namespace Game.Ai.V2
                     if (remainder <= eps) break;
                     float want = target(fe.Mission) - fe.Tentative.Ap;
                     if (want <= eps) continue;
-                    float give = Mathf.Min(want, remainder);
+                    float give = Mathf.Min(want, remainder, ApAvailableFor(fe.Mission));
+                    if (give <= eps) continue;
                     var topUp = new ResourceVector(give);
                     fe.Tentative += topUp;
                     fe.RemainderTopUp += topUp;
