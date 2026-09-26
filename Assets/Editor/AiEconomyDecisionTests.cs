@@ -2351,6 +2351,60 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void GarrisonBuilderAssessment_IsFrozenPerSnapshotAndRecomputedForNewSnapshot()
+        {
+            ArmyRegistry.Clear();
+            var player = new Game.Players.PlayerSetupData();
+            HexCoord home = new HexCoord(12, -7);
+            HexCoord target = new HexCoord(13, -7);
+            var garrison = new ArmyData
+            {
+                Owner = player, Hex = home, Name = "Economy candidate", IsGarrison = true,
+            };
+            if (garrison.Id == 0)
+                garrison = new ArmyData
+                {
+                    Owner = player, Hex = home, Name = "Economy candidate", IsGarrison = true,
+                };
+            garrison.Members.Add(Hero("Builder"));
+            garrison.Members.Add(Body("Defender", attack: 3, defense: 3));
+            var army = new ArmySnapshot
+            {
+                ArmyId = garrison.Id, Owner = player, Hex = home,
+                HasHero = true, IsGarrison = true, MemberCount = 2,
+            };
+            var route = new EconomyBuilderRouteSnapshot
+            {
+                ArmyId = garrison.Id, RequiresGarrisonExtraction = true,
+                CurrentMovement = 3, MaxMovement = 3,
+            };
+            var oldSnapshot = new WorldSnapshot();
+            try
+            {
+                // The real garrison disappears before the first assessment of this snapshot.
+                DemandLayer.EconomyBuilderChoice missing = DemandLayer.AssessEconomyArmy(
+                    oldSnapshot, target, route, army, 1f, includeReturn: false);
+                Assert.That(missing.Suitability,
+                    Is.EqualTo(DemandLayer.EconomyArmySuitability.Ineligible));
+
+                ArmyRegistry.Register(garrison);
+                DemandLayer.EconomyBuilderChoice frozen = DemandLayer.AssessEconomyArmy(
+                    oldSnapshot, target, route, army, 1f, includeReturn: false);
+                DemandLayer.EconomyBuilderChoice fresh = DemandLayer.AssessEconomyArmy(
+                    new WorldSnapshot(), target, route, army, 1f, includeReturn: false);
+
+                Assert.That(frozen, Is.SameAs(missing),
+                    "an old snapshot must keep its own assessment after the live registry changes");
+                Assert.That(fresh.Suitability, Is.EqualTo(DemandLayer.EconomyArmySuitability.Ready),
+                    "a new snapshot must re-read the available live extraction container");
+            }
+            finally
+            {
+                ArmyRegistry.Clear();
+            }
+        }
+
+        [Test]
         public void EconomyArmySuitability_AllowsSafeSoloButRequiresCentralEscort()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.2f, actionable: true);
