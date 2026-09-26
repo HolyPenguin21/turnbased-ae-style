@@ -1120,8 +1120,15 @@ namespace Game.Ai.V2
             }
 
             result.ReinforcementHandoffAttempted = true;
+            // The same fight the gather planned and the leg was provisioned on (command handover
+            // included), read from honest memory of the enemy army.
+            AiMapMemory.KnownEnemySighting? enemy = FindRaidSighting(player, target.EnemyArmyId);
+            IReadOnlyList<WorthIt.DefendingArmy> opposition = enemy.HasValue
+                ? new[] { new WorthIt.DefendingArmy(enemy.Value.Defenders, enemy.Value.Commander) }
+                : null;
             bool handoffOk = ApplyReinforcementHandoff(player, ctx, pm, support, primary,
-                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail);
+                out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
+                opposition);
             AiDebugLog.Write($"[AI][V2] exec [{AiV2Trace.FormatCorrelation(pm.Mission)}] {pm.Key} — active defence "
                 + $"reinforcement handoff support #{support.Id} -> primary #{primary.Id}: "
                 + $"{(handoffOk ? "OK" : "REJECTED")} moved={transferred} swap={(wasSwap ? 1 : 0)} "
@@ -1134,7 +1141,11 @@ namespace Game.Ai.V2
                     StrategicInvalidationReason.Actor | StrategicInvalidationReason.Capability,
                     actorIds: new[] { primary.Id, support.Id });
             }
+            // The RENDEZVOUS is satisfied, the DEFENCE is not: the enemy is still to be intercepted.
+            // DurableRoleContinues makes the ledger classify this as a ProductiveStop, and
+            // Continuity advances Reinforcement -> Intercept with the original primary.
             result.ReachedGoal = handoffOk;
+            result.DurableRoleContinues = handoffOk;
             result.StopReason = handoffOk ? ExecutionStopReason.ReachedGoal
                 : ExecutionStopReason.MoveRejected;
         }

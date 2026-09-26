@@ -50,8 +50,8 @@ namespace Game.Ai.V2
         // ---- Attack lane (ATK §36-§38) -----------------------------------------------------
         //  Attack is NOT a new desire axis. These weights shape one more OPERATIONAL sub-driver
         //  inside the existing Aggression axis, in exactly the shape aggRaidOppWeight* already
-        //  has, so an offensive opportunity against a known hostile Base/Citadel competes with a
-        //  Raid opportunity on one scale instead of through a private multiplier.
+        //  has, so an offensive opportunity against a known hostile Base/Citadel or Facility
+        //  competes with a Raid opportunity on one scale instead of through a private multiplier.
         //  `Opportunity` here is the normalised canonical TaskScore of the best Attack objective
         //  (DemandUrgencyPolicy.NormalizedWorldValue) — never a hand-tuned "free base" bonus:
         //  §38's easy capture earns its pressure by actually scoring well as a world task.

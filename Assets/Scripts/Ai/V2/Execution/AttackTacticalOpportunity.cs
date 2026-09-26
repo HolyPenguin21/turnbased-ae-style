@@ -49,7 +49,7 @@ namespace Game.Ai.V2
     // ===========================================================================================
     //  ATK §9-§18 — OPPORTUNISTIC ENEMY KILL INSIDE AN ATTACK STEP.
     //
-    //  An Attack army marching on a Base/Citadel may destroy a weak enemy FIELD army it passes, if
+    //  An Attack army marching on its target structure may destroy a weak enemy FIELD army it passes, if
     //  that fight practically does not delay the main operation. What this is NOT, spelled out
     //  because every one of these would be a different feature:
     //

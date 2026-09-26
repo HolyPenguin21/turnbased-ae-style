@@ -24,8 +24,16 @@ namespace Game.Ai.V2
         // actor directly by ArmyId and never calls this method, so an already-owned multi-turn
         // mission still waits for MP next turn instead of losing its actor here.
         internal static List<ArmySnapshot> EligibleReadyArmies(WorldSnapshot snap, ISet<int> excludeArmyIds) =>
+            EligibleArmies(snap, excludeArmyIds, requireMovementNow: true);
+
+        // `requireMovementNow: false` is the capability view (Demand): an army whose MP is spent
+        // this turn is still physical capability — it moves again next turn — so it must count as
+        // temporary contention, never as a shortage to produce against. Never used to nominate.
+        internal static List<ArmySnapshot> EligibleArmies(WorldSnapshot snap, ISet<int> excludeArmyIds,
+            bool requireMovementNow) =>
             snap.Self.Armies
-                .Where(a => a != null && a.IsStructuralRaidActor && a.CurrentMovement > 0
+                .Where(a => a != null && a.IsStructuralRaidActor
+                            && (!requireMovementNow || a.CurrentMovement > 0)
                             && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId)))
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
                 .ThenBy(a => a.EffectiveArmyPower)

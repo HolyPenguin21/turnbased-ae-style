@@ -406,9 +406,12 @@ namespace Game.Ai.V2
                 if (!plan.Feasible)
                 {
                     // Enough strength exists but no single army nor same-hex package holds it:
-                    // bring ONE existing free support to ONE free primary, then intercept.
-                    if (incumbent == null && TryAppendActiveDefenceReinforcement(snap, objective,
-                            opposition, excluded, proposals))
+                    // the shared cross-hex gather (PlanGather) assembles it from existing armies.
+                    // A fresh response picks its host; an incumbent keeps its pinned primary and
+                    // pulls the next support in, one Reinforcement leg at a time, until it clears.
+                    if ((incumbent == null || pinnedActor.HasValue)
+                        && TryAppendActiveDefenceReinforcement(snap, objective, opposition,
+                            excluded, pinnedActor, incumbent, proposals))
                         continue;
                     AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId.ToString(),
                         $"[AI][V2][ActiveDefence][Assembly] decision=REJECT enemy={objective.Target.EnemyArmyId} reason={plan.Reason}");
@@ -482,29 +485,39 @@ namespace Game.Ai.V2
             }
         }
 
-        // A fresh ActiveDefence that no ready force can take alone: the shared kernel picks the
-        // fastest free (primary, support) pair whose merged roster clears the fresh gate. The whole
-        // response is priced here (win of the merged roster, walk + march ETA, the support AP now
-        // and the rest later) so it competes honestly with every other lane. Its first step
-        // creates the Hard intent in the Reinforcement phase (CreateActiveDefenceIntent).
+        // An ActiveDefence that no ready force can take alone: the shared cross-hex gather
+        // (GroundCombatAssemblyPlanner.PlanGather — the same owner Attack Gather and Demand use)
+        // picks the host and every existing support whose handoffs together clear the gate. The
+        // whole response is priced here (win of the assembled roster, gather + march ETA, the AP
+        // now and later) so it competes honestly with every other lane. The operation carries ONE
+        // support at a time: this proposes the leg of the gather's nearest support; after its
+        // handoff Continuity returns the intent to Intercept and, while the primary still misses
+        // the gate, the next pass re-plans the gather pinned to that primary. `incumbent` is the
+        // durable operation being continued (null for a fresh response).
         private static bool TryAppendActiveDefenceReinforcement(WorldSnapshot snap,
             ActiveDefenceObjective objective, IReadOnlyList<WorthIt.DefendingArmy> opposition,
-            ISet<int> excluded, List<MissionProposal> proposals)
+            ISet<int> excluded, int? pinnedPrimary, MissionIntent incumbent,
+            List<MissionProposal> proposals)
         {
-            GroundCombatReinforcementPlan plan = GroundCombatAssemblyPlanner.PlanReinforcement(snap,
+            GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap,
                 opposition, 0f, objective.Target.LastKnownHex, excluded,
-                GroundCombatAdmissionPolicy.FreshStartWinChanceGate);
-            if (!plan.Feasible)
+                GroundCombatAdmissionPolicy.PinnedOrFreshGate(pinnedPrimary.HasValue),
+                pinnedPrimary);
+            if (!plan.Feasible || plan.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#reinforce",
                     $"[AI][V2][ActiveDefence][Reinforcement] decision=REJECT enemy={objective.Target.EnemyArmyId} "
-                    + $"reason={plan.Reason}");
+                    + $"reason={(plan.Feasible ? "gather needs no support" : plan.Reason)}");
                 return false;
             }
             ArmySnapshot primary = snap.Self.Armies.FirstOrDefault(a => a != null
-                && a.ArmyId == plan.PrimaryArmyId);
-            ArmySnapshot support = snap.Self.Armies.FirstOrDefault(a => a != null
-                && a.ArmyId == plan.SupportArmyId);
+                && a.ArmyId == plan.HostArmyId);
+            ArmySnapshot support = plan.SupportArmyIds
+                .Select(id => snap.Self.Armies.FirstOrDefault(a => a != null && a.ArmyId == id))
+                .Where(a => a != null && (a.Hex.Equals(plan.HostHex) || a.CurrentMovement > 0))
+                .OrderBy(a => HexGridMath.Distance(a.Hex, plan.HostHex))
+                .ThenBy(a => a.ArmyId)
+                .FirstOrDefault();
             if (primary == null || support == null)
                 return false;
             int eta = UnityEngine.Mathf.Max(1, plan.TotalEta);
@@ -514,12 +527,19 @@ namespace Game.Ai.V2
             target.ProjectedWinChance = plan.ProjectedWinChance;
             target.CoversAllDefenders = plan.CoversAllDefenders;
             target.EstimatedEta = eta;
+            if (incumbent?.ActiveDefence != null)
+            {
+                target.SuspendedOffensiveIntentKey = incumbent.ActiveDefence.SuspendedOffensiveIntentKey;
+                target.ReturnHex = incumbent.ActiveDefence.ReturnHex;
+            }
             proposals.Add(BuildActiveDefenceReinforcementLeg(target, primary, support,
-                score.Value, null));
+                incumbent != null ? 0f : score.Value, incumbent));
             AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId + "#reinforce",
-                $"[AI][V2][ActiveDefence][Reinforcement] decision=PROPOSE enemy={objective.Target.EnemyArmyId} "
-                + $"primary={primary.ArmyId} support={support.ArmyId} win={plan.ProjectedWinChance:0.00} "
-                + $"walk={plan.WalkTurns} march={plan.MarchEta} score={score.Value:0.00}");
+                $"[AI][V2][ActiveDefence][Reinforcement] decision=ASSEMBLY_PLANNED enemy={objective.Target.EnemyArmyId} "
+                + $"primary={primary.ArmyId} support={support.ArmyId} "
+                + $"supports=[{string.Join(",", plan.SupportArmyIds)}] win={plan.ProjectedWinChance:0.00} "
+                + $"gather={plan.GatherTurns} march={plan.AssaultEta} score={score.Value:0.00}"
+                + (incumbent != null ? " continuing" : ""));
             return true;
         }
 

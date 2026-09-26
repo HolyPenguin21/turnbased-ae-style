@@ -1444,7 +1444,8 @@ namespace Game.Ai.V2
                 }
 
                 // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
-                // Base/Citadel, so there is deliberately no re-orient here: the army stays where it
+                // target structure (Base/Citadel captured, Facility destroyed), so there is
+                // deliberately no re-orient here: the army stays where it
                 // is, the claim is released, and the next global replan decides what the new
                 // topology is worth. An intent that still exists is advanced so ResolveActive
                 // observes the capture through the ordinary path and logs the release once.
@@ -1717,6 +1718,23 @@ namespace Game.Ai.V2
 
             if (o.HasScoutPayload && intent.Scout != null)
                 ApplyScoutPayload(intent.Scout, o);
+
+            // A multi-army response continues: the pinned primary still misses the gate, so the
+            // next gather support (AggressionMissionPlanner.TryAppendActiveDefenceReinforcement)
+            // walks in. Its transit step binds it as the operation's current support.
+            if (o.HasActiveDefencePayload && intent.ActiveDefence != null
+                && o.ActiveDefenceTarget.Phase == ActiveDefencePhase.Reinforcement
+                && intent.ActiveDefence.Phase == ActiveDefencePhase.Intercept
+                && !o.ReinforcementHandoffAttempted && o.MadeProgress
+                && o.ActiveDefenceTarget.PrimaryArmyId == intent.ActiveDefence.PrimaryArmyId
+                && o.ActiveDefenceTarget.SupportArmyId.HasValue)
+            {
+                intent.ActiveDefence.SupportArmyId = o.ActiveDefenceTarget.SupportArmyId;
+                intent.ActiveDefence.Phase = ActiveDefencePhase.Reinforcement;
+                AiDebugLog.Write($"[AI][V2][ActiveDefence][Continuity] decision=NEXT_SUPPORT "
+                    + $"enemy={intent.ActiveDefence.EnemyArmyId} primary={intent.ActiveDefence.PrimaryArmyId} "
+                    + $"support={intent.ActiveDefence.SupportArmyId}");
+            }
 
             // An attempted handoff (full, partial or rejected) ends the ActiveDefence convoy: the
             // reinforced primary intercepts; a leftover support container is simply free again.
@@ -2022,7 +2040,7 @@ namespace Game.Ai.V2
         // ATK §49/§73 — the ONE answer to "this offensive operation is marching on its objective
         // right now, with actor X, toward hex Y". ActiveDefence's preemption arithmetic (how far
         // off its route would borrowing this army drag it) needs exactly those two facts and must
-        // not care which lane owns them: a Raid's own target hex and an Attack's Base/Citadel hex
+        // not care which lane owns them: a Raid's own target hex and an Attack's target-structure hex
         // are the same kind of fact. A leg that is reinforcing, returning or recovering is NOT
         // borrowable here — its actor is already mid-handoff or walking home.
         internal static bool TryOffensiveAssaultOperation(MissionIntent i, out int primaryArmyId,

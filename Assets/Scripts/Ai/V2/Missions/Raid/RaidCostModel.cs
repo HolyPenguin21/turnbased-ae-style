@@ -114,7 +114,14 @@ namespace Game.Ai.V2
                 : isAssault ? currentTurnActivationAp
                 : Mathf.Min(currentTurnActivationAp, 1f);
             float combatMin = Mathf.Max(0f, target.TargetPower);
-            float combatDesired = combatMin * AiConfigV2.raidCombatPowerMargin;
+            // The one ground-combat requirement owner, on the same known defenders and site bonus
+            // the Raid objective sized its shortage by (AggressionObjectiveEvaluator).
+            // Never below the minimum: the requirement envelope must stay coherent even when
+            // memory no longer resolves the defenders behind a frozen TargetPower.
+            float combatDesired = combatMin <= 0f ? 0f
+                : Mathf.Max(combatMin, GroundCombatFeasibility.RequiredPower(
+                    AiV2Util.KnownDefenders(snap, target.Target),
+                    AiV2Util.KnownRaidDefenceBonus(snap, target.Target)));
 
             var requirements = new MissionRequirements
             {

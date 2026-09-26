@@ -356,12 +356,16 @@ namespace Game.Ai.V2
                         || e.ActorMaterialized || e.EconomyPrepared
                         || e.EconomyDeliveryReady || e.EconomyHolding;
                     o.StopReason = e.StopReason;
+                    // The ground-combat roster handoff (GroundCombatReinforcement) is one shared
+                    // lifecycle fact: Raid, Attack and ActiveDefence continuity all read it to
+                    // release the support role, so it is published for every ground-combat kind.
+                    if (o.MissionKind == MissionKind.Raid || o.MissionKind == MissionKind.Attack
+                        || o.MissionKind == MissionKind.ActiveDefence)
+                        o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
                     if (o.MissionKind == MissionKind.Raid)
                     {
                         o.OperationStarted = e.OperationStarted
                             || e.StepsMoved > 0 || raidEngaged;
-                        o.ReinforcementHandoffAttempted =
-                            e.ReinforcementHandoffAttempted;
                         o.RaidAirSupportStrikeSucceeded =
                             e.AirSupportStrikeSucceeded;
                         o.RaidRefitSucceeded = e.RaidRefitSucceeded;
@@ -376,7 +380,6 @@ namespace Game.Ai.V2
                     {
                         o.OperationStarted = e.OperationStarted || e.StepsMoved > 0
                             || e.StopReason == ExecutionStopReason.BattleStarted;
-                        o.ReinforcementHandoffAttempted = e.ReinforcementHandoffAttempted;
                         o.AttackOpportunisticStrike = e.AttackOpportunisticStrike;
                     }
                     if (o.MissionKind == MissionKind.Economy)

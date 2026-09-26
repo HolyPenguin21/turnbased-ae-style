@@ -114,7 +114,10 @@ namespace Game.Ai.V2
             StableMissionKey key = StableMissionKey.For(funded.Mission);
             GroundCombatLegCheck check = GroundCombatLegChecks.ValidateReinforcement(player, root,
                 ctx, session, funded, key, AiConfigV2.allocatorSliceEpsilon, primary,
-                target.SupportArmyId.Value, opposition, 0f, "active-defence", out bool atRendezvous);
+                target.SupportArmyId.Value, opposition, 0f, "active-defence", out bool atRendezvous,
+                // The support was chosen by the shared gather (PlanGather), which counts a hero
+                // taking command of the primary; the leg admits and prices exactly that handoff.
+                allowCommandHandover: true);
             if (!check.Ok)
                 return check.Failure;
             // The primary must not be handed to another mission while the convoy is in transit.

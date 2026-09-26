@@ -10,9 +10,10 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
-    // Reinforcement — the intercept's primary alone misses the gate while an existing free army
-    // can bring it over: that support walks to the primary and hands its bodies over, then the
-    // operation intercepts. One support, never a multi-army gather (that is Attack's alone).
+    // Reinforcement — the intercept's primary alone misses the gate while existing free armies
+    // can bring it over (the shared cross-hex gather, GroundCombatAssemblyPlanner.PlanGather):
+    // one support at a time walks to the primary and hands its bodies over; the operation
+    // intercepts once the primary clears, or pulls the gather's next support in.
     public enum ActiveDefencePhase { Intercept, Return, Reinforcement }
 
     public struct ActiveDefenceMissionTarget

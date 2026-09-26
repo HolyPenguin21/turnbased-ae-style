@@ -330,11 +330,12 @@ namespace Game.Ai.V2
         public bool ObjectiveCompleted;
     }
 
-    // ATK §22 — the durable Attack operation. ONE intent is ONE Base/Citadel (§7): capturing a
-    // Base changes the map's topology so completely — new home anchor, new recovery point, new
-    // garrison asset, new distances — that an automatic retarget inside the same intent would be
-    // planning the next war with the previous war's world. Completion, a global replan, and then a
-    // FRESH objective is the only correct chain.
+    // ATK §22 — the durable Attack operation. ONE intent is ONE target structure (§7): a hostile
+    // Base/Citadel, which winning captures, or a hostile Facility, which winning destroys
+    // (BuildingRegistry.CaptureOrDestroy). Either result changes the map's topology — a capture
+    // brings a new home anchor, recovery point, garrison asset and distances — so an automatic
+    // retarget inside the same intent would be planning the next war with the previous war's
+    // world. Completion, a global replan, and then a FRESH objective is the only correct chain.
     public sealed class AttackGatherReturn
     {
         public int ArmyId;

@@ -10,7 +10,8 @@ namespace Game.Ai.V2
 {
     // ATK §39 — the three objective families inside the ONE Aggression axis. Raid owns neutral
     // armies / event guards, ActiveDefence owns an enemy army threatening our own asset, Attack
-    // owns the deliberate capture of a known hostile Base/Citadel. Enumeration of each family
+    // owns the deliberate assault on a known hostile structure: a Base/Citadel (captured) or a
+    // Facility (destroyed). Enumeration of each family
     // lives in its own evaluator at this same level; this enum is the shared vocabulary.
     public enum AggressionObjectiveKind { Raid, ActiveDefence, Attack }
 

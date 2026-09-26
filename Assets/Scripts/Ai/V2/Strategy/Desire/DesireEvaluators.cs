@@ -235,7 +235,7 @@ namespace Game.Ai.V2
                 + AiConfigV2.aggWarWeightRelEdge * relativeEdge;
 
             // ATK §36 — the offensive gate is no longer "a neutral target exists". A known hostile
-            // Base/Citadel is an equally real reason to want to be offensive, and while the gate
+            // Base/Citadel or Facility (any Attack objective) is an equally real reason to want to be offensive, and while the gate
             // was neutral-only the whole war half of Aggression could never fire on a map whose
             // neutrals had all been cleared.
             List<AttackObjective> attackObjectives = AttackObjectiveEvaluator.Enumerate(snapshot);
@@ -392,7 +392,7 @@ namespace Game.Ai.V2
         // of "how urgent is a world value", already used by Development and StrategicCardEvaluator.
         // ATK §36 — the ONE offensive gate for the Aggression axis. Either family of offensive
         // target is sufficient on its own: a neutral army/event guard Raid can pursue, or a known
-        // hostile Base/Citadel Attack can capture. While this asked only about neutrals, the whole
+        // hostile Base/Citadel Attack can capture or hostile Facility Attack can destroy. While this asked only about neutrals, the whole
         // war half of Aggression was silently unreachable on a map whose neutrals were cleared.
         internal static bool HasOffensiveTarget(CombatOpportunityReport opp,
             List<AttackObjective> attackObjectives) =>
