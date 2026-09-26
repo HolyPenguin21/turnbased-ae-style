@@ -690,6 +690,7 @@ namespace Game.Ai
             // pathing call, even when nothing about known hostiles/danger zones had changed.
             bool sightingsChanged = false;
             bool buildingsChanged = false;
+            bool eventGuardsChanged = false;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
                 ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
@@ -718,11 +719,17 @@ namespace Game.Ai
                     // Keyed by the army's own stable Id (see EnemySightings' own comment) — if this
                     // same army was last recorded at a DIFFERENT hex, this overwrites that record in
                     // place instead of leaving it behind as an orphan under its old Hex.
-                    if (sightings.TryGetValue(enemy.Id, out EnemySighting previous) && !previous.Hex.Equals(hex))
+                    bool wasKnown = sightings.TryGetValue(enemy.Id, out EnemySighting previous);
+                    if (wasKnown && !previous.Hex.Equals(hex))
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — army \"{enemy.Name}\" id={enemy.Id} relocated "
                             + $"({previous.Hex.Q},{previous.Hex.R}) → ({hex.Q},{hex.R}).");
-                    else if (IsNeutralSightingOwner(enemy.Owner) && !sightings.ContainsKey(enemy.Id))
+                    else if (IsNeutralSightingOwner(enemy.Owner) && !wasKnown)
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — neutral \"{enemy.Name}\" remembered at ({hex.Q},{hex.R}).");
+                    // Route blockers depend on the known army's hex, not its observed HP,
+                    // roster or observation turn. Keep updating the whole sighting below,
+                    // but invalidate routes only when its presence/position changes.
+                    if (!wasKnown || !previous.Hex.Equals(hex))
+                        sightingsChanged = true;
                     sightings[enemy.Id] = new EnemySighting
                     {
                         ArmyId = enemy.Id,
@@ -763,7 +770,6 @@ namespace Game.Ai
                         RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
                             .Select(m => AbilityParams.GetBestRecceSpotStrength(m)).DefaultIfEmpty(0).Max(),
                     };
-                    sightingsChanged = true;
                 }
 
                 // A fresh observation of THIS hex invalidates every old identity no longer
@@ -783,6 +789,7 @@ namespace Game.Ai
                     sightingsChanged = true;
                 }
 
+                bool hadEventGuard = eventGuards.ContainsKey(hex);
                 HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
                 if (eventEntry != null && eventEntry.ResolvedGuardMembers.Count > 0)
                 {
@@ -813,6 +820,10 @@ namespace Game.Ai
                 {
                     eventGuards.Remove(hex);
                 }
+                // A known event guard changes whether an otherwise undefended foreign
+                // structure is a safe transit hex (KnownGroundArrival).
+                if (hadEventGuard != eventGuards.ContainsKey(hex))
+                    eventGuardsChanged = true;
 
                 // Building snapshot (2026-08-24, section 3.2 fix — see KnownBuildings' own class
                 // comment) — a real, direct read of BuildingRegistry, but only ever for a hex this
@@ -872,7 +883,7 @@ namespace Game.Ai
             // route-relevant changed. The player-scoped route revision only bumps when this
             // observer's own blocker memory actually changed.
             BumpKnowledgeVersion(player);
-            if (sightingsChanged || buildingsChanged)
+            if (sightingsChanged || buildingsChanged || eventGuardsChanged)
                 BumpRouteMemoryVersion(player);
         }
 
