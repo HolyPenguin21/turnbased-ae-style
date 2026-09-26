@@ -324,6 +324,25 @@ namespace Game.EditorTests
             Assert.That(StrategyLayer.HasKnownCombatActivity(unknown), Is.False);
         }
 
+        [Test]
+        public void ActiveDefenceThreatSeverity_DoesNotFeedAggressionRadarDesire()
+        {
+            WorldSnapshot low = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            WorldSnapshot high = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            low.Threat.Threats = new[] { Threat(0.1f) };
+            high.Threat.Threats = new[] { Threat(0.95f) };
+
+            RadarAssessment lowAssessment = StrategyLayer.Evaluate(low, new AiRadarState());
+            RadarAssessment highAssessment = StrategyLayer.Evaluate(high, new AiRadarState());
+
+            Assert.That(highAssessment.Desires.MilitaryThreat,
+                Is.GreaterThan(lowAssessment.Desires.MilitaryThreat),
+                "the general threat fact must still report the more severe danger");
+            Assert.That(highAssessment.Desires.Raw[DesireAxis.Aggression],
+                Is.EqualTo(lowAssessment.Desires.Raw[DesireAxis.Aggression]).Within(0.0001f),
+                "threat severity must not raise every Aggression peer through Radar");
+        }
+
         // ---- helpers ---------------------------------------------------------------------
 
         private static AiMapMemory.KnownBuilding B(HexCoord hex, PlayerSetupData owner,
@@ -332,6 +351,24 @@ namespace Game.EditorTests
 
         private static WorthIt.DefenderProfile Body(float atk, float def, float hp, int init) =>
             new WorthIt.DefenderProfile(def, false, null, atk, hp, init, null, hp);
+
+        private static AssetThreatSnapshot Threat(float severity) => new AssetThreatSnapshot
+        {
+            Contact = new EnemyContactSnapshot
+            {
+                Army = new ArmySnapshot { ArmyId = 42, EffectiveArmyPower = 8f },
+                Position = RedBase,
+                Confidence = 1f,
+            },
+            Asset = new StrategicAssetSnapshot
+            {
+                Kind = AssetKind.Base,
+                Hex = OurBase,
+                Value = 10f,
+            },
+            Severity = severity,
+            Confidence = 1f,
+        };
 
         private static AiMapMemory.KnownEnemySighting Sighting(int armyId, HexCoord hex,
             PlayerSetupData owner, params WorthIt.DefenderProfile[] bodies) =>

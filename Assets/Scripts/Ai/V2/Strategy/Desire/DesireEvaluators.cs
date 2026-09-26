@@ -40,8 +40,9 @@ namespace Game.Ai.V2
     //  The frozen IntelAge snapshot is captured during WorldAnalysis and therefore cannot change
     //  retroactively while the operational phase is moving scouts one hex at a time.
     //
-    //  AGGRESSION is one strategic axis. Its desire reads broad military readiness and the
-    //  existing general threat scalar, never the merit of a Raid, ActiveDefence or Attack task.
+    //  AGGRESSION is one strategic axis. Its desire reads broad military readiness when combat
+    //  activity is known; the general threat scalar remains a separate world fact. It never reads
+    //  the merit of a Raid, ActiveDefence or Attack task.
     //  Their concrete values are compared only by TaskScore after the common Radar scale.
     //
     //  The breakdown (DesireBreakdown) is returned alongside the vector so MissionLayer picks the
@@ -182,9 +183,8 @@ namespace Game.Ai.V2
 
             float readiness = (surplus + ecoGate + relativeEdge) / 3f;
             float strategicThreat = MilitaryThreat(snapshot, underSiege);
-            float rawAggression = Mathf.Clamp01(Mathf.Max(strategicThreat,
-                HasKnownCombatActivity(snapshot)
-                    ? readiness * (underSiege ? AiConfigV2.aggSiegeDamp : 1f) : 0f));
+            float rawAggression = Mathf.Clamp01(HasKnownCombatActivity(snapshot)
+                ? readiness * (underSiege ? AiConfigV2.aggSiegeDamp : 1f) : 0f);
 
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
@@ -537,7 +537,8 @@ namespace Game.Ai.V2
                 + $"blind {F(b.ReconEnemyBlindness)})");
             AiDebugLog.Write($"[AI][V2]   desires — AGG raw {F(rawAggression)} smoothed {F(d.Raw[DesireAxis.Aggression])} "
                 + $"radar {F(radar.Weight[DesireAxis.Aggression])} scale {F(RadarValueScale.For(radar, DesireAxis.Aggression))} "
-                + $"[surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)} threat {F(d.MilitaryThreat)}]");
+                + $"[surp {F(b.AggSurplus)} edge {F(b.AggRelativeEdge)}]");
+            AiDebugLog.Write($"[AI][V2]   world threat fact {F(d.MilitaryThreat)}");
             AiDebugLog.Write($"[AI][V2]   desires — reserve {F(b.RequiredDefensiveReserve)} free {F(b.OffensiveFreePower)}");
             AiDebugLog.Write($"[AI][V2][Economy][Desire] resource={b.EconomyPrimaryResource} "
                 + $"max={F(b.EconomyMaxDeficit)} mean={F(b.EconomyMeanDeficit)} "
