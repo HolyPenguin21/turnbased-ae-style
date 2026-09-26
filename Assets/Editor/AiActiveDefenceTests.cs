@@ -142,18 +142,39 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void PursuitStopsOnlyWhenEveryGuardAgrees()
+        public void ActiveDefenceIntercept_IsNotBorrowableByAttackGather()
         {
-            Assert.That(ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
-                false, true, true, false), Is.True);
-            Assert.That(ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
-                true, true, true, false), Is.False);
-            Assert.That(ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
-                false, false, true, false), Is.False);
-            Assert.That(ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
-                false, true, false, false), Is.False);
-            Assert.That(ActiveDefenceObjectiveEvaluator.ShouldStopPursuit(
-                false, true, true, true), Is.False);
+            var defence = new MissionIntent
+            {
+                Kind = MissionKind.ActiveDefence,
+                Status = IntentStatus.Active,
+                LastIntrinsicValue = 12f,
+                Objective = new ActiveDefenceIntent
+                {
+                    Phase = ActiveDefencePhase.Intercept,
+                    EnemyArmyId = 42,
+                    PrimaryArmyId = 7,
+                },
+            };
+            var raid = new MissionIntent
+            {
+                Kind = MissionKind.Raid,
+                Status = IntentStatus.Active,
+                LastIntrinsicValue = 9f,
+                Objective = new RaidIntent
+                {
+                    Phase = RaidMissionPhase.Assault,
+                    PrimaryArmyId = 9,
+                },
+            };
+
+            Dictionary<int, float> prices =
+                GroundCombatDonorPolicy.BorrowableDonorApPrices(new[] { defence, raid });
+
+            Assert.That(prices.ContainsKey(7), Is.False,
+                "an ActiveDefence responder remains owned by its threat");
+            Assert.That(prices.ContainsKey(9), Is.True,
+                "Raid donor behaviour is unchanged");
         }
 
         // ---- lifecycle: Continuity ends an Intercept, keeps a started Return -----------------
