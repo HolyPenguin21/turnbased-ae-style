@@ -139,24 +139,6 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void DefensiveReserve_CorrelatesHonestAndHiddenViewsOfSamePhysicalArmy()
-        {
-            EnemyContactSnapshot honest = Contact(20, 12f);
-            honest.PhysicalArmyId = 20;
-            EnemyContactSnapshot hidden = Contact(-1, 12f);
-            hidden.Source = ContactSource.Cheat;
-            hidden.PhysicalArmyId = 20;
-
-            float reserve = StrategyLayer.DefensiveReserveForThreats(new[]
-            {
-                Threat(honest, AssetKind.Citadel, new HexCoord(0, 0), 1f),
-                Threat(hidden, AssetKind.Base, new HexCoord(2, 0), 0.8f),
-            });
-
-            Assert.That(reserve, Is.EqualTo(12f * AiConfigV2.aggDefenceConfidenceMargin).Within(0.001f));
-        }
-
-        [Test]
         public void ActiveDefenceShortage_CreatesTargetBoundFieldPowerDemand()
         {
             var owner = new PlayerSetupData();
@@ -687,7 +669,6 @@ namespace Game.EditorTests
                     ArmyId = id, EffectiveArmyPower = power,
                     Members = System.Array.Empty<WorthIt.DefenderProfile>(),
                 },
-                Source = ContactSource.Honest,
                 Position = new HexCoord(4, 4),
             };
 

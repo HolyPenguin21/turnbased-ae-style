@@ -6,6 +6,7 @@ using Game.Cards;
 using Game.Economy;
 using Game.HexGrid;
 using Game.Map;
+using Game.Players;
 using Game.UI;
 using Game.Units;
 using NUnit.Framework;
@@ -3306,34 +3307,54 @@ namespace Game.EditorTests
             return snapshot;
         }
 
+        private static Game.Ai.AiMapMemory.KnownEnemySighting RouteSighting(HexCoord hex,
+            PlayerSetupData owner, bool isGarrison = false) =>
+            new Game.Ai.AiMapMemory.KnownEnemySighting(hex, owner, "army", 1, 5f, 5f,
+                new List<Game.Combat.WorthIt.DefenderProfile>(), isGarrison: isGarrison);
+
+        private static readonly HexCoord[] RoutePath =
+        {
+            new HexCoord(8, -4),
+            new HexCoord(7, -4),
+            new HexCoord(6, -3),
+            new HexCoord(5, -2),
+        };
+
         [Test]
-        public void EconomyRouteThreats_IgnoreStationaryNeutralOutsideActualSafePath()
+        public void EconomyRouteThreats_IgnoreNeutralsEvenOnThePath()
         {
             WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
-            var wrecker = new Game.Ai.AiMapMemory.KnownEnemySighting(
-                new HexCoord(8, -2), null, "Wrecker", 1, 5f, 5f,
-                new List<Game.Combat.WorthIt.DefenderProfile>());
-            snapshot.Known.NeutralSightings = new[] { wrecker };
-            var actualPath = new[]
-            {
-                new HexCoord(8, -4),
-                new HexCoord(7, -4),
-                new HexCoord(6, -3),
-                new HexCoord(5, -2),
-            };
+            var neutral = new PlayerSetupData { IsNeutral = true };
+            snapshot.Known.NeutralSightings = new[] { RouteSighting(new HexCoord(6, -3), neutral) };
+            snapshot.Known.EnemySightings = System.Array.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>();
 
-            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(
-                snapshot, actualPath), Is.Empty,
-                "A neutral inside the old endpoint ellipse cannot intercept from an untraversed hex.");
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(snapshot, RoutePath),
+                Is.Empty, "Neutrals never move; only the on-site gate (KnownHostileAtHex) sees them.");
+        }
 
-            snapshot.Known.NeutralSightings = new[]
-            {
-                new Game.Ai.AiMapMemory.KnownEnemySighting(
-                    new HexCoord(6, -3), null, "Path blocker", 1, 5f, 5f,
-                    new List<Game.Combat.WorthIt.DefenderProfile>()),
-            };
-            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(
-                snapshot, actualPath), Has.Count.EqualTo(1));
+        [Test]
+        public void EconomyRouteThreats_EnemyPlayerWithinOneOfRouteOrTwoOfSite()
+        {
+            WorldSnapshot snapshot = SnapshotWithDeficits(0.5f, 0.1f, actionable: true);
+            var enemy = new PlayerSetupData();
+            snapshot.Known.NeutralSightings = System.Array.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>();
+
+            snapshot.Known.EnemySightings = new[] { RouteSighting(new HexCoord(7, -5), enemy) };
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(snapshot, RoutePath),
+                Has.Count.EqualTo(1), "adjacent to a route hex");
+
+            snapshot.Known.EnemySightings = new[] { RouteSighting(new HexCoord(3, -2), enemy) };
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(snapshot, RoutePath),
+                Has.Count.EqualTo(1), "two hexes from the site (5,-2)");
+
+            snapshot.Known.EnemySightings = new[] { RouteSighting(new HexCoord(2, -2), enemy) };
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(snapshot, RoutePath),
+                Is.Empty, "three hexes from the site and far from the route");
+
+            snapshot.Known.EnemySightings = new[]
+                { RouteSighting(new HexCoord(5, -1), enemy, isGarrison: true) };
+            Assert.That(WorldAnalysis.KnownThreatsAffectingEconomyRoute(snapshot, RoutePath),
+                Is.Empty, "a garrison cannot sortie");
         }
 
         [Test]

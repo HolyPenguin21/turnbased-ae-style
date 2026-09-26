@@ -704,7 +704,6 @@ namespace Game.Ai.V2
         public readonly int CollectorArmyId;
         public readonly int TravelAp;
         public readonly int TurnsToFirstIncome;
-        public readonly float ThreatExposure;
         // Preserve the canonical score components, not an opaque local scalar, so every
         // downstream comparison and diagnostic uses the one TaskScore fold.
         public readonly TaskScore Score;
@@ -712,7 +711,7 @@ namespace Game.Ai.V2
 
         public MobileCollectionOpportunity(HexCoord targetHex, ResourceType resourceType,
             int effectiveRemainingYield, int collectorArmyId, int travelAp,
-            int turnsToFirstIncome, float threatExposure, TaskScore score,
+            int turnsToFirstIncome, TaskScore score,
             HexCoord safeReturnHex)
         {
             TargetHex = targetHex;
@@ -721,7 +720,6 @@ namespace Game.Ai.V2
             CollectorArmyId = collectorArmyId;
             TravelAp = travelAp;
             TurnsToFirstIncome = turnsToFirstIncome;
-            ThreatExposure = threatExposure;
             Score = score;
             SafeReturnHex = safeReturnHex;
         }
@@ -936,35 +934,22 @@ namespace Game.Ai.V2
     // =======================================================================================
     //  THREAT MODEL
     // =======================================================================================
-    public enum ContactKnowledge { Exact, LastKnown, Region, Unknown }
-    public enum ContactSource { Honest, Cheat }
+    public enum ContactKnowledge { Exact, LastKnown }
     public enum AssetKind { Citadel, Base, Facility, Army, ResourceSite }
 
-    // A single enemy force the AI is aware of, at whatever fidelity it earned. The cheat/honest
-    // boundary is enforced HERE, structurally: a Cheat-sourced contact can only ever be
-    // Region/Unknown and can never carry Position (see the constructor's clamp in WorldAnalysis).
-    // That is spec-18 ("a hidden army raising an alert must not become a targetable hex") as an
-    // architectural constraint rather than a comment on each call site.
+    // A single enemy force the AI honestly observed (live sighting or remembered observation).
+    // Threat analysis has no hidden-army source: every contact carries the position it was seen at.
     public sealed class EnemyContactSnapshot
     {
         public ArmySnapshot Army;
-        // Stable physical identity for analyses that may legally correlate the same hidden force
-        // across several regional cheat contacts. It never supplies a position and therefore does
-        // not weaken the honest-contact boundary; ActiveDefence still admits Honest contacts only.
-        public int? PhysicalArmyId;
         public ContactKnowledge Knowledge;
-        public ContactSource Source;
 
-        public HexCoord? Position;         // non-null ONLY for Exact / LastKnown
-        public HexCoord? RegionCenter;     // non-null ONLY for Region
-        public int RegionRadius;
+        public HexCoord? Position;         // where the contact was observed
 
         public float Confidence;           // [0..1]
 
-        // Global turn this contact's position was last honestly observed. For an Exact contact
-        // that is the current turn (age 0); for LastKnown it is the sighting's SeenTurn. Only
-        // meaningful for a Honest contact that carries a Position — a Cheat contact has neither a
-        // position nor an observation history, so it is never a surveillance target.
+        // Global turn this contact's position was last observed. For an Exact contact that is the
+        // current turn (age 0); for LastKnown it is the sighting's SeenTurn.
         public int LastObservedTurn;
 
         public int AgeTurns(int currentTurn) => System.Math.Max(0, currentTurn - LastObservedTurn);
@@ -989,7 +974,7 @@ namespace Game.Ai.V2
         public EnemyContactSnapshot Contact;
 
         public bool CanDamage;             // can the contact's force actually hurt this asset
-        public int? EnemyEta;              // turns for the contact to reach the asset; null if Knowledge >= Region
+        public int? EnemyEta;              // turns for the contact to reach the asset
         public int? ResponseEta;           // nearest own ground arrival; NOT proof of combat sufficiency
         public float AttackWinChance;      // WorthIt full-roster MC — contact as attacker
         public float PotentialDamage;      // expected value lost if it lands (0..1 fraction of Asset.Value)
@@ -1002,6 +987,11 @@ namespace Game.Ai.V2
         public IReadOnlyList<EnemyContactSnapshot> Contacts;
         public IReadOnlyList<StrategicAssetSnapshot> Assets;
         public IReadOnlyList<AssetThreatSnapshot> Threats;
+
+        // Highest threat Severity against the starting Citadel / against any other own Base.
+        // The one source of TaskScore.CitadelThreatRisk / BaseThreatRisk.
+        public float CitadelThreatSeverity;
+        public float BaseThreatSeverity;
 
         // Honest, POSITIONED contacts indexed by the tracked army's id — the freshest one when the
         // same army is both live-sighted and remembered. The step-7 Surveil continuity path reads

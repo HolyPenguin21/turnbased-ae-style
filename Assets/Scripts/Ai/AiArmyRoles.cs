@@ -23,8 +23,7 @@ namespace Game.Ai
     // (the project owner's own spec): a solo Recce party (unit or hero, see IsEmptyDeployableArmy
     // — never diluted into a bigger roster, since a bigger army costs more AP to move and covers
     // fewer hexes per trip for the exact same Recce vision bonus), a hero-led combat escort
-    // (IsHeroLedCombatArmy, no Recce) that doubles as a fallback explorer once full enough (see
-    // IsMakeshiftScoutCapable), and the garrison itself as a stockpile for plain Unit cards that
+    // (IsHeroLedCombatArmy, no Recce), and the garrison itself as a stockpile for plain Unit cards that
     // don't yet have a hero to rally behind (see AiTurnController.TryPlayCard's own fallback).
     public static class AiArmyRoles
     {
@@ -165,24 +164,8 @@ namespace Game.Ai
             return army.Members.Count(m => m.IsHero) == 1;
         }
 
-        // See AiConfig.makeshiftScoutMinMembers for what this means and why — moved there so
-        // it's tunable without recompiling.
-        private static int MakeshiftScoutMinMembers => AiConfig.makeshiftScoutMinMembers;
-
-        // A hero-led army sturdy enough to explore even without a dedicated Recce member — the
-        // project owner's own fallback for when cards accumulate into an army (see
-        // IsHeroLedCombatArmy/AiTurnController's own PlayCard tier) before a Recce card ever gets
-        // drawn: sitting on a serviceable roster while waiting on the deck is worse than sending
-        // it out, since it can always be pulled back or reinforced into a full combat army later.
-        public static bool IsMakeshiftScoutCapable(ArmyData army)
-        {
-            if (!IsHeroLedCombatArmy(army))
-                return false;
-            return army.Members.Count >= Math.Min(MakeshiftScoutMinMembers, army.Capacity);
-        }
-
         // A hero-led army with no escorts AT ALL yet — too fragile for AiScoutPlanner's normal
-        // into-the-fog search (that's IsMakeshiftScoutCapable's job, once it's Hero+2). No longer
+        // into-the-fog search. No longer
         // scouts on its own — the project owner dropped that composition from Разведка · Задача
         // 1 — it just walks home and waits at the garrison for its first escort instead (see
         // AiTurnController.TryReturnHomeCandidates).

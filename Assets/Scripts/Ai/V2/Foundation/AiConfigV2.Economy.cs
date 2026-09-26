@@ -39,7 +39,10 @@ namespace Game.Ai.V2
         public const float economyHomeHeroAssignmentApPenalty = 1.5f;
 
         public const int mobileCollectionMinMarginalYield = 1;
-        public const float mobileCollectionMaxThreatExposure = 0.25f;
+        // WorldAnalysis.KnownThreatsAffectingEconomyRoute: a known enemy (other player) army this
+        // close to any route hex, or to the site itself, must be answered by an escort.
+        public const int economyRouteThreatRadius = 1;
+        public const int economySiteThreatRadius = 2;
         public const float mobileCollectionMinSafeRetreatMargin = 0f;
         public const int mobileCollectionMinCommitmentTurns = 1;
         public const float economySecurityAbsWeight = 0.5f;

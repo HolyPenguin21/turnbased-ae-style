@@ -331,10 +331,10 @@ namespace Game.Ai.V2
             if (surveil)
             {
                 int trackedId = target.Contact?.Army?.ArmyId ?? -1;
-                if (trackedId < 0 || target.Contact.Source != ContactSource.Honest
+                if (trackedId < 0
                     || target.Contact.Knowledge != ContactKnowledge.LastKnown)
                     return ProvisioningResult.Fail(ProvisionFailure.TargetInvalidated(
-                        "surveil target is no longer an honest last-known contact"));
+                        "surveil target is no longer a last-known contact"));
                 int baseline = target.Contact.LastObservedTurn;
                 if (VisionSystem.IsVisible(player, focus) || HasFresherSighting(player, trackedId, baseline))
                     return ProvisioningResult.Fail(ProvisionFailure.TargetSatisfied(

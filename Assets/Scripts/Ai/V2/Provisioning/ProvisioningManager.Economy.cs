@@ -98,8 +98,6 @@ namespace Game.Ai.V2
                     if (g == null) return "garrison_not_resolved";
                     UnitData sparable = AiArmyRoles.BestSparableEconomyHero(player, g);
                     if (sparable == null) return "no_sparable_hero";
-                    if (DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, g.Hex))
-                        return "under_immediate_threat";
                     if (session.ClaimedArmyIds.Contains(g.Id)) return "claimed_this_pass";
                     if (!g.Hex.Equals(target.TargetHex)
                         && SafeStepPathing.FindSafePathCost(ctx.Map, player, g.Hex,
@@ -110,8 +108,6 @@ namespace Game.Ai.V2
                 ArmyData a = ResolveArmy(player, x.Route.ArmyId);
                 if (a == null) return "army_not_resolved";
                 if (!IsMobileEconomyHero(a, player)) return "not_mobile_economy_hero";
-                if (DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, a.Hex))
-                    return "under_immediate_threat";
                 if (session.ClaimedArmyIds.Contains(a.Id)) return "claimed_this_pass";
                 if (!a.Hex.Equals(target.TargetHex)
                     && (a.CurrentMovement <= 0

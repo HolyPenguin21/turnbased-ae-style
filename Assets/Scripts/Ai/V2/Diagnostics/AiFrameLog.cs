@@ -77,8 +77,7 @@ namespace Game.Ai.V2
             var contacts = threat?.Contacts ?? (IReadOnlyList<EnemyContactSnapshot>)System.Array.Empty<EnemyContactSnapshot>();
             int exact = contacts.Count(c => c != null && c.Knowledge == ContactKnowledge.Exact);
             int lk = contacts.Count(c => c != null && c.Knowledge == ContactKnowledge.LastKnown);
-            int region = contacts.Count(c => c != null && c.Knowledge == ContactKnowledge.Region);
-            AiDebugLog.Write($"{P}   enemy: {contacts.Count} contacts ({exact} exact, {lk} last-known, {region} region)");
+            AiDebugLog.Write($"{P}   enemy: {contacts.Count} contacts ({exact} exact, {lk} last-known)");
             if (known != null)
                 AiDebugLog.Write($"{P}          seen force ~{N(known.EnemyKnownStrength)} "
                     + $"(Σ raw atk+def of remembered stacks)   "

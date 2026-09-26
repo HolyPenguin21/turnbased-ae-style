@@ -39,7 +39,13 @@ namespace Game.Ai.V2
         public readonly float CardPrice;
         public readonly float Delivery;
         public readonly float MoverOpportunityCost;
+        // Threat at / near the task's own hex.
         public readonly float HexThreatRisk;
+        // Threat against the starting Citadel / against any other own Base (Analysis
+        // ThreatModel.CitadelThreatSeverity / BaseThreatSeverity), charged to tasks that should
+        // wait while home is threatened. Kept apart from HexThreatRisk: home is not the task hex.
+        public readonly float CitadelThreatRisk;
+        public readonly float BaseThreatRisk;
         public readonly float DetectionRisk;
 
         public TaskScore(
@@ -62,6 +68,8 @@ namespace Game.Ai.V2
             float delivery = 0f,
             float moverOpportunityCost = 0f,
             float hexThreatRisk = 0f,
+            float citadelThreatRisk = 0f,
+            float baseThreatRisk = 0f,
             float detectionRisk = 0f,
             float economicExpansionValue = 0f)
         {
@@ -84,6 +92,8 @@ namespace Game.Ai.V2
             Delivery = delivery;
             MoverOpportunityCost = moverOpportunityCost;
             HexThreatRisk = hexThreatRisk;
+            CitadelThreatRisk = citadelThreatRisk;
+            BaseThreatRisk = baseThreatRisk;
             DetectionRisk = detectionRisk;
             EconomicExpansionValue = economicExpansionValue;
         }
@@ -118,6 +128,8 @@ namespace Game.Ai.V2
             - score.Delivery
             - score.MoverOpportunityCost
             - score.HexThreatRisk
+            - score.CitadelThreatRisk
+            - score.BaseThreatRisk
             - score.DetectionRisk;
 
         // Component-wise change between two canonical world-task projections. Keeping every fact
@@ -147,6 +159,8 @@ namespace Game.Ai.V2
                 delivery: to.Delivery - from.Delivery + Mathf.Max(0f, additionalDelivery),
                 moverOpportunityCost: to.MoverOpportunityCost - from.MoverOpportunityCost,
                 hexThreatRisk: to.HexThreatRisk - from.HexThreatRisk,
+                citadelThreatRisk: to.CitadelThreatRisk - from.CitadelThreatRisk,
+                baseThreatRisk: to.BaseThreatRisk - from.BaseThreatRisk,
                 detectionRisk: to.DetectionRisk - from.DetectionRisk,
                 economicExpansionValue: to.EconomicExpansionValue - from.EconomicExpansionValue);
 
@@ -255,6 +269,14 @@ namespace Game.Ai.V2
         internal static float HexThreatRisk(float normalizedRisk) =>
             Mathf.Clamp01(normalizedRisk) * AiConfigV2.taskScoreThreatRiskMax;
 
+        internal static float CitadelThreatRisk(WorldSnapshot snap) =>
+            Mathf.Clamp01(snap?.Threat?.CitadelThreatSeverity ?? 0f)
+            * AiConfigV2.taskScoreCitadelThreatRiskMax;
+
+        internal static float BaseThreatRisk(WorldSnapshot snap) =>
+            Mathf.Clamp01(snap?.Threat?.BaseThreatSeverity ?? 0f)
+            * AiConfigV2.taskScoreBaseThreatRiskMax;
+
         internal static float DetectionRisk(float normalizedRisk) =>
             Mathf.Clamp01(normalizedRisk) * AiConfigV2.taskScoreDetectionRiskMax;
 
@@ -317,6 +339,8 @@ namespace Game.Ai.V2
                 corridorAlignment: intrinsic.CorridorAlignment,
                 economicExpansionValue: intrinsic.EconomicExpansionValue,
                 militaryTargetRelevance: intrinsic.MilitaryTargetRelevance,
+                citadelThreatRisk: intrinsic.CitadelThreatRisk,
+                baseThreatRisk: intrinsic.BaseThreatRisk,
                 winChance: WinChance(winChance),
                 cardPrice: Mathf.Max(0f, activationApNow) * AiConfigV2.taskScoreReactivationApWeight,
                 delivery: DeliveryFromEta(recurringActivationAp, etaTurns,

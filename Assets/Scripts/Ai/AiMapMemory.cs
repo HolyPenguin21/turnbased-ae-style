@@ -928,23 +928,6 @@ namespace Game.Ai
                 : System.Array.Empty<KnownResourceHex>();
         }
 
-        public static bool HasKnownEnemyWithin(PlayerSetupData actor, HexCoord center, int radius)
-        {
-            return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
-                && sightings.Values.Any(s => HexGridMath.Distance(center, s.Hex) <= radius);
-        }
-
-        // Same read as HasKnownEnemyWithin, narrowed to sightings whose owner is neutral —
-        // Экономика · Задача 1's own "don't build near a neutral garrison" check
-        // (AiConfig.neutralBuildTriggerRadius), which cares about neutrals specifically rather than
-        // any known hostile army the way HasKnownEnemyWithin itself does.
-        public static bool HasKnownNeutralWithin(PlayerSetupData actor, HexCoord center, int radius)
-        {
-            return EnemySightings.TryGetValue(actor, out Dictionary<int, EnemySighting> sightings)
-                && sightings.Values.Any(s => IsNeutralSightingOwner(s.Owner)
-                    && HexGridMath.Distance(center, s.Hex) <= radius);
-        }
-
         // Every known neutral-army hex on the whole map, no radius — RaidWeakerArmyTask's own
         // target pool isn't wavefront/radius-bounded like Разведка's (see that class's own class
         // comment), it just scores every known target by raw distance from the citadel.

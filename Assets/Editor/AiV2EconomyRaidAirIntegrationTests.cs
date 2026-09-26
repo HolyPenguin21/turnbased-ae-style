@@ -67,7 +67,7 @@ namespace Game.EditorTests
                     MobileCollectionOpportunities = new[]
                     {
                         new MobileCollectionOpportunity(target, ResourceType.Materials,
-                            2, 0, 2, 1, 0f,
+                            2, 0, 2, 1,
                             new TaskScore(economicHexBenefit: 6f, payback: 2f,
                                 cardPrice: 1.5f, delivery: 3f),
                             new HexCoord(0, 0)),

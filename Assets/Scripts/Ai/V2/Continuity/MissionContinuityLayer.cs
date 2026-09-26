@@ -31,7 +31,7 @@ namespace Game.Ai.V2
             HexCoord citadel = snap.Self.Citadel;
             List<HexCoord> ordered = candidates
                 .OrderBy(h => HexGridMath.Distance(actor.Hex, h))
-                .ThenBy(h => DemandLayer.EconomyRecoveryThreatExposure(snap, h))
+                .ThenBy(h => BaseThreatSeverityAt(snap, h))
                 .ThenByDescending(h => h.Equals(citadel) ? 1 : 0)
                 .ThenBy(h => h.Q).ThenBy(h => h.R).ToList();
             if (ordered.Count > 0)
@@ -285,7 +285,10 @@ namespace Game.Ai.V2
             }
 
             EconomyTaskKind completedKind = DemandLayer.EconomyBuildKind(completedDemand);
-            bool threatened = DemandLayer.EconomyBuilderUnderImmediateThreat(snap, actor.Hex);
+            // The same threat witness that sizes a builder's escort: a known enemy army close
+            // enough to the finished site sends the builder home.
+            bool threatened = WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                snap, new[] { actor.Hex }).Count > 0;
             bool alreadyProtected = (completedKind == EconomyTaskKind.FoundBase && !threatened)
                 || IsProtectedEconomyHex(snap, player, actor.Hex);
             HexCoord? target = SelectEconomyRecoveryTarget(

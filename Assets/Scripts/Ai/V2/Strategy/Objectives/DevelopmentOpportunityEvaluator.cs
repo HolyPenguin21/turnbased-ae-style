@@ -225,8 +225,7 @@ namespace Game.Ai.V2
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
                 {
                     if (army == null || army.IsPrison || army.Hex.Equals(hex)
-                        || occupied.IsArmyClaimed(army.Id)
-                        || DemandLayer.EconomyBuilderUnderImmediateThreat(snap, army.Hex))
+                        || occupied.IsArmyClaimed(army.Id))
                         continue;
                     UnitData candidate = army.IsGarrison
                         ? AiArmyRoles.BestSparableDevelopmentHero(player, army,

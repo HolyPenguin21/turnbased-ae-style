@@ -1722,15 +1722,12 @@ namespace Game.Ai.V2
             internal readonly float HexYield;
             internal readonly float GlobalEffect;
             internal readonly float Airfield;
-            internal readonly float Exposure;
 
-            internal BaseSiteValue(float hexYield, float globalEffect, float airfield,
-                float exposure)
+            internal BaseSiteValue(float hexYield, float globalEffect, float airfield)
             {
                 HexYield = hexYield;
                 GlobalEffect = globalEffect;
                 Airfield = airfield;
-                Exposure = exposure;
             }
         }
 
@@ -1738,8 +1735,7 @@ namespace Game.Ai.V2
             CardData card) => new BaseSiteValue(
                 BaseCardMarginalYield(s, site, card.Definition),
                 BaseGlobalEffectValue(s, card.Definition),
-                BaseAirfieldValue(s, card.Definition, site.Hex),
-                ThreatExposure(s, site.Hex));
+                BaseAirfieldValue(s, card.Definition, site.Hex));
 
         // One owner of the gameplay fact "what resource income can this exact Base card collect on
         // this hex?". This private helper is only the new card's additional Collect capacity;
@@ -1812,20 +1808,6 @@ namespace Game.Ai.V2
         // Shared with Strategy/Demand's Extraction site scoring — generic map/resource-cost
         // primitives, not Base-specific, so DemandLayer calls back into this evaluator rather than
         // each side keeping its own copy.
-        internal static float ThreatExposure(WorldSnapshot s, HexCoord target)
-        {
-            if (s?.Known?.EnemySightings == null)
-                return 0f;
-            float exposure = 0f;
-            foreach (AiMapMemory.KnownEnemySighting enemy in s.Known.EnemySightings)
-            {
-                int distance = HexGridMath.Distance(target, enemy.Hex);
-                if (distance <= 3)
-                    exposure = Mathf.Max(exposure, 1f - distance / 4f);
-            }
-            return exposure;
-        }
-
         internal static float ResourceCostSum(ResourceCost cost) => cost == null ? 0f
             : ResourceBundle.All.Sum(t => Mathf.Max(0, cost.Get(t)));
     }

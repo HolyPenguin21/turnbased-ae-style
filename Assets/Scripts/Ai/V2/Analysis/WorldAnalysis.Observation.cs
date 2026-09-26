@@ -557,10 +557,10 @@ namespace Game.Ai.V2
                 + $"| targetIncome H/E/M/T={F(eco.IncomeTarget.Human)}/{F(eco.IncomeTarget.Energy)}/"
                 + $"{F(eco.IncomeTarget.Materials)}/{F(eco.IncomeTarget.Tech)} total={F(eco.IncomeTarget.Sum)} "
                 + $"actualIncome={F(self.PerTurnIncome.Sum)}");
-            int honest = th.Contacts.Count(c => c.Source == ContactSource.Honest);
-            int cheat = th.Contacts.Count - honest;
-            AiDebugLog.Write($"[AI][V2]   threat: contacts {th.Contacts.Count} (honest={honest} cheat={cheat}) "
-                + $"assets {th.Assets.Count} listedThreats {th.Threats.Count} siege={(th.UnderSiege ? 1 : 0)}");
+            AiDebugLog.Write($"[AI][V2]   threat: contacts {th.Contacts.Count} "
+                + $"assets {th.Assets.Count} listedThreats {th.Threats.Count} siege={(th.UnderSiege ? 1 : 0)} "
+                + $"citadel={th.CitadelThreatSeverity.ToString("0.00", CultureInfo.InvariantCulture)} "
+                + $"base={th.BaseThreatSeverity.ToString("0.00", CultureInfo.InvariantCulture)}");
         }
 
         private static string F(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);

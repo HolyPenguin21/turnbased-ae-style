@@ -80,7 +80,6 @@ namespace Game.Ai.V2
         public float EconomyExpectedIncomeGain;
         public float EconomySiteValue;
         public float EconomyTravelCost;
-        public float EconomyThreatExposure;
         public float EconomyHeroOpportunityCost;
         public float EconomyAssignmentApCost;
         public float EconomyPaybackTurns;

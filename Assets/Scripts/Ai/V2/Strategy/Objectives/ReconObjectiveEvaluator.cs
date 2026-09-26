@@ -136,7 +136,7 @@ namespace Game.Ai.V2
             IReadOnlyList<EnemyContactSnapshot> contacts = snap.Threat?.Contacts;
             if (contacts != null)
                 foreach (EnemyContactSnapshot c in contacts)
-                    if (c.Source == ContactSource.Honest && c.Knowledge == ContactKnowledge.LastKnown
+                    if (c.Knowledge == ContactKnowledge.LastKnown
                         && c.Position.HasValue && c.Army != null)
                         list.Add(BuildSurveil(snap, c));
 

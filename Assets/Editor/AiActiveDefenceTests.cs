@@ -119,7 +119,6 @@ namespace Game.EditorTests
                     Members = new[] { body },
                     MemberCount = 1,
                 },
-                Source = ContactSource.Honest,
                 Knowledge = ContactKnowledge.Exact,
                 Position = hex,
                 LastObservedTurn = 5,

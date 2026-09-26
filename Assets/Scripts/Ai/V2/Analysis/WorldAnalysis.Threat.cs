@@ -28,8 +28,7 @@ namespace Game.Ai.V2
 
             // A building-bound garrison cannot leave its structure, so it never threatens OUR
             // assets; it is that site's defender package, read directly from the sightings by
-            // AttackObjectiveEvaluator.KnownSiteDefenders. Same rule the cheat branch below already
-            // applies (ea.IsGarrison) — keeps a permanently remembered garrison (AiMapMemory, audit
+            // AttackObjectiveEvaluator.KnownSiteDefenders. Keeps a permanently remembered garrison (AiMapMemory, audit
             // F1) from inflating the defensive reserve / ActiveDefence / Recon contact tracking.
             foreach (AiMapMemory.KnownEnemySighting s in snap.Known.EnemySightings.Where(x => !x.IsGarrison))
             {
@@ -37,9 +36,7 @@ namespace Game.Ai.V2
                 contacts.Add(new EnemyContactSnapshot
                 {
                     Army = SightingToArmySnapshot(s),
-                    PhysicalArmyId = s.ArmyId,
                     Knowledge = visibleNow ? ContactKnowledge.Exact : ContactKnowledge.LastKnown,
-                    Source = ContactSource.Honest,
                     Position = s.Hex,
                     Confidence = visibleNow ? AiConfigV2.threatConfidenceExact : AiConfigV2.threatConfidenceLastKnown,
                     LastObservedTurn = visibleNow ? snap.TurnNumber : s.SeenTurn,
@@ -54,44 +51,19 @@ namespace Game.Ai.V2
                 contacts.Add(new EnemyContactSnapshot
                 {
                     Army = ObservationToArmySnapshot(obs),
-                    PhysicalArmyId = obs.ArmyId,
                     Knowledge = ContactKnowledge.LastKnown,
-                    Source = ContactSource.Honest,
                     Position = obs.LastObservedHex,
                     Confidence = AiConfigV2.threatConfidenceLastKnown * AiReconMemory.ConfidenceDecay(age),
                     LastObservedTurn = obs.LastObservedTurn,
                 });
             }
 
-            foreach (HexCoord home in snap.Self.BaseHexes)
-            {
-                if (AiMapMemory.HasKnownEnemyWithin(player, home, AiConfig.threatReactionRadius))
-                    continue;
-
-                ArmySnapshot strongest = null;
-                float strongestSum = 0f;
-                foreach (ArmySnapshot ea in snap.TrueWorld.EnemyArmies)
-                {
-                    if (ea.IsGarrison || ea.MemberCount == 0 || ea.MemberCount > AiConfig.makeshiftScoutMinMembers)
-                        continue;
-                    if (HexGridMath.Distance(home, ea.Hex) > AiConfig.threatReactionRadius)
-                        continue;
-                    float sum = ea.AttackSum + ea.DefenseSum;
-                    if (sum > strongestSum)
-                    {
-                        strongestSum = sum;
-                        strongest = ea;
-                    }
-                }
-                if (strongest != null)
-                    contacts.Add(MakeCheatContact(strongest, home, AiConfig.threatReactionRadius));
-            }
             model.Contacts = contacts;
 
             var byArmy = new Dictionary<int, EnemyContactSnapshot>();
             foreach (EnemyContactSnapshot c in contacts)
             {
-                if (c.Source != ContactSource.Honest || !c.Position.HasValue) continue;
+                if (!c.Position.HasValue) continue;
                 // ArmyId == 0 is a valid identity (e.g. the game's very first spawned army), not
                 // "no army" — only a genuinely absent Army reference means there is nothing to key
                 // this contact by. Treating id<=0 as invalid silently dropped honest contacts for
@@ -198,9 +170,15 @@ namespace Game.Ai.V2
                         && HexGridMath.Distance(t.Contact.Position.Value, t.Asset.Hex) <= AiConfigV2.siegeRadius)
                     || (t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.siegeEnemyEtaTurns)));
             model.UnderSiege = derivedSiege;
+            model.CitadelThreatSeverity = MaxSeverity(threats, AssetKind.Citadel);
+            model.BaseThreatSeverity = MaxSeverity(threats, AssetKind.Base);
 
             return model;
         }
+
+        private static float MaxSeverity(IEnumerable<AssetThreatSnapshot> threats, AssetKind kind) =>
+            threats.Where(t => t.Asset.Kind == kind).Select(t => t.Severity)
+                .DefaultIfEmpty(0f).Max();
 
         internal static AssetKind ClassifyBuildingAsset(BuildingSnapshot building)
         {
@@ -209,36 +187,6 @@ namespace Game.Ai.V2
             if (building.IsStartingCitadel)
                 return AssetKind.Citadel;
             return building.IsBase ? AssetKind.Base : AssetKind.Facility;
-        }
-
-        private static EnemyContactSnapshot MakeCheatContact(ArmySnapshot source, HexCoord regionCenter, int regionRadius)
-        {
-            return new EnemyContactSnapshot
-            {
-                PhysicalArmyId = source.ArmyId,
-                Army = new ArmySnapshot
-                {
-                    ArmyId = -1,
-                    Owner = source.Owner,
-                    Hex = default,
-                    MemberCount = source.MemberCount,
-                    HasHero = source.HasHero,
-                    HasAntiAir = source.HasAntiAir,
-                    IsHiddenFromUs = source.IsHiddenFromUs,
-                    Commander = source.Commander,
-                    AttackSum = source.AttackSum,
-                    DefenseSum = source.DefenseSum,
-                    EffectiveArmyPower = source.EffectiveArmyPower,
-                    MaxMovement = 0,
-                    Members = source.Members,
-                },
-                Knowledge = ContactKnowledge.Region,
-                Source = ContactSource.Cheat,
-                Position = null,
-                RegionCenter = regionCenter,
-                RegionRadius = regionRadius,
-                Confidence = AiConfigV2.threatConfidenceCheatRegion,
-            };
         }
 
         private static ArmySnapshot ObservationToArmySnapshot(ReconObservation o)
@@ -312,9 +260,7 @@ namespace Game.Ai.V2
         private static float Severity(float winChance, float potentialDamage, int? enemyEta, int? responseEta,
             bool canDamage, float confidence)
         {
-            float etaUrgency = enemyEta.HasValue
-                ? 1f / (1f + enemyEta.Value)
-                : 1f / (1f + AiConfigV2.etaUnknownContactPenalty);
+            float etaUrgency = enemyEta.HasValue ? 1f / (1f + enemyEta.Value) : 0f;
 
             float posWeight = AiConfigV2.severityWinChanceWeight + AiConfigV2.severityDamageWeight
                 + AiConfigV2.severityEtaWeight + AiConfigV2.severityCanDamageWeight;

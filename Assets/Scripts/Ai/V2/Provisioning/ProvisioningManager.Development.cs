@@ -73,10 +73,9 @@ namespace Game.Ai.V2
             if ((claims.IsArmyClaimed(army.Id)
                     && !intents.Any(i => i.IntentKey.Equals(ownKey)
                         && i.PreferredMoverArmyId == army.Id))
-                || session.ClaimedArmyIds.Contains(army.Id)
-                || DemandLayer.EconomyBuilderUnderImmediateThreat(session.Snapshot, army.Hex))
+                || session.ClaimedArmyIds.Contains(army.Id))
                 return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                    "Development actor contested, threatened or already claimed"));
+                    "Development actor contested or already claimed"));
 
             bool extract = army.IsGarrison;
             if (!extract && (!AiArmyRoles.IsHeroLed(army)

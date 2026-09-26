@@ -144,7 +144,10 @@ namespace Game.Ai.V2
                         AiDebugLog.Write($"[AI][V2][Economy][Delivery] demand={demand} builder=#{builderId} "
                             + "decision=NOT_DELIVERED reason=" + (routes.Count == 0
                                 ? "no_witnessed_builder_route_in_refreshed_snapshot"
-                                : "builder_ranking_rejected_actor"));
+                                : "builder_ranking_rejected_actor:"
+                                    + DemandLayer.EconomyBuilderCandidateRejection(afterSnap,
+                                        demand.TargetHex.Value, routes, builderId, intents,
+                                        commitments)));
                         continue;
                     }
                     demand.EconomyPreferredBuilderArmyId = builderId;

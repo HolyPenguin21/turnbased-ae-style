@@ -255,7 +255,6 @@ namespace Game.Ai.V2
             float activeDefencePressure = snapshot.Threat?.Threats?
                 .Where(t => t?.Contact?.Army != null
                     && t.Contact.Army.ArmyId >= 0
-                    && t.Contact.Source == ContactSource.Honest
                     && t.Contact.Position.HasValue
                     && t.Contact.Army.Owner != null
                     && !t.Contact.Army.Owner.IsNeutral)
@@ -498,7 +497,7 @@ namespace Game.Ai.V2
             if (contacts != null && contacts.Count > 0)
             {
                 var targetable = contacts
-                    .Where(c => c.Source == ContactSource.Honest && c.Position.HasValue)
+                    .Where(c => c.Position.HasValue)
                     .ToList();
                 if (targetable.Count > 0)
                     staleShare = targetable.Count(c => c.Knowledge == ContactKnowledge.LastKnown)
@@ -586,7 +585,7 @@ namespace Game.Ai.V2
             bool opponentFielded = snap.TrueWorld?.Opponents != null
                 && snap.TrueWorld.Opponents.Any(o => o != null && o.ArmyCount > 0);
             bool hasConcreteHonestPosition = snap.Threat?.Contacts != null
-                && snap.Threat.Contacts.Any(c => c.Source == ContactSource.Honest && c.Position.HasValue);
+                && snap.Threat.Contacts.Any(c => c.Position.HasValue);
             return (opponentFielded && !hasConcreteHonestPosition) ? AiConfigV2.reconBlindnessMagnitude : 0f;
         }
 
@@ -607,18 +606,12 @@ namespace Game.Ai.V2
             if (threats == null)
                 return 0f;
             float reserve = 0f;
-            foreach (IGrouping<object, AssetThreatSnapshot> group in threats
+            foreach (IGrouping<int, AssetThreatSnapshot> group in threats
                 .Where(t => t?.Contact?.Army != null
                     && t.Asset != null
                     && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base
                         || t.Asset.Kind == AssetKind.Facility))
-                // Honest physical armies have a stable id. Region-only cheat alerts deliberately
-                // carry -1/no identity, so keep each contact object independent rather than
-                // either dropping them or incorrectly merging every hidden regional alert.
-                .GroupBy(t => t.Contact.PhysicalArmyId.HasValue
-                    ? (object)t.Contact.PhysicalArmyId.Value
-                    : t.Contact.Army.ArmyId >= 0
-                        ? (object)t.Contact.Army.ArmyId : t.Contact))
+                .GroupBy(t => t.Contact.Army.ArmyId))
             {
                 AssetThreatSnapshot best = group
                     .OrderByDescending(t => t.Severity)
@@ -631,8 +624,7 @@ namespace Game.Ai.V2
                 reserve += contribution;
                 if (log)
                 {
-                    int enemyId = best.Contact.Army.ArmyId;
-                    string enemyLabel = enemyId >= 0 ? $"#{enemyId}" : "regional_contact";
+                    string enemyLabel = $"#{best.Contact.Army.ArmyId}";
                     AiDebugLog.WriteDeduped($"reserve:{enemyLabel}:{best.Asset.Hex.Q}:{best.Asset.Hex.R}",
                         $"[AI][V2][Defence][Reserve] enemy={enemyLabel} contributes={contribution:0.##} "
                         + $"asset={best.Asset.Kind}@({best.Asset.Hex.Q},{best.Asset.Hex.R}) "
@@ -704,7 +696,7 @@ namespace Game.Ai.V2
                 return list;
             foreach (EnemyContactSnapshot c in contacts)
             {
-                if (c.Source != ContactSource.Honest || !c.Position.HasValue || c.Army == null)
+                if (!c.Position.HasValue || c.Army == null)
                     continue;
                 list.Add(new AiRadarState.ObservedContact
                 {

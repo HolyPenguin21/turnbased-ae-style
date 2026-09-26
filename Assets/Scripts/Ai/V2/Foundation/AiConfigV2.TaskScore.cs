@@ -46,6 +46,9 @@ namespace Game.Ai.V2
         // constant so both axes charge the identical real fact at the identical rate.
         public const float taskScoreReactivationApWeight = 1f;
         public const float taskScoreThreatRiskMax = 8f;
+        // Home threat (TaskScore.CitadelThreatRisk / BaseThreatRisk). Base is disabled for now.
+        public const float taskScoreCitadelThreatRiskMax = 8f;
+        public const float taskScoreBaseThreatRiskMax = 0f;
         public const float taskScoreDetectionRiskMax = 8f;
 
         // Phase-A/Phase-B Play-vs-Hold urgency is lifecycle policy, not an intrinsic TaskScore slot,

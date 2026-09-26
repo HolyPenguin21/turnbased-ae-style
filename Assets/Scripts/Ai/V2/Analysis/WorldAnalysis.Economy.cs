@@ -190,10 +190,8 @@ namespace Game.Ai.V2
                         collector.Hex, site.Hex, collector.MaxMovement);
                     if (route == null)
                         continue;
-                    IReadOnlyList<AiMapMemory.KnownEnemySighting> threats =
-                        KnownThreatsAffectingEconomyRoute(snap, route.Hexes);
-                    float exposure = threats.Count > 0 ? 1f : 0f;
-                    if (exposure > AiConfigV2.mobileCollectionMaxThreatExposure)
+                    // A collector travels alone: any listed threat rejects the site.
+                    if (KnownThreatsAffectingEconomyRoute(snap, route.Hexes).Count > 0)
                         continue;
 
                     HexCoord? safeReturn = null;
@@ -251,13 +249,12 @@ namespace Game.Ai.V2
                             AiConfigV2.taskScoreReactivationApWeight),
                         // committed actors were filtered above. A free collector does not
                         // manufacture an opportunity penalty from its combat power.
-                        moverOpportunityCost: 0f,
-                        hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+                        moverOpportunityCost: 0f);
                     float score = taskScore.Value;
                     if (score <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
                     var candidate = new MobileCollectionOpportunity(site.Hex, site.ResourceType,
-                        marginal, collector.ArmyId, route.TotalCost, firstIncome, exposure,
+                        marginal, collector.ArmyId, route.TotalCost, firstIncome,
                         taskScore, safeReturn.Value);
                     if (!best.HasValue
                         || candidate.Score.Value > best.Value.Score.Value
@@ -682,9 +679,11 @@ namespace Game.Ai.V2
             return result;
         }
 
-        // Route exposure is derived from the exact SafeStepPathing witness. Known neutral
-        // armies are stationary blockers and only matter when they occupy the route itself;
-        // mobile enemy armies can threaten an adjacent route hex. Both inputs remain fog-honest.
+        // The ONE economy threat witness (builders, escorts and collectors): known mobile armies of
+        // other players within 1 hex of the SafeStepPathing route or within 2 hexes of the site
+        // (the route's last hex). Neutral armies never move — the route already avoids them and
+        // KnownHostileAtHex covers one standing on the site. Garrisons cannot sortie. A listed
+        // threat must be answered by an escort (EconomyRosterSafe), never by a score penalty.
         internal static IReadOnlyList<AiMapMemory.KnownEnemySighting>
             KnownThreatsAffectingEconomyRoute(WorldSnapshot snap,
                 IReadOnlyList<HexCoord> pathHexes)
@@ -692,21 +691,14 @@ namespace Game.Ai.V2
             if (pathHexes == null || pathHexes.Count == 0)
                 return System.Array.Empty<AiMapMemory.KnownEnemySighting>();
 
-            var path = new HashSet<HexCoord>(pathHexes);
-            var threats = new List<AiMapMemory.KnownEnemySighting>();
-            foreach (AiMapMemory.KnownEnemySighting enemy in snap?.Known?.EnemySightings
-                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                // A building-bound garrison cannot sortie onto the route (audit F1: it is now
-                // remembered permanently); only mobile enemies demand an escort.
-                if (!enemy.IsGarrison && path.Any(hex => HexGridMath.Distance(hex, enemy.Hex) <= 1))
-                    threats.Add(enemy);
-            foreach (AiMapMemory.KnownEnemySighting neutral in snap?.Known?.NeutralSightings
-                         ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
-                if (path.Contains(neutral.Hex))
-                    threats.Add(neutral);
-            return threats
-                .OrderBy(x => x.Owner?.IsNeutral == true ? 1 : 0)
-                .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
+            HexCoord site = pathHexes[pathHexes.Count - 1];
+            return (snap?.Known?.EnemySightings
+                    ?? System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                .Where(enemy => !enemy.IsGarrison && enemy.Owner?.IsNeutral != true
+                    && (HexGridMath.Distance(site, enemy.Hex) <= AiConfigV2.economySiteThreatRadius
+                        || pathHexes.Any(hex => HexGridMath.Distance(hex, enemy.Hex)
+                            <= AiConfigV2.economyRouteThreatRadius)))
+                .OrderBy(x => x.Hex.Q).ThenBy(x => x.Hex.R)
                 .ThenBy(x => x.ArmyId)
                 .ToList();
         }

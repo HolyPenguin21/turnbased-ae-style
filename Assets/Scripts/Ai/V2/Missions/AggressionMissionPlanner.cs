@@ -300,7 +300,7 @@ namespace Game.Ai.V2
                 if (pinnedActor.HasValue) excluded.Remove(pinnedActor.Value);
                 EnemyContactSnapshot contact = snap.Threat?.Contacts?.FirstOrDefault(c =>
                     c?.Army != null && c.Army.ArmyId == objective.Target.EnemyArmyId
-                    && c.Source == ContactSource.Honest && c.Position.HasValue);
+                    && c.Position.HasValue);
                 if (contact == null) continue;
                 IReadOnlyList<WorthIt.DefendingArmy> opposition = new[]
                     { new WorthIt.DefendingArmy(contact.Army.Members, contact.Army.Commander) };

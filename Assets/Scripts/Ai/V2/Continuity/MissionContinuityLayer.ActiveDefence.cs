@@ -81,7 +81,7 @@ namespace Game.Ai.V2
                 // the actor returns home. A threat that is listed again is a fresh objective.
                 EnemyContactSnapshot contact = snap?.Threat?.Contacts?.FirstOrDefault(c =>
                     c?.Army != null && c.Army.ArmyId == defence.EnemyArmyId
-                    && c.Source == ContactSource.Honest && c.Position.HasValue);
+                    && c.Position.HasValue);
                 bool handedOffToAttack = contact != null
                     && ActiveDefenceObjectiveEvaluator.OnKnownForeignStructure(
                         snap, contact.Position.Value);

@@ -66,14 +66,18 @@ namespace Game.Ai.V2
                     continue;
                 }
 
-                float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
+                // Threat near the site/route is an escort requirement (builder ranking), not a
+                // score term. A threatened home defers every build through its own slots.
+                float citadelRisk = TaskScoreEvaluator.CitadelThreatRisk(s);
+                float baseRisk = TaskScoreEvaluator.BaseThreatRisk(s);
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                 var siteOnlyScore = new TaskScore(
                     economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, resourcePriority),
                     payback: TaskScoreEvaluator.Payback(payback),
                     ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                     cardPrice: TaskScoreEvaluator.CardPrice(cardAp, resourceCost),
-                    hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+                    citadelThreatRisk: citadelRisk,
+                    baseThreatRisk: baseRisk);
 
                 // Continuity owns the actor for an existing objective. A later, cheaper builder
                 // must not supply a different delivery cost for that same durable operation.
@@ -103,7 +107,8 @@ namespace Game.Ai.V2
                     // top of that same real fact.
                     delivery: extraAp * AiConfigV2.taskScoreReactivationApWeight,
                     moverOpportunityCost: Mathf.Max(0f, opportunity),
-                    hexThreatRisk: siteOnlyScore.HexThreatRisk);
+                    citadelThreatRisk: siteOnlyScore.CitadelThreatRisk,
+                    baseThreatRisk: siteOnlyScore.BaseThreatRisk);
                 float value = score.Value;
 
                 if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon)
@@ -139,7 +144,6 @@ namespace Game.Ai.V2
                     EconomyExpectedIncomeGain = gain,
                     EconomySiteValue = siteOnlyScore.Value,
                     EconomyTravelCost = travel,
-                    EconomyThreatExposure = exposure,
                     EconomyHeroOpportunityCost = readyLossToNewHero ? 0f : opportunity,
                     EconomyAssignmentApCost = readyLossToNewHero ? cardAp : assignmentAp,
                     EconomyPaybackTurns = payback,
@@ -152,7 +156,7 @@ namespace Game.Ai.V2
                     Value = readyLossToNewHero ? siteOnlyScore.Value : score.Value,
                     Explain = $"{site.ResourceType} task={score.Value:0.##} priority={resourcePriority:0.##} "
                         + $"marginalGain={gain:0.##} usefulGain={usefulGain:0.##} payback={payback:0.##} "
-                        + $"travel={travel:0.##} exposure={exposure:0.##} "
+                        + $"travel={travel:0.##} citadelRisk={citadelRisk:0.##} "
                         + $"moverOpp={opportunity:0.##}"
                         + (readyLossToNewHero
                             ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
@@ -339,7 +343,6 @@ namespace Game.Ai.V2
 
                 float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
                 float priority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
-                float exposure = StrategicCardEvaluator.ThreatExposure(s, site.Hex);
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                 // Chain-independent ETA baseline — the same canonical fallback move budget every
                 // other axis uses when the concrete mover is not chosen yet. Using the pre-picked
@@ -360,8 +363,7 @@ namespace Game.Ai.V2
                     ownTerritoryProximity: Mathf.Max(0f,
                         TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
                     delivery: TaskScoreEvaluator.DeliveryFromEta(0f,
-                        etaTurns, AiConfigV2.taskScoreReactivationApWeight),
-                    hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(exposure));
+                        etaTurns, AiConfigV2.taskScoreReactivationApWeight));
                 if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
 
@@ -376,12 +378,11 @@ namespace Game.Ai.V2
                     EconomyExpectedIncomeGain = gain,
                     EconomySiteValue = score.Value,
                     EconomyTravelCost = homeDistance,
-                    EconomyThreatExposure = exposure,
                     WorldTaskScore = score,
                     Value = score.Value,
                     Explain = $"Collector {site.ResourceType} task={score.Value:0.##} priority={priority:0.##} "
                         + $"gain={gain:0.##} usefulGain={usefulGain:0.##} "
-                        + $"homeDist={homeDistance} eta={etaTurns} exposure={exposure:0.##} "
+                        + $"homeDist={homeDistance} eta={etaTurns} "
                         + $"handCard={(claimedCard != null ? claimedCard.Definition.displayName : "none")}",
                 });
             }
@@ -414,7 +415,6 @@ namespace Game.Ai.V2
             EconomyExpectedIncomeGain = source.EconomyExpectedIncomeGain,
             EconomySiteValue = source.EconomySiteValue,
             EconomyTravelCost = source.EconomyTravelCost,
-            EconomyThreatExposure = source.EconomyThreatExposure,
             EconomyHeroOpportunityCost = source.EconomyHeroOpportunityCost,
             EconomyAssignmentApCost = source.EconomyAssignmentApCost,
             EconomyPaybackTurns = source.EconomyPaybackTurns,
@@ -887,8 +887,6 @@ namespace Game.Ai.V2
             }
             if (assignment == null && commitments != null && commitments.IsArmyClaimed(army.ArmyId))
                 return "claimed";
-            if (EconomyBuilderUnderImmediateThreat(snap, army.Hex))
-                return "under_immediate_threat";
             return null;
         }
 
@@ -999,14 +997,6 @@ namespace Game.Ai.V2
                 && netValue >= AiConfigV2.economyLoanHysteresisThreshold;
         }
 
-        internal static bool EconomyBuilderUnderImmediateThreat(
-            WorldSnapshot snap, HexCoord hex) =>
-            snap?.Threat?.Threats != null && snap.Threat.Threats.Any(t => t?.Asset != null
-                && t.Asset.Hex.Equals(hex) && t.Severity >= AiConfigV2.threatSeverityTrigger
-                && (!t.EnemyEta.HasValue || t.EnemyEta.Value <= 1));
-
-        internal static float EconomyRecoveryThreatExposure(WorldSnapshot snap, HexCoord hex) =>
-            StrategicCardEvaluator.ThreatExposure(snap, hex);
 
         internal static float EconomyPaybackTurns(float expectedIncomeGain,
             float resourceCost, float assignmentApCost) => expectedIncomeGain <= 0f
@@ -1110,7 +1100,8 @@ namespace Game.Ai.V2
                         site.NewResourceClusterHexes / AiConfigV2.economyBaseExpansionClusterFullCount);
                     float cardPrice = TaskScoreEvaluator.CardPrice(
                         card.EffectivePlayApCost, resourceCost);
-                    float risk = TaskScoreEvaluator.HexThreatRisk(facts.Exposure);
+                    float citadelRisk = TaskScoreEvaluator.CitadelThreatRisk(s);
+                    float baseRisk = TaskScoreEvaluator.BaseThreatRisk(s);
                     // InfrastructureActions.TryFoundBase carries the extraction facilities
                     // into the new Base: their production is preserved, not lost.
 
@@ -1124,7 +1115,8 @@ namespace Game.Ai.V2
                         ownTerritoryProximity: proximity,
                         terrainDefense: defense,
                         cardPrice: cardPrice,
-                        hexThreatRisk: risk,
+                        citadelThreatRisk: citadelRisk,
+                        baseThreatRisk: baseRisk,
                         economicExpansionValue: expansion);
                     // Economy owns the REASON to found this Base. Positional terms
                     // (airfield/front/corridor/defense/proximity) still rank WHERE an already
@@ -1179,7 +1171,8 @@ namespace Game.Ai.V2
                         cardPrice: cardPrice,
                         delivery: extraAp * AiConfigV2.taskScoreReactivationApWeight,
                         moverOpportunityCost: Mathf.Max(0f, heroCost),
-                        hexThreatRisk: risk,
+                        citadelThreatRisk: citadelRisk,
+                        baseThreatRisk: baseRisk,
                         economicExpansionValue: expansion);
                     float value = score.Value;
                     // Same rule as extraction: a ready hero that turns a fresh Base into a loss
@@ -1203,7 +1196,6 @@ namespace Game.Ai.V2
                         EconomyExpectedIncomeGain = economicGainFact,
                         EconomySiteValue = siteOnlyScore.Value,
                         EconomyTravelCost = travel,
-                        EconomyThreatExposure = facts.Exposure,
                         EconomyHeroOpportunityCost = readyLossToNewHero ? 0f : heroCost,
                         EconomyAssignmentApCost = readyLossToNewHero
                             ? card.EffectivePlayApCost : assignmentAp,
@@ -1221,7 +1213,7 @@ namespace Game.Ai.V2
                             + $"front={front:0.##} corridor={corridor:0.##} proximity={proximity:0.##} "
                             + $"defense={defense:0.##} "
                             + $"price={cardPrice:0.##} delivery={score.Delivery:0.##} "
-                            + $"moverOpp={heroCost:0.##} risk={risk:0.##}"
+                            + $"moverOpp={heroCost:0.##} citadelRisk={citadelRisk:0.##}"
                             + (readyLossToNewHero
                                 ? $"; ready#{builder.Army.ArmyId} loses -> new_hero_only" : ""),
                     });

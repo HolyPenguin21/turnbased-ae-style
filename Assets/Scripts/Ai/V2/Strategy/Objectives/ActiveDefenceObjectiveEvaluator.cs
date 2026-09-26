@@ -92,7 +92,7 @@ namespace Game.Ai.V2
                     ProtectedAssetKind = chosen.Asset.Kind,
                     ProtectedAssetValue = chosen.Asset.Value,
                     ThreatSeverity = chosen.Severity,
-                    EstimatedEta = chosen.EnemyEta ?? AiConfigV2.etaUnknownContactPenalty,
+                    EstimatedEta = chosen.EnemyEta.GetValueOrDefault(),
                 };
                 result.Add(new ActiveDefenceObjective { Target = target, TaskScore = score });
                 AiDebugLog.WriteDeduped(group.Key.ToString(CultureInfo.InvariantCulture),
@@ -180,7 +180,6 @@ namespace Game.Ai.V2
         private static bool IsHonestPositionedHostile(AssetThreatSnapshot t) =>
             t?.Asset != null && t.Contact?.Army != null
             && t.Contact.Army.ArmyId >= 0
-            && t.Contact.Source == ContactSource.Honest
             && t.Contact.Position.HasValue
             && t.Contact.Army.Owner != null && !t.Contact.Army.Owner.IsNeutral;
 
@@ -193,7 +192,7 @@ namespace Game.Ai.V2
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(
-                    1f / (1f + (t.EnemyEta ?? AiConfigV2.etaUnknownContactPenalty))),
+                    1f / (1f + t.EnemyEta.GetValueOrDefault())),
                 militaryTargetRelevance: TaskScoreEvaluator.MilitaryTargetRelevance(t.PotentialDamage),
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(
                     age / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),

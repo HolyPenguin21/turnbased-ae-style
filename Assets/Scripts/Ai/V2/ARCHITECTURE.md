@@ -250,7 +250,10 @@ reactivate when important contact becomes stale or blind again.
 | Bounded delivery-failure streaks (Base per card+site, Extraction per resource+site) | `MissionIntentState.DeliveryFailureStreaks` |
 | Is a mobile collector worth its site (admit / keep) | `EconomyResourceStanding.UsefulMarginalIncomeGain` / `UsefulRetainedIncomeGain` (same test without its own income) |
 | The physical pool an Economy mission is funded from | `AllocationSession.PhysicalAvailableFor` — raw stock minus every hold except EconomyDeferredBuild and its own owner, the pool `StrategicSpendability.FitsSpendableForEconomyCompletion` checks |
-| Economy builder candidate gates | `DemandLayer.CandidateRejection` (structural, `EconomyBuilderCandidates`); `ProvisionEconomy.CandidateRejection` + `EvaluateGarrisonCandidate` (live); the FoundBase traces print these answers |
+| Threat contacts | `WorldAnalysis.BuildThreat` — honest contacts only (live sightings + AiReconMemory history), each with a position and an ETA. There is no hidden-army (cheat) contact; `ThreatModel.CitadelThreatSeverity` / `BaseThreatSeverity` are the highest Severity against the starting Citadel / any other own Base |
+| Economy threat witness (builder, escort, collector, post-build recovery) | `WorldAnalysis.KnownThreatsAffectingEconomyRoute` — known mobile armies of other players within `economyRouteThreatRadius` (1) of the route or `economySiteThreatRadius` (2) of the site. Neutrals never count (the route avoids them; `KnownHostileAtHex` covers one standing on the site). A listed threat is answered by an escort (`EconomyRosterSafe`), never by a score penalty |
+| Home threat in task scoring | `TaskScore.CitadelThreatRisk` / `BaseThreatRisk` (`TaskScoreEvaluator.CitadelThreatRisk(snap)` / `BaseThreatRisk(snap)`), kept apart from the task-hex `HexThreatRisk`. Charged to Economy build tasks (extraction, Base, builder hero) — not to collectors. `taskScoreBaseThreatRiskMax = 0`: Base threat is off for every task |
+| Economy builder candidate gates | `DemandLayer.CandidateRejection` (structural, `EconomyBuilderCandidates`: shape / assignment / claim); `ProvisionEconomy.CandidateRejection` + `EvaluateGarrisonCandidate` (live); the FoundBase traces print these answers |
 
 ## Verified boundary invariants (02F–02H audit)
 

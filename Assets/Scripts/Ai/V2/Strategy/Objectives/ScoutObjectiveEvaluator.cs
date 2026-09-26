@@ -159,7 +159,7 @@ namespace Game.Ai.V2
                 return null;
             if (!snap.Threat.ReconContactByArmyId.TryGetValue(trackedArmyId.Value, out EnemyContactSnapshot c))
                 return null;
-            return c != null && c.Source == ContactSource.Honest
+            return c != null
                    && c.Knowledge == ContactKnowledge.LastKnown && c.Position.HasValue
                 ? c : null;
         }

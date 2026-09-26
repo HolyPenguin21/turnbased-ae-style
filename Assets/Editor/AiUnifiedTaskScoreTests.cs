@@ -658,7 +658,6 @@ namespace Game.EditorTests
             {
                 Army = zeroIdArmy,
                 Knowledge = ContactKnowledge.LastKnown,
-                Source = ContactSource.Honest,
                 Position = pos,
                 Confidence = 0.5f,
                 LastObservedTurn = 5,
@@ -683,6 +682,36 @@ namespace Game.EditorTests
             Assert.That(objective.ContactArmyId, Is.EqualTo(0),
                 "Surveil's own objective identity must keep the real ArmyId 0, not collapse it "
                 + "to the same sentinel a genuinely-absent army would use");
+        }
+
+        [Test]
+        public void HomeThreatSlots_AreSeparateFromTaskHexRisk_AndBaseIsDisabled()
+        {
+            var snap = new WorldSnapshot
+            {
+                Threat = new ThreatModel { CitadelThreatSeverity = 0.5f, BaseThreatSeverity = 0.5f },
+            };
+            float citadel = TaskScoreEvaluator.CitadelThreatRisk(snap);
+            Assert.That(citadel, Is.EqualTo(0.5f * AiConfigV2.taskScoreCitadelThreatRiskMax).Within(1e-4f));
+            Assert.That(TaskScoreEvaluator.BaseThreatRisk(snap), Is.EqualTo(0f),
+                "Base threat is switched off for every task (taskScoreBaseThreatRiskMax = 0).");
+
+            var score = new TaskScore(economicHexBenefit: 10f, hexThreatRisk: 1f,
+                citadelThreatRisk: citadel);
+            Assert.That(score.HexThreatRisk, Is.EqualTo(1f));
+            Assert.That(score.Value, Is.EqualTo(10f - 1f - citadel).Within(1e-4f));
+        }
+
+        [Test]
+        public void HomeThreatSlots_SurviveNetChangeAndResponseFold()
+        {
+            var from = new TaskScore(citadelThreatRisk: 1f);
+            var to = new TaskScore(citadelThreatRisk: 3f, baseThreatRisk: 2f);
+            TaskScore delta = TaskScoreEvaluator.NetChange(from, to);
+            Assert.That(delta.CitadelThreatRisk, Is.EqualTo(2f));
+            Assert.That(delta.BaseThreatRisk, Is.EqualTo(2f));
+            TaskScore response = TaskScoreEvaluator.WithResponse(to, 0.5f, 0f, 0f, 0f);
+            Assert.That(response.CitadelThreatRisk, Is.EqualTo(3f));
         }
     }
 }

@@ -858,7 +858,6 @@ namespace Game.Ai.V2
                 EconomyExpectedIncomeGain = d.EconomyExpectedIncomeGain,
                 EconomySiteValue = d.EconomySiteValue,
                 EconomyTravelCost = d.EconomyTravelCost,
-                EconomyThreatExposure = d.EconomyThreatExposure,
                 EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
                 EconomyAssignmentApCost = d.EconomyAssignmentApCost,
                 EconomyPaybackTurns = d.EconomyPaybackTurns,

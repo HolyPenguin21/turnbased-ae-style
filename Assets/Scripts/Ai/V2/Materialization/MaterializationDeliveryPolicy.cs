@@ -106,9 +106,8 @@ namespace Game.Ai.V2
                     if (route == null)
                         return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
                             "collector_outbound");
-                    float exposure = WorldAnalysis.KnownThreatsAffectingEconomyRoute(
-                        snapshot, route.Hexes).Count > 0 ? 1f : 0f;
-                    if (exposure > AiConfigV2.mobileCollectionMaxThreatExposure)
+                    if (WorldAnalysis.KnownThreatsAffectingEconomyRoute(
+                            snapshot, route.Hexes).Count > 0)
                         return DeliveryAssessment.No(DeliveryFailureReason.NoSafeRoute,
                             "collector_route_threat");
                     if (SafeStepPathing.FindNearestBaseReturnCost(ctx.Map, player,

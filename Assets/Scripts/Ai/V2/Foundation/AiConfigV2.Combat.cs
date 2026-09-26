@@ -48,14 +48,6 @@ namespace Game.Ai.V2
         // Confidence stamped on a contact by knowledge tier.
         public const float threatConfidenceExact = 1.0f;
         public const float threatConfidenceLastKnown = 0.7f;
-        public const float threatConfidenceCheatRegion = 0.5f;
-
-        // A cheat (fog-ignoring) contact is only ever emitted per own base and only for a
-        // scout/raid-shaped force — same scope V1's AiDefencePlanner.CheatEstimateRaiderThreat
-        // used. It carries the base's own sector, never the army's hex (spec-18, now a type
-        // invariant — see EnemyContactSnapshot).
-        //   Radii reuse the V1 AiConfig constants at the call site (threatReactionRadius,
-        //   makeshiftScoutMinMembers) so the two never silently diverge on the numbers.
 
         // Severity is a property of the hostile pressure itself. ResponseEta is diagnostic only:
         // the nearest arrival is not proof that the arriving roster can actually win the fight.
@@ -96,7 +88,6 @@ namespace Game.Ai.V2
         //  ETA  (first pass — plain hex distance / move budget, no real pathfinding yet).
         // =======================================================================================
         public const int etaFallbackMoveBudget = 1; // when an army reports 0 MaxMovement
-        public const int etaUnknownContactPenalty = 6; // notional turns for a Region/Unknown contact
 
         public const float militaryThreatSiegeFloor = 0.90f;  // UnderSiege forces MilitaryThreat >= this
         // =======================================================================================
