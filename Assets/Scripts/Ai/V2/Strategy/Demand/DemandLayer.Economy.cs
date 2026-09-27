@@ -17,27 +17,30 @@ namespace Game.Ai.V2
         // centralized here through TaskScoreEvaluator.
         private static TaskScore BuildExtractionScore(WorldSnapshot snap, float usefulGain,
             float resourcePriority, float paybackTurns, int homeDistance, float cardAp,
-            float resourceCost, float extraActivationAp = 0f, float moverOpportunityCost = 0f) =>
+            float resourceApEquivalent, float extraActivationAp = 0f, float moverOpportunityCost = 0f) =>
             new TaskScore(
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
                     usefulGain, resourcePriority),
                 payback: TaskScoreEvaluator.Payback(paybackTurns),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                cardPrice: TaskScoreEvaluator.CardPrice(cardAp, resourceCost),
-                delivery: TaskScoreEvaluator.ReactivationApPrice(extraActivationAp),
+                cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(cardAp) + resourceApEquivalent),
+                delivery: TaskScoreEvaluator.Price(extraActivationAp),
                 moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(moverOpportunityCost),
                 citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap),
                 baseThreatRisk: TaskScoreEvaluator.BaseThreatRisk(snap));
 
+        // A capability demand carries intrinsic slots only: the chain that materializes the
+        // collector prices its card and deploy (StrategicCardEvaluator / MaterializationDelivery),
+        // and the later mobile-collection task prices the walk with the real collector
+        // (BuildMobileCollectionScore). No execution slot is guessed here.
         private static TaskScore BuildCollectorCapabilityScore(float usefulGain,
-            float resourcePriority, int homeDistance, int etaTurns) =>
+            float resourcePriority, int homeDistance) =>
             new TaskScore(
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
                     usefulGain, resourcePriority),
                 // No facility to lose if the target is abandoned — proximity stays upside-only.
                 ownTerritoryProximity: Mathf.Max(0f,
-                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(0f, etaTurns));
+                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)));
 
         internal static TaskScore BuildMobileCollectionScore(WorldSnapshot snapshot,
             MobileCollectionOpportunity op)
@@ -65,16 +68,16 @@ namespace Game.Ai.V2
                 payback: 0f,
                 ownTerritoryProximity: Mathf.Max(0f,
                     TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationApNow),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    collector.ActivationApCost, op.TurnsToFirstIncome),
+                cardPrice: TaskScoreEvaluator.Price(activationApNow),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                    collector.ActivationApCost, op.TurnsToFirstIncome)),
                 moverOpportunityCost: 0f);
         }
 
         private static TaskScore BuildFoundBaseScore(WorldSnapshot snap,
             IReadOnlyList<(float Gain, float Priority)> marginalByResource,
             bool hasUsefulGain, float paybackTurns, StrategicCardEvaluator.BaseSiteValue facts,
-            EconomyBaseOpportunity site, int homeDistance, float cardAp, float resourceCost,
+            EconomyBaseOpportunity site, int homeDistance, float cardAp, float resourceApEquivalent,
             float extraActivationAp = 0f, float moverOpportunityCost = 0f) =>
             new TaskScore(
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(marginalByResource),
@@ -87,8 +90,8 @@ namespace Game.Ai.V2
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(site.CorridorAlignmentValue),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 terrainDefense: TaskScoreEvaluator.TerrainDefense(site.DefenseBonusValue),
-                cardPrice: TaskScoreEvaluator.CardPrice(cardAp, resourceCost),
-                delivery: TaskScoreEvaluator.ReactivationApPrice(extraActivationAp),
+                cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(cardAp) + resourceApEquivalent),
+                delivery: TaskScoreEvaluator.Price(extraActivationAp),
                 moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(moverOpportunityCost),
                 citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap),
                 baseThreatRisk: TaskScoreEvaluator.BaseThreatRisk(snap),
@@ -155,6 +158,7 @@ namespace Game.Ai.V2
                 }
 
                 float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
+                float resourcePrice = ActionPrice.Resources(def?.resourceCost, s);
                 float cardAp = def?.apCost ?? 0f;
                 float payback = EconomyPaybackTurns(usefulGain, resourceCost, cardAp);
                 if (payback > AiConfigV2.economyExtractionMaxPaybackTurns && !committed)
@@ -167,7 +171,7 @@ namespace Game.Ai.V2
                 // score term. A threatened home defers every build through its own slots.
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                 TaskScore siteOnlyScore = BuildExtractionScore(s, usefulGain, resourcePriority,
-                    payback, homeDistance, cardAp, resourceCost);
+                    payback, homeDistance, cardAp, resourcePrice);
                 float citadelRisk = siteOnlyScore.CitadelThreatRisk;
 
                 EconomyBuilderChoice builder = SelectEconomyBuilder(
@@ -176,7 +180,7 @@ namespace Game.Ai.V2
                     pinnedBuilderArmyId: pinnedExtraction?.PreferredMoverArmyId);
                 float travel = builder?.Route.TravelCost
                     ?? AiConfigV2.economyBaseFoundScanRadius + 4f;
-                float opportunity = EconomyMissionOpportunityCost(builder, activeIntents);
+                float opportunity = EconomyMissionOpportunityCost(builder, activeIntents, site.Hex);
                 float assignmentAp = builder?.TotalAssignmentApCost ?? cardAp;
                 float extraAp = Mathf.Max(0f, assignmentAp - cardAp);
 
@@ -185,7 +189,7 @@ namespace Game.Ai.V2
                 // ActivationApCost) — travel was a second, redundant raw-distance charge on
                 // top of that same real fact.
                 TaskScore score = BuildExtractionScore(s, usefulGain, resourcePriority, payback,
-                    homeDistance, cardAp, resourceCost, extraAp, opportunity);
+                    homeDistance, cardAp, resourcePrice, extraAp, opportunity);
                 float value = score.Value;
 
                 if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon && !committed)
@@ -426,9 +430,8 @@ namespace Game.Ai.V2
                 float starvation = ResourceStarvationRegistry.Pressure(player, site.ResourceType);
                 float priority = TaskScoreEvaluator.ResourcePriority(rs, starvation);
                 int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
-                // Chain-independent ETA baseline — the same canonical fallback move budget every
-                // other axis uses when the concrete mover is not chosen yet. Using the pre-picked
-                // card's moveMax here was part of the same premature physical choice.
+                // Chain-independent ETA baseline (diagnostics only — the walk is priced by the
+                // mobile-collection task once a real collector exists).
                 int etaTurns = Mathf.Max(1, Mathf.CeilToInt(
                     homeDistance / (float)Mathf.Max(1, AiConfigV2.etaFallbackMoveBudget)));
 
@@ -439,7 +442,7 @@ namespace Game.Ai.V2
                 // capability. Pricing a guessed card here as well was a straight double count, and
                 // it is what made a generated or equipment-borne collector uncomparable.
                 TaskScore score = BuildCollectorCapabilityScore(
-                    usefulGain, priority, homeDistance, etaTurns);
+                    usefulGain, priority, homeDistance);
                 if (score.Value <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
 
@@ -506,7 +509,7 @@ namespace Game.Ai.V2
         // delivery (extra activation AP) and mover-opportunity slots the ready demand is scored
         // with. The ready path also pays the build card, as would a new hero, so it cancels out.
         private static float ReadyDeliveryCost(float extraAp, float moverOpportunityCost) =>
-            TaskScoreEvaluator.ReactivationApPrice(extraAp)
+            TaskScoreEvaluator.Price(extraAp)
             + TaskScoreEvaluator.MoverOpportunityCost(moverOpportunityCost);
 
         // "Ready hero vs new hero" for a build a ready hero can serve at positive value. Emitted
@@ -598,16 +601,21 @@ namespace Game.Ai.V2
                     || ActiveAssignment(activeIntents, x.Army.ArmyId).Kind == MissionKind.Economy
                     || EconomyLoanAllowed(ActiveAssignment(activeIntents, x.Army.ArmyId), buildValue,
                         x, buildApCost, out _))
-                .OrderByDescending(x => x.Route.HasActiveEconomyCommitment
-                    || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
+                // Economy's own builders come first only while taking them is free (this
+                // site's own build, or a builder already walking home); a builder busy on
+                // another site is priced like any other donor below.
+                .OrderByDescending(x => (x.Route.HasActiveEconomyCommitment
+                        || ActiveAssignment(activeIntents, x.Route.ArmyId)?.Kind == MissionKind.Economy)
+                    && EconomyMissionOpportunityCost(x, activeIntents, target)
+                        <= AiConfigV2.allocatorSliceEpsilon)
                 .ThenBy(x => x.Suitability == EconomyArmySuitability.Ready ? 0
                     : x.Suitability == EconomyArmySuitability.LightenAtBase ? 1 : 2)
                 // Among equally suitable builders use canonical delivery plus the ONE
                 // donor interruption loss. Otherwise a cheaper AP loan can still lose
                 // intrinsic value to a slightly dearer uncommitted actor.
-                .ThenBy(x => TaskScoreEvaluator.ReactivationApPrice(
+                .ThenBy(x => TaskScoreEvaluator.Price(
                         Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost))
-                    + EconomyMissionOpportunityCost(x, activeIntents))
+                    + EconomyMissionOpportunityCost(x, activeIntents, target))
                 .ThenBy(x => x.TotalAssignmentApCost
                     + (!x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true
                         ? AiConfigV2.economyHomeHeroAssignmentApPenalty : 0f))
@@ -1030,15 +1038,17 @@ namespace Game.Ai.V2
             activeIntents?.FirstOrDefault(i => i != null && i.Status == IntentStatus.Active
                 && i.PreferredMoverArmyId == armyId);
 
+        // What taking this builder off its current task costs this build: the displaced task's
+        // own value (MissionIntent.DisplacementValue), whatever axis it belongs to. Only
+        // continuing the build of this same site is free; a return leg is free by construction.
         private static float EconomyMissionOpportunityCost(EconomyBuilderChoice builder,
-            IReadOnlyList<MissionIntent> activeIntents)
+            IReadOnlyList<MissionIntent> activeIntents, HexCoord site)
         {
             if (builder?.Army == null)
                 return 0f;
-            MissionIntent assignment = ActiveAssignment(activeIntents, builder.Army.ArmyId);
-            return assignment == null || assignment.Kind == MissionKind.Economy
-                ? 0f
-                : AiConfigV2.economyLoanContinuationLoss;
+            return TaskScoreEvaluator.MoverOpportunityCost(MissionIntent.DisplacementValueOf(
+                activeIntents, builder.Army.ArmyId,
+                isOwn: i => MissionContinuityLayer.HoldsEconomyBuildSite(i, site)));
         }
 
         internal static bool EconomyDonorStructurallyEligible(MissionIntent donor)
@@ -1064,13 +1074,13 @@ namespace Game.Ai.V2
             // subtract only extra AP via the SAME conversion as final TaskScore.Delivery.
             float extraAp = Mathf.Max(0f,
                 (builder?.TotalAssignmentApCost ?? buildApCost) - buildApCost);
-            netValue = buildValue - TaskScoreEvaluator.ReactivationApPrice(extraAp)
-                - AiConfigV2.economyLoanContinuationLoss;
+            netValue = buildValue - TaskScoreEvaluator.Price(extraAp)
+                - TaskScoreEvaluator.MoverOpportunityCost(donor?.DisplacementValue ?? 0f);
             // Same-turn reachability remains a legality gate rather than a per-hex fee.
             // Donor protections for Surveil, started Raid and Hard commitments are unchanged.
             return builder != null && EconomyDonorStructurallyEligible(donor)
                 && builder.Route.TravelCost <= builder.Route.CurrentMovement
-                && netValue >= AiConfigV2.economyLoanHysteresisThreshold;
+                && netValue >= AiConfigV2.taskScoreEconomyLoanHysteresisThreshold;
         }
 
 
@@ -1130,6 +1140,7 @@ namespace Game.Ai.V2
                     int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(s, site.Hex);
                     float resourceCost = StrategicCardEvaluator.ResourceCostSum(
                         card.EffectivePlayResourceCost);
+                    float resourcePrice = ActionPrice.Resources(card.EffectivePlayResourceCost, s);
                     // Base income is multi-resource. Reuse the card-semantic per-type gain owner
                     // and bind each resource's shortage only to its OWN marginal production.
                     var marginalByResource = new List<(float Gain, float Priority)>();
@@ -1160,7 +1171,7 @@ namespace Game.Ai.V2
                     bool hasUsefulGain = usefulGainTotal > AiConfigV2.allocatorSliceEpsilon;
                     TaskScore siteOnlyScore = BuildFoundBaseScore(s, marginalByResource,
                         hasUsefulGain, paybackTurns, facts, site, homeDistance,
-                        card.EffectivePlayApCost, resourceCost);
+                        card.EffectivePlayApCost, resourcePrice);
                     float economic = siteOnlyScore.EconomicHexBenefit;
                     float payback = siteOnlyScore.Payback;
                     float airfield = siteOnlyScore.Airfield;
@@ -1213,12 +1224,12 @@ namespace Game.Ai.V2
                     }
 
                     float travel = builder?.Route.TravelCost ?? site.PreparationTravelCost;
-                    float heroCost = EconomyMissionOpportunityCost(builder, activeIntents);
+                    float heroCost = EconomyMissionOpportunityCost(builder, activeIntents, site.Hex);
                     float assignmentAp = builder?.TotalAssignmentApCost ?? card.EffectivePlayApCost;
                     float extraAp = Mathf.Max(0f, assignmentAp - card.EffectivePlayApCost);
                     TaskScore score = BuildFoundBaseScore(s, marginalByResource,
                         hasUsefulGain, paybackTurns, facts, site, homeDistance,
-                        card.EffectivePlayApCost, resourceCost, extraAp, heroCost);
+                        card.EffectivePlayApCost, resourcePrice, extraAp, heroCost);
                     float value = score.Value;
                     // Same rule as extraction: a ready hero that turns a fresh Base into a loss
                     // leaves it to a possible NEW hero (Materialization prices that path).

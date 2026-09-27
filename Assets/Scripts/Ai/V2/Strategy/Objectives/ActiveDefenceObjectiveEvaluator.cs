@@ -369,8 +369,8 @@ namespace Game.Ai.V2
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(
                     1f / (1f + t.EnemyEta.GetValueOrDefault())),
-                militaryTargetRelevance: TaskScoreEvaluator.MilitaryTargetRelevance(t.PotentialDamage),
-                staleness: TaskScoreEvaluator.StaleIntelPenalty(
+                preventedDamage: TaskScoreEvaluator.PreventedDamage(t.PotentialDamage),
+                intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
                     age / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance));
         }

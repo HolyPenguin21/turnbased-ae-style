@@ -22,8 +22,8 @@ namespace Game.EditorTests
             Assert.That(estimate.Requirements.ApMinimum, Is.Zero);
             Assert.That(estimate.Requirements.ApDesired, Is.Zero);
             Assert.That(estimate.RecurringActivationAp, Is.EqualTo(4f));
-            Assert.That(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
-                estimate.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight),
+            Assert.That(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(estimate.RecurringActivationAp,
+                estimate.Requirements.EtaTurns)),
                 Is.EqualTo(4f));
         }
 
@@ -36,8 +36,8 @@ namespace Game.EditorTests
 
             Assert.That(estimate.Requirements.EtaTurns, Is.EqualTo(3));
             Assert.That(estimate.Requirements.ApDesired, Is.Zero);
-            Assert.That(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
-                estimate.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight),
+            Assert.That(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(estimate.RecurringActivationAp,
+                estimate.Requirements.EtaTurns)),
                 Is.EqualTo(8f));
         }
 
@@ -50,8 +50,8 @@ namespace Game.EditorTests
 
             Assert.That(estimate.Requirements.EtaTurns, Is.EqualTo(1));
             Assert.That(estimate.Requirements.ApDesired, Is.Zero);
-            Assert.That(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
-                estimate.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight),
+            Assert.That(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(estimate.RecurringActivationAp,
+                estimate.Requirements.EtaTurns)),
                 Is.Zero);
         }
 
@@ -65,8 +65,8 @@ namespace Game.EditorTests
             Assert.That(estimate.Requirements.EtaTurns, Is.EqualTo(2));
             Assert.That(estimate.Requirements.ApDesired, Is.EqualTo(2f));
             Assert.That(estimate.RecurringActivationAp, Is.EqualTo(2f));
-            Assert.That(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
-                estimate.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight),
+            Assert.That(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(estimate.RecurringActivationAp,
+                estimate.Requirements.EtaTurns)),
                 Is.EqualTo(2f));
         }
 

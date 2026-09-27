@@ -88,6 +88,9 @@ namespace Game.Ai.V2
         public float ResourceEfficiency;      // negative — AP + resource cost + extra-chain-step penalty (the ONLY place these are charged)
         public float SynergyValue;            // equipment upgrade on a carrier, kept-combo value
         public float GenerationRiskDiscount;  // negative — probabilistic deploy (generation success chance); was named Deployability
+        // negative — a Research/Production-minted Unit/Hero/Aviation played as surplus keeps only
+        // the ForceNeedModel.JustifiedForceNeed share of its value (Production amplifies a need).
+        public float ProductionNeedDiscount;
         public float RedundancyPenalty;       // negative — the capability is already saturated
         public float AlternativeUseValue;     // negative — opportunity cost of using this card HERE vs its best other role / Hold
         public float HoldValue;               // value of deliberately NOT playing it now (separate; NetScore subtracts it)
@@ -110,6 +113,7 @@ namespace Game.Ai.V2
             return $"role {F(RoleFit)} tempo {F(ImmediateTempo)} next {F(NextTurnPotential)} "
                  + $"threat {F(ThreatCounterValue)} grow {F(ForceGrowthValue)} "
                  + $"res {F(ResourceEfficiency)} syn {F(SynergyValue)} deploy {F(GenerationRiskDiscount)} "
+                 + $"need {F(ProductionNeedDiscount)} "
                  + $"redun {F(RedundancyPenalty)} alt {F(AlternativeUseValue)} "
                  + $"resP {F(ResourcePressureBenefit)} handP {F(HandPressureBenefit)} "
                  + $"task {F(OperationalTaskValue)} "
@@ -268,14 +272,9 @@ namespace Game.Ai.V2
                         + AiConfigV2.baselineReadinessCoverGapWeight * coverGap;
             float need = Mathf.Clamp01(raw) * Mathf.Lerp(1f, AiConfigV2.baselineReadinessSecureDamp, eco);
 
-            // A real, live military witness: a known neutral Raid target (Aggression), or an asset
-            // threat at/above the shared threatSeverityTrigger. Neither requires durable intent
-            // state — both are snapshot facts already computed elsewhere for the same purpose
-            // (Aggression objective discovery / DemandLayer.Economy's threat-severity gate).
-            bool militaryWitnessed =
-                (snap.Known?.NeutralSightings != null && snap.Known.NeutralSightings.Count > 0)
-                || (snap.Threat?.Threats != null && snap.Threat.Threats
-                    .Any(t => t != null && t.Severity >= AiConfigV2.threatSeverityTrigger));
+            // A real, live military witness — the ONE definition every force-building score reads
+            // (ForceNeedModel): a known fight or an asset threat at/above threatSeverityTrigger.
+            bool militaryWitnessed = ForceNeedModel.HasMilitaryWitness(snap);
 
             return new BaselineForceReadiness(need, hasScout, hasFieldBody, hasHero, hasAir,
                 coverage, combatActors, freeFieldPower, militaryWitnessed);
@@ -532,6 +531,7 @@ namespace Game.Ai.V2
             bd.ResourcePressureBenefit = 0f;   // no caller-side surplus correction; NetScore is final
             bd.HandPressureBenefit = hand != null && !hand.HasFreeSlot ? AiConfigV2.surplusHandPressureBonus : 0f;
             bd.GenerationRiskDiscount = GenerationExpectedValueDiscount(bd, GenerationChance(plan));
+            bd.ProductionNeedDiscount = ProductionNeedDiscount(bd, plan.Generation, snap);
             bd.Total = SumTotal(bd);
             bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
@@ -723,20 +723,21 @@ namespace Game.Ai.V2
             // AP pressure this can fully offset nonCombatAviationNoAirGap — a wing you cannot
             // afford to fly is not a real capability gain.
             float aviationUpkeepPenalty = kind == NonCombatRole.Aviation
-                ? AiConfigV2.apAirSortieApProxy * AiConfigV2.effectRecurringHorizonTurns
-                  * AiConfigV2.stratCardApCostWeight * ncCtx.EffectiveMarginalApUtility
+                ? ActionPrice.ToCardScore(AiConfigV2.apAirSortieApProxy
+                    * AiConfigV2.effectRecurringHorizonTurns) * ncCtx.EffectiveMarginalApUtility
                 : 0f;
             if (kind == NonCombatRole.Aviation)
                 bd.EffectDetail = JoinDetail(bd.EffectDetail,
                     $"aviation upkeep marginalApUtil={ncCtx.EffectiveMarginalApUtility.ToString("0.00", CultureInfo.InvariantCulture)} "
                     + $"penalty={(-aviationUpkeepPenalty).ToString("0.00", CultureInfo.InvariantCulture)}");
-            bd.ResourceEfficiency = -(AiConfigV2.stratCardApCostWeight * apCost
+            bd.ResourceEfficiency = -(ActionPrice.ToCardScore(ActionPrice.Ap(apCost))
                                       + StrategicResourceCostValue(pricedResources, snap, spendableResource, player)
                                       + genStepPenalty + aviationUpkeepPenalty);
             // Challenge cost is certain; every benefit of the minted card is success-contingent.
             bd.GenerationRiskDiscount = generation != null
                 ? GenerationExpectedValueDiscount(bd, Mathf.Clamp01(generation.SuccessChance))
                 : 0f;
+            bd.ProductionNeedDiscount = ProductionNeedDiscount(bd, generation, snap);
             bd.Total = SumTotal(bd);
             bd.HoldValue = 0f;   // Hold mechanic removed — always play the best Total.
 
@@ -764,7 +765,8 @@ namespace Game.Ai.V2
         private static float SumTotal(StrategicUseScoreBreakdown b) =>
             b.RoleFit + b.ImmediateTempo + b.NextTurnPotential + b.ThreatCounterValue
             + b.ForceGrowthValue + b.ResourceEfficiency + b.SynergyValue
-            + b.GenerationRiskDiscount + b.RedundancyPenalty + b.AlternativeUseValue
+            + b.GenerationRiskDiscount + b.ProductionNeedDiscount
+            + b.RedundancyPenalty + b.AlternativeUseValue
             + b.ResourcePressureBenefit + b.HandPressureBenefit
             + b.OperationalTaskValue;
 
@@ -773,7 +775,7 @@ namespace Game.Ai.V2
             System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
         {
             if (plan == null) return 0f;
-            return AiConfigV2.stratCardApCostWeight * plan.ApCost
+            return ActionPrice.ToCardScore(ActionPrice.Ap(plan.ApCost))
                    + StrategicResourceCostValue(plan.ResCost, snap, spendableResource, player)
                    + ChainStepPenalty(plan.Kind);
         }
@@ -787,13 +789,37 @@ namespace Game.Ai.V2
         {
             if (b == null || chance >= 1f)
                 return 0f;
-            float contingent = b.RoleFit + b.ImmediateTempo + b.NextTurnPotential
-                + b.ThreatCounterValue + b.ForceGrowthValue
-                + b.SynergyValue + b.RedundancyPenalty
-                + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit
-                + b.OperationalTaskValue;
-            return -(1f - Mathf.Clamp01(chance)) * Mathf.Max(0f, contingent);
+            return -(1f - Mathf.Clamp01(chance)) * Mathf.Max(0f, ContingentValue(b));
         }
+
+        // Every value term that exists only once the card is actually on the map (costs excluded).
+        private static float ContingentValue(StrategicUseScoreBreakdown b) =>
+            b.RoleFit + b.ImmediateTempo + b.NextTurnPotential
+            + b.ThreatCounterValue + b.ForceGrowthValue
+            + b.SynergyValue + b.RedundancyPenalty
+            + b.AlternativeUseValue + b.ResourcePressureBenefit + b.HandPressureBenefit
+            + b.OperationalTaskValue;
+
+        // Production amplifies an already-justified Attack/Defence need; it never creates one. A
+        // Research/Production-minted Unit/Hero/Aviation scored as SURPLUS keeps only the
+        // ForceNeedModel.JustifiedForceNeed share of its (success-discounted) value. Taken after
+        // the success discount, so the value left is value x chance x need. Phase A plays are not
+        // discounted — they close an explicit Attack/Defence demand, which is the need itself —
+        // and Equipment carries its own known-threat matchup gate (EquipmentUpgradeValue).
+        private static float ProductionNeedDiscount(StrategicUseScoreBreakdown b,
+            GenerationStep generation, WorldSnapshot snap)
+        {
+            if (b == null || !IsProductionForceOutput(generation))
+                return 0f;
+            float need = ForceNeedModel.JustifiedForceNeed(snap).Total;
+            float valueAfterChance = Mathf.Max(0f, ContingentValue(b) + b.GenerationRiskDiscount);
+            return -(1f - need) * valueAfterChance;
+        }
+
+        internal static bool IsProductionForceOutput(GenerationStep generation) =>
+            generation?.CardDef != null && !generation.ProducesEquipment
+            && (generation.CardDef.isAviation || generation.CardDef.cardType == CardType.Unit
+                || generation.CardDef.cardType == CardType.Hero);
 
         private static ResourceCost AddResourceCosts(ResourceCost a, ResourceCost b)
         {
@@ -1602,38 +1628,29 @@ namespace Game.Ai.V2
         internal static float StrategicResourceCostValue(ResourceCost c) =>
             StrategicResourceCostValue(c, null);
 
-        // Dynamic opportunity cost from all unplayed hand/deck costs versus current stock and
-        // income over the existing economy horizon. No other spend demand => cheap resources.
+        // The resources' price from the ONE price table (ActionPrice: each type at its scarcity
+        // against pending hand/deck demand) in card units, plus the preservation value of a
+        // resource an Aggression/Recon demand was proven blocked by this turn.
         internal static float StrategicResourceCostValue(ResourceCost c, WorldSnapshot snap,
             System.Func<ResourceType, float> spendableResource = null, PlayerSetupData player = null)
         {
             if (c == null)
                 return 0f;
-            float total = 0f;
             float residualPreservation = 0f;
-            foreach (ResourceType type in ResourceBundle.All)
-            {
-                int amount = c.Get(type);
-                if (amount <= 0)
-                    continue;
-                float factor = 1f;
-                if (snap?.Self != null)
+            if (snap?.Self != null)
+                foreach (ResourceType type in ResourceBundle.All)
                 {
-                    float demand = PendingCardResourceDemand(snap, type);
+                    int amount = c.Get(type);
+                    if (amount <= 0)
+                        continue;
                     float availableNow = spendableResource != null
                         ? Mathf.Max(0f, spendableResource(type))
                         : snap.Self.Stockpile.Get(type);
-                    float supply = availableNow + snap.Self.PerTurnIncome.Get(type)
-                        * Mathf.Max(1f, AiConfigV2.economyDeckNeedHorizonTurns);
-                    float pressure = demand <= 0.0001f ? 0f
-                        : demand / Mathf.Max(0.0001f, demand + supply);
-                    factor = Mathf.Lerp(0.2f, 1.8f, Mathf.Clamp01(pressure));
                     residualPreservation += ResidualResourcePreservationValue(
                         player, snap, type, amount, availableNow);
                 }
-                total += amount * factor;
-            }
-            return AiConfigV2.stratChainResCostWeight * total + residualPreservation;
+            return ActionPrice.ToCardScore(ActionPrice.Resources(c, snap, spendableResource))
+                + residualPreservation;
         }
 
         // Marginal value of keeping only the units this candidate consumes when current-turn,
@@ -1659,18 +1676,6 @@ namespace Game.Ai.V2
 
             return AiConfigV2.stratResidualResourcePreservationMax
                 * urgency * attainability * setback;
-        }
-
-        private static float PendingCardResourceDemand(WorldSnapshot snap, ResourceType type)
-        {
-            float demand = 0f;
-            if (snap?.Self?.Hand != null)
-                foreach (CardData card in snap.Self.Hand)
-                    demand += card?.EffectivePlayResourceCost?.Get(type) ?? 0;
-            if (snap?.Self?.Deck != null)
-                foreach (CardDefinition card in snap.Self.Deck)
-                    demand += card?.resourceCost?.Get(type) ?? 0;
-            return demand;
         }
 
         private static float ChainStepPenalty(MaterializationChainKind k)

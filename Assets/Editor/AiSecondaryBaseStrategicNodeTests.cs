@@ -116,7 +116,7 @@ namespace Game.EditorTests
                 Threat(enemy, AssetKind.Facility, new HexCoord(3, 0), 0.5f),
             };
 
-            float reserve = StrategyLayer.DefensiveReserveForThreats(threats);
+            float reserve = ForceNeedModel.DefensiveReserveForThreats(threats);
 
             Assert.That(reserve, Is.EqualTo(12f * AiConfigV2.aggDefenceConfidenceMargin).Within(0.001f));
         }
@@ -133,7 +133,7 @@ namespace Game.EditorTests
                 Threat(second, AssetKind.Base, new HexCoord(2, 0), 0.7f),
             };
 
-            float reserve = StrategyLayer.DefensiveReserveForThreats(threats);
+            float reserve = ForceNeedModel.DefensiveReserveForThreats(threats);
 
             Assert.That(reserve, Is.EqualTo(20f * AiConfigV2.aggDefenceConfidenceMargin).Within(0.001f));
         }

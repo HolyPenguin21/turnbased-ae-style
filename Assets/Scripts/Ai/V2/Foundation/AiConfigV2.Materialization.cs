@@ -17,10 +17,9 @@
         public const int maxDemandFulfillmentActionsPerTurn = 3;
 
         // Card-candidate scoring, shared by Phase A + Phase B.
-        //   costFactor  = 1 + stratCardApCostWeight * plan.TotalApCost   (higher AP -> lower score)
+        //   AP / H/E/M/T price = ActionPrice (the ONE price table) x cardScorePerApEquivalent
         //   trait bonus = a flat add when a demand's preferred trait (e.g. Stealth) is on the card
         //   TargetFit   = 1 at the demand's TargetHex, decaying linearly to 0 at stratTargetFitRange
-        public const float stratCardApCostWeight = 0.15f;
         public const float stratTraitMatchBonus = 0.35f;
         public const int stratTargetFitRange = 10;
 
@@ -39,13 +38,12 @@
         //  RequiredTraits stay a hard feasibility gate on the projected end result; these knobs
         //  only shape RANKING between feasible chains — a cheap sufficient Direct must still be
         //  able to win against a generation / equipment chain (spec §30 / AC #36).
-        //   costFactor += stratChainResCostWeight * Σ(chain R/H/M/T)
+        //   chain R/H/M/T priced by ActionPrice.Resources (scarcity-aware), in card units
         //   score      -= per-extra-step penalty (attach / generation)
         //   generated contingent benefit is multiplied by the real Challenge success chance;
         //   certain resource-efficiency terms stay certain.
         //   score      -= stratChainScarcityPenalty   when a chain would spend a unique Stealth item
         //                                              on a Demand that does not require Stealth
-        public const float stratChainResCostWeight = 0.05f;
         public const float stratChainAttachStepPenalty = 0.08f;
         public const float stratChainGenerationStepPenalty = 0.15f;
         public const int stratChainStealthScarceAt = 1;   // StealthScouts <= this -> preserve a unique Stealth item

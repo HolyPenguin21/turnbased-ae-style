@@ -38,10 +38,12 @@ namespace Game.Ai.V2
             int requiredTurns = 1)
         {
             int futureActivations = Mathf.Max(0, requiredTurns - 1);
-            float price = TaskScoreEvaluator.CardPrice(
-                activationAp, energyCost * (1 + futureActivations));
-            float delivery = TaskScoreEvaluator.DeliveryFromEta(
-                activationAp, requiredTurns);
+            // Launch Energy of every activation of the flight at the neutral resource price (no
+            // snapshot here), the first activation now, the later ones as recurring AP.
+            float price = TaskScoreEvaluator.Price(ActionPrice.Ap(activationAp)
+                + energyCost * (1 + futureActivations) * AiConfigV2.actionPriceResourceAp);
+            float delivery = TaskScoreEvaluator.Price(
+                ActionPrice.RecurringAp(activationAp, requiredTurns));
             return TaskScoreEvaluator.NetChange(
                 sourceService, destinationService, price, delivery);
         }

@@ -31,7 +31,7 @@ namespace Game.Ai.V2
                     IntrinsicValue = d.IntrinsicValue,
                 };
                 missions.Add(Create(target, snapshot, true, intent.Funding,
-                    d.IntrinsicValue, intent.PreferredMoverArmyId));
+                    d.IntrinsicValue, null, intent.PreferredMoverArmyId));
             }
 
             foreach (AxisDemand demand in demands ?? System.Array.Empty<AxisDemand>())
@@ -50,7 +50,7 @@ namespace Game.Ai.V2
                     IntrinsicValue = demand.Value,
                 };
                 MissionProposal mission = Create(target, snapshot, false, CommitmentTier.None,
-                    demand.Value, target.SourceArmyId);
+                    demand.Value, demand.WorldTaskScore, target.SourceArmyId);
                 if (occupiedSites.Contains(MissionIntentKey.For(mission))
                     || occupiedHeroes.Contains(target.Hero))
                     continue;
@@ -62,7 +62,7 @@ namespace Game.Ai.V2
         }
 
         private static MissionProposal Create(DevelopmentMissionTarget target, WorldSnapshot snapshot,
-            bool committed, CommitmentTier funding, float value, int? preferred)
+            bool committed, CommitmentTier funding, float value, TaskScore? score, int? preferred)
         {
             ArmySnapshot actor = snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
                 && preferred.HasValue && a.ArmyId == preferred.Value);
@@ -82,7 +82,7 @@ namespace Game.Ai.V2
             var m = new MissionProposal
             {
                 Kind = MissionKind.Development, Target = target,
-                BaseValue = value, LocalAdmissionScore = value,
+                BaseValue = value, LocalAdmissionScore = value, Score = score,
                 PreferredMoverArmyId = preferred, FromDurableIntent = committed,
                 DurableFundingTier = funding,
                 Requirements = new MissionRequirements

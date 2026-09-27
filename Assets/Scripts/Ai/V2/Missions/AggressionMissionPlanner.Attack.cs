@@ -145,6 +145,7 @@ namespace Game.Ai.V2
                     Kind = MissionKind.Attack,
                     Target = target,
                     BaseValue = score.Value,
+                    Score = score,
                     LocalAdmissionScore = score.Value,
                     PreferredMoverArmyId = actor.ArmyId,
                     FromDurableIntent = incumbent != null,
@@ -192,11 +193,11 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
             List<MissionProposal> proposals, float? mustBeat = null)
         {
-            Dictionary<int, float> donorPrices = GroundCombatDonorPolicy.BorrowableDonorApPrices(
+            Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
                 snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
                 hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
-                donorApPrices: donorPrices);
+                donorValues: donorValues);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
@@ -209,7 +210,7 @@ namespace Game.Ai.V2
             // The lead leg must be a FREE army: a bought donor is still held by its operation until
             // the Attack intent this lead step creates makes Continuity retire that operation.
             ArmySnapshot lead = gather.SupportArmyIds
-                .Where(id => !donorPrices.ContainsKey(id))
+                .Where(id => !donorValues.ContainsKey(id))
                 .Select(id => snap.Self.Armies?.FirstOrDefault(x => x != null && x.ArmyId == id))
                 .FirstOrDefault(s => s != null && (s.Hex.Equals(gather.HostHex) || s.CurrentMovement > 0));
             if (host == null || lead == null)
@@ -225,7 +226,8 @@ namespace Game.Ai.V2
             // supports' legs are what this turn pays, the rest is spread over the operation.
             TaskScore score = TaskScoreEvaluator.WithResponse(objective.TaskScore,
                 gather.ProjectedWinChance, gather.CurrentTurnAp,
-                AiV2Util.CeilDiv(gather.FutureAp, eta), eta);
+                AiV2Util.CeilDiv(gather.FutureAp, eta), eta,
+                moverOpportunityCost: gather.DisplacedValue);
             if (mustBeat.HasValue && score.Value <= mustBeat.Value)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
@@ -236,7 +238,7 @@ namespace Game.Ai.V2
             }
             MissionProposal proposal = BuildAttackGatherLeg(objective.Target, host, lead,
                 gather.SupportArmyIds, hexBonus, objective.DefenderCount, gather.ProjectedWinChance,
-                gather.CoversAllDefenders, 0, score.Value, null);
+                gather.CoversAllDefenders, 0, score, null);
             proposal.Explain = $"Attack {objective.Target.DiagnosticLabel} Gather (fresh) task "
                 + $"{F(score.Value)} host #{host.ArmyId} supports [{string.Join(",", gather.SupportArmyIds)}] "
                 + $"win {F(gather.ProjectedWinChance)} gatherTurns {gather.GatherTurns} "
@@ -273,7 +275,7 @@ namespace Game.Ai.V2
                     continue;
                 proposals.Add(BuildAttackGatherLeg(a.Target, host, support, a.GatherSupportArmyIds,
                     hexBonus, defenderCount, a.ProjectedWinChance, a.CoversAllDefenders,
-                    a.LastOpportunisticStrikeTurn, 0f, intent));
+                    a.LastOpportunisticStrikeTurn, default(TaskScore), intent));
             }
             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                 $"[AI][V2][Attack][Gather] decision=CONTINUE {intent.IntentKey} host={host.ArmyId} "
@@ -283,7 +285,7 @@ namespace Game.Ai.V2
         private static MissionProposal BuildAttackGatherLeg(AttackTargetRef targetRef,
             ArmySnapshot host, ArmySnapshot support, IEnumerable<int> gatherSupportIds,
             float hexBonus, int defenderCount, float win, bool cover, int opportunisticTurn,
-            float value, MissionIntent intent)
+            TaskScore score, MissionIntent intent)
         {
             MissionRequirements requirements = GroundCombatLegs.PinnedLegRequirements(
                 support, host.Hex, out int eta);
@@ -306,8 +308,9 @@ namespace Game.Ai.V2
             {
                 Kind = MissionKind.Attack,
                 Target = target,
-                BaseValue = value,
-                LocalAdmissionScore = value,
+                BaseValue = score.Value,
+                Score = score,
+                LocalAdmissionScore = score.Value,
                 PreferredMoverArmyId = support.ArmyId,
                 FromDurableIntent = intent != null,
                 DurableFundingTier = intent?.Funding ?? CommitmentTier.None,
@@ -348,6 +351,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.Attack,
                 Target = target,
                 BaseValue = 0f,
+                Score = default(TaskScore),
                 LocalAdmissionScore = 0f,
                 PreferredMoverArmyId = wing.ArmyId,
                 FromDurableIntent = true,
@@ -395,6 +399,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.Attack,
                 Target = target,
                 BaseValue = 0f,
+                Score = default(TaskScore),
                 LocalAdmissionScore = 0f,
                 PreferredMoverArmyId = actor.ArmyId,
                 FromDurableIntent = true,
@@ -456,6 +461,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.Attack,
                 Target = target,
                 BaseValue = 0f,
+                Score = default(TaskScore),
                 LocalAdmissionScore = 0f,
                 PreferredMoverArmyId = support.ArmyId,
                 FromDurableIntent = true,
@@ -521,6 +527,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.Attack,
                 Target = target,
                 BaseValue = 0f,
+                Score = default(TaskScore),
                 LocalAdmissionScore = 0f,
                 PreferredMoverArmyId = priced?.ArmyId,
                 FromDurableIntent = true,

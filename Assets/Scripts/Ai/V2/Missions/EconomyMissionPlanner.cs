@@ -107,6 +107,11 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy, Target = target,
                     BaseValue = intrinsic, LocalAdmissionScore = intrinsic,
+                    // A return leg is valueless; a refreshed demand brings its breakdown; a value
+                    // restored from the durable intent alone has none.
+                    Score = e.Kind == EconomyTaskKind.ReturnBuilder
+                        || e.Kind == EconomyTaskKind.ReturnCollector ? default(TaskScore)
+                        : refreshed?.WorldTaskScore,
                     Requirements = Requirements(target, intent, snapshot,
                         activeIntents, currentCommitments),
                     PreferredMoverArmyId = intent.PreferredMoverArmyId,
@@ -171,6 +176,7 @@ namespace Game.Ai.V2
                     Kind = MissionKind.Economy,
                     Target = target,
                     BaseValue = bestScore.Value,
+                    Score = bestScore,
                     LocalAdmissionScore = bestScore.Value,
                     PreferredMoverArmyId = op.CollectorArmyId,
                     Requirements = Requirements(target, null, snapshot, activeIntents,
@@ -224,6 +230,7 @@ namespace Game.Ai.V2
                     // The globally compared value must be the entire canonical world-task Fold,
                     // not the site-only value before CardPrice/Delivery/MoverOpportunityCost.
                     BaseValue = d.Value,
+                    Score = d.WorldTaskScore,
                     // Newly admitted Economy missions use their canonical net TaskScore.
                     LocalAdmissionScore = d.Value,
                     Requirements = Requirements(target, incumbent, snapshot,

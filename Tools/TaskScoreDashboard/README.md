@@ -32,7 +32,15 @@ The Unity C# implementation remains the only source of truth.
 
 Read-only only. The dashboard provides:
 
-- current categories, Fold sign and converter constants;
+- current categories — Benefit (by task family) / Cost / Risk / Opportunity, read from
+  `TaskScoreEvaluator.CategoryOf` — with Fold sign and converter constants;
+- **Calibration** tab: typical tasks of every family computed by the real C# converters and the
+  calibration table (`AiConfigV2.TaskScore.cs`), plus each family's benefit ceiling. Regenerate
+  after changing a constant: Unity → **AI → TaskScore → Calibration Report** (writes
+  `calibration.json` next to this README), then Reload;
+- **Log** tab: per-family distribution of the `[AI][V2][TaskScore]` lines of `Logs/AiDebug.log`
+  (one line per scored mission proposal per turn) — median / max value, benefit, cost, risk
+  and the heaviest terms, i.e. the real-game data for cross-family calibration;
 - row search, filters, sorting and column visibility;
 - filters by axis/task/usage state;
 - exact source usages with file, line, method and excerpt;

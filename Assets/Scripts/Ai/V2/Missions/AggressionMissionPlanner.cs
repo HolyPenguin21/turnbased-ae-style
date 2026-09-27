@@ -12,7 +12,9 @@ namespace Game.Ai.V2
         private readonly struct RaidCandidate
         {
             public readonly RaidMissionTarget Target;
-            public readonly float BaseValue;
+            // The scored world task; BaseValue is its fold, never a separately carried number.
+            public readonly TaskScore Score;
+            public float BaseValue => Score.Value;
             public readonly float LocalAdmissionScore;
             public readonly string Explain;
             public readonly bool IsIncumbent;
@@ -28,13 +30,13 @@ namespace Game.Ai.V2
             public readonly int? ProjectedActivationAp;
             public readonly bool IsCompletedTargetFallback;
 
-            public RaidCandidate(RaidMissionTarget target, float baseValue, float localAdmissionScore,
+            public RaidCandidate(RaidMissionTarget target, TaskScore score, float localAdmissionScore,
                 string explain, bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None,
                 int? preferredMover = null, int? costedMover = null,
                 int? projectedActivationAp = null, bool isCompletedTargetFallback = false)
             {
                 Target = target;
-                BaseValue = baseValue;
+                Score = score;
                 LocalAdmissionScore = localAdmissionScore;
                 Explain = explain;
                 IsIncumbent = isIncumbent;
@@ -50,7 +52,7 @@ namespace Game.Ai.V2
                 // ToCandidate already pinned the assembly projection and price before folding.
                 // Never substitute a different mover AFTER scoring: that previously preserved the
                 // cheap army's score but funded the durable primary's more expensive route.
-                return new RaidCandidate(Target, BaseValue, LocalAdmissionScore,
+                return new RaidCandidate(Target, Score, LocalAdmissionScore,
                     Explain + $" [incumbent {tier}; funding protected separately]",
                     true, tier, preferredMover, CostedMover, ProjectedActivationAp);
             }
@@ -176,7 +178,7 @@ namespace Game.Ai.V2
                             staleIntrinsic, 0f, staleCost.ApDesired,
                             staleEstimate.RecurringActivationAp, staleCost.EtaTurns);
                         float staleValue = staleTask.Value;
-                        incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
+                        incumbents.Add(new RaidCandidate(stale, staleTask, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
                             true, intent.Funding, intent.PreferredMoverArmyId, intent.PreferredMoverArmyId));
                         AiDebugLog.Write($"[AI][V2]   raid mission — CONTINUE {intent.IntentKey}: target in fog, using last-known hex "
@@ -288,7 +290,7 @@ namespace Game.Ai.V2
                     var proposal = new MissionProposal
                     {
                         Kind = MissionKind.ActiveDefence, Target = target,
-                        BaseValue = 0f, LocalAdmissionScore = 0f,
+                        BaseValue = 0f, LocalAdmissionScore = 0f, Score = default(TaskScore),
                         PreferredMoverArmyId = actor.ArmyId,
                         FromDurableIntent = true, DurableFundingTier = intent.Funding,
                         Requirements = requirements,
@@ -385,6 +387,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.ActiveDefence,
                 Target = target,
                 BaseValue = actorScore.Value,
+                Score = actorScore,
                 LocalAdmissionScore = actorScore.Value,
                 PreferredMoverArmyId = actor.ArmyId,
                 FromDurableIntent = incumbent != null,
@@ -433,6 +436,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.ActiveDefence,
                 Target = target,
                 BaseValue = score.Value,
+                Score = score,
                 LocalAdmissionScore = score.Value,
                 PreferredMoverArmyId = mover.ArmyId,
                 Requirements = requirements,
@@ -467,7 +471,8 @@ namespace Game.Ai.V2
                 AssemblableWinChance = 1f,
                 CanCoverAllDefenders = true,
             };
-            float value = default(TaskScore).Value;
+            TaskScore lifecycle = default;
+            float value = lifecycle.Value;
             string label = phase == RaidMissionPhase.SupportReturn ? "SUPPORT-RETURN"
                 : phase == RaidMissionPhase.RecoveryReturn ? "RECOVERY-RETURN" : "RETURN";
             string role = phase == RaidMissionPhase.SupportReturn ? "support" : "primary";
@@ -476,7 +481,7 @@ namespace Game.Ai.V2
             string protection = ri.CompletedTargetAwaitingFreshDecision
                 ? "fresh-decision fallback; no commitment protection"
                 : "Hard funding protection is allocator-owned";
-            return new RaidCandidate(target, value, value,
+            return new RaidCandidate(target, lifecycle, value,
                 $"Raid {ri.Target.DiagnosticLabel} {phase}: {role} #{moverArmyId.Value} to base "
                 + $"({homeHex.Value.Q},{homeHex.Value.R}); intrinsic={F(value)}; {protection}",
                 // Hard lifecycle work XOR a fresh-decision fallback: the fallback after a completed
@@ -530,7 +535,8 @@ namespace Game.Ai.V2
                     ? unpinnedProjection.Score.Value : default(TaskScore).Value;
                 AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE-SELECT {intent.IntentKey}: "
                     + $"{candidates.Count} existing free candidate(s) for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
-                return new RaidCandidate(unpinned, unpinnedValue, unpinnedValue,
+                return new RaidCandidate(unpinned, unpinnedProjection.Viable
+                        ? unpinnedProjection.Score : default, unpinnedValue,
                     $"Raid {ri.Target.DiagnosticLabel} Reinforcement: select an existing free support for primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(unpinnedValue)}; Hard funding protection is allocator-owned",
                     true, intent.Funding, null, null);
             }
@@ -550,11 +556,12 @@ namespace Game.Ai.V2
             };
             RaidRecoveryProjection projection =
                 RaidRecoveryPlanner.ProjectFieldForSupport(snap, ri, ri.SupportArmyId.Value);
+            TaskScore projectionScore = projection.Viable ? projection.Score : default;
             float value = projection.Viable
                 ? projection.Score.Value : default(TaskScore).Value;
             AiDebugLog.Write($"[AI][V2]   raid mission — REINFORCE {intent.IntentKey}: support "
                 + $"#{ri.SupportArmyId.Value} -> primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R})");
-            return new RaidCandidate(target, value, value,
+            return new RaidCandidate(target, projectionScore, value,
                 $"Raid {ri.Target.DiagnosticLabel} Reinforcement: support #{ri.SupportArmyId.Value} joins primary #{primaryId} at ({primary.Hex.Q},{primary.Hex.R}); intrinsic={F(value)}; Hard funding protection is allocator-owned",
                 true, intent.Funding, ri.SupportArmyId, ri.SupportArmyId);
         }
@@ -617,8 +624,9 @@ namespace Game.Ai.V2
                 AirSupportAttemptedTurn = ri.AirSupportAttemptedTurn,
                 AirSupportStrikeSucceeded = ri.AirSupportStrikeSucceeded,
             };
-            float value = scored.Viable ? scored.Score.Value : default(TaskScore).Value;
-            return new RaidCandidate(target, value, value,
+            TaskScore scoredScore = scored.Viable ? scored.Score : default;
+            float value = scoredScore.Value;
+            return new RaidCandidate(target, scoredScore, value,
                 $"Raid {ri.Target.DiagnosticLabel} AirSupport: execute scored wing #{airId}; "
                     + $"intrinsic={F(value)}",
                 true, intent.Funding, airId, airId);
@@ -689,7 +697,7 @@ namespace Game.Ai.V2
                 + $"asmWin {F(o.AssemblableWinChance)} def {o.DefenderCount} eta {req?.EtaTurns ?? o.EstimatedEta} "
                 + $"gate {(o.GatePassed ? 1 : 0)}"
                 + $"{(o.NeedsCombatPower ? " NEEDS-POWER" : "")}{(o.NeedsHero ? " NEEDS-HERO" : "")}";
-            return new RaidCandidate(target, score.Value, las, explain,
+            return new RaidCandidate(target, score, las, explain,
                 costedMover: estimate.PlannedMoverArmyId ?? costedMover,
                 projectedActivationAp: projectedActivationAp);
         }
@@ -727,6 +735,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.Raid,
                 Target = c.Target,
                 BaseValue = c.BaseValue,
+                Score = c.Score,
                 Requirements = req,
                 LocalAdmissionScore = c.LocalAdmissionScore,
                 FromDurableIntent = c.IsIncumbent,

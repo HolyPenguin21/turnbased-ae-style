@@ -173,7 +173,7 @@ namespace Game.EditorTests
             float resourceCost = StrategicCardEvaluator.StrategicResourceCostValue(plan.ResCost, snapshot);
             // No recipient => no WorthIt matchup witness: value = delta x persistence, applied ONCE.
             float expected = 0.75f * 2f * AiConfigV2.equipmentUpgradePersistence
-                - resourceCost - 3f * AiConfigV2.stratCardApCostWeight
+                - resourceCost - ActionPrice.ToCardScore(3f)
                 - AiConfigV2.stratChainGenerationStepPenalty
                 - AiConfigV2.stratChainAttachStepPenalty;
             float actual = StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade(

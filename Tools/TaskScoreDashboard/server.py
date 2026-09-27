@@ -9,6 +9,8 @@ ROOT = HERE.parents[1]
 AI = ROOT / "Assets/Scripts/Ai/V2"
 SCORE = AI / "Evaluation/TaskScore.cs"
 CONFIG = AI / "Foundation/AiConfigV2.TaskScore.cs"
+LOG = ROOT / "Logs/AiDebug.log"
+CALIBRATION = HERE / "calibration.json"   # written by Unity: AI > TaskScore > Calibration Report
 
 SLOT_RE = re.compile(r"public\s+readonly\s+float\s+(\w+)\s*;")
 CONST_RE = re.compile(r"public\s+const\s+(float|int|bool|string)\s+(\w+)\s*=\s*([^;]+);")
@@ -45,34 +47,43 @@ def nearest_method(lines, i):
             return m.group(1)
     return None
 
-PROPERTY_CATEGORY = {
-    "EconomicHexBenefit": "Economy",
-    "Payback": "Economy",
-    "Airfield": "Economy",
-    "GlobalCardEffect": "Economy",
-    "EconomicExpansionValue": "Economy",
-    "InfoGain": "Recon",
-    "Staleness": "Recon",
-    "ContactRelevance": "Recon",
-    "StrategicRelevance": "Positioning",
-    "ThreatDirection": "Positioning",
-    "FrontProgress": "Positioning",
-    "CorridorAlignment": "Positioning",
-    "OwnTerritoryProximity": "Positioning",
-    "TerrainDefense": "Positioning",
-    "MilitaryTargetRelevance": "Combat",
-    "WinChance": "Combat",
-    "CardPrice": "Cost",
-    "Delivery": "Cost",
-    "MoverOpportunityCost": "Cost",
-    "HexThreatRisk": "Risk",
-    "CitadelThreatRisk": "Risk",
-    "BaseThreatRisk": "Risk",
-    "DetectionRisk": "Risk",
+# The fold category (Benefit / Cost / Risk / Opportunity) is read from TaskScoreEvaluator.CategoryOf.
+# Only Benefit slots are further grouped by the task family whose facts they carry — the same
+# sections as the calibration table in AiConfigV2.TaskScore.cs.
+BENEFIT_FAMILY = {
+    "EconomicHexBenefit": "Economy", "Payback": "Economy", "Airfield": "Economy",
+    "GlobalCardEffect": "Economy", "EconomicExpansionValue": "Economy",
+    "InfoGain": "Recon", "Staleness": "Recon", "ContactRelevance": "Recon",
+    "RaidReward": "Military", "WinChance": "Military", "AttackReadiness": "Military",
+    "PreventedDamage": "Military", "StrategicRelevance": "Military", "ThreatDirection": "Military",
+    "ForceAmplification": "Development",
+    "FrontProgress": "Positional", "CorridorAlignment": "Positional",
+    "OwnTerritoryProximity": "Positional", "TerrainDefense": "Positional",
 }
+CATEGORY_ORDER = ["Benefit · Economy", "Benefit · Recon", "Benefit · Military",
+    "Benefit · Development", "Benefit · Positional", "Benefit · Other",
+    "Cost", "Risk", "Opportunity", "Other"]
 
-def property_category(name):
-    return PROPERTY_CATEGORY.get(name, "Other")
+def slot_categories(score):
+    """slot -> Benefit/Cost/Risk/Opportunity, parsed from TaskScoreEvaluator.CategoryOf."""
+    m = re.search(r"static\s+TaskSlotCategory\s+CategoryOf\s*\(TaskSlot\s+slot\)", score)
+    if not m:
+        return {}
+    body = score[m.end():score.find("default:", m.end())]
+    result, pending = {}, []
+    for tok in re.finditer(r"case\s+TaskSlot\.(\w+)\s*:|return\s+TaskSlotCategory\.(\w+)\s*;", body):
+        if tok.group(1):
+            pending.append(tok.group(1))
+        else:
+            for s in pending:
+                result[s] = tok.group(2)
+            pending = []
+    return result
+
+def property_category(name, code_category):
+    if code_category != "Benefit":
+        return code_category
+    return "Benefit · " + BENEFIT_FAMILY.get(name, "Other")
 
 def axis_task(path, method):
     # Dashboard task columns are semantic task families, never arbitrary helper methods.
@@ -186,11 +197,12 @@ def payload():
     score = read(SCORE)
     config = read(CONFIG)
 
-    fold_m = re.search(r"static\s+float\s+Fold\s*\(TaskScore\s+score\)\s*=>", score)
-    fold = score[fold_m.end():score.find(";", fold_m.end())] if fold_m else ""
-    signs = {}
-    for m in re.finditer(r"([+-]?)\s*score\.(\w+)", fold):
-        signs[m.group(2)] = "-" if m.group(1) == "-" else "+"
+    # Value = Benefit - Cost - Risk - Opportunity: the sign follows the slot's code category
+    # (TaskScoreEvaluator.CategoryOf); a slot it does not list is a Benefit.
+    code_cats = slot_categories(score)
+    enum_block = score[score.find("enum TaskSlot"):score.find("}", score.find("enum TaskSlot"))]
+    enum_slots = re.findall(r"^\s+(\w+),\s*$", enum_block, re.M)
+    signs = {s: ("+" if code_cats.get(s, "Benefit") == "Benefit" else "-") for s in enum_slots}
 
     params = []
     param_map = {}
@@ -205,8 +217,9 @@ def payload():
     for m in SLOT_RE.finditer(score):
         name = m.group(1); names.append(name)
         conv_names = [name]
-        if name == "Staleness": conv_names = ["PositiveStaleness","StaleIntelPenalty"]
-        if name == "Delivery": conv_names = ["DeliveryFromEta"]
+        if name == "Staleness": conv_names = ["PositiveStaleness"]
+        # Both execution-cost slots go through the one price converter (ActionPrice).
+        if name in ("CardPrice", "Delivery"): conv_names = ["Price"]
         converters, refs = [], set()
         for c in conv_names:
             frag = method_fragment(score,c)
@@ -214,7 +227,8 @@ def payload():
                 converters.append(c)
                 refs |= set(re.findall(r"AiConfigV2\.(\w+)", frag))
         converter_params = [param_map[r] for r in sorted(refs) if r in param_map]
-        cats.append({"name":name,"property":name,"category":property_category(name),
+        cats.append({"name":name,"property":name,
+            "category":property_category(name, code_cats.get(name, "Benefit")),
             "sign":signs.get(name,"?"),"converters":converters,
             "parameters":list(converter_params), "converterParameters":list(converter_params),
             "source":str(SCORE.relative_to(ROOT)).replace("\\","/"),
@@ -242,8 +256,7 @@ def payload():
                 c = cm.group(1)
                 mapped = []
                 if c in by_name: mapped = [c]
-                elif c in ("PositiveStaleness","StaleIntelPenalty"): mapped = ["Staleness"]
-                elif c == "DeliveryFromEta": mapped = ["Delivery"]
+                elif c == "PositiveStaleness": mapped = ["Staleness"]
                 elif c in ("WithResponse","WithActorResponse"):
                     mapped = ["WinChance","CardPrice","Delivery","MoverOpportunityCost"]
                 for slot in mapped:
@@ -264,7 +277,7 @@ def payload():
                     "configRefs":direct_refs,"components":components})
 
     # A category can be fed both through its canonical converter and directly from an
-    # AiConfigV2 constant (RaidReward -> MilitaryTargetRelevance is the key example).
+    # AiConfigV2 constant (the RaidReward converter reads AiConfigV2.RaidReward directly).
     # Show both, but only when the source scan proves the relationship.
     for c in cats:
         known = {p["name"] for p in c["parameters"]}
@@ -288,14 +301,85 @@ def payload():
             warnings.append("No dedicated converter: "+c["name"])
     for p in params:
         if not p["references"]: warnings.append("Unused config parameter: "+p["name"])
+    for c in cats:
+        if c["category"] == "Benefit · Other":
+            warnings.append("Benefit slot without a family in BENEFIT_FAMILY: "+c["name"])
+    missing = sorted(set(enum_slots) - {c["name"] for c in cats})
+    if missing: warnings.append("TaskSlot without a TaskScore field: "+", ".join(missing))
 
     return {"generatedAt":datetime.now(timezone.utc).isoformat(),
         "repository":{"branch":git("branch","--show-current"),"head":git("rev-parse","HEAD"),
                       "dirty":bool(git("status","--porcelain"))},
         "categories":cats,"parameters":params,"warnings":warnings,
-        "propertyCategories":["Economy","Recon","Positioning","Combat","Cost","Risk","Other"],
+        "propertyCategories":CATEGORY_ORDER,
         "axes":sorted({a for c in cats for a in c["axes"]}),
         "tasks":sorted({t for c in cats for t in c["tasks"] if t})}
+
+LOG_RE = re.compile(
+    r"\[AI\]\[V2\]\[TaskScore\] (?P<player>\S+) T(?P<turn>\d+) (?P<kind>\w+) (?P<key>.+?) "
+    r"eff=(?P<eff>-?[\d.]+) \| value=(?P<value>-?[\d.]+)"
+    r"(?: \| benefit (?P<benefit>-?[\d.]+)(?: \((?P<bterms>[^)]*)\))?"
+    r" \| cost (?P<cost>-?[\d.]+)(?: \((?P<cterms>[^)]*)\))?"
+    r" \| risk (?P<risk>-?[\d.]+)(?: \((?P<rterms>[^)]*)\))?"
+    r" \| opportunity (?P<opp>-?[\d.]+))?")
+
+def median(xs):
+    xs = sorted(xs)
+    if not xs:
+        return None
+    n = len(xs)
+    return xs[n // 2] if n % 2 else (xs[n // 2 - 1] + xs[n // 2]) / 2
+
+def terms(text):
+    out = {}
+    for part in (text or "").split(","):
+        bits = part.strip().rsplit(" ", 1)
+        if len(bits) == 2:
+            try: out[bits[0]] = float(bits[1])
+            except ValueError: pass
+    return out
+
+def log_scores():
+    """Per task family distribution of the [AI][V2][TaskScore] lines of the current log."""
+    if not LOG.exists():
+        return {"log": str(LOG), "exists": False, "families": []}
+    fams = {}
+    restored = 0
+    for line in LOG.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = LOG_RE.search(line)
+        if not m:
+            continue
+        if m.group("benefit") is None:
+            restored += 1
+            continue
+        f = fams.setdefault(m.group("kind"), {"values": [], "benefits": [], "costs": [],
+            "risks": [], "eff": [], "terms": {}, "players": set(), "turns": set()})
+        f["values"].append(float(m.group("value"))); f["eff"].append(float(m.group("eff")))
+        f["benefits"].append(float(m.group("benefit"))); f["costs"].append(float(m.group("cost")))
+        f["risks"].append(float(m.group("risk")))
+        f["players"].add(m.group("player")); f["turns"].add(int(m.group("turn")))
+        for group in ("bterms", "cterms", "rterms"):
+            for name, v in terms(m.group(group)).items():
+                f["terms"].setdefault(name, []).append(v)
+    out = []
+    for kind, f in sorted(fams.items()):
+        out.append({"kind": kind, "count": len(f["values"]),
+            "players": sorted(f["players"]), "turns": [min(f["turns"]), max(f["turns"])],
+            "value": {"median": median(f["values"]), "max": max(f["values"]), "min": min(f["values"])},
+            "effective": {"median": median(f["eff"])},
+            "benefit": {"median": median(f["benefits"]), "max": max(f["benefits"])},
+            "cost": {"median": median(f["costs"])}, "risk": {"median": median(f["risks"])},
+            "terms": sorted(({"name": n, "median": median(v), "max": max(v), "count": len(v)}
+                             for n, v in f["terms"].items()), key=lambda t: -abs(t["median"] or 0))})
+    return {"log": str(LOG), "exists": True, "families": out, "restored": restored,
+            "modified": datetime.fromtimestamp(LOG.stat().st_mtime, timezone.utc).isoformat()}
+
+def calibration():
+    if not CALIBRATION.exists():
+        return {"exists": False, "hint": "Unity: AI > TaskScore > Calibration Report"}
+    data = json.loads(read(CALIBRATION))
+    data["exists"] = True
+    return data
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs):
@@ -304,9 +388,11 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Cache-Control","no-store")
         super().end_headers()
     def do_GET(self):
-        if self.path.split("?",1)[0] == "/api/task-score":
+        route = {"/api/task-score": payload, "/api/log-scores": log_scores,
+                 "/api/calibration": calibration}.get(self.path.split("?",1)[0])
+        if route:
             try:
-                body=json.dumps(payload(),ensure_ascii=False).encode()
+                body=json.dumps(route(),ensure_ascii=False).encode()
                 self.send_response(200)
             except Exception as e:
                 body=json.dumps({"error":str(e)},ensure_ascii=False).encode()

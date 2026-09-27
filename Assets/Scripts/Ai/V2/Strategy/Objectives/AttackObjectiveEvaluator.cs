@@ -351,10 +351,9 @@ namespace Game.Ai.V2
                 threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
                 // Readiness is a stronghold fact (§ Attack-only): a Facility needs no
                 // concentrated stack to destroy, so it earns none of it.
-                militaryTargetRelevance: kind == AttackTargetKind.Facility ? 0f
-                    : TaskScoreEvaluator.MilitaryTargetRelevance(
-                        readiness * AiConfigV2.attackReadinessScoreWeight),
-                staleness: TaskScoreEvaluator.StaleIntelPenalty(
+                attackReadiness: kind == AttackTargetKind.Facility ? 0f
+                    : TaskScoreEvaluator.AttackReadiness(readiness),
+                intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
                     intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
                 // Same offensive-restraint slot as Raid: home threat lowers the task, never the
                 // shared Aggression Radar that ActiveDefence also depends on.
@@ -372,7 +371,7 @@ namespace Game.Ai.V2
             // exactly once, as a reduction of WinChance through the shared WorthIt estimator (the
             // bonus GroundCombatAssemblyRequest.DefenderHexDefenseBonus carries), so TerrainDefense
             // is deliberately left at zero here. Defender power likewise stays out of
-            // MilitaryTargetRelevance: it already lowers WinChance and already shows up as
+            // AttackReadiness: it already lowers WinChance and already shows up as
             // ThreatDirection where those defenders genuinely threaten us.
             float assetValue = kind == AttackTargetKind.Citadel ? AiConfigV2.assetValueCitadel
                 : kind == AttackTargetKind.Base ? AiConfigV2.assetValueBase

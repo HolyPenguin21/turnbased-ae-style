@@ -141,8 +141,8 @@ namespace Game.EditorTests
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, priority),
                 ownTerritoryProximity: UnityEngine.Mathf.Max(0f,
                     TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                cardPrice: TaskScoreEvaluator.ReactivationApPrice(1f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(1f, 1f));
+                cardPrice: TaskScoreEvaluator.Price(1f),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(1f, 1f)));
 
             List<MissionProposal> proposals = EconomyMissionPlanner.Propose(snapshot,
                 new DesireBreakdown(), Array.Empty<MissionIntent>(), null);

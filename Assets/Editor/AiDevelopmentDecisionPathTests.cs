@@ -57,7 +57,7 @@ namespace Game.EditorTests
                 {
                     Contacts = Array.Empty<EnemyContactSnapshot>(),
                     Assets = Array.Empty<StrategicAssetSnapshot>(),
-                    Threats = Array.Empty<AssetThreatSnapshot>(),
+                    Threats = new[] { AiDevelopmentRadarResourceGateTests.UncoveredBaseThreat() },
                 },
                 Development = new DevelopmentReadiness
                 {
@@ -101,7 +101,7 @@ namespace Game.EditorTests
                 RecipientLabel = "hand:host",
                 SuccessChance = 1f,
                 ExpectedGain = 10f,
-                BaseValue = 8f,
+                WorldTaskScore = new TaskScore(forceAmplification: 8f),
             };
             // The READY CardUpgrade demand exactly as DemandLayer.Development shapes it.
             var devScore = new TaskScore();

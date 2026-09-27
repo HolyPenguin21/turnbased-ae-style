@@ -43,7 +43,9 @@ namespace Game.Ai.V2
                     TargetHex = preparation.FacilityHex,
                     DevelopmentOperatorMode = preparation.Mode,
                     DevOpportunity = preparation,
-                    Value = preparation.BaseValue,
+                    // The prerequisite is a world task: it competes on its TaskScore.
+                    WorldTaskScore = preparation.WorldTaskScore,
+                    Value = preparation.WorldTaskScore.Value,
                     Explain = "prepare " + preparation.Explain,
                 };
             }

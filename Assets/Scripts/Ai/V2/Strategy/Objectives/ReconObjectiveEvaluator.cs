@@ -360,10 +360,9 @@ namespace Game.Ai.V2
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(ruins),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationNow)
-                    + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    cost.RecurringActivationAp, cost.EtaTurns),
+                cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                    cost.RecurringActivationAp, cost.EtaTurns)),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
         }
 
@@ -378,10 +377,9 @@ namespace Game.Ai.V2
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationNow)
-                    + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    cost.RecurringActivationAp, cost.EtaTurns),
+                cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                    cost.RecurringActivationAp, cost.EtaTurns)),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
         }
 
@@ -394,10 +392,9 @@ namespace Game.Ai.V2
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationNow)
-                    + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    cost.RecurringActivationAp, cost.EtaTurns),
+                cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                    cost.RecurringActivationAp, cost.EtaTurns)),
                 detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
         }
 

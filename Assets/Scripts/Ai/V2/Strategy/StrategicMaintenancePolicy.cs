@@ -92,7 +92,7 @@ namespace Game.Ai.V2
                 float hpFraction = 1f - unit.HitPointsCurrent
                     / (float)Mathf.Max(1, unit.HitPointsMax);
                 int apCost = UnitRepair.ApCost(unit);
-                float apOpportunityCost = AiConfigV2.stratCardApCostWeight * apCost;
+                float apOpportunityCost = ActionPrice.ToCardScore(apCost);
                 float unitPower = AiPower.UnitPower(unit);
                 float restoredPower = unitPower * hpFraction;
                 float weighted = restoredPower * AiConfigV2.repairPowerValueWeight;
@@ -129,8 +129,8 @@ namespace Game.Ai.V2
             foreach (CapacityUpgrade up in FindCapacityUpgrades(
                 snap, player, root, hand, ctx, witnessedUsefulApDemand))
             {
-                float upgradeApOpportunityCost = AiConfigV2.stratCardApCostWeight
-                    * (up.Tier != null ? up.Tier.apCost : 0f);
+                float upgradeApOpportunityCost = ActionPrice.ToCardScore(
+                    up.Tier != null ? up.Tier.apCost : 0f);
                 float utility = up.FacilityUtility - upgradeApOpportunityCost;
                 list.Add(new StrategicSpendCandidate(up.Building, up.Tier)
                 {

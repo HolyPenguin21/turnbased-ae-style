@@ -30,6 +30,33 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"{P} -- {title} " + new string('-', System.Math.Max(3, 42 - title.Length)));
 
         // ---- GAME STATE -----------------------------------------------------------------------
+        // ---- TASK SCORES ---------------------------------------------------------------------
+        // The ONE per-task calibration line, identical for every family, printed where the
+        // proposals first carry their radar-scaled EffectiveValue:
+        //   [AI][V2][TaskScore] Kryll T7 Raid <key> eff=13.1 | value=13.1 | benefit 19.1 (...)
+        //     | cost 6.0 (...) | risk 0.0 | opportunity 0.0
+        // Once per task and turn unless its score changes (deduped on the task key).
+        public static void TaskScores(Game.Players.PlayerSetupData player, int turn,
+            IEnumerable<MissionProposal> missions)
+        {
+            if (missions == null)
+                return;
+            foreach (MissionProposal m in missions)
+            {
+                if (m == null)
+                    continue;
+                string key = StableMissionKey.For(m).ToString();
+                string breakdown = m.Score.HasValue
+                    ? TaskScoreEvaluator.Describe(m.Score.Value)
+                    : $"value={N1(m.BaseValue)} (restored from the durable intent; no breakdown)";
+                AiDebugLog.WriteDeduped($"taskscore|{player?.Nickname}|{key}",
+                    $"[AI][V2][TaskScore] {player?.Nickname} T{turn} {m.Kind} {key} "
+                    + $"eff={N1(m.EffectiveValue)} | {breakdown}");
+            }
+        }
+
+        private static string N1(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+
         public static void GameState(WorldSnapshot snap, AiHandData hand)
         {
             if (!AiConfigV2.frameLogEnabled) return;
@@ -140,7 +167,7 @@ namespace Game.Ai.V2
                     + $"income-gap {N2(b.EconomyIncomeGap)} runway-gap {N2(b.EconomyRunwayGap)} "
                     + $"operational {N2(b.EconomyOperationalPressure)} gate {N2(b.EconomyActionableGate)}");
                 AiDebugLog.Write($"{P}   dev drivers:    facility-ready {N2(b.DevFacilityReady)} (hint)  path-viable {(b.DevPathViable ? "yes" : "no")}  "
-                    + $"surplus {N2(b.DevSurplusFraction)}  quality {N2(b.DevOfferingQuality)}  best-success {N2(b.DevBestSuccessChance)}  targets {b.DevUpgradeTargets}");
+                    + $"surplus {N2(b.DevSurplusFraction)}  need {N2(b.DevJustifiedNeed)}  feasibility {N2(b.DevOfferingQuality)}  best-success {N2(b.DevBestSuccessChance)}  targets {b.DevUpgradeTargets}  [{b.DevNeedDetail}]");
             }
         }
 

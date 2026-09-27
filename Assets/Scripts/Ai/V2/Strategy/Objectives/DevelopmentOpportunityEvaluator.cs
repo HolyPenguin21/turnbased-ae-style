@@ -27,14 +27,22 @@ namespace Game.Ai.V2
     //               no second investment-EV veto). Unit/Hero outputs of a ready facility are
     //               materialization chains (MaterializationChainEnumerator), not upgrades.
     //    PREPARE  — facility card in hand and/or operator missing: every catalog output (Equipment,
-    //               Unit/Hero, Aviation) projected through the canonical scorers; the investment EV
-    //               (output value - Challenge - prerequisites) is the admission. Preparation carries
-    //               no GenerationStep and never mints.
+    //               Unit/Hero, Aviation) projected through the canonical scorers. Preparation
+    //               carries no GenerationStep and never mints.
+    //  Two currencies, each for its own decision — a PREPARE must pass both:
+    //    Ev       — card currency: is the card chain worth its cards (output card score -
+    //               Challenge - facility/operator cards, priced by StrategicCardEvaluator, the only
+    //               place a chain is charged for cost). Also read by the capacity-upgrade look-ahead.
+    //    WorldTaskScore — world-task currency (TaskScore): what the demand/mission competes with
+    //               in the allocator next to Raid, Recon and Economy. Intrinsic ForceAmplification
+    //               (the need-weighted force the output adds) plus the execution of the world task
+    //               itself — the existing operator hero's walk (CreateArmy AP, activation, recurring
+    //               AP) and the task it abandons. Card plays are NOT priced here: their chains price
+    //               them. Never a conversion of Ev.
     //  Equipment value is StrategicCardEvaluator.EquipmentUpgradeValue — the ONE value of an
-    //  equipment upgrade (predicted delta x known-threat matchup x persistence). READY and
-    //  PREPARE both price an equipment output through StrategicCardEvaluator.
-    //  ScoreGeneratedEquipmentUpgrade; PREPARE only adds the prerequisite investment, whose AP is
-    //  priced with the same card AP weight (stratCardApCostWeight).
+    //  equipment upgrade (predicted delta x known-threat matchup x persistence). A minted
+    //  Unit/Hero/Aviation is worth its force only in the share ForceNeedModel.JustifiedForceNeed
+    //  says Attack/Defence cannot meet (Production amplifies a need, it never creates one).
     // ===========================================================================================
     public enum DevRecipientKind { HandCard, GarrisonUnit, FieldUnit }
 
@@ -73,9 +81,12 @@ namespace Game.Ai.V2
         public float TacticalGain;
         // Equipment: [0..1] share of known threats against which the upgrade improves the outcome.
         public float MatchupFit;
-        // PREPARE only: the one investment EV (output value - Challenge - prerequisites).
+        // PREPARE only: card-currency investment EV (output card score - Challenge -
+        // prerequisites). Card-level decisions only; never a world-task value.
         public float Ev;
-        public float BaseValue;
+        // The canonical world-task value of this opportunity (see the header).
+        public TaskScore WorldTaskScore;
+        public float BaseValue => WorldTaskScore.Value;
         public string Explain = "";
 
         public bool IsPreparation => Generation == null;
@@ -117,7 +128,7 @@ namespace Game.Ai.V2
                 string reason = facilityReady && actor != null
                     ? AddReady(result, mode, hex, snap, inv, player, root, hand)
                     : AddPreparation(result, mode, hex, facilityReady, actor, snap, inv, occupied,
-                        player, root, hand, ctx, ref generatedOperatorSources);
+                        player, root, hand, ctx, activeIntents, ref generatedOperatorSources);
                 AiDebugLog.WriteDeduped($"site:{mode}:{hex.Q},{hex.R}",
                     $"[AI][V2][Dev] site {mode} @({hex.Q},{hex.R}) "
                     + $"stage={(facilityReady && actor != null ? "READY" : "PREPARE")} {reason}");
@@ -172,9 +183,11 @@ namespace Game.Ai.V2
                     last = $"'{off.Card.displayName}':needs_{completeAp}_ap";
                     continue;
                 }
-                // Sunk facility: no investment EV. BaseValue only orders ready opportunities;
-                // the card decision is StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade's.
-                best.BaseValue = best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best);
+                // Sunk facility: no investment. The world-task score only orders ready
+                // opportunities; the card decision (and its AP/resource price) is
+                // StrategicCardEvaluator.ScoreGeneratedEquipmentUpgrade's inside the card portfolio.
+                best.WorldTaskScore = BuildDevelopmentScore(
+                    best.SuccessChance * StrategicCardEvaluator.EquipmentUpgradeValue(best));
                 best.Explain = $"{best.Mode} '{off.Card.displayName}' -> {best.RecipientLabel} "
                     + $"p={best.SuccessChance:0.00} G={best.ExpectedGain:0.0} fit={best.MatchupFit:0.00}";
                 result.Add(best);
@@ -190,7 +203,7 @@ namespace Game.Ai.V2
             ResearchProductionMode mode, HexCoord hex, bool facilityReady, UnitData actor,
             WorldSnapshot snap, CapabilityInventory inv, ActorCommitments occupied,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            ref List<GenerationStep> generatedOperatorSources)
+            IReadOnlyList<MissionIntent> activeIntents, ref List<GenerationStep> generatedOperatorSources)
         {
             if (BattleInitiator.FindEnemyAt(hex, player) != null)
                 return "reason=enemy_on_site";
@@ -200,7 +213,7 @@ namespace Game.Ai.V2
             CardData facility = facilityReady ? null : hand.Hand
                 .Where(c => c?.Definition?.cardType == CardType.Facility
                     && c.Definition.grantedAbilities?.Contains(ResearchProductionSystem.FacilityAbility(mode)) == true)
-                .OrderBy(c => c.EffectivePlayApCost * AiConfigV2.stratCardApCostWeight
+                .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 .FirstOrDefault();
             if (!facilityReady && facility == null)
@@ -213,13 +226,16 @@ namespace Game.Ai.V2
                         .Contains(ResearchProductionSystem.RoleAbility(mode))
                     && garrison != null && CardPlayExecutor.Preflight(player, root, hand, ctx,
                         CardPlayPlan.Into(c, hex, DeploymentKind.Garrison, garrison), out _))
-                .OrderBy(c => c.EffectivePlayApCost * AiConfigV2.stratCardApCostWeight
+                .OrderBy(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 .FirstOrDefault();
             UnitData remote = null;
             int? remoteArmyId = null;
             int remoteTravel = int.MaxValue;
             float remoteCost = float.PositiveInfinity;
+            // Raw facts of the chosen operator walk, priced once by the world-task score.
+            float remoteActionAp = 0f, remoteActivationNow = 0f;
+            int remoteEtaTurns = 0;
             if (actor == null && ctx.Map != null)
             {
                 foreach (ArmyData army in ArmyRegistry.AllForOwner(player))
@@ -249,22 +265,27 @@ namespace Game.Ai.V2
                         : SafeStepPathing.FindSafePathCost(ctx.Map, army, hex);
                     if (route == int.MaxValue)
                         continue;
-                    // Count reassignment/route AP with the existing Development AP price;
-                    // the live AP envelope is recalculated in Provisioning, not here.
-                    float cost = (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f)
+                    // The walk's real AP (container, activation now, re-activation on every
+                    // further turn of the march) at the one price; the live AP envelope is
+                    // recalculated in Provisioning, not here.
+                    int walkTurns = Mathf.Max(1, Mathf.CeilToInt(route / (float)Mathf.Max(1, candidate.MoveMax)));
+                    float cost = ActionPrice.ToCardScore(
+                        (army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f)
                         + (army.HasActivatedThisTurn ? 0f : candidate.ActivationApCost)
-                        + (float)route / Mathf.Max(1, candidate.MoveMax);
-                    cost *= AiConfigV2.stratCardApCostWeight;
+                        + ActionPrice.RecurringAp(candidate.ActivationApCost, walkTurns));
                     if (cost >= remoteCost)
                         continue;
                     remote = candidate;
                     remoteArmyId = army.Id;
                     remoteTravel = route;
                     remoteCost = cost;
+                    remoteActionAp = army.IsGarrison ? ArmyActions.CreateArmyApCost : 0f;
+                    remoteActivationNow = army.HasActivatedThisTurn ? 0f : candidate.ActivationApCost;
+                    remoteEtaTurns = Mathf.Max(1, Mathf.CeilToInt(route / (float)Mathf.Max(1, candidate.MoveMax)));
                 }
                 if (operatorCard != null && remote != null)
                 {
-                    float handCost = operatorCard.EffectivePlayApCost * AiConfigV2.stratCardApCostWeight
+                    float handCost = ActionPrice.ToCardScore(operatorCard.EffectivePlayApCost)
                         + StrategicCardEvaluator.StrategicResourceCostValue(
                             operatorCard.EffectivePlayResourceCost, snap);
                     if (handCost <= remoteCost)
@@ -292,8 +313,7 @@ namespace Game.Ai.V2
                             && source.Owner == player && !source.IsPrison
                             && source.Members.Contains(g.Hero)
                             && !occupied.IsArmyClaimed(source.Id)))
-                    .OrderBy(g => ResearchProductionSystem.AttemptApCost(g.CardDef)
-                        * AiConfigV2.stratCardApCostWeight
+                    .OrderBy(g => ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(g.CardDef))
                         + StrategicCardEvaluator.StrategicResourceCostValue(
                             g.GenerationResourceCost, snap))
                     .ThenBy(g => g.CardKey, System.StringComparer.Ordinal)
@@ -327,7 +347,7 @@ namespace Game.Ai.V2
                     operatorDefinition, operatorEquipment));
             }
             float preparationCost = new[] { facility, operatorCard }.Where(c => c != null)
-                .Sum(c => c.EffectivePlayApCost * AiConfigV2.stratCardApCostWeight
+                .Sum(c => ActionPrice.ToCardScore(c.EffectivePlayApCost)
                     + StrategicCardEvaluator.StrategicResourceCostValue(c.EffectivePlayResourceCost, snap))
                 + (remote != null ? remoteCost : 0f);
             float operatorChance = 1f;
@@ -337,17 +357,19 @@ namespace Game.Ai.V2
                 // resource stake belongs to the source Challenge and is charged ONCE.
                 var mintedPreview = new CardData(generatedOperator.CardDef)
                     { ResearchProductionCreated = true };
-                preparationCost += (ResearchProductionSystem.AttemptApCost(
+                preparationCost += ActionPrice.ToCardScore(ResearchProductionSystem.AttemptApCost(
                         generatedOperator.CardDef)
                     + generatedOperator.SuccessChance * CardCostRules.PlayAp(mintedPreview))
-                    * AiConfigV2.stratCardApCostWeight
                     + StrategicCardEvaluator.StrategicResourceCostValue(
                         generatedOperator.GenerationResourceCost, snap);
                 operatorChance = Mathf.Clamp01(generatedOperator.SuccessChance);
             }
+            float operatorDisplaced = remoteArmyId.HasValue
+                ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmyId.Value) : 0f;
+            ForceNeed forceNeed = ForceNeedModel.JustifiedForceNeed(snap);
 
             int outputs = 0, admitted = 0;
-            float bestEv = float.NegativeInfinity;
+            float bestValue = float.NegativeInfinity;
             string bestRejected = null;
             var windowClosed = new HashSet<ResourceType>();
             foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
@@ -380,12 +402,22 @@ namespace Game.Ai.V2
                         preparationCost, snap, inv, player, root, hand, ctx);
                 if (op == null)
                     continue;
-                if (op.Ev > bestEv)
+                // Every output term is conditional on first winning a generated operator.
+                float outputChance = operatorChance * Mathf.Clamp01(op.SuccessChance);
+                float amplificationBodies = op.ProducesEquipment
+                    ? outputChance * StrategicCardEvaluator.EquipmentUpgradeValue(op)
+                    : outputChance * forceNeed.Total * ForceBodies(card);
+                op.WorldTaskScore = BuildDevelopmentScore(amplificationBodies,
+                    remoteActionAp, remoteActivationNow,
+                    remote != null ? remote.ActivationApCost : 0f, remoteEtaTurns, operatorDisplaced);
+                if (op.BaseValue > bestValue)
                 {
-                    bestEv = op.Ev;
+                    bestValue = op.BaseValue;
                     bestRejected = card.displayName;
                 }
-                if (op.Ev <= AiConfigV2.devEvMargin)
+                // Card chain worth its cards (card currency) AND a positive world task.
+                if (op.Ev <= AiConfigV2.devEvMargin
+                    || op.BaseValue <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
                 op.PreparationFacilityCard = facility;
                 op.PreparationOperatorCard = operatorCard;
@@ -393,10 +425,12 @@ namespace Game.Ai.V2
                 op.PreparationExistingHero = remote;
                 op.PreparationSourceArmyId = remoteArmyId;
                 op.PreparationTravelCost = remoteTravel;
-                op.BaseValue = Mathf.Clamp(AiConfigV2.devEvToBaseValue * op.Ev, 0f, 100f);
                 op.Explain = $"{mode} @({hex.Q},{hex.R}) for {card.displayName} -> "
-                    + $"{op.RecipientLabel}; prerequisites={preparationCost:0.##} "
-                    + $"EV after prerequisites={op.Ev:0.##}";
+                    + $"{op.RecipientLabel}; task={op.BaseValue:0.##} "
+                    + $"amplify={op.WorldTaskScore.ForceAmplification:0.##} "
+                    + $"price={op.WorldTaskScore.CardPrice:0.##} delivery={op.WorldTaskScore.Delivery:0.##} "
+                    + $"moverOpp={op.WorldTaskScore.MoverOpportunityCost:0.##} {forceNeed}; "
+                    + $"card EV={op.Ev:0.##}";
                 result.Add(op);
                 admitted++;
             }
@@ -405,12 +439,33 @@ namespace Game.Ai.V2
             return $"{need} outputs={outputs} admitted={admitted}"
                 + (admitted == 0
                     ? (bestRejected != null
-                        ? $" reason=ev_below_margin(best '{bestRejected}' EV={bestEv:0.##})"
+                        ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##})"
                         : windowClosed.Count > 0
                             ? $" reason=window_closed({ResourceList(windowClosed)})"
                             : " reason=no_valuable_output")
                     : "");
         }
+
+        // Development's ONE world-task score assembly point. Every argument is a raw fact;
+        // conversion to score units happens here through TaskScoreEvaluator. Execution slots
+        // describe only the world task's own actor — the existing operator hero's walk
+        // (CreateArmy AP when it leaves a garrison, activation now, recurring AP) and the task it
+        // abandons. Card plays are priced by the chains that play them.
+        private static TaskScore BuildDevelopmentScore(float needWeightedBodies,
+            float operatorActionAp = 0f, float activationApNow = 0f,
+            float recurringActivationAp = 0f, int etaTurns = 0, float displacedTaskValue = 0f) =>
+            new TaskScore(
+                forceAmplification: TaskScoreEvaluator.ForceAmplification(needWeightedBodies),
+                cardPrice: TaskScoreEvaluator.Price(operatorActionAp + activationApNow),
+                delivery: TaskScoreEvaluator.Price(
+                    ActionPrice.RecurringAp(recurringActivationAp, etaTurns)),
+                moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(displacedTaskValue));
+
+        // A minted Unit/Hero/Aviation's force in combat-body units (its printed line).
+        private static float ForceBodies(CardDefinition card) =>
+            card == null ? 0f
+                : Mathf.Max(0f, AiPower.EffectiveLine(card).BasePower)
+                    / Mathf.Max(1f, AiConfigV2.combatPowerPerBodyEstimate);
 
         // The complete H/E/M/T a PREPARE chain consumes: facility + operator + output.
         private static ResourceCost SumCost(params ResourceCost[] costs) => new ResourceCost

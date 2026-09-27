@@ -276,7 +276,9 @@ namespace Game.EditorTests
                 "a Citadel is a more relevant strategic node than an ordinary Base");
             Assert.That(citadel.TaskScore.TerrainDefense, Is.EqualTo(0f),
                 "defender-side terrain is not an attacker bonus");
-            Assert.That(citadel.TaskScore.MilitaryTargetRelevance, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(citadel.TaskScore.AttackReadiness, Is.GreaterThanOrEqualTo(0f));
+            Assert.That(citadel.TaskScore.RaidReward, Is.EqualTo(0f),
+                "Attack never borrows the Raid reward slot");
             Assert.That(citadel.TaskScore.EconomicExpansionValue, Is.EqualTo(0f),
                 "no economic justification is claimed until the Economy model actually proves one");
         }
@@ -293,8 +295,8 @@ namespace Game.EditorTests
 
             AttackObjective lowAttack = AttackObjectiveEvaluator.Enumerate(low)[0];
             AttackObjective highAttack = AttackObjectiveEvaluator.Enumerate(high)[0];
-            Assert.That(highAttack.TaskScore.MilitaryTargetRelevance,
-                Is.GreaterThan(lowAttack.TaskScore.MilitaryTargetRelevance));
+            Assert.That(highAttack.TaskScore.AttackReadiness,
+                Is.GreaterThan(lowAttack.TaskScore.AttackReadiness));
             Assert.That(highAttack.BaseValue, Is.GreaterThan(lowAttack.BaseValue));
         }
 
@@ -308,8 +310,11 @@ namespace Game.EditorTests
             AttackObjective unstamped = AttackObjectiveEvaluator.Enumerate(
                 Snap(new[] { B(RedBase, Red, seenTurn: 0) }, new[] { OurBase }, null, turn: 3))[0];
 
-            Assert.That(stale.TaskScore.Staleness, Is.LessThan(fresh.TaskScore.Staleness),
-                "Staleness is a penalty slot, so older intel scores lower");
+            Assert.That(stale.TaskScore.IntelAgePenalty, Is.GreaterThan(fresh.TaskScore.IntelAgePenalty),
+                "IntelAgePenalty is a price slot, so older intel costs more");
+            Assert.That(stale.TaskScore.Staleness, Is.Zero,
+                "Staleness is Recon's refresh value, never Attack's penalty");
+            Assert.That(stale.BaseValue, Is.LessThan(fresh.BaseValue));
             Assert.That(unstamped.IntelAgeTurns,
                 Is.GreaterThanOrEqualTo(AiConfigV2.scoutSurveilStaleTurnsHi),
                 "an unstamped record means 'age unknown', never 'observed on turn 0'");
@@ -321,8 +326,8 @@ namespace Game.EditorTests
         {
             WorldSnapshot known = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
             WorldSnapshot unknown = Snap(Array.Empty<AiMapMemory.KnownBuilding>(), new[] { OurBase });
-            Assert.That(StrategyLayer.HasKnownCombatActivity(known), Is.True);
-            Assert.That(StrategyLayer.HasKnownCombatActivity(unknown), Is.False);
+            Assert.That(ForceNeedModel.HasKnownCombatActivity(known), Is.True);
+            Assert.That(ForceNeedModel.HasKnownCombatActivity(unknown), Is.False);
         }
 
         [Test]

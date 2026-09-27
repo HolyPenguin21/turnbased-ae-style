@@ -19,7 +19,7 @@ namespace Game.Ai.V2
         // fist and how much of the ceiling is already on the map (SelfSnapshot force measures):
         //   assembly   = FistPower / FieldPotential                                  ramp lo..hi
         //   deployment = FieldPotential / (TotalMilitaryPotential + Reserve.Equipment) ramp lo..hi
-        //   readiness  = assembly * deployment -> MilitaryTargetRelevance (Base/Citadel only).
+        //   readiness  = assembly * deployment -> TaskScore.AttackReadiness (Base/Citadel only).
         public const float attackAssemblyReadyLo = 0.50f;
         public const float attackAssemblyReadyHi = 0.90f;
         public const float attackDeploymentReadyLo = 0.40f;
@@ -32,7 +32,6 @@ namespace Game.Ai.V2
         public const float aggDefenceConfidenceMargin = 1.30f;
         public const float aggHomeGuardFloor = 3f; // AiPower units (one Light Infantry alone = 4.85)
         public const float aggEcoGateLo = 0.50f;        // ecoGate = Lerp(this, 1, EconomicSecurity)
-        public const float attackReadinessScoreWeight = 0.45f;
         // =======================================================================================
         //  AGGRESSION / RAID  (Strategy V2 build-order step 9 — the second objective/mission lane)
         //  Raid is the first Aggression Objective type. Objective discovery reuses the shared
@@ -42,7 +41,7 @@ namespace Game.Ai.V2
         // =======================================================================================
         // A known neutral target becomes a Raid AggressionObjective only if its canonical TaskScore
         // has some real strategic merit. This threshold is on the unified TaskScore scale (where
-        // MilitaryTargetRelevance tops out at 12), not the retired Raid-local 12..90 Lerp scale.
+        // RaidReward is 8), not the retired Raid-local 12..90 Lerp scale.
         // Feasibility is still NOT part of this discovery gate: an objective may survive so Demand
         // can ask for the missing combat capability; WorthIt/assembly remain the execution owners.
         public const float raidObjectiveMinBaseValue = 0.25f;
