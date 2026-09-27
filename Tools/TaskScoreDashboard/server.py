@@ -45,6 +45,35 @@ def nearest_method(lines, i):
             return m.group(1)
     return None
 
+PROPERTY_CATEGORY = {
+    "EconomicHexBenefit": "Economy",
+    "Payback": "Economy",
+    "Airfield": "Economy",
+    "GlobalCardEffect": "Economy",
+    "EconomicExpansionValue": "Economy",
+    "InfoGain": "Recon",
+    "Staleness": "Recon",
+    "ContactRelevance": "Recon",
+    "StrategicRelevance": "Positioning",
+    "ThreatDirection": "Positioning",
+    "FrontProgress": "Positioning",
+    "CorridorAlignment": "Positioning",
+    "OwnTerritoryProximity": "Positioning",
+    "TerrainDefense": "Positioning",
+    "MilitaryTargetRelevance": "Combat",
+    "WinChance": "Combat",
+    "CardPrice": "Cost",
+    "Delivery": "Cost",
+    "MoverOpportunityCost": "Cost",
+    "HexThreatRisk": "Risk",
+    "CitadelThreatRisk": "Risk",
+    "BaseThreatRisk": "Risk",
+    "DetectionRisk": "Risk",
+}
+
+def property_category(name):
+    return PROPERTY_CATEGORY.get(name, "Other")
+
 def axis_task(path, method):
     h = (path.stem + " " + (method or "")).lower()
     pairs = [
@@ -109,7 +138,8 @@ def payload():
                 converters.append(c)
                 refs |= set(re.findall(r"AiConfigV2\.(\w+)", frag))
         converter_params = [param_map[r] for r in sorted(refs) if r in param_map]
-        cats.append({"name":name,"sign":signs.get(name,"?"),"converters":converters,
+        cats.append({"name":name,"property":name,"category":property_category(name),
+            "sign":signs.get(name,"?"),"converters":converters,
             "parameters":list(converter_params), "converterParameters":list(converter_params),
             "source":str(SCORE.relative_to(ROOT)).replace("\\","/"),
             "line":line_no(score,m.start()),"usages":[]})
@@ -174,6 +204,7 @@ def payload():
         "repository":{"branch":git("branch","--show-current"),"head":git("rev-parse","HEAD"),
                       "dirty":bool(git("status","--porcelain"))},
         "categories":cats,"parameters":params,"warnings":warnings,
+        "propertyCategories":["Economy","Recon","Positioning","Combat","Cost","Risk","Other"],
         "axes":sorted({a for c in cats for a in c["axes"]}),
         "tasks":sorted({t for c in cats for t in c["tasks"]})}
 
