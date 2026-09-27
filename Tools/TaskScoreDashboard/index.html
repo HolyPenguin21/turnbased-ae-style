@@ -71,7 +71,7 @@ async function load(){
  catch(x){$("error").textContent="Could not read TaskScore sources: "+x.message;$("error").classList.remove("hidden");status("Source error","bad")}
  finally{$("reload").disabled=false}
 }
-function taskCatalog(){const map=new Map();S.data.categories.forEach(r=>r.usages.forEach(u=>{if(u.axis==="Other")return;if(!map.has(u.task))map.set(u.task,new Set());map.get(u.task).add(u.axis)}));return [...map].map(([task,axes])=>({task,axes:[...axes]}))}
+function taskCatalog(){const map=new Map();S.data.categories.forEach(r=>r.usages.forEach(u=>{if(u.axis==="Other"||!u.task)return;if(!map.has(u.task))map.set(u.task,new Set());map.get(u.task).add(u.axis)}));return [...map].map(([task,axes])=>({task,axes:[...axes]}))}
 function selectedAxes(){return new Set(S.axisEnabled)}
 function visibleTasks(){const ax=selectedAxes();return taskCatalog().filter(t=>t.axes.some(a=>ax.has(a)))}
 function fill(){
@@ -112,7 +112,7 @@ function cats(){const vis=C.filter(c=>!S.hidden.has(c[0]));$("head").innerHTML=v
  $("body").innerHTML=a.map((r,i)=>'<tr class="row" data-i="'+i+'">'+vis.map(c=>"<td>"+c[2](r)+"</td>").join("")+'</tr><tr class="detail hidden" data-d="'+i+'"><td colspan="'+vis.length+'">'+detail(r)+"</td></tr>").join("");
  $("body").querySelectorAll(".row").forEach(r=>r.onclick=()=>$('body').querySelector('[data-d="'+r.dataset.i+'"]').classList.toggle("hidden"))}
 function detail(r){const cv=r.converters.length?r.converters.map(x=>"<code>"+e(x)+"()</code>").join("<br>"):'<span class="muted">No dedicated converter.</span>';
- const us=r.usages.length?r.usages.map(u=>"<li>"+badges([u.axis],"axis")+badges([u.task],"task")+" "+src(u.file,u.line)+" "+(u.method?"<code>"+e(u.method)+"()</code>":"")+'<div class="excerpt">'+e(u.excerpt)+"</div></li>").join(""):'<li class="muted">No usage detected outside TaskScore.cs.</li>';
+ const us=r.usages.length?r.usages.map(u=>"<li>"+badges([u.axis],"axis")+(u.task?badges([u.task],"task"):'<span class="badge">helper</span>')+" "+src(u.file,u.line)+" "+(u.method?"<code>"+e(u.method)+"()</code>":"")+'<div class="excerpt">'+e(u.excerpt)+"</div></li>").join(""):'<li class="muted">No usage detected outside TaskScore.cs.</li>';
  return '<div class="detailgrid"><div><h3>Canonical conversion</h3>'+cv+'</div><div><h3>Observed source usages</h3><ul>'+us+"</ul></div></div>"}
 function taskColumns(){const axisOrder=["Recon","Economy","Aggression","Development","Production"],taskOrder=["Explore","Refresh","Surveil","AirSweep","BuildExtraction","FoundBase","CollectorCapability","MobileCollection","Raid","ActiveDefence","Attack","CardUpgrade","Development"];
  let a=visibleTasks().filter(t=>S.taskEnabled.has(t.task)).map(t=>({task:t.task,axis:t.axes[0]}));
