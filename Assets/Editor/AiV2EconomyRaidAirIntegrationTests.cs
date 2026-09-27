@@ -49,6 +49,15 @@ namespace Game.EditorTests
         public void MobileCollection_IsProposedWithoutInfrastructureDemand()
         {
             HexCoord target = new HexCoord(3, 2);
+            var standing = new EconomyResourceStanding
+            {
+                Type = ResourceType.Materials,
+                OwnIncome = 0f,
+                HandResourceNeed = 100f,
+                RemainingDeckResourceNeed = 0f,
+                SpendableStockpile = 0f,
+                DeficitScore = 1f,
+            };
             var snapshot = new WorldSnapshot
             {
                 Self = new SelfSnapshot
@@ -64,16 +73,24 @@ namespace Game.EditorTests
                 },
                 Economy = new EconomyStanding
                 {
+                    PerType = new[] { standing },
                     MobileCollectionOpportunities = new[]
                     {
                         new MobileCollectionOpportunity(target, ResourceType.Materials,
-                            2, 0, 2, 1,
-                            new TaskScore(economicHexBenefit: 6f, payback: 2f,
-                                cardPrice: 1.5f, delivery: 3f),
-                            new HexCoord(0, 0)),
+                            2, 0, 2, 1, new HexCoord(0, 0)),
                     },
                 },
             };
+
+            float usefulGain = standing.UsefulMarginalIncomeGain(2f);
+            float priority = TaskScoreEvaluator.ResourcePriority(standing);
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snapshot, target);
+            var expectedScore = new TaskScore(
+                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(usefulGain, priority),
+                ownTerritoryProximity: UnityEngine.Mathf.Max(0f,
+                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
+                cardPrice: TaskScoreEvaluator.ReactivationApPrice(1f),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(1f, 1f));
 
             List<MissionProposal> proposals = EconomyMissionPlanner.Propose(snapshot,
                 new DesireBreakdown(), Array.Empty<MissionIntent>(), null);
@@ -83,9 +100,9 @@ namespace Game.EditorTests
             Assert.That(payload.Kind, Is.EqualTo(EconomyTaskKind.MobileCollection));
             Assert.That(payload.CollectorArmyId, Is.EqualTo(0), "army id zero is valid");
             Assert.That(mission.Requirements.RequiresHero, Is.False);
-            Assert.That(mission.BaseValue, Is.EqualTo(3.5f));
-            Assert.That(mission.LocalAdmissionScore, Is.EqualTo(3.5f),
-                "the proposal must transport the canonical TaskScore fold unchanged");
+            Assert.That(mission.BaseValue, Is.EqualTo(expectedScore.Value).Within(0.0001f));
+            Assert.That(mission.LocalAdmissionScore, Is.EqualTo(expectedScore.Value).Within(0.0001f),
+                "the proposal must be scored by the Economy task owner from raw snapshot facts");
         }
 
         [Test]
