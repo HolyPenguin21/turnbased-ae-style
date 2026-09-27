@@ -33,38 +33,6 @@ namespace Game.Ai.V2
             return null;
         }
 
-        private static TaskScore BuildMobileCollectionScore(WorldSnapshot snapshot,
-            MobileCollectionOpportunity op)
-        {
-            EconomyResourceStanding standing = snapshot.Economy.PerType
-                .First(x => x.Type == op.ResourceType);
-            float usefulGain = standing.UsefulMarginalIncomeGain(op.EffectiveRemainingYield);
-            // EconomyResourceStanding already froze starvation pressure during WorldAnalysis;
-            // do not re-read mutable registry state while pricing the same snapshot.
-            float priority = TaskScoreEvaluator.ResourcePriority(standing);
-            ArmySnapshot collector = snapshot.Self.Armies
-                .FirstOrDefault(a => a != null && a.ArmyId == op.CollectorArmyId);
-            if (collector == null)
-                return default;
-            float activationApNow = !collector.HasActivatedThisTurn && op.TravelAp > 0
-                ? collector.ActivationApCost : 0f;
-            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
-                snapshot, op.TargetHex);
-            return new TaskScore(
-                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
-                    usefulGain, priority),
-                // Mobile collection has no capital/resource outlay. Arrival time is priced once
-                // by Delivery; Payback stays literal zero instead of becoming a fake best-quality
-                // 0-turn payback.
-                payback: 0f,
-                ownTerritoryProximity: UnityEngine.Mathf.Max(0f,
-                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationApNow),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    collector.ActivationApCost, op.TurnsToFirstIncome),
-                moverOpportunityCost: 0f);
-        }
-
         public static List<MissionProposal> Propose(WorldSnapshot snapshot,
             DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
             IReadOnlyList<AxisDemand> demands)
@@ -171,7 +139,7 @@ namespace Game.Ai.V2
                 TaskScore bestScore = default;
                 foreach (MobileCollectionOpportunity candidate in group.OrderBy(x => x.CollectorArmyId))
                 {
-                    TaskScore candidateScore = BuildMobileCollectionScore(snapshot, candidate);
+                    TaskScore candidateScore = DemandLayer.BuildMobileCollectionScore(snapshot, candidate);
                     if (candidateScore.Value <= AiConfigV2.allocatorSliceEpsilon)
                         continue;
                     if (!best.HasValue
