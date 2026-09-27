@@ -340,6 +340,23 @@ namespace Game.Ai.V2
             return v;
         }
 
+        private static TaskScore BuildAttackScore(WorldSnapshot snap, AiMapMemory.KnownBuilding b,
+            AttackTargetKind kind, float assetNorm, int homeDistance, float frontProgress,
+            float corridorAlignment, float readiness, int intelAge) =>
+            new TaskScore(
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
+                corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
+                // Readiness is a stronghold fact (§ Attack-only): a Facility needs no
+                // concentrated stack to destroy, so it earns none of it.
+                militaryTargetRelevance: kind == AttackTargetKind.Facility ? 0f
+                    : TaskScoreEvaluator.MilitaryTargetRelevance(
+                        readiness * AiConfigV2.attackReadinessScoreWeight),
+                staleness: TaskScoreEvaluator.StaleIntelPenalty(
+                    intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
+
         private static AttackObjective Build(WorldSnapshot snap, PlayerSetupData player,
             AiMapMemory.KnownBuilding b, bool hasDirection, HexCoord anchor, HexCoord directionTarget)
         {
@@ -370,19 +387,8 @@ namespace Game.Ai.V2
 
             float readiness = Readiness(snap.Self);
 
-            var score = new TaskScore(
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
-                corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
-                threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),
-                // Readiness is a stronghold fact (§ Attack-only): a Facility needs no
-                // concentrated stack to destroy, so it earns none of it.
-                militaryTargetRelevance: kind == AttackTargetKind.Facility ? 0f
-                    : TaskScoreEvaluator.MilitaryTargetRelevance(
-                        readiness * AiConfigV2.attackReadinessScoreWeight),
-                staleness: TaskScoreEvaluator.StaleIntelPenalty(
-                    intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
+            TaskScore score = BuildAttackScore(snap, b, kind, assetNorm, homeDistance,
+                frontProgress, corridorAlignment, readiness, intelAge);
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled
             // when the existing Economy network model genuinely proves that holding this node opens
             // a resource cluster we cannot already reach — a generic "more territory is good"
