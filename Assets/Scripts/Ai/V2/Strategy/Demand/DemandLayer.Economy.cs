@@ -46,13 +46,26 @@ namespace Game.Ai.V2
                 float gain = Mathf.Max(0f, site.MarginalIncomeGain);
                 if (gain <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
+
+                // Continuity owns the actor for an existing objective. A later, cheaper builder
+                // must not supply a different delivery cost for that same durable operation.
+                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
+                    MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
+                    && i.Economy.Kind == EconomyTaskKind.BuildExtraction
+                    && i.Economy.ResourceType == site.ResourceType
+                    && i.PreferredMoverArmyId.HasValue);
+                // Same deliberate exception as a committed Base (AddBaseCandidates): Continuity
+                // already owns this delivery's lifecycle (stall/idle reap), EconomyMissionPlanner
+                // keeps walking its builder from the durable intent, and Phase A can only build
+                // it from THIS demand. Dropping it on dipped surplus/payback/value economics
+                // strands the builder on the site with its resources held and nothing to build.
+                bool committed = pinnedExtraction != null;
+
                 // Keep raw income for execution; value and payback use only
                 // economically useful marginal income from the frozen snapshot.
                 float usefulGain = rs.UsefulMarginalIncomeGain(gain);
-                if (usefulGain <= AiConfigV2.allocatorSliceEpsilon)
+                if (usefulGain <= AiConfigV2.allocatorSliceEpsilon && !committed)
                 {
-                    // Existing delivery is still proposed directly by EconomyMissionPlanner
-                    // from its durable intent, without refreshing it with surplus economics.
                     rejectedSurplus++;
                     continue;
                 }
@@ -60,7 +73,7 @@ namespace Game.Ai.V2
                 float resourceCost = StrategicCardEvaluator.ResourceCostSum(def?.resourceCost);
                 float cardAp = def?.apCost ?? 0f;
                 float payback = EconomyPaybackTurns(usefulGain, resourceCost, cardAp);
-                if (payback > AiConfigV2.economyExtractionMaxPaybackTurns)
+                if (payback > AiConfigV2.economyExtractionMaxPaybackTurns && !committed)
                 {
                     rejectedPayback++;
                     continue;
@@ -79,13 +92,6 @@ namespace Game.Ai.V2
                     citadelThreatRisk: citadelRisk,
                     baseThreatRisk: baseRisk);
 
-                // Continuity owns the actor for an existing objective. A later, cheaper builder
-                // must not supply a different delivery cost for that same durable operation.
-                MissionIntent pinnedExtraction = activeIntents?.FirstOrDefault(i =>
-                    MissionContinuityLayer.HoldsEconomyBuildSite(i, site.Hex)
-                    && i.Economy.Kind == EconomyTaskKind.BuildExtraction
-                    && i.Economy.ResourceType == site.ResourceType
-                    && i.PreferredMoverArmyId.HasValue);
                 EconomyBuilderChoice builder = SelectEconomyBuilder(
                     s, site.Hex, site.BuilderRoutes, activeIntents, commitments,
                     siteOnlyScore.Value, cardAp, includeReturn: true,
@@ -111,7 +117,7 @@ namespace Game.Ai.V2
                     baseThreatRisk: siteOnlyScore.BaseThreatRisk);
                 float value = score.Value;
 
-                if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon)
+                if (siteOnlyScore.Value <= AiConfigV2.allocatorSliceEpsilon && !committed)
                 {
                     rejectedStrategicValue++;
                     continue;
@@ -121,8 +127,8 @@ namespace Game.Ai.V2
                 // with a NEW hero, but only when that is cheaper than the ready one and the new
                 // hero's own delivery stays under the site's value.
                 bool readyLossToNewHero = value <= AiConfigV2.allocatorSliceEpsilon
-                    && builder != null && pinnedExtraction == null;
-                if (value <= AiConfigV2.allocatorSliceEpsilon && !readyLossToNewHero)
+                    && builder != null && !committed;
+                if (value <= AiConfigV2.allocatorSliceEpsilon && !readyLossToNewHero && !committed)
                 {
                     if (builder == null) rejectedNoBuilder++;
                     else rejectedDeliveryValue++;

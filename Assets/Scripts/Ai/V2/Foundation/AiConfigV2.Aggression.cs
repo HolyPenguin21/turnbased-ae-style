@@ -32,7 +32,6 @@ namespace Game.Ai.V2
         public const float aggDefenceConfidenceMargin = 1.30f;
         public const float aggHomeGuardFloor = 3f; // AiPower units (one Light Infantry alone = 4.85)
         public const float aggEcoGateLo = 0.50f;        // ecoGate = Lerp(this, 1, EconomicSecurity)
-        public const float aggSiegeDamp = 0.20f;
         public const float attackReadinessScoreWeight = 0.45f;
         // =======================================================================================
         //  AGGRESSION / RAID  (Strategy V2 build-order step 9 — the second objective/mission lane)

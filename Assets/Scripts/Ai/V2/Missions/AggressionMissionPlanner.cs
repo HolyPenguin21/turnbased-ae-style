@@ -171,7 +171,8 @@ namespace Game.Ai.V2
                             snap, intent.Raid.LastKnownHex);
                         TaskScore staleTask = TaskScoreEvaluator.WithResponse(
                             new TaskScore(ownTerritoryProximity:
-                                TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
+                                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap)),
                             0f, staleCost.ApDesired, staleEstimate.RecurringActivationAp,
                             staleCost.EtaTurns);
                         float staleValue = staleTask.Value;

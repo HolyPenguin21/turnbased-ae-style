@@ -382,7 +382,10 @@ namespace Game.Ai.V2
                     : TaskScoreEvaluator.MilitaryTargetRelevance(
                         readiness * AiConfigV2.attackReadinessScoreWeight),
                 staleness: TaskScoreEvaluator.StaleIntelPenalty(
-                    intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)));
+                    intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
+                // Same offensive-restraint slot as Raid: home threat lowers the task, never the
+                // shared Aggression Radar that ActiveDefence also depends on.
+                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled
             // when the existing Economy network model genuinely proves that holding this node opens
             // a resource cluster we cannot already reach — a generic "more territory is good"

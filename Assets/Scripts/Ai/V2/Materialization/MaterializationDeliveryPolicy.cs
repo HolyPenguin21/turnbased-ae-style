@@ -223,6 +223,15 @@ namespace Game.Ai.V2
                                     $"independent_support_may_not_reuse_committed_actor#{p.Deploy.Army.Id}");
                         }
                     }
+                    // Every FieldCombatPower demand asks for FREE field power: the post-play
+                    // measurement (CapabilityDeliveryEvaluator -> CapabilityInventory
+                    // .RaidAvailableFieldPower) excludes armies another durable mission owns. A body
+                    // joined to such an army therefore always measures 0 — reject it here, where the
+                    // plan is chosen, instead of paying the card and discovering it afterwards.
+                    else if (p.Deploy.Kind == DeploymentKind.ExistingArmy && p.Deploy.Army != null
+                        && IsConsumerPrimaryOrCommitted(player, demand, p.Deploy.Army.Id))
+                        return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                            $"committed_actor_adds_no_free_field_power#{p.Deploy.Army.Id}");
                     CardDefinition d = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                     bool hero = d != null && d.cardType == CardType.Hero;
                     if (!hero)
@@ -274,6 +283,11 @@ namespace Game.Ai.V2
                 if (i.PreferredMoverArmyId == armyId)
                     return true;
                 if (i.Raid != null && (i.Raid.PrimaryArmyId == armyId || i.Raid.SupportArmyId == armyId))
+                    return true;
+                // Attack convoys / gather supports: the same held-support list ActorCommitments
+                // claims, so this plan-level gate cannot admit an actor the post-play inventory
+                // already counts as committed.
+                if (GroundCombatLegs.HeldGroundSupportArmyIds(i).Contains(armyId))
                     return true;
             }
             return false;

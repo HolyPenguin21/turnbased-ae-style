@@ -344,6 +344,32 @@ namespace Game.EditorTests
                 "threat severity must not raise every Aggression peer through Radar");
         }
 
+        // Log 2026-09-27, Kryll T9–T11: under siege the former damp cut AGG raw to 0.19 (surplus and
+        // edge both 1.00), so ActiveDefence — same axis — lost the AP pool to Recon/Development.
+        // Home threat must move the Aggression Radar in neither direction; offensive restraint is
+        // the Raid/Attack CitadelThreatRisk slot instead.
+        [Test]
+        public void Siege_DoesNotDampAggressionRadar_OffenceCarriesCitadelThreatRisk()
+        {
+            WorldSnapshot calm = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            WorldSnapshot siege = Snap(new[] { B(RedBase, Red) }, new[] { OurBase });
+            siege.Threat.UnderSiege = true;
+            siege.Threat.CitadelThreatSeverity = 0.8f;
+
+            Assert.That(StrategyLayer.Evaluate(siege, new AiRadarState()).Desires.Raw[DesireAxis.Aggression],
+                Is.EqualTo(StrategyLayer.Evaluate(calm, new AiRadarState()).Desires.Raw[DesireAxis.Aggression])
+                    .Within(0.0001f),
+                "siege must not scale down the axis ActiveDefence shares with Raid/Attack");
+
+            TaskScore calmAttack = AttackObjectiveEvaluator.Enumerate(calm).Single().TaskScore;
+            TaskScore siegeAttack = AttackObjectiveEvaluator.Enumerate(siege).Single().TaskScore;
+            Assert.That(calmAttack.CitadelThreatRisk, Is.Zero);
+            Assert.That(siegeAttack.CitadelThreatRisk,
+                Is.EqualTo(0.8f * AiConfigV2.taskScoreCitadelThreatRiskMax).Within(0.0001f));
+            Assert.That(siegeAttack.Value, Is.EqualTo(calmAttack.Value - siegeAttack.CitadelThreatRisk)
+                .Within(0.0001f), "offensive restraint is exactly the home-threat slot");
+        }
+
         [Test]
         public void AttackTaskScore_DoesNotFeedAggressionRadarDesire()
         {

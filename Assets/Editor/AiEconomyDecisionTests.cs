@@ -115,6 +115,59 @@ namespace Game.EditorTests
                 "Execution truth remains the raw physical marginal income");
         }
 
+        // Log 2026-09-27, Kryll T8–T11: the Materials extractor at (1,3) was committed on T7, then
+        // Materials turned surplus. The builder kept walking there from its durable intent, but
+        // the site's build demand vanished (rejectedSurplus), so Phase A had nothing to build and
+        // the hero idled on the hex for two turns with the build resources held.
+        [Test]
+        public void EconomyDemand_CommittedExtractionKeepsBuildDemandWhenSurplusDips()
+        {
+            WorldSnapshot snap = SnapshotWithDeficits(0.6f, 0.2f, actionable: true);
+            var abundant = EconomyStanding.CalculateResource(ResourceType.Materials,
+                ownIncome: 5f, opponentMedianIncome: 20f, handNeed: 1f,
+                remainingDeckNeed: 1f, reservedOperationalNeed: 0f,
+                spendableStockpile: 100f, starvationPressure: 0f);
+            snap.Economy.PerType = new[]
+            {
+                new EconomyResourceStanding { Type = ResourceType.Human },
+                new EconomyResourceStanding { Type = ResourceType.Energy },
+                abundant,
+                new EconomyResourceStanding { Type = ResourceType.Tech },
+            };
+            HexCoord site = new HexCoord(2, 0);
+            snap.Economy.ExtractionOpportunities = new[]
+            {
+                ExtractionOpportunity(site, ResourceType.Materials, 1),
+            };
+            ArmySnapshot builder = EconomyBuilder(34, 1, 1f);
+            builder.Hex = site;
+            snap.Self.Armies = new[] { builder };
+            var committed = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Status = IntentStatus.Active,
+                Objective = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = site,
+                    ResourceType = ResourceType.Materials,
+                },
+                PreferredMoverArmyId = 34,
+            };
+
+            Assert.That(DemandLayer.EconomyDemands(snap, new DesireBreakdown(), null, null, null)
+                    .Any(d => d.Capability == CapabilityKind.EconomicInfrastructure), Is.False,
+                "precondition: an uncommitted surplus site is still not originated");
+
+            AxisDemand build = DemandLayer.EconomyDemands(snap, new DesireBreakdown(),
+                    null, null, null, new[] { committed }, null)
+                .Single(d => d.Capability == CapabilityKind.EconomicInfrastructure);
+            Assert.That(build.TargetHex, Is.EqualTo(site));
+            Assert.That(build.EconomyResourceType, Is.EqualTo(ResourceType.Materials));
+            Assert.That(build.EconomyPreferredBuilderArmyId, Is.EqualTo(34),
+                "the committed builder, not a fresh new-hero alternative");
+        }
+
         [Test]
         public void EconomySiteScore_ThreatCanMakeSaferPeerWin()
         {

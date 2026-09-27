@@ -44,6 +44,10 @@ namespace Game.Ai.V2
     //  activity is known; the general threat scalar remains a separate world fact. It never reads
     //  the merit of a Raid, ActiveDefence or Attack task.
     //  Their concrete values are compared only by TaskScore after the common Radar scale.
+    //  Home threat therefore moves this axis in NEITHER direction: raising it would lift every
+    //  offensive peer, damping it (the former siege damp) would starve ActiveDefence, which lives
+    //  on the same axis. Offensive restraint while home is threatened is the Raid/Attack
+    //  TaskScore's CitadelThreatRisk slot; ActiveDefence carries its own threat severity.
     //
     //  The breakdown (DesireBreakdown) is returned alongside the vector so MissionLayer picks the
     //  RIGHT mission from it (exploration -> VisitHex, surveillance -> watch a stale zone,
@@ -183,8 +187,7 @@ namespace Game.Ai.V2
 
             float readiness = (surplus + ecoGate + relativeEdge) / 3f;
             float strategicThreat = MilitaryThreat(snapshot, underSiege);
-            float rawAggression = Mathf.Clamp01(HasKnownCombatActivity(snapshot)
-                ? readiness * (underSiege ? AiConfigV2.aggSiegeDamp : 1f) : 0f);
+            float rawAggression = Mathf.Clamp01(HasKnownCombatActivity(snapshot) ? readiness : 0f);
 
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;

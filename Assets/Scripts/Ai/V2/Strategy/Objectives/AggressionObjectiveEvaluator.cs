@@ -210,9 +210,12 @@ namespace Game.Ai.V2
             // Raid targets are stationary neutrals or event guards; older sightings do not move them.
             // Keep shared StaleIntelPenalty for future attacks on mobile player armies.
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, o.TargetHex);
+            // Home threat is an offensive-restraint fact of the task, not of the Aggression Radar
+            // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
             var score = new TaskScore(
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                militaryTargetRelevance: AiConfigV2.RaidReward);
+                militaryTargetRelevance: AiConfigV2.RaidReward,
+                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
 
             bool readyViable = o.CanCoverAllDefenders
                 && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
