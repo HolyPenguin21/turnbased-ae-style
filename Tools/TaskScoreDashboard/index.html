@@ -10,10 +10,11 @@ header{display:flex;justify-content:space-between;gap:20px;align-items:center;pa
 h1{margin:2px 0 4px;font-size:28px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--gold)}.muted{color:var(--muted)}
 main{padding:20px 34px 40px;max-width:1800px;margin:auto}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
 .card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}.card{padding:13px 15px}.card span{font-size:11px;color:var(--muted)}.card b{display:block;font-size:23px;margin-top:2px}
-.panel{overflow:hidden}.controls{padding:13px;margin-bottom:14px;overflow:visible}.grid{display:grid;grid-template-columns:minmax(260px,2fr) repeat(4,minmax(120px,1fr)) auto;gap:9px;align-items:end}
+.panel{overflow:hidden}.controls{padding:13px;margin-bottom:14px;overflow:visible}.grid{display:grid;grid-template-columns:minmax(280px,2fr) minmax(120px,.7fr) minmax(150px,.8fr) auto;gap:9px;align-items:end}
 label>span{display:block;font-size:11px;color:var(--muted);margin:0 0 4px 2px}input,select,button{font:inherit;color:var(--text);background:#0f151e;border:1px solid var(--line);border-radius:7px;padding:7px 9px;min-height:36px}
 input,select{width:100%}button{cursor:pointer}button:hover{border-color:#4a586d}.primary{background:#1f6feb;border-color:#388bfd}.link{border:0;background:transparent;color:var(--blue);padding:0;min-height:0}
 .foot{display:flex;justify-content:space-between;margin-top:10px;color:var(--muted);font-size:12px}.chooser{display:flex;gap:12px;flex-wrap:wrap;padding:9px;margin-top:10px;border:1px solid var(--line);border-radius:7px;background:#10161f}.chooser label{white-space:nowrap}.chooser input{width:auto;min-height:0}.hidden{display:none!important}
+.filtergroup{border:1px solid var(--line);border-radius:8px;background:#10161f;padding:9px 10px;min-height:68px}.filtergroup.axisgroup{grid-column:1/3}.filtergroup.taskgroup{grid-column:3/-1}.filtertitle{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px}.filtertitle strong{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}.filteractions{display:flex;gap:6px}.filteractions button{border:0;background:transparent;color:var(--blue);padding:0;min-height:0;font-size:11px}.checklist{display:flex;gap:6px 12px;flex-wrap:wrap}.checkitem{display:inline-flex;align-items:center;gap:5px;white-space:nowrap;cursor:pointer}.checkitem input{width:auto;min-height:0;margin:0}.checkitem span{color:var(--text);font-size:12px}.checkitem.dim span{color:var(--muted)}
 .tabs{display:flex;gap:3px;padding:8px 9px 0;border-bottom:1px solid var(--line);background:#111821}.tab{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted)}.tab.active{color:var(--text);border-bottom-color:var(--gold)}.tabbody{display:none}.tabbody.active{display:block}
 .wrap{overflow:auto;max-height:calc(100vh - 330px)}table{width:100%;border-collapse:collapse;min-width:980px}th,td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
 th{position:sticky;top:0;background:#151d28;color:#bac4d0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;z-index:2;cursor:pointer}.row{cursor:pointer}.row:hover{background:rgba(88,166,255,.06)}
@@ -24,7 +25,7 @@ code{font-family:Cascadia Code,Consolas,monospace;font-size:12px}.source{color:#
 .notes{display:grid;gap:9px;padding:13px}.note{padding:11px 13px;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:7px;background:#10161f}.note.warn{border-left-color:var(--gold)}.note h3{margin:0 0 3px;font-size:13px}.note p{margin:0;color:#b7c1cd}
 .status{display:inline-block;padding:5px 9px;border:1px solid var(--line);border-radius:999px;font-size:12px}.ok{color:var(--green)}.warn{color:var(--gold)}.bad{color:var(--red)}.actions{display:flex;gap:9px;align-items:center}
 .error{margin-bottom:12px;padding:10px 12px;border:1px solid rgba(248,81,73,.5);border-radius:7px;color:#ffb4ad;background:rgba(248,81,73,.06)}
-@media(max-width:1100px){.grid{grid-template-columns:1fr 1fr 1fr}.search{grid-column:span 3}.cards{grid-template-columns:1fr 1fr}}@media(max-width:700px){header{align-items:flex-start;flex-direction:column;padding:20px 15px}main{padding:15px}.grid{display:flex;flex-direction:column;align-items:stretch}.detailgrid{grid-template-columns:1fr}}
+@media(max-width:1100px){.grid{grid-template-columns:1fr 1fr 1fr}.search{grid-column:span 3}.axisgroup,.taskgroup{grid-column:1/-1!important}.cards{grid-template-columns:1fr 1fr}}@media(max-width:700px){header{align-items:flex-start;flex-direction:column;padding:20px 15px}main{padding:15px}.grid{display:flex;flex-direction:column;align-items:stretch}.detailgrid{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -37,10 +38,10 @@ code{font-family:Cascadia Code,Consolas,monospace;font-size:12px}.source{color:#
 <section class="panel controls"><div class="grid">
 <label class="search"><span>Search rows</span><input id="q" type="search" placeholder="InfoGain, Attack, Economy, file…"></label>
 <label><span>Sign</span><select id="sign"><option value="">All</option><option>+</option><option>-</option><option>?</option></select></label>
-<label><span>Axis</span><select id="axis"><option value="">All axes</option></select></label>
-<label><span>Task</span><select id="task"><option value="">All tasks</option></select></label>
 <label><span>Usage</span><select id="usage"><option value="">All</option><option value="used">Used</option><option value="unused">Unused only</option><option value="raw">No converter</option></select></label>
 <button id="columns">Columns</button>
+<div class="filtergroup axisgroup"><div class="filtertitle"><strong>Axis</strong><span class="filteractions"><button type="button" data-axis-action="all">All</button><button type="button" data-axis-action="none">None</button></span></div><div id="axisChecks" class="checklist"></div></div>
+<div class="filtergroup taskgroup"><div class="filtertitle"><strong>Task <span id="taskScope" class="muted"></span></strong><span class="filteractions"><button type="button" data-task-action="all">All</button><button type="button" data-task-action="none">None</button></span></div><div id="taskChecks" class="checklist"></div></div>
 </div><div id="chooser" class="chooser hidden"></div><div class="foot"><span id="result">0 rows</span><button id="reset" class="link">Reset filters</button></div></section>
 <section class="panel">
 <nav class="tabs"><button class="tab active" data-tab="matrix">Score matrix</button><button class="tab" data-tab="cats">Score categories</button><button class="tab" data-tab="params">Config parameters</button><button class="tab" data-tab="notes">Architecture notes</button></nav>
@@ -51,7 +52,7 @@ code{font-family:Cascadia Code,Consolas,monospace;font-size:12px}.source{color:#
 </section>
 </main>
 <script>
-const S={data:null,sort:["name",1],hidden:new Set()};
+const S={data:null,sort:["name",1],hidden:new Set(),axisEnabled:new Set(),taskEnabled:new Set(),filtersReady:false};
 const C=[
 ["name","Category",r=>"<b>"+e(r.name)+"</b>"],["sign","Sign",r=>'<span class="sign '+(r.sign==="-"?"minus":"plus")+'">'+e(r.sign)+"</span>"],
 ["parameters","Current parameters",r=>r.parameters.length?r.parameters.map(p=>'<span class="param"><code>'+e(p.name)+'</code><b>'+e(p.value)+"</b></span>").join(""):'<span class="muted">No converter constant</span>'],
@@ -68,10 +69,32 @@ async function load(){
  catch(x){$("error").textContent="Could not read TaskScore sources: "+x.message;$("error").classList.remove("hidden");status("Source error","bad")}
  finally{$("reload").disabled=false}
 }
-function fill(){opt($("axis"),S.data.axes);opt($("task"),S.data.tasks);$("chooser").innerHTML=C.map(c=>'<label><input type="checkbox" data-c="'+c[0]+'" '+(S.hidden.has(c[0])?"":"checked")+"> "+e(c[1])+"</label>").join("");$("chooser").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?S.hidden.delete(i.dataset.c):S.hidden.add(i.dataset.c);cats()})}
-function opt(s,a){const v=s.value;[...s.options].slice(1).forEach(o=>o.remove());a.forEach(x=>s.add(new Option(x,x)));s.value=a.includes(v)?v:""}
-function rows(){const q=$("q").value.trim().toLowerCase(),sg=$("sign").value,ax=$("axis").value,tk=$("task").value,u=$("usage").value;
- return S.data.categories.filter(r=>{if(sg&&r.sign!==sg||ax&&!r.axes.includes(ax)||tk&&!r.tasks.includes(tk))return false;if(u==="used"&&!r.usageCount||u==="unused"&&r.usageCount||u==="raw"&&r.converters.length)return false;if(!q)return true;
+function taskCatalog(){const map=new Map();S.data.categories.forEach(r=>r.usages.forEach(u=>{if(u.axis==="Other")return;if(!map.has(u.task))map.set(u.task,new Set());map.get(u.task).add(u.axis)}));return [...map].map(([task,axes])=>({task,axes:[...axes]}))}
+function selectedAxes(){return new Set(S.axisEnabled)}
+function visibleTasks(){const ax=selectedAxes();return taskCatalog().filter(t=>t.axes.some(a=>ax.has(a)))}
+function fill(){
+ if(!S.filtersReady){S.axisEnabled=new Set(S.data.axes.filter(a=>a!=="Other"));S.taskEnabled=new Set(taskCatalog().map(t=>t.task));S.filtersReady=true}
+ renderAxisChecks();renderTaskChecks();
+ $("chooser").innerHTML=C.map(c=>'<label><input type="checkbox" data-c="'+c[0]+'" '+(S.hidden.has(c[0])?"":"checked")+"> "+e(c[1])+"</label>").join("");
+ $("chooser").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?S.hidden.delete(i.dataset.c):S.hidden.add(i.dataset.c);cats()})
+}
+function renderAxisChecks(){
+ const axes=S.data.axes.filter(a=>a!=="Other");
+ $("axisChecks").innerHTML=axes.map(a=>'<label class="checkitem"><input type="checkbox" value="'+e(a)+'" '+(S.axisEnabled.has(a)?"checked":"")+'><span>'+e(a)+'</span></label>').join("");
+ $("axisChecks").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?S.axisEnabled.add(i.value):S.axisEnabled.delete(i.value);renderTaskChecks();cats();matrix()})
+}
+function renderTaskChecks(){
+ const visible=visibleTasks(),visibleNames=new Set(visible.map(t=>t.task));
+ $("taskScope").textContent="("+visible.length+" visible)";
+ $("taskChecks").innerHTML=visible.length?visible.map(t=>'<label class="checkitem"><input type="checkbox" value="'+e(t.task)+'" '+(S.taskEnabled.has(t.task)?"checked":"")+'><span>'+e(t.task)+'</span></label>').join(""):'<span class="muted">No tasks for selected axes</span>';
+ $("taskChecks").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?S.taskEnabled.add(i.value):S.taskEnabled.delete(i.value);cats();matrix()});
+ return visibleNames
+}
+function usageMatchesFilters(u){return u.axis!=="Other"&&S.axisEnabled.has(u.axis)&&S.taskEnabled.has(u.task)&&visibleTasks().some(t=>t.task===u.task)}
+function rows(){const q=$("q").value.trim().toLowerCase(),sg=$("sign").value,u=$("usage").value;
+ return S.data.categories.filter(r=>{if(sg&&r.sign!==sg)return false;if(u==="used"&&!r.usageCount||u==="unused"&&r.usageCount||u==="raw"&&r.converters.length)return false;
+ if(r.usageCount&&u!=="unused"&&!r.usages.some(usageMatchesFilters))return false;
+ if(!q)return true;
  const h=[r.name,r.source,...r.axes,...r.tasks,...r.parameters.flatMap(p=>[p.name,p.value]),...r.usages.flatMap(x=>[x.file,x.method,x.task,x.excerpt])].join(" ").toLowerCase();return h.includes(q)})}
 function val(r,k){const v=r[k];return Array.isArray(v)?v.map(x=>x.name||x).join(","):v??""}
 function cats(){const vis=C.filter(c=>!S.hidden.has(c[0]));$("head").innerHTML=vis.map(c=>'<th data-k="'+c[0]+'">'+e(c[1])+(S.sort[0]===c[0]?(S.sort[1]>0?" ▲":" ▼"):"")+"</th>").join("");
@@ -82,9 +105,8 @@ function cats(){const vis=C.filter(c=>!S.hidden.has(c[0]));$("head").innerHTML=v
 function detail(r){const cv=r.converters.length?r.converters.map(x=>"<code>"+e(x)+"()</code>").join("<br>"):'<span class="muted">No dedicated converter.</span>';
  const us=r.usages.length?r.usages.map(u=>"<li>"+badges([u.axis],"axis")+badges([u.task],"task")+" "+src(u.file,u.line)+" "+(u.method?"<code>"+e(u.method)+"()</code>":"")+'<div class="excerpt">'+e(u.excerpt)+"</div></li>").join(""):'<li class="muted">No usage detected outside TaskScore.cs.</li>';
  return '<div class="detailgrid"><div><h3>Canonical conversion</h3>'+cv+'</div><div><h3>Observed source usages</h3><ul>'+us+"</ul></div></div>"}
-function taskColumns(){const wanted=$("task").value,axis=$("axis").value,map=new Map(),order=["Explore","Refresh","Surveil","AirSweep","BuildExtraction","FoundBase","CollectorCapability","MobileCollection","Raid","ActiveDefence","Attack","CardUpgrade","Development"];
- S.data.categories.forEach(r=>r.usages.forEach(u=>{if(u.axis==="Other")return;if(!map.has(u.task))map.set(u.task,u.axis)}));
- let a=[...map].map(([task,axis])=>({task,axis}));if(wanted)a=a.filter(x=>x.task===wanted);if(axis)a=a.filter(x=>x.axis===axis);
+function taskColumns(){const order=["Explore","Refresh","Surveil","AirSweep","BuildExtraction","FoundBase","CollectorCapability","MobileCollection","Raid","ActiveDefence","Attack","CardUpgrade","Development"];
+ let a=visibleTasks().filter(t=>S.taskEnabled.has(t.task)).map(t=>({task:t.task,axis:t.axes[0]}));
  return a.sort((x,y)=>{const ix=order.indexOf(x.task),iy=order.indexOf(y.task);if(ix!==-1||iy!==-1)return (ix===-1?999:ix)-(iy===-1?999:iy);return (x.axis+x.task).localeCompare(y.axis+y.task)})}
 function pshort(p,r){let n=p.name.replace(/^taskScore/,"");n=n.replace(r.name,"");n=n.replace(/^Economic/,"");n=n||p.name;return '<span title="'+e(p.name)+'">'+e(n)+"="+e(p.value)+"</span>"}
 function matrixCell(r,t){const us=r.usages.filter(u=>u.task===t.task);if(!us.length)return '<span class="miss">·</span>';
@@ -99,7 +121,10 @@ function params(){$("parambody").innerHTML=S.data.parameters.map(p=>"<tr><td><co
 function notes(){const intro='<article class="note"><h3>Source of truth</h3><p>Every reload reparses the checked-out C# implementation. The dashboard contains no editable copy of balance values.</p></article>';
  $("notelist").innerHTML=intro+S.data.warnings.map(x=>'<article class="note warn"><h3>Diagnostic note</h3><p>'+e(x)+"</p></article>").join("")}
 function render(){$("cc").textContent=S.data.categories.length;$("pc").textContent=S.data.parameters.length;$("uc").textContent=S.data.categories.reduce((n,r)=>n+r.usageCount,0);$("wc").textContent=S.data.warnings.length;matrix();cats();params();notes()}
-["q","sign","axis","task","usage"].forEach(id=>$(id).addEventListener(id==="q"?"input":"change",()=>{cats();matrix()}));$("reload").onclick=load;$("columns").onclick=()=>$("chooser").classList.toggle("hidden");$("reset").onclick=()=>{["q","sign","axis","task","usage"].forEach(id=>$(id).value="");cats();matrix()};
+["q","sign","usage"].forEach(id=>$(id).addEventListener(id==="q"?"input":"change",()=>{cats();matrix()}));
+document.querySelectorAll("[data-axis-action]").forEach(b=>b.onclick=()=>{const all=b.dataset.axisAction==="all";S.axisEnabled=new Set(all?S.data.axes.filter(a=>a!=="Other"):[]);renderAxisChecks();renderTaskChecks();cats();matrix()});
+document.querySelectorAll("[data-task-action]").forEach(b=>b.onclick=()=>{const visible=visibleTasks().map(t=>t.task);if(b.dataset.taskAction==="all")visible.forEach(t=>S.taskEnabled.add(t));else visible.forEach(t=>S.taskEnabled.delete(t));renderTaskChecks();cats();matrix()});
+$("reload").onclick=load;$("columns").onclick=()=>$("chooser").classList.toggle("hidden");$("reset").onclick=()=>{$("q").value="";$("sign").value="";$("usage").value="";S.axisEnabled=new Set(S.data.axes.filter(a=>a!=="Other"));S.taskEnabled=new Set(taskCatalog().map(t=>t.task));renderAxisChecks();renderTaskChecks();cats();matrix()};
 document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));document.querySelectorAll(".tabbody").forEach(x=>x.classList.remove("active"));$(t.dataset.tab).classList.add("active")});
 load();
 </script>
