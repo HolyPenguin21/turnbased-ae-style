@@ -39,8 +39,9 @@ namespace Game.Ai.V2
             EconomyResourceStanding standing = snapshot.Economy.PerType
                 .First(x => x.Type == op.ResourceType);
             float usefulGain = standing.UsefulMarginalIncomeGain(op.EffectiveRemainingYield);
-            float priority = TaskScoreEvaluator.ResourcePriority(standing,
-                ResourceStarvationRegistry.Pressure(snapshot.Observer, op.ResourceType));
+            // EconomyResourceStanding already froze starvation pressure during WorldAnalysis;
+            // do not re-read mutable registry state while pricing the same snapshot.
+            float priority = TaskScoreEvaluator.ResourcePriority(standing);
             ArmySnapshot collector = snapshot.Self.Armies
                 .FirstOrDefault(a => a != null && a.ArmyId == op.CollectorArmyId);
             if (collector == null)
