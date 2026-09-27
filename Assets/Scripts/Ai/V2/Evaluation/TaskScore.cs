@@ -234,6 +234,12 @@ namespace Game.Ai.V2
         internal static float ReactivationApPrice(float apCost) =>
             Mathf.Max(0f, apCost) * AiConfigV2.taskScoreReactivationApWeight;
 
+        // Inverse used only when an already-scored continuation loss must be expressed as AP for
+        // an assembly/gather cost model. Keep the conversion rate owned here in both directions.
+        internal static float ReactivationApFromScore(float scoreUnits) =>
+            Mathf.Max(0f, scoreUnits)
+            / Mathf.Max(0.0001f, AiConfigV2.taskScoreReactivationApWeight);
+
         internal static float MoverOpportunityCost(float rawCost) => Mathf.Max(0f, rawCost);
 
         // Raid/Recon already derive a real ETA (hexes -> mover's MaxMovement -> turns) for their
