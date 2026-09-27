@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI V2 TaskScore Inspector</title>
+<style>
+:root{color-scheme:dark;--bg:#0d1117;--panel:#151b23;--line:#2b3543;--muted:#8b98a8;--text:#e6edf3;--blue:#58a6ff;--gold:#d29922;--green:#3fb950;--red:#f85149}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 Inter,system-ui,Segoe UI,sans-serif}
+header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:26px 34px 20px;border-bottom:1px solid var(--line);background:linear-gradient(#111924,var(--bg))}
+h1{margin:2px 0 4px;font-size:28px}.eyebrow{font-size:11px;font-weight:800;letter-spacing:.16em;color:var(--gold)}.muted{color:var(--muted)}
+main{padding:20px 34px 40px;max-width:1800px;margin:auto}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.card,.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px}.card{padding:13px 15px}.card span{font-size:11px;color:var(--muted)}.card b{display:block;font-size:23px;margin-top:2px}
+.panel{overflow:hidden}.controls{padding:13px;margin-bottom:14px;overflow:visible}.grid{display:grid;grid-template-columns:minmax(260px,2fr) repeat(4,minmax(120px,1fr)) auto;gap:9px;align-items:end}
+label>span{display:block;font-size:11px;color:var(--muted);margin:0 0 4px 2px}input,select,button{font:inherit;color:var(--text);background:#0f151e;border:1px solid var(--line);border-radius:7px;padding:7px 9px;min-height:36px}
+input,select{width:100%}button{cursor:pointer}button:hover{border-color:#4a586d}.primary{background:#1f6feb;border-color:#388bfd}.link{border:0;background:transparent;color:var(--blue);padding:0;min-height:0}
+.foot{display:flex;justify-content:space-between;margin-top:10px;color:var(--muted);font-size:12px}.chooser{display:flex;gap:12px;flex-wrap:wrap;padding:9px;margin-top:10px;border:1px solid var(--line);border-radius:7px;background:#10161f}.chooser label{white-space:nowrap}.chooser input{width:auto;min-height:0}.hidden{display:none!important}
+.tabs{display:flex;gap:3px;padding:8px 9px 0;border-bottom:1px solid var(--line);background:#111821}.tab{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted)}.tab.active{color:var(--text);border-bottom-color:var(--gold)}.tabbody{display:none}.tabbody.active{display:block}
+.wrap{overflow:auto;max-height:calc(100vh - 330px)}table{width:100%;border-collapse:collapse;min-width:980px}th,td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top;text-align:left}
+th{position:sticky;top:0;background:#151d28;color:#bac4d0;font-size:11px;text-transform:uppercase;letter-spacing:.05em;z-index:2;cursor:pointer}.row{cursor:pointer}.row:hover{background:rgba(88,166,255,.06)}
+code{font-family:Cascadia Code,Consolas,monospace;font-size:12px}.source{color:#a5d6ff;white-space:nowrap}.badge{display:inline-block;margin:1px 3px 1px 0;padding:2px 6px;border:1px solid var(--line);border-radius:999px;font-size:11px}.axis{color:#a5d6ff;background:rgba(88,166,255,.07)}.task{color:#e3b341;background:rgba(210,153,34,.07)}
+.param{display:inline-flex;gap:6px;align-items:baseline;margin:1px 5px 2px 0;padding:3px 6px;border:1px solid var(--line);border-radius:6px;background:#10161f}.param b{color:#f2cc60}.sign{font-weight:900}.plus{color:var(--green)}.minus{color:var(--red)}
+.detail td{background:#10161f;padding:14px 18px}.detailgrid{display:grid;grid-template-columns:minmax(220px,.7fr) minmax(420px,2fr);gap:22px}.detail h3{margin:0 0 8px;font-size:11px;color:var(--muted);text-transform:uppercase}.detail li{margin-bottom:8px}.excerpt{margin-top:3px;color:var(--muted);font:11px/1.4 Cascadia Code,Consolas,monospace}
+.notes{display:grid;gap:9px;padding:13px}.note{padding:11px 13px;border:1px solid var(--line);border-left:4px solid var(--blue);border-radius:7px;background:#10161f}.note.warn{border-left-color:var(--gold)}.note h3{margin:0 0 3px;font-size:13px}.note p{margin:0;color:#b7c1cd}
+.status{display:inline-block;padding:5px 9px;border:1px solid var(--line);border-radius:999px;font-size:12px}.ok{color:var(--green)}.warn{color:var(--gold)}.bad{color:var(--red)}.actions{display:flex;gap:9px;align-items:center}
+.error{margin-bottom:12px;padding:10px 12px;border:1px solid rgba(248,81,73,.5);border-radius:7px;color:#ffb4ad;background:rgba(248,81,73,.06)}
+@media(max-width:1100px){.grid{grid-template-columns:1fr 1fr 1fr}.search{grid-column:span 3}.cards{grid-template-columns:1fr 1fr}}@media(max-width:700px){header{align-items:flex-start;flex-direction:column;padding:20px 15px}main{padding:15px}.grid{display:flex;flex-direction:column;align-items:stretch}.detailgrid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header><div><div class="eyebrow">UNITY AI V2 · READ ONLY</div><h1>TaskScore Inspector</h1><div id="source" class="muted">Loading current Unity source…</div></div><div class="actions"><span id="status" class="status">Loading</span><button id="reload" class="primary">Reload from source</button></div></header>
+<main>
+<div id="error" class="error hidden"></div>
+<section class="cards">
+<div class="card"><span>Categories</span><b id="cc">–</b></div><div class="card"><span>Config parameters</span><b id="pc">–</b></div><div class="card"><span>Observed usages</span><b id="uc">–</b></div><div class="card"><span>Architecture notes</span><b id="wc">–</b></div>
+</section>
+<section class="panel controls"><div class="grid">
+<label class="search"><span>Search rows</span><input id="q" type="search" placeholder="InfoGain, Attack, Economy, file…"></label>
+<label><span>Sign</span><select id="sign"><option value="">All</option><option>+</option><option>-</option><option>?</option></select></label>
+<label><span>Axis</span><select id="axis"><option value="">All axes</option></select></label>
+<label><span>Task</span><select id="task"><option value="">All tasks</option></select></label>
+<label><span>Usage</span><select id="usage"><option value="">All</option><option value="used">Used</option><option value="unused">Unused only</option><option value="raw">No converter</option></select></label>
+<button id="columns">Columns</button>
+</div><div id="chooser" class="chooser hidden"></div><div class="foot"><span id="result">0 rows</span><button id="reset" class="link">Reset filters</button></div></section>
+<section class="panel">
+<nav class="tabs"><button class="tab active" data-tab="cats">Score categories</button><button class="tab" data-tab="params">Config parameters</button><button class="tab" data-tab="notes">Architecture notes</button></nav>
+<div id="cats" class="tabbody active"><div class="wrap"><table><thead><tr id="head"></tr></thead><tbody id="body"></tbody></table></div></div>
+<div id="params" class="tabbody"><div class="wrap"><table><thead><tr><th>Parameter</th><th>Current value</th><th>Canonical categories</th><th>References</th><th>Source</th></tr></thead><tbody id="parambody"></tbody></table></div></div>
+<div id="notes" class="tabbody"><div id="notelist" class="notes"></div></div>
+</section>
+</main>
+<script>
+const S={data:null,sort:["name",1],hidden:new Set()};
+const C=[
+["name","Category",r=>"<b>"+e(r.name)+"</b>"],["sign","Sign",r=>'<span class="sign '+(r.sign==="-"?"minus":"plus")+'">'+e(r.sign)+"</span>"],
+["parameters","Current parameters",r=>r.parameters.length?r.parameters.map(p=>'<span class="param"><code>'+e(p.name)+'</code><b>'+e(p.value)+"</b></span>").join(""):'<span class="muted">No converter constant</span>'],
+["converters","Converter",r=>r.converters.length?r.converters.map(x=>"<code>"+e(x)+"()</code>").join(" "):'<span class="muted">raw/direct</span>'],
+["axes","Axes",r=>badges(r.axes,"axis")],["tasks","Tasks / contexts",r=>badges(r.tasks,"task")],["usageCount","Usage count",r=>r.usageCount],["source","Canonical source",r=>src(r.source,r.line)]];
+const $=id=>document.getElementById(id),e=v=>String(v??"").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
+const src=(f,l)=>'<code class="source">'+e(f)+":"+l+"</code>";
+const badges=(a,k)=>a.length?a.map(x=>'<span class="badge '+k+'">'+e(x)+"</span>").join(" "):'<span class="muted">—</span>';
+function status(t,k=""){ $("status").textContent=t;$("status").className="status "+k }
+async function load(){
+ status("Loading");$("reload").disabled=true;$("error").classList.add("hidden");
+ try{const r=await fetch("/api/task-score?"+Date.now(),{cache:"no-store"}),d=await r.json();if(!r.ok||d.error)throw Error(d.error||r.status);S.data=d;
+ fill();render();const g=d.repository||{},h=g.head?g.head.slice(0,12):"git unavailable";$("source").textContent=(g.branch||"detached")+" @ "+h+(g.dirty?" · working tree dirty":"")+" · Assets/Scripts/Ai/V2";status("Live source",g.dirty?"warn":"ok")}
+ catch(x){$("error").textContent="Could not read TaskScore sources: "+x.message;$("error").classList.remove("hidden");status("Source error","bad")}
+ finally{$("reload").disabled=false}
+}
+function fill(){opt($("axis"),S.data.axes);opt($("task"),S.data.tasks);$("chooser").innerHTML=C.map(c=>'<label><input type="checkbox" data-c="'+c[0]+'" '+(S.hidden.has(c[0])?"":"checked")+"> "+e(c[1])+"</label>").join("");$("chooser").querySelectorAll("input").forEach(i=>i.onchange=()=>{i.checked?S.hidden.delete(i.dataset.c):S.hidden.add(i.dataset.c);cats()})}
+function opt(s,a){const v=s.value;[...s.options].slice(1).forEach(o=>o.remove());a.forEach(x=>s.add(new Option(x,x)));s.value=a.includes(v)?v:""}
+function rows(){const q=$("q").value.trim().toLowerCase(),sg=$("sign").value,ax=$("axis").value,tk=$("task").value,u=$("usage").value;
+ return S.data.categories.filter(r=>{if(sg&&r.sign!==sg||ax&&!r.axes.includes(ax)||tk&&!r.tasks.includes(tk))return false;if(u==="used"&&!r.usageCount||u==="unused"&&r.usageCount||u==="raw"&&r.converters.length)return false;if(!q)return true;
+ const h=[r.name,r.source,...r.axes,...r.tasks,...r.parameters.flatMap(p=>[p.name,p.value]),...r.usages.flatMap(x=>[x.file,x.method,x.task,x.excerpt])].join(" ").toLowerCase();return h.includes(q)})}
+function val(r,k){const v=r[k];return Array.isArray(v)?v.map(x=>x.name||x).join(","):v??""}
+function cats(){const vis=C.filter(c=>!S.hidden.has(c[0]));$("head").innerHTML=vis.map(c=>'<th data-k="'+c[0]+'">'+e(c[1])+(S.sort[0]===c[0]?(S.sort[1]>0?" ▲":" ▼"):"")+"</th>").join("");
+ $("head").querySelectorAll("th").forEach(h=>h.onclick=()=>{S.sort=S.sort[0]===h.dataset.k?[h.dataset.k,-S.sort[1]]:[h.dataset.k,1];cats()});
+ const a=rows().sort((x,y)=>String(val(x,S.sort[0])).localeCompare(String(val(y,S.sort[0])),undefined,{numeric:true})*S.sort[1]);$("result").textContent=a.length+" of "+S.data.categories.length+" rows";
+ $("body").innerHTML=a.map((r,i)=>'<tr class="row" data-i="'+i+'">'+vis.map(c=>"<td>"+c[2](r)+"</td>").join("")+'</tr><tr class="detail hidden" data-d="'+i+'"><td colspan="'+vis.length+'">'+detail(r)+"</td></tr>").join("");
+ $("body").querySelectorAll(".row").forEach(r=>r.onclick=()=>$('body').querySelector('[data-d="'+r.dataset.i+'"]').classList.toggle("hidden"))}
+function detail(r){const cv=r.converters.length?r.converters.map(x=>"<code>"+e(x)+"()</code>").join("<br>"):'<span class="muted">No dedicated converter.</span>';
+ const us=r.usages.length?r.usages.map(u=>"<li>"+badges([u.axis],"axis")+badges([u.task],"task")+" "+src(u.file,u.line)+" "+(u.method?"<code>"+e(u.method)+"()</code>":"")+'<div class="excerpt">'+e(u.excerpt)+"</div></li>").join(""):'<li class="muted">No usage detected outside TaskScore.cs.</li>';
+ return '<div class="detailgrid"><div><h3>Canonical conversion</h3>'+cv+'</div><div><h3>Observed source usages</h3><ul>'+us+"</ul></div></div>"}
+function params(){$("parambody").innerHTML=S.data.parameters.map(p=>"<tr><td><code>"+e(p.name)+"</code></td><td><b>"+e(p.value)+"</b></td><td>"+badges(p.categories,"task")+"</td><td>"+p.references+"</td><td>"+src("Assets/Scripts/Ai/V2/Foundation/AiConfigV2.TaskScore.cs",p.line)+"</td></tr>").join("")}
+function notes(){const intro='<article class="note"><h3>Source of truth</h3><p>Every reload reparses the checked-out C# implementation. The dashboard contains no editable copy of balance values.</p></article>';
+ $("notelist").innerHTML=intro+S.data.warnings.map(x=>'<article class="note warn"><h3>Diagnostic note</h3><p>'+e(x)+"</p></article>").join("")}
+function render(){$("cc").textContent=S.data.categories.length;$("pc").textContent=S.data.parameters.length;$("uc").textContent=S.data.categories.reduce((n,r)=>n+r.usageCount,0);$("wc").textContent=S.data.warnings.length;cats();params();notes()}
+["q","sign","axis","task","usage"].forEach(id=>$(id).addEventListener(id==="q"?"input":"change",cats));$("reload").onclick=load;$("columns").onclick=()=>$("chooser").classList.toggle("hidden");$("reset").onclick=()=>{["q","sign","axis","task","usage"].forEach(id=>$(id).value="");cats()};
+document.querySelectorAll(".tab").forEach(t=>t.onclick=()=>{document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x===t));document.querySelectorAll(".tabbody").forEach(x=>x.classList.remove("active"));$(t.dataset.tab).classList.add("active")});
+load();
+</script>
+</body></html>
