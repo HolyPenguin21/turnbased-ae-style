@@ -33,6 +33,37 @@ namespace Game.Ai.V2
             return null;
         }
 
+        private static TaskScore BuildMobileCollectionScore(WorldSnapshot snapshot,
+            MobileCollectionOpportunity op)
+        {
+            EconomyResourceStanding standing = snapshot.Economy.PerType
+                .First(x => x.Type == op.ResourceType);
+            float usefulGain = standing.UsefulMarginalIncomeGain(op.EffectiveRemainingYield);
+            float priority = TaskScoreEvaluator.ResourcePriority(standing,
+                ResourceStarvationRegistry.Pressure(snapshot.Observer, op.ResourceType));
+            ArmySnapshot collector = snapshot.Self.Armies
+                .FirstOrDefault(a => a != null && a.ArmyId == op.CollectorArmyId);
+            if (collector == null)
+                return default;
+            float activationApNow = !collector.HasActivatedThisTurn && op.TravelAp > 0
+                ? collector.ActivationApCost : 0f;
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                snapshot, op.TargetHex);
+            return new TaskScore(
+                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
+                    usefulGain, priority),
+                // Mobile collection has no capital/resource outlay. Arrival time is priced once
+                // by Delivery; Payback stays literal zero instead of becoming a fake best-quality
+                // 0-turn payback.
+                payback: 0f,
+                ownTerritoryProximity: UnityEngine.Mathf.Max(0f,
+                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
+                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationApNow),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(
+                    collector.ActivationApCost, op.TurnsToFirstIncome),
+                moverOpportunityCost: 0f);
+        }
+
         public static List<MissionProposal> Propose(WorldSnapshot snapshot,
             DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
             IReadOnlyList<AxisDemand> demands)
@@ -118,17 +149,42 @@ namespace Game.Ai.V2
                 result.Add(mission);
             }
 
-            // Mobile collection is an economy mission in its own right. It is emitted directly
-            // from the immutable analysis snapshot and therefore does not need an infrastructure
-            // card demand from Phase A.
-            foreach (MobileCollectionOpportunity op in snapshot?.Economy?.MobileCollectionOpportunities
-                         ?? System.Array.Empty<MobileCollectionOpportunity>())
+            // Mobile collection is an economy mission in its own right. Analysis publishes every
+            // viable actor/site fact row; this task owner applies the one external TaskScore and
+            // chooses the same best collector per (site, resource) before mission admission.
+            IEnumerable<IGrouping<(HexCoord TargetHex, ResourceType ResourceType),
+                MobileCollectionOpportunity>> mobileGroups =
+                (snapshot?.Economy?.MobileCollectionOpportunities
+                    ?? System.Array.Empty<MobileCollectionOpportunity>())
+                .GroupBy(op => (op.TargetHex, op.ResourceType));
+            foreach (IGrouping<(HexCoord TargetHex, ResourceType ResourceType),
+                         MobileCollectionOpportunity> group in mobileGroups)
             {
                 if (activeIntents?.Any(i => i?.Status == IntentStatus.Active
                     && i.Economy?.Kind == EconomyTaskKind.MobileCollection
-                    && i.Economy.ResourceType == op.ResourceType
-                    && i.Economy.TargetHex.Equals(op.TargetHex)) == true)
+                    && i.Economy.ResourceType == group.Key.ResourceType
+                    && i.Economy.TargetHex.Equals(group.Key.TargetHex)) == true)
                     continue;
+
+                MobileCollectionOpportunity? best = null;
+                TaskScore bestScore = default;
+                foreach (MobileCollectionOpportunity candidate in group.OrderBy(x => x.CollectorArmyId))
+                {
+                    TaskScore candidateScore = BuildMobileCollectionScore(snapshot, candidate);
+                    if (candidateScore.Value <= AiConfigV2.allocatorSliceEpsilon)
+                        continue;
+                    if (!best.HasValue
+                        || candidateScore.Value > bestScore.Value
+                        || (UnityEngine.Mathf.Approximately(candidateScore.Value, bestScore.Value)
+                            && candidate.CollectorArmyId < best.Value.CollectorArmyId))
+                    {
+                        best = candidate;
+                        bestScore = candidateScore;
+                    }
+                }
+                if (!best.HasValue)
+                    continue;
+                MobileCollectionOpportunity op = best.Value;
                 var target = new EconomyMissionTarget
                 {
                     Kind = EconomyTaskKind.MobileCollection,
@@ -145,13 +201,13 @@ namespace Game.Ai.V2
                 {
                     Kind = MissionKind.Economy,
                     Target = target,
-                    BaseValue = op.Score.Value,
-                    LocalAdmissionScore = op.Score.Value,
+                    BaseValue = bestScore.Value,
+                    LocalAdmissionScore = bestScore.Value,
                     PreferredMoverArmyId = op.CollectorArmyId,
                     Requirements = Requirements(target, null, snapshot, activeIntents,
                         currentCommitments),
                     Explain = $"economy mobile-collect {op.ResourceType} actor=#{op.CollectorArmyId} "
-                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={op.Score.Value:0.##}",
+                        + $"@({op.TargetHex.Q},{op.TargetHex.R}) value={bestScore.Value:0.##}",
                 };
                 mission.Axes.Value[DesireAxis.Economy] = 1f;
                 result.Add(mission);
