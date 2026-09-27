@@ -201,6 +201,14 @@ namespace Game.Ai.V2
             return null;
         }
 
+        private static TaskScore BuildRaidScore(WorldSnapshot snap, HexCoord targetHex)
+        {
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, targetHex);
+            return new TaskScore(
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                militaryTargetRelevance: AiConfigV2.RaidReward);
+        }
+
         private static AggressionObjective Build(WorldSnapshot snap, CombatOpportunityReport report,
             CombatOpportunity o)
         {
@@ -209,10 +217,7 @@ namespace Game.Ai.V2
             // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
             // Raid targets are stationary neutrals or event guards; older sightings do not move them.
             // Keep shared StaleIntelPenalty for future attacks on mobile player armies.
-            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, o.TargetHex);
-            var score = new TaskScore(
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                militaryTargetRelevance: AiConfigV2.RaidReward);
+            TaskScore score = BuildRaidScore(snap, o.TargetHex);
 
             bool readyViable = o.CanCoverAllDefenders
                 && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
