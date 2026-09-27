@@ -39,6 +39,38 @@ namespace Game.Ai.V2
                     TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
                 delivery: TaskScoreEvaluator.DeliveryFromEta(0f, etaTurns));
 
+        internal static TaskScore BuildMobileCollectionScore(WorldSnapshot snapshot,
+            MobileCollectionOpportunity op)
+        {
+            EconomyResourceStanding standing = snapshot.Economy.PerType
+                .First(x => x.Type == op.ResourceType);
+            float usefulGain = standing.UsefulMarginalIncomeGain(op.EffectiveRemainingYield);
+            // EconomyResourceStanding already froze starvation pressure during WorldAnalysis;
+            // do not re-read mutable registry state while pricing the same snapshot.
+            float priority = TaskScoreEvaluator.ResourcePriority(standing);
+            ArmySnapshot collector = snapshot.Self.Armies
+                .FirstOrDefault(a => a != null && a.ArmyId == op.CollectorArmyId);
+            if (collector == null)
+                return default;
+            float activationApNow = !collector.HasActivatedThisTurn && op.TravelAp > 0
+                ? collector.ActivationApCost : 0f;
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                snapshot, op.TargetHex);
+            return new TaskScore(
+                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
+                    usefulGain, priority),
+                // Mobile collection has no capital/resource outlay. Arrival time is priced once
+                // by Delivery; Payback stays literal zero instead of becoming a fake best-quality
+                // 0-turn payback.
+                payback: 0f,
+                ownTerritoryProximity: Mathf.Max(0f,
+                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
+                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationApNow),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(
+                    collector.ActivationApCost, op.TurnsToFirstIncome),
+                moverOpportunityCost: 0f);
+        }
+
         private static TaskScore BuildFoundBaseScore(WorldSnapshot snap,
             IReadOnlyList<(float Gain, float Priority)> marginalByResource,
             bool hasUsefulGain, float paybackTurns, StrategicCardEvaluator.BaseSiteValue facts,
