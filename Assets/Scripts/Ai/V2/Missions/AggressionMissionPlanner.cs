@@ -165,10 +165,13 @@ namespace Game.Ai.V2
                         RaidCostEstimate staleEstimate = RaidCostModel.Estimate(snap, stale,
                             intent.PreferredMoverArmyId);
                         MissionRequirements staleCost = staleEstimate.Requirements;
-                        // Stationary neutral/event target: loss of a fresh opportunity read
-                        // does not make its last-known position less valuable.
+                        // Neutral armies and event guards are stationary Raid objectives.
+                        // Losing a fresh opportunity read only removes current visibility; it does
+                        // not move the target and must not remove the fixed intrinsic RaidReward.
+                        // Destruction/capture/invalidation is handled separately by Raid continuity
+                        // through the canonical live objective checks.
                         TaskScore staleIntrinsic = AggressionObjectiveEvaluator.BuildRaidScore(
-                            snap, intent.Raid.LastKnownHex, includeObjectiveReward: false);
+                            snap, intent.Raid.LastKnownHex);
                         TaskScore staleTask = TaskScoreEvaluator.WithResponse(
                             staleIntrinsic, 0f, staleCost.ApDesired,
                             staleEstimate.RecurringActivationAp, staleCost.EtaTurns);
