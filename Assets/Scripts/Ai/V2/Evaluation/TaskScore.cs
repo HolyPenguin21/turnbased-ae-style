@@ -229,6 +229,13 @@ namespace Game.Ai.V2
             Mathf.Max(0f, apCost) * AiConfigV2.taskScoreCardPriceApWeight
             + Mathf.Max(0f, resourceCost) * AiConfigV2.taskScoreCardPriceResourceWeight;
 
+        // Re-activating an already fielded actor is not a card play. Keep this conversion here so
+        // task owners pass raw AP facts rather than multiplying score weights themselves.
+        internal static float ReactivationApPrice(float apCost) =>
+            Mathf.Max(0f, apCost) * AiConfigV2.taskScoreReactivationApWeight;
+
+        internal static float MoverOpportunityCost(float rawCost) => Mathf.Max(0f, rawCost);
+
         // Raid/Recon already derive a real ETA (hexes -> mover's MaxMovement -> turns) for their
         // own cost models. The game's own rule (AiTurnController.MoveArmyRoutine) is: MP moves
         // an army freely within a turn, but re-activating it on each NEW turn of a multi-turn
@@ -240,6 +247,9 @@ namespace Game.Ai.V2
         // activation weight), never a different one for the same physical AP.
         internal static float DeliveryFromEta(float perTurnApCost, float etaTurns, float apWeight) =>
             Mathf.Max(0f, perTurnApCost) * Mathf.Max(0f, etaTurns - 1f) * apWeight;
+
+        internal static float DeliveryFromEta(float perTurnApCost, float etaTurns) =>
+            DeliveryFromEta(perTurnApCost, etaTurns, AiConfigV2.taskScoreReactivationApWeight);
 
         internal static int NearestOwnedHomeDistance(WorldSnapshot snap, HexCoord target,
             int fallbackDistance = 0)
@@ -342,10 +352,9 @@ namespace Game.Ai.V2
                 citadelThreatRisk: intrinsic.CitadelThreatRisk,
                 baseThreatRisk: intrinsic.BaseThreatRisk,
                 winChance: WinChance(winChance),
-                cardPrice: Mathf.Max(0f, activationApNow) * AiConfigV2.taskScoreReactivationApWeight,
-                delivery: DeliveryFromEta(recurringActivationAp, etaTurns,
-                    AiConfigV2.taskScoreReactivationApWeight),
-                moverOpportunityCost: Mathf.Max(0f, moverOpportunityCost));
+                cardPrice: ReactivationApPrice(activationApNow),
+                delivery: DeliveryFromEta(recurringActivationAp, etaTurns),
+                moverOpportunityCost: MoverOpportunityCost(moverOpportunityCost));
 
         // The same fold priced off one actor: its activation is spent now only if it has not
         // activated yet this turn. `projectedActivationAp` — the activation of the roster the
