@@ -167,13 +167,11 @@ namespace Game.Ai.V2
                         MissionRequirements staleCost = staleEstimate.Requirements;
                         // Stationary neutral/event target: loss of a fresh opportunity read
                         // does not make its last-known position less valuable.
-                        int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
-                            snap, intent.Raid.LastKnownHex);
+                        TaskScore staleIntrinsic = AggressionObjectiveEvaluator.BuildRaidScore(
+                            snap, intent.Raid.LastKnownHex, includeObjectiveReward: false);
                         TaskScore staleTask = TaskScoreEvaluator.WithResponse(
-                            new TaskScore(ownTerritoryProximity:
-                                TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                            0f, staleCost.ApDesired, staleEstimate.RecurringActivationAp,
-                            staleCost.EtaTurns);
+                            staleIntrinsic, 0f, staleCost.ApDesired,
+                            staleEstimate.RecurringActivationAp, staleCost.EtaTurns);
                         float staleValue = staleTask.Value;
                         incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",
