@@ -41,7 +41,7 @@ namespace Game.Ai.V2
             float price = TaskScoreEvaluator.CardPrice(
                 activationAp, energyCost * (1 + futureActivations));
             float delivery = TaskScoreEvaluator.DeliveryFromEta(
-                activationAp, requiredTurns, AiConfigV2.taskScoreReactivationApWeight);
+                activationAp, requiredTurns);
             return TaskScoreEvaluator.NetChange(
                 sourceService, destinationService, price, delivery);
         }
