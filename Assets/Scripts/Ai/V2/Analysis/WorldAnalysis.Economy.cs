@@ -175,9 +175,6 @@ namespace Game.Ai.V2
                     .Sum(a => a.CollectionCapacity.Get(site.ResourceType)));
 
                 EconomyResourceStanding standing = standings[site.ResourceType];
-                float priority = TaskScoreEvaluator.ResourcePriority(standing,
-                    ResourceStarvationRegistry.Pressure(player, site.ResourceType));
-                MobileCollectionOpportunity? best = null;
                 foreach (ArmySnapshot collector in (snap.Self.Armies
                              ?? System.Array.Empty<ArmySnapshot>()).Where(a => a != null
                              && !a.IsAir && !a.IsAirfield && !a.IsGarrison && !a.IsPrison
@@ -226,44 +223,13 @@ namespace Game.Ai.V2
                     int turnsToArrival = Mathf.CeilToInt(remaining
                         / (float)Mathf.Max(1, collector.MaxMovement));
                     int firstIncome = Mathf.Max(1, turnsToArrival + 1);
-                    float activationAp = !collector.HasActivatedThisTurn
-                        && route.TotalCost > 0 ? collector.ActivationApCost : 0f;
-                    int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
-                        snap, site.Hex);
-                    var taskScore = new TaskScore(
-                        economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
-                            usefulGain, priority),
-                        // Mobile collection has no capital/resource outlay. Arrival time is
-                        // priced once by Delivery; it is not a second, fake payback period.
-                        // (Payback(0f) would score a 0-turn payback as the BEST possible
-                        // quality, not "no payback" — the raw field must stay literal 0f.)
-                        payback: 0f,
-                        // No facility exists to lose if the target is abandoned — proximity is
-                        // an upside-only nicety here, never a penalty for farming far from home.
-                        ownTerritoryProximity: Mathf.Max(0f,
-                            TaskScoreEvaluator.OwnTerritoryProximity(homeDistance)),
-                        // Army activation is a reactivation fee, not a played-card/action AP cost.
-                        cardPrice: activationAp * AiConfigV2.taskScoreReactivationApWeight,
-                        delivery: TaskScoreEvaluator.DeliveryFromEta(
-                            collector.ActivationApCost, firstIncome,
-                            AiConfigV2.taskScoreReactivationApWeight),
-                        // committed actors were filtered above. A free collector does not
-                        // manufacture an opportunity penalty from its combat power.
-                        moverOpportunityCost: 0f);
-                    float score = taskScore.Value;
-                    if (score <= AiConfigV2.allocatorSliceEpsilon)
-                        continue;
-                    var candidate = new MobileCollectionOpportunity(site.Hex, site.ResourceType,
-                        marginal, collector.ArmyId, route.TotalCost, firstIncome,
-                        taskScore, safeReturn.Value);
-                    if (!best.HasValue
-                        || candidate.Score.Value > best.Value.Score.Value
-                        || (Mathf.Approximately(candidate.Score.Value, best.Value.Score.Value)
-                            && candidate.CollectorArmyId < best.Value.CollectorArmyId))
-                        best = candidate;
+                    // Analysis stops here: this is a viable physical/economic opportunity.
+                    // EconomyMissionPlanner owns the one external TaskScore assembly and chooses
+                    // which collector wins when multiple actors can serve the same site.
+                    mobileCollection.Add(new MobileCollectionOpportunity(
+                        site.Hex, site.ResourceType, marginal, collector.ArmyId,
+                        route.TotalCost, firstIncome, safeReturn.Value));
                 }
-                if (best.HasValue)
-                    mobileCollection.Add(best.Value);
             }
             eco.MobileCollectionOpportunities = mobileCollection;
 
