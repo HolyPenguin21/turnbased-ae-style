@@ -135,12 +135,24 @@ def payload():
                 elif c == "DeliveryFromEta": targets.append("Delivery")
                 elif c in ("WithResponse","WithActorResponse"):
                     targets += ["WinChance","CardPrice","Delivery","MoverOpportunityCost"]
+            window = " ".join(lines[i:min(len(lines), i+3)])
+            direct_refs = sorted(set(re.findall(r"AiConfigV2\\.(\\w+)", window)))
             for slot in set(targets):
                 key=(slot,i+1)
                 if key in seen: continue
                 seen.add(key)
                 by_name[slot]["usages"].append({"file":rel,"line":i+1,"method":method,
-                    "axis":axis,"task":task,"excerpt":line.strip()[:180]})
+                    "axis":axis,"task":task,"excerpt":line.strip()[:180],
+                    "configRefs":direct_refs})
+
+    # A category can be fed both through its canonical converter and directly from an
+    # AiConfigV2 constant (RaidReward -> MilitaryTargetRelevance is the key example).
+    # Show both, but only when the source scan proves the relationship.
+    for c in cats:
+        known = {p["name"] for p in c["parameters"]}
+        direct = sorted({r for u in c["usages"] for r in u.get("configRefs",[]) if r in param_map})
+        c["parameters"].extend(param_map[r] for r in direct if r not in known)
+        c["parameters"].sort(key=lambda p: p["name"])
 
     all_text = "\n".join(read(p) for p in AI.rglob("*.cs"))
     for p in params:
