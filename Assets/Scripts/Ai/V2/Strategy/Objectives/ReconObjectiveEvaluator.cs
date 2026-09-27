@@ -237,11 +237,11 @@ namespace Game.Ai.V2
 
             float anchorRelevance = Mathf.Max(armyConcentration ? 1f : 0.85f,
                 ReconIntelSnapshotRegistry.RefreshRelevance(snap, anchor));
-            var score = new TaskScore(
-                infoGain: TaskScoreEvaluator.InfoGain(neverObserved / (float)samples),
-                staleness: TaskScoreEvaluator.PositiveStaleness(weight > 0f ? staleWeighted / weight : 0f),
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(anchorRelevance),
-                threatDirection: TaskScoreEvaluator.ThreatDirection(armyConcentration ? 1f : 0.75f));
+            float infoGainRaw = neverObserved / (float)samples;
+            float stalenessRaw = weight > 0f ? staleWeighted / weight : 0f;
+            float threatDirectionRaw = armyConcentration ? 1f : 0.75f;
+            TaskScore score = BuildAirSweepScore(infoGainRaw, stalenessRaw,
+                anchorRelevance, threatDirectionRaw);
 
             return new ReconObjective
             {
@@ -253,7 +253,7 @@ namespace Game.Ai.V2
                 Stealth = StealthRequirement.None,
                 DistanceFromBase = HexGridMath.Distance(origin, anchor),
                 StrategicRelevance = anchorRelevance,
-                DirectionPressure = armyConcentration ? 1f : 0.75f,
+                DirectionPressure = threatDirectionRaw,
             };
         }
 
@@ -340,19 +340,65 @@ namespace Game.Ai.V2
                 DetectionRisk = detectionRisk,
             }, preferredMoverArmyId);
 
-        // Task 5 (Problem A) — cost.ApDesired mixes the mover's THIS-TURN re-activation fee (the
-        // same real AP Economy/Raid price at taskScoreReactivationApWeight) with, only when
-        // stealth must be entered this turn, a genuine one-time ability spend (correctly priced
-        // like any other played card at taskScoreCardPriceApWeight — see ScoutCostEstimate.
-        // ActivationApNow). Splitting here — instead of flattening the whole RequiredAp through a
-        // single rate — keeps this Recon-scoped fold a caller of the shared TaskScoreEvaluator
-        // conversions, not a second Fold() owner.
-        private static float ThisTurnCardPrice(ScoutCostEstimate cost)
+        // Each Recon task has one visible external-score assembly point. Helpers above/below provide
+        // raw world/route facts only; conversion to score units happens here through TaskScoreEvaluator.
+        private static TaskScore BuildAirSweepScore(float infoGainRaw, float stalenessRaw,
+            float strategicRelevanceRaw, float threatDirectionRaw) =>
+            new TaskScore(
+                infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
+                staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw));
+
+        private static TaskScore BuildExploreScore(WorldSnapshot snap, HexCoord hex,
+            float infoGainRaw, int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
-            return activationNow * AiConfigV2.taskScoreReactivationApWeight
-                + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f);
+            IReadOnlyList<(float Gain, float Priority)> ruins = RuinsEventResourceFacts(snap, hex);
+            return new TaskScore(
+                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(ruins),
+                infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationNow)
+                    + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(
+                    cost.RecurringActivationAp, cost.EtaTurns),
+                detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
+        }
+
+        private static TaskScore BuildRefreshScore(float stalenessRaw, float strategicRelevanceRaw,
+            float threatDirectionRaw, int homeDistance, ScoutCostEstimate cost,
+            float detectionRiskRaw)
+        {
+            float activationNow = Mathf.Max(0f, cost.ActivationApNow);
+            float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
+            return new TaskScore(
+                staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
+                threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationNow)
+                    + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(
+                    cost.RecurringActivationAp, cost.EtaTurns),
+                detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
+        }
+
+        private static TaskScore BuildSurveilScore(float stalenessRaw, float contactRelevanceRaw,
+            int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw)
+        {
+            float activationNow = Mathf.Max(0f, cost.ActivationApNow);
+            float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
+            return new TaskScore(
+                staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
+                contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                cardPrice: TaskScoreEvaluator.ReactivationApPrice(activationNow)
+                    + TaskScoreEvaluator.CardPrice(stealthEntryNow, 0f),
+                delivery: TaskScoreEvaluator.DeliveryFromEta(
+                    cost.RecurringActivationAp, cost.EtaTurns),
+                detectionRisk: TaskScoreEvaluator.DetectionRisk(detectionRiskRaw));
         }
 
         internal static ReconObjective BuildExplore(WorldSnapshot snap, HexCoord hex, int freshNeighbors,
@@ -373,16 +419,7 @@ namespace Game.Ai.V2
             ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Explore, req, riskRaw,
                 preferredMoverArmyId);
 
-            var score = new TaskScore(
-                economicHexBenefit: RuinsEventBenefit(snap, hex),
-                infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
-                cardPrice: ThisTurnCardPrice(cost),
-                // ApDesired is THIS TURN only (zero when the actor was already activated).
-                // Later turns reactivate at RecurringActivationAp; never reserve those future AP.
-                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
-                    AiConfigV2.taskScoreReactivationApWeight),
-                detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
+            TaskScore score = BuildExploreScore(snap, hex, infoGainRaw, homeDist, cost, riskRaw);
 
             return new ReconObjective
             {
@@ -402,17 +439,18 @@ namespace Game.Ai.V2
         // reconRuinsEventIncomeEquivalent income-equivalent units spread evenly over the resource
         // types (which type the event pays is unknown until visited), each at its canonical
         // ResourcePriority — so a starving economy values ruins more, a saturated one less.
-        private static float RuinsEventBenefit(WorldSnapshot snap, HexCoord hex)
+        private static IReadOnlyList<(float Gain, float Priority)> RuinsEventResourceFacts(
+            WorldSnapshot snap, HexCoord hex)
         {
             ISet<HexCoord> ruins = snap?.MapKnowledge?.UnvisitedRuinsHexes;
             IReadOnlyList<EconomyResourceStanding> perType = snap?.Economy?.PerType;
             if (ruins == null || !ruins.Contains(hex) || perType == null || perType.Count == 0)
-                return 0f;
+                return System.Array.Empty<(float Gain, float Priority)>();
             float share = AiConfigV2.reconRuinsEventIncomeEquivalent / perType.Count;
             var perResource = new List<(float Gain, float Priority)>(perType.Count);
             foreach (EconomyResourceStanding standing in perType)
                 perResource.Add((share, TaskScoreEvaluator.ResourcePriority(standing)));
-            return TaskScoreEvaluator.EconomicHexBenefit(perResource);
+            return perResource;
         }
 
         // Average [floor..1] information-retention factor over the Explore focus and the unvisited,
@@ -470,15 +508,8 @@ namespace Game.Ai.V2
             StealthRequirement req = exposed ? StealthRequirement.Required : StealthRequirement.None;
             ScoutCostEstimate cost = MissionCost(snap, hex, ScoutTargetKind.Refresh, req, riskRaw,
                 preferredMoverArmyId);
-            var score = new TaskScore(
-                staleness: TaskScoreEvaluator.PositiveStaleness(staleRaw),
-                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRaw),
-                threatDirection: TaskScoreEvaluator.ThreatDirection(directionalRaw),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
-                cardPrice: ThisTurnCardPrice(cost),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
-                    AiConfigV2.taskScoreReactivationApWeight),
-                detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
+            TaskScore score = BuildRefreshScore(staleRaw, strategicRaw, directionalRaw,
+                homeDist, cost, riskRaw);
 
             var objective = new ReconObjective
             {
@@ -529,14 +560,8 @@ namespace Game.Ai.V2
             ScoutCostEstimate cost = MissionCost(snap, pos, ScoutTargetKind.Surveil,
                 StealthRequirement.Required, riskRaw, preferredMoverArmyId);
 
-            var score = new TaskScore(
-                staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
-                contactRelevance: TaskScoreEvaluator.ContactRelevance(contactRelevanceRaw),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDist),
-                cardPrice: ThisTurnCardPrice(cost),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(cost.RecurringActivationAp, cost.EtaTurns,
-                    AiConfigV2.taskScoreReactivationApWeight),
-                detectionRisk: TaskScoreEvaluator.DetectionRisk(riskRaw));
+            TaskScore score = BuildSurveilScore(stalenessRaw, contactRelevanceRaw,
+                homeDist, cost, riskRaw);
 
             return new ReconObjective
             {
