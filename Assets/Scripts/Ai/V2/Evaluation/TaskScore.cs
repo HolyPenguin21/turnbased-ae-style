@@ -323,6 +323,11 @@ namespace Game.Ai.V2
         internal static float GlobalCardEffect(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreGlobalCardEffectMax;
 
+        // Some card evaluators already author this fact in TaskScore units. Clamp it here rather
+        // than letting task owners read the shared score cap directly.
+        internal static float GlobalCardEffectScoreUnits(float scoreUnits) =>
+            Mathf.Clamp(scoreUnits, 0f, AiConfigV2.taskScoreGlobalCardEffectMax);
+
         internal static float MilitaryTargetRelevance(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreMilitaryTargetMax;
 
