@@ -201,12 +201,13 @@ namespace Game.Ai.V2
             return null;
         }
 
-        private static TaskScore BuildRaidScore(WorldSnapshot snap, HexCoord targetHex)
+        internal static TaskScore BuildRaidScore(WorldSnapshot snap, HexCoord targetHex,
+            bool includeObjectiveReward = true)
         {
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, targetHex);
             return new TaskScore(
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                militaryTargetRelevance: AiConfigV2.RaidReward);
+                militaryTargetRelevance: includeObjectiveReward ? AiConfigV2.RaidReward : 0f);
         }
 
         private static AggressionObjective Build(WorldSnapshot snap, CombatOpportunityReport report,
