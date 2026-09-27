@@ -20,12 +20,14 @@ namespace Game.Ai.V2
     //  worth considering and how valuable" (BaseValue); this answers "does the concrete target
     //  operation still exist and is it done".
     //
-    //  KNOWLEDGE RULES (spec §39). Loss of current visibility is NEVER proof of destruction. The
-    //  live "satisfied" read first resolves positive live ownership and then falls back to honest
-    //  map memory. Neutral encounter armies are not guaranteed to live in GameSession.Players, so
-    //  absence from ordinary player rosters is UNKNOWN while a hostile/neutral sighting is still
-    //  remembered. This keeps a target that merely left vision — or a neutral encounter army —
-    //  alive until capture/destruction is authoritative.
+    //  KNOWLEDGE RULES (spec §39). Raid targets are stationary: a neutral encounter army and an
+    //  event guard keep the same target hex while they exist. Loss of current visibility is NEVER
+    //  proof of movement or destruction, so a started Raid keeps its last-known hex and intrinsic
+    //  RaidReward. The live "satisfied" read first resolves positive live ownership and then falls
+    //  back to honest map memory. Neutral encounter armies are not guaranteed to live in
+    //  GameSession.Players, so absence from ordinary player rosters is UNKNOWN while an honest
+    //  hostile/neutral sighting is still remembered. Actual disappearance because somebody else
+    //  destroyed/consumed the target is a separate completion/invalidation edge below.
     //
     //  EVENT GUARDS behave differently by nature, not by a weaker rule: they have no ArmyId sighting
     //  to lose track of, so "no sighting" never applies to them. They are active exactly while
