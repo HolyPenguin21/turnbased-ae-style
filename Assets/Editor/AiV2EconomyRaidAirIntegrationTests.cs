@@ -46,6 +46,58 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void MobileCollection_SelectsBestCollectorByCanonicalTaskScore()
+        {
+            HexCoord target = new HexCoord(3, 2);
+            var standing = new EconomyResourceStanding
+            {
+                Type = ResourceType.Materials,
+                OwnIncome = 0f,
+                HandResourceNeed = 100f,
+                SpendableStockpile = 0f,
+                DeficitScore = 1f,
+            };
+            var snapshot = new WorldSnapshot
+            {
+                Self = new SelfSnapshot
+                {
+                    Armies = new[]
+                    {
+                        new ArmySnapshot
+                        {
+                            ArmyId = 1, Hex = new HexCoord(1, 1), MaxMovement = 4,
+                            CurrentMovement = 4, ActivationApCost = 3,
+                        },
+                        new ArmySnapshot
+                        {
+                            ArmyId = 2, Hex = new HexCoord(1, 1), MaxMovement = 4,
+                            CurrentMovement = 4, ActivationApCost = 1,
+                        },
+                    },
+                },
+                Economy = new EconomyStanding
+                {
+                    PerType = new[] { standing },
+                    MobileCollectionOpportunities = new[]
+                    {
+                        new MobileCollectionOpportunity(target, ResourceType.Materials,
+                            2, 1, 2, 1, new HexCoord(0, 0)),
+                        new MobileCollectionOpportunity(target, ResourceType.Materials,
+                            2, 2, 2, 1, new HexCoord(0, 0)),
+                    },
+                },
+            };
+
+            List<MissionProposal> proposals = EconomyMissionPlanner.Propose(snapshot,
+                new DesireBreakdown(), Array.Empty<MissionIntent>(), null);
+
+            MissionProposal mission = proposals.Single();
+            var payload = (EconomyMissionTarget)mission.Target;
+            Assert.That(payload.CollectorArmyId, Is.EqualTo(2),
+                "the task owner must compare candidate collectors on the canonical TaskScore");
+        }
+
+        [Test]
         public void MobileCollection_IsProposedWithoutInfrastructureDemand()
         {
             HexCoord target = new HexCoord(3, 2);
