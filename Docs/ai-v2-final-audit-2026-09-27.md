@@ -353,9 +353,10 @@ Economy→бюджет ✅ (Orlan AP 8→16, ресурсы), Attack/Defence→�
 
 ### F3 — оборона под осадой получала минимальный вес радара (ИСПРАВЛЕНО)
 
-* **Уровни:** Strategy/Desire — `StrategyLayer.Evaluate`; Strategy/Objectives —
-  `AggressionObjectiveEvaluator.Build` (Raid), `AttackObjectiveEvaluator` (Attack);
-  Missions — `AggressionMissionPlanner` (стейл-инкумбент Raid в тумане).
+* **Уровни:** Strategy/Desire — `StrategyLayer.Evaluate`; Strategy/Objectives — единые
+  владельцы интринсика `AggressionObjectiveEvaluator.BuildRaidScore` (Raid, включая
+  стейл-инкумбент в тумане, который `AggressionMissionPlanner` строит через него же) и
+  `AttackObjectiveEvaluator.BuildAttackScore` (Attack).
 * **Корень:** `2f6a4635` убрал `max(threat, …)` из AGG, но оставил `× aggSiegeDamp (0.2)`.
   Радар масштабирует ось целиком, а на оси AGG живут и наступление, и ActiveDefence — осада
   резала оборону в ~5 раз.
