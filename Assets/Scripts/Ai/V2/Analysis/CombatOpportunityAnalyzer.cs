@@ -50,6 +50,13 @@ namespace Game.Ai.V2
             OpportunityScore = opportunityScore;
         }
 
+        // The ONE "can we take this fight now" rule: the shared gate passed, or the ready or
+        // assemblable force covers every defender at the Raid floor. Objective admission and
+        // ForceNeedModel both read it.
+        public bool IsViable => GatePassed
+            || (CanCoverAllDefenders && (ReadyWinChance >= AiConfigV2.raidMinViableWinChance
+                || AssemblableWinChance >= AiConfigV2.raidMinViableWinChance));
+
         public static CombatOpportunity None =>
             new CombatOpportunity(false, default, RaidTargetRef.None, null, false, 0, 0f, 0f, false, 0f, 0, 0f, 0f, false, 0f);
     }

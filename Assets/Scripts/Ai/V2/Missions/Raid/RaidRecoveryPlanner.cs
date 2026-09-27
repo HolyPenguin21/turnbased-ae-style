@@ -76,11 +76,11 @@ namespace Game.Ai.V2
             internal readonly int? DonorArmyId;
 
             internal Candidate(RaidRefitAction action, float gain,
-                int stableIndex, int? donorArmyId)
+                int stableIndex, int? donorArmyId, WorldSnapshot snap)
             {
                 Action = action;
                 Gain = gain;
-                Score = ScoreRefitAction(action);
+                Score = ScoreRefitAction(action, snap);
                 StableIndex = stableIndex;
                 DonorArmyId = donorArmyId;
             }
@@ -180,7 +180,7 @@ namespace Game.Ai.V2
                 currentWin, unavailableArmyIds, fixedWingArmyId))
             {
                 TaskScore score = PlanScore(o.WinAfter, 0f, o.Ap, o.Resources, o.EtaTurns,
-                    o.RecurringAp, 2);
+                    o.RecurringAp, DisplacedValue(snap, new[] { o.WingArmyId }), snap);
                 var option = new RaidRecoveryProjection(true,
                     RaidMissionPhase.AirSupport, null, null, o.WingArmyId, o.LandingHex,
                     o.EtaTurns, o.Ap, o.Resources, 2, currentWin, o.WinAfter, score, default,
@@ -302,8 +302,10 @@ namespace Game.Ai.V2
             int blockedActors = 1 + donorsBlocked;
             float activationApNow = primary.HasActivatedThisTurn
                 || toBase + toTarget <= 0 ? 0f : primary.ActivationApCost;
+            // Base donors only hand over spare bodies (CanSpareForRaid): no army leaves its task,
+            // so nothing is displaced.
             TaskScore score = PlanScore(win, ap, activationApNow, spent, toBase + toTarget,
-                primary.ActivationApCost, blockedActors);
+                primary.ActivationApCost, displacedValue: 0f, snap: snap);
             // Always RecoveryReturn, even when atBase leaves nothing to travel (toBase == 0): the
             // primary retreating IS the operation ending, whether or not it had to walk there (see
             // CompleteRaidRecoveryReturn's own comment) — there is no longer a distinct "already
@@ -369,7 +371,7 @@ namespace Game.Ai.V2
                 int eta = travelTurns + 1;
                 float ap = support.HasActivatedThisTurn ? 0f : support.ActivationApCost;
                 TaskScore score = PlanScore(after, 0f, ap, ResourceVector.Zero, travelTurns,
-                    support.ActivationApCost, 2);
+                    support.ActivationApCost, DisplacedValue(snap, new[] { support.ArmyId }), snap);
                 var option = new RaidRecoveryProjection(true, RaidMissionPhase.Reinforcement,
                     null, support.ArmyId, null, null, eta, ap, ResourceVector.Zero, 2,
                     currentWin, after, score, default,
@@ -391,7 +393,7 @@ namespace Game.Ai.V2
                 RaidRecoveryMemberSnapshot source = member.Source;
                 if (!source.RepairCostInitialized
                     || member.Profile.HitPoints >= source.FullHealthProfile.MaxHitPoints
-                    || !Covers(snap.Self.Stockpile, spent + source.RepairCost))
+                    || !Covers(SpendableStock(snap), spent + source.RepairCost))
                     continue;
                 var projected = roster.Select(x => x.Profile).ToList();
                 projected[roster.IndexOf(member)] = source.FullHealthProfile;
@@ -408,7 +410,7 @@ namespace Game.Ai.V2
                     WinChanceBefore = winBefore,
                     WinChanceAfter = after,
                 };
-                result.Add(new Candidate(action, gain, source.UnitIndex, null));
+                result.Add(new Candidate(action, gain, source.UnitIndex, null, snap));
             }
 
             int currentMemberCount = primary.MemberCount + (roster.Count - initialCombatBodyCount);
@@ -437,7 +439,7 @@ namespace Game.Ai.V2
                         WinChanceAfter = after,
                     };
                     result.Add(new Candidate(action, after - winBefore,
-                        donor.UnitIndex, donorArmy.ArmyId));
+                        donor.UnitIndex, donorArmy.ArmyId, snap));
                     continue;
                 }
 
@@ -462,7 +464,7 @@ namespace Game.Ai.V2
                         WinChanceAfter = after,
                     };
                     result.Add(new Candidate(action, after - winBefore,
-                        donor.UnitIndex, donorArmy.ArmyId));
+                        donor.UnitIndex, donorArmy.ArmyId, snap));
                 }
             }
             return result;
@@ -543,34 +545,48 @@ namespace Game.Ai.V2
         private static int CeilTurns(ArmySnapshot army, int distance) =>
             AiV2Util.TurnsToCover(army, distance);
 
+        // The repair is paid later by the Phase-B maintenance spend, which must fit
+        // StrategicSpendability; project it against the same owner-aware spendable stock (holds of
+        // other axes and unpaid air-recovery Energy excluded), never the raw stockpile.
+        private static ResourceBundle SpendableStock(WorldSnapshot snap) =>
+            snap?.Economy != null ? snap.Economy.SpendableStockpile : snap?.Self?.Stockpile ?? default;
+
         private static bool Covers(ResourceBundle stock, ResourceVector cost) =>
             stock.Human + 0.001f >= cost.Human && stock.Energy + 0.001f >= cost.Energy
             && stock.Materials + 0.001f >= cost.Materials && stock.Tech + 0.001f >= cost.Tech;
 
-        internal static TaskScore ScoreRefitAction(RaidRefitAction action) =>
+        // A refit donor hands over a spare body (CanSpareForRaid) and keeps its own task, so a
+        // refit displaces no actor: MoverOpportunityCost stays zero.
+        internal static TaskScore ScoreRefitAction(RaidRefitAction action, WorldSnapshot snap = null) =>
             new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(action.WinChanceAfter),
-                cardPrice: TaskScoreEvaluator.CardPrice(
-                    action.ApCost, ResourceMagnitude(action.ResourceCost)),
-                moverOpportunityCost: action.DonorArmyId.HasValue ? 1f : 0f);
+                cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(action.ApCost)
+                    + ActionPrice.Resources(action.ResourceCost, snap)));
+
+        // The value lost by the tasks of the armies this plan moves off what they do (a field
+        // support walking to the primary, an air wing flying the strike), summed on the
+        // TaskScore scale. The primary is this operation's own actor and is never charged.
+        private static float DisplacedValue(WorldSnapshot snap, IEnumerable<int> armyIds)
+        {
+            IEnumerable<MissionIntent> intents = snap?.Observer == null ? null
+                : MissionIntentRegistry.GetOrCreate(snap.Observer).All;
+            return armyIds.Distinct().Sum(id => MissionIntent.DisplacementValueOf(intents, id));
+        }
 
         private static TaskScore PlanScore(float projectedWinChance, float actionApCost,
             float activationApNow, ResourceVector resourceCost, int deliveryEtaTurns,
-            float recurringActivationAp, int blockedActors) =>
+            float recurringActivationAp, float displacedValue, WorldSnapshot snap) =>
             new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(projectedWinChance),
                 // Action AP uses the shared card/action rate. Army activation uses the
                 // shared reactivation rate; both remain one physical CardPrice slot.
-                cardPrice: TaskScoreEvaluator.CardPrice(
-                    actionApCost, ResourceMagnitude(resourceCost))
-                    + TaskScoreEvaluator.ReactivationApPrice(activationApNow),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    recurringActivationAp, deliveryEtaTurns),
-                // The primary is already committed in every recovery option. Only additional
-                // support/donor actors are an opportunity cost.
-                moverOpportunityCost: Math.Max(0, blockedActors - 1));
+                cardPrice: TaskScoreEvaluator.Price(ActionPrice.Ap(actionApCost)
+                    + ActionPrice.Resources(resourceCost, snap) + ActionPrice.Ap(activationApNow)),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                    recurringActivationAp, deliveryEtaTurns)),
+                // The primary is already committed in every recovery option. Only the tasks the
+                // additional support/donor actors abandon are an opportunity cost.
+                moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(displacedValue));
 
-        private static float ResourceMagnitude(ResourceVector v) =>
-            v.Human + v.Energy + v.Materials + v.Tech;
     }
 }

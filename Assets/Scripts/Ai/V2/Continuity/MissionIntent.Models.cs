@@ -409,8 +409,48 @@ namespace Game.Ai.V2
         public int StallTurns;
         // The canonical TaskScore value of the last admitted proposal of this operation that
         // carried one (lifecycle legs carry 0 and never overwrite it). What abandoning the
-        // operation costs (GroundCombatDonorPolicy.BorrowableDonorApPrices). Continuity writes it.
+        // operation costs (DisplacementValue below). Continuity writes it.
         public float LastIntrinsicValue;
+
+        // What taking this intent's actor away NOW loses, on the TaskScore scale — the ONE raw
+        // fact every MoverOpportunityCost is built from (Economy builder loans, Attack gather
+        // donors, Raid recovery donors). A lifecycle leg (return / recovery) carries no intrinsic
+        // value of its own, whatever operation value it last carried; an intent that is not
+        // Active loses nothing.
+        public float DisplacementValue =>
+            Status != IntentStatus.Active || IsLifecycleLeg ? 0f : Math.Max(0f, LastIntrinsicValue);
+
+        public bool IsLifecycleLeg
+        {
+            get
+            {
+                if (Economy != null)
+                    return Economy.Kind == EconomyTaskKind.ReturnBuilder
+                        || Economy.Kind == EconomyTaskKind.ReturnCollector;
+                if (Raid != null)
+                    return Raid.CompletedTargetAwaitingFreshDecision
+                        || Raid.Phase == RaidMissionPhase.Return
+                        || Raid.Phase == RaidMissionPhase.RecoveryReturn;
+                if (Attack != null)
+                    return Attack.Phase == AttackMissionPhase.RecoveryReturn;
+                if (ActiveDefence != null)
+                    return ActiveDefence.Phase == ActiveDefencePhase.Return;
+                return false;
+            }
+        }
+
+        // The value lost by taking `armyId` off whatever it is doing now. `isOwn` names the
+        // intents the asking task continues (its own durable intent): continuing yourself is free.
+        public static float DisplacementValueOf(IEnumerable<MissionIntent> intents, int armyId,
+            Func<MissionIntent, bool> isOwn = null)
+        {
+            float lost = 0f;
+            foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
+                if (i != null && i.PreferredMoverArmyId == armyId && (isOwn == null || !isOwn(i)))
+                    lost = Math.Max(lost, i.DisplacementValue);
+            return lost;
+        }
+
         public float CumulativeApSpent;
         public int StepsMovedTotal;
         private int? _preferredMoverArmyId;

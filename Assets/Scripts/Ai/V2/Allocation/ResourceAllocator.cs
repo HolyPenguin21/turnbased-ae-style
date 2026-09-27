@@ -586,9 +586,8 @@ namespace Game.Ai.V2
             float budget = Mathf.Max(0f, entitlement - lockedStrict);
 
             ResourceBundle stock = _snap?.Self?.Stockpile ?? default;
-            // Raw physical stock. Owner-aware ledger holds are NOT netted here: an Economy build's own
-            // deferred hold would then block its own funding. Non-Economy consumers apply
-            // StrategicSpendability at their Provisioning gate instead.
+            // Raw physical stock. Owner-aware ledger holds are netted per candidate in
+            // PhysicalAvailableFor (an Economy build's own hold must not block its own funding).
             var physicalPool = new ResourceVector(0f, stock.Human, stock.Energy, stock.Materials, stock.Tech);
             var lockedPhysical = ResourceVector.Zero;
             foreach (LockedAllocation lc in _lockedClaims.Values)
@@ -948,30 +947,44 @@ namespace Game.Ai.V2
                 Mathf.Max(baseMin.Tech, floor.Physical.Tech));
         }
 
-        // Economy audit B7 — an Economy build completes against the SAME spendable pool
-        // Provisioning checks it with (StrategicSpendability.FitsSpendableForEconomyCompletion):
-        // raw stock minus every explicit hold except EconomyDeferredBuild rows and its own owner's
-        // rows, minus the unpaid Energy of mandatory air recovery (StrategicSpendability.
-        // OutstandingRecoveryEnergy — the same subtraction that gate makes). Funding it from raw
-        // stock instead made Provisioning reject it, the reprice floor re-funded it from the same
-        // raw stock, and the bounded re-pack ended the whole typed admission. Other missions keep
-        // the raw pool and their Provisioning gates.
+        // ONE physical pool for every mission kind — the pool its own Provisioning gate measures
+        // with (StrategicSpendability): raw stock minus every explicit hold, minus the unpaid
+        // Energy of mandatory air recovery (StrategicSpendability.OutstandingRecoveryEnergy).
+        // An Economy build completes against FitsSpendableForEconomyCompletion's pool: other
+        // builds' EconomyDeferredBuild rows and its own owner's rows are not held against it.
+        // Economy audit B7 showed the failure of two pools: a candidate funded from a pool its
+        // gate does not use is rejected at Provisioning, repriced from the same pool again, and
+        // the bounded re-pack ends admission — and meanwhile it starves the candidates behind it.
+        // A hold whose owner's own Economy mission already drew those units in this pack (locked
+        // or funded) is credited once per owner, so the same units are never subtracted twice
+        // (once from `remaining`, once as a hold).
         private ResourceVector PhysicalAvailableFor(MissionProposal m, ResourceVector remaining,
             IReadOnlyList<FundedEntry> funded)
         {
-            if (m?.Kind != MissionKind.Economy || _player == null)
+            if (_player == null)
                 return remaining;
-            string owner = EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m));
+            bool economy = m?.Kind == MissionKind.Economy;
+            string owner = economy ? EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)) : null;
+            StrategicReservationReason? ignored = economy
+                ? StrategicReservationReason.EconomyDeferredBuild : (StrategicReservationReason?)null;
+            var creditedReasons = new[]
+            {
+                StrategicReservationReason.EconomyBuildCompletion,
+                StrategicReservationReason.EconomyDeferredBuild,
+            }.Where(reason => reason != ignored).ToArray();
             int turn = _snap?.TurnNumber ?? 0;
             float Held(StrategicReservedResource r)
             {
-                float held = StrategicResourceReservationLedger.Active(
-                    _player, turn, r, owner, StrategicReservationReason.EconomyDeferredBuild);
-                foreach (string other in StrategicResourceReservationLedger.CompletionOwners(_player, turn))
+                float held = StrategicResourceReservationLedger.Active(_player, turn, r, owner, ignored);
+                IEnumerable<string> owners = creditedReasons
+                    .SelectMany(reason => StrategicResourceReservationLedger.OwnersWithReason(
+                        _player, turn, reason))
+                    .Distinct();
+                foreach (string other in owners)
                 {
                     if (other == owner) continue;
-                    float ownerHold = StrategicResourceReservationLedger.CompletionForOwner(
-                        _player, turn, other, r);
+                    float ownerHold = creditedReasons.Sum(reason =>
+                        StrategicResourceReservationLedger.HoldForOwner(_player, turn, other, reason, r));
                     if (ownerHold <= 0f) continue;
                     float claimed = 0f;
                     foreach (LockedAllocation locked in _lockedClaims.Values)

@@ -151,9 +151,14 @@ namespace Game.Ai.V2
                 : activationAp + stealthSurcharge + demand.MinimumFollowupAp;
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps) return;
-            if (root.ActionPoints - need - AiConfigV2.housekeepingApReserve < -eps) return;
-            // A builder-hero chain may use its own pending build's deferred hold (see
+            // Admission measures AP on the SAME owner-aware pool MaterializationExecutor re-checks
+            // with (StrategicSpendability.ReservesOkAfterChain): another owner's AP hold (an Economy
+            // completion, a reaction envelope) and unpaid air-recovery activation are not
+            // available, so a chain is never admitted that execution must refuse.
+            // A builder-hero chain may use its own pending build's hold (see
             // AxisDemand.EconomyHeroBuildOwner); every other owner's hold still counts.
+            if (StrategicSpendability.SpendableAp(player, root, ctx, demand?.EconomyHeroBuildOwner)
+                    - need - AiConfigV2.housekeepingApReserve < -eps) return;
             if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost,
                     demand?.EconomyHeroBuildOwner)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;

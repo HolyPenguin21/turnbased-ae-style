@@ -18,10 +18,10 @@ namespace Game.Ai.V2
                 economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(
                     Mathf.Max(0f, expectedIncomeGain), Mathf.Clamp01(deficit)),
                 payback: TaskScoreEvaluator.Payback(paybackTurns),
-                cardPrice: TaskScoreEvaluator.CardPrice(
-                    Mathf.Max(0f, assignmentApCost), Mathf.Max(0f, resourceCost)),
-                delivery: TaskScoreEvaluator.ReactivationApPrice(travelCost),
-                moverOpportunityCost: Mathf.Max(0f, heroOpportunityCost),
+                cardPrice: TaskScoreEvaluator.Price(Mathf.Max(0f, assignmentApCost)
+                    + Mathf.Max(0f, resourceCost) * AiConfigV2.actionPriceResourceAp),
+                delivery: TaskScoreEvaluator.Price(travelCost),
+                moverOpportunityCost: TaskScoreEvaluator.MoverOpportunityCost(heroOpportunityCost),
                 hexThreatRisk: TaskScoreEvaluator.HexThreatRisk(threatExposure));
             return score.Value;
         }

@@ -121,19 +121,22 @@ namespace Game.EditorTests
             float freeCost = DemandLayer.EstimateEconomyAssignmentAp(freeAdjacent, 2f, false);
             Assert.That(pinnedCost, Is.GreaterThan(freeCost));
         }
+        // The donor scout's own task is worth 4 on the TaskScore scale: that value, not a
+        // constant, is what a loan takes from it (MissionIntent.DisplacementValue).
         private static MissionIntent LoanableScout() => new MissionIntent
         {
             Kind = MissionKind.Scout,
             Status = IntentStatus.Active,
             Funding = CommitmentTier.Soft,
             Objective = new ScoutIntent { Kind = ScoutTargetKind.Explore },
+            LastIntrinsicValue = 4f,
         };
 
         [Test]
         public void EconomyLoan_AlreadyActivatedMoverPaysNoPerHexFee()
         {
             // 3 hexes, 3 MP and activation already paid: only 2 card AP, no extra AP.
-            // The same site score 7 minus interruption loss 4 = 3 (above threshold 1.6).
+            // The same site score 7 minus the donor task's value 4 = 3 (above threshold 1.6).
             var route = Route(3, 3, 3, true, activationApCost: 4);
             var choice = new DemandLayer.EconomyBuilderChoice
             {
@@ -213,6 +216,60 @@ namespace Game.EditorTests
             Assert.That(DemandLayer.EconomyLoanAllowed(LoanableScout(), 7f,
                 choice, 2f, out float updated), Is.False);
             Assert.That(updated, Is.EqualTo(-1f));
+        }
+
+        [Test]
+        public void EconomyLoan_ChargesTheDonorTasksOwnValue()
+        {
+            var route = Route(3, 3, 3, true, activationApCost: 4);
+            var choice = new DemandLayer.EconomyBuilderChoice
+            {
+                Route = route,
+                TotalAssignmentApCost = DemandLayer.EstimateEconomyAssignmentAp(route, 2f, false),
+            };
+            MissionIntent valuable = LoanableScout();
+            valuable.LastIntrinsicValue = 9f;
+            DemandLayer.EconomyLoanAllowed(valuable, 12f, choice, 2f, out float net);
+            Assert.That(net, Is.EqualTo(3f), "a donor worth 9 costs 9, not a fixed loss");
+
+            MissionIntent suspended = LoanableScout();
+            suspended.Status = IntentStatus.Suspended;
+            Assert.That(suspended.DisplacementValue, Is.Zero,
+                "an intent that is not running loses nothing");
+        }
+
+        [Test]
+        public void DisplacementValue_LifecycleLegsLoseNothing()
+        {
+            var returning = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.ReturnBuilder },
+                LastIntrinsicValue = 12f,
+            };
+            Assert.That(returning.DisplacementValue, Is.Zero,
+                "a builder walking home keeps its old build value but loses nothing when taken");
+
+            var raid = new MissionIntent
+            {
+                Kind = MissionKind.Raid, Status = IntentStatus.Active,
+                Objective = new RaidIntent { Phase = RaidMissionPhase.Return },
+                LastIntrinsicValue = 10f,
+            };
+            Assert.That(raid.DisplacementValue, Is.Zero);
+            raid.Raid.Phase = RaidMissionPhase.Assault;
+            Assert.That(raid.DisplacementValue, Is.EqualTo(10f));
+
+            var own = new MissionIntent
+            {
+                Kind = MissionKind.Economy, Status = IntentStatus.Active,
+                Objective = new EconomyIntent { Kind = EconomyTaskKind.BuildExtraction },
+                LastIntrinsicValue = 7f, PreferredMoverArmyId = 5,
+            };
+            Assert.That(MissionIntent.DisplacementValueOf(new[] { own }, 5), Is.EqualTo(7f),
+                "another Economy site's builder is not free any more");
+            Assert.That(MissionIntent.DisplacementValueOf(new[] { own }, 5, i => i == own),
+                Is.Zero, "continuing its own build is free");
         }
 
     }

@@ -8,12 +8,36 @@ using UnityEngine;
 
 namespace Game.Ai.V2
 {
+    // The turn's operational mission loop has had its chance to fund and run every continuing
+    // operation. From then on (Phase B, housekeeping, reactions of the same turn) the Hard-operation
+    // continuation protection no longer holds AP: an operation still standing was not funded or
+    // could not step, and freezing its AP would only waste it. Turn-stamped; lazily resets.
+    internal static class OperationContinuationWindow
+    {
+        private static readonly Dictionary<PlayerSetupData, int> SettledTurn =
+            new Dictionary<PlayerSetupData, int>();
+
+        internal static void Settle(PlayerSetupData player, int turn)
+        {
+            if (player != null)
+                SettledTurn[player] = turn;
+        }
+
+        internal static bool IsSettled(PlayerSetupData player, int turn) =>
+            player != null && SettledTurn.TryGetValue(player, out int t) && t == turn;
+
+        // Match-start reset (CitadelSetupController), alongside the other V2 registries.
+        internal static void ClearAll() => SettledTurn.Clear();
+    }
+
     // ARCH-02 §45/§47 — the ONE owner-aware strategic-spendability seam. Every "can I afford this
     // persistent-resource cost right now" question in the strategic + materialization + reaction
     // paths goes through SpendableAmount, which nets from the raw PlayerRoot stockpile:
     //   · StrategicResourceReservationLedger — the owner-aware explicit reservations (e.g. a
-    //     bounded reaction envelope), optionally excluding the caller's own owner key; and
-    //   · the unpaid activation of mandatory air-recovery wings (OutstandingRecoveryActivation).
+    //     bounded reaction envelope), optionally excluding the caller's own owner key;
+    //   · the unpaid activation of mandatory air-recovery wings (OutstandingRecoveryActivation); and
+    //   · the unpaid activation of continuing Hard ground-combat operations
+    //     (OutstandingOperationContinuationAp, AP only).
     public static class StrategicSpendability
     {
         // An already-airborne wing whose canonical lifecycle projection demands Return, or whose
@@ -54,6 +78,88 @@ namespace Game.Ai.V2
             return (ap, energy);
         }
 
+        // A Hard ground-combat operation (Raid, Attack, ActiveDefence) is already underway: an
+        // intercept has set out, an assault has started, supports are walking to a gather. Phase A
+        // card play runs BEFORE the mission allocator funds commitments, so without protection a
+        // card could spend the AP the operation needs for its next step — the gap
+        // EconomyBuildCompletion closes for a build that finishes now. Protected: the unpaid
+        // activation of every army the operation's CURRENT leg moves (Raid Assault -> primary,
+        // Reinforcement -> support; Attack Assault -> primary, Gather -> each walking support,
+        // Reinforcement -> support; ActiveDefence Intercept -> primary) that can still act this
+        // turn (has not activated, has movement). Lifecycle legs (returns, recovery) own no
+        // protection — they carry no operation value (MissionIntent.IsLifecycleLeg). Live, like
+        // OutstandingRecoveryActivation: activation, loss, a phase change or the end of the
+        // operation releases it at once; after the operational loop settles
+        // (OperationContinuationWindow) nothing is held. Only the prefix that fits today's AP left
+        // after air recovery is protected, so an unaffordable continuation never freezes the pool.
+        // The mission allocator does not read this: it is the owner that funds these operations.
+        private static float OutstandingOperationContinuationAp(PlayerSetupData player,
+            PlayerRoot root, AiTurnContext ctx, float apAlreadyProtected)
+        {
+            if (player == null || root == null || ctx == null
+                || OperationContinuationWindow.IsSettled(player, ctx.TurnNumber))
+                return 0f;
+            var movers = new SortedSet<int>();
+            foreach (MissionIntent intent in MissionIntentRegistry.GetOrCreate(player).All)
+            {
+                if (intent == null || intent.Status != IntentStatus.Active
+                    || intent.Funding != CommitmentTier.Hard || intent.IsLifecycleLeg)
+                    continue;
+                foreach (int id in OperationLegMovers(intent))
+                    movers.Add(id);
+            }
+            if (movers.Count == 0)
+                return 0f;
+            float available = Mathf.Max(0f, root.ActionPoints - apAlreadyProtected);
+            float protectedAp = 0f;
+            var live = new Dictionary<int, ArmyData>();
+            foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
+                if (a != null)
+                    live[a.Id] = a;
+            foreach (int id in movers)
+            {
+                if (!live.TryGetValue(id, out ArmyData army)
+                    || army == null || army.HasActivatedThisTurn || army.CurrentMovement <= 0)
+                    continue;
+                float activation = Mathf.Max(0, army.ActivationApCost);
+                if (protectedAp + activation > available)
+                    break;
+                protectedAp += activation;
+            }
+            return protectedAp;
+        }
+
+        private static IEnumerable<int> OperationLegMovers(MissionIntent intent)
+        {
+            if (intent.Raid != null)
+            {
+                RaidIntent r = intent.Raid;
+                if (r.Phase == RaidMissionPhase.Assault && r.PrimaryArmyId.HasValue)
+                    yield return r.PrimaryArmyId.Value;
+                else if (r.Phase == RaidMissionPhase.Reinforcement && r.SupportArmyId.HasValue)
+                    yield return r.SupportArmyId.Value;
+            }
+            else if (intent.Attack != null)
+            {
+                AttackIntent a = intent.Attack;
+                if (a.Phase == AttackMissionPhase.Assault && a.PrimaryArmyId.HasValue)
+                    yield return a.PrimaryArmyId.Value;
+                else if (a.Phase == AttackMissionPhase.Gather)
+                {
+                    foreach (int id in a.GatherSupportArmyIds)
+                        yield return id;
+                }
+                else if (a.Phase == AttackMissionPhase.Reinforcement && a.SupportArmyId.HasValue)
+                    yield return a.SupportArmyId.Value;
+            }
+            else if (intent.ActiveDefence != null)
+            {
+                ActiveDefenceIntent d = intent.ActiveDefence;
+                if (d.Phase == ActiveDefencePhase.Intercept && d.PrimaryArmyId.HasValue)
+                    yield return d.PrimaryArmyId.Value;
+            }
+        }
+
         // The Energy that protection subtracts, for a consumer that nets its own pool from a
         // different base (ResourceAllocator funds Economy builds against the SAME pool
         // FitsSpendableForEconomyCompletion checks them with).
@@ -85,7 +191,9 @@ namespace Game.Ai.V2
                 : StrategicResourceReservationLedger.SpendableExcludingOwner(
                     player, ctx.TurnNumber, StrategicReservedResource.ActionPoints,
                     root.ActionPoints, excludeOwner);
-            return Mathf.Max(0f, strategic - OutstandingRecoveryActivation(player, root, ctx).Ap);
+            float recoveryAp = OutstandingRecoveryActivation(player, root, ctx).Ap;
+            float continuationAp = OutstandingOperationContinuationAp(player, root, ctx, recoveryAp);
+            return Mathf.Max(0f, strategic - recoveryAp - continuationAp);
         }
 
         // The canonical primitive: how much of resource `t` may actually be spent this turn.

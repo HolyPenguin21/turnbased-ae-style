@@ -18,7 +18,9 @@ namespace Game.Ai.V2
         private readonly struct ScoutCandidate
         {
             public readonly ScoutMissionTarget Target;
-            public readonly float BaseValue;
+            // The scored world task; BaseValue is its fold, never a separately carried number.
+            public readonly TaskScore Score;
+            public float BaseValue => Score.Value;
             public readonly float LocalAdmissionScore;
             public readonly string Explain;
             public readonly int FreshNeighbors;
@@ -26,12 +28,12 @@ namespace Game.Ai.V2
             public readonly CommitmentTier Tier;
             public readonly int? PreferredMover;
 
-            public ScoutCandidate(ScoutMissionTarget target, float baseValue, float localAdmissionScore, string explain,
+            public ScoutCandidate(ScoutMissionTarget target, TaskScore score, float localAdmissionScore, string explain,
                 bool isIncumbent = false, CommitmentTier tier = CommitmentTier.None, int? preferredMover = null,
                 int freshNeighbors = 0)
             {
                 Target = target;
-                BaseValue = baseValue;
+                Score = score;
                 LocalAdmissionScore = localAdmissionScore;
                 Explain = explain;
                 FreshNeighbors = freshNeighbors;
@@ -41,7 +43,7 @@ namespace Game.Ai.V2
             }
 
             public ScoutCandidate AsIncumbent(CommitmentTier tier, int? preferredMover) =>
-                new ScoutCandidate(Target, BaseValue, LocalAdmissionScore, Explain + " [incumbent]", true, tier,
+                new ScoutCandidate(Target, Score, LocalAdmissionScore, Explain + " [incumbent]", true, tier,
                     preferredMover, FreshNeighbors);
         }
 
@@ -209,7 +211,7 @@ namespace Game.Ai.V2
                 explain = $"UnknownReconObjective kind={(int)o.Kind} suppressed";
             }
 
-            return new ScoutCandidate(target, o.BaseValue, admission, explain,
+            return new ScoutCandidate(target, o.TaskScore, admission, explain,
                 freshNeighbors: explore ? o.FreshNeighbors : 0);
         }
 
@@ -256,6 +258,7 @@ namespace Game.Ai.V2
                 Kind = MissionKind.Scout,
                 Target = c.Target,
                 BaseValue = c.BaseValue,
+                Score = c.Score,
                 Requirements = req,
                 LocalAdmissionScore = c.LocalAdmissionScore,
                 FromDurableIntent = c.IsIncumbent,

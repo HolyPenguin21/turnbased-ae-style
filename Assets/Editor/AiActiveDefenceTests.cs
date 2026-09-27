@@ -103,8 +103,8 @@ namespace Game.EditorTests
             var objective = new ActiveDefenceObjective
             {
                 TaskScore = new TaskScore(strategicRelevance: 10f,
-                    threatDirection: 4f, militaryTargetRelevance: 3f,
-                    staleness: -1f, ownTerritoryProximity: 2f),
+                    threatDirection: 4f, preventedDamage: 3f,
+                    intelAgePenalty: 1f, ownTerritoryProximity: 2f),
             };
             var actor = new ArmySnapshot
             {
@@ -115,7 +115,8 @@ namespace Game.EditorTests
 
             Assert.That(score.StrategicRelevance, Is.EqualTo(10f));
             Assert.That(score.ThreatDirection, Is.EqualTo(4f));
-            Assert.That(score.MilitaryTargetRelevance, Is.EqualTo(3f));
+            Assert.That(score.PreventedDamage, Is.EqualTo(3f));
+            Assert.That(score.IntelAgePenalty, Is.EqualTo(1f));
             Assert.That(score.MoverOpportunityCost, Is.EqualTo(1f));
         }
 
@@ -169,12 +170,18 @@ namespace Game.EditorTests
             };
 
             Dictionary<int, float> prices =
-                GroundCombatDonorPolicy.BorrowableDonorApPrices(new[] { defence, raid });
+                GroundCombatDonorPolicy.BorrowableDonorValues(new[] { defence, raid });
 
             Assert.That(prices.ContainsKey(7), Is.False,
                 "an ActiveDefence responder remains owned by its threat");
             Assert.That(prices.ContainsKey(9), Is.True,
                 "Raid donor behaviour is unchanged");
+            Assert.That(prices[9], Is.EqualTo(9f),
+                "a donor costs its operation's TaskScore value, not an AP figure");
+
+            raid.Raid.Phase = RaidMissionPhase.Return;
+            Assert.That(GroundCombatDonorPolicy.BorrowableDonorValues(new[] { raid })[9],
+                Is.Zero, "a Raid already walking home loses nothing when its army is bought");
         }
 
         // ---- lifecycle: Continuity ends an Intercept, keeps a started Return -----------------

@@ -208,7 +208,7 @@ namespace Game.Ai.V2
             // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
             return new TaskScore(
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                militaryTargetRelevance: AiConfigV2.RaidReward,
+                raidReward: TaskScoreEvaluator.RaidReward(),
                 citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
         }
 
@@ -219,14 +219,10 @@ namespace Game.Ai.V2
             // Both neutral-army and guarded-event Raid objectives receive exactly one fixed
             // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
             // Raid targets are stationary neutrals or event guards; older sightings do not move them.
-            // Keep shared StaleIntelPenalty for future attacks on mobile player armies.
+            // IntelAgePenalty stays for mobile targets (Attack, ActiveDefence); Raid never pays it.
             TaskScore score = BuildRaidScore(snap, o.TargetHex);
 
-            bool readyViable = o.CanCoverAllDefenders
-                && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
-            bool assemblableViable = o.CanCoverAllDefenders
-                && o.AssemblableWinChance >= AiConfigV2.raidMinViableWinChance;
-            bool haveViable = o.GatePassed || readyViable || assemblableViable;
+            bool haveViable = o.IsViable;
             bool needsHero = !haveViable && !report.HeroAvailable;
             bool needsCombatPower = !haveViable;
 

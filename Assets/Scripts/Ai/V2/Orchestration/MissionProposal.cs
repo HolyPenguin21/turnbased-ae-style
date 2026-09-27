@@ -35,6 +35,10 @@ namespace Game.Ai.V2
         public MissionKind Kind;
         public object Target;               // boxed ScoutMissionTarget for Scout; typed per-kind
         public float BaseValue;             // shared 0..100 scale across ALL mission kinds — INTRINSIC merit
+        // The world-task score BaseValue was folded from, slot by slot (the one task log prints it
+        // through TaskScoreEvaluator.Describe). null only when BaseValue is a value restored from
+        // a durable intent whose breakdown was not kept.
+        public TaskScore? Score;
         // Radar model #1a — BaseValue scaled by the radar weight of the axis/axes this mission
         // serves (RadarValueScale). Set ONCE by the orchestrator right after the proposal list is
         // built. This is the figure the ResourceAllocator ranks on CROSS-LANE; BaseValue stays the

@@ -8,7 +8,24 @@ namespace Game.EditorTests
 {
     public sealed class AiDevelopmentRadarResourceGateTests
     {
-        private static WorldSnapshot Snapshot(DevelopmentReadiness development) => new WorldSnapshot
+        // A live Attack/Defence need for Production to amplify: one enemy (power 10) threatens
+        // our Base while our whole force is 1 (ForceNeedModel defensive shortfall).
+        internal static AssetThreatSnapshot UncoveredBaseThreat() => new AssetThreatSnapshot
+        {
+            Contact = new EnemyContactSnapshot
+            {
+                Army = new ArmySnapshot
+                {
+                    ArmyId = 77, EffectiveArmyPower = 10f,
+                    Members = Array.Empty<Game.Combat.WorthIt.DefenderProfile>(),
+                },
+            },
+            Asset = new StrategicAssetSnapshot { Kind = AssetKind.Base, Value = 10f },
+            Severity = 1f,
+        };
+
+        private static WorldSnapshot Snapshot(DevelopmentReadiness development,
+            bool witnessedNeed = true) => new WorldSnapshot
         {
             TurnNumber = 1,
             Self = new SelfSnapshot
@@ -40,7 +57,9 @@ namespace Game.EditorTests
             {
                 Contacts = Array.Empty<EnemyContactSnapshot>(),
                 Assets = Array.Empty<StrategicAssetSnapshot>(),
-                Threats = Array.Empty<AssetThreatSnapshot>(),
+                Threats = witnessedNeed
+                    ? new[] { UncoveredBaseThreat() }
+                    : Array.Empty<AssetThreatSnapshot>(),
             },
             Development = development,
         };
@@ -89,6 +108,71 @@ namespace Game.EditorTests
                 "Infrastructure investment keeps the coarse all-resource risk signal when no ready production chain exists");
             Assert.That(assessed.Desires.Raw[DesireAxis.Development], Is.Zero,
                 "Zero broad investment headroom must still suppress purely latent Development");
+        }
+
+        private static DevelopmentReadiness ReadyOffering() => new DevelopmentReadiness
+        {
+            Offerings = new[]
+            {
+                new DevelopmentOffering
+                {
+                    Card = new CardDefinition { cardType = CardType.Equipment }, SuccessChance = 1f,
+                },
+            },
+            BestSuccessChance = 1f,
+            UpgradeTargetCount = 10,
+            AnyFacilityWithHero = true,
+            DevPathViable = true,
+            SurplusFraction = 1f,
+        };
+
+        [Test]
+        public void ProductionNeverCreatesANeed_NoMilitaryWitnessMeansNoDevelopment()
+        {
+            WorldSnapshot snapshot = Snapshot(ReadyOffering(), witnessedNeed: false);
+            RadarAssessment assessed = StrategyLayer.Evaluate(snapshot, new AiRadarState());
+
+            Assert.That(ForceNeedModel.JustifiedForceNeed(snapshot).Total, Is.Zero);
+            Assert.That(assessed.Desires.Raw[DesireAxis.Development], Is.Zero,
+                "full budget, a staffed facility and ten upgrade targets are not a need");
+        }
+
+        [Test]
+        public void CoveredThreatIsNotANeedForProduction()
+        {
+            WorldSnapshot snapshot = Snapshot(ReadyOffering());
+            snapshot.Self.TotalPower = 100f;
+            ForceNeed need = ForceNeedModel.JustifiedForceNeed(snapshot);
+            Assert.That(need.Witnessed, Is.True, "the threat is still a military witness");
+            Assert.That(need.Defensive, Is.Zero, "our force already covers the reserve it demands");
+            Assert.That(need.Total, Is.Zero);
+        }
+
+        [Test]
+        public void CombatOpportunityViability_IsOneRule()
+        {
+            var coverable = new CombatOpportunity(true, default, RaidTargetRef.None, null, true, 1,
+                AiConfigV2.raidMinViableWinChance, 0f, true, 0f, 1, 0f, 1f, false, 0f);
+            var uncovered = new CombatOpportunity(true, default, RaidTargetRef.None, null, true, 1,
+                1f, 1f, false, 0f, 1, 0f, 1f, false, 0f);
+            var gated = new CombatOpportunity(true, default, RaidTargetRef.None, null, true, 1,
+                0f, 0f, false, 0f, 1, 0f, 1f, true, 0f);
+            Assert.That(coverable.IsViable, Is.True);
+            Assert.That(uncovered.IsViable, Is.False, "a fight we cannot cover is not winnable");
+            Assert.That(gated.IsViable, Is.True);
+        }
+
+        [Test]
+        public void DevelopmentDesireNeverExceedsTheNeedItAmplifies()
+        {
+            WorldSnapshot snapshot = Snapshot(ReadyOffering());
+            RadarAssessment assessed = StrategyLayer.Evaluate(snapshot, new AiRadarState());
+            float need = ForceNeedModel.JustifiedForceNeed(snapshot).Total;
+
+            Assert.That(need, Is.GreaterThan(0f), "an uncovered base threat is a justified need");
+            Assert.That(assessed.Breakdown.DevJustifiedNeed, Is.EqualTo(need).Within(0.0001f));
+            Assert.That(assessed.Desires.Raw[DesireAxis.Development],
+                Is.LessThanOrEqualTo(need + 0.0001f));
         }
     }
 }

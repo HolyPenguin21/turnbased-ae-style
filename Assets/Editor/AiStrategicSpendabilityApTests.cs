@@ -6,6 +6,7 @@ using Game.Ai.V2;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
+using Game.Units;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -18,6 +19,85 @@ namespace Game.EditorTests
         {
             StrategicResourceReservationLedger.ClearAll();
             AiAllocatorStateRegistry.Clear();
+            OperationContinuationWindow.ClearAll();
+            MissionIntentRegistry.Clear();
+            ArmyRegistry.Clear();
+        }
+
+        // A started Raid's primary (activation 3, 2 MP left) about to take its next Assault step.
+        private static (MissionIntent intent, ArmyData army) StartedRaid(PlayerSetupData player)
+        {
+            var army = new ArmyData { Owner = player, Hex = new HexCoord(1, 0) };
+            army.Members.Add(new UnitData
+            {
+                Owner = player, ActivationApCost = 3, MoveMax = 2, MoveCurrent = 2,
+            });
+            ArmyRegistry.Register(army);
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Raid,
+                Status = IntentStatus.Active,
+                Funding = CommitmentTier.Hard,
+                Objective = new RaidIntent
+                {
+                    Phase = RaidMissionPhase.Assault, OperationStarted = true,
+                    PrimaryArmyId = army.Id,
+                },
+            };
+            intent.IntentKey = MissionIntentKey.For(intent);
+            MissionIntentRegistry.GetOrCreate(player).Put(intent);
+            return (intent, army);
+        }
+
+        // Variant A — Phase A card play runs before the allocator funds commitments, so the next
+        // step of a Hard operation owns its unpaid activation against every card spend.
+        [Test]
+        public void HardOperationContinuation_ProtectsItsNextStepFromCardPlay()
+        {
+            var player = new PlayerSetupData();
+            var rootObject = new GameObject("hard-operation-continuation-test");
+            try
+            {
+                PlayerRoot root = rootObject.AddComponent<PlayerRoot>();
+                root.ActionPoints = 5;
+                var ctx = new AiTurnContext { TurnNumber = 21 };
+                var plan = new MaterializationPlan { ApCost = 3f };
+                (MissionIntent intent, ArmyData army) = StartedRaid(player);
+
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(2f));
+                Assert.That(StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player),
+                    Is.False, "a 3 AP card would strand the assault's 3 AP activation");
+
+                intent.Funding = CommitmentTier.Soft;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f),
+                    "a Soft commitment has not started and owns no protection");
+                intent.Funding = CommitmentTier.Hard;
+
+                intent.Raid.Phase = RaidMissionPhase.Return;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f),
+                    "a lifecycle leg carries no operation value and owns no protection");
+                intent.Raid.Phase = RaidMissionPhase.Assault;
+
+                army.Members[0].MoveCurrent = 0;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f),
+                    "an army that cannot move this turn has no step to protect");
+                army.Members[0].MoveCurrent = 2;
+
+                root.ActionPoints = 2;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(2f),
+                    "an unaffordable continuation never freezes the pool");
+                root.ActionPoints = 5;
+
+                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f),
+                    "after the mission loop settles, Phase B sees every AP nobody will spend");
+                Assert.That(OperationContinuationWindow.IsSettled(player, ctx.TurnNumber + 1),
+                    Is.False, "the settle mark is turn-stamped");
+            }
+            finally
+            {
+                Object.DestroyImmediate(rootObject);
+            }
         }
 
         [TestCase(StrategicReservationReason.EconomyBuildCompletion)]
@@ -76,6 +156,118 @@ namespace Game.EditorTests
                 new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
             Assert.That(released.Funded.Select(f => f.Mission), Has.Member(scout),
                 "the allocator must read the current ledger, not cache an expired hold");
+        }
+
+        private static MissionProposal AirScout(float energy)
+        {
+            var scout = new MissionProposal
+            {
+                Kind = MissionKind.Scout,
+                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.Explore },
+                BaseValue = 10f,
+                EffectiveValue = 10f,
+                Requirements = new MissionRequirements
+                {
+                    ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
+                    EnergyMinimum = energy, EnergyDesired = energy, EnergyMaximum = energy,
+                },
+            };
+            scout.Axes.Value[DesireAxis.Recon] = 1f;
+            return scout;
+        }
+
+        // One physical pool for every mission kind: a non-Economy Energy draw is funded from the
+        // same owner-aware spendable stock its Provisioning gate (AirSpendableEnergyLeft) uses,
+        // so it never takes Energy another axis holds.
+        [Test]
+        public void OtherAxisPhysicalHold_BlocksNonEconomyMissionAtAllocatorAdmission()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 15;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            StrategicResourceReservationLedger.Upsert(player, turn,
+                new StrategicResourceReservation
+                {
+                    Owner = "Economy:other",
+                    Reason = StrategicReservationReason.EconomyDeferredBuild,
+                    Resource = StrategicReservedResource.Energy,
+                    Amount = 3f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                });
+            MissionProposal scout = AirScout(2f);
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = turn,
+                Self = new SelfSnapshot
+                {
+                    ActionPoints = 5,
+                    Stockpile = new ResourceBundle { Energy = 4f },
+                },
+            };
+
+            TentativeAllocation held = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
+            Assert.That(held.Funded.Select(f => f.Mission), Has.No.Member(scout));
+            Assert.That(held.Deferred.Any(d => d.Mission == scout
+                && d.Reason == DeferReason.InsufficientPhysical), Is.True,
+                "4 Energy minus a 3 Energy hold leaves 1 for a 2 Energy sortie");
+
+            StrategicResourceReservationLedger.ReleaseByOwner(player, turn, "Economy:other");
+            TentativeAllocation released = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
+            Assert.That(released.Funded.Select(f => f.Mission), Has.Member(scout));
+        }
+
+        // A hold its own Economy mission already drew in this pack is not subtracted a second
+        // time for the candidates behind it.
+        [Test]
+        public void FundedBuildPhysicalHold_IsCreditedOnceForOtherAxis()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 16;
+            var build = new MissionProposal
+            {
+                Kind = MissionKind.Economy,
+                Target = new EconomyMissionTarget
+                {
+                    Kind = EconomyTaskKind.BuildExtraction,
+                    TargetHex = new HexCoord(3, 0),
+                },
+                BaseValue = 20f,
+                EffectiveValue = 20f,
+                Requirements = new MissionRequirements
+                {
+                    ApMinimum = 1f, ApDesired = 1f, ApMaximum = 1f,
+                    EnergyMinimum = 3f, EnergyDesired = 3f, EnergyMaximum = 3f,
+                },
+            };
+            build.Axes.Value[DesireAxis.Economy] = 1f;
+            MissionProposal scout = AirScout(1f);
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            StrategicResourceReservationLedger.Upsert(player, turn,
+                new StrategicResourceReservation
+                {
+                    Owner = EconomyMissionPlanner.OwnerKey(StableMissionKey.For(build)),
+                    Reason = StrategicReservationReason.EconomyBuildCompletion,
+                    Resource = StrategicReservedResource.Energy,
+                    Amount = 3f,
+                    ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                });
+            var snap = new WorldSnapshot
+            {
+                TurnNumber = turn,
+                Self = new SelfSnapshot
+                {
+                    ActionPoints = 5,
+                    Stockpile = new ResourceBundle { Energy = 4f },
+                },
+            };
+
+            TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, Radar.Even(),
+                new List<MissionProposal> { build, scout }, new List<Commitment>(), player).Pack();
+            Assert.That(allocation.Funded.Select(f => f.Mission), Has.Member(build));
+            Assert.That(allocation.Funded.Select(f => f.Mission), Has.Member(scout),
+                "the build's 3 Energy is drawn once; the remaining 1 Energy is free for the sortie");
         }
 
         [TestCase(false)]

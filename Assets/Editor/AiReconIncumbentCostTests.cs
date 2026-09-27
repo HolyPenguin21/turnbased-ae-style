@@ -167,11 +167,9 @@ namespace Game.EditorTests
                 freshNeighbors: 6, distFromBase: 5, enemyExposure: false,
                 stealthDetectionRisk: false);
             Assert.That(objective.TaskScore.CardPrice, Is.EqualTo(0f));
-            // Task 5 (Problem A) fix: a future re-activation is the same real per-turn AP
-            // Economy/Raid price at taskScoreReactivationApWeight, never at the higher
-            // taskScoreCardPriceApWeight reserved for a genuine one-time ability spend.
+            // A future re-activation is real AP at the one price every AP has (ActionPrice).
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(8f * AiConfigV2.taskScoreReactivationApWeight).Within(0.001f),
+                Is.EqualTo(TaskScoreEvaluator.Price(8f)).Within(0.001f),
                 "two later turns require two REAL 4-AP activations, even if this turn is free");
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
         }
@@ -200,7 +198,7 @@ namespace Game.EditorTests
                 preferredMoverArmyId: 10);
             Assert.That(continuing.BaseValue, Is.EqualTo(directEstimate.BaseValue).Within(0.0001f));
             Assert.That(directEstimate.TaskScore.CardPrice,
-                Is.EqualTo(4f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f),
+                Is.EqualTo(TaskScoreEvaluator.Price(4f)).Within(0.0001f),
                 "BaseValue's own CardPrice must be army #10's real activation fee, not army #20's");
         }
 

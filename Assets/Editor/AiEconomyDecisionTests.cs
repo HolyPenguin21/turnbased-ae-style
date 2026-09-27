@@ -2750,7 +2750,7 @@ namespace Game.EditorTests
             MissionIntent donor = ScoutDonor(CommitmentTier.Soft, ScoutTargetKind.Explore);
             Assert.That(DemandLayer.EconomyLoanAllowed(donor, 80f,
                 LoanChoiceForPolicyTest(2, 3), 0f, out float net), Is.True);
-            Assert.That(net, Is.GreaterThanOrEqualTo(AiConfigV2.economyLoanHysteresisThreshold));
+            Assert.That(net, Is.GreaterThanOrEqualTo(AiConfigV2.taskScoreEconomyLoanHysteresisThreshold));
         }
 
         [Test]

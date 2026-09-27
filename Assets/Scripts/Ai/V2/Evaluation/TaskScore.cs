@@ -7,6 +7,56 @@ using UnityEngine;
 namespace Game.Ai.V2
 {
     /// <summary>
+    /// Every TaskScore slot, in fold order. The slot table (<see cref="TaskScoreEvaluator.Sign"/>,
+    /// <see cref="TaskScoreEvaluator.GroupOf"/>) is the one place that says how a slot folds and
+    /// who fills it; Fold, NetChange and every composition iterate it instead of listing fields.
+    /// </summary>
+    public enum TaskSlot
+    {
+        EconomicHexBenefit,
+        Payback,
+        Airfield,
+        GlobalCardEffect,
+        InfoGain,
+        Staleness,
+        StrategicRelevance,
+        ThreatDirection,
+        ContactRelevance,
+        FrontProgress,
+        CorridorAlignment,
+        OwnTerritoryProximity,
+        TerrainDefense,
+        RaidReward,
+        AttackReadiness,
+        PreventedDamage,
+        WinChance,
+        EconomicExpansionValue,
+        ForceAmplification,
+        CardPrice,
+        Delivery,
+        MoverOpportunityCost,
+        HexThreatRisk,
+        CitadelThreatRisk,
+        BaseThreatRisk,
+        DetectionRisk,
+        IntelAgePenalty,
+    }
+
+    /// <summary>
+    /// Intrinsic slots are facts of the task's target, built once by the objective/site owner.
+    /// Execution slots are facts of the concrete actor/chain doing it (fight odds, AP spent now,
+    /// recurring AP on the way, value taken from the actor's current task). A composition never
+    /// copies slots by hand: it keeps one side and replaces the other.
+    /// </summary>
+    public enum TaskSlotGroup { Intrinsic, Execution }
+
+    /// <summary>
+    /// What a slot means to the fold: Value = Benefit - Cost - Risk - Opportunity. Every task
+    /// family reads in these four words; the slots inside Benefit are that family's terms.
+    /// </summary>
+    public enum TaskSlotCategory { Benefit, Cost, Risk, Opportunity }
+
+    /// <summary>
     /// Canonical intrinsic score for every AI V2 task that interacts with the global map.
     /// A physical/strategic fact belongs to exactly one slot. Unused slots stay at zero.
     /// Lifecycle policy (continuity, urgency, incumbent hysteresis) deliberately does not live here.
@@ -18,6 +68,8 @@ namespace Game.Ai.V2
         public readonly float Airfield;
         public readonly float GlobalCardEffect;
         public readonly float InfoGain;
+        // Value of refreshing old intel (Recon). Its opposite — acting on old intel — is
+        // IntelAgePenalty, a separate price slot.
         public readonly float Staleness;
         public readonly float StrategicRelevance;
         public readonly float ThreatDirection;
@@ -31,10 +83,16 @@ namespace Game.Ai.V2
         // that cluster's income is currently useful (EconomicHexBenefit prices that separately).
         // Base-only slot; never populated by Extraction/Recon/Raid.
         public readonly float EconomicExpansionValue;
-        // Legacy storage name retained for existing score transport and tests. Raid now fills this
-        // ONE slot from the fixed reward, not from defender power. Never add both contributions.
-        public readonly float MilitaryTargetRelevance;
-        public float RaidReward => MilitaryTargetRelevance;
+        // One military fact per task family — never summed into a shared slot:
+        //   RaidReward      — the fixed expected resource/card reward of completing a Raid;
+        //   AttackReadiness — Attack's stronghold readiness (assembly x deployment), Base/Citadel only;
+        //   PreventedDamage — the damage an ActiveDefence intercept keeps off the threatened asset.
+        public readonly float RaidReward;
+        public readonly float AttackReadiness;
+        public readonly float PreventedDamage;
+        // Development output: the need-justified force a Research/Production output adds
+        // (Production amplifies an Attack/Defence need; it never creates one).
+        public readonly float ForceAmplification;
         public readonly float WinChance;
         public readonly float CardPrice;
         public readonly float Delivery;
@@ -47,6 +105,8 @@ namespace Game.Ai.V2
         public readonly float CitadelThreatRisk;
         public readonly float BaseThreatRisk;
         public readonly float DetectionRisk;
+        // Acting on an aged sighting of a mobile target (Attack, ActiveDefence).
+        public readonly float IntelAgePenalty;
 
         public TaskScore(
             float economicHexBenefit = 0f,
@@ -62,7 +122,9 @@ namespace Game.Ai.V2
             float corridorAlignment = 0f,
             float ownTerritoryProximity = 0f,
             float terrainDefense = 0f,
-            float militaryTargetRelevance = 0f,
+            float raidReward = 0f,
+            float attackReadiness = 0f,
+            float preventedDamage = 0f,
             float winChance = 0f,
             float cardPrice = 0f,
             float delivery = 0f,
@@ -71,7 +133,9 @@ namespace Game.Ai.V2
             float citadelThreatRisk = 0f,
             float baseThreatRisk = 0f,
             float detectionRisk = 0f,
-            float economicExpansionValue = 0f)
+            float economicExpansionValue = 0f,
+            float forceAmplification = 0f,
+            float intelAgePenalty = 0f)
         {
             EconomicHexBenefit = economicHexBenefit;
             Payback = payback;
@@ -86,7 +150,9 @@ namespace Game.Ai.V2
             CorridorAlignment = corridorAlignment;
             OwnTerritoryProximity = ownTerritoryProximity;
             TerrainDefense = terrainDefense;
-            MilitaryTargetRelevance = militaryTargetRelevance;
+            RaidReward = raidReward;
+            AttackReadiness = attackReadiness;
+            PreventedDamage = preventedDamage;
             WinChance = winChance;
             CardPrice = cardPrice;
             Delivery = delivery;
@@ -96,9 +162,81 @@ namespace Game.Ai.V2
             BaseThreatRisk = baseThreatRisk;
             DetectionRisk = detectionRisk;
             EconomicExpansionValue = economicExpansionValue;
+            ForceAmplification = forceAmplification;
+            IntelAgePenalty = intelAgePenalty;
         }
 
         public float Value => TaskScoreEvaluator.Fold(this);
+
+        public float this[TaskSlot slot]
+        {
+            get
+            {
+                switch (slot)
+                {
+                    case TaskSlot.EconomicHexBenefit: return EconomicHexBenefit;
+                    case TaskSlot.Payback: return Payback;
+                    case TaskSlot.Airfield: return Airfield;
+                    case TaskSlot.GlobalCardEffect: return GlobalCardEffect;
+                    case TaskSlot.InfoGain: return InfoGain;
+                    case TaskSlot.Staleness: return Staleness;
+                    case TaskSlot.StrategicRelevance: return StrategicRelevance;
+                    case TaskSlot.ThreatDirection: return ThreatDirection;
+                    case TaskSlot.ContactRelevance: return ContactRelevance;
+                    case TaskSlot.FrontProgress: return FrontProgress;
+                    case TaskSlot.CorridorAlignment: return CorridorAlignment;
+                    case TaskSlot.OwnTerritoryProximity: return OwnTerritoryProximity;
+                    case TaskSlot.TerrainDefense: return TerrainDefense;
+                    case TaskSlot.RaidReward: return RaidReward;
+                    case TaskSlot.AttackReadiness: return AttackReadiness;
+                    case TaskSlot.PreventedDamage: return PreventedDamage;
+                    case TaskSlot.ForceAmplification: return ForceAmplification;
+                    case TaskSlot.IntelAgePenalty: return IntelAgePenalty;
+                    case TaskSlot.WinChance: return WinChance;
+                    case TaskSlot.EconomicExpansionValue: return EconomicExpansionValue;
+                    case TaskSlot.CardPrice: return CardPrice;
+                    case TaskSlot.Delivery: return Delivery;
+                    case TaskSlot.MoverOpportunityCost: return MoverOpportunityCost;
+                    case TaskSlot.HexThreatRisk: return HexThreatRisk;
+                    case TaskSlot.CitadelThreatRisk: return CitadelThreatRisk;
+                    case TaskSlot.BaseThreatRisk: return BaseThreatRisk;
+                    case TaskSlot.DetectionRisk: return DetectionRisk;
+                    default: throw new System.ArgumentOutOfRangeException(nameof(slot), slot, null);
+                }
+            }
+        }
+
+        // The one slot-wise constructor. Compositions (NetChange, WithExecution) go through here,
+        // so a slot added to the enum and this switch can never be silently dropped by a copy.
+        internal static TaskScore FromSlots(System.Func<TaskSlot, float> value) =>
+            new TaskScore(
+                economicHexBenefit: value(TaskSlot.EconomicHexBenefit),
+                payback: value(TaskSlot.Payback),
+                airfield: value(TaskSlot.Airfield),
+                globalCardEffect: value(TaskSlot.GlobalCardEffect),
+                infoGain: value(TaskSlot.InfoGain),
+                staleness: value(TaskSlot.Staleness),
+                strategicRelevance: value(TaskSlot.StrategicRelevance),
+                threatDirection: value(TaskSlot.ThreatDirection),
+                contactRelevance: value(TaskSlot.ContactRelevance),
+                frontProgress: value(TaskSlot.FrontProgress),
+                corridorAlignment: value(TaskSlot.CorridorAlignment),
+                ownTerritoryProximity: value(TaskSlot.OwnTerritoryProximity),
+                terrainDefense: value(TaskSlot.TerrainDefense),
+                raidReward: value(TaskSlot.RaidReward),
+                attackReadiness: value(TaskSlot.AttackReadiness),
+                preventedDamage: value(TaskSlot.PreventedDamage),
+                winChance: value(TaskSlot.WinChance),
+                cardPrice: value(TaskSlot.CardPrice),
+                delivery: value(TaskSlot.Delivery),
+                moverOpportunityCost: value(TaskSlot.MoverOpportunityCost),
+                hexThreatRisk: value(TaskSlot.HexThreatRisk),
+                citadelThreatRisk: value(TaskSlot.CitadelThreatRisk),
+                baseThreatRisk: value(TaskSlot.BaseThreatRisk),
+                detectionRisk: value(TaskSlot.DetectionRisk),
+                economicExpansionValue: value(TaskSlot.EconomicExpansionValue),
+                forceAmplification: value(TaskSlot.ForceAmplification),
+                intelAgePenalty: value(TaskSlot.IntelAgePenalty));
     }
 
     /// <summary>
@@ -107,30 +245,91 @@ namespace Game.Ai.V2
     /// </summary>
     internal static class TaskScoreEvaluator
     {
+        internal static readonly TaskSlot[] AllSlots =
+            (TaskSlot[])System.Enum.GetValues(typeof(TaskSlot));
+
+        internal static TaskSlotCategory CategoryOf(TaskSlot slot)
+        {
+            switch (slot)
+            {
+                case TaskSlot.CardPrice:
+                case TaskSlot.Delivery:
+                    return TaskSlotCategory.Cost;
+                case TaskSlot.HexThreatRisk:
+                case TaskSlot.CitadelThreatRisk:
+                case TaskSlot.BaseThreatRisk:
+                case TaskSlot.DetectionRisk:
+                case TaskSlot.IntelAgePenalty:
+                    return TaskSlotCategory.Risk;
+                case TaskSlot.MoverOpportunityCost:
+                    return TaskSlotCategory.Opportunity;
+                default:
+                    return TaskSlotCategory.Benefit;
+            }
+        }
+
+        // Benefit adds; Cost, Risk and Opportunity are stored non-negative and subtract. A signed
+        // benefit (OwnTerritoryProximity) stays a Benefit.
+        internal static float Sign(TaskSlot slot) =>
+            CategoryOf(slot) == TaskSlotCategory.Benefit ? 1f : -1f;
+
+        internal static float CategoryTotal(TaskScore score, TaskSlotCategory category)
+        {
+            float total = 0f;
+            foreach (TaskSlot slot in AllSlots)
+                if (CategoryOf(slot) == category)
+                    total += score[slot];
+            return total;
+        }
+
+        // The one human-readable decomposition every task log uses:
+        //   value=13.1 | benefit 19.1 (RaidReward 8.0, WinChance 9.6, OwnTerritoryProximity 1.5)
+        //   | cost 6.0 (CardPrice 3.0, Delivery 3.0) | risk 0.0 | opportunity 0.0
+        internal static string Describe(TaskScore score)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.Append("value=").Append(F(score.Value));
+            foreach (TaskSlotCategory category in (TaskSlotCategory[])System.Enum.GetValues(typeof(TaskSlotCategory)))
+            {
+                sb.Append(" | ").Append(category.ToString().ToLowerInvariant()).Append(' ')
+                    .Append(F(CategoryTotal(score, category)));
+                bool open = false;
+                foreach (TaskSlot slot in AllSlots)
+                {
+                    if (CategoryOf(slot) != category || Mathf.Abs(score[slot]) < 0.005f)
+                        continue;
+                    sb.Append(open ? ", " : " (").Append(slot).Append(' ').Append(F(score[slot]));
+                    open = true;
+                }
+                if (open)
+                    sb.Append(')');
+            }
+            return sb.ToString();
+        }
+
+        private static string F(float v) => v.ToString("0.0", CultureInfo.InvariantCulture);
+
+        internal static TaskSlotGroup GroupOf(TaskSlot slot)
+        {
+            switch (slot)
+            {
+                case TaskSlot.WinChance:
+                case TaskSlot.CardPrice:
+                case TaskSlot.Delivery:
+                case TaskSlot.MoverOpportunityCost:
+                    return TaskSlotGroup.Execution;
+                default:
+                    return TaskSlotGroup.Intrinsic;
+            }
+        }
+
+        // Value = Benefit - Cost - Risk - Opportunity. The slots inside each category are that
+        // category's terms (for Benefit: the task family's own facts); the fold only sees totals.
         internal static float Fold(TaskScore score) =>
-              score.EconomicHexBenefit
-            + score.Payback
-            + score.Airfield
-            + score.GlobalCardEffect
-            + score.InfoGain
-            + score.Staleness
-            + score.StrategicRelevance
-            + score.ThreatDirection
-            + score.ContactRelevance
-            + score.FrontProgress
-            + score.CorridorAlignment
-            + score.OwnTerritoryProximity
-            + score.TerrainDefense
-            + score.MilitaryTargetRelevance
-            + score.WinChance
-            + score.EconomicExpansionValue
-            - score.CardPrice
-            - score.Delivery
-            - score.MoverOpportunityCost
-            - score.HexThreatRisk
-            - score.CitadelThreatRisk
-            - score.BaseThreatRisk
-            - score.DetectionRisk;
+              CategoryTotal(score, TaskSlotCategory.Benefit)
+            - CategoryTotal(score, TaskSlotCategory.Cost)
+            - CategoryTotal(score, TaskSlotCategory.Risk)
+            - CategoryTotal(score, TaskSlotCategory.Opportunity);
 
         // Component-wise change between two canonical world-task projections. Keeping every fact
         // in its original slot matters even when callers only consume Value: diagnostics and
@@ -139,30 +338,15 @@ namespace Game.Ai.V2
         // physical price of making the change, not a synthetic benefit slot.
         internal static TaskScore NetChange(TaskScore from, TaskScore to,
             float additionalCardPrice = 0f, float additionalDelivery = 0f) =>
-            new TaskScore(
-                economicHexBenefit: to.EconomicHexBenefit - from.EconomicHexBenefit,
-                payback: to.Payback - from.Payback,
-                airfield: to.Airfield - from.Airfield,
-                globalCardEffect: to.GlobalCardEffect - from.GlobalCardEffect,
-                infoGain: to.InfoGain - from.InfoGain,
-                staleness: to.Staleness - from.Staleness,
-                strategicRelevance: to.StrategicRelevance - from.StrategicRelevance,
-                threatDirection: to.ThreatDirection - from.ThreatDirection,
-                contactRelevance: to.ContactRelevance - from.ContactRelevance,
-                frontProgress: to.FrontProgress - from.FrontProgress,
-                corridorAlignment: to.CorridorAlignment - from.CorridorAlignment,
-                ownTerritoryProximity: to.OwnTerritoryProximity - from.OwnTerritoryProximity,
-                terrainDefense: to.TerrainDefense - from.TerrainDefense,
-                militaryTargetRelevance: to.MilitaryTargetRelevance - from.MilitaryTargetRelevance,
-                winChance: to.WinChance - from.WinChance,
-                cardPrice: to.CardPrice - from.CardPrice + Mathf.Max(0f, additionalCardPrice),
-                delivery: to.Delivery - from.Delivery + Mathf.Max(0f, additionalDelivery),
-                moverOpportunityCost: to.MoverOpportunityCost - from.MoverOpportunityCost,
-                hexThreatRisk: to.HexThreatRisk - from.HexThreatRisk,
-                citadelThreatRisk: to.CitadelThreatRisk - from.CitadelThreatRisk,
-                baseThreatRisk: to.BaseThreatRisk - from.BaseThreatRisk,
-                detectionRisk: to.DetectionRisk - from.DetectionRisk,
-                economicExpansionValue: to.EconomicExpansionValue - from.EconomicExpansionValue);
+            TaskScore.FromSlots(slot => to[slot] - from[slot]
+                + (slot == TaskSlot.CardPrice ? Mathf.Max(0f, additionalCardPrice)
+                    : slot == TaskSlot.Delivery ? Mathf.Max(0f, additionalDelivery) : 0f));
+
+        // The one composition of a target with the actor/chain that serves it: every intrinsic
+        // slot of `intrinsic` is carried unchanged, every execution slot comes from `execution`.
+        internal static TaskScore WithExecution(TaskScore intrinsic, TaskScore execution) =>
+            TaskScore.FromSlots(slot => GroupOf(slot) == TaskSlotGroup.Intrinsic
+                ? intrinsic[slot] : execution[slot]);
 
         internal static float ResourcePriority(EconomyResourceStanding standing,
             float externalStarvationPressure = 0f)
@@ -225,37 +409,16 @@ namespace Game.Ai.V2
             return quality * AiConfigV2.taskScorePaybackMax;
         }
 
-        internal static float CardPrice(float apCost, float resourceCost) =>
-            Mathf.Max(0f, apCost) * AiConfigV2.taskScoreCardPriceApWeight
-            + Mathf.Max(0f, resourceCost) * AiConfigV2.taskScoreCardPriceResourceWeight;
+        // The ONE converter of every execution-cost slot (CardPrice, Delivery): AP-equivalents
+        // from ActionPrice -> TaskScore points. Callers pass raw AP (+ ActionPrice.Resources);
+        // they never multiply a weight themselves.
+        internal static float Price(float apEquivalents) => ActionPrice.ToTaskScore(apEquivalents);
 
-        // Re-activating an already fielded actor is not a card play. Keep this conversion here so
-        // task owners pass raw AP facts rather than multiplying score weights themselves.
-        internal static float ReactivationApPrice(float apCost) =>
-            Mathf.Max(0f, apCost) * AiConfigV2.taskScoreReactivationApWeight;
-
-        // Inverse used only when an already-scored continuation loss must be expressed as AP for
-        // an assembly/gather cost model. Keep the conversion rate owned here in both directions.
-        internal static float ReactivationApFromScore(float scoreUnits) =>
-            Mathf.Max(0f, scoreUnits)
-            / Mathf.Max(0.0001f, AiConfigV2.taskScoreReactivationApWeight);
-
-        internal static float MoverOpportunityCost(float rawCost) => Mathf.Max(0f, rawCost);
-
-        // Raid/Recon already derive a real ETA (hexes -> mover's MaxMovement -> turns) for their
-        // own cost models. The game's own rule (AiTurnController.MoveArmyRoutine) is: MP moves
-        // an army freely within a turn, but re-activating it on each NEW turn of a multi-turn
-        // march pays its ActivationApCost again (gated on !HasActivatedThisTurn, which resets
-        // every turn) — so the honest delivery cost is that SAME real per-turn activation fee,
-        // repeated once per turn beyond the first (already priced by cardPrice), not a second
-        // invented distance-weight constant. apWeight is passed in so this charges at whichever
-        // rate the caller already prices that same fee at via cardPrice (e.g. Raid's own reduced
-        // activation weight), never a different one for the same physical AP.
-        internal static float DeliveryFromEta(float perTurnApCost, float etaTurns, float apWeight) =>
-            Mathf.Max(0f, perTurnApCost) * Mathf.Max(0f, etaTurns - 1f) * apWeight;
-
-        internal static float DeliveryFromEta(float perTurnApCost, float etaTurns) =>
-            DeliveryFromEta(perTurnApCost, etaTurns, AiConfigV2.taskScoreReactivationApWeight);
+        // Raw fact: the TaskScore value the actor's current task loses if the actor is taken
+        // (MissionIntent.DisplacementValue). Already in TaskScore points — no price conversion;
+        // never a count of actors or an AP figure.
+        internal static float MoverOpportunityCost(float displacedTaskValue) =>
+            Mathf.Max(0f, displacedTaskValue);
 
         internal static int NearestOwnedHomeDistance(WorldSnapshot snap, HexCoord target,
             int fallbackDistance = 0)
@@ -302,8 +465,9 @@ namespace Game.Ai.V2
         internal static float PositiveStaleness(float normalizedStaleness) =>
             Mathf.Clamp01(normalizedStaleness) * AiConfigV2.taskScoreStalenessMax;
 
-        internal static float StaleIntelPenalty(float normalizedStaleness) =>
-            -Mathf.Clamp01(normalizedStaleness) * AiConfigV2.taskScoreStalenessMax;
+        // Price of acting on an aged sighting; stored non-negative, subtracted by the fold.
+        internal static float IntelAgePenalty(float normalizedAge) =>
+            Mathf.Clamp01(normalizedAge) * AiConfigV2.taskScoreIntelAgePenaltyMax;
 
         internal static float StrategicRelevance(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreStrategicRelevanceMax;
@@ -334,11 +498,25 @@ namespace Game.Ai.V2
         internal static float GlobalCardEffectScoreUnits(float scoreUnits) =>
             Mathf.Clamp(scoreUnits, 0f, AiConfigV2.taskScoreGlobalCardEffectMax);
 
-        internal static float MilitaryTargetRelevance(float normalizedValue) =>
-            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreMilitaryTargetMax;
+        // Fixed per eligible Raid; never derived from defender power (that is WinChance's).
+        internal static float RaidReward() => AiConfigV2.RaidReward;
+
+        internal static float AttackReadiness(float normalizedValue) =>
+            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreAttackReadinessMax;
+
+        internal static float PreventedDamage(float normalizedValue) =>
+            Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScorePreventedDamageMax;
 
         internal static float WinChance(float probability) =>
             Mathf.Clamp01(probability) * AiConfigV2.taskScoreWinChanceMax;
+
+        // Raw fact: the force a Development output adds, in combat-body units, already weighted by
+        // the need it answers (known-threat matchup for Equipment, JustifiedForceNeed for a minted
+        // Unit/Hero/Aviation) and by every success chance on the way.
+        internal static float ForceAmplification(float needWeightedBodies) =>
+            Mathf.Clamp01(needWeightedBodies
+                / Mathf.Max(0.0001f, AiConfigV2.taskScoreForceAmplificationFullBodies))
+            * AiConfigV2.taskScoreForceAmplificationMax;
 
         internal static float EconomicExpansionValue(float normalizedValue) =>
             Mathf.Clamp01(normalizedValue) * AiConfigV2.taskScoreEconomicExpansionMax;
@@ -351,21 +529,11 @@ namespace Game.Ai.V2
         internal static TaskScore WithResponse(TaskScore intrinsic, float winChance,
             float activationApNow, float recurringActivationAp, float etaTurns,
             float moverOpportunityCost = 0f) =>
-            new TaskScore(
-                staleness: intrinsic.Staleness,
-                strategicRelevance: intrinsic.StrategicRelevance,
-                threatDirection: intrinsic.ThreatDirection,
-                ownTerritoryProximity: intrinsic.OwnTerritoryProximity,
-                frontProgress: intrinsic.FrontProgress,
-                corridorAlignment: intrinsic.CorridorAlignment,
-                economicExpansionValue: intrinsic.EconomicExpansionValue,
-                militaryTargetRelevance: intrinsic.MilitaryTargetRelevance,
-                citadelThreatRisk: intrinsic.CitadelThreatRisk,
-                baseThreatRisk: intrinsic.BaseThreatRisk,
+            WithExecution(intrinsic, new TaskScore(
                 winChance: WinChance(winChance),
-                cardPrice: ReactivationApPrice(activationApNow),
-                delivery: DeliveryFromEta(recurringActivationAp, etaTurns),
-                moverOpportunityCost: MoverOpportunityCost(moverOpportunityCost));
+                cardPrice: Price(activationApNow),
+                delivery: Price(ActionPrice.RecurringAp(recurringActivationAp, etaTurns)),
+                moverOpportunityCost: MoverOpportunityCost(moverOpportunityCost)));
 
         // The same fold priced off one actor: its activation is spent now only if it has not
         // activated yet this turn. `projectedActivationAp` — the activation of the roster the

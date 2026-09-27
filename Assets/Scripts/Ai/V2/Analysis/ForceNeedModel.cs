@@ -1,0 +1,150 @@
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.CompilerServices;
+using UnityEngine;
+
+namespace Game.Ai.V2
+{
+    // One snapshot-pure owner of the force facts the axis chain hands down:
+    //   Recon -> knowledge -> Economy -> budget -> Attack/Defence -> need -> Production amplifies.
+    // Aggression reads presence, reserve and edge from here; Development (desire and every
+    // Production output score) reads JustifiedForceNeed from here. Nobody else derives
+    // "is there a fight", "what must stay home" or "how badly do we need force".
+    internal readonly struct ForceNeed
+    {
+        // Share of the known fights (neutral armies, event guards, known enemy armies) our
+        // ready or assemblable force cannot take now (CombatOpportunity.IsViable).
+        public readonly float Offensive;
+        // How far our best force is from out-classing the known enemy players (1 - RelativeEdge);
+        // zero without enemy intel.
+        public readonly float Enemy;
+        // Share of the defensive reserve known threats demand that our total force cannot cover.
+        public readonly float Defensive;
+        public readonly bool Witnessed;
+
+        public ForceNeed(float offensive, float enemy, float defensive, bool witnessed)
+        {
+            Offensive = offensive;
+            Enemy = enemy;
+            Defensive = defensive;
+            Witnessed = witnessed;
+        }
+
+        // [0..1]. Zero without a military witness: Production never creates a need.
+        public float Total => Witnessed ? Mathf.Clamp01(Mathf.Max(Offensive, Mathf.Max(Enemy, Defensive))) : 0f;
+
+        public override string ToString() =>
+            $"need={Total:0.00} (offensive={Offensive:0.00} enemy={Enemy:0.00} "
+            + $"defensive={Defensive:0.00} witnessed={(Witnessed ? 1 : 0)})";
+    }
+
+    internal static class ForceNeedModel
+    {
+        private sealed class Box { public ForceNeed Value; }
+        private static readonly ConditionalWeakTable<WorldSnapshot, Box> Cache =
+            new ConditionalWeakTable<WorldSnapshot, Box>();
+
+        // Presence only: no objectives, viability, threat severity or task value is read here.
+        internal static bool HasKnownCombatActivity(WorldSnapshot snap) =>
+            (snap?.Known?.NeutralSightings?.Count ?? 0) > 0
+            || (snap?.Known?.EventGuards?.Count ?? 0) > 0
+            || (snap?.Known?.EnemySightings?.Count ?? 0) > 0
+            || (snap?.Known?.Buildings?.Any(b => b.Owner != null && b.Owner != snap.Observer
+                && !b.Owner.IsNeutral && !b.Owner.IsEliminated) ?? false);
+
+        // A live military witness: a known fight, or an asset threat at/above the shared trigger.
+        // The one gate behind "Attack/Defence created a need" for every force-building score.
+        internal static bool HasMilitaryWitness(WorldSnapshot snap) =>
+            HasKnownCombatActivity(snap)
+            || (snap?.Threat?.Threats?.Any(t => t != null
+                && t.Severity >= AiConfigV2.threatSeverityTrigger) ?? false);
+
+        // One physical hostile force contributes once. The protected asset selects relevance and
+        // diagnostics, exactly like ActiveDefenceObjectiveEvaluator; it must not clone the same
+        // enemy power for every Citadel/Base/Facility lying inside its threat envelope.
+        internal static float DefensiveReserveForThreats(
+            IReadOnlyList<AssetThreatSnapshot> threats, bool log = false)
+        {
+            if (threats == null)
+                return 0f;
+            float reserve = 0f;
+            foreach (IGrouping<int, AssetThreatSnapshot> group in threats
+                .Where(t => t?.Contact?.Army != null
+                    && t.Asset != null
+                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base
+                        || t.Asset.Kind == AssetKind.Facility))
+                .GroupBy(t => t.Contact.Army.ArmyId))
+            {
+                AssetThreatSnapshot best = group
+                    .OrderByDescending(t => t.Severity)
+                    .ThenByDescending(t => t.Asset.Value)
+                    .ThenBy(t => t.EnemyEta ?? int.MaxValue)
+                    .First();
+                float contribution = Mathf.Max(0f,
+                    best.Contact.Army.EffectiveArmyPower
+                    * AiConfigV2.aggDefenceConfidenceMargin);
+                reserve += contribution;
+                if (log)
+                {
+                    string enemyLabel = $"#{best.Contact.Army.ArmyId}";
+                    AiDebugLog.WriteDeduped($"reserve:{enemyLabel}:{best.Asset.Hex.Q}:{best.Asset.Hex.R}",
+                        $"[AI][V2][Defence][Reserve] enemy={enemyLabel} contributes={contribution:0.##} "
+                        + $"asset={best.Asset.Kind}@({best.Asset.Hex.Q},{best.Asset.Hex.R}) "
+                        + $"severity={best.Severity:0.00} pairCount={group.Count()}");
+                }
+            }
+            return reserve;
+        }
+
+        // Our best force against the known enemy players, ramped. "Haven't seen them" is not
+        // "winning": without enemy intel the edge is the neutral aggRelEdgeNoIntel.
+        internal static float RelativeEdge(WorldSnapshot snap)
+        {
+            float ownPower = Mathf.Max(snap?.Self?.FieldPower ?? 0f, snap?.Self?.BestStackPotential ?? 0f);
+            float enemyPower = snap?.Known?.EnemyKnownStrength ?? 0f;
+            return enemyPower < 1f
+                ? AiConfigV2.aggRelEdgeNoIntel
+                : Curves.Ramp(ownPower / enemyPower, AiConfigV2.aggRelEdgeRampLo, AiConfigV2.aggRelEdgeRampHi);
+        }
+
+        internal static ForceNeed JustifiedForceNeed(WorldSnapshot snap)
+        {
+            if (snap?.Self == null)
+                return default;
+            if (Cache.TryGetValue(snap, out Box cached))
+                return cached.Value;
+            ForceNeed need = Compute(snap);
+            Cache.Add(snap, new Box { Value = need });
+            return need;
+        }
+
+        private static ForceNeed Compute(WorldSnapshot snap)
+        {
+            bool witnessed = HasMilitaryWitness(snap);
+            if (!witnessed)
+                return new ForceNeed(0f, 0f, 0f, false);
+
+            IReadOnlyList<CombatOpportunity> fights = CombatOpportunityAnalyzer.Analyze(snap).All
+                ?? System.Array.Empty<CombatOpportunity>();
+            int known = 0, unwinnable = 0;
+            foreach (CombatOpportunity o in fights)
+            {
+                if (!o.HasTarget)
+                    continue;
+                known++;
+                if (!o.IsViable)
+                    unwinnable++;
+            }
+            float offensive = known == 0 ? 0f : unwinnable / (float)known;
+
+            bool enemyIntel = (snap.Known?.EnemyKnownStrength ?? 0f) >= 1f;
+            float enemy = enemyIntel ? 1f - RelativeEdge(snap) : 0f;
+
+            float threatReserve = DefensiveReserveForThreats(snap.Threat?.Threats);
+            float defensive = threatReserve <= AiConfigV2.allocatorSliceEpsilon ? 0f
+                : Mathf.Clamp01((threatReserve - Mathf.Max(0f, snap.Self.TotalPower)) / threatReserve);
+
+            return new ForceNeed(offensive, enemy, defensive, true);
+        }
+    }
+}

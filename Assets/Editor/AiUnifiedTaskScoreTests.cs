@@ -14,6 +14,101 @@ namespace Game.EditorTests
 {
     public class AiUnifiedTaskScoreTests
     {
+        // The slot table is the only list of slots: every enum slot must round-trip through the
+        // slot-wise constructor and fold with exactly its table sign. A slot added to the enum
+        // but missed in the indexer / FromSlots fails here instead of vanishing from scores.
+        [Test]
+        public void SlotTable_EverySlotRoundTripsAndFoldsWithItsSign()
+        {
+            foreach (TaskSlot slot in Enum.GetValues(typeof(TaskSlot)))
+            {
+                TaskScore only = TaskScore.FromSlots(s => s == slot ? 1f : 0f);
+                Assert.That(only[slot], Is.EqualTo(1f), slot.ToString());
+                Assert.That(only.Value, Is.EqualTo(TaskScoreEvaluator.Sign(slot)), slot.ToString());
+            }
+        }
+
+        [Test]
+        public void CalibrationReport_ScoresEveryFamilyThroughTheRealConverters()
+        {
+            string json = Game.EditorTools.TaskScoreCalibrationReport.Build();
+            foreach (string name in new[] { "Extraction", "Base", "Raid near", "Raid far",
+                         "Attack enemy Base", "ActiveDefence intercept", "Recon Explore",
+                         "Recon Surveil", "Mobile collection", "Development operator walk" })
+                Assert.That(json, Does.Contain("\"name\":\"" + name + "\""), name);
+            // Raid near: reward 8 + win 0.8 x 12 + proximity at 3 hexes 1.5 - activation 3 - one turn 3.
+            Assert.That(json, Does.Contain("\"name\":\"Raid near\",\"family\":\"Military\""));
+            Assert.That(json, Does.Contain("\"value\":13.1,\"benefit\":19.1,\"cost\":6"));
+            Assert.That(json.Split('{').Length, Is.EqualTo(json.Split('}').Length),
+                "balanced JSON objects");
+        }
+
+        [Test]
+        public void Describe_PrintsOneLineInTheFourCategories()
+        {
+            var raid = new TaskScore(raidReward: 8f, winChance: 9.6f, ownTerritoryProximity: 1.5f,
+                cardPrice: 3f, delivery: 3f);
+            string line = TaskScoreEvaluator.Describe(raid);
+            Assert.That(line, Does.StartWith("value=13.1 | benefit 19.1 ("));
+            Assert.That(line, Does.Contain("RaidReward 8.0"));
+            Assert.That(line, Does.Contain("| cost 6.0 (CardPrice 3.0, Delivery 3.0)"));
+            Assert.That(line, Does.Contain("| risk 0.0 | opportunity 0.0"));
+            Assert.That(TaskScoreEvaluator.CategoryTotal(raid, TaskSlotCategory.Benefit)
+                - TaskScoreEvaluator.CategoryTotal(raid, TaskSlotCategory.Cost),
+                Is.EqualTo(raid.Value).Within(0.0001f), "the four categories fold to Value");
+        }
+
+        [Test]
+        public void WithExecution_KeepsEveryIntrinsicSlotAndReplacesOnlyExecution()
+        {
+            TaskScore intrinsic = TaskScore.FromSlots(s => 1f + (int)s);
+            TaskScore execution = TaskScore.FromSlots(s => 100f + (int)s);
+            TaskScore composed = TaskScoreEvaluator.WithExecution(intrinsic, execution);
+            foreach (TaskSlot slot in Enum.GetValues(typeof(TaskSlot)))
+            {
+                float expected = TaskScoreEvaluator.GroupOf(slot) == TaskSlotGroup.Intrinsic
+                    ? intrinsic[slot] : execution[slot];
+                Assert.That(composed[slot], Is.EqualTo(expected), slot.ToString());
+            }
+        }
+
+        [Test]
+        public void WithResponse_NeverDropsAnIntrinsicSlot()
+        {
+            TaskScore intrinsic = TaskScore.FromSlots(s =>
+                TaskScoreEvaluator.GroupOf(s) == TaskSlotGroup.Intrinsic ? 2f : 50f);
+            TaskScore response = TaskScoreEvaluator.WithResponse(intrinsic, 0.5f, 1f, 1f, 2f, 3f);
+            foreach (TaskSlot slot in Enum.GetValues(typeof(TaskSlot)))
+                if (TaskScoreEvaluator.GroupOf(slot) == TaskSlotGroup.Intrinsic)
+                    Assert.That(response[slot], Is.EqualTo(2f), slot.ToString());
+            Assert.That(response.MoverOpportunityCost, Is.EqualTo(3f));
+            Assert.That(response.WinChance, Is.EqualTo(TaskScoreEvaluator.WinChance(0.5f)));
+        }
+
+        [Test]
+        public void NetChange_IsSlotWiseAndAddsOnlyThePhysicalPriceOfTheChange()
+        {
+            TaskScore from = TaskScore.FromSlots(s => 1f);
+            TaskScore to = TaskScore.FromSlots(s => 3f);
+            TaskScore change = TaskScoreEvaluator.NetChange(from, to,
+                additionalCardPrice: 1.5f, additionalDelivery: 0.5f);
+            foreach (TaskSlot slot in Enum.GetValues(typeof(TaskSlot)))
+            {
+                float extra = slot == TaskSlot.CardPrice ? 1.5f : slot == TaskSlot.Delivery ? 0.5f : 0f;
+                Assert.That(change[slot], Is.EqualTo(2f + extra).Within(0.0001f), slot.ToString());
+            }
+        }
+
+        [Test]
+        public void ForceAmplification_IsCappedBelowWinningTheFightItAmplifies()
+        {
+            Assert.That(TaskScoreEvaluator.ForceAmplification(0f), Is.Zero);
+            Assert.That(TaskScoreEvaluator.ForceAmplification(100f),
+                Is.EqualTo(AiConfigV2.taskScoreForceAmplificationMax));
+            Assert.That(AiConfigV2.taskScoreForceAmplificationMax,
+                Is.LessThan(AiConfigV2.taskScoreWinChanceMax));
+        }
+
         [Test]
         public void Fold_UsesEachSemanticContributionExactlyOnce()
         {
@@ -97,30 +192,55 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void PhysicalCostConversions_UseOneSharedScale()
+        public void ActionPrice_OneApOnePrice_AndTwoCurrenciesAreScalesOfIt()
         {
-            const float ap = 2f, resources = 3f, perTurnAp = 1f, etaTurns = 3f;
-            var extraction = new TaskScore(
-                cardPrice: TaskScoreEvaluator.CardPrice(ap, resources),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
-                    AiConfigV2.taskScoreCardPriceApWeight));
-            var foundation = new TaskScore(
-                cardPrice: TaskScoreEvaluator.CardPrice(ap, resources),
-                delivery: TaskScoreEvaluator.DeliveryFromEta(perTurnAp, etaTurns,
-                    AiConfigV2.taskScoreCardPriceApWeight));
-            // One extra turn beyond the first prices identically to that same AP spent on a card —
-            // both are the SAME real AP, at the SAME shared rate, just paid on a different turn.
-            Assert.That(TaskScoreEvaluator.CardPrice(1f, 0f),
-                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(1f, 2f,
-                    AiConfigV2.taskScoreCardPriceApWeight)),
-                "a real AP must have the same intrinsic cost when spent on a card or on one extra turn of delivery");
-            Assert.That(extraction.CardPrice, Is.EqualTo(foundation.CardPrice));
-            Assert.That(extraction.Delivery, Is.EqualTo(foundation.Delivery));
-            Assert.That(extraction.Value, Is.EqualTo(foundation.Value));
+            // A card's AP, an activation now and one more turn of a march are the same AP.
+            Assert.That(TaskScoreEvaluator.Price(ActionPrice.Ap(1f)),
+                Is.EqualTo(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(1f, 2f))),
+                "a real AP has one price whether it pays a card or one extra turn of delivery");
+            Assert.That(ActionPrice.RecurringAp(3f, 1f), Is.Zero,
+                "a same-turn march pays no recurring activation");
+
+            // No snapshot: every resource unit is at the neutral scarcity price.
+            var cost = new Game.Cards.ResourceCost { energy = 2, materials = 1 };
+            Assert.That(ActionPrice.Resources(cost),
+                Is.EqualTo(3f * AiConfigV2.actionPriceResourceAp).Within(0.0001f));
+
+            // The two currencies price the same AP-equivalents at their own scale only.
+            const float apEquivalents = 5f;
+            Assert.That(ActionPrice.ToTaskScore(apEquivalents) / ActionPrice.ToCardScore(apEquivalents),
+                Is.EqualTo(AiConfigV2.taskScorePerApEquivalent / AiConfigV2.cardScorePerApEquivalent)
+                    .Within(0.0001f));
+            Assert.That(ActionPrice.FromTaskScore(ActionPrice.ToTaskScore(apEquivalents)),
+                Is.EqualTo(apEquivalents).Within(0.0001f));
+        }
+
+        [Test]
+        public void ActionPrice_ScarcityFollowsPendingDemandAgainstSupply()
+        {
+            var card = new Game.Cards.CardDefinition
+                { resourceCost = new Game.Cards.ResourceCost { energy = 6 } };
+            var scarce = new WorldSnapshot { Self = new SelfSnapshot
+            {
+                Deck = new[] { card }, Hand = System.Array.Empty<Game.Cards.CardData>(),
+                Stockpile = new ResourceBundle { Energy = 0f },
+            } };
+            var plentiful = new WorldSnapshot { Self = new SelfSnapshot
+            {
+                Deck = System.Array.Empty<Game.Cards.CardDefinition>(),
+                Hand = System.Array.Empty<Game.Cards.CardData>(),
+                Stockpile = new ResourceBundle { Energy = 20f },
+            } };
+            Assert.That(ActionPrice.Scarcity(Game.Economy.ResourceType.Energy, scarce),
+                Is.EqualTo(AiConfigV2.actionPriceScarcityMax).Within(0.0001f),
+                "the deck wants Energy and none is coming: the dearest price");
+            Assert.That(ActionPrice.Scarcity(Game.Economy.ResourceType.Energy, plentiful),
+                Is.EqualTo(AiConfigV2.actionPriceScarcityMin).Within(0.0001f),
+                "nothing else wants Energy: the cheapest price");
         }
 
         // Task 8 correction — the previous "SameReactivationAp_PricesIdenticallyAcrossEconomy
-        // RaidAndRecon" test called TaskScoreEvaluator.DeliveryFromEta TWICE with the SAME
+        // RaidAndRecon" test called the delivery converter TWICE with the SAME
         // hand-picked literal arguments and asserted the result equalled itself: a tautology that
         // exercised no Economy/Raid/Recon production code at all and would pass even if any of the
         // three real cost models were completely broken. It also embedded a false premise: Economy's
@@ -130,9 +250,8 @@ namespace Game.EditorTests
         // count as Recon/Raid's "eta-1" delivery convention — so asserting identical NUMBERS across
         // all three would have been asserting something false about the real domain, not just format.
         // What IS actually shared, and what these three tests verify by calling the real per-family
-        // cost model with real, concrete physical inputs, is the single rate
-        // (AiConfigV2.taskScoreReactivationApWeight) each family folds its own real per-turn
-        // reactivation AP fact through.
+        // cost model with real, concrete physical inputs, is the one AP price (ActionPrice) each
+        // family folds its own real per-turn reactivation AP fact through.
         [Test]
         public void ReconDelivery_FoldsRealPerTurnActivationApAtSharedRate()
         {
@@ -171,7 +290,7 @@ namespace Game.EditorTests
             ReconObjective objective = ReconObjectiveEvaluator.BuildExplore(snap, focus,
                 freshNeighbors: 0, distFromBase: 6, enemyExposure: false, stealthDetectionRisk: false);
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(4f * 1f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f),
+                Is.EqualTo(TaskScoreEvaluator.Price(4f * 1f)).Within(0.0001f),
                 "Recon's real production Delivery must fold the real RecurringActivationAp/EtaTurns "
                 + "facts through the shared reactivation rate, not a hand-picked literal");
         }
@@ -215,9 +334,9 @@ namespace Game.EditorTests
             // RaidCostEstimate it receives — reproduced here to check the ESTIMATE's real numbers,
             // not to reintroduce the old tautology (the numbers above come from RaidCostModel, not
             // from a literal).
-            float raidDelivery = TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
-                estimate.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight);
-            Assert.That(raidDelivery, Is.EqualTo(4f * 1f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f));
+            float raidDelivery = TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                estimate.RecurringActivationAp, estimate.Requirements.EtaTurns));
+            Assert.That(raidDelivery, Is.EqualTo(TaskScoreEvaluator.Price(4f * 1f)).Within(0.0001f));
         }
 
         [Test]
@@ -245,13 +364,13 @@ namespace Game.EditorTests
                 "two un-activated outbound turns at real ActivationApCost 4 each — Economy's own real rule");
 
             // Same production one-line fold DemandLayer.Economy applies to this real extraAp.
-            float economyDelivery = extraAp * AiConfigV2.taskScoreReactivationApWeight;
-            Assert.That(economyDelivery, Is.EqualTo(8f * AiConfigV2.taskScoreReactivationApWeight).Within(0.0001f));
+            float economyDelivery = TaskScoreEvaluator.Price(extraAp);
+            Assert.That(economyDelivery, Is.EqualTo(TaskScoreEvaluator.Price(8f)).Within(0.0001f));
 
             // What genuinely IS shared across all three families (verified by the sibling tests
-            // above using each family's own real numbers): the same rate, applied to whatever real
+            // above using each family's own real numbers): the one price, applied to whatever real
             // per-turn AP fact that family's own cost model actually derived.
-            Assert.That(AiConfigV2.taskScoreReactivationApWeight, Is.GreaterThan(0f));
+            Assert.That(AiConfigV2.taskScorePerApEquivalent, Is.GreaterThan(0f));
         }
 
         [Test]
@@ -330,16 +449,13 @@ namespace Game.EditorTests
                 freshNeighbors: 4, distFromBase: 6,
                 enemyExposure: false, stealthDetectionRisk: false);
             ScoutCostEstimate estimate = ScoutCostModel.Estimate(snapshot, objective.ToTarget());
-            // Task 5 (Problem A) fix: the notional mover's whole ApDesired here is a re-activation
-            // fee (no stealth entry on this route), so it must price at the SAME shared
-            // taskScoreReactivationApWeight Raid/Economy use for a re-activation — never at the
-            // higher taskScoreCardPriceApWeight, which is reserved for a genuine one-time ability
-            // spend (e.g. entering stealth).
+            // The notional mover's whole ApDesired here is an activation (no stealth entry on this
+            // route): real AP at the one price every AP has.
             Assert.That(objective.TaskScore.CardPrice,
-                Is.EqualTo(estimate.ActivationApNow * AiConfigV2.taskScoreReactivationApWeight));
+                Is.EqualTo(TaskScoreEvaluator.Price(estimate.ActivationApNow)));
             Assert.That(objective.TaskScore.Delivery,
-                Is.EqualTo(TaskScoreEvaluator.DeliveryFromEta(estimate.RecurringActivationAp,
-                    estimate.EtaTurns, AiConfigV2.taskScoreReactivationApWeight)));
+                Is.EqualTo(TaskScoreEvaluator.Price(ActionPrice.RecurringAp(
+                    estimate.RecurringActivationAp, estimate.EtaTurns))));
             Assert.That(objective.BaseValue, Is.EqualTo(objective.TaskScore.Value));
             // info=10, neutral home proximity at 6 hexes=0, activation=1,
             // one extra turn of delivery=1.
@@ -608,13 +724,12 @@ namespace Game.EditorTests
             Assert.That(result.Requirements.EstimatedDistance, Is.EqualTo(distance));
             var resolvedTarget = (RaidMissionTarget)result.Target;
             var expected = new TaskScore(
-                staleness: objective.TaskScore.Staleness,
                 ownTerritoryProximity: objective.TaskScore.OwnTerritoryProximity,
-                militaryTargetRelevance: objective.TaskScore.MilitaryTargetRelevance,
+                raidReward: objective.TaskScore.RaidReward,
                 winChance: TaskScoreEvaluator.WinChance(resolvedTarget.ReadyWinChance),
-                cardPrice: pinned.ActivationApCost * AiConfigV2.taskScoreReactivationApWeight,
-                delivery: TaskScoreEvaluator.DeliveryFromEta(pinned.ActivationApCost,
-                    result.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight));
+                cardPrice: TaskScoreEvaluator.Price(pinned.ActivationApCost),
+                delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(pinned.ActivationApCost,
+                    result.Requirements.EtaTurns)));
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-1.5f).Within(0.0001f));
@@ -631,16 +746,16 @@ namespace Game.EditorTests
             MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
                 new[] { intent }, Array.Empty<AggressionObjective>()).Single();
             float expectedFog = objective.TaskScore.OwnTerritoryProximity
-                + objective.TaskScore.MilitaryTargetRelevance
-                - TaskScoreEvaluator.ReactivationApPrice(pinned.ActivationApCost)
-                - TaskScoreEvaluator.DeliveryFromEta(pinned.ActivationApCost,
-                    fog.Requirements.EtaTurns);
-            Assert.That(objective.TaskScore.MilitaryTargetRelevance,
+                + objective.TaskScore.RaidReward
+                - TaskScoreEvaluator.Price(pinned.ActivationApCost)
+                - TaskScoreEvaluator.Price(ActionPrice.RecurringAp(pinned.ActivationApCost,
+                    fog.Requirements.EtaTurns));
+            Assert.That(objective.TaskScore.RaidReward,
                 Is.EqualTo(AiConfigV2.RaidReward).Within(0.0001f));
             Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f),
                 "fog must preserve the stationary Raid target's fixed RaidReward");
-            Assert.That(TaskScoreEvaluator.StaleIntelPenalty(1f), Is.LessThan(0f),
-                "shared staleness conversion remains available for future mobile player targets");
+            Assert.That(TaskScoreEvaluator.IntelAgePenalty(1f), Is.GreaterThan(0f),
+                "shared intel-age price remains available for future mobile player targets");
         }
 
         [Test]

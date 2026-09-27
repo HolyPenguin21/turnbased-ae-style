@@ -183,7 +183,7 @@ namespace Game.Ai.V2
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
                 objective.Opposition, hexBonus, objective.Hex, claimed,
                 GroundCombatAdmissionPolicy.AttackWinChanceFloor,
-                donorApPrices: GroundCombatDonorPolicy.BorrowableDonorApPrices(activeIntents));
+                donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents));
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "

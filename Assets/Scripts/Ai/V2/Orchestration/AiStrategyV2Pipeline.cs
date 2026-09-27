@@ -924,6 +924,9 @@ namespace Game.Ai.V2
                 // admission occurs: Phase B must see AP that no actor can spend on a build.
                 InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
                     player, root, hand, ctx);
+                // Continuing Hard operations had their funding chance in the loop above; their
+                // Phase-A protection ends here so Phase B sees every AP nobody will spend.
+                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
 
                 // Management/Development is another bounded task family, not the owner of the
                 // operational loop. Phase B settles until it either exhausts its candidates or
@@ -1098,6 +1101,7 @@ namespace Game.Ai.V2
             // the pre-execution Known/MapKnowledge layers.
             if (!phaseBHandled)
             {
+                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);
                 postCommitments = ActorCommitments.FromIntents(
@@ -1219,6 +1223,7 @@ namespace Game.Ai.V2
             foreach (MissionProposal m in missions)
                 if (m != null)
                     m.EffectiveValue = m.BaseValue * RadarValueScale.For(radar, m);
+            AiFrameLog.TaskScores(snapshot?.Observer, snapshot?.TurnNumber ?? 0, missions);
 
             AiV2Trace.CorrelateDemandsToMissions(demands, missions);
             return missions;

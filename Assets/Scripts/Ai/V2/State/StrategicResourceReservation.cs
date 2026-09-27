@@ -213,28 +213,35 @@ namespace Game.Ai.V2
                     + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
         }
 
-        // Read-only enumeration of real completion owners, never a second reservation ledger.
-        // Snapshot the keys before the lifecycle owner modifies its own rows.
-        internal static IReadOnlyList<string> CompletionOwners(PlayerSetupData player, int turn)
+        // Read-only enumeration of the owners holding rows of one reason, never a second
+        // reservation ledger. Snapshot the keys before the lifecycle owner modifies its own rows.
+        internal static IReadOnlyList<string> OwnersWithReason(PlayerSetupData player, int turn,
+            StrategicReservationReason reason)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return System.Array.Empty<string>();
-            return e.Reservations.Where(r => r.Reason == StrategicReservationReason.EconomyBuildCompletion)
+            return e.Reservations.Where(r => r.Reason == reason)
                 .Select(r => r.Owner).Where(owner => !string.IsNullOrEmpty(owner))
                 .Distinct().OrderBy(owner => owner).ToList();
         }
 
-        internal static float CompletionForOwner(PlayerSetupData player, int turn, string owner,
-            StrategicReservedResource resource)
+        internal static float HoldForOwner(PlayerSetupData player, int turn, string owner,
+            StrategicReservationReason reason, StrategicReservedResource resource)
         {
             if (player == null || string.IsNullOrEmpty(owner)
                 || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return 0f;
-            return e.Reservations.Where(r => r.Owner == owner
-                    && r.Reason == StrategicReservationReason.EconomyBuildCompletion
+            return e.Reservations.Where(r => r.Owner == owner && r.Reason == reason
                     && r.Resource == resource)
                 .Sum(r => Mathf.Max(0f, r.Amount));
         }
+
+        internal static IReadOnlyList<string> CompletionOwners(PlayerSetupData player, int turn) =>
+            OwnersWithReason(player, turn, StrategicReservationReason.EconomyBuildCompletion);
+
+        internal static float CompletionForOwner(PlayerSetupData player, int turn, string owner,
+            StrategicReservedResource resource) =>
+            HoldForOwner(player, turn, owner, StrategicReservationReason.EconomyBuildCompletion, resource);
 
         public static bool HasOwnerReason(PlayerSetupData player, int turn, string owner,
             StrategicReservationReason reason) =>

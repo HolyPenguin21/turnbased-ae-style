@@ -416,7 +416,7 @@ namespace Game.Ai.V2
 
             // Strike force — a Raid whose primary an Attack gather bought ends here.
             // The gather priced the abandoned Raid into its own score
-            // (GroundCombatDonorPolicy.BorrowableDonorApPrices) and won the allocation; the army now
+            // (GroundCombatDonorPolicy.BorrowableDonorValues) and won the allocation; the army now
             // walks to the host and, after the handoff, home. ActiveDefence responders are never
             // gather donors and therefore never enter this retirement path.
             var givenToGather = new HashSet<int>(state.All

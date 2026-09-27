@@ -22,6 +22,10 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, StartState> Starts =
             new Dictionary<PlayerSetupData, StartState>();
 
+        // Match-start reset (CitadelSetupController), alongside the other V2 registries: a new
+        // match's turn 1 must never be skipped as already captured.
+        internal static void ClearAll() => Starts.Clear();
+
         public static void CaptureStart(PlayerSetupData player, PlayerRoot root, int turn)
         {
             if (player == null || root == null)

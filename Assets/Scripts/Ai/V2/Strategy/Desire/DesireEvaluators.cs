@@ -59,14 +59,6 @@ namespace Game.Ai.V2
     //  that means "existential" must react the turn it becomes true.
     // ===========================================================================================
 
-    internal static class Curves
-    {
-        public static float Ramp(float v, float lo, float hi) =>
-            Mathf.Clamp01((v - lo) / Mathf.Max(0.0001f, hi - lo));
-
-        public static float InvRamp(float v, float lo, float hi) => 1f - Ramp(v, lo, hi);
-    }
-
     public sealed class DesireBreakdown
     {
         public float ReconExploration;
@@ -96,10 +88,12 @@ namespace Game.Ai.V2
         // Development — the desire factors, kept for the "why" log.
         public float DevFacilityReady;      // 0/1 — a facility with a qualifying hero exists (hint only, NOT a gate)
         public float DevSurplusFraction;    // [0..1] resource headroom above the reservation floors
-        public float DevOfferingQuality;    // [0..1] max(ready-offering quality, latent target pressure)
+        public float DevOfferingQuality;    // [0..1] feasibility: max(ready best success chance, latent path)
         public float DevBestSuccessChance;  // raw p of the best affordable offering
         public int   DevUpgradeTargets;
         public bool  DevPathViable;         // a facility exists / can be built — else latent appetite is 0
+        public float DevJustifiedNeed;      // [0..1] ForceNeedModel.JustifiedForceNeed — what Production amplifies
+        public string DevNeedDetail = "";
     }
 
     public sealed class RadarAssessment
@@ -176,18 +170,15 @@ namespace Game.Ai.V2
             float surplus = Curves.Ramp(freePower / Mathf.Max(1f, snapshot.Self.TotalPower),
                 AiConfigV2.aggSurplusRampLo, AiConfigV2.aggSurplusRampHi);
 
-            float ownPower = Mathf.Max(snapshot.Self.FieldPower, snapshot.Self.BestStackPotential);
-            float enemyPower = snapshot.Known?.EnemyKnownStrength ?? 0f;
-            float relativeEdge = enemyPower < 1f
-                ? AiConfigV2.aggRelEdgeNoIntel
-                : Curves.Ramp(ownPower / enemyPower, AiConfigV2.aggRelEdgeRampLo, AiConfigV2.aggRelEdgeRampHi);
+            float relativeEdge = ForceNeedModel.RelativeEdge(snapshot);
 
             float ecoSecurity = snapshot.Economy != null ? snapshot.Economy.EconomicSecurity : 0.5f;
             float ecoGate = Mathf.Lerp(AiConfigV2.aggEcoGateLo, 1f, Mathf.Clamp01(ecoSecurity));
 
             float readiness = (surplus + ecoGate + relativeEdge) / 3f;
             float strategicThreat = MilitaryThreat(snapshot, underSiege);
-            float rawAggression = Mathf.Clamp01(HasKnownCombatActivity(snapshot) ? readiness : 0f);
+            float rawAggression = Mathf.Clamp01(
+                ForceNeedModel.HasKnownCombatActivity(snapshot) ? readiness : 0f);
 
             breakdown.AggSurplus = surplus;
             breakdown.AggRelativeEdge = relativeEdge;
@@ -257,11 +248,7 @@ namespace Game.Ai.V2
             float surplus = Curves.Ramp(freePower / Mathf.Max(1f, snapshot.Self.TotalPower),
                 AiConfigV2.aggSurplusRampLo, AiConfigV2.aggSurplusRampHi);
 
-            float ownPower = Mathf.Max(snapshot.Self.FieldPower, snapshot.Self.BestStackPotential);
-            float enemyPower = snapshot.Known?.EnemyKnownStrength ?? 0f;
-            float relativeEdge = enemyPower < 1f
-                ? AiConfigV2.aggRelEdgeNoIntel
-                : Curves.Ramp(ownPower / enemyPower, AiConfigV2.aggRelEdgeRampLo, AiConfigV2.aggRelEdgeRampHi);
+            float relativeEdge = ForceNeedModel.RelativeEdge(snapshot);
 
             breakdown.OpportunityReport = opp;
             breakdown.BestOpportunity = opp.Best;
@@ -270,14 +257,6 @@ namespace Game.Ai.V2
             breakdown.RequiredDefensiveReserve = requiredReserve;
             breakdown.OffensiveFreePower = freePower;
         }
-
-        // Presence only: no objectives, viability, threat severity or task value is read here.
-        internal static bool HasKnownCombatActivity(WorldSnapshot snap) =>
-            (snap?.Known?.NeutralSightings?.Count ?? 0) > 0
-            || (snap?.Known?.EventGuards?.Count ?? 0) > 0
-            || (snap?.Known?.EnemySightings?.Count ?? 0) > 0
-            || (snap?.Known?.Buildings?.Any(b => b.Owner != null && b.Owner != snap.Observer
-                && !b.Owner.IsNeutral && !b.Owner.IsEliminated) ?? false);
 
         private static float ReconExploration(WorldSnapshot snap)
         {
@@ -314,19 +293,20 @@ namespace Game.Ai.V2
             return b.EconomyRaw;
         }
 
-        // Development desire over snapshot.Development (built once in the scan, shared with
-        // DevelopmentOpportunityEvaluator). NO hard facility+hero gate — that made the axis a pure
-        // execution-readiness signal and the vector went permanently dormant whenever the operator
-        // hero never showed up on its own. Instead, like Recon's explore pressure:
-        //   rawDev = surplus * quality * gain,  quality = max(readyQuality, latentQuality)
-        //     readyQuality  — a facility + qualifying hero + affordable offered cards exist, so a
-        //                     Challenge can run THIS turn (best success chance + target count).
-        //     latentQuality — no live offering yet, but there is something worth developing and a
-        //                     path to a facility exists. Keeps the axis warm so DemandLayer can
-        //                     STAGE the prerequisite (build the facility / move an operator hero
-        //                     onto it), capped at devLatentPotential.
-        //   surplus stays a hard multiplier — a Challenge stakes real H/E/M/T with a random return.
-        // Reads ONLY the shared readiness object — no live game-state read.
+        // Development (Research/Production) desire — the last link of the axis chain:
+        //   Recon -> knowledge -> Economy -> budget -> Attack/Defence -> need -> Production amplifies.
+        //   rawDev = surplus x need x feasibility, and never above need.
+        //     surplus     — Economy's budget (resource headroom above the reservation floors). Hard
+        //                   multiplier: a Challenge stakes real H/E/M/T with a random return.
+        //     need        — ForceNeedModel.JustifiedForceNeed: the part of the known war (fights we
+        //                   cannot take, enemy edge, uncovered defensive reserve) Attack/Defence
+        //                   cannot meet with the force they have. Zero without a military witness.
+        //     feasibility — max(ready, latent): a staffed facility with an affordable offering can
+        //                   run a Challenge now (its best success chance); otherwise a path to a
+        //                   facility keeps the axis warm (devLatentPotential) so Demand can STAGE the
+        //                   prerequisite. No facility+hero hard gate: that made the axis dormant
+        //                   whenever the operator never showed up on its own.
+        // Reads only snapshot facts — no live game-state read.
         private static float DevelopmentDesire(WorldSnapshot snap, DesireBreakdown b)
         {
             DevelopmentReadiness rd = snap?.Development;
@@ -335,25 +315,22 @@ namespace Game.Ai.V2
 
             float surplus = Curves.Ramp(rd.SurplusFraction,
                 AiConfigV2.devSurplusRampLo, AiConfigV2.devSurplusRampHi);
-            float targetPressure = Curves.Ramp(rd.UpgradeTargetCount,
-                AiConfigV2.devTargetRampLo, AiConfigV2.devTargetRampHi);
+            ForceNeed need = ForceNeedModel.JustifiedForceNeed(snap);
 
-            float readyQuality = rd.Offerings.Count == 0 ? 0f : Mathf.Clamp01(
-                AiConfigV2.devWeightSuccessChance * rd.BestSuccessChance
-                + AiConfigV2.devWeightTargets * targetPressure);
-            float latentQuality = rd.DevPathViable
-                ? AiConfigV2.devLatentPotential * targetPressure
-                : 0f;
-            float quality = Mathf.Max(readyQuality, latentQuality);
+            float readyFeasibility = rd.Offerings.Count == 0 ? 0f : Mathf.Clamp01(rd.BestSuccessChance);
+            float latentFeasibility = rd.DevPathViable ? AiConfigV2.devLatentPotential : 0f;
+            float feasibility = Mathf.Max(readyFeasibility, latentFeasibility);
 
             b.DevFacilityReady = rd.AnyFacilityWithHero ? 1f : 0f;
             b.DevSurplusFraction = rd.SurplusFraction;
             b.DevBestSuccessChance = rd.BestSuccessChance;
-            b.DevOfferingQuality = quality;
+            b.DevOfferingQuality = feasibility;
             b.DevUpgradeTargets = rd.UpgradeTargetCount;
             b.DevPathViable = rd.DevPathViable;
+            b.DevJustifiedNeed = need.Total;
+            b.DevNeedDetail = need.ToString();
 
-            return Mathf.Clamp01(surplus * quality * AiConfigV2.devDesireGain);
+            return Mathf.Min(need.Total, Mathf.Clamp01(surplus * need.Total * feasibility));
         }
 
         private static float ReconSurveillance(WorldSnapshot snap)
@@ -457,47 +434,10 @@ namespace Game.Ai.V2
 
         private static void ComputeSurplus(WorldSnapshot snap, out float requiredReserve, out float freePower)
         {
-            float reserve = DefensiveReserveForThreats(snap.Threat?.Threats, log: true);
+            float reserve = ForceNeedModel.DefensiveReserveForThreats(snap.Threat?.Threats, log: true);
             reserve = Mathf.Max(reserve, AiConfigV2.aggHomeGuardFloor);
             requiredReserve = reserve;
             freePower = Mathf.Max(0f, snap.Self.TotalPower - reserve);
-        }
-
-        // One physical hostile force contributes once. The protected asset selects relevance and
-        // diagnostics, exactly like ActiveDefenceObjectiveEvaluator; it must not clone the same
-        // enemy power for every Citadel/Base/Facility lying inside its threat envelope.
-        internal static float DefensiveReserveForThreats(
-            IReadOnlyList<AssetThreatSnapshot> threats, bool log = false)
-        {
-            if (threats == null)
-                return 0f;
-            float reserve = 0f;
-            foreach (IGrouping<int, AssetThreatSnapshot> group in threats
-                .Where(t => t?.Contact?.Army != null
-                    && t.Asset != null
-                    && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base
-                        || t.Asset.Kind == AssetKind.Facility))
-                .GroupBy(t => t.Contact.Army.ArmyId))
-            {
-                AssetThreatSnapshot best = group
-                    .OrderByDescending(t => t.Severity)
-                    .ThenByDescending(t => t.Asset.Value)
-                    .ThenBy(t => t.EnemyEta ?? int.MaxValue)
-                    .First();
-                float contribution = Mathf.Max(0f,
-                    best.Contact.Army.EffectiveArmyPower
-                    * AiConfigV2.aggDefenceConfidenceMargin);
-                reserve += contribution;
-                if (log)
-                {
-                    string enemyLabel = $"#{best.Contact.Army.ArmyId}";
-                    AiDebugLog.WriteDeduped($"reserve:{enemyLabel}:{best.Asset.Hex.Q}:{best.Asset.Hex.R}",
-                        $"[AI][V2][Defence][Reserve] enemy={enemyLabel} contributes={contribution:0.##} "
-                        + $"asset={best.Asset.Kind}@({best.Asset.Hex.Q},{best.Asset.Hex.R}) "
-                        + $"severity={best.Severity:0.00} pairCount={group.Count()}");
-                }
-            }
-            return reserve;
         }
 
         private static float MilitaryThreat(WorldSnapshot snap, bool underSiege)
@@ -550,7 +490,7 @@ namespace Game.Ai.V2
                 + $"actionableGate={F(b.EconomyActionableGate)} raw={F(rawEconomy)} "
                 + $"smoothed={F(d.Raw[DesireAxis.Economy])}");
             AiDebugLog.Write($"[AI][V2]   desires — DEV raw {F(rawDev)} smoothed {F(d.Raw[DesireAxis.Development])} "
-                + $"= surplus {F(b.DevSurplusFraction)} x quality {F(b.DevOfferingQuality)} "
+                + $"= surplus {F(b.DevSurplusFraction)} x need {F(b.DevJustifiedNeed)} x feasibility {F(b.DevOfferingQuality)} "
                 + $"(facReady {F(b.DevFacilityReady)} pathViable {(b.DevPathViable ? 1 : 0)} bestP {F(b.DevBestSuccessChance)} targets {b.DevUpgradeTargets})");
             string bestOpp = b.BestOpportunity.HasTarget
                 ? $"@{b.BestOpportunity.TargetHex.Q},{b.BestOpportunity.TargetHex.R} "

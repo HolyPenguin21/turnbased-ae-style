@@ -14,26 +14,24 @@ namespace Game.Ai.V2
     internal static class GroundCombatDonorPolicy
     {
         // Strike force — the armies an Attack gather may BUY as supports: the primary of an
-        // active Raid, priced at what abandoning that operation costs (its LastIntrinsicValue) in
-        // AP-equivalents at the one activation rate TaskScore charges
-        // (taskScoreReactivationApWeight per AP). ActiveDefence owns its responder until that
-        // threat is completed/invalidated and is never an offensive gather donor. The gather adds
-        // the Raid price to that donor's AP, so its own TaskScore carries the loss and the allocator
-        // arbitrates; Continuity retires the Raid once the gather holds its army. An operation of
-        // unknown worth is not for sale.
-        internal static Dictionary<int, float> BorrowableDonorApPrices(IEnumerable<MissionIntent> intents)
+        // active Raid, priced at what abandoning that operation loses (MissionIntent
+        // .DisplacementValue, TaskScore units — a Raid already walking home loses nothing).
+        // ActiveDefence owns its responder until that threat is completed/invalidated and is
+        // never an offensive gather donor. The gather carries the loss in its own TaskScore
+        // (MoverOpportunityCost) and the allocator arbitrates; Continuity retires the Raid once
+        // the gather holds its army. A running operation of unknown worth is not for sale.
+        internal static Dictionary<int, float> BorrowableDonorValues(IEnumerable<MissionIntent> intents)
         {
-            var prices = new Dictionary<int, float>();
+            var values = new Dictionary<int, float>();
             foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
             {
                 if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
                     || i.Kind != MissionKind.Raid
-                    || i.LastIntrinsicValue <= 0f)
+                    || (!i.IsLifecycleLeg && i.LastIntrinsicValue <= 0f))
                     continue;
-                prices[i.PreferredMoverArmyId.Value] =
-                    TaskScoreEvaluator.ReactivationApFromScore(i.LastIntrinsicValue);
+                values[i.PreferredMoverArmyId.Value] = i.DisplacementValue;
             }
-            return prices;
+            return values;
         }
 
         // §12 — the best same-hex hero that may legally join `host`, or (null, null): the one

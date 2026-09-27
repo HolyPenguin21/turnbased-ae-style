@@ -271,7 +271,8 @@ namespace Game.EditorTests
             Assert.That(eventRaid.BaseValue, Is.EqualTo(AiConfigV2.RaidReward
                 + TaskScoreEvaluator.OwnTerritoryProximity(
                     TaskScoreEvaluator.NearestOwnedHomeDistance(eventSnap, eventRaid.LastKnownHex))));
-            Assert.That(TaskScoreEvaluator.StaleIntelPenalty(0.5f), Is.LessThan(0f));
+            Assert.That(eventRaid.TaskScore.IntelAgePenalty, Is.Zero);
+            Assert.That(TaskScoreEvaluator.IntelAgePenalty(0.5f), Is.GreaterThan(0f));
         }
 
         [Test]

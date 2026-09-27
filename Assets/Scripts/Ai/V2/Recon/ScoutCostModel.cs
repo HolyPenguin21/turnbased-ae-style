@@ -41,14 +41,10 @@ namespace Game.Ai.V2
         // resource packing.
         public float RecurringActivationAp;
 
-        // Task 5 (Problem A) — ApDesired mixes two different physical facts: the mover's own
-        // once-per-turn re-activation fee (the SAME real AP Economy/Raid price at
-        // taskScoreReactivationApWeight) and, only when stealth must be entered THIS turn, a
-        // genuine one-time ability spend (never a re-activation, correctly priced like any other
-        // played card at taskScoreCardPriceApWeight). ActivationApNow isolates the former so a
-        // caller building TaskScore.CardPrice can price each real fact at its own correct rate
-        // instead of folding both through the single, higher card-price rate. The remainder
-        // (ApDesired - ActivationApNow) is the stealth-entry-now portion.
+        // ApDesired holds two physical facts: the mover's activation now and, only when stealth
+        // must be entered THIS turn, the stealth-entry AP (ApDesired - ActivationApNow). Both are
+        // AP at the one ActionPrice; the split stays for diagnostics and for the recurring
+        // activation, which only the former repeats on later turns of the march.
         public float ActivationApNow;
     }
 

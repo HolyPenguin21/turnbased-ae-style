@@ -64,13 +64,14 @@ namespace Game.EditorTests
 
             var expected = new TaskScore(
                 winChance: TaskScoreEvaluator.WinChance(plan.ProjectedWinChance),
-                cardPrice: TaskScoreEvaluator.CardPrice(plan.ApCost,
-                    plan.ResourceCost.Human + plan.ResourceCost.Energy
-                    + plan.ResourceCost.Materials + plan.ResourceCost.Tech)
-                    + primary.ActivationApCost
-                        * AiConfigV2.taskScoreReactivationApWeight,
+                // Repair AP, the repair's resources and the first activation: one price table.
+                cardPrice: TaskScoreEvaluator.Price(plan.ApCost
+                    + ActionPrice.Resources(plan.ResourceCost, snap)
+                    + primary.ActivationApCost),
                 delivery: 0f,
-                moverOpportunityCost: System.Math.Max(0, plan.BlockedActors - 1));
+                moverOpportunityCost: 0f);
+            Assert.That(plan.Score.MoverOpportunityCost, Is.Zero,
+                "a refit that takes no army off a running task costs no opportunity");
             Assert.That(plan.Score.Delivery, Is.Zero,
                 "atomic refit AP is CardPrice, not a fabricated extra travel turn");
             Assert.That(plan.Score.CardPrice, Is.EqualTo(expected.CardPrice).Within(0.0001f),

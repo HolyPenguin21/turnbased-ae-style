@@ -65,6 +65,14 @@ namespace Game.Ai.V2
         // Σ (support activation × walking turns + its handoff charge) + assembled activation ×
         // assault turns.
         public int TotalAp;
+        // The TaskScore value of the operations the plan's bought supports abandon
+        // (MissionIntent.DisplacementValue) — the gather's MoverOpportunityCost, never AP.
+        public float DisplacedValue;
+        // What the planner minimises when it compares hosts: AP plus the abandoned value in
+        // AP-equivalents (ActionPrice.FromTaskScore). Planning only; the score keeps the two in
+        // their own slots.
+        public float SelectionCost =>
+            TotalAp + ActionPrice.FromTaskScore(DisplacedValue);
         // The part of TotalAp paid THIS turn: the activation of every planned support that can
         // act now and has not activated yet. The legs, not the host, are what move first — a
         // host that already spent its own activation elsewhere makes the gather no cheaper.
@@ -411,15 +419,15 @@ namespace Game.Ai.V2
         // spread-out late-game army attacks at its assembled peak. Candidates are the snapshot's free ready field armies
         // (GroundCombatActorEligibility) minus `excludeArmyIds`; rosters are read live, exactly as
         // TryAssembleForHost does. `pinnedHostArmyId` re-plans a started gather around its host.
-        // `donorApPrices` — armies of other operations the gather may buy as SUPPORTS (never as
-        // host), each with its abandonment price in AP (GroundCombatDonorPolicy).
+        // `donorValues` — armies of other operations the gather may buy as SUPPORTS (never as
+        // host), each with the TaskScore value its operation loses (GroundCombatDonorPolicy).
         // `requireMovementNow: false` — the capability question (Demand): could these armies be
         // gathered at all, counting those whose MP is spent this turn (GroundCombatActorEligibility
         // .EligibleArmies). Such a plan is never executed.
         internal static GroundCombatGatherPlan PlanGather(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ISet<int> excludeArmyIds, float winChanceGate,
-            int? pinnedHostArmyId = null, IReadOnlyDictionary<int, float> donorApPrices = null,
+            int? pinnedHostArmyId = null, IReadOnlyDictionary<int, float> donorValues = null,
             bool requireMovementNow = true)
         {
             if (snap?.Self?.Armies == null)
@@ -428,10 +436,10 @@ namespace Game.Ai.V2
 
             List<ArmySnapshot> free = GroundCombatActorEligibility.EligibleArmies(snap, excludeArmyIds,
                 requireMovementNow);
-            List<ArmySnapshot> bought = donorApPrices == null || donorApPrices.Count == 0
+            List<ArmySnapshot> bought = donorValues == null || donorValues.Count == 0
                 ? new List<ArmySnapshot>()
                 : GroundCombatActorEligibility.EligibleReadyArmies(snap, null)
-                    .Where(a => donorApPrices.ContainsKey(a.ArmyId)
+                    .Where(a => donorValues.ContainsKey(a.ArmyId)
                         && !free.Any(f => f.ArmyId == a.ArmyId))
                     .ToList();
             List<ArmySnapshot> hosts = pinnedHostArmyId.HasValue
@@ -445,14 +453,14 @@ namespace Game.Ai.V2
             {
                 GroundCombatGatherPlan p = PlanGatherForHost(snap, opposition, defenderHexDefenseBonus,
                     targetHex, hostSnap, free.Concat(bought).Where(s => s.ArmyId != hostSnap.ArmyId).ToList(),
-                    winChanceGate, donorApPrices);
+                    winChanceGate, donorValues);
                 if (!p.Feasible)
                 {
                     why = p.Reason;
                     continue;
                 }
-                if (best == null || p.TotalAp < best.TotalAp
-                    || (p.TotalAp == best.TotalAp && (p.TotalEta < best.TotalEta
+                if (best == null || p.SelectionCost < best.SelectionCost
+                    || (p.SelectionCost == best.SelectionCost && (p.TotalEta < best.TotalEta
                         || (p.TotalEta == best.TotalEta
                             && p.ProjectedWinChance > best.ProjectedWinChance + 0.001f))))
                     best = p;
@@ -463,7 +471,7 @@ namespace Game.Ai.V2
         private static GroundCombatGatherPlan PlanGatherForHost(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
             HexCoord targetHex, ArmySnapshot hostSnap, List<ArmySnapshot> supportSnaps,
-            float winChanceGate, IReadOnlyDictionary<int, float> donorApPrices)
+            float winChanceGate, IReadOnlyDictionary<int, float> donorValues)
         {
             ArmyData host = LiveArmy(hostSnap);
             if (host == null || host.Members.Count == 0)
@@ -496,10 +504,10 @@ namespace Game.Ai.V2
                     Units = sparable,
                     Bodies = sparable.Select(WorthIt.FromLiveUnit).ToList(),
                     Turns = turns,
-                    // A bought donor also costs the operation it abandons.
-                    Ap = s.ActivationApCost * System.Math.Max(1, turns)
-                        + (donorApPrices != null && donorApPrices.TryGetValue(s.ArmyId, out float price)
-                            ? UnityEngine.Mathf.CeilToInt(price) : 0),
+                    Ap = s.ActivationApCost * System.Math.Max(1, turns),
+                    // A bought donor also costs the operation it abandons — in its own units.
+                    DisplacedValue = donorValues != null
+                        && donorValues.TryGetValue(s.ArmyId, out float lost) ? lost : 0f,
                 });
             }
             if (pool.Count == 0)
@@ -515,7 +523,7 @@ namespace Game.Ai.V2
             UnitData lead = HeroRoleEvaluator.BestCommanderFor(host.Members, host.IsGarrison,
                 opposition, defenderHexDefenseBonus, pooledBodies) ?? host.Commander;
             GatherSupport heroDonor = null;
-            foreach (GatherSupport s in pool.OrderBy(x => x.Ap).ThenBy(x => x.ArmyId))
+            foreach (GatherSupport s in pool.OrderBy(x => x.SelectionCost).ThenBy(x => x.ArmyId))
             {
                 CommandHandoverPlan handover = GroundCombatReinforcement.CommandHandover(host, s.Live,
                     opposition, defenderHexDefenseBonus, pooledBodies);
@@ -593,7 +601,7 @@ namespace Game.Ai.V2
                         continue;
                     if (clears && projectedWin - win < AiConfigV2.attackGatherMinWinGain)
                         continue;
-                    float rate = (projectedWin - win) / System.Math.Max(1, s.Ap);
+                    float rate = (projectedWin - win) / System.Math.Max(1f, s.SelectionCost);
                     if (pick == null || rate > pickRate)
                     {
                         pick = s;
@@ -656,6 +664,7 @@ namespace Game.Ai.V2
                 TotalAp = chosen.Sum(s => s.Ap + GroundCombatReinforcement.ProjectedHandoffApCost(
                         s.Incoming, s.Displaced, host, s.Live, supportWalks: s.Turns > 0))
                     + ArmyData.ComputeActivationApCost(roster) * System.Math.Max(1, assaultEta),
+                DisplacedValue = chosen.Sum(s => s.DisplacedValue),
             };
             plan.CurrentTurnAp = System.Math.Min(plan.TotalAp, chosen
                 .Where(s => !s.Snapshot.HasActivatedThisTurn
@@ -678,6 +687,9 @@ namespace Game.Ai.V2
             public List<WorthIt.DefenderProfile> Bodies;
             public int Turns;
             public int Ap;
+            public float DisplacedValue;
+            public float SelectionCost =>
+                Ap + ActionPrice.FromTaskScore(DisplacedValue);
         }
 
         private static ArmyData LiveArmy(ArmySnapshot s)
