@@ -1,0 +1,196 @@
+#!/usr/bin/env python3
+import json, re, subprocess, threading, webbrowser
+from datetime import datetime, timezone
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+ROOT = HERE.parents[1]
+AI = ROOT / "Assets/Scripts/Ai/V2"
+SCORE = AI / "Evaluation/TaskScore.cs"
+CONFIG = AI / "Foundation/AiConfigV2.TaskScore.cs"
+
+SLOT_RE = re.compile(r"public\s+readonly\s+float\s+(\w+)\s*;")
+CONST_RE = re.compile(r"public\s+const\s+(float|int|bool|string)\s+(\w+)\s*=\s*([^;]+);")
+CALL_RE = re.compile(r"TaskScoreEvaluator\.(\w+)\s*\(")
+METHOD_RE = re.compile(r"(?:public|private|internal|protected)\s+(?:static\s+)?(?:[\w<>,?.\[\]]+\s+)+(\w+)\s*\(")
+
+def read(path):
+    return path.read_text(encoding="utf-8-sig")
+
+def line_no(text, pos):
+    return text.count("\n", 0, pos) + 1
+
+def literal(expr):
+    x = expr.strip()
+    if re.fullmatch(r"[-+]?\d+(?:\.\d+)?f", x, re.I):
+        return float(x[:-1])
+    if re.fullmatch(r"[-+]?\d+", x):
+        return int(x)
+    if x in ("true", "false"):
+        return x == "true"
+    return x.strip('"')
+
+def git(*args):
+    try:
+        return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True,
+            stderr=subprocess.DEVNULL, timeout=2).strip() or None
+    except Exception:
+        return None
+
+def nearest_method(lines, i):
+    for j in range(i, max(-1, i - 80), -1):
+        m = METHOD_RE.search(lines[j])
+        if m and not lines[j].lstrip().startswith(("if", "for", "foreach", "while", "switch")):
+            return m.group(1)
+    return None
+
+def axis_task(path, method):
+    h = (path.stem + " " + (method or "")).lower()
+    pairs = [
+        ("Recon","AirSweep",("airsweep","air_sweep")), ("Recon","Explore",("explore",)),
+        ("Recon","Refresh",("refresh",)), ("Recon","Surveil",("surveil",)),
+        ("Aggression","ActiveDefence",("activedefence","active_defence")),
+        ("Aggression","Attack",("attack",)), ("Aggression","Raid",("raid","aggression")),
+        ("Economy","FoundBase",("foundbase","baseexpansion")),
+        ("Economy","BuildExtraction",("buildextraction","extraction")),
+        ("Economy","MobileCollection",("mobilecollection",)),
+        ("Economy","CollectorCapability",("collector",)),
+        ("Development","CardUpgrade",("cardupgrade",)),
+        ("Development","Development",("development",)),
+    ]
+    for axis, task, keys in pairs:
+        if any(k in h for k in keys):
+            return axis, task
+    if "econom" in h: return "Economy", method or path.stem
+    if "recon" in h: return "Recon", method or path.stem
+    if "production" in h: return "Production", method or path.stem
+    return "Other", method or path.stem
+
+def method_fragment(text, name):
+    m = re.search(rf"(?:internal|public|private)\s+static\s+float\s+{re.escape(name)}\s*\(", text)
+    if not m: return ""
+    tail = text[m.start():m.start()+1800]
+    semi = tail.find(";")
+    brace = tail.find("{")
+    if "=>" in tail[:max(0, brace) if brace >= 0 else len(tail)] and semi >= 0:
+        return tail[:semi+1]
+    return tail
+
+def payload():
+    score = read(SCORE)
+    config = read(CONFIG)
+
+    fold_m = re.search(r"static\s+float\s+Fold\s*\(TaskScore\s+score\)\s*=>", score)
+    fold = score[fold_m.end():score.find(";", fold_m.end())] if fold_m else ""
+    signs = {}
+    for m in re.finditer(r"([+-]?)\s*score\.(\w+)", fold):
+        signs[m.group(2)] = "-" if m.group(1) == "-" else "+"
+
+    params = []
+    param_map = {}
+    for m in CONST_RE.finditer(config):
+        p = {"type":m.group(1),"name":m.group(2),"value":literal(m.group(3)),
+             "expression":m.group(3).strip(),"line":line_no(config,m.start()),
+             "source":str(CONFIG.relative_to(ROOT)).replace("\\","/")}
+        params.append(p); param_map[p["name"]] = p
+
+    cats = []
+    names = []
+    for m in SLOT_RE.finditer(score):
+        name = m.group(1); names.append(name)
+        conv_names = [name]
+        if name == "Staleness": conv_names = ["PositiveStaleness","StaleIntelPenalty"]
+        if name == "Delivery": conv_names = ["DeliveryFromEta"]
+        converters, refs = [], set()
+        for c in conv_names:
+            frag = method_fragment(score,c)
+            if frag:
+                converters.append(c)
+                refs |= set(re.findall(r"AiConfigV2\.(\w+)", frag))
+        cats.append({"name":name,"sign":signs.get(name,"?"),"converters":converters,
+            "parameters":[param_map[r] for r in sorted(refs) if r in param_map],
+            "source":str(SCORE.relative_to(ROOT)).replace("\\","/"),
+            "line":line_no(score,m.start()),"usages":[]})
+
+    by_name = {c["name"]:c for c in cats}
+    camel = {n[0].lower()+n[1:]:n for n in names}
+
+    for path in AI.rglob("*.cs"):
+        if path == SCORE: continue
+        text = read(path); lines = text.splitlines()
+        rel = str(path.relative_to(ROOT)).replace("\\","/")
+        seen = set()
+        for i,line in enumerate(lines):
+            method = nearest_method(lines,i)
+            axis,task = axis_task(path,method)
+            targets = []
+            for arg,slot in camel.items():
+                if re.search(rf"\b{re.escape(arg)}\s*:", line):
+                    targets.append(slot)
+            for cm in CALL_RE.finditer(line):
+                c = cm.group(1)
+                if c in by_name: targets.append(c)
+                elif c in ("PositiveStaleness","StaleIntelPenalty"): targets.append("Staleness")
+                elif c == "DeliveryFromEta": targets.append("Delivery")
+                elif c in ("WithResponse","WithActorResponse"):
+                    targets += ["WinChance","CardPrice","Delivery","MoverOpportunityCost"]
+            for slot in set(targets):
+                key=(slot,i+1)
+                if key in seen: continue
+                seen.add(key)
+                by_name[slot]["usages"].append({"file":rel,"line":i+1,"method":method,
+                    "axis":axis,"task":task,"excerpt":line.strip()[:180]})
+
+    all_text = "\n".join(read(p) for p in AI.rglob("*.cs"))
+    for p in params:
+        p["references"] = len(re.findall(rf"\bAiConfigV2\.{re.escape(p['name'])}\b", all_text))
+        p["categories"] = [c["name"] for c in cats if any(q["name"]==p["name"] for q in c["parameters"])]
+
+    warnings=[]
+    for c in cats:
+        c["usageCount"]=len(c["usages"])
+        c["axes"]=sorted({u["axis"] for u in c["usages"]})
+        c["tasks"]=sorted({u["task"] for u in c["usages"]})
+        if not c["usages"]: warnings.append("Unused slot: "+c["name"])
+        if not c["converters"] and c["name"]!="MoverOpportunityCost":
+            warnings.append("No dedicated converter: "+c["name"])
+    for p in params:
+        if not p["references"]: warnings.append("Unused config parameter: "+p["name"])
+
+    return {"generatedAt":datetime.now(timezone.utc).isoformat(),
+        "repository":{"branch":git("branch","--show-current"),"head":git("rev-parse","HEAD"),
+                      "dirty":bool(git("status","--porcelain"))},
+        "categories":cats,"parameters":params,"warnings":warnings,
+        "axes":sorted({a for c in cats for a in c["axes"]}),
+        "tasks":sorted({t for c in cats for t in c["tasks"]})}
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self,*args,**kwargs):
+        super().__init__(*args,directory=str(HERE),**kwargs)
+    def end_headers(self):
+        self.send_header("Cache-Control","no-store")
+        super().end_headers()
+    def do_GET(self):
+        if self.path.split("?",1)[0] == "/api/task-score":
+            try:
+                body=json.dumps(payload(),ensure_ascii=False).encode()
+                self.send_response(200)
+            except Exception as e:
+                body=json.dumps({"error":str(e)},ensure_ascii=False).encode()
+                self.send_response(500)
+            self.send_header("Content-Type","application/json; charset=utf-8")
+            self.send_header("Content-Length",str(len(body))); self.end_headers()
+            self.wfile.write(body); return
+        super().do_GET()
+    def log_message(self,fmt,*args):
+        pass
+
+if __name__=="__main__":
+    server=ThreadingHTTPServer(("127.0.0.1",8765),Handler)
+    url="http://127.0.0.1:8765/"
+    print("TaskScore Inspector:",url)
+    print("Read-only source:",ROOT)
+    threading.Timer(.3,lambda:webbrowser.open(url)).start()
+    try: server.serve_forever()
+    except KeyboardInterrupt: pass
