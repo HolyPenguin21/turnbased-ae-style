@@ -1,6 +1,7 @@
 ﻿#if UNITY_INCLUDE_TESTS
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
 using Game.Combat;

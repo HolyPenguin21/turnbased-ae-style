@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using NUnit.Framework;
@@ -65,7 +66,7 @@ namespace Game.EditorTests
             Assert.That(StrategicResourceReservationLedger.SpendableExcludingOwner(player, turn,
                     StrategicReservedResource.ActionPoints, 5f, "Economy:build"), Is.EqualTo(5f),
                 "the build must still be able to spend its own reservation");
-            Assert.That(allocation.Funded.Select(f => f.Mission), Does.Not.Contain(scout));
+            Assert.That(allocation.Funded.Select(f => f.Mission), Has.No.Member(scout));
             Assert.That(allocation.Deferred.Any(d => d.Mission == scout
                 && d.Reason == DeferReason.InsufficientBudget), Is.True);
 
@@ -73,7 +74,7 @@ namespace Game.EditorTests
                 player, turn, "Economy:build"), Is.True);
             TentativeAllocation released = ResourceAllocator.BeginTurn(snap, Radar.Even(),
                 new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
-            Assert.That(released.Funded.Select(f => f.Mission), Does.Contain(scout),
+            Assert.That(released.Funded.Select(f => f.Mission), Has.Member(scout),
                 "the allocator must read the current ledger, not cache an expired hold");
         }
 
@@ -214,7 +215,7 @@ namespace Game.EditorTests
                 StrategicReservationReason.StrategicReactionPass);
             TentativeAllocation during = ResourceAllocator.BeginTurn(snap, Radar.Even(),
                 new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
-            Assert.That(during.Funded.Select(f => f.Mission), Does.Contain(scout));
+            Assert.That(during.Funded.Select(f => f.Mission), Has.Member(scout));
             Assert.That(StrategicResourceReservationLedger.SpendableAp(player, turn, 5f),
                 Is.EqualTo(3f), "the Economy owner's two AP remain protected");
         }
