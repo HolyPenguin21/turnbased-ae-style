@@ -381,8 +381,13 @@ namespace Game.Ai.V2
             if (s.Economy?.CollectorSites == null)
                 yield break;
 
+            // Analysis now publishes raw physical mobile-collector opportunities. Preserve the
+            // old semantic contract: an existing actor suppresses CollectorCapability only when
+            // at least one such actor has a positive canonical MobileCollection TaskScore.
             var existingMobileCoverage = new HashSet<(HexCoord, ResourceType)>(
                 (s.Economy.MobileCollectionOpportunities ?? System.Array.Empty<MobileCollectionOpportunity>())
+                    .Where(o => BuildMobileCollectionScore(s, o).Value
+                        > AiConfigV2.allocatorSliceEpsilon)
                     .Select(o => (o.TargetHex, o.ResourceType)));
 
             var candidates = new List<AxisDemand>();
