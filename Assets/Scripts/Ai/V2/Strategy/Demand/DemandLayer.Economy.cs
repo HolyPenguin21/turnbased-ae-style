@@ -463,8 +463,8 @@ namespace Game.Ai.V2
         // delivery (extra activation AP) and mover-opportunity slots the ready demand is scored
         // with. The ready path also pays the build card, as would a new hero, so it cancels out.
         private static float ReadyDeliveryCost(float extraAp, float moverOpportunityCost) =>
-            Mathf.Max(0f, extraAp) * AiConfigV2.taskScoreReactivationApWeight
-            + Mathf.Max(0f, moverOpportunityCost);
+            TaskScoreEvaluator.ReactivationApPrice(extraAp)
+            + TaskScoreEvaluator.MoverOpportunityCost(moverOpportunityCost);
 
         // "Ready hero vs new hero" for a build a ready hero can serve at positive value. Emitted
         // next to the ready demand as a Hero prerequisite that carries the ready cost;
@@ -562,8 +562,8 @@ namespace Game.Ai.V2
                 // Among equally suitable builders use canonical delivery plus the ONE
                 // donor interruption loss. Otherwise a cheaper AP loan can still lose
                 // intrinsic value to a slightly dearer uncommitted actor.
-                .ThenBy(x => Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost)
-                    * AiConfigV2.taskScoreReactivationApWeight
+                .ThenBy(x => TaskScoreEvaluator.ReactivationApPrice(
+                        Mathf.Max(0f, x.TotalAssignmentApCost - buildApCost))
                     + EconomyMissionOpportunityCost(x, activeIntents))
                 .ThenBy(x => x.TotalAssignmentApCost
                     + (!x.Route.IsOnTarget && x.Army?.HeroIsHomeVocation == true
@@ -1021,7 +1021,7 @@ namespace Game.Ai.V2
             // subtract only extra AP via the SAME conversion as final TaskScore.Delivery.
             float extraAp = Mathf.Max(0f,
                 (builder?.TotalAssignmentApCost ?? buildApCost) - buildApCost);
-            netValue = buildValue - extraAp * AiConfigV2.taskScoreReactivationApWeight
+            netValue = buildValue - TaskScoreEvaluator.ReactivationApPrice(extraAp)
                 - AiConfigV2.economyLoanContinuationLoss;
             // Same-turn reachability remains a legality gate rather than a per-hex fee.
             // Donor protections for Surveil, started Raid and Hard commitments are unchanged.
