@@ -136,7 +136,7 @@ def payload():
                 elif c in ("WithResponse","WithActorResponse"):
                     targets += ["WinChance","CardPrice","Delivery","MoverOpportunityCost"]
             window = " ".join(lines[i:min(len(lines), i+3)])
-            direct_refs = sorted(set(re.findall(r"AiConfigV2\\.(\\w+)", window)))
+            direct_refs = sorted(set(re.findall(r"AiConfigV2\.(\w+)", window)))
             for slot in set(targets):
                 key=(slot,i+1)
                 if key in seen: continue
