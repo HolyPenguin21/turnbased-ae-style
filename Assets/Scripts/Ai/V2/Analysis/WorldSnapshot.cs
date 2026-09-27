@@ -704,15 +704,13 @@ namespace Game.Ai.V2
         public readonly int CollectorArmyId;
         public readonly int TravelAp;
         public readonly int TurnsToFirstIncome;
-        // Preserve the canonical score components, not an opaque local scalar, so every
-        // downstream comparison and diagnostic uses the one TaskScore fold.
-        public readonly TaskScore Score;
+        // Analysis owns only physical/economic facts. The Economy mission owner converts these
+        // into the canonical TaskScore when candidates actually compete for admission.
         public readonly HexCoord SafeReturnHex;
 
         public MobileCollectionOpportunity(HexCoord targetHex, ResourceType resourceType,
             int effectiveRemainingYield, int collectorArmyId, int travelAp,
-            int turnsToFirstIncome, TaskScore score,
-            HexCoord safeReturnHex)
+            int turnsToFirstIncome, HexCoord safeReturnHex)
         {
             TargetHex = targetHex;
             ResourceType = resourceType;
@@ -720,7 +718,6 @@ namespace Game.Ai.V2
             CollectorArmyId = collectorArmyId;
             TravelAp = travelAp;
             TurnsToFirstIncome = turnsToFirstIncome;
-            Score = score;
             SafeReturnHex = safeReturnHex;
         }
     }
