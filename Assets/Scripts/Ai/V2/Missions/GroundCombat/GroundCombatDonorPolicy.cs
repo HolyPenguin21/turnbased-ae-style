@@ -24,7 +24,6 @@ namespace Game.Ai.V2
         internal static Dictionary<int, float> BorrowableDonorApPrices(IEnumerable<MissionIntent> intents)
         {
             var prices = new Dictionary<int, float>();
-            float rate = 1f;
             foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
             {
                 if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
@@ -32,7 +31,7 @@ namespace Game.Ai.V2
                     || i.LastIntrinsicValue <= 0f)
                     continue;
                 prices[i.PreferredMoverArmyId.Value] =
-                    TaskScoreEvaluator.ReactivationApFromScore(i.LastIntrinsicValue) / rate;
+                    TaskScoreEvaluator.ReactivationApFromScore(i.LastIntrinsicValue);
             }
             return prices;
         }
