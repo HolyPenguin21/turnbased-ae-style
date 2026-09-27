@@ -98,7 +98,7 @@ namespace Game.Ai.V2
                 .GroupBy(t => t.Contact.Army.ArmyId))
             {
                 AssetThreatSnapshot chosen = group
-                    .Select(t => new { Threat = t, Score = ScoreThreat(snap, t) })
+                    .Select(t => new { Threat = t, Score = BuildActiveDefenceScore(snap, t) })
                     .OrderByDescending(x => x.Score.Value)
                     .ThenByDescending(x => x.Threat.Asset.Value * x.Threat.Severity)
                     .ThenBy(x => x.Threat.EnemyEta ?? int.MaxValue)
@@ -111,7 +111,7 @@ namespace Game.Ai.V2
                         + "reason=enemy_on_known_foreign_structure attack_owner_required");
                     continue;
                 }
-                TaskScore score = ScoreThreat(snap, chosen);
+                TaskScore score = BuildActiveDefenceScore(snap, chosen);
                 var target = new ActiveDefenceMissionTarget
                 {
                     Phase = ActiveDefencePhase.Intercept,
@@ -359,7 +359,7 @@ namespace Game.Ai.V2
             && t.Contact.Position.HasValue
             && t.Contact.Army.Owner != null && !t.Contact.Army.Owner.IsNeutral;
 
-        private static TaskScore ScoreThreat(WorldSnapshot snap, AssetThreatSnapshot t)
+        private static TaskScore BuildActiveDefenceScore(WorldSnapshot snap, AssetThreatSnapshot t)
         {
             int age = Math.Max(0, (snap?.TurnNumber ?? 0) - t.Contact.LastObservedTurn);
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap,

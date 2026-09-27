@@ -165,16 +165,16 @@ namespace Game.Ai.V2
                         RaidCostEstimate staleEstimate = RaidCostModel.Estimate(snap, stale,
                             intent.PreferredMoverArmyId);
                         MissionRequirements staleCost = staleEstimate.Requirements;
-                        // Stationary neutral/event target: loss of a fresh opportunity read
-                        // does not make its last-known position less valuable.
-                        int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(
+                        // Neutral armies and event guards are stationary Raid objectives.
+                        // Losing a fresh opportunity read only removes current visibility; it does
+                        // not move the target and must not remove the fixed intrinsic RaidReward.
+                        // Destruction/capture/invalidation is handled separately by Raid continuity
+                        // through the canonical live objective checks.
+                        TaskScore staleIntrinsic = AggressionObjectiveEvaluator.BuildRaidScore(
                             snap, intent.Raid.LastKnownHex);
                         TaskScore staleTask = TaskScoreEvaluator.WithResponse(
-                            new TaskScore(ownTerritoryProximity:
-                                    TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap)),
-                            0f, staleCost.ApDesired, staleEstimate.RecurringActivationAp,
-                            staleCost.EtaTurns);
+                            staleIntrinsic, 0f, staleCost.ApDesired,
+                            staleEstimate.RecurringActivationAp, staleCost.EtaTurns);
                         float staleValue = staleTask.Value;
                         incumbents.Add(new RaidCandidate(stale, staleValue, staleValue,
                             $"Raid {intent.Raid.Target.DiagnosticLabel} (tracking in fog; intrinsic={F(staleValue)}; Hard funding protection is allocator-owned)",

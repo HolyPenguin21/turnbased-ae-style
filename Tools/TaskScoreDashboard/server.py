@@ -75,26 +75,102 @@ def property_category(name):
     return PROPERTY_CATEGORY.get(name, "Other")
 
 def axis_task(path, method):
-    h = (path.stem + " " + (method or "")).lower()
+    # Dashboard task columns are semantic task families, never arbitrary helper methods.
+    # First use single-family evaluator ownership where the file itself proves the task.
+    stem = path.stem.lower()
+    if stem == "aggressionobjectiveevaluator":
+        return "Aggression", "Raid"
+    if stem == "activedefenceobjectiveevaluator":
+        return "Aggression", "ActiveDefence"
+    if stem == "attackobjectiveevaluator":
+        return "Aggression", "Attack"
+
+    h = (path.stem + " " + (method or "")).lower().replace("_", "")
     pairs = [
-        ("Recon","AirSweep",("airsweep","air_sweep")), ("Recon","Explore",("explore",)),
+        ("Recon","AirSweep",("airsweep",)), ("Recon","Explore",("explore",)),
         ("Recon","Refresh",("refresh",)), ("Recon","Surveil",("surveil",)),
-        ("Aggression","ActiveDefence",("activedefence","active_defence")),
-        ("Aggression","Attack",("attack",)), ("Aggression","Raid",("raid","aggression")),
+        ("Aggression","ActiveDefence",("activedefence",)),
+        ("Aggression","Attack",("attack",)), ("Aggression","Raid",("raid",)),
         ("Economy","FoundBase",("foundbase","baseexpansion")),
         ("Economy","BuildExtraction",("buildextraction","extraction")),
         ("Economy","MobileCollection",("mobilecollection",)),
-        ("Economy","CollectorCapability",("collector",)),
+        ("Economy","CollectorCapability",("collectorcapability","collector")),
         ("Development","CardUpgrade",("cardupgrade",)),
-        ("Development","Development",("development",)),
+        ("Development","Development",("developmentopportunity","development")),
     ]
     for axis, task, keys in pairs:
         if any(k in h for k in keys):
             return axis, task
-    if "econom" in h: return "Economy", method or path.stem
-    if "recon" in h: return "Recon", method or path.stem
-    if "production" in h: return "Production", method or path.stem
-    return "Other", method or path.stem
+
+    # Preserve the owning axis for diagnostics, but deliberately leave task unset.
+    # An unset task can appear in source-usage detail, never as a matrix column.
+    if "recon" in h: return "Recon", None
+    if "econom" in h: return "Economy", None
+    if "aggression" in h or "attack" in h or "defence" in h or "raid" in h:
+        return "Aggression", None
+    if "development" in h: return "Development", None
+    if "production" in h: return "Production", None
+    return "Other", None
+
+def statement_from(lines, i, max_lines=5):
+    parts = []
+    for j in range(i, min(len(lines), i + max_lines)):
+        parts.append(lines[j].strip())
+        joined = " ".join(parts)
+        if ";" in joined or ("," in joined and joined.count("(") <= joined.count(")")):
+            break
+    return " ".join(parts)
+
+def calls_in(expr):
+    calls = []
+    for m in re.finditer(r"\b((?:[A-Za-z_]\w*\.)*[A-Za-z_]\w*)\s*\(", expr or ""):
+        name = m.group(1)
+        if name in ("if","for","foreach","while","switch","new"):
+            continue
+        if name.startswith("Mathf.") or name.startswith("Math.") or name.startswith("System.Math."):
+            continue
+        if name not in calls:
+            calls.append(name)
+    return calls
+
+def nearest_assignment(lines, i, variable):
+    pat = re.compile(rf"\b(?:var|float|double|int|bool|TaskScore|[A-Z]\w*(?:<[^>]+>)?)\s+{re.escape(variable)}\s*=")
+    for j in range(i - 1, max(-1, i - 90), -1):
+        if pat.search(lines[j]):
+            return statement_from(lines, j)
+    return ""
+
+def component_sources(lines, i, arg_name, slot):
+    stmt = statement_from(lines, i)
+    m = re.search(rf"\b{re.escape(arg_name)}\s*:\s*(.+)", stmt)
+    expr = m.group(1) if m else stmt
+    # Trim the next named argument if statement_from crossed into it.
+    expr = re.split(r",\s*[a-z]\w*\s*:", expr, maxsplit=1)[0].strip().rstrip(",);")
+    direct_calls = calls_in(expr)
+    if direct_calls:
+        return direct_calls
+
+    # A named argument often receives a precomputed local (Economy FoundBase is the main case).
+    simple = re.fullmatch(r"([A-Za-z_]\w*)", expr)
+    if simple:
+        assign = nearest_assignment(lines, i, simple.group(1))
+        resolved = calls_in(assign)
+        if resolved:
+            return [simple.group(1) + " ← " + x for x in resolved]
+        if assign:
+            rhs = assign.split("=", 1)[1].strip().rstrip(";")
+            return [simple.group(1) + " ← " + rhs[:90]]
+
+    # Preserve explicit score/property copies and direct config sources.
+    member = re.fullmatch(r"([A-Za-z_]\w*(?:\.[A-Za-z_]\w*)+)", expr)
+    if member:
+        return [member.group(1)]
+    refs = re.findall(r"AiConfigV2\.(\w+)", expr)
+    if refs:
+        return ["AiConfigV2." + x for x in refs]
+    if expr and expr not in ("0f","0","0.0f"):
+        return [expr[:100]]
+    return []
 
 def method_fragment(text, name):
     m = re.search(rf"(?:internal|public|private)\s+static\s+float\s+{re.escape(name)}\s*\(", text)
@@ -156,24 +232,36 @@ def payload():
             method = nearest_method(lines,i)
             axis,task = axis_task(path,method)
             targets = []
+            target_components = {}
             for arg,slot in camel.items():
                 if re.search(rf"\b{re.escape(arg)}\s*:", line):
                     targets.append(slot)
+                    target_components.setdefault(slot, []).extend(
+                        component_sources(lines, i, arg, slot))
             for cm in CALL_RE.finditer(line):
                 c = cm.group(1)
-                if c in by_name: targets.append(c)
-                elif c in ("PositiveStaleness","StaleIntelPenalty"): targets.append("Staleness")
-                elif c == "DeliveryFromEta": targets.append("Delivery")
+                mapped = []
+                if c in by_name: mapped = [c]
+                elif c in ("PositiveStaleness","StaleIntelPenalty"): mapped = ["Staleness"]
+                elif c == "DeliveryFromEta": mapped = ["Delivery"]
                 elif c in ("WithResponse","WithActorResponse"):
-                    targets += ["WinChance","CardPrice","Delivery","MoverOpportunityCost"]
-            direct_refs = sorted(set(re.findall(r"AiConfigV2\.(\w+)", line)))
+                    mapped = ["WinChance","CardPrice","Delivery","MoverOpportunityCost"]
+                for slot in mapped:
+                    targets.append(slot)
+                    target_components.setdefault(slot, []).append("TaskScoreEvaluator." + c)
+            stmt = statement_from(lines, i)
+            direct_refs = sorted(set(re.findall(r"AiConfigV2\.(\w+)", stmt)))
             for slot in set(targets):
                 key=(slot,i+1)
                 if key in seen: continue
                 seen.add(key)
+                components = []
+                for x in target_components.get(slot, []):
+                    if x and x not in components:
+                        components.append(x)
                 by_name[slot]["usages"].append({"file":rel,"line":i+1,"method":method,
-                    "axis":axis,"task":task,"excerpt":line.strip()[:180],
-                    "configRefs":direct_refs})
+                    "axis":axis,"task":task,"excerpt":stmt[:220],
+                    "configRefs":direct_refs,"components":components})
 
     # A category can be fed both through its canonical converter and directly from an
     # AiConfigV2 constant (RaidReward -> MilitaryTargetRelevance is the key example).
@@ -193,7 +281,8 @@ def payload():
     for c in cats:
         c["usageCount"]=len(c["usages"])
         c["axes"]=sorted({u["axis"] for u in c["usages"]})
-        c["tasks"]=sorted({u["task"] for u in c["usages"]})
+        c["tasks"]=sorted({u["task"] for u in c["usages"] if u.get("task")})
+        c["components"]=sorted({x for u in c["usages"] for x in u.get("components", [])})
         if not c["usages"]: warnings.append("Unused slot: "+c["name"])
         if not c["converters"] and c["name"]!="MoverOpportunityCost":
             warnings.append("No dedicated converter: "+c["name"])
@@ -206,7 +295,7 @@ def payload():
         "categories":cats,"parameters":params,"warnings":warnings,
         "propertyCategories":["Economy","Recon","Positioning","Combat","Cost","Risk","Other"],
         "axes":sorted({a for c in cats for a in c["axes"]}),
-        "tasks":sorted({t for c in cats for t in c["tasks"]})}
+        "tasks":sorted({t for c in cats for t in c["tasks"] if t})}
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs):

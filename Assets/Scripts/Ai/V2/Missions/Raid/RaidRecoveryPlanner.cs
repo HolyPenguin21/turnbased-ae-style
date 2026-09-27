@@ -563,11 +563,9 @@ namespace Game.Ai.V2
                 // shared reactivation rate; both remain one physical CardPrice slot.
                 cardPrice: TaskScoreEvaluator.CardPrice(
                     actionApCost, ResourceMagnitude(resourceCost))
-                    + Mathf.Max(0f, activationApNow)
-                        * AiConfigV2.taskScoreReactivationApWeight,
+                    + TaskScoreEvaluator.ReactivationApPrice(activationApNow),
                 delivery: TaskScoreEvaluator.DeliveryFromEta(
-                    recurringActivationAp, deliveryEtaTurns,
-                    AiConfigV2.taskScoreReactivationApWeight),
+                    recurringActivationAp, deliveryEtaTurns),
                 // The primary is already committed in every recovery option. Only additional
                 // support/donor actors are an opportunity cost.
                 moverOpportunityCost: Math.Max(0, blockedActors - 1));

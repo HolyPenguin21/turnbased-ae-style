@@ -90,6 +90,11 @@ namespace Game.Ai.V2
             AppendHeldBaseGarrisonDemands(snap, diag, demands);
         }
 
+        private static TaskScore BuildHeldBaseGarrisonScore() =>
+            new TaskScore(
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
+                    AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)));
+
         // Strike force step 7 — a base our field army holds (the fist that just took it) whose
         // garrison is below its non-hero floor is garrisoned from hand first. If the hand cannot
         // deliver, Housekeeping fills the floor at turn end from the holding army's most wounded,
@@ -112,8 +117,7 @@ namespace Game.Ai.V2
                 if (missing <= 0)
                     continue;
                 float desired = missing * AiConfigV2.combatPowerPerBodyEstimate;
-                TaskScore score = new TaskScore(strategicRelevance: TaskScoreEvaluator.StrategicRelevance(
-                    AiConfigV2.assetValueBase / Mathf.Max(1f, AiConfigV2.assetValueCitadel)));
+                TaskScore score = BuildHeldBaseGarrisonScore();
                 diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE base=({baseHex.Q},{baseHex.R}) "
                     + $"capability=FieldCombatPower shape=Garrison missing={missing} desired={desired:0.#} "
                     + $"task={score.Value:0.##} reason=held_base_garrison_below_floor");

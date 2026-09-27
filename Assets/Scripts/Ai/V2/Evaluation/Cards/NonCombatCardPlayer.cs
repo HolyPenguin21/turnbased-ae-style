@@ -525,8 +525,8 @@ namespace Game.Ai.V2
         {
             float movementShare = Mathf.Clamp01(Mathf.Max(0, routeCost)
                 / (float)Mathf.Max(1, moveMax * Mathf.Max(1, eta)));
-            float routeOpportunity = movementShare * Mathf.Max(0, activationAp)
-                * AiConfigV2.taskScoreReactivationApWeight;
+            float routeOpportunity = movementShare
+                * TaskScoreEvaluator.ReactivationApPrice(activationAp);
             return new TaskScore(
             economicHexBenefit: s.EconomicHexBenefit, payback: s.Payback,
             airfield: s.Airfield, globalCardEffect: s.GlobalCardEffect,
@@ -538,7 +538,7 @@ namespace Game.Ai.V2
             militaryTargetRelevance: s.MilitaryTargetRelevance, winChance: s.WinChance,
             cardPrice: s.CardPrice,
             delivery: TaskScoreEvaluator.DeliveryFromEta(
-                Mathf.Max(0, activationAp), eta, AiConfigV2.taskScoreReactivationApWeight),
+                Mathf.Max(0, activationAp), eta),
             moverOpportunityCost: routeOpportunity,
             hexThreatRisk: s.HexThreatRisk + airfieldThreatRisk,
             detectionRisk: s.DetectionRisk,

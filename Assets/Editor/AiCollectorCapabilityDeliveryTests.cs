@@ -1,5 +1,6 @@
 ﻿#if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
+using System.Linq;
 using Game.Ai;
 using Game.Ai.V2;
 using Game.Economy;
@@ -54,6 +55,65 @@ namespace Game.EditorTests
             airArmy.IsAir = true;
             Assert.That(MaterializationDeliveryPolicy.IsArmyOperationalForDemand(
                 airArmy, demand), Is.False);
+        }
+
+        [Test]
+        public void NegativeExistingMobileCollector_DoesNotSuppressCollectorCapability()
+        {
+            HexCoord target = new HexCoord(1, 0);
+            var player = new PlayerSetupData();
+            var standing = new EconomyResourceStanding
+            {
+                Type = ResourceType.Materials,
+                OwnIncome = 0f,
+                HandResourceNeed = 100f,
+                SpendableStockpile = 0f,
+                DeficitScore = 1f,
+            };
+            var expensiveCollector = Collector(10);
+            expensiveCollector.Hex = new HexCoord(0, 0);
+            expensiveCollector.ActivationApCost = 10;
+            expensiveCollector.HasActivatedThisTurn = false;
+            var snap = new WorldSnapshot
+            {
+                Observer = player,
+                Self = new SelfSnapshot
+                {
+                    Citadel = new HexCoord(0, 0),
+                    BaseHexes = new[] { new HexCoord(0, 0) },
+                    Armies = new[] { expensiveCollector },
+                },
+                Economy = new EconomyStanding
+                {
+                    PerType = new[] { standing },
+                    CollectorSites = new[]
+                    {
+                        new EconomyExtractionOpportunity
+                        {
+                            Hex = target,
+                            ResourceType = ResourceType.Materials,
+                            MarginalIncomeGain = 2,
+                        },
+                    },
+                    MobileCollectionOpportunities = new[]
+                    {
+                        new MobileCollectionOpportunity(target, ResourceType.Materials,
+                            2, 10, 1, 10, new HexCoord(0, 0)),
+                    },
+                },
+            };
+            var standings = new Dictionary<ResourceType, EconomyResourceStanding>
+            {
+                [ResourceType.Materials] = standing,
+            };
+
+            List<AxisDemand> demands = DemandLayer.CollectorCapabilityDemands(
+                snap, standings, player, new MissionIntent[0]).ToList();
+
+            Assert.That(demands.Count, Is.EqualTo(1),
+                "a physically available collector must suppress materialization only when its "
+                + "canonical MobileCollection TaskScore is positive");
+            Assert.That(demands[0].Capability, Is.EqualTo(CapabilityKind.CollectorCapability));
         }
 
         [Test]

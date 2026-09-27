@@ -24,14 +24,14 @@ namespace Game.Ai.V2
         internal static Dictionary<int, float> BorrowableDonorApPrices(IEnumerable<MissionIntent> intents)
         {
             var prices = new Dictionary<int, float>();
-            float rate = UnityEngine.Mathf.Max(0.0001f, AiConfigV2.taskScoreReactivationApWeight);
             foreach (MissionIntent i in intents ?? Enumerable.Empty<MissionIntent>())
             {
                 if (i == null || i.Status != IntentStatus.Active || !i.PreferredMoverArmyId.HasValue
                     || i.Kind != MissionKind.Raid
                     || i.LastIntrinsicValue <= 0f)
                     continue;
-                prices[i.PreferredMoverArmyId.Value] = i.LastIntrinsicValue / rate;
+                prices[i.PreferredMoverArmyId.Value] =
+                    TaskScoreEvaluator.ReactivationApFromScore(i.LastIntrinsicValue);
             }
             return prices;
         }

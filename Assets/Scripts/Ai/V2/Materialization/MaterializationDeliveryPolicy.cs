@@ -302,9 +302,8 @@ namespace Game.Ai.V2
         private static DeliveryAssessment EconomyNewHeroWorthIt(MaterializationPlan p,
             AxisDemand demand, DemandLayer.EconomyBuilderChoice choice)
         {
-            float newDelivery = Mathf.Max(0f,
-                    choice.TotalAssignmentApCost - demand.EconomyBuildApCost)
-                * AiConfigV2.taskScoreReactivationApWeight;
+            float newDelivery = TaskScoreEvaluator.ReactivationApPrice(
+                Mathf.Max(0f, choice.TotalAssignmentApCost - demand.EconomyBuildApCost));
             string card = p.BaseCardInHand?.Definition?.displayName
                 ?? p.GeneratedBaseDef?.displayName ?? "?";
             if (demand.EconomySiteValue > AiConfigV2.allocatorSliceEpsilon

@@ -201,6 +201,17 @@ namespace Game.Ai.V2
             return null;
         }
 
+        internal static TaskScore BuildRaidScore(WorldSnapshot snap, HexCoord targetHex)
+        {
+            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, targetHex);
+            // Home threat is an offensive-restraint fact of the task, not of the Aggression Radar
+            // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
+            return new TaskScore(
+                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                militaryTargetRelevance: AiConfigV2.RaidReward,
+                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
+        }
+
         private static AggressionObjective Build(WorldSnapshot snap, CombatOpportunityReport report,
             CombatOpportunity o)
         {
@@ -209,13 +220,7 @@ namespace Game.Ai.V2
             // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
             // Raid targets are stationary neutrals or event guards; older sightings do not move them.
             // Keep shared StaleIntelPenalty for future attacks on mobile player armies.
-            int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap, o.TargetHex);
-            // Home threat is an offensive-restraint fact of the task, not of the Aggression Radar
-            // (which also carries ActiveDefence): a Raid away from a threatened Citadel waits.
-            var score = new TaskScore(
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
-                militaryTargetRelevance: AiConfigV2.RaidReward,
-                citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
+            TaskScore score = BuildRaidScore(snap, o.TargetHex);
 
             bool readyViable = o.CanCoverAllDefenders
                 && o.ReadyWinChance >= AiConfigV2.raidMinViableWinChance;
