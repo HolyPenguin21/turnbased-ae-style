@@ -49,8 +49,8 @@ namespace Game.Ai.V2
                 payback: hasUsefulGain ? TaskScoreEvaluator.Payback(paybackTurns) : 0f,
                 airfield: TaskScoreEvaluator.Airfield(facts.Airfield),
                 // BaseSiteValue.GlobalEffect is already authored in TaskScore units.
-                globalCardEffect: Mathf.Clamp(facts.GlobalEffect, 0f,
-                    AiConfigV2.taskScoreGlobalCardEffectMax),
+                globalCardEffect: TaskScoreEvaluator.GlobalCardEffectScoreUnits(
+                    facts.GlobalEffect),
                 frontProgress: TaskScoreEvaluator.FrontProgress(site.ForwardProgressValue),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(site.CorridorAlignmentValue),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
