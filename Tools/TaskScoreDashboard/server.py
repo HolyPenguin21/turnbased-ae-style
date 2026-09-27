@@ -75,26 +75,42 @@ def property_category(name):
     return PROPERTY_CATEGORY.get(name, "Other")
 
 def axis_task(path, method):
-    h = (path.stem + " " + (method or "")).lower()
+    # Dashboard task columns are semantic task families, never arbitrary helper methods.
+    # First use single-family evaluator ownership where the file itself proves the task.
+    stem = path.stem.lower()
+    if stem == "aggressionobjectiveevaluator":
+        return "Aggression", "Raid"
+    if stem == "activedefenceobjectiveevaluator":
+        return "Aggression", "ActiveDefence"
+    if stem == "attackobjectiveevaluator":
+        return "Aggression", "Attack"
+
+    h = (path.stem + " " + (method or "")).lower().replace("_", "")
     pairs = [
-        ("Recon","AirSweep",("airsweep","air_sweep")), ("Recon","Explore",("explore",)),
+        ("Recon","AirSweep",("airsweep",)), ("Recon","Explore",("explore",)),
         ("Recon","Refresh",("refresh",)), ("Recon","Surveil",("surveil",)),
-        ("Aggression","ActiveDefence",("activedefence","active_defence")),
-        ("Aggression","Attack",("attack",)), ("Aggression","Raid",("raid","aggression")),
+        ("Aggression","ActiveDefence",("activedefence",)),
+        ("Aggression","Attack",("attack",)), ("Aggression","Raid",("raid",)),
         ("Economy","FoundBase",("foundbase","baseexpansion")),
         ("Economy","BuildExtraction",("buildextraction","extraction")),
         ("Economy","MobileCollection",("mobilecollection",)),
-        ("Economy","CollectorCapability",("collector",)),
+        ("Economy","CollectorCapability",("collectorcapability","collector")),
         ("Development","CardUpgrade",("cardupgrade",)),
-        ("Development","Development",("development",)),
+        ("Development","Development",("developmentopportunity","development")),
     ]
     for axis, task, keys in pairs:
         if any(k in h for k in keys):
             return axis, task
-    if "econom" in h: return "Economy", method or path.stem
-    if "recon" in h: return "Recon", method or path.stem
-    if "production" in h: return "Production", method or path.stem
-    return "Other", method or path.stem
+
+    # Preserve the owning axis for diagnostics, but deliberately leave task unset.
+    # An unset task can appear in source-usage detail, never as a matrix column.
+    if "recon" in h: return "Recon", None
+    if "econom" in h: return "Economy", None
+    if "aggression" in h or "attack" in h or "defence" in h or "raid" in h:
+        return "Aggression", None
+    if "development" in h: return "Development", None
+    if "production" in h: return "Production", None
+    return "Other", None
 
 def method_fragment(text, name):
     m = re.search(rf"(?:internal|public|private)\s+static\s+float\s+{re.escape(name)}\s*\(", text)
@@ -193,7 +209,7 @@ def payload():
     for c in cats:
         c["usageCount"]=len(c["usages"])
         c["axes"]=sorted({u["axis"] for u in c["usages"]})
-        c["tasks"]=sorted({u["task"] for u in c["usages"]})
+        c["tasks"]=sorted({u["task"] for u in c["usages"] if u.get("task")})
         if not c["usages"]: warnings.append("Unused slot: "+c["name"])
         if not c["converters"] and c["name"]!="MoverOpportunityCost":
             warnings.append("No dedicated converter: "+c["name"])
@@ -206,7 +222,7 @@ def payload():
         "categories":cats,"parameters":params,"warnings":warnings,
         "propertyCategories":["Economy","Recon","Positioning","Combat","Cost","Risk","Other"],
         "axes":sorted({a for c in cats for a in c["axes"]}),
-        "tasks":sorted({t for c in cats for t in c["tasks"]})}
+        "tasks":sorted({t for c in cats for t in c["tasks"] if t})}
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs):
