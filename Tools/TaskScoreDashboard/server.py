@@ -108,8 +108,9 @@ def payload():
             if frag:
                 converters.append(c)
                 refs |= set(re.findall(r"AiConfigV2\.(\w+)", frag))
+        converter_params = [param_map[r] for r in sorted(refs) if r in param_map]
         cats.append({"name":name,"sign":signs.get(name,"?"),"converters":converters,
-            "parameters":[param_map[r] for r in sorted(refs) if r in param_map],
+            "parameters":list(converter_params), "converterParameters":list(converter_params),
             "source":str(SCORE.relative_to(ROOT)).replace("\\","/"),
             "line":line_no(score,m.start()),"usages":[]})
 
