@@ -618,8 +618,10 @@ namespace Game.EditorTests
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-1.5f).Within(0.0001f));
-            // No fresh opportunity report: a started stationary Raid retains its
-            // real actor AP/ETA and positional fact, but loses no value for fog.
+            // No fresh opportunity report: a started stationary neutral/event Raid keeps
+            // the exact same intrinsic target value. Fog changes visibility only; it does not
+            // move the objective or remove RaidReward. Actual target destruction/invalidation
+            // is a separate continuity decision.
             intent.Raid.LastKnownHex = destination;
             breakdown.OpportunityReport = new CombatOpportunityReport
             {
@@ -629,10 +631,14 @@ namespace Game.EditorTests
             MissionProposal fog = AggressionMissionLayer.Propose(snap, breakdown,
                 new[] { intent }, Array.Empty<AggressionObjective>()).Single();
             float expectedFog = objective.TaskScore.OwnTerritoryProximity
-                - pinned.ActivationApCost * AiConfigV2.taskScoreReactivationApWeight
+                + objective.TaskScore.MilitaryTargetRelevance
+                - TaskScoreEvaluator.ReactivationApPrice(pinned.ActivationApCost)
                 - TaskScoreEvaluator.DeliveryFromEta(pinned.ActivationApCost,
-                    fog.Requirements.EtaTurns, AiConfigV2.taskScoreReactivationApWeight);
-            Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f));
+                    fog.Requirements.EtaTurns);
+            Assert.That(objective.TaskScore.MilitaryTargetRelevance,
+                Is.EqualTo(AiConfigV2.RaidReward).Within(0.0001f));
+            Assert.That(fog.BaseValue, Is.EqualTo(expectedFog).Within(0.0001f),
+                "fog must preserve the stationary Raid target's fixed RaidReward");
             Assert.That(TaskScoreEvaluator.StaleIntelPenalty(1f), Is.LessThan(0f),
                 "shared staleness conversion remains available for future mobile player targets");
         }
