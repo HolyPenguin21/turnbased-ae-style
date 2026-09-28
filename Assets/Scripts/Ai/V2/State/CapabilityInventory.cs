@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Game.HexGrid;
 using Game.Map;
 using Game.Players;
 using UnityEngine;
@@ -35,6 +36,13 @@ namespace Game.Ai.V2
         public int CommittedHeroes;    // hero-led Raid-eligible field armies claimed by an active mission
 
         public IReadOnlyList<ArmyData> ReusableEmptyArmies = Array.Empty<ArmyData>();
+
+        // Non-hero garrison bodies per base hex — the same count the held-base garrison demand
+        // measures its floor with (ArmySnapshot.Members excludes heroes).
+        public IReadOnlyDictionary<HexCoord, int> GarrisonBodiesByHex = new Dictionary<HexCoord, int>();
+
+        public int GarrisonBodiesAt(HexCoord hex) =>
+            GarrisonBodiesByHex.TryGetValue(hex, out int n) ? n : 0;
 
         public int TotalScouts => ReadyScouts + CommittedScouts + ReserveScouts;
 
@@ -104,6 +112,16 @@ namespace Game.Ai.V2
             inv.RaidAvailableFieldPower = Mathf.Max(0f, availablePower);
             inv.AvailableHeroes = availableHeroes;
             inv.CommittedHeroes = committedHeroes;
+
+            var garrisonBodies = new Dictionary<HexCoord, int>();
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || !a.IsGarrison)
+                    continue;
+                garrisonBodies.TryGetValue(a.Hex, out int n);
+                garrisonBodies[a.Hex] = n + (a.Members?.Count ?? 0);
+            }
+            inv.GarrisonBodiesByHex = garrisonBodies;
 
             inv.ReusableEmptyArmies = ReusableArmySelector.ReusableShells(player, commitments);
             return inv;
