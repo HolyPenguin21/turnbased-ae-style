@@ -138,16 +138,20 @@ namespace Game.Ai.V2
                     }
                     if (intent.Raid.Phase == RaidMissionPhase.Reinforcement)
                     {
-                        RaidCandidate? sup = ReinforcementCandidate(snap, intent, committed);
+                        RaidCandidate? sup = ReinforcementCandidate(snap, intent, committed,
+                            out string reinforcementDeferral);
                         if (sup.HasValue) incumbents.Add(sup.Value);
                         else
                         {
-                            if (deferredThisPass != null)
-                                deferredThisPass[intent.IntentKey] = "raid_waiting_for_support";
+                            if (deferredThisPass != null && reinforcementDeferral != null)
+                                deferredThisPass[intent.IntentKey] = reinforcementDeferral;
                             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
-                                $"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
-                                + $"#{intent.Raid.PrimaryArmyId} waits in place; no support army assigned yet "
-                                + "(Aggression demand owns the request)");
+                                reinforcementDeferral != null
+                                    ? $"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
+                                        + $"#{intent.Raid.PrimaryArmyId} waits in place; no support army assigned yet "
+                                        + "(Aggression demand owns the request)"
+                                    : $"[AI][V2]   raid mission — WARN {intent.IntentKey}: Reinforcement "
+                                        + "could not produce a candidate for its pinned primary");
                         }
                         continue;
                     }
@@ -508,8 +512,9 @@ namespace Game.Ai.V2
         // `committed` — armies claimed by other operations; the same exclusion Demand and
         // Provisioning apply, so an unpinned leg is proposed only while a bindable support exists.
         private static RaidCandidate? ReinforcementCandidate(WorldSnapshot snap, MissionIntent intent,
-            ISet<int> committed)
+            ISet<int> committed, out string deferredReason)
         {
+            deferredReason = null;
             RaidIntent ri = intent.Raid;
             if (!ri.PrimaryArmyId.HasValue)
                 return null;
@@ -526,7 +531,10 @@ namespace Game.Ai.V2
                     snap, primaryId, opposition, committed,
                     AiV2Util.KnownRaidDefenceBonus(snap, ri.Target));
                 if (candidates.Count == 0)
+                {
+                    deferredReason = "raid_waiting_for_support";
                     return null;
+                }
 
                 var unpinned = new RaidMissionTarget
                 {
