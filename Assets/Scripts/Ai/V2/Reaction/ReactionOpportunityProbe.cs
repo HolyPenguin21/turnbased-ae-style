@@ -123,9 +123,10 @@ namespace Game.Ai.V2
                 player, root, hand, ctx, reservation, snap))
                 options.Add((mp.ApCost, mp.ResCost));
 
-            float ap = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
-            float ceiling = Mathf.Min(ap, (float)AiConfigV2.reactionReserveApCap);
             const string owner = "reaction-budget:HandFollowup";
+            // Other owners' AP holds are not the reaction's; its own envelope is.
+            float ap = StrategicSpendability.SpendableAp(player, root, ctx, owner);
+            float ceiling = Mathf.Min(ap, (float)AiConfigV2.reactionReserveApCap);
             var feasible = options
                 .Where(o => o.ap <= ceiling + 0.001f
                     && StrategicSpendability.FitsSpendableResources(player, root, ctx, o.env, owner))
