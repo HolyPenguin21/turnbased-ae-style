@@ -78,7 +78,7 @@ namespace Game.EditorTests
                 Funding = CommitmentTier.Hard,
                 Status = IntentStatus.Active,
                 PreferredMoverArmyId = 7,
-                Economy = new EconomyIntent
+                Objective = new EconomyIntent
                 {
                     Kind = EconomyTaskKind.ReturnBuilder,
                     TargetHex = new HexCoord(2, 0),
