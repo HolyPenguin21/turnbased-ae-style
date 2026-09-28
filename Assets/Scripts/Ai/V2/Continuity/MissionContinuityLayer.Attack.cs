@@ -399,7 +399,7 @@ namespace Game.Ai.V2
                 // (the plan may keep it for that alone).
                 return s == null || !ActorCommitments.GroundContainerStillValid(id, snap)
                     || !GroundCombatAssemblyPlanner.SupportImprovesPrimary(host, s, opposition, hexBonus,
-                        allowCommandHandover: true);
+                        allowCommandHandover: true, allowCompleteTransfer: true);
             }).ToList();
             if (dropped.Count > 0)
             {
