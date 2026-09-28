@@ -342,7 +342,7 @@ namespace Game.Ai.V2
 
         private static TaskScore BuildAttackScore(WorldSnapshot snap, AiMapMemory.KnownBuilding b,
             AttackTargetKind kind, float assetNorm, int homeDistance, float frontProgress,
-            float corridorAlignment, float readiness, int intelAge) =>
+            float corridorAlignment, float readiness) =>
             new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
                 // Attack is offensive by nature — the whole point is projecting force onto a
@@ -357,8 +357,10 @@ namespace Game.Ai.V2
                 // concentrated stack to destroy, so it earns none of it.
                 attackReadiness: kind == AttackTargetKind.Facility ? 0f
                     : TaskScoreEvaluator.AttackReadiness(readiness),
-                intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
-                    intelAge / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
+                // No IntelAgePenalty: an Attack target is a fixed structure whose garrison is rarely
+                // re-observed, so fresh intel is a bonus the win estimate already reads, never a
+                // price for committing to the structure. Intel age stays on the objective
+                // (IntelAgeTurns) for diagnostics and Recon's observation needs.
                 // Same offensive-restraint slot as Raid: home threat lowers the task, never the
                 // shared Aggression Radar that ActiveDefence also depends on.
                 citadelThreatRisk: TaskScoreEvaluator.CitadelThreatRisk(snap));
@@ -387,14 +389,17 @@ namespace Game.Ai.V2
 
             float frontProgress = hasDirection
                 ? WorldAnalysis.ForwardProgressToward(anchor, directionTarget, b.Hex) : 0f;
-            float corridorAlignment = hasDirection
+            // Corridor asks "is this target on the way to the direction target". The direction
+            // target itself is the destination, not something on the way: FrontProgress already
+            // credits reaching it in full, so it earns no second positional term.
+            float corridorAlignment = hasDirection && !b.Hex.Equals(directionTarget)
                 ? WorldAnalysis.CorridorAlignmentToward(anchor, directionTarget, b.Hex,
                     AiConfigV2.attackCorridorDetourScale) : 0f;
 
             float readiness = Readiness(snap.Self);
 
             TaskScore score = BuildAttackScore(snap, b, kind, assetNorm, homeDistance,
-                frontProgress, corridorAlignment, readiness, intelAge);
+                frontProgress, corridorAlignment, readiness);
             // EconomicExpansionValue is deliberately NOT populated (§35/§77). It may only be filled
             // when the existing Economy network model genuinely proves that holding this node opens
             // a resource cluster we cannot already reach — a generic "more territory is good"

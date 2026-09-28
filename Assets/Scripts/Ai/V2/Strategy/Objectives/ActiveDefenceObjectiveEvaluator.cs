@@ -353,6 +353,35 @@ namespace Game.Ai.V2
             TaskScoreEvaluator.WithActorResponse(objective.TaskScore, actor, winChance, eta,
                 moverOpportunityCost, projectedActivationAp);
 
+        // THE stronghold-hold rule, read by every ground-combat nomination
+        // (GroundCombatActorEligibility), the assault provisioning gate and ActiveDefence
+        // withdrawals: an army that is the last combat body on an own Citadel/Base which a known
+        // hostile force able to damage it can reach within strongholdDefenderPinEnemyEta turns
+        // stays on that hex. Leaving opens the stronghold to capture — a loss no TaskScore price
+        // of the operation it would leave for can outweigh (Ysolde T9, 2026-09-28: the Citadel's
+        // only defender left to intercept another enemy and the Citadel fell unopposed). Staying
+        // still fights the arriving enemy, on the hex with its defence bonus.
+        internal static bool IsPinnedStrongholdDefender(WorldSnapshot snap, ArmySnapshot army)
+        {
+            if (army == null || army.IsAir || army.IsAirfield || army.IsPrison
+                || army.EffectiveArmyPower <= AiConfigV2.allocatorSliceEpsilon
+                || snap?.Self?.Armies == null || snap.Self.BaseHexes == null
+                || !snap.Self.BaseHexes.Contains(army.Hex))
+                return false;
+            foreach (ArmySnapshot other in snap.Self.Armies)
+                // A dedicated scout passing through is not a defender that keeps the hex held.
+                if (other != null && other.ArmyId != army.ArmyId && other.Hex.Equals(army.Hex)
+                    && !other.IsAir && !other.IsAirfield && !other.IsPrison && !other.IsSoloRecce
+                    && other.EffectiveArmyPower > AiConfigV2.allocatorSliceEpsilon)
+                    return false;
+            IEnumerable<AssetThreatSnapshot> threats = snap.Threat?.Threats
+                ?? Enumerable.Empty<AssetThreatSnapshot>();
+            return threats.Any(t => IsHonestPositionedHostile(t) && t.CanDamage
+                && t.Asset.Hex.Equals(army.Hex)
+                && (t.Asset.Kind == AssetKind.Citadel || t.Asset.Kind == AssetKind.Base)
+                && t.EnemyEta.HasValue && t.EnemyEta.Value <= AiConfigV2.strongholdDefenderPinEnemyEta);
+        }
+
         private static bool IsHonestPositionedHostile(AssetThreatSnapshot t) =>
             t?.Asset != null && t.Contact?.Army != null
             && t.Contact.Army.ArmyId >= 0

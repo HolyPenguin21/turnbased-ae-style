@@ -399,19 +399,76 @@ namespace Game.Ai.V2
             List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap)
                 .Where(o => o != null).ToList();
 
+            // An aircraft is played only for a real use: a Recon target it adds service to (below)
+            // or a ground-combat target it can strike, AND launch Energy it can actually sustain.
+            // Without either the card is not a candidate at all - no flat aviation RoleFit is
+            // earned for a wing with nothing to fly at, or one it could never launch. Without a map
+            // (bare harness) there is nothing to judge targets against, so nothing is filtered.
+            bool judgeUse = ctx?.Map != null;
+            if (judgeUse)
+            {
+                float energyAfterPlay = StrategicSpendability.SpendableAmount(
+                        player, root, ctx, Game.Economy.ResourceType.Energy)
+                    - (totalRes?.energy ?? 0);
+                if (!AviationSortieReservationEvaluator.CanSustainLaunch(
+                        player, ctx.Map, energyAfterPlay, Mathf.Max(0, def.launchEnergyCost)))
+                {
+                    blocked?.Add($"{def.displayName}:aviation(launch_energy_unsustainable)");
+                    return result;
+                }
+            }
+
+            // A new aircraft is worth the air jobs it ADDS, not the ones the aircraft already in
+            // play cover. The canonical air-capacity witness (ReconAssignmentPlanner.
+            // MeasureAirCapacity — the same route/progress rules Assignment binds a sortie with)
+            // says how many runnable AirSweep jobs existing wings and hangars already serve, within
+            // the per-turn air-actor ceiling. When nothing is left uncovered the card carries no
+            // operational task value.
+            int uncoveredAirJobs = int.MaxValue;
+            if (judgeUse)
+            {
+                int airJobs = objectives.Count(o => o.BaseValue > 0f
+                    && ReconAirCapacityPolicy.IsAirServiceable(o));
+                (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
+                    ctx, player, root, snap, objectives);
+                uncoveredAirJobs = Mathf.Min(airJobs, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
+                    - (airborne + spare);
+            }
+            List<HexCoord> strikeTargets = judgeUse && def.attack > 0
+                ? KnownStrikeTargets(snap, player) : null;
+            List<UnitData> projected = ProjectedAircraft(def, player);
+
             foreach (HexCoord airfield in airfields)
             {
-                TaskScore service = BestAirfieldServiceTaskScore(
-                    snap, player, ctx, def, airfield, objectives,
-                    out int coverage, out string witness);
+                int coverage;
+                string witness;
+                TaskScore service = uncoveredAirJobs > 0
+                    ? BestAirfieldServiceTaskScore(
+                        snap, player, ctx, def, airfield, objectives, out coverage, out witness)
+                    : NoMarginalAirService(out coverage, out witness);
+                string use = coverage > 0 ? "recon" : null;
+                if (judgeUse && use == null)
+                {
+                    HexCoord? strike = FirstReachableStrikeTarget(ctx, player, projected, airfield,
+                        strikeTargets);
+                    if (strike.HasValue)
+                        use = $"strike@({strike.Value.Q},{strike.Value.R})";
+                }
+                if (judgeUse && use == null)
+                {
+                    AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
+                        + $"airfield=({airfield.Q},{airfield.R}) decision=SKIP reason=no_recon_or_strike_target "
+                        + $"uncoveredAirJobs={uncoveredAirJobs} witness={witness ?? "none"}");
+                    continue;
+                }
                 float score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
                     totalAp, totalRes, generation, witnessedUsefulApDemand,
                     logDynamicEffect: true, operationalTask: service);
                 int free = AiAirSortiePlanner.FreeLandingCapacity(airfield, player);
                 AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
                     + $"airfield=({airfield.Q},{airfield.R}) capacity={free} "
-                    + $"objectiveCoverage={coverage} task={service.Value:0.00} "
-                    + $"decision=CANDIDATE witness={witness ?? "none"}");
+                    + $"objectiveCoverage={coverage} uncoveredAirJobs={uncoveredAirJobs} task={service.Value:0.00} "
+                    + $"decision=CANDIDATE use={use ?? "unjudged"} witness={witness ?? "none"}");
                 result.Add(new NonCombatPlay
                 {
                     Card = card,
@@ -427,7 +484,73 @@ namespace Game.Ai.V2
                         + $"witness={witness ?? "none"}",
                 });
             }
+            if (judgeUse && result.Count == 0)
+                blocked?.Add($"{def.displayName}:aviation(no_recon_or_strike_target)");
             return result;
+        }
+
+        // Ground-combat targets a strike sortie could hit, from the same fog-honest facts the
+        // Raid and Attack lanes read: every combat opportunity with known defenders
+        // (CombatOpportunityAnalyzer - neutral and hostile armies) and every hostile Attack
+        // structure with a known garrison (AttackObjectiveEvaluator.KnownSiteDefenders).
+        private static List<HexCoord> KnownStrikeTargets(WorldSnapshot snap, PlayerSetupData player)
+        {
+            var targets = new List<HexCoord>();
+            foreach (CombatOpportunity o in CombatOpportunityAnalyzer.Analyze(snap).All)
+                if (o.HasTarget && o.DefenderCount > 0 && !targets.Contains(o.TargetHex))
+                    targets.Add(o.TargetHex);
+            foreach (AiMapMemory.KnownBuilding b in snap?.Known?.Buildings
+                ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)System.Array.Empty<AiMapMemory.KnownBuilding>())
+                if (AttackObjectiveEvaluator.IsHostileAttackStructure(b, player)
+                    && AttackObjectiveEvaluator.KnownSiteDefenders(snap, b.Hex).Count > 0
+                    && !targets.Contains(b.Hex))
+                    targets.Add(b.Hex);
+            return targets;
+        }
+
+        // The nearest strike target a sortie from this airfield proves it can reach and come back
+        // from (the same storage sortie planners air support and recon launches use).
+        private static HexCoord? FirstReachableStrikeTarget(AiTurnContext ctx, PlayerSetupData player,
+            List<UnitData> projected, HexCoord airfield, List<HexCoord> targets)
+        {
+            if (targets == null || targets.Count == 0)
+                return null;
+            foreach (HexCoord t in targets.OrderBy(t => HexGridMath.Distance(airfield, t))
+                .ThenBy(t => t.Q).ThenBy(t => t.R))
+            {
+                if (AiAirSortiePlanner.TryPlanSortieFromStorage(airfield, projected, t, ctx.Map, player).HasValue
+                    || AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(airfield, projected, t, ctx.Map, player).HasValue)
+                    return t;
+            }
+            return null;
+        }
+
+        // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's
+        // granted abilities (UnitData.Abilities is filled from them at spawn), so its recce
+        // radius - and with it the vision the launch rule and the route score read - is the one
+        // the deployed aircraft will have when Assignment evaluates it.
+        private static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player)
+        {
+            var aircraft = new UnitData
+            {
+                Owner = player, IsAviation = true,
+                MoveMax = Mathf.Max(1, def.moveMax),
+                MoveCurrent = Mathf.Max(1, def.moveMax),
+                Attack = Mathf.Max(0, def.attack),
+                ActivationApCost = Mathf.Max(0, def.activationApCost),
+                LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
+                TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
+            };
+            if (def.grantedAbilities != null)
+                aircraft.Abilities.UnionWith(def.grantedAbilities);
+            return new List<UnitData> { aircraft };
+        }
+
+        private static TaskScore NoMarginalAirService(out int coverage, out string witness)
+        {
+            coverage = 0;
+            witness = "covered_by_existing_air";
+            return default;
         }
 
         // Placement refinement remains on the canonical TaskScore scale. Each candidate must
@@ -443,19 +566,7 @@ namespace Game.Ai.V2
             witness = null;
             if (ctx?.Map == null || def == null || !def.isAviation)
                 return default;
-            var projected = new List<UnitData>
-            {
-                new UnitData
-                {
-                    Owner = player, IsAviation = true,
-                    MoveMax = Mathf.Max(1, def.moveMax),
-                    MoveCurrent = Mathf.Max(1, def.moveMax),
-                    ActivationApCost = Mathf.Max(0, def.activationApCost),
-                    LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
-                    TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
-                },
-            };
-            return BestAirfieldServiceTaskScore(snap, player, ctx, projected, airfield,
+            return BestAirfieldServiceTaskScore(snap, player, ctx, ProjectedAircraft(def, player), airfield,
                 objectives, out coverage, out witness);
         }
 
@@ -499,6 +610,8 @@ namespace Game.Ai.V2
                         airfield, projected, sweepPoint, ctx.Map, player);
                 if (!sameTurn.HasValue && !multiTurn.HasValue)
                     continue;
+                if (!LaunchServesObjective(snap, player, ctx, projected, airfield, objective.FocusHex))
+                    continue;
                 coverage++;
                 int eta = sameTurn.HasValue ? 1 : Mathf.Max(1, multiTurn.Value.RequiredTurns);
                 int routeCost = sameTurn.HasValue
@@ -519,6 +632,26 @@ namespace Game.Ai.V2
                 }
             }
             return coverage > 0 ? best : default;
+        }
+
+        // The launch rule Assignment and air capacity bind a hangar sortie with
+        // (ReconAirReservationPrepass.EvaluateAirStructuralFeasibility's storage branch +
+        // ReconAssignmentPlanner's MakesGenuineProgress re-check): the first step PickFromStorage
+        // chooses toward this objective must clear MinimumUsefulScore and progress toward it.
+        // A proven round trip alone is not service — a card or rebase valued on a sortie the
+        // launch rule then refuses (low route score, sector already covered) never flies.
+        private static bool LaunchServesObjective(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, IReadOnlyList<UnitData> projected, HexCoord airfield, HexCoord focus)
+        {
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
+            ReconAirStepPlanner.StepChoice? step = ReconAirStepPlanner.PickFromStorage(
+                player, ctx, new AirLaunchCandidate(airfield, null, projected), snap, mode,
+                ctx.TurnNumber, missionFocusHex: focus);
+            if (!step.HasValue || step.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                return false;
+            int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                + projected.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
+            return ReconAirStepPlanner.MakesGenuineProgress(airfield, step.Value.Hex, focus, vision);
         }
 
         private static TaskScore CopyReconScoreWithAirDelivery(WorldSnapshot snap, TaskScore s,

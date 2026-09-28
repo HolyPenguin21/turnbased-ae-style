@@ -218,7 +218,7 @@ namespace Game.Ai.V2
             // unattached armies are deliberately NOT counted — a formation is not proof of a useful
             // operation. The card half is added per scoring pass below from the real candidate set.
             float committedNonCardAp = CommittedNonCardApDemand(
-                snap, player, root, ctx, activeIntents, reconObjectives, commitments);
+                snap, player, root, ctx, activeIntents, reconObjectives);
             float? witnessedUsefulApDemand = null;
 
             // AI-MGR — the witnessed AP-workload measurement pass only matters when a PlayerGlobal
@@ -306,6 +306,14 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (protectedEconomyBuild != null)
             {
+                // The single pre-intent Economy hold. No durable Economy build exists here
+                // (economyBuildObligations is empty whenever one does), so every deferred row is an
+                // earlier pass's demand hold; a re-admission pass that now protects a different
+                // site replaces it instead of stacking a second hold for the same build card.
+                InfrastructureFulfillment.RetainDeferredEconomyOwner(player, ctx.TurnNumber,
+                    protectedEconomyBuild.Capability == CapabilityKind.Hero
+                        ? InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild)
+                        : InfrastructureFulfillment.EconomyReservationOwner(protectedEconomyBuild));
                 if (protectedEconomyBuild.Capability == CapabilityKind.Hero)
                     InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
                         player, ctx.TurnNumber, protectedEconomyBuild);
@@ -906,7 +914,7 @@ namespace Game.Ai.V2
         // precisely when there is NO operator base, so it is not a runnable AP action.
         private static float CommittedNonCardApDemand(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<ReconObjective> reconObjectives, ActorCommitments commitments)
+            IReadOnlyList<ReconObjective> reconObjectives)
         {
             float ap = 0f;
             IReadOnlyList<ArmySnapshot> armies = snap?.Self?.Armies;
@@ -930,7 +938,7 @@ namespace Game.Ai.V2
             }
 
             (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
-                ctx, player, root, snap, reconObjectives, activeIntents, commitments);
+                ctx, player, root, snap, reconObjectives);
             ap += (Mathf.Max(0, airborne) + Mathf.Max(0, spare)) * AiConfigV2.apAirSortieApProxy;
             return ap;
         }

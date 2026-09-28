@@ -105,6 +105,23 @@ namespace Game.Ai.V2
 
     internal static class AviationSortieReservationEvaluator
     {
+        // Stage 1 Resource Outlook, shared: Energy available now plus the income horizon.
+        internal static float EnergyHeadroom(PlayerSetupData player, HexMap map, float availableEnergy) =>
+            Mathf.Max(0f, availableEnergy)
+            + ExpectedEnergyIncome(player, map) * AiConfigV2.aviationReserveIncomeHorizon;
+
+        private static float ExpectedEnergyIncome(PlayerSetupData player, HexMap map) =>
+            map != null ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map)) : 0f;
+
+        // Deployment-time outlook for a wing not yet in play: can the same Resource Outlook ever
+        // fund one launch after the card itself is paid for? Hand/deck pressure is not read here -
+        // the card being valued is itself in hand, and card-vs-card competition is Phase B's; the
+        // per-sortie reservation decision (EvaluateRecon) still owns whether a given sortie flies.
+        internal static bool CanSustainLaunch(PlayerSetupData player, HexMap map,
+            float availableEnergyAfterPlay, int launchEnergyCost) =>
+            EnergyHeadroom(player, map, availableEnergyAfterPlay) + AiConfigV2.allocatorSliceEpsilon
+                >= Mathf.Max(0, launchEnergyCost);
+
         // Only Recon sorties are evaluated for now — Combat sortie value is a follow-up addition.
         // launchApCost / launchEnergyCost — this candidate sortie's own first-activation cost.
         // reconInformationValue — the AIR-01 route score for this candidate (already the full
@@ -125,11 +142,8 @@ namespace Game.Ai.V2
             // ---- Stage 1: Resource Outlook ----
             int availableEnergy = Mathf.Max(0, Mathf.FloorToInt(airSpendableEnergy + AiConfigV2.allocatorSliceEpsilon));
 
-            float expectedEnergyIncome = map != null
-                ? Mathf.Max(0f, IncomeProjection.IncomeFor(player, ResourceType.Energy, map))
-                : 0f;
-            float energyHeadroom = availableEnergy
-                + expectedEnergyIncome * AiConfigV2.aviationReserveIncomeHorizon;
+            float expectedEnergyIncome = ExpectedEnergyIncome(player, map);
+            float energyHeadroom = EnergyHeadroom(player, map, availableEnergy);
 
             int apStock = Mathf.Max(0, root.ActionPoints);
             int committedAp = Mathf.Max(0, extraCommittedAp);

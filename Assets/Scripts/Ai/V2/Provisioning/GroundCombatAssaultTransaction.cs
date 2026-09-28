@@ -546,6 +546,17 @@ namespace Game.Ai.V2
                     $"{lane} {key} assigned actor #{actorId} is claimed by another mission");
                 return null;
             }
+            // A durable incumbent resolves its actor by id, outside the nomination filter: the
+            // stronghold-hold rule is re-checked here so no assault leg takes the last defender
+            // off a threatened own Citadel/Base.
+            ArmySnapshot assigned = session.Snapshot?.Self?.Armies?.FirstOrDefault(a => a != null
+                && a.ArmyId == actorId);
+            if (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(session.Snapshot, assigned))
+            {
+                failure = ProvisionFailure.MoverContended(
+                    $"{lane} {key} assigned actor #{actorId} is the last defender of a threatened stronghold");
+                return null;
+            }
 
             // GroundCombatAdmissionPolicy.AssaultGate picks the gate (Attack's floor; the strict
             // gate for fresh actors and the bounded continuation floor for the same Hard

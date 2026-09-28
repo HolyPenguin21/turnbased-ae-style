@@ -219,7 +219,7 @@ namespace Game.Ai.V2
             // Both neutral-army and guarded-event Raid objectives receive exactly one fixed
             // intrinsic reward. Combat difficulty remains with WorthIt and assembly.
             // Raid targets are stationary neutrals or event guards; older sightings do not move them.
-            // IntelAgePenalty stays for mobile targets (Attack, ActiveDefence); Raid never pays it.
+            // IntelAgePenalty stays only for mobile targets (ActiveDefence); Raid and Attack never pay it.
             TaskScore score = BuildRaidScore(snap, o.TargetHex);
 
             bool haveViable = o.IsViable;

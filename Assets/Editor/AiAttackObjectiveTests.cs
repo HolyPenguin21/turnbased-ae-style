@@ -301,7 +301,7 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void IntrinsicScore_PenalisesStaleStructuralIntel()
+        public void IntrinsicScore_DoesNotPriceStaleStructuralIntel()
         {
             AttackObjective fresh = AttackObjectiveEvaluator.Enumerate(
                 Snap(new[] { B(RedBase, Red, seenTurn: 6) }, new[] { OurBase }, null, turn: 6))[0];
@@ -310,11 +310,13 @@ namespace Game.EditorTests
             AttackObjective unstamped = AttackObjectiveEvaluator.Enumerate(
                 Snap(new[] { B(RedBase, Red, seenTurn: 0) }, new[] { OurBase }, null, turn: 3))[0];
 
-            Assert.That(stale.TaskScore.IntelAgePenalty, Is.GreaterThan(fresh.TaskScore.IntelAgePenalty),
-                "IntelAgePenalty is a price slot, so older intel costs more");
+            Assert.That(stale.TaskScore.IntelAgePenalty, Is.Zero,
+                "an Attack structure is rarely re-observed; fresh intel is a bonus, never a price");
+            Assert.That(fresh.TaskScore.IntelAgePenalty, Is.Zero);
             Assert.That(stale.TaskScore.Staleness, Is.Zero,
                 "Staleness is Recon's refresh value, never Attack's penalty");
-            Assert.That(stale.BaseValue, Is.LessThan(fresh.BaseValue));
+            Assert.That(stale.IntelAgeTurns, Is.GreaterThan(fresh.IntelAgeTurns),
+                "intel age is still tracked on the objective");
             Assert.That(unstamped.IntelAgeTurns,
                 Is.GreaterThanOrEqualTo(AiConfigV2.scoutSurveilStaleTurnsHi),
                 "an unstamped record means 'age unknown', never 'observed on turn 0'");

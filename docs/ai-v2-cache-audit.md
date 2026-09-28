@@ -96,7 +96,7 @@ AxisBudgetLedger            W: Create[T6], ReserveFollowup, Debit
                             R: Balance / Initial / UnreservedBalance / DiscreteAdmissionBudget
 StrategicResourceReservationLedger
                             W: BeginTurn[T0], Upsert, ReleaseByReason, ReleaseByOwner,
-                               ReplaceReasonOwner, ExpireStage, AssertClearAtTurnEnd[T12]
+                               ReplaceReasonOwner, ReleaseReasonExceptOwner, ExpireStage, AssertClearAtTurnEnd[T12]
                             R: Active, Spendable*, HasReason, CompletionOwners
                             владелец: State/ ; пишут Strategy/PhaseA, Provisioning, Continuity
 ActorCommitments            W: FromIntents[T4,L3] (пересоздание), Claim
@@ -488,3 +488,18 @@ PR не трогал, и `AttackObjective` в нём по-прежнему не 
 S-2 (переименование авиационных узлов), S-3 (реестры вне `State/`) — это рефакторинг
 эргономики, а не дефекты. Два открытых пункта из сверки с #108 (деманд Attack, потолок
 разведки 3→2) относятся к аудиту механик, а не кеша, и разбираются отдельно.
+
+---
+
+## 9. Сверка ветки `ai-v2/aviation-attack-calibration` (2026-09-28)
+
+Новых хранилищ ветка не вводит. Изменились только рёбра W/R:
+
+| Узел (класс) | Новое ребро | Вердикт |
+|---|---|---|
+| `StrategicResourceReservationLedger` (B) | W: `ReleaseReasonExceptOwner` ← `StrategicPhaseA` (через `InfrastructureFulfillment.RetainDeferredEconomyOwner`) — одна пред-интентная Economy-бронь вместо стопки по раундам re-admission | ✅ reason-scoped + гейт `e.Turn == turn`, как у `ReleaseByOwner`; `EconomyBuildCompletion` не трогается; ветка исполняется только без живых Economy-интентов, а `activeIntents` перечитывается `ResolveActive` перед каждым вызовом Phase A (main, re-admission, cold pass, reaction) |
+| `WorldSnapshot` (A) | R: `ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender` ← `GroundCombatActorEligibility`, `GroundCombatAssaultTransactionRunner` (provisioning), `AggressionMissionPlanner` (отходы ActiveDefence) | ✅ читает `Self.Armies`/`BaseHexes`/`Threat` текущего кадра; `ProvisioningSession` создаётся на кадре после `RefreshStrategicKnowledge` каждого шага цикла, поэтому уход одного защитника виден следующему шагу |
+| `GroundCombatAdmissionRegistry` (B) | косвенно: множества eligible пишутся [L5] уже с учётом правила удержания, читаются [L6] на том же кадре | ✅ |
+| `ReconAirSortieRegistry`, `ReconPatrolStateRegistry`, `AirReconCoverageRegistry`, `ReconIntelSnapshotRegistry` (C) | R из оценки карт: `NonCombatCardPlayer` → `ReconAssignmentPlanner.MeasureAirCapacity` / `ReconAirStepPlanner.PickFromStorage` | ✅ только чтение; запись в `AirSortieRegistry`/`AiMapMemory` есть лишь в `AiAirSortiePlanner.ContinueSortie`/`LaunchRoutine`, оценка их не вызывает |
+| живые `ArmyRegistry`/`AviationRules.FindAirfieldAt` | R: `MeasureAirCapacity` в Phase B между розыгрышами | ✅ read-after-write: сыгранный самолёт виден следующей оценке сразу; кадр вдобавок заменяется `TempoActionExecutor` → `RefreshOperationalState` |
+| `AiDebugLog` дедуп (Diagnostics) | W: `[ReconAirCap][LaunchRejected]` с ключом `air-launch-rejected|hangar=(q,r)` / `actor=#id` | ✅ scope сбрасывается в `AiV2Trace.BeginMain` на каждого игрока; подавляется только побайтовый повтор |
