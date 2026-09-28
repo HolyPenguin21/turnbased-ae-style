@@ -122,10 +122,12 @@ namespace Game.EditorTests
         [Test]
         public void OwnTerritoryProximity_IsSignedWithoutChangingItsExistingSlope()
         {
+            // Falloff distance is 9 hexes (AiConfigV2.taskScoreProximityFullFalloffDistance):
+            // +3 at home, 0 at the 4.5-hex midpoint, -3 from 9 hexes out.
             Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(0f), Is.EqualTo(3f).Within(0.0001f));
-            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(3f), Is.EqualTo(1.5f).Within(0.0001f));
-            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(6f), Is.Zero.Within(0.0001f));
-            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(9f), Is.EqualTo(-1.5f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(3f), Is.EqualTo(1f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(6f), Is.EqualTo(-1f).Within(0.0001f));
+            Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(9f), Is.EqualTo(-3f).Within(0.0001f));
             Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(12f), Is.EqualTo(-3f).Within(0.0001f));
             Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(20f), Is.EqualTo(-3f).Within(0.0001f));
             Assert.That(TaskScoreEvaluator.OwnTerritoryProximity(-1f), Is.Zero);
@@ -732,7 +734,8 @@ namespace Game.EditorTests
                     result.Requirements.EtaTurns)));
             Assert.That(result.BaseValue, Is.EqualTo(expected.Value).Within(0.0001f));
             Assert.That(result.LocalAdmissionScore, Is.EqualTo(expected.Value).Within(0.0001f));
-            Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-1.5f).Within(0.0001f));
+            // 9 hexes from the only BaseHex, at the falloff distance (9) -> fully saturated -3.
+            Assert.That(objective.TaskScore.OwnTerritoryProximity, Is.EqualTo(-3f).Within(0.0001f));
             // No fresh opportunity report: a started stationary neutral/event Raid keeps
             // the exact same intrinsic target value. Fog changes visibility only; it does not
             // move the objective or remove RaidReward. Actual target destruction/invalidation

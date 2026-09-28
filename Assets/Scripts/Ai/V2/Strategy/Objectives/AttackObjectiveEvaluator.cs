@@ -345,7 +345,11 @@ namespace Game.Ai.V2
             float corridorAlignment, float readiness, int intelAge) =>
             new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
-                ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
+                // Attack is offensive by nature — the whole point is projecting force onto a
+                // chosen target, near or far. Unlike Raid/Economy/Recon it does not carry the
+                // shared near-home bonus / far-from-home penalty (homeDistance is otherwise
+                // unused here on purpose, not a leftover).
+                ownTerritoryProximity: 0f,
                 frontProgress: TaskScoreEvaluator.FrontProgress(frontProgress),
                 corridorAlignment: TaskScoreEvaluator.CorridorAlignment(corridorAlignment),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(SiteThreatToUs(snap, b.Hex)),

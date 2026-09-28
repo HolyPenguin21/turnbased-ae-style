@@ -62,7 +62,7 @@ namespace Game.Ai.V2
         public const float taskScoreTerrainDefenseMax = 4f;
         // Signed span, not a positive maximum: +3 at home, 0 at the midpoint, -3 far away.
         public const float taskScoreProximityMax = 6f;
-        public const float taskScoreProximityFullFalloffDistance = 12f;   // shape: hexes to the far end
+        public const float taskScoreProximityFullFalloffDistance = 9f;    // shape: hexes to the far end
 
         // ---- COST · the ONE price table (ActionPrice), in AP-equivalents -----------------------
         // 1 AP = 1 AP-equivalent for every use (card play, Challenge, activation now or on a later
