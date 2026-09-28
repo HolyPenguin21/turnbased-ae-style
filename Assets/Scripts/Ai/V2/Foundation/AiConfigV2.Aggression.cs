@@ -11,6 +11,10 @@ namespace Game.Ai.V2
         // contact; a small window lets it fire on a routine re-scout too, at the cost of striking a
         // roster that may be up to this many turns stale.
         public const int raidAirSupportSightingMaxAgeTurns = 2;
+        // The last combat army on an own Citadel/Base stays put while a known hostile force that
+        // can damage it is at most this many turns away
+        // (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender).
+        public const int strongholdDefenderPinEnemyEta = 1;
         // Generic military readiness for the Aggression Radar axis.
         public const float aggRelEdgeRampLo = 0.80f;
         public const float aggRelEdgeRampHi = 2.20f;

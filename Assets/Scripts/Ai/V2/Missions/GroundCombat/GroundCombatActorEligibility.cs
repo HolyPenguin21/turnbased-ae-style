@@ -29,12 +29,17 @@ namespace Game.Ai.V2
         // `requireMovementNow: false` is the capability view (Demand): an army whose MP is spent
         // this turn is still physical capability — it moves again next turn — so it must count as
         // temporary contention, never as a shortage to produce against. Never used to nominate.
+        // A nomination (`requireMovementNow: true`) never takes the last defender off a
+        // threatened own stronghold (ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender);
+        // the capability view still counts that power — it is real, it holds the stronghold.
         internal static List<ArmySnapshot> EligibleArmies(WorldSnapshot snap, ISet<int> excludeArmyIds,
             bool requireMovementNow) =>
             snap.Self.Armies
                 .Where(a => a != null && a.IsStructuralRaidActor
                             && (!requireMovementNow || a.CurrentMovement > 0)
-                            && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId)))
+                            && (excludeArmyIds == null || !excludeArmyIds.Contains(a.ArmyId))
+                            && (!requireMovementNow
+                                || !ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, a)))
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : a.ActivationApCost)
                 .ThenBy(a => a.EffectiveArmyPower)
                 .ThenBy(a => a.ArmyId)

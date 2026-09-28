@@ -326,7 +326,9 @@ namespace Game.Ai.V2
                     case ActiveDefenceResponseKind.Shortage:
                         foreach (ArmySnapshot mover in response.Movers)
                         {
-                            if (mover.CurrentMovement <= 0 || !withdrawalProposed.Add(mover.ArmyId))
+                            if (mover.CurrentMovement <= 0
+                                || ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(snap, mover)
+                                || !withdrawalProposed.Add(mover.ArmyId))
                                 continue;
                             HexCoord? destination = response.Kind == ActiveDefenceResponseKind.Regroup
                                 ? response.RegroupHex

@@ -11,6 +11,52 @@ namespace Game.EditorTests
 {
     public class AiActiveDefenceTests
     {
+        // Ysolde T9 (2026-09-28): the Citadel's only defender left to intercept one enemy while
+        // another, one turn away, walked into the empty Citadel.
+        [Test]
+        public void LastDefenderOfStrongholdWithEnemyOneTurnAway_IsPinned()
+        {
+            var us = new PlayerSetupData();
+            var enemy = new PlayerSetupData();
+            var citadel = new HexCoord(-3, -2);
+            var defender = new ArmySnapshot
+            {
+                ArmyId = 26, Owner = us, Hex = citadel, EffectiveArmyPower = 20f,
+                IsStructuralRaidActor = true, CurrentMovement = 3,
+            };
+            AssetThreatSnapshot Threat(int eta) => new AssetThreatSnapshot
+            {
+                Asset = new StrategicAssetSnapshot { Hex = citadel, Kind = AssetKind.Citadel },
+                Contact = new EnemyContactSnapshot
+                {
+                    Army = new ArmySnapshot { ArmyId = 24, Owner = enemy },
+                    Position = new HexCoord(-2, 0),
+                },
+                CanDamage = true, EnemyEta = eta,
+            };
+            WorldSnapshot Snap(int eta, params ArmySnapshot[] armies) => new WorldSnapshot
+            {
+                Self = new SelfSnapshot { Armies = armies, BaseHexes = new[] { citadel } },
+                Threat = new ThreatModel { Threats = new[] { Threat(eta) } },
+            };
+
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(
+                Snap(1, defender), defender), Is.True);
+            Assert.That(GroundCombatActorEligibility.EligibleReadyArmies(Snap(1, defender), null),
+                Is.Empty, "a nomination never takes the pinned defender off the Citadel");
+            Assert.That(GroundCombatActorEligibility.EligibleArmies(Snap(1, defender), null,
+                requireMovementNow: false), Has.Count.EqualTo(1), "its power still counts");
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(
+                Snap(3, defender), defender), Is.False, "a distant threat does not pin");
+
+            var second = new ArmySnapshot
+            {
+                ArmyId = 27, Owner = us, Hex = citadel, EffectiveArmyPower = 10f,
+            };
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(
+                Snap(1, defender, second), defender), Is.False, "another defender keeps the hex held");
+        }
+
         [Test]
         public void StableIdentity_UsesEnemyArmyIdIncludingZero_NotMovingHex()
         {
