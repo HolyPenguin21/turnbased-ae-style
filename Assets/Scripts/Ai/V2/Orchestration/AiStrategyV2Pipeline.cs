@@ -409,9 +409,11 @@ namespace Game.Ai.V2
                         if (!force)
                         {
                             if (triggered)
+                            {
                                 deferredAdmission.Defer(dirtyAxes);
-                            AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
-                                + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
+                                AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
+                                    + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
+                            }
                             return false;
                         }
                         AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
