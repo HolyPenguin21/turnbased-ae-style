@@ -35,7 +35,8 @@ namespace Game.Ai.V2
 
         public static List<MissionProposal> Propose(WorldSnapshot snapshot,
             DesireBreakdown breakdown, IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<AxisDemand> demands)
+            IReadOnlyList<AxisDemand> demands,
+            IDictionary<MissionIntentKey, string> deferredThisPass = null)
         {
             var result = new List<MissionProposal>();
             ActorCommitments currentCommitments = ActorCommitments.FromIntents(
@@ -53,8 +54,13 @@ namespace Game.Ai.V2
                 // A per-pass execution admission, not cancellation of the durable intent: Phase B
                 // can re-enter the loop after changing hand/resources, but that never refills the
                 // committed builder's movement, so the same impossible step is not re-funded.
-                if (DeferredThisPass(intent, snapshot) != null)
+                string deferred = DeferredThisPass(intent, snapshot);
+                if (deferred != null)
+                {
+                    if (deferredThisPass != null)
+                        deferredThisPass[intent.IntentKey] = deferred;
                     continue;
+                }
                 AxisDemand refreshed = mobile ? null : demands?.FirstOrDefault(d => d != null
                     && d.RequestingAxis == DesireAxis.Economy && d.TargetHex.HasValue
                     && d.TargetHex.Value.Equals(e.TargetHex)

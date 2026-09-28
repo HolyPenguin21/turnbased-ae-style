@@ -52,6 +52,53 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void MissionDeferralContract_EconomyPlannerPublishesCanonicalReason()
+        {
+            var player = new PlayerSetupData { Nickname = "DeferralContract" };
+            var actor = new ArmySnapshot
+            {
+                ArmyId = 7,
+                Owner = player,
+                Hex = new HexCoord(0, 0),
+                CurrentMovement = 0,
+                MaxMovement = 2,
+            };
+            var snap = new WorldSnapshot
+            {
+                Observer = player,
+                Self = new SelfSnapshot
+                {
+                    Armies = new[] { actor },
+                    BaseHexes = new List<HexCoord>(),
+                },
+            };
+            var intent = new MissionIntent
+            {
+                Kind = MissionKind.Economy,
+                Funding = CommitmentTier.Hard,
+                Status = IntentStatus.Active,
+                PreferredMoverArmyId = 7,
+                Economy = new EconomyIntent
+                {
+                    Kind = EconomyTaskKind.ReturnBuilder,
+                    TargetHex = new HexCoord(2, 0),
+                    BuilderArmyId = 7,
+                },
+            };
+            intent.IntentKey = MissionIntentKey.For(intent);
+
+            var deferrals = new Dictionary<MissionIntentKey, string>();
+            List<MissionProposal> missions = EconomyMissionPlanner.Propose(
+                snap, new DesireBreakdown(), new[] { intent }, new List<AxisDemand>(), deferrals);
+
+            Assert.That(missions.Exists(m => MissionIntentKey.For(m).Equals(intent.IntentKey)), Is.False);
+            Assert.That(deferrals.TryGetValue(intent.IntentKey, out string reason), Is.True);
+            Assert.That(reason, Is.EqualTo("actor_no_movement_this_cycle"));
+            Assert.That(MissionContinuityLayer.BindFunding(
+                new[] { intent }, missions, snap, deferrals), Is.Empty);
+        }
+
+        [Test]
         public void StarvationPressure_OneResourceTurnAddsOneHitAndKeepsStrongestEvidence()
         {
             var player = new PlayerSetupData { Nickname = "StarvationIdempotence" };

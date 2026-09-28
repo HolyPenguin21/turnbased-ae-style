@@ -20,7 +20,8 @@ namespace Game.Ai.V2
     {
         internal static void AppendAttack(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
-            List<MissionProposal> proposals, AiTurnContext ctx)
+            List<MissionProposal> proposals, AiTurnContext ctx,
+            IDictionary<MissionIntentKey, string> deferredThisPass)
         {
             if (snap?.Self == null)
                 return;
@@ -38,7 +39,8 @@ namespace Game.Ai.V2
                         AppendAttackWalkHome(snap, intent, a, AttackMissionPhase.SupportReturn,
                             a.SupportArmyId, a.SupportReturnHex, proposals);
                     else if (a.Phase == AttackMissionPhase.Reinforcement)
-                        AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx);
+                        AppendAttackReinforcement(snap, intent, a, committed, proposals, ctx,
+                            deferredThisPass);
                     else if (a.Phase == AttackMissionPhase.Gather)
                         AppendAttackGather(snap, intent, a, proposals, ctx);
                     // Strike force step 5 — donors that already handed over walk home beside
@@ -417,7 +419,8 @@ namespace Game.Ai.V2
         // proposes nothing and holds: asking for a NEW capability is the Demand layer's decision,
         // never the mission planner's (exactly the rule the Raid lane already follows).
         private static void AppendAttackReinforcement(WorldSnapshot snap, MissionIntent intent,
-            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx)
+            AttackIntent a, ISet<int> committed, List<MissionProposal> proposals, AiTurnContext ctx,
+            IDictionary<MissionIntentKey, string> deferredThisPass)
         {
             if (!a.PrimaryArmyId.HasValue)
                 return;
@@ -435,7 +438,8 @@ namespace Game.Ai.V2
                 // "an existing free army can solve this, materialise nothing", and nothing ever
                 // proposed the join. Only when no free army exists at all does the planner hold and
                 // let Aggression demand ask Production for one.
-                AppendAttackUnpinnedReinforcement(snap, intent, a, primary, committed, proposals, ctx);
+                AppendAttackUnpinnedReinforcement(snap, intent, a, primary, committed, proposals, ctx,
+                    deferredThisPass);
                 return;
             }
 
@@ -482,7 +486,8 @@ namespace Game.Ai.V2
         // actor it is most likely to bind.
         private static void AppendAttackUnpinnedReinforcement(WorldSnapshot snap,
             MissionIntent intent, AttackIntent a, ArmySnapshot primary, ISet<int> committed,
-            List<MissionProposal> proposals, AiTurnContext ctx)
+            List<MissionProposal> proposals, AiTurnContext ctx,
+            IDictionary<MissionIntentKey, string> deferredThisPass)
         {
             IReadOnlyList<WorthIt.DefendingArmy> opposition =
                 AttackObjectiveEvaluator.KnownSiteOpposition(snap, a.Target.Hex);
@@ -492,6 +497,8 @@ namespace Game.Ai.V2
                 allowCommandHandover: true);
             if (candidates.Count == 0)
             {
+                if (deferredThisPass != null)
+                    deferredThisPass[intent.IntentKey] = "attack_reinforcement_waiting_for_new_power";
                 AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                     $"[AI][V2][Attack] decision=HOLD {intent.IntentKey}: primary #{a.PrimaryArmyId} "
                     + "waits; no existing free army improves the assault (Aggression demand owns "

@@ -49,7 +49,8 @@ namespace Game.Ai.V2
 
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<ReconObjective> frozenObjectives = null)
+            IReadOnlyList<ReconObjective> frozenObjectives = null,
+            IDictionary<MissionIntentKey, string> deferredThisPass = null)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || snap.MapKnowledge == null || breakdown == null)
@@ -79,8 +80,12 @@ namespace Game.Ai.V2
                     if (c.HasValue)
                         incumbents.Add(c.Value);
                     else
+                    {
+                        if (deferredThisPass != null)
+                            deferredThisPass[intent.IntentKey] = "recon_intent_not_materialisable_this_pass";
                         AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                             $"[AI][V2]   mission — intent {intent.IntentKey} not materialisable this turn");
+                    }
                 }
 
             var incumbentKeys = new HashSet<MissionIntentKey>();

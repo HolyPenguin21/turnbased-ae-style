@@ -1150,7 +1150,8 @@ namespace Game.Ai.V2
         }
 
         public static List<Commitment> BindFunding(IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<MissionProposal> proposals, WorldSnapshot snapshot = null)
+            IReadOnlyList<MissionProposal> proposals, WorldSnapshot snapshot = null,
+            IReadOnlyDictionary<MissionIntentKey, string> deferredThisPass = null)
         {
             var commitments = new List<Commitment>();
             if (activeIntents == null || proposals == null)
@@ -1167,9 +1168,14 @@ namespace Game.Ai.V2
                     continue;
                 if (!byKey.TryGetValue(intent.IntentKey, out MissionProposal p))
                 {
-                    string deferred = intent.Kind == MissionKind.Economy
-                        ? EconomyMissionPlanner.DeferredThisPass(intent, snapshot) : null;
-                    if (deferred != null)
+                    // Missions owns the reason an otherwise-live durable intent deliberately has
+                    // no executable proposal in THIS settled pass. Continuity must never re-run
+                    // lane-specific eligibility here: that would duplicate planner logic and let
+                    // diagnostics drift from the decision that actually withheld the proposal.
+                    string deferred = null;
+                    if (deferredThisPass != null)
+                        deferredThisPass.TryGetValue(intent.IntentKey, out deferred);
+                    if (!string.IsNullOrWhiteSpace(deferred))
                     {
                         AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                             $"[AI][V2] continuity — DEFER {intent.IntentKey} ({intent.Funding}) "
@@ -1178,7 +1184,7 @@ namespace Game.Ai.V2
                     }
                     AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                         $"[AI][V2] continuity — WARN {intent.IntentKey} ({intent.Funding}) "
-                        + "not materialised this turn; no funding bound");
+                        + "not materialised this turn; no planner deferral or funding bound");
                     continue;
                 }
                 commitments.Add(new Commitment
