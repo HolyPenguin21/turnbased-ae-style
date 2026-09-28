@@ -498,8 +498,8 @@ namespace Game.Ai.V2
                 && ArmyData.ComputeCapacity(remainder, support.IsGarrison) >= remainder.Count;
         }
 
-        // A support container is never emptied and never gives up its own hero (a hero moves
-        // only through CommandHandover).
+        // Attack may consume a singleton field support. All other transfers retain one member;
+        // a hero only moves through CommandHandover.
         internal static List<UnitData> SparableSupportBodies(ArmyData support, bool allowCompleteTransfer = false)
         {
             var list = new List<UnitData>();
