@@ -90,7 +90,11 @@ namespace Game.Map
                 PlayerSetupData previousOwner = building.Owner;
                 building.Owner = newOwner;
                 if (building.Visual != null)
+                {
                     building.Visual.SetColor(newOwner != null ? PlayerColorPalette.Colors[newOwner.ColorIndex] : Color.white);
+                    if (newOwner != null)
+                        MapFlagAnimator.ApplyFaction(building.Visual, newOwner.Faction);
+                }
                 // 2026-08-24 fix (project owner's own report — see EnsureGarrisonForBuilding's own
                 // comment): a capture used to leave the previous owner's own empty garrison shell
                 // behind, unclaimed by the new owner, so every multi-base AI/UI lookup keyed off

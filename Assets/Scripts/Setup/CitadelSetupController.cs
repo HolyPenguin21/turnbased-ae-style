@@ -270,6 +270,7 @@ namespace Game.Setup
             Vector3 offset = new Vector3(offset2D.x, 0f, offset2D.y) * map.OuterRadius;
             marker.transform.position = map.HexToWorld(hex) + offset;
             marker.SetColor(PlayerColorPalette.Colors[player.ColorIndex]);
+            MapFlagAnimator.ApplyFaction(marker, player.Faction);
             if (catalog != null && catalog.citadelIcon != null)
                 marker.SetIcon(catalog.citadelIcon);
             marker.SetSortingOrder(MapSortingOrder.BuildingCircle, MapSortingOrder.BuildingIcon);

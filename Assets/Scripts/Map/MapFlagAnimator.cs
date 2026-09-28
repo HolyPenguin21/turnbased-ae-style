@@ -1,3 +1,4 @@
+using Game.Players;
 using UnityEngine;
 
 namespace Game.Map
@@ -10,11 +11,35 @@ namespace Game.Map
         [SerializeField] private SpriteRenderer targetRenderer;
         [SerializeField] private Sprite[] frames;
         [SerializeField] private SpriteRenderer logoRenderer;
+        // Emblem frames per player-selectable faction, each matching `frames` one-to-one.
+        // logoFrames is the default (IronConcord) set; SetFaction picks ashenLogoFrames for
+        // Ashen owners, falling back to the default when that set is missing or mis-sized.
         [SerializeField] private Sprite[] logoFrames;
+        [SerializeField] private Sprite[] ashenLogoFrames;
         [SerializeField, Min(0.1f)] private float framesPerSecond = 3.5f;
         [SerializeField] private bool randomizePhase = true;
 
         private float elapsed;
+        private Sprite[] activeLogoFrames;
+
+        // Every building-marker spawn/capture path calls this with the owner's resolved faction
+        // (Random is already resolved by then — see GameSetupController.ResolveRandomFactions).
+        public static void ApplyFaction(Component marker, Faction faction)
+        {
+            if (marker == null)
+                return;
+            foreach (MapFlagAnimator flag in marker.GetComponentsInChildren<MapFlagAnimator>(true))
+                flag.SetFaction(faction);
+        }
+
+        public void SetFaction(Faction faction)
+        {
+            int frameCount = frames != null ? frames.Length : 0;
+            activeLogoFrames = faction == Faction.Ashen && ashenLogoFrames != null && ashenLogoFrames.Length == frameCount
+                ? ashenLogoFrames
+                : logoFrames;
+            ApplyFrame(frameCount);
+        }
 
         private void OnEnable()
         {
@@ -44,8 +69,9 @@ namespace Game.Map
 
             // The neutral emblem follows the exact same phase as the tinted cloth. A second
             // animator would randomize independently and make the printed mark slide over it.
-            if (logoRenderer != null && logoFrames != null && logoFrames.Length == frameCount)
-                logoRenderer.sprite = logoFrames[frameIndex];
+            Sprite[] logos = activeLogoFrames ?? logoFrames;
+            if (logoRenderer != null && logos != null && logos.Length == frameCount)
+                logoRenderer.sprite = logos[frameIndex];
         }
     }
 }

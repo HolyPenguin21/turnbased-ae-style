@@ -166,6 +166,7 @@ namespace Game.Map
                 marker.transform.SetParent(root.transform, worldPositionStays: true);
             marker.transform.position = map.HexToWorld(hex);
             marker.SetColor(PlayerColorPalette.Colors[owner.ColorIndex]);
+            MapFlagAnimator.ApplyFaction(marker, owner.Faction);
             if (icon != null)
                 marker.SetIcon(icon);
             marker.SetSortingOrder(MapSortingOrder.BuildingCircle, MapSortingOrder.BuildingIcon);
