@@ -70,6 +70,25 @@ namespace Game.EditorTests
             Body(6, 3, 12, 4), Body(6, 3, 12, 3),
         };
 
+        [Test]
+        public void AttackReinforcement_UsesSingletonFieldSupport_WhileRaidRetainsIt()
+        {
+            ArmySnapshot primary = Army(7, OurBase, Weak());
+            primary.Capacity = 3;
+            ArmySnapshot singleton = Army(8, OurBase, new[] { Body(14, 5, 16, 5) });
+            var opposition = new[]
+            {
+                new WorthIt.DefendingArmy(SiteDefenders(), default(WorthIt.SideCommander)),
+            };
+
+            Assert.That(GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, singleton,
+                opposition, allowCommandHandover: false, allowCompleteTransfer: false), Is.False,
+                "Raid leaves a member in its support army");
+            Assert.That(GroundCombatAssemblyPlanner.SupportImprovesPrimary(primary, singleton,
+                opposition, allowCommandHandover: true, allowCompleteTransfer: true), Is.True,
+                "Attack can add the sole field body to its primary army");
+        }
+
         // ---- §22 the model keeps ONE primary field ---------------------------------------
 
         [Test]
