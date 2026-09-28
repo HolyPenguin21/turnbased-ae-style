@@ -1027,24 +1027,6 @@ namespace Game.Ai.V2
                 + $"deferred {a.Deferred.Count}, unused {LogNum(a.Unused.Ap)}, "
                 + $"overdraft axis/global {LogNum(a.AxisOverdraft.Ap)}/{LogNum(a.GlobalOverdraft.Ap)}"
                 + (a.CommitmentsStarveFreshDecisions ? " [commitments starve fresh]" : ""));
-            if (a.Deferred.Count == 0)
-                return;
-            // Diagnostics only: WHY each proposal was not funded this pass (the Fingerprint already
-            // carries the reasons; the summary line above did not).
-            string reasons = string.Join(" | ", a.Deferred
-                .Where(d => d?.Mission != null)
-                .Select(d => $"{StableMissionKey.For(d.Mission)}:{d.Reason}"
-                    + (d.Reason == DeferReason.InsufficientBudget
-                        ? $"(need {LogNum(d.Required.Ap)} have {LogNum(d.Available.Ap)})"
-                        : d.Reason == DeferReason.InsufficientPhysical
-                            ? $"(need {d.Required.FmtPhysical()} have {d.Available.FmtPhysical()})"
-                            : d.Reason == DeferReason.OnCooldown
-                                ? $"(until t{d.CooldownUntilTurn} {d.CooldownReason})"
-                                : "")
-                    + $" apMin={LogNum(d.Mission.Requirements?.ApMinimum ?? 0f)}")
-                .OrderBy(x => x, StringComparer.Ordinal));
-            AiDebugLog.WriteDeduped($"p{a.PassNumber}-deferred",
-                $"[AI][V2][Allocator][Deferred] p{a.PassNumber} turn={turn} {reasons}");
         }
     }
 }
