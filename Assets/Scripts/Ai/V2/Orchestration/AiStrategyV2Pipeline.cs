@@ -565,14 +565,31 @@ namespace Game.Ai.V2
                     // Demand families persist across settled admissions. Only
                     // ReenterStrategicAxes replaces dirty families after a factual invalidation.
 
+                    Dictionary<MissionIntentKey, string> missionDeferrals;
                     missions = BuildMissionSet(snapshot, assessment.Breakdown, activeIntents,
                         reconObjectives, aggressionObjectives, radar, demands, trace, ctx,
-                        aggressionPressureAlreadyRefreshed: true);
+                        out missionDeferrals, aggressionPressureAlreadyRefreshed: true);
                     if (retryNextTurnThisPass.Count > 0)
-                        missions = missions.Where(m => m == null
-                            || !retryNextTurnThisPass.Contains(StableMissionKey.For(m))).ToList();
+                    {
+                        var retained = new List<MissionProposal>(missions.Count);
+                        foreach (MissionProposal mission in missions)
+                        {
+                            if (mission != null
+                                && retryNextTurnThisPass.Contains(StableMissionKey.For(mission)))
+                            {
+                                if (mission.FromDurableIntent
+                                    && mission.DurableFundingTier != CommitmentTier.None)
+                                    missionDeferrals[MissionIntentKey.For(mission)] =
+                                        "retry_next_turn_after_provision_failure";
+                                continue;
+                            }
+                            retained.Add(mission);
+                        }
+                        missions = retained;
+                    }
                     List<Commitment> cycleCommitments =
-                        MissionContinuityLayer.BindFunding(activeIntents, missions, snapshot);
+                        MissionContinuityLayer.BindFunding(activeIntents, missions, snapshot,
+                            missionDeferrals);
                     var cycleLedger = new MissionOutcomeLedger();
                     cycleLedger.RegisterProposals(missions);
                     cycleLedger.RegisterCommitments(cycleCommitments);
@@ -1251,7 +1268,8 @@ namespace Game.Ai.V2
             IReadOnlyList<ReconObjective> reconObjectives,
             IReadOnlyList<AggressionObjective> aggressionObjectives, Radar radar,
             IReadOnlyList<AxisDemand> demands, V2TraceScope trace,
-            AiTurnContext ctx, bool aggressionPressureAlreadyRefreshed = false)
+            AiTurnContext ctx, out Dictionary<MissionIntentKey, string> deferredThisPass,
+            bool aggressionPressureAlreadyRefreshed = false)
         {
             // Orchestration owns mid-turn sequencing: refresh only the Recon lane pressures from
             // the current snapshot right before Missions consumes them, so a frontier completion
@@ -1262,12 +1280,13 @@ namespace Game.Ai.V2
             // operational opportunity facts from the current snapshot, never the radar.
             if (!aggressionPressureAlreadyRefreshed)
                 StrategyLayer.RefreshAggressionOperationalFacts(snapshot, breakdown);
+            deferredThisPass = new Dictionary<MissionIntentKey, string>();
             List<MissionProposal> missions = ReconMissionPlanner.Propose(snapshot, breakdown,
-                activeIntents, reconObjectives);
+                activeIntents, reconObjectives, deferredThisPass);
             missions.AddRange(AggressionMissionLayer.Propose(snapshot, breakdown,
-                activeIntents, aggressionObjectives, ctx));
+                activeIntents, aggressionObjectives, ctx, deferredThisPass));
             missions.AddRange(EconomyMissionPlanner.Propose(snapshot, breakdown,
-                activeIntents, demands));
+                activeIntents, demands, deferredThisPass));
             missions.AddRange(DevelopmentMissionPlanner.Propose(snapshot, activeIntents, demands));
 
             foreach (MissionProposal m in missions)
