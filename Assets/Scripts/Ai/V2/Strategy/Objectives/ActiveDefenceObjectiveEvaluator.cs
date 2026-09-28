@@ -369,8 +369,9 @@ namespace Game.Ai.V2
                 || !snap.Self.BaseHexes.Contains(army.Hex))
                 return false;
             foreach (ArmySnapshot other in snap.Self.Armies)
+                // A dedicated scout passing through is not a defender that keeps the hex held.
                 if (other != null && other.ArmyId != army.ArmyId && other.Hex.Equals(army.Hex)
-                    && !other.IsAir && !other.IsAirfield && !other.IsPrison
+                    && !other.IsAir && !other.IsAirfield && !other.IsPrison && !other.IsSoloRecce
                     && other.EffectiveArmyPower > AiConfigV2.allocatorSliceEpsilon)
                     return false;
             IEnumerable<AssetThreatSnapshot> threats = snap.Threat?.Threats

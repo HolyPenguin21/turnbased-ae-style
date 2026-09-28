@@ -49,6 +49,13 @@ namespace Game.EditorTests
             Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(
                 Snap(3, defender), defender), Is.False, "a distant threat does not pin");
 
+            var scout = new ArmySnapshot
+            {
+                ArmyId = 28, Owner = us, Hex = citadel, EffectiveArmyPower = 2f, IsSoloRecce = true,
+            };
+            Assert.That(ActiveDefenceObjectiveEvaluator.IsPinnedStrongholdDefender(
+                Snap(1, defender, scout), defender), Is.True, "a scout on the hex is not a defender");
+
             var second = new ArmySnapshot
             {
                 ArmyId = 27, Owner = us, Hex = citadel, EffectiveArmyPower = 10f,

@@ -399,24 +399,7 @@ namespace Game.Ai.V2
             List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap)
                 .Where(o => o != null).ToList();
 
-            // A new aircraft is worth the air jobs it ADDS, not the ones the aircraft already in
-            // play cover. The canonical air-capacity witness (ReconAssignmentPlanner.
-            // MeasureAirCapacity — the same route/progress rules Assignment binds a sortie with)
-            // says how many runnable AirSweep jobs existing wings and hangars already serve, within
-            // the per-turn air-actor ceiling. When nothing is left uncovered the card carries no
-            // operational task value; its RoleFit / cost terms still price it.
-            int uncoveredAirJobs = int.MaxValue;
-            if (ctx?.Map != null)
-            {
-                int airJobs = objectives.Count(o => o.BaseValue > 0f
-                    && ReconAirCapacityPolicy.IsAirServiceable(o));
-                (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
-                    ctx, player, root, snap, objectives);
-                uncoveredAirJobs = Mathf.Min(airJobs, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
-                    - (airborne + spare);
-            }
-
-            // An aircraft is played only for a real use: a Recon target it adds service to (above)
+            // An aircraft is played only for a real use: a Recon target it adds service to (below)
             // or a ground-combat target it can strike, AND launch Energy it can actually sustain.
             // Without either the card is not a candidate at all - no flat aviation RoleFit is
             // earned for a wing with nothing to fly at, or one it could never launch. Without a map
@@ -433,6 +416,23 @@ namespace Game.Ai.V2
                     blocked?.Add($"{def.displayName}:aviation(launch_energy_unsustainable)");
                     return result;
                 }
+            }
+
+            // A new aircraft is worth the air jobs it ADDS, not the ones the aircraft already in
+            // play cover. The canonical air-capacity witness (ReconAssignmentPlanner.
+            // MeasureAirCapacity — the same route/progress rules Assignment binds a sortie with)
+            // says how many runnable AirSweep jobs existing wings and hangars already serve, within
+            // the per-turn air-actor ceiling. When nothing is left uncovered the card carries no
+            // operational task value.
+            int uncoveredAirJobs = int.MaxValue;
+            if (judgeUse)
+            {
+                int airJobs = objectives.Count(o => o.BaseValue > 0f
+                    && ReconAirCapacityPolicy.IsAirServiceable(o));
+                (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
+                    ctx, player, root, snap, objectives);
+                uncoveredAirJobs = Mathf.Min(airJobs, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
+                    - (airborne + spare);
             }
             List<HexCoord> strikeTargets = judgeUse && def.attack > 0
                 ? KnownStrikeTargets(snap, player) : null;
@@ -525,20 +525,26 @@ namespace Game.Ai.V2
             return null;
         }
 
-        // The not-yet-deployed aircraft as the sortie planners see it.
-        private static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player) =>
-            new List<UnitData>
+        // The not-yet-deployed aircraft as the sortie planners see it. It carries the card's
+        // granted abilities (UnitData.Abilities is filled from them at spawn), so its recce
+        // radius - and with it the vision the launch rule and the route score read - is the one
+        // the deployed aircraft will have when Assignment evaluates it.
+        private static List<UnitData> ProjectedAircraft(CardDefinition def, PlayerSetupData player)
+        {
+            var aircraft = new UnitData
             {
-                new UnitData
-                {
-                    Owner = player, IsAviation = true,
-                    MoveMax = Mathf.Max(1, def.moveMax),
-                    MoveCurrent = Mathf.Max(1, def.moveMax),
-                    ActivationApCost = Mathf.Max(0, def.activationApCost),
-                    LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
-                    TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
-                },
+                Owner = player, IsAviation = true,
+                MoveMax = Mathf.Max(1, def.moveMax),
+                MoveCurrent = Mathf.Max(1, def.moveMax),
+                Attack = Mathf.Max(0, def.attack),
+                ActivationApCost = Mathf.Max(0, def.activationApCost),
+                LaunchEnergyCost = Mathf.Max(0, def.launchEnergyCost),
+                TurnsWithoutRefuel = Mathf.Max(0, def.turnsWithoutRefuel),
             };
+            if (def.grantedAbilities != null)
+                aircraft.Abilities.UnionWith(def.grantedAbilities);
+            return new List<UnitData> { aircraft };
+        }
 
         private static TaskScore NoMarginalAirService(out int coverage, out string witness)
         {
