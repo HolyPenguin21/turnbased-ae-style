@@ -61,6 +61,31 @@ namespace Game.Ai.V2
         // each other, never meant as an exact prediction of what will actually react (that stays
         // AntiAirRules' own live, honest-fog job at execution time). The one shared route-risk
         // number for every sortie kind.
+        // THE "may an air army end a turn aloft on this hex" threat rule, read by every place a
+        // wing can plan to stay aloft overnight: a deliberate hold (CanEndTurnHereAndRecover), a
+        // multi-turn sortie's first turn-end (PlanMultiTurnSortieCore) and a second-strike hold
+        // (CanStrikeNextTurnAndLandCore). A parked wing is shot by a ground AA army that moves up
+        // during the enemy's turn (AntiAirRules.CollectGroundOpportunities), so the reach is move +
+        // radius (AiConfigV2.airAloftEnemyAaReach), not the flight-leg radius KnownAaExposure uses.
+        // Fog-honest sources: a KNOWN enemy army carrying AA, and a KNOWN enemy Base/Citadel —
+        // AA can be fielded there from hand and walk out, whatever its garrison showed. Emergency
+        // return searches (TryReplan*) never read it: a wing that must come home still does.
+        public static bool IsThreatenedAloftEnd(PlayerSetupData owner, HexCoord hex)
+        {
+            if (owner == null)
+                return false;
+            int reach = AiConfigV2.airAloftEnemyAaReach;
+            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(owner))
+                if (s.HasAntiAir && HexGridMath.Distance(hex, s.Hex) <= reach)
+                    return true;
+            foreach (AiMapMemory.KnownBuilding b in AiMapMemory.AllKnownBuildings(owner))
+                if (b.Owner != null && b.Owner != owner && !b.Owner.IsNeutral
+                    && (b.IsBase || b.IsStartingCitadel)
+                    && HexGridMath.Distance(hex, b.Hex) <= reach)
+                    return true;
+            return false;
+        }
+
         public static int KnownAaExposure(PlayerSetupData actor, HexPath leg) =>
             leg == null ? 0 : KnownAaExposureOver(actor, leg.Hexes);
 
@@ -163,6 +188,8 @@ namespace Game.Ai.V2
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null)
                 return false;
+            if (IsThreatenedAloftEnd(owner, airArmy.Hex))
+                return false; // a deliberate hold here would sit inside the enemy's anti-air reach
             int safeEnds = AviationRange.SafeUnlandedEndsRemaining(airArmy);
             if (safeEnds < 1)
                 return false; // ending this turn aloft is already illegal / would take fuel damage
@@ -413,6 +440,8 @@ namespace Game.Ai.V2
                     aircraft, safeRemaining, owner, out int requiredTurns, out int requiredUnlandedEnds,
                     out HexCoord turn1Destination, out bool reachesActionThisTurn, out bool landsThisTurn))
                     continue;
+                if (!landsThisTurn && IsThreatenedAloftEnd(owner, turn1Destination))
+                    continue; // the plan parks the group aloft inside the enemy's anti-air reach
 
                 int totalCost = pathCost(outbound) + pathCost(ret);
                 int forward = NearestKnownEnemyDistance(owner, landing);
@@ -477,6 +506,8 @@ namespace Game.Ai.V2
             landingHex = default;
             if (map == null || owner == null)
                 return false;
+            if (IsThreatenedAloftEnd(owner, currentHex))
+                return false; // the second-strike hold would park aloft inside enemy anti-air reach
             int nextTurnMovement = aircraft.Min(AviationRules.EffectiveMoveMax);
 
             HexCoord? best = null;

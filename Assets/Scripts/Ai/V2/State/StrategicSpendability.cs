@@ -30,6 +30,34 @@ namespace Game.Ai.V2
         internal static void ClearAll() => SettledTurn.Clear();
     }
 
+    // Which strategic reservations ONE action may draw on. Every stage that admits, prices,
+    // portfolio-checks and executes the same action reads the SAME value, so they cannot disagree
+    // (the demand-side rule is InfrastructureFulfillment.SpendAuthorityFor, exposed as
+    // AxisDemand.SpendAuthority):
+    //   · Owner — the action's own hold (e.g. the build a builder hero serves), excluded from the sum;
+    //   · EconomyCompletesNow — an Economy action that pays off NOW (an on-hex build, a global
+    //     resource source put into play) is senior to OTHER builds' EconomyDeferredBuild holds,
+    //     which only shield H/E/M/T from non-Economy spending. Every other hold still counts.
+    // default == no special authority (the historical behaviour of every other spend).
+    public readonly struct SpendAuthority
+    {
+        public readonly string Owner;
+        public readonly bool EconomyCompletesNow;
+
+        public SpendAuthority(string owner, bool economyCompletesNow)
+        {
+            Owner = owner;
+            EconomyCompletesNow = economyCompletesNow;
+        }
+
+        public bool IsNone => Owner == null && !EconomyCompletesNow;
+        public StrategicReservationReason? IgnoreReason => EconomyCompletesNow
+            ? StrategicReservationReason.EconomyDeferredBuild : (StrategicReservationReason?)null;
+        // Identity for per-authority caches (MaterializationPortfolioSolver own-hold add-back).
+        public string Key => (Owner ?? "-") + (EconomyCompletesNow ? "|now" : "");
+        public override string ToString() => IsNone ? "none" : Key;
+    }
+
     // ARCH-02 §45/§47 — the ONE owner-aware strategic-spendability seam. Every "can I afford this
     // persistent-resource cost right now" question in the strategic + materialization + reaction
     // paths goes through SpendableAmount, which nets from the raw PlayerRoot stockpile:
@@ -196,6 +224,20 @@ namespace Game.Ai.V2
             return Mathf.Max(0f, strategic - recoveryAp - continuationAp);
         }
 
+        // AP under an authority. EconomyDeferredBuild never holds AP (the ledger clamps it to 0),
+        // so only the own-owner exclusion changes the AP pool.
+        internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, SpendAuthority authority) =>
+            SpendableAp(player, root, ctx, authority.Owner);
+
+        internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ResourceType t, SpendAuthority authority) =>
+            SpendableAmount(player, root, ctx, t, authority.Owner, authority.IgnoreReason);
+
+        internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx, ResourceCost cost, SpendAuthority authority) =>
+            FitsSpendable(player, root, ctx, cost, authority.Owner, authority.IgnoreReason);
+
         // The canonical primitive: how much of resource `t` may actually be spent this turn.
         internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             ResourceType t, string excludeOwner = null,
@@ -261,11 +303,15 @@ namespace Game.Ai.V2
         // own pending build's hold.
         internal static bool ReservesOkAfterChain(PlayerRoot root, AiTurnContext ctx,
             MaterializationPlan plan, PlayerSetupData player = null, string excludeOwner = null)
+            => ReservesOkAfterChain(root, ctx, plan, player, new SpendAuthority(excludeOwner, false));
+
+        internal static bool ReservesOkAfterChain(PlayerRoot root, AiTurnContext ctx,
+            MaterializationPlan plan, PlayerSetupData player, SpendAuthority authority)
         {
             if (root == null || plan == null)
                 return false;
             float availableAp = player != null && ctx != null
-                ? SpendableAp(player, root, ctx, excludeOwner)
+                ? SpendableAp(player, root, ctx, authority)
                 : root.ActionPoints;
             if (availableAp - plan.ApCost < 0f)
                 return false;
@@ -275,7 +321,7 @@ namespace Game.Ai.V2
                 return true;
 
             foreach (ResourceType t in ResourceBundle.All)
-                if (SpendableAmount(player, root, ctx, t, excludeOwner) < Mathf.Max(0, cost.Get(t)))
+                if (SpendableAmount(player, root, ctx, t, authority) < Mathf.Max(0, cost.Get(t)))
                     return false;
             return true;
         }

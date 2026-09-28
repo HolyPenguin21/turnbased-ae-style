@@ -384,26 +384,51 @@ namespace Game.Ai.V2
             {
                 if (slot.ActorId.HasValue)
                 {
+                    // Diagnostics only: why an existing (usually airborne) wing got no candidate.
+                    void Reject(string why) => AiDebugLog.WriteDeduped(
+                        $"air-cand|{slot.ActorId}|{target.FocusHex}",
+                        $"[AI][V2][Recon][Assignment][AirExisting] actor=#{slot.ActorId} "
+                        + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) decision=NO_CANDIDATE reason={why}");
                     if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId.Value))
+                    {
+                        Reject("actor_excluded(claimed_elsewhere)");
                         continue;
+                    }
                     ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value);
                     if (mover == null)
+                    {
+                        Reject("actor_not_in_snapshot");
                         continue;
+                    }
                     ArmyData live = ResolveArmy(player, slot.ActorId.Value);
                     if (live == null)
+                    {
+                        Reject("actor_not_live");
                         continue;
+                    }
 
                     // Only AirSweep reaches here (gate above): its anchor IS the focus.
                     HexCoord anchorTarget = target.FocusHex;
 
+                    var feasDiag = new List<string>();
                     AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null, anchorTarget);
+                        player, ctx, snap, mode, slot, null, anchorTarget, feasDiag);
                     if (!choice.Feasible)
+                    {
+                        Reject($"infeasible at ({live.Hex.Q},{live.Hex.R}) mp={live.CurrentMovement}: "
+                            + string.Join(" ", feasDiag));
                         continue;
+                    }
                     int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                         + AbilityParams.GetBestRecceRadius(live);
-                    if (!MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
+                    if (!ReconAirStepPlanner.MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
+                    {
+                        Reject($"no_progress best ({choice.ChosenHex.Q},{choice.ChosenHex.R}) "
+                            + $"d={HexGridMath.Distance(choice.ChosenHex, anchorTarget)} vs from "
+                            + $"({live.Hex.Q},{live.Hex.R}) d={HexGridMath.Distance(live.Hex, anchorTarget)} "
+                            + $"vision={vision} | " + string.Join(" ", feasDiag));
                         continue;
+                    }
 
                     list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
                         1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
@@ -424,7 +449,7 @@ namespace Game.Ai.V2
                         continue;
                     int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                         + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-                    if (!MakesGenuineProgress(slot.AirfieldHex, choice.ChosenHex, target.FocusHex, vision))
+                    if (!ReconAirStepPlanner.MakesGenuineProgress(slot.AirfieldHex, choice.ChosenHex, target.FocusHex, vision))
                         continue;
 
                     list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.ActivationAp),
@@ -435,17 +460,6 @@ namespace Game.Ai.V2
             }
         }
 
-        // "Makes genuine progress toward THIS target": the candidate step lands strictly closer to
-        // the mission's bound target than the actor's current position, OR the target already falls
-        // within the resulting vision footprint (the step itself completes the observation).
-        // MinimumUsefulScore alone only proves SOME useful step exists somewhere, never that this
-        // one serves the mission it is about to be bound to.
-        private static bool MakesGenuineProgress(HexCoord from, HexCoord candidateHex, HexCoord missionTarget, int vision)
-        {
-            int before = HexGridMath.Distance(from, missionTarget);
-            int after = HexGridMath.Distance(candidateHex, missionTarget);
-            return after < before || after <= Mathf.Max(0, vision);
-        }
 
         // AssignFunded — best one-to-one actor/execution-candidate assignment across every OPEN
         // funded Scout mission at once (bounded exhaustive search + lexicographic scoring; the
@@ -1156,8 +1170,9 @@ namespace Game.Ai.V2
                 airborneProbed++;
                 slotsUsed++;
 
+                var stuckDiag = new List<string>();
                 if (AirActorProgressesAnObjective(ctx, player, snap, mode, wing, obsRunnable,
-                        consumedObjectiveKeys, provisionalWedges, out _))
+                        consumedObjectiveKeys, provisionalWedges, out _, stuckDiag))
                 {
                     airborneWitnessed++;
                     if (wing.ActorId.HasValue)
@@ -1166,6 +1181,11 @@ namespace Game.Ai.V2
                 else
                 {
                     airborneStuck++;   // recovery protected / flyable elsewhere, but not observation capacity
+                    ArmyData stuckLive = wing.ActorId.HasValue ? ResolveArmy(player, wing.ActorId.Value) : null;
+                    AiDebugLog.WriteDeduped($"air-stuck|{wing.ActorId}",
+                        $"[AI][V2][ReconAirCap][Stuck] actor=#{wing.ActorId} "
+                        + $"at ({stuckLive?.Hex.Q},{stuckLive?.Hex.R}) mp={stuckLive?.CurrentMovement} "
+                        + $"reasons: {string.Join(" ; ", stuckDiag)}");
                 }
             }
 
@@ -1218,19 +1238,34 @@ namespace Game.Ai.V2
             WorldSnapshot snap, ReconMode mode, AirObservationSlot slot,
             IReadOnlyList<ReconObjective> obsRunnable, HashSet<MissionIntentKey> consumedObjectiveKeys,
             IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex)
+            => AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable,
+                consumedObjectiveKeys, provisionalWedges, out chosenHex, null);
+
+        // `diagnostics` (optional, Diagnostics only) collects why each runnable objective was not
+        // progressed: the feasibility/Pick reasons, or the genuine-progress distances.
+        private static bool AirActorProgressesAnObjective(AiTurnContext ctx, PlayerSetupData player,
+            WorldSnapshot snap, ReconMode mode, AirObservationSlot slot,
+            IReadOnlyList<ReconObjective> obsRunnable, HashSet<MissionIntentKey> consumedObjectiveKeys,
+            IReadOnlyList<ReconSector> provisionalWedges, out HexCoord chosenHex, List<string> diagnostics)
         {
             chosenHex = default;
             if (ctx?.Map == null)
                 return true; // bare test harness — mirror EvaluateAirStructuralFeasibility's own fallback
             if (obsRunnable == null || obsRunnable.Count == 0)
+            {
+                diagnostics?.Add("no_runnable_observation_objective");
                 return false;
+            }
 
             ArmyData live = slot.ActorId.HasValue ? ResolveArmy(player, slot.ActorId.Value) : null;
             ArmySnapshot mover = slot.ActorId.HasValue
                 ? snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value)
                 : null;
             if (slot.ActorId.HasValue && (live == null || mover == null))
+            {
+                diagnostics?.Add(live == null ? "actor_not_live" : "actor_not_in_snapshot");
                 return false;
+            }
 
             List<UnitData> subset = null;
             if (!slot.ActorId.HasValue)
@@ -1257,10 +1292,23 @@ namespace Game.Ai.V2
                 // obsRunnable holds only aviation-serviceable AirSweep jobs: the anchor is the focus.
                 HexCoord anchor = o.FocusHex;
 
+                List<string> objectiveDiag = diagnostics != null ? new List<string>() : null;
                 AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                    player, ctx, snap, mode, slot, provisionalWedges, anchor);
-                if (!choice.Feasible || !MakesGenuineProgress(from, choice.ChosenHex, anchor, vision))
+                    player, ctx, snap, mode, slot, provisionalWedges, anchor, objectiveDiag);
+                if (!choice.Feasible)
+                {
+                    diagnostics?.Add($"focus ({anchor.Q},{anchor.R}) infeasible: "
+                        + string.Join(" ", objectiveDiag));
                     continue;
+                }
+                if (!ReconAirStepPlanner.MakesGenuineProgress(from, choice.ChosenHex, anchor, vision))
+                {
+                    diagnostics?.Add($"focus ({anchor.Q},{anchor.R}) no_progress: best "
+                        + $"({choice.ChosenHex.Q},{choice.ChosenHex.R}) d={HexGridMath.Distance(choice.ChosenHex, anchor)} "
+                        + $"vs from ({from.Q},{from.R}) d={HexGridMath.Distance(from, anchor)} vision={vision} "
+                        + $"score={choice.RouteScore:0.00} | " + string.Join(" ", objectiveDiag));
+                    continue;
+                }
                 chosenHex = choice.ChosenHex;
 
                 consumedObjectiveKeys.Add(o.IntentKey);

@@ -67,7 +67,8 @@ namespace Game.Ai.V2
             k == CapabilityKind.EconomicInfrastructure
             || k == CapabilityKind.EconomicExpansionBase
             || k == CapabilityKind.DevelopmentInfrastructure
-            || k == CapabilityKind.DevelopmentOperator;
+            || k == CapabilityKind.DevelopmentOperator
+            || k == CapabilityKind.GlobalResourceFacility;
 
         // This existing staffing owner validates persisted claims before Phase A/B and after
         // infrastructure mutations. Never duplicate generation, movement or card execution.
@@ -132,10 +133,13 @@ namespace Game.Ai.V2
                         : demand.Capability == CapabilityKind.DevelopmentOperator
                             ? BuildDevelopmentOperatorCandidate(snap, player, root, hand, ctx,
                                 demand, reservation)
-                            : null;
+                            : demand.Capability == CapabilityKind.GlobalResourceFacility
+                                ? BuildGlobalResourceFacilityCandidate(snap, player, root, hand, ctx, demand)
+                                : null;
             if (cand == null)
                 return InfraFulfillResult.No($"{demand.Capability}: no legal authoritative build available now");
-            string economyOwner = EconomyReservationOwner(demand);
+            SpendAuthority authority = SpendAuthorityFor(demand);
+            string economyOwner = authority.Owner;
 
             // --- budget admission BEFORE any gameplay mutation (spec §1). Radar already affected
             //     demand value/priority; this admission reads the ONE unreserved AP pool. ---
@@ -148,21 +152,18 @@ namespace Game.Ai.V2
             }
             // Respect the same strategic + legacy persistent-resource reservations as every
             // materialization path. Raw gameplay affordability is still rechecked below.
-            // An Economy build here completes NOW, so it outranks other builds' deferred holds
-            // (StrategicSpendability.FitsSpendableForEconomyCompletion); DEV infrastructure has no
-            // economy owner and keeps respecting them like any other card spend.
-            bool resourcesFit = economyOwner != null
-                ? StrategicSpendability.FitsSpendableForEconomyCompletion(player, root, ctx,
-                    cand.ResCost, economyOwner)
-                : StrategicSpendability.FitsSpendableResources(player, root, ctx, cand.ResCost,
-                    economyOwner);
+            // SpendAuthorityFor: an Economy build here (or a global source put into play) completes
+            // NOW and outranks other builds' deferred holds; DEV infrastructure has no Economy
+            // authority and keeps respecting them like any other card spend.
+            bool resourcesFit = StrategicSpendability.FitsSpendableResources(
+                player, root, ctx, cand.ResCost, authority);
             if (!resourcesFit)
                 return InfraFulfillResult.No($"{demand.Capability}: reserved resources cannot cover {cand.Explain}");
 
             // --- live gameplay affordability (the executor re-checks; this keeps the demand open
             //     cleanly rather than letting a doomed transaction run) ---
             float spendableAp = StrategicSpendability.SpendableAp(
-                player, root, ctx, economyOwner);
+                player, root, ctx, authority);
             if (cand.ApCost > spendableAp + AiConfigV2.allocatorSliceEpsilon
                 || !root.CanSpendActionPoints(UnityEngine.Mathf.CeilToInt(cand.ApCost))
                 || (cand.ResCost != null && !cand.ResCost.CanAfford(root)))
@@ -234,6 +235,31 @@ namespace Game.Ai.V2
                 return null;
             return EconomyBuildOwner(DemandLayer.EconomyBuildKind(demand),
                 demand.EconomyResourceType, demand.TargetHex.Value);
+        }
+
+        // The ONE demand-side rule for which reservations the action closing `demand` may draw on
+        // (StrategicSpendability.SpendAuthority); read by every stage through
+        // AxisDemand.SpendAuthority — Phase-A admission, pricing, portfolio, execution and here.
+        //   · an on-hex Economy build (EconomicInfrastructure / ExpansionBase): its own owner key,
+        //     and it completes NOW;
+        //   · an Economy global-resource source (Facility or Unit/Hero carrier) put into play:
+        //     completes NOW, no own hold;
+        //   · a builder-Hero prerequisite: only its own pending build's hold — the hero is that
+        //     build's first step, not a completion;
+        //   · anything else: no special authority.
+        internal static SpendAuthority SpendAuthorityFor(AxisDemand demand)
+        {
+            string buildOwner = EconomyReservationOwner(demand);
+            if (buildOwner != null)
+                return new SpendAuthority(buildOwner, economyCompletesNow: true);
+            if (demand != null && demand.RequestingAxis == DesireAxis.Economy
+                && (demand.Capability == CapabilityKind.GlobalResourceFacility
+                    || demand.Capability == CapabilityKind.GlobalResourceCarrier))
+                return new SpendAuthority(null, economyCompletesNow: true);
+            string heroBuildOwner = EconomyHeroPrerequisiteOwner(demand);
+            return heroBuildOwner != null
+                ? new SpendAuthority(heroBuildOwner, economyCompletesNow: false)
+                : default;
         }
 
         // The reservation owner key of one build: the same key its mission and intent carry.
@@ -654,6 +680,101 @@ namespace Game.Ai.V2
                 }
             }
             return BestDevelopmentCandidate(legal);
+        }
+
+        // ECO GLOBAL SOURCE — the pinned Facility carrying a PlayerGlobal recurring effect, into an
+        // owned Base slot. Worth is the SAME non-combat Facility score Phase B uses
+        // (ScoreNonCombat -> ResourceGainRoleFit); a non-positive play stays in hand. The Citadel is
+        // preferred (the base least likely to be lost with the facility), then coordinates.
+        private static InfraCandidate BuildGlobalResourceFacilityCandidate(WorldSnapshot snap,
+            PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
+            AxisDemand demand)
+        {
+            CardData card = demand.EconomySourceCard;
+            if (card?.Definition == null || hand?.Hand == null || !hand.Hand.Contains(card))
+                return null;
+            HexCoord citadel = snap?.Self != null ? snap.Self.Citadel : default;
+            string lastReject = "no owned Base";
+            HexCoord? at = BuildingRegistry.AllBuildings()
+                .Where(b => b != null && b.Owner == player && b.IsBase)
+                .Select(b => b.Hex)
+                .Where(h =>
+                {
+                    if (BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, h, out string why))
+                        return true;
+                    lastReject = why ?? lastReject;
+                    return false;
+                })
+                .OrderBy(h => h.Equals(citadel) ? 0 : 1)
+                .ThenBy(h => h.Q).ThenBy(h => h.R)
+                .Select(h => (HexCoord?)h)
+                .FirstOrDefault();
+            // Every Base slot is locked: the SAME capacity-unlock rule the Phase-B maintenance
+            // candidate uses picks the Base/tier, and this one Economy action buys it and places
+            // the Facility (the upgrade is this source's own prerequisite, like Development's).
+            BuildingData upgradeBase = null;
+            BaseUpgradeTier upgradeTier = null;
+            if (!at.HasValue && StrategicMaintenancePolicy.TryFindCapacityUnlock(
+                    card, player, hand, ctx, out upgradeBase, out upgradeTier))
+                at = upgradeBase.Hex;
+            if (!at.HasValue)
+            {
+                AiDebugLog.WriteDedupedWithId(demand.TraceId,
+                    $"[AI][V2][Economy][GlobalSource] card={card.Definition.displayName} decision=WAIT "
+                    + $"reason=no_legal_base_slot ({lastReject})");
+                return null;
+            }
+            StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
+                NonCombatRole.Facility, card, snap, CapabilityInventory.Build(snap, player, null),
+                hand, bestEquipmentUpgrade: 0f);
+            // The upgrade is priced once, on the canonical AP/resource price table.
+            float upgradePrice = upgradeTier != null
+                ? ActionPrice.ToCardScore(ActionPrice.Ap(upgradeTier.apCost)
+                    + ActionPrice.Resources(upgradeTier.cost, snap))
+                : 0f;
+            float net = use.NetScore - upgradePrice;
+            if (net <= AiConfigV2.allocatorSliceEpsilon)
+            {
+                AiDebugLog.WriteDedupedWithId(demand.TraceId,
+                    $"[AI][V2][Economy][GlobalSource] card={card.Definition.displayName} decision=HOLD "
+                    + $"reason=non_positive_play net={use.NetScore:0.00} upgradePrice={upgradePrice:0.00}");
+                return null;
+            }
+            HexCoord hex = at.Value;
+            BuildingData buildingToUpgrade = upgradeBase;
+            BaseUpgradeTier tierToBuy = upgradeTier;
+            return new InfraCandidate
+            {
+                ApCost = card.EffectivePlayApCost + (tierToBuy?.apCost ?? 0),
+                ResCost = StrategicCardEvaluator.AddResourceCosts(
+                    card.EffectivePlayResourceCost, tierToBuy?.cost),
+                DecisionScore = net,
+                TargetHex = hex,
+                Explain = $"global source Facility {card.Definition.displayName} into Base "
+                    + $"@({hex.Q},{hex.R})"
+                    + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : "")
+                    + $" net={net:0.00}",
+                Execute = () =>
+                {
+                    if (tierToBuy == null)
+                        return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
+                    int apBefore = root.ActionPoints;
+                    if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
+                            player, root, ctx, buildingToUpgrade, tierToBuy))
+                        return BuildingPlayResult.Fail("capacity upgrade refused");
+                    int upgradeVersion = V2StateVersion.Bump();
+                    BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
+                        player, root, hand, ctx, card, hex);
+                    // The upgrade is a real mutation even if the placement then fails.
+                    placed.StateChanged = true;
+                    placed.ApSpent = apBefore - root.ActionPoints;
+                    placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
+                        placed.ResourcesSpent, tierToBuy.cost);
+                    if (placed.StateVersionAfter < upgradeVersion)
+                        placed.StateVersionAfter = upgradeVersion;
+                    return placed;
+                },
+            };
         }
 
         // DEV OPERATOR — a hand card carrying the mode's role ability (Researcher / Assembler),

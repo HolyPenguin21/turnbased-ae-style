@@ -61,7 +61,8 @@ namespace Game.Ai.V2
         // ProvisioningManager.AirSortieReservationAdmission, never to capability measurement.
         internal static AirStructuralFeasibility EvaluateAirStructuralFeasibility(PlayerSetupData player,
             AiTurnContext ctx, WorldSnapshot snap, ReconMode globalMode, AirObservationSlot slot,
-            IReadOnlyList<ReconSector> provisionalWedges, HexCoord? missionFocusHex = null)
+            IReadOnlyList<ReconSector> provisionalWedges, HexCoord? missionFocusHex = null,
+            List<string> diagnostics = null)
         {
             if (ctx?.Map == null)
                 return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId ?? -1); // bare harness
@@ -96,9 +97,14 @@ namespace Game.Ai.V2
                 // air-actor slot; it just does not count toward ReservedAirborneWings.
                 if (projected != null
                     && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
+                {
+                    diagnostics?.Add($"phase={projected.Phase} outbound={projected.OutboundMovementSpent}/"
+                        + $"{projected.OutboundMovementCap}");
                     return AirStructuralFeasibility.No;
+                }
 
-                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx, missionFocusHex: missionFocusHex);
+                choice = ReconAirStepPlanner.Pick(player, ctx, wing, snap, mode, ctx.TurnNumber, projected, scoringCtx,
+                    missionFocusHex: missionFocusHex, diagnostics: diagnostics);
                 launchEnergy = wing.HasActivatedThisTurn ? 0 : UnityEngine.Mathf.Max(0, wing.ActivationEnergyCost);
                 excludeArmyId = wing.Id;
             }
@@ -126,7 +132,12 @@ namespace Game.Ai.V2
             // AppendAirCandidates / MeasureAirCapacity both require score >= MinimumUsefulScore — so
             // gate here too, or capacity witnesses a lane Assignment then refuses (phantom capacity).
             if (!choice.HasValue || choice.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+            {
+                diagnostics?.Add(choice.HasValue
+                    ? $"best ({choice.Value.Hex.Q},{choice.Value.Hex.R}) score={choice.Value.Score:0.00} < min"
+                    : "no_candidate_step");
                 return AirStructuralFeasibility.No;
+            }
 
             return new AirStructuralFeasibility(true, choice.Value.Hex, launchEnergy, choice.Value.Score, excludeArmyId, choice.Value.ActivationAp);
         }

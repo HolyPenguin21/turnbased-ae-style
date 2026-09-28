@@ -61,11 +61,15 @@ namespace Game.Ai.V2
 
         public static StepChoice? Pick(PlayerSetupData player, AiTurnContext ctx, ArmyData airArmy,
             WorldSnapshot snapshot, ReconMode mode, int turn, ReconAirSortieState sortieState = null,
-            AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null)
+            AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null,
+            List<string> diagnostics = null)
         {
             if (player == null || ctx?.Map == null || airArmy == null || snapshot?.Self == null
                 || !AviationRules.IsValidAirArmy(airArmy) || airArmy.CurrentMovement <= 0)
+            {
+                diagnostics?.Add($"no_pick(mp={airArmy?.CurrentMovement ?? 0})");
                 return null;
+            }
 
             HexMap map = ctx.Map;
             // Form the strategic direction FIRST from landmarks (enemy concentration,
@@ -91,7 +95,10 @@ namespace Game.Ai.V2
                 if (!sortie.HasValue)
                     multi = AiAirSortiePlanner.TryPlanMultiTurnSortie(airArmy, h, map, player);
                 if (!sortie.HasValue && !multi.HasValue)
+                {
+                    diagnostics?.Add($"({h.Q},{h.R}):no_safe_sortie");
                     continue;
+                }
 
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
@@ -103,13 +110,14 @@ namespace Game.Ai.V2
                     ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
                 StepChoice? c = BuildChoice(player, map, mode, turn, airArmy.Hex, h, landing,
                     vision, routeCost, requiredTurns, unlandedEnds, activationAp, activationEnergy,
-                    anchors, snapshot, outbound, ret, sortieState, airArmy.Id, scoringCtx);
+                    anchors, snapshot, outbound, ret, sortieState, airArmy.Id, scoringCtx, diagnostics);
                 if (c.HasValue)
                     choices.Add(c.Value);
             }
 
-            StepChoice? best = ChooseBest(choices);
-            return best;
+            bool outboundLeg = sortieState == null || sortieState.Phase == ReconAirPhase.Outbound;
+            return ChooseBest(MissionBoundChoices(choices, airArmy.Hex, missionFocusHex, vision,
+                outboundLeg, diagnostics));
         }
 
         // Storage candidate has no ArmyData yet. Score exactly the first adjacent airborne hex,
@@ -159,8 +167,45 @@ namespace Game.Ai.V2
                     choices.Add(c.Value);
             }
 
-            StepChoice? best = ChooseBest(choices);
-            return best;
+            // A launch is always the first Outbound step.
+            return ChooseBest(MissionBoundChoices(choices, candidate.AirfieldHex, missionFocusHex,
+                vision, outboundLeg: true, diagnostics: null));
+        }
+
+        // THE "makes genuine progress toward THIS target" rule: the step lands strictly closer to
+        // the bound mission target than where the wing stands, OR the target already falls within
+        // the resulting vision footprint (the step itself completes the observation).
+        // MinimumUsefulScore alone only proves SOME useful step exists somewhere, never that this
+        // one serves the mission it is bound to. Pick applies it while choosing, and Assignment /
+        // capacity (ReconAssignmentPlanner) re-check the chosen step with this same method.
+        internal static bool MakesGenuineProgress(HexCoord from, HexCoord candidateHex,
+            HexCoord missionTarget, int vision)
+        {
+            int before = HexGridMath.Distance(from, missionTarget);
+            int after = HexGridMath.Distance(candidateHex, missionTarget);
+            return after < before || after <= Math.Max(0, vision);
+        }
+
+        // A mission-bound OUTBOUND step is chosen among the steps that serve that mission. Picking
+        // the best-scoring step overall and letting Assignment reject it when it was a lateral
+        // information grab stranded the wing aloft (flagged "stuck") while a progressing step with
+        // a near-equal score existed. Turning (the lateral sweep before home), Hold and Return, or
+        // no bound mission, keep the whole set. An empty result means no step serves the mission:
+        // the executor turns for home, capacity/Assignment see no candidate.
+        private static List<StepChoice> MissionBoundChoices(List<StepChoice> choices, HexCoord from,
+            HexCoord? missionFocusHex, int vision, bool outboundLeg, List<string> diagnostics)
+        {
+            if (!missionFocusHex.HasValue || !outboundLeg || choices == null)
+                return choices;
+            var kept = new List<StepChoice>(choices.Count);
+            foreach (StepChoice c in choices)
+            {
+                if (MakesGenuineProgress(from, c.Hex, missionFocusHex.Value, vision))
+                    kept.Add(c);
+                else
+                    diagnostics?.Add($"({c.Hex.Q},{c.Hex.R}):no_progress");
+            }
+            return kept;
         }
 
         // AI-AIR-01 — one candidate first step, scored for its PROVEN WHOLE ROUTE via
@@ -174,7 +219,7 @@ namespace Game.Ai.V2
             float activationEnergy, AirReconAnchorSet anchors, WorldSnapshot snapshot,
             IReadOnlyList<HexCoord> outboundHexes, IReadOnlyList<HexCoord> returnHexes,
             ReconAirSortieState sortieState = null, int moverArmyId = -1,
-            AirReconScoringContext scoringCtx = null)
+            AirReconScoringContext scoringCtx = null, List<string> diagnostics = null)
         {
             ScoreInformation(player, map, h, vision, turn, out int neverObserved,
                 out float staleInformation);
@@ -204,6 +249,9 @@ namespace Game.Ai.V2
                 activationAp, activationEnergy, neverObserved, staleInformation, anchors, snapshot,
                 sortieState, sectorClaims, excludeSortieId);
             AirReconRouteCandidate c = AirReconRouteScorer.Score(inputs);
+            diagnostics?.Add($"({h.Q},{h.R}):" + (c.Rejected
+                ? $"REJECT {c.RejectReason}"
+                : $"score={c.TotalScore:0.00}"));
             if (c.Rejected)
                 return null;
 

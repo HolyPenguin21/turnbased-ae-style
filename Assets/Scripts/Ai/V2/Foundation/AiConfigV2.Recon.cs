@@ -267,6 +267,11 @@
         public const float airReconActivationApPenalty = 0.35f;     // per AP of the wing's first activation
         public const float airReconActivationEnergyPenalty = 0.20f; // per Energy of the wing's first activation
         public const float airReconMinimumUsefulScore = 0.15f;      // a step/launch below this is not worth flying — turn for home / do not launch
+        // How far the enemy's anti-air can reach a wing parked aloft during the enemy's turn: a
+        // ground AA unit moves then reacts within its radius (AntiAirRules.CollectGroundOpportunities).
+        // Every shipped AA mover (AA Crawler / AA Rad Hunter / AA Relic Crawler) has move 3 and
+        // antiAirRadius 1 -> 4. Read only by AiAirSortiePlanner.IsThreatenedAloftEnd.
+        public const int airAloftEnemyAaReach = 4;
 
         // =======================================================================================
         //  AIR RECON BOOMERANG ROUTING + PHASE STATE  (ReconAirExecutor / ReconAirStepPlanner,

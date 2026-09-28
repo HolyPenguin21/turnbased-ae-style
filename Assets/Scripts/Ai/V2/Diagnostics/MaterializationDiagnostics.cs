@@ -35,7 +35,9 @@ namespace Game.Ai.V2
             {
                 CardDefinition def = card.Definition;
                 bool recce = AbilityParams.AbilitiesHaveAnyRecce(def.grantedAbilities);
-                bool cap = demand.Capability == CapabilityKind.ScoutCapability ? recce
+                bool cap = demand.Capability == CapabilityKind.GlobalResourceCarrier
+                        ? card == demand.EconomySourceCard
+                    : demand.Capability == CapabilityKind.ScoutCapability ? recce
                     : demand.Capability == CapabilityKind.Hero ? def.cardType == CardType.Hero && !recce
                     : !recce && (def.cardType == CardType.Unit || def.cardType == CardType.Hero);
                 if (!cap || def.isAviation)

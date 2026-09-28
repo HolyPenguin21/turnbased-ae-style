@@ -294,6 +294,73 @@ namespace Game.EditorTests
             Assert.That(state.IsBaseExpansionDeliverySuppressed(3, cardB, hexB), Is.True);
         }
 
+        // --- B6: a fresh (no-intent) build blocked by alternating reasons is suppressed ------
+
+        private static MissionProposal FreshProposal(EconomyTaskKind kind, CardData card = null)
+        {
+            MissionProposal m = Proposal(kind, Site, card);
+            m.FromDurableIntent = false;
+            return m;
+        }
+
+        [Test]
+        public void B6_FreshExtraction_AlternatingNoProgressKinds_IsSuppressed()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = FreshProposal(EconomyTaskKind.BuildExtraction);
+
+            Settle(player, m, 4, failure: ProvisionFailure.NoMoverExists("no builder"));
+            MissionIntentState state = MissionIntentRegistry.GetOrCreate(player);
+            Assert.That(state.IsExtractionDeliverySuppressed(4, ResourceType.Materials, Site), Is.False,
+                "one blocked turn is transient");
+
+            Settle(player, m, 5, failure: ProvisionFailure.EnvelopeTooSmall(2f, "ap"));
+            Assert.That(state.IsExtractionDeliverySuppressed(5, ResourceType.Materials, Site), Is.True,
+                "a project nobody could deliver two turns running must stop holding the build's resources");
+        }
+
+        [Test]
+        public void B6_FreshFoundBase_EnvelopeThenNoStep_IsSuppressed()
+        {
+            var player = new PlayerSetupData();
+            var card = new CardData(new CardDefinition { cardType = CardType.Base });
+            MissionProposal m = FreshProposal(EconomyTaskKind.FoundBase, card);
+
+            Settle(player, m, 7, failure: ProvisionFailure.EnvelopeTooSmall(2f, "ap"));
+            Settle(player, m, 8, failure: ProvisionFailure.MoverContended("builder busy"));
+
+            Assert.That(MissionIntentRegistry.GetOrCreate(player)
+                .IsBaseExpansionDeliverySuppressed(8, card, Site), Is.True);
+        }
+
+        [Test]
+        public void B6_FreshBuild_NonConsecutiveMisses_AreNotSuppressed()
+        {
+            var player = new PlayerSetupData();
+            MissionProposal m = FreshProposal(EconomyTaskKind.BuildExtraction);
+
+            Settle(player, m, 4, failure: ProvisionFailure.EnvelopeTooSmall(2f, "ap"));
+            Settle(player, m, 6, failure: ProvisionFailure.EnvelopeTooSmall(2f, "ap"));
+
+            Assert.That(MissionIntentRegistry.GetOrCreate(player)
+                .IsExtractionDeliverySuppressed(6, ResourceType.Materials, Site), Is.False);
+        }
+
+        [Test]
+        public void B6_ProgressTurn_IsNeverAFailedTurn_AndEndsTheStreak()
+        {
+            var state = new MissionIntentState();
+            var hex = new HexCoord(2, 2);
+
+            state.RecordExtractionDeliveryFailure(4, ResourceType.Energy, hex);   // blocked attempt
+            state.RecordExtractionDeliveryProgress(4, ResourceType.Energy, hex);  // same turn delivered
+            bool suppressed = state.RecordExtractionDeliveryFailure(5, ResourceType.Energy, hex);
+
+            Assert.That(suppressed, Is.False, "a turn with progress must not start a failure streak");
+            Assert.That(state.RecordExtractionDeliveryFailure(4, ResourceType.Energy, hex), Is.False,
+                "a later failure outcome of the progress turn is not counted either");
+        }
+
         // --- B5: collectors do not draw on the hero-builder pool ----------------------------
 
         [Test]

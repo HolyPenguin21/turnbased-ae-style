@@ -34,6 +34,15 @@ namespace Game.Ai.V2
         // see MaterializationChainEnumerator.EnumerateForDemand) for one specific known resource
         // hex (AxisDemand.EconomyResourceType). No facility is built; the card itself is the unit.
         CollectorCapability,
+        // An Economy "budget of opportunities" source: a card whose effective abilities carry a
+        // PlayerGlobal recurring-resource effect (ApBonus / Produce*, see
+        // StrategicEffectRegistry.HasGlobalRecurringEffect) put into play from hand. The card is
+        // pinned in AxisDemand.EconomySourceCard; the effect works wherever the carrier is in play,
+        // so there is no target hex. Facility carriers are placed by InfrastructureFulfillment,
+        // Unit/Hero carriers by the ordinary materialization chain. A Base carrier is not here —
+        // founding a Base stays with the FoundBase pipeline (its TaskScore prices the same effect).
+        GlobalResourceFacility,
+        GlobalResourceCarrier,
     }
 
     // HOW a capability must be delivered, orthogonal to WHICH capability it is.
@@ -83,6 +92,9 @@ namespace Game.Ai.V2
         public float EconomyHeroOpportunityCost;
         public float EconomyAssignmentApCost;
         public float EconomyPaybackTurns;
+        // GlobalResourceFacility / GlobalResourceCarrier only: the exact hand card this demand puts
+        // into play. Null for every other demand.
+        public CardData EconomySourceCard;
         // Continuity-owned, pre-intent wait pressure. It affects only Economy's within-lane
         // admission order; BaseValue remains intrinsic so critical Defence/Reaction is untouched.
         // Full intrinsic incumbent value witnessed during the same Base candidate scan.
@@ -114,6 +126,10 @@ namespace Game.Ai.V2
         public string EconomyHeroBuildOwner =>
             InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(this);
 
+        // Which strategic reservations the action closing this demand may draw on — the one rule
+        // every Phase-A stage reads (InfrastructureFulfillment.SpendAuthorityFor).
+        internal SpendAuthority SpendAuthority => InfrastructureFulfillment.SpendAuthorityFor(this);
+
         // Delivery-shape constraint (see CapabilityDeliveryShape) and the EXACT
         // durable mission this capability is for. ConsumerIntentKey turns a generic
         // "FieldCombatPower please" into "FieldCombatPower for Raid #42", so Phase A can hand the
@@ -130,6 +146,7 @@ namespace Game.Ai.V2
             (string.IsNullOrEmpty(TraceId) ? "" : $"[{TraceId}] ")
             + $"{DesireAxes.Abbrev(RequestingAxis)} needs {DesiredAmount:0.#}x {Capability}"
             + (DevelopmentOperatorMode.HasValue ? $" ({DevelopmentOperatorMode.Value})" : "")
+            + (EconomySourceCard?.Definition != null ? $" [{EconomySourceCard.Definition.displayName}]" : "")
             + (RequiredTraits != TraitPreference.None ? $" !{RequiredTraits}" : "")
             + (PreferredTraits != TraitPreference.None ? $" ~{PreferredTraits}" : "")
             + (TargetHex.HasValue ? $" @{TargetHex.Value.Q},{TargetHex.Value.R}" : "")

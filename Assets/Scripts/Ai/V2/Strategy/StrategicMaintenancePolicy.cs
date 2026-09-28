@@ -197,9 +197,7 @@ namespace Game.Ai.V2
             if (hand?.Hand == null || ctx.GameConfig?.baseUpgradeTiers == null)
                 yield break;
 
-            List<BuildingData> bases = BuildingRegistry.AllBuildings()
-                .Where(b => b != null && b.Owner == player && b.IsBase && b.HasTieredUnlock)
-                .ToList();
+            List<BuildingData> bases = TieredOwnBases(player);
             if (bases.Count == 0)
                 yield break;
 
@@ -238,21 +236,14 @@ namespace Game.Ai.V2
             if (blockedFacilities.Count == 0)
                 yield break;
 
-            foreach (BuildingData b in bases
-                .Where(x => x.UnlockedFacilitySlots < x.TotalFacilitySlots)
-                .OrderByDescending(x => x.IsStartingCitadel)
-                .ThenBy(x => x.Level)
-                .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R))
+            foreach (BuildingData b in UnlockableBasesInOrder(bases))
             {
                 var bestFacility = blockedFacilities.FirstOrDefault(x => !NeedsDevelopment(x.Card)
                     || preparation.Any(op => op.PreparationFacilityCard == x.Card
                         && op.FacilityHex.Equals(b.Hex)));
                 if (bestFacility == null)
                     continue;
-                int tierIndex = b.Level - 1;
-                if (tierIndex < 0 || tierIndex >= ctx.GameConfig.baseUpgradeTiers.Length)
-                    continue;
-                BaseUpgradeTier tier = ctx.GameConfig.baseUpgradeTiers[tierIndex];
+                BaseUpgradeTier tier = NextTier(b, ctx);
                 if (tier == null)
                     continue;
                 DevelopmentOpportunity witness = NeedsDevelopment(bestFacility.Card)
@@ -278,6 +269,52 @@ namespace Game.Ai.V2
                     FacilityBreakdown = bestFacility.Evaluation.Breakdown?.ToCompact() ?? "no breakdown",
                 };
             }
+        }
+
+        // The ONE "which Base / which tier unlocks the next Facility slot" rule, shared by the
+        // Phase-B maintenance candidate above and the Economy global-source placement
+        // (InfrastructureFulfillment), so both buy the same upgrade for the same card.
+        private static List<BuildingData> TieredOwnBases(PlayerSetupData player) =>
+            BuildingRegistry.AllBuildings()
+                .Where(b => b != null && b.Owner == player && b.IsBase && b.HasTieredUnlock)
+                .ToList();
+
+        private static IEnumerable<BuildingData> UnlockableBasesInOrder(IEnumerable<BuildingData> bases) =>
+            bases.Where(x => x.UnlockedFacilitySlots < x.TotalFacilitySlots)
+                .OrderByDescending(x => x.IsStartingCitadel)
+                .ThenBy(x => x.Level)
+                .ThenBy(x => x.Hex.Q).ThenBy(x => x.Hex.R);
+
+        private static BaseUpgradeTier NextTier(BuildingData b, AiTurnContext ctx)
+        {
+            BaseUpgradeTier[] tiers = ctx?.GameConfig?.baseUpgradeTiers;
+            int tierIndex = b.Level - 1;
+            return tiers != null && tierIndex >= 0 && tierIndex < tiers.Length ? tiers[tierIndex] : null;
+        }
+
+        // A non-Development Facility in hand that is blocked ONLY by slot capacity at every owned
+        // Base: the Base/tier whose upgrade unlocks it (same order as FindCapacityUpgrades).
+        // Development facilities keep their preparation-witness path above.
+        internal static bool TryFindCapacityUnlock(CardData facility, PlayerSetupData player,
+            AiHandData hand, AiTurnContext ctx, out BuildingData building, out BaseUpgradeTier tier)
+        {
+            building = null;
+            tier = null;
+            if (facility?.Definition == null || facility.Definition.cardType != CardType.Facility)
+                return false;
+            List<BuildingData> bases = TieredOwnBases(player);
+            if (bases.Count == 0 || !IsBlockedOnlyByCapacity(facility, bases, player, hand, ctx))
+                return false;
+            foreach (BuildingData b in UnlockableBasesInOrder(bases))
+            {
+                BaseUpgradeTier next = NextTier(b, ctx);
+                if (next == null)
+                    continue;
+                building = b;
+                tier = next;
+                return true;
+            }
+            return false;
         }
 
         private static bool IsBlockedOnlyByCapacity(CardData card, IReadOnlyList<BuildingData> bases,

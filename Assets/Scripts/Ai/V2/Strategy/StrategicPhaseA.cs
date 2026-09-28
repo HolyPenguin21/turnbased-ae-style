@@ -350,13 +350,32 @@ namespace Game.Ai.V2
             if (developmentInfrastructure.Count > 0)
                 AiDebugLog.Write($"[AI][V2]   strat.A infra — deferred {developmentInfrastructure.Count} Development request(s) until after card arbitration");
 
+            // A global-source demand (AxisDemand.EconomySourceCard) is about the card being in
+            // play, not about who played it: a carrier Hero that another demand already fielded
+            // (leading an army, delivering a build) or a Facility already placed closes it.
+            void CloseSourceDemandsAlreadyInPlay()
+            {
+                foreach (DemandState s in allStates)
+                {
+                    CardData source = s.Demand.EconomySourceCard;
+                    if (source == null || s.Remaining <= 0f || hand.Hand.Contains(source))
+                        continue;
+                    s.Remaining = 0f;
+                    AiDebugLog.Write($"[AI][V2]   strat.A — {s.Demand}: source card already left the "
+                        + "hand through another play; global-source demand closed");
+                }
+            }
+
             // The SAME infrastructure executor handles early and residual batches.
             void FulfillInfrastructure(IEnumerable<DemandState> pending)
             {
+                CloseSourceDemandsAlreadyInPlay();
                 foreach (DemandState istate in pending
                     .OrderByDescending(s => IsCommittedEconomyBuild(activeIntents, s.Demand))
                     .ThenByDescending(s => s.Demand.Value * RadarValueScale.For(radar, s.Demand.RequestingAxis)))
                 {
+                    if (istate.Remaining <= 0f)
+                        continue;
                     istate.Blocked = true;
                     result.InfrastructureAttempts++;
                     // Budget admission happens INSIDE TryFulfill, BEFORE any gameplay mutation: it
@@ -396,7 +415,10 @@ namespace Game.Ai.V2
                         result.Reservation.RecordGenerationAttempt(infra.Generation, null);
                         StrategicTempoBudget.RecordGenerationAttempt(player, ctx.TurnNumber);
                     }
-                    if (infra.Built || infra.GenerationAttempted)
+                    // A partial state-changing action (a paid Base capacity upgrade whose Facility
+                    // placement then failed) is debited like a Challenge: its AP is really spent.
+                    if (infra.Built || infra.GenerationAttempted
+                        || (infra.StateChanged && infra.ApSpent > 0f))
                     {
                         // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
                         // ledger records an already-permitted action, never grants overdraft.
@@ -417,7 +439,7 @@ namespace Game.Ai.V2
                             result.CapabilityDeliveries++;
                         }
                         AiDebugLog.Write($"[AI][V2]   strat.A infra — {istate.Demand}: "
-                            + $"{(infra.Built ? "built" : "operator Challenge")} {infra.Detail} "
+                            + $"{(infra.Built ? "built" : infra.GenerationAttempted ? "operator Challenge" : "partial (not built)")} {infra.Detail} "
                             + $"(ap {F(infra.ApSpent)} -> {DesireAxes.Abbrev(istate.Demand.RequestingAxis)})");
                         if (infra.StateChanged)
                         {
@@ -452,6 +474,7 @@ namespace Game.Ai.V2
             int chainAttempts = 0;
             while (chainAttempts < AiConfigV2.maxDemandFulfillmentActionsPerTurn)
             {
+                CloseSourceDemandsAlreadyInPlay();
                 List<DemandState> active = states.Where(s => !s.Blocked && s.Remaining > 0f).ToList();
                 if (active.Count == 0)
                 {
@@ -697,7 +720,7 @@ namespace Game.Ai.V2
 
                 MaterializationResult play = MaterializationExecutor.Execute(
                     snap, player, root, hand, ctx, plan, commitments,
-                    chosenDemand.EconomyHeroBuildOwner);
+                    chosenDemand.SpendAuthority);
                 int chainApAfter = root.ActionPoints;
                 chainAttempts++;
 
@@ -861,6 +884,7 @@ namespace Game.Ai.V2
                 EconomyHeroOpportunityCost = d.EconomyHeroOpportunityCost,
                 EconomyAssignmentApCost = d.EconomyAssignmentApCost,
                 EconomyPaybackTurns = d.EconomyPaybackTurns,
+                EconomySourceCard = d.EconomySourceCard,
                 EconomySwitchIncumbentValue = d.EconomySwitchIncumbentValue,
                 EconomyReadyDeliveryCost = d.EconomyReadyDeliveryCost,
                 EconomyPreferredBuilderArmyId = d.EconomyPreferredBuilderArmyId,

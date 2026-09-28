@@ -104,6 +104,14 @@ namespace Game.Ai.V2
                     Label = $"{nc.Kind} {nc.Explain}",
                 });
             }
+            // Diagnostics only: non-combat cards that never became candidates (placement / live
+            // AP / resources / owner) — previously silent.
+            if (verbose && nonCombatBlocked.Count > 0)
+            {
+                string blockedLine = string.Join(" | ", nonCombatBlocked.Distinct());
+                AiDebugLog.WriteDeduped("nc-blocked|" + blockedLine,
+                    $"[AI][V2]     nonCombat not enumerated: {blockedLine}");
+            }
             // §P0.1 — only card alternatives actually selectable under the shared generation
             // budget and live spendable pools suppress Draw. Structurally blocked cards do not.
             bool CardSelectableNow(TempoCandidate c) => c != null

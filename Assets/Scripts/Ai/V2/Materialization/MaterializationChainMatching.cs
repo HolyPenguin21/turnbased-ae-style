@@ -29,6 +29,7 @@ namespace Game.Ai.V2
                 case CapabilityKind.ScoutCapability:
                 case CapabilityKind.FieldCombatPower:
                 case CapabilityKind.CollectorCapability:
+                case CapabilityKind.GlobalResourceCarrier:
                     return d.cardType == CardType.Unit || d.cardType == CardType.Hero;
                 // Preserve the original Phase-A separation of a native Recce hero from the
                 // generic Hero demand. Phase B may still assign that same hero to a body army:
@@ -57,6 +58,9 @@ namespace Game.Ai.V2
                 case CapabilityKind.CollectorCapability:
                     return requiredResourceType.HasValue && abilities != null
                         && abilities.Contains(UnitAbilities.CollectAbilityFor(requiredResourceType.Value));
+                // The effect is in play wherever the carrier stands; only the ability matters.
+                case CapabilityKind.GlobalResourceCarrier:
+                    return abilities != null && StrategicEffectRegistry.HasGlobalRecurringEffect(abilities);
                 default: return false;
             }
         }

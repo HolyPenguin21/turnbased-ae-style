@@ -147,6 +147,10 @@ namespace Game.Ai.V2
                     float marginalResCost = c.Kind == TempoKind.MaintenanceSpend && c.ResCost != null
                         ? HoldEvaluator.HoldResourcesUtility(root, snap, c.ResCost, player, ctx) : 0f;
                     float eff = c.Utility - marginalResCost;
+                    // Diagnostics only: a card play that lost to eligibility, not to score.
+                    if (block != null && (c.Kind == TempoKind.PlayMat || c.Kind == TempoKind.PlayNonCombat))
+                        AiDebugLog.WriteDeduped($"tempo-block|{c.ActionKey}|{block}",
+                            $"[AI][V2]     cand {c.Kind} BLOCKED: {block}; util {F(c.Utility)} — {c.Label}");
                     if (block == null && eff > bestEff)
                     {
                         best = c;

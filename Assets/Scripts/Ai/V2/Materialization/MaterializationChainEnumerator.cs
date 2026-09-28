@@ -36,6 +36,10 @@ namespace Game.Ai.V2
                     || (reservation?.ClaimsDevelopmentOperatorCard(c) ?? false));
             bool ExcludedGen(GenerationStep g) => g != null && excludeGenKeys != null
                 && !string.IsNullOrEmpty(g.CardKey) && excludeGenKeys.Contains(g.CardKey);
+            // A demand pinned to one hand card (AxisDemand.EconomySourceCard) is closed only by
+            // that card as the base body; a freshly minted base body can never be it.
+            CardData pinnedBase = demand.EconomySourceCard;
+            bool NotPinnedBase(CardData c) => pinnedBase != null && c != pinnedBase;
 
             List<CardData> handList = hand.Hand.ToList();
             List<GenerationStep> genSteps = reservation != null && reservation.CanGenerateMore
@@ -49,7 +53,8 @@ namespace Game.Ai.V2
             {
                 CardData card = handList[i];
                 CardDefinition def = card?.Definition;
-                if (def == null || def.isAviation || Excluded(card) || !MaterializationChainMatching.MatchesCapabilityDef(def, demand.Capability))
+                if (def == null || def.isAviation || Excluded(card) || NotPinnedBase(card)
+                    || !MaterializationChainMatching.MatchesCapabilityDef(def, demand.Capability))
                     continue;
 
                 IReadOnlyList<string> baseAbilities = MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
@@ -94,7 +99,7 @@ namespace Game.Ai.V2
                     {
                         CardData host = handList[i];
                         CardDefinition hd = host?.Definition;
-                        if (hd == null || Excluded(host) || hd.isAviation || host.Equipment != null
+                        if (hd == null || Excluded(host) || NotPinnedBase(host) || hd.isAviation || host.Equipment != null
                             || !MaterializationChainMatching.MatchesCapabilityDef(hd, demand.Capability) || !MaterializationChainMatching.EquipmentDefFitsHostDef(gd, hd))
                             continue;
                         IReadOnlyList<string> hostAbilities = MaterializationChainMatching.EffectiveAbilities(hd, null);
@@ -111,7 +116,8 @@ namespace Game.Ai.V2
                 }
                 else
                 {
-                    if ((gd.cardType != CardType.Unit && gd.cardType != CardType.Hero) || gd.isAviation
+                    if (pinnedBase != null
+                        || (gd.cardType != CardType.Unit && gd.cardType != CardType.Hero) || gd.isAviation
                         || !MaterializationChainMatching.MatchesCapabilityDef(gd, demand.Capability))
                         continue;
                     IReadOnlyList<string> genAbilities = MaterializationChainMatching.EffectiveAbilities(gd, null);

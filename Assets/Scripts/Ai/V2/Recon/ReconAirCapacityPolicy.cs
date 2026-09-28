@@ -102,16 +102,14 @@ namespace Game.Ai.V2
                && o.Kind == ReconObjectiveKind.AirSweep
                && !o.NeedsStealth;
 
-        // How far one sortie of these aircraft reaches outbound, by the refuel-endurance rule
-        // (ReconAirSortieState.OutboundCapFor): the slowest aircraft's movement, halved unless
-        // every aircraft may end a turn aloft (TurnsWithoutRefuel > 0).
+        // How far one sortie of these aircraft reaches outbound, by the same-turn round-trip rule
+        // (ReconAirSortieState.OutboundCapFor): half the slowest aircraft's movement.
         internal static int SweepReach(IReadOnlyList<UnitData> aircraft)
         {
             if (aircraft == null || aircraft.Count == 0)
                 return 0;
             int move = aircraft.Select(AviationRules.EffectiveMoveMax).DefaultIfEmpty(0).Min();
-            int safeEnds = aircraft.Select(u => Mathf.Max(0, u.TurnsWithoutRefuel)).DefaultIfEmpty(0).Min();
-            return ReconAirSortieState.OutboundCapFor(move, safeEnds);
+            return ReconAirSortieState.OutboundCapFor(move);
         }
 
         // The farthest point of a sweep from `from` toward `anchor`: walk the straight hex line
