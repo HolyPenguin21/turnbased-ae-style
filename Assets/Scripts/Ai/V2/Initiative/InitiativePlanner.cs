@@ -53,7 +53,7 @@ namespace Game.Ai.V2.Initiative
             for (int n = 1; n <= InitiativeRules.MaxBonusDice; n++)
             {
                 // Mixing resources per unit (see InitiativeFundingOptimizer) means feasibility
-                // really is just "summed H+E+M+T stock covers the summed price of N dice" now.
+                // is the sum of stock ABOVE committed resource floors covering the price.
                 // Still monotonic: the greedy allocation for N dice is a strict prefix of the
                 // one for N+1 (same cheapest-unit-first order, just more units demanded), so if
                 // N is infeasible, N+1 — needing that same prefix plus more — is too.
