@@ -98,7 +98,7 @@ namespace Game.Ai.V2
                     }
 
                 _apPool = root != null
-                    ? root.ActionPoints - AiConfigV2.housekeepingApReserve : float.MaxValue;
+                    ? root.ActionPoints : float.MaxValue;
                 foreach (ResourceType t in ResourceBundle.All)
                     _resPool[t] = root != null
                         ? Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, t)))

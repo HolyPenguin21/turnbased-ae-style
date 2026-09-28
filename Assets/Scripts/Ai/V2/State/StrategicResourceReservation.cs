@@ -18,7 +18,8 @@ namespace Game.Ai.V2
     //    · covered by an ACTIVE reservation here (owner + reason + amount + expiration known), or
     //    · free for end-of-turn tempo arbitration.
     //
-    //      SpendableResource(r) = TotalResource(r) - Σ ActiveReservations(r)
+    //  The ledger stores rows only; how much a spender may use is TurnResourceBook.Free, which
+    //  reads these rows as claims.
     //
     //  Works for every strategic resource, not only AP (spec §6). Reservations are IDEMPOTENT by
     //  (Owner, Reason, Resource): a repeated Phase-B / reaction pass upserts the same row instead
@@ -147,20 +148,6 @@ namespace Game.Ai.V2
             return sum;
         }
 
-        // SpendableResource = TotalResource - Σ ActiveReservations(resource). Generic over every
-        // strategic resource (spec §6).
-        public static float Spendable(PlayerSetupData player, int turn, StrategicReservedResource res, float total)
-            => Mathf.Max(0f, total - Active(player, turn, res));
-
-        // As Spendable, but excluding the caller's own reservation by its EXACT Owner key.
-        // See Active(…, ignoreOwner).
-        public static float SpendableExcludingOwner(PlayerSetupData player, int turn, StrategicReservedResource res,
-            float total, string ignoreOwner, StrategicReservationReason? ignoreReason = null)
-            => Mathf.Max(0f, total - Active(player, turn, res, ignoreOwner, ignoreReason));
-
-        public static float SpendableAp(PlayerSetupData player, int turn, float totalAp) =>
-            Spendable(player, turn, StrategicReservedResource.ActionPoints, totalAp);
-
         public static StrategicReservedResource Map(ResourceType t) => t switch
         {
             ResourceType.Human => StrategicReservedResource.Human,
@@ -262,15 +249,6 @@ namespace Game.Ai.V2
             player != null && !string.IsNullOrEmpty(owner)
             && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Any(r => r.Owner == owner && r.Reason == reason);
-
-        // Deliberately UNUSED by policy code. "Does anybody hold this reason" is not a valid
-        // question for a per-owner obligation: it would let one Economy build's completion suppress
-        // another build's protection. Kept only as a ledger-inspection
-        // primitive (diagnostics/tests); every lifecycle decision must use HasOwnerReason.
-        public static bool HasReason(PlayerSetupData player, int turn,
-            StrategicReservationReason reason) => player != null
-            && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
-            && e.Reservations.Any(r => r.Reason == reason);
 
         public static bool OwnerReasonMatches(PlayerSetupData player, int turn, string owner,
             StrategicReservationReason reason, Game.Cards.ResourceCost cost, float ap)

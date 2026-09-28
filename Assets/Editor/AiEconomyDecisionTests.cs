@@ -1949,8 +1949,8 @@ namespace Game.EditorTests
                     ExpirationStage = StrategicReservationExpiry.EndOfTurn,
                 });
 
-            Assert.That(StrategicResourceReservationLedger.Spendable(
-                player, 3, StrategicReservedResource.Human, 5f), Is.EqualTo(3f));
+            Assert.That(TurnResourceBook.Free(5f, TurnResourceBook.LedgerClaims(player, 3),
+                StrategicReservedResource.Human, default), Is.EqualTo(3f));
             Assert.That(StrategicResourceReservationLedger.Active(
                 player, 3, StrategicReservedResource.Human), Is.EqualTo(2f));
             StrategicResourceReservationLedger.BeginTurn(player, 4);

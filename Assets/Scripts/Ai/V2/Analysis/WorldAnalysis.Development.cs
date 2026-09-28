@@ -197,12 +197,11 @@ namespace Game.Ai.V2
                     committed += Mathf.Max(0, i.Economy.BuildResourceCost?.Get(t) ?? 0);
             if (committed <= 0)
                 return 0f;
-            StrategicReservedResource res = StrategicResourceReservationLedger.Map(t);
-            float all = StrategicResourceReservationLedger.Active(player, ctx.TurnNumber, res);
-            float held = all - StrategicResourceReservationLedger.Active(player, ctx.TurnNumber, res,
-                    null, StrategicReservationReason.EconomyDeferredBuild)
-                + all - StrategicResourceReservationLedger.Active(player, ctx.TurnNumber, res,
-                    null, StrategicReservationReason.EconomyBuildCompletion);
+            float held = TurnResourceBook.LedgerClaims(player, ctx.TurnNumber,
+                    StrategicResourceReservationLedger.Map(t))
+                .Where(c => c.Kind == ResourceClaimKind.EconomyDeferred
+                    || c.Kind == ResourceClaimKind.EconomyCompletion)
+                .Sum(c => Mathf.Max(0f, c.Amount));
             return Mathf.Max(0f, committed - held);
         }
 

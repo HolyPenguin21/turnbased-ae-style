@@ -162,7 +162,7 @@ namespace Game.Ai.V2
             // to other builds' deferred holds; every other hold still counts.
             SpendAuthority authority = demand != null ? demand.SpendAuthority : default;
             if (StrategicSpendability.SpendableAp(player, root, ctx, authority)
-                    - need - AiConfigV2.housekeepingApReserve < -eps) return;
+                    - need < -eps) return;
             if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost,
                     authority)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;

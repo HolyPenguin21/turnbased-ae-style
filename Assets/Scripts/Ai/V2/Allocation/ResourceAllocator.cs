@@ -320,7 +320,6 @@ namespace Game.Ai.V2
         public readonly List<FundedEntry> Funded = new List<FundedEntry>();
         public readonly List<DeferredEntry> Deferred = new List<DeferredEntry>();
         public ResourceVector InitialPool;
-        public ResourceVector ManagerReserve;
         public ResourceVector CommitmentDraw;
         public ResourceVector StrictFunded;
         public ResourceVector RemainderGenerated;
@@ -516,10 +515,8 @@ namespace Game.Ai.V2
             var alloc = new TentativeAllocation { PassNumber = PassCount };
 
             float rawAp = _snap?.Self?.ActionPoints ?? 0;
-            float reserve = Mathf.Max(0f, AiConfigV2.housekeepingApReserve);
-            var pool = new ResourceVector(Mathf.Max(0f, rawAp - reserve));
+            var pool = new ResourceVector(Mathf.Max(0f, rawAp));
             alloc.InitialPool = pool;
-            alloc.ManagerReserve = new ResourceVector(reserve);
 
             float lockedStrict = 0f;
             float lockedRemainderConsumed = 0f;

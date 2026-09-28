@@ -167,7 +167,7 @@ namespace Game.Ai.V2
                 float eps = AiConfigV2.allocatorSliceEpsilon;
                 if (minDirectNeed > discrete + eps)
                     postGate = "axis-budget";
-                else if (root != null && root.ActionPoints - minDirectNeed - AiConfigV2.housekeepingApReserve < -eps)
+                else if (root != null && root.ActionPoints - minDirectNeed < -eps)
                     postGate = "global-ap";
                 else
                     postGate = "direct-passes-post-preflight";

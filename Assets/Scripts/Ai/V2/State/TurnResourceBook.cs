@@ -98,18 +98,26 @@ namespace Game.Ai.V2
             };
         }
 
+        // The ledger rows of `turn` as claims, without the live derived claim.
+        internal static List<ResourceClaim> LedgerClaims(PlayerSetupData player, int turn,
+            StrategicReservedResource? only = null)
+        {
+            var claims = new List<ResourceClaim>();
+            foreach (StrategicResourceReservation r in
+                     StrategicResourceReservationLedger.LiveRows(player, turn))
+                if (only == null || r.Resource == only.Value)
+                    claims.Add(new ResourceClaim(r.Owner, KindOf(r.Reason), r.Resource, r.Amount));
+            return claims;
+        }
+
         // Every claim of this turn. `only` limits the list to one resource, so a query for
         // Materials does not pay for the live operation scan.
         internal static List<ResourceClaim> Claims(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, StrategicReservedResource? only = null)
         {
-            var claims = new List<ResourceClaim>();
             if (player == null || ctx == null)
-                return claims;
-            foreach (StrategicResourceReservation r in
-                     StrategicResourceReservationLedger.LiveRows(player, ctx.TurnNumber))
-                if (only == null || r.Resource == only.Value)
-                    claims.Add(new ResourceClaim(r.Owner, KindOf(r.Reason), r.Resource, r.Amount));
+                return new List<ResourceClaim>();
+            List<ResourceClaim> claims = LedgerClaims(player, ctx.TurnNumber, only);
 
             bool wantAp = only == null || only.Value == StrategicReservedResource.ActionPoints;
             if (!wantAp || root == null)

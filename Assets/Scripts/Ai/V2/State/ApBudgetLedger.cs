@@ -7,7 +7,7 @@ namespace Game.Ai.V2
     //  AP BUDGET LEDGER  (Strategy V2 — Strategic Manager)
     // ===========================================================================================
     //  ONE scalar AP pool for the turn. Created right after the radar from
-    //      allocatableAP = max(0, realAP - housekeepingApReserve)
+    //      allocatableAP = max(0, realAP)
     //
     //  Radar model #1a — the radar does not slice AP per axis. It scales OBJECTIVE VALUE
     //  (EffectiveValue), not the AP a mission may draw. Every demand-driven Phase A card play and
@@ -31,8 +31,7 @@ namespace Game.Ai.V2
 
         public static ApBudgetLedger Create(float realActionPoints)
         {
-            float allocatable = Mathf.Max(0f,
-                realActionPoints - Mathf.Max(0f, AiConfigV2.housekeepingApReserve));
+            float allocatable = Mathf.Max(0f, realActionPoints);
             return new ApBudgetLedger
             {
                 _initialPool = allocatable,
