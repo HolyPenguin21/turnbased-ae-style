@@ -175,7 +175,7 @@ namespace Game.EditorTests
             // No root => the air witness is empty; the wing must not be priced by the ground path.
             float ap = (float)method.Invoke(null, new object[]
                 { snap, player, null, null, new List<MissionIntent> { sweep },
-                  new List<ReconObjective>(), null });
+                  new List<ReconObjective>() });
             Assert.That(ap, Is.Zero);
         }
 

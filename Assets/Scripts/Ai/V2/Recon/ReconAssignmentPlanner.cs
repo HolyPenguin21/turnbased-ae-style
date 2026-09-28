@@ -1090,12 +1090,13 @@ namespace Game.Ai.V2
         // actor structurally exist" (SlotWouldFly proves a route/energy opportunity exists RIGHT
         // NOW), never "is it funded" — funding is Generic Funding's job.
         //
-        // Read by StrategicPhaseA's committed non-card AP estimate. Aviation serves only AirSweep,
-        // so it is never Recon ground/observation capacity (ReconCapacitySnapshot).
+        // Read by StrategicPhaseA's committed non-card AP estimate and by aviation Deployment
+        // valuation (NonCombatCardPlayer.BuildAviationPlays — a new aircraft is worth only the air
+        // jobs this witness leaves uncovered). Aviation serves only AirSweep, so it is never Recon
+        // ground/observation capacity (ReconCapacitySnapshot).
         public static (int AirborneWitnessed, int SpareLaunchWitnessed) MeasureAirCapacity(
             AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, WorldSnapshot snap,
-            IReadOnlyList<ReconObjective> reconObjectives, IReadOnlyList<MissionIntent> activeIntents,
-            ActorCommitments commitments)
+            IReadOnlyList<ReconObjective> reconObjectives)
         {
             if (player == null || root == null)
             {
@@ -1103,33 +1104,17 @@ namespace Game.Ai.V2
                 return (0, 0);
             }
 
-            // How many GENERIC Observation lanes (Refresh / Surveil, non-stealth) are worth
-            // guaranteeing with air: runnable generic observation objectives, capped by the desired
-            // observation concurrency minus the generic observation lanes already claimed by a
-            // ground/air actor.
+            // The air jobs worth guaranteeing with air: every runnable aviation-serviceable AirSweep
+            // job. A ground scout on a Refresh / Surveil lane never serves one
+            // (ReconAirCapacityPolicy.IsAirServiceable), so ground lanes do not reduce this need;
+            // a wing already flying one is witnessed below and struck off via consumedObjectiveKeys.
             var obsRunnable = (reconObjectives ?? System.Array.Empty<ReconObjective>())
                 .Where(o => o != null && o.BaseValue > 0f
                     && ReconAirCapacityPolicy.IsAirServiceable(o))
                 .OrderByDescending(o => o.BaseValue).ThenBy(o => o.IntentKey)
                 .ToList();
 
-            var activeObsLaneActors = new HashSet<int>();
-            var airActorIds = new HashSet<int>((snap?.Self?.Armies ?? System.Array.Empty<ArmySnapshot>())
-                .Where(a => a != null && a.IsAir).Select(a => a.ArmyId));
-            if (activeIntents != null && commitments != null)
-                foreach (MissionIntent i in activeIntents)
-                    if (i?.Scout != null && !i.Scout.RequiresStealth
-                        && i.Scout.Kind != ScoutTargetKind.Explore
-                        && i.PreferredMoverArmyId.HasValue
-                        && commitments.IsArmyClaimed(i.PreferredMoverArmyId.Value)
-                        && !airActorIds.Contains(i.PreferredMoverArmyId.Value))
-                        activeObsLaneActors.Add(i.PreferredMoverArmyId.Value);
-
-            // obsRunnable holds only aviation-serviceable AirSweep jobs, which are not ground
-            // concurrency lanes (ReconConcurrencyPolicy ignores them): each is one air job.
-            int desiredObs = obsRunnable.Count;
-            int observationNeed = Mathf.Clamp(
-                obsRunnable.Count, 0, Mathf.Max(0, desiredObs - activeObsLaneActors.Count));
+            int observationNeed = obsRunnable.Count;
 
             ReconAirObservationDetail detail = ReconAirCapacityPolicy.EvaluateDetailed(player, root);
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
@@ -1197,10 +1182,16 @@ namespace Game.Ai.V2
                     break;
                 launchProbed++;
 
+                var rejectDiag = new List<string>();
                 if (!AirActorProgressesAnObjective(ctx, player, snap, mode, slot, obsRunnable,
-                        consumedObjectiveKeys, provisionalWedges, out HexCoord chosenHex))
+                        consumedObjectiveKeys, provisionalWedges, out HexCoord chosenHex, rejectDiag))
                 {
                     launchRejected++;
+                    string who = slot.ActorId.HasValue
+                        ? $"actor=#{slot.ActorId}"
+                        : $"hangar=({slot.AirfieldHex.Q},{slot.AirfieldHex.R})";
+                    AiDebugLog.WriteDeduped($"air-launch-rejected|{who}",
+                        $"[AI][V2][ReconAirCap][LaunchRejected] {who} reasons: {string.Join(" ; ", rejectDiag)}");
                     continue;
                 }
                 spareLaunchWitnessed++;
@@ -1214,7 +1205,7 @@ namespace Game.Ai.V2
             AiDebugLog.WriteDeduped("air-capacity", $"[AI][V2][ReconAirCap] structuralObsLanes={airborneWitnessed + spareLaunchWitnessed} "
                 + $"(airborne {airborneWitnessed}/{airborneProbed} stuck {airborneStuck} + "
                 + $"launch {spareLaunchWitnessed}/{launchProbed} rejected {launchRejected}) "
-                + $"obsNeed={observationNeed} desiredObs={desiredObs} activeObsLanes={activeObsLaneActors.Count} "
+                + $"obsNeed={observationNeed} "
                 + $"mode={mode} (structural-only capability witness — no AP/Energy/reservation read; "
                 + "activation economics happen only at Provisioning time)");
 
@@ -1272,10 +1263,16 @@ namespace Game.Ai.V2
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
                 if (airfield == null)
+                {
+                    diagnostics?.Add("no_airfield");
                     return false;
+                }
                 subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
                 if (subset.Count == 0)
+                {
+                    diagnostics?.Add("no_launch_subset");
                     return false;
+                }
             }
 
             int baseVision = ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0;

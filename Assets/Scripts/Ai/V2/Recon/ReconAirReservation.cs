@@ -112,16 +112,23 @@ namespace Game.Ai.V2
             {
                 ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
                 if (airfield == null || airfield.Members.Count < UnityEngine.Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
+                {
+                    diagnostics?.Add($"hangar_below_min_ready({airfield?.Members.Count ?? 0})");
                     return AirStructuralFeasibility.No;
+                }
                 List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
                 // Structural only — "enough ready aircraft exist to form a legal Recon subset", NOT
                 // whether Energy exists today to launch it (that is CanAffordLaunch, a hard gate at
                 // Provisioning/execution time, and the strategic worth-it call in
                 // AviationSortieReservationEvaluator).
                 if (subset.Count == 0)
+                {
+                    diagnostics?.Add("no_launch_subset");
                     return AirStructuralFeasibility.No;
+                }
                 var candidate = new AirLaunchCandidate(slot.AirfieldHex, null, subset);
-                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx, missionFocusHex: missionFocusHex);
+                choice = ReconAirStepPlanner.PickFromStorage(player, ctx, candidate, snap, globalMode, ctx.TurnNumber, scoringCtx,
+                    missionFocusHex: missionFocusHex, diagnostics: diagnostics);
                 launchEnergy = subset.Sum(u => u != null ? u.LaunchEnergyCost : 0);
                 excludeArmyId = -1;
             }

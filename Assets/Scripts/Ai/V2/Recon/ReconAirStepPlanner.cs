@@ -125,11 +125,15 @@ namespace Game.Ai.V2
         // candidate generation and execution on the same aircraft subset and same AP/Energy basis.
         public static StepChoice? PickFromStorage(PlayerSetupData player, AiTurnContext ctx,
             AirLaunchCandidate candidate, WorldSnapshot snapshot, ReconMode mode, int turn,
-            AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null)
+            AirReconScoringContext scoringCtx = null, HexCoord? missionFocusHex = null,
+            List<string> diagnostics = null)
         {
             if (player == null || ctx?.Map == null || snapshot?.Self == null
                 || candidate.ExistingArmy != null || candidate.Aircraft == null || candidate.Aircraft.Count == 0)
+            {
+                diagnostics?.Add("no_pick(storage)");
                 return null;
+            }
 
             int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
                 + candidate.Aircraft.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
@@ -150,7 +154,10 @@ namespace Game.Ai.V2
                     multi = AiAirSortiePlanner.TryPlanMultiTurnSortieFromStorage(
                         candidate.AirfieldHex, candidate.Aircraft, h, ctx.Map, player);
                 if (!sortie.HasValue && !multi.HasValue)
+                {
+                    diagnostics?.Add($"({h.Q},{h.R}):no_safe_sortie");
                     continue;
+                }
 
                 HexCoord landing = sortie?.LandingHex ?? multi.Value.LandingHex;
                 int routeCost = sortie?.TotalCost ?? multi.Value.TotalRouteCost;
@@ -162,14 +169,14 @@ namespace Game.Ai.V2
                     ? sortie.Value.ReturnPath?.Hexes : multi.Value.PathFromActionToLanding?.Hexes;
                 StepChoice? c = BuildChoice(player, ctx.Map, mode, turn, candidate.AirfieldHex,
                     h, landing, vision, routeCost, requiredTurns, unlandedEnds, activationAp,
-                    activationEnergy, anchors, snapshot, outbound, ret, null, -1, scoringCtx);
+                    activationEnergy, anchors, snapshot, outbound, ret, null, -1, scoringCtx, diagnostics);
                 if (c.HasValue)
                     choices.Add(c.Value);
             }
 
             // A launch is always the first Outbound step.
             return ChooseBest(MissionBoundChoices(choices, candidate.AirfieldHex, missionFocusHex,
-                vision, outboundLeg: true, diagnostics: null));
+                vision, outboundLeg: true, diagnostics: diagnostics));
         }
 
         // THE "makes genuine progress toward THIS target" rule: the step lands strictly closer to

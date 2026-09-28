@@ -399,18 +399,38 @@ namespace Game.Ai.V2
             List<ReconObjective> objectives = ReconObjectiveEvaluator.Enumerate(snap)
                 .Where(o => o != null).ToList();
 
+            // A new aircraft is worth the air jobs it ADDS, not the ones the aircraft already in
+            // play cover. The canonical air-capacity witness (ReconAssignmentPlanner.
+            // MeasureAirCapacity — the same route/progress rules Assignment binds a sortie with)
+            // says how many runnable AirSweep jobs existing wings and hangars already serve, within
+            // the per-turn air-actor ceiling. When nothing is left uncovered the card carries no
+            // operational task value; its RoleFit / cost terms still price it.
+            int uncoveredAirJobs = int.MaxValue;
+            if (ctx?.Map != null)
+            {
+                int airJobs = objectives.Count(o => o.BaseValue > 0f
+                    && ReconAirCapacityPolicy.IsAirServiceable(o));
+                (int airborne, int spare) = ReconAssignmentPlanner.MeasureAirCapacity(
+                    ctx, player, root, snap, objectives);
+                uncoveredAirJobs = Mathf.Min(airJobs, ReconAirCapacityPolicy.MaxAirReconActorsPerTurn)
+                    - (airborne + spare);
+            }
+
             foreach (HexCoord airfield in airfields)
             {
-                TaskScore service = BestAirfieldServiceTaskScore(
-                    snap, player, ctx, def, airfield, objectives,
-                    out int coverage, out string witness);
+                int coverage;
+                string witness;
+                TaskScore service = uncoveredAirJobs > 0
+                    ? BestAirfieldServiceTaskScore(
+                        snap, player, ctx, def, airfield, objectives, out coverage, out witness)
+                    : NoMarginalAirService(out coverage, out witness);
                 float score = Score(snap, player, root, ctx, PlayKind.Aviation, card, hand, 0f,
                     totalAp, totalRes, generation, witnessedUsefulApDemand,
                     logDynamicEffect: true, operationalTask: service);
                 int free = AiAirSortiePlanner.FreeLandingCapacity(airfield, player);
                 AiDebugLog.Write($"[AI][V2][Aviation][Deployment] card={def.displayName} "
                     + $"airfield=({airfield.Q},{airfield.R}) capacity={free} "
-                    + $"objectiveCoverage={coverage} task={service.Value:0.00} "
+                    + $"objectiveCoverage={coverage} uncoveredAirJobs={uncoveredAirJobs} task={service.Value:0.00} "
                     + $"decision=CANDIDATE witness={witness ?? "none"}");
                 result.Add(new NonCombatPlay
                 {
@@ -428,6 +448,13 @@ namespace Game.Ai.V2
                 });
             }
             return result;
+        }
+
+        private static TaskScore NoMarginalAirService(out int coverage, out string witness)
+        {
+            coverage = 0;
+            witness = "covered_by_existing_air";
+            return default;
         }
 
         // Placement refinement remains on the canonical TaskScore scale. Each candidate must
@@ -499,6 +526,8 @@ namespace Game.Ai.V2
                         airfield, projected, sweepPoint, ctx.Map, player);
                 if (!sameTurn.HasValue && !multiTurn.HasValue)
                     continue;
+                if (!LaunchServesObjective(snap, player, ctx, projected, airfield, objective.FocusHex))
+                    continue;
                 coverage++;
                 int eta = sameTurn.HasValue ? 1 : Mathf.Max(1, multiTurn.Value.RequiredTurns);
                 int routeCost = sameTurn.HasValue
@@ -519,6 +548,26 @@ namespace Game.Ai.V2
                 }
             }
             return coverage > 0 ? best : default;
+        }
+
+        // The launch rule Assignment and air capacity bind a hangar sortie with
+        // (ReconAirReservationPrepass.EvaluateAirStructuralFeasibility's storage branch +
+        // ReconAssignmentPlanner's MakesGenuineProgress re-check): the first step PickFromStorage
+        // chooses toward this objective must clear MinimumUsefulScore and progress toward it.
+        // A proven round trip alone is not service — a card or rebase valued on a sortie the
+        // launch rule then refuses (low route score, sector already covered) never flies.
+        private static bool LaunchServesObjective(WorldSnapshot snap, PlayerSetupData player,
+            AiTurnContext ctx, IReadOnlyList<UnitData> projected, HexCoord airfield, HexCoord focus)
+        {
+            ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
+            ReconAirStepPlanner.StepChoice? step = ReconAirStepPlanner.PickFromStorage(
+                player, ctx, new AirLaunchCandidate(airfield, null, projected), snap, mode,
+                ctx.TurnNumber, missionFocusHex: focus);
+            if (!step.HasValue || step.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
+                return false;
+            int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                + projected.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
+            return ReconAirStepPlanner.MakesGenuineProgress(airfield, step.Value.Hex, focus, vision);
         }
 
         private static TaskScore CopyReconScoreWithAirDelivery(WorldSnapshot snap, TaskScore s,
