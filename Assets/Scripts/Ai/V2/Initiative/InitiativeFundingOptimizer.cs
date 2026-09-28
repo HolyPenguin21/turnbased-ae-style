@@ -28,11 +28,12 @@ namespace Game.Ai.V2.Initiative
     // constrain WHICH resource pays for a unit, only how many units are needed in total.
     //
     // PreTurnCapacityAnalysis.MarginalCostAt is non-decreasing as a resource's hypothetical
-    // stock drops (draining toward empty only ever gets more expensive per additional unit,
+    // stock drops (draining toward its protected floor only ever gets more expensive per additional unit,
     // never cheaper). With a convex per-type cost curve like that, greedily taking the globally
     // cheapest next available unit — across all 4 types — for each of the diceToBuy dice'
-    // combined price is optimal: any allocation that ever passed up a cheaper available unit in
-    // favour of a pricier one can be swapped for strictly lower (or equal) total cost. This
+    // combined price is optimal: any allocation that ever passed up a cheaper spendable unit
+    // above its committed floor in favour of a pricier one can be swapped for strictly lower
+    // (or equal) total cost. This
     // replaces the old exhaustive per-die search, which only ever considered paying a whole die
     // from a single resource because that used to be the only legal payment shape.
     public static class InitiativeFundingOptimizer
@@ -62,7 +63,7 @@ namespace Game.Ai.V2.Initiative
                 float bestCost = float.MaxValue;
                 for (int i = 0; i < PreTurnCapacityAnalysis.Types.Length; i++)
                 {
-                    if (stock[i] <= 0)
+                    if (stock[i] <= analysis.CommittedResourceFloor[i])
                         continue;
                     float cost = analysis.MarginalCostAt(i, stock[i] - 1);
                     if (cost < bestCost)
