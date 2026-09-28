@@ -43,10 +43,10 @@
         public const float reconWeightExploration = 0.55f;
         public const float reconWeightSurveillance = 0.55f;
         public const float reconWeightBlindness = 0.35f;
-        // Explore value of an unvisited "City ruins" hex (always seeded with a Hex Event): priced
-        // through TaskScore.EconomicHexBenefit as this many per-turn income units — parity with an
-        // extraction hex adding +1 income (EventCatalog rewards are one-shot 2..4 resources).
-        public const float reconRuinsEventIncomeEquivalent = 1f;
+        // Explore value of an unvisited "City ruins" hex (always seeded with a Hex Event), as the
+        // normalized StrategicRelevance of knowing that site: 1 = +taskScoreStrategicRelevanceMax.
+        // Knowledge only — the event reward itself is priced once, by the Raid on its guard.
+        public const float reconRuinsRelevance = 1f;
         // AirSweep (aviation-only observation pass). Anchor = the TRUE enemy army concentration
         // (cheat, owner-approved): the enemy army hex maximising the summed EffectiveArmyPower of
         // enemy armies within this radius; the enemy citadel is only the fallback.

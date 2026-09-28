@@ -67,7 +67,9 @@ namespace Game.EditorTools
                     TaskScoreEvaluator.EconomicHexBenefit(100f, 1f) + TaskScoreEvaluator.Payback(0f)
                     + TaskScoreEvaluator.Airfield(1f) + TaskScoreEvaluator.GlobalCardEffect(1f)
                     + TaskScoreEvaluator.EconomicExpansionValue(1f)),
-                ("Recon · Explore", "InfoGain", TaskScoreEvaluator.InfoGain(1f)),
+                ("Recon · Explore", "InfoGain + StrategicRelevance (ruins)",
+                    TaskScoreEvaluator.InfoGain(1f)
+                    + TaskScoreEvaluator.StrategicRelevance(AiConfigV2.reconRuinsRelevance)),
                 ("Recon · Refresh", "Staleness + StrategicRelevance + ThreatDirection",
                     TaskScoreEvaluator.PositiveStaleness(1f) + TaskScoreEvaluator.StrategicRelevance(1f)
                     + TaskScoreEvaluator.ThreatDirection(1f)),
