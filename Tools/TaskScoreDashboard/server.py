@@ -222,17 +222,19 @@ def payload():
         if name == "Staleness": conv_names = ["PositiveStaleness"]
         # Both execution-cost slots go through the one price converter (ActionPrice).
         if name in ("CardPrice", "Delivery"): conv_names = ["Price"]
-        converters, refs = [], set()
+        converters, refs, frags = [], set(), []
         for c in conv_names:
             frag = method_fragment(score,c)
             if frag:
                 converters.append(c)
                 refs |= set(re.findall(r"AiConfigV2\.(\w+)", frag))
+                frags.append(frag.strip())
         converter_params = [param_map[r] for r in sorted(refs) if r in param_map]
         cats.append({"name":name,"property":name,
             "category":property_category(name, code_cats.get(name, "Benefit")),
             "sign":signs.get(name,"?"),"converters":converters,
             "parameters":list(converter_params), "converterParameters":list(converter_params),
+            "formula":"\n\n".join(frags),
             "source":str(SCORE.relative_to(ROOT)).replace("\\","/"),
             "line":line_no(score,m.start()),"usages":[]})
 
@@ -301,6 +303,14 @@ def payload():
         if not c["usages"]: warnings.append("Unused slot: "+c["name"])
         if not c["converters"] and c["name"]!="MoverOpportunityCost":
             warnings.append("No dedicated converter: "+c["name"])
+    # Blast radius: which task families / tasks actually reach each parameter, via the slots
+    # (p["categories"]) that read it. "Shared" (>1 family) vs "local" (exactly 1 family) is the
+    # distinction the Tuning tab leads with.
+    for p in params:
+        slots = [by_name[s] for s in p["categories"] if s in by_name]
+        p["families"] = sorted({a for s in slots for a in s["axes"]})
+        p["tasksUsing"] = sorted({t for s in slots for t in s["tasks"]})
+        p["shared"] = len(p["families"]) > 1
     for p in params:
         if not p["references"]: warnings.append("Unused config parameter: "+p["name"])
     for c in cats:
@@ -383,6 +393,45 @@ def calibration():
     data["exists"] = True
     return data
 
+# Cap on how many individual scored proposals the Pipeline tab ships to the browser — most
+# recent turns first, per family, so a long-running log still loads instantly.
+PIPELINE_LIMIT_PER_FAMILY = 60
+
+def task_instances():
+    """Individual scored proposals (not family-aggregated) — the raw material for the Pipeline
+    tab's Value -> RadarScale -> EffectiveValue cascade. RadarScale is never parsed from a
+    separate radar log line: eff and value are both already on the same TaskScore log line, so
+    RadarScale = eff / value is exact, not a reconstruction."""
+    if not LOG.exists():
+        return {"log": str(LOG), "exists": False, "instances": []}
+    by_family = {}
+    for line in LOG.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = LOG_RE.search(line)
+        if not m or m.group("benefit") is None:
+            continue
+        value = float(m.group("value"))
+        eff = float(m.group("eff"))
+        term_map = {}
+        for group in ("bterms", "cterms", "rterms"):
+            term_map.update(terms(m.group(group)))
+        inst = {
+            "player": m.group("player"), "turn": int(m.group("turn")),
+            "kind": m.group("kind"), "key": m.group("key"),
+            "value": value, "effective": eff,
+            "radarScale": (eff / value) if abs(value) > 1e-6 else None,
+            "benefit": float(m.group("benefit")), "cost": float(m.group("cost")),
+            "risk": float(m.group("risk")), "opportunity": float(m.group("opp") or 0.0),
+            "terms": term_map,
+        }
+        by_family.setdefault(inst["kind"], []).append(inst)
+    out = []
+    for kind, insts in by_family.items():
+        insts.sort(key=lambda x: -x["turn"])
+        out.extend(insts[:PIPELINE_LIMIT_PER_FAMILY])
+    out.sort(key=lambda x: (-x["turn"], x["kind"], x["key"]))
+    return {"log": str(LOG), "exists": True, "instances": out,
+            "modified": datetime.fromtimestamp(LOG.stat().st_mtime, timezone.utc).isoformat()}
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self,*args,**kwargs):
         super().__init__(*args,directory=str(HERE),**kwargs)
@@ -391,7 +440,8 @@ class Handler(SimpleHTTPRequestHandler):
         super().end_headers()
     def do_GET(self):
         route = {"/api/task-score": payload, "/api/log-scores": log_scores,
-                 "/api/calibration": calibration}.get(self.path.split("?",1)[0])
+                 "/api/calibration": calibration,
+                 "/api/task-instances": task_instances}.get(self.path.split("?",1)[0])
         if route:
             try:
                 body=json.dumps(route(),ensure_ascii=False).encode()

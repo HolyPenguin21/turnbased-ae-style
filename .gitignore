@@ -31,6 +31,10 @@
 .DS_Store
 *.swp
 
+# Python cache (Tools/TaskScoreDashboard and any other repo-local script)
+__pycache__/
+*.pyc
+
 # Ad-hoc scratch backups superseded by real git history from here on
 .claude_backup/
 
