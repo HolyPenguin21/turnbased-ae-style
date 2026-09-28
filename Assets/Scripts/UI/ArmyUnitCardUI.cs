@@ -38,6 +38,9 @@ namespace Game.UI
         // BaseSlotCardUI.emptySlotAlpha, tune per prefab in the inspector.
         [SerializeField] [Range(0f, 1f)] private float emptySlotAlpha = 100f / 255f;
         [SerializeField] private TMP_Text nameText;
+        // The name's background plaque (nameText's parent) — hidden entirely for an empty
+        // capacity slot so no empty banner shows behind the "+" placeholder art.
+        [SerializeField] private GameObject titleRoot;
         [SerializeField] private TMP_Text moveText;
         [SerializeField] private GameObject commandBadgeRoot;
         [SerializeField] private TMP_Text commandBadgeText;
@@ -128,6 +131,7 @@ namespace Game.UI
             }
             if (nameText != null)
                 nameText.text = unit != null ? unit.Name : string.Empty;
+            titleRoot?.SetActive(unit != null);
             if (moveText != null)
             {
                 // Abilities only now — Move used to be prefixed onto this same line, but now
@@ -204,6 +208,7 @@ namespace Game.UI
             }
             if (nameText != null)
                 nameText.text = card != null ? card.displayName : string.Empty;
+            titleRoot?.SetActive(card != null);
             // Skip when moveText is the SAME label as skillsText (Card_Army prefab wiring) —
             // RefreshSkillsText owns that line in preview mode and would only overwrite this.
             if (moveText != null && moveText != skillsText)

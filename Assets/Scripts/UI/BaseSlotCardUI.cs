@@ -28,6 +28,9 @@ namespace Game.UI
         // slot — same knob as ArmyUnitCardUI.emptySlotAlpha, tune per prefab in the inspector.
         [SerializeField] [Range(0f, 1f)] private float emptySlotAlpha = 100f / 255f;
         [SerializeField] private TMP_Text nameText;
+        // The name's background plaque (nameText's parent) — hidden entirely for a locked or
+        // empty cell so no empty banner shows behind the placeholder art.
+        [SerializeField] private GameObject titleRoot;
         [SerializeField] private TMP_Text statusText;
         [SerializeField] private Button improveButton;
         [SerializeField] private Button repairButton;
@@ -98,6 +101,7 @@ namespace Game.UI
                 : _facility != null ? _facility.Name + (!string.IsNullOrEmpty(facilityAbilities) ? "\n" + facilityAbilities : string.Empty) : string.Empty;
             if (nameText != null)
                 nameText.text = _defaultNameText;
+            titleRoot?.SetActive(_occupied);
             if (artImage != null)
             {
                 Sprite occupiedArt = isBaseCell ? building.Art : _facility != null ? _facility.Art : null;
