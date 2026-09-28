@@ -1064,7 +1064,8 @@ namespace Game.Ai.V2
         internal static bool ApplyReinforcementHandoff(PlayerSetupData player, AiTurnContext ctx,
             ProvisionedMission pm, ArmyData support, ArmyData primary,
             out int transferred, out bool wasSwap, out string displacedUnitName, out string detail,
-            IReadOnlyList<WorthIt.DefendingArmy> commandOpposition = null, float commandHexBonus = 0f)
+            IReadOnlyList<WorthIt.DefendingArmy> commandOpposition = null, float commandHexBonus = 0f,
+            bool allowCompleteTransfer = false)
         {
             transferred = 0;
             wasSwap = false;
@@ -1072,7 +1073,7 @@ namespace Game.Ai.V2
             // The one handoff decision (GroundCombatReinforcement.PlanHandoff) — the same plan the
             // leg's AP was provisioned on — applied as one atomic transfer / exchange.
             HandoffPlan plan = GroundCombatReinforcement.PlanHandoff(primary, support,
-                commandOpposition, commandHexBonus, out string why);
+                commandOpposition, commandHexBonus, out string why, allowCompleteTransfer);
             if (plan == null)
             {
                 detail = why;

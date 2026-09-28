@@ -361,7 +361,7 @@ namespace Game.Ai.V2
             excluded.Add(primaryArmyId);
             foreach (ArmySnapshot candidate in GroundCombatActorEligibility.EligibleReadyArmies(snap, excluded))
                 if (SupportImprovesPrimary(primary, candidate, opposition, defenderHexDefenseBonus,
-                        allowCommandHandover))
+                        allowCommandHandover, allowCompleteTransfer: allowCommandHandover))
                     ids.Add(candidate.ArmyId);
             return ids;
         }
@@ -374,7 +374,7 @@ namespace Game.Ai.V2
         // support that no longer helps.
         internal static bool SupportImprovesPrimary(ArmySnapshot primary, ArmySnapshot candidate,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus = 0f,
-            bool allowCommandHandover = false)
+            bool allowCommandHandover = false, bool allowCompleteTransfer = false)
         {
             if (primary == null || candidate == null)
                 return false;
@@ -383,12 +383,10 @@ namespace Game.Ai.V2
                     defenderHexDefenseBonus, null) != null)
                 return true;
             List<WorthIt.DefenderProfile> bodies = NonAviationProfiles(candidate);
-            // Mirrors SparableSupportBodies' minimum-container invariant at snapshot level:
-            // leave at least one total member (a hero may be that retained member). Previously
-            // a single-body army was advertised as support even though execution could transfer
-            // nothing, producing a permanent select -> reject loop.
+            // Mirror the live donor rule: Attack may consume one-body supports; other
+            // donors and Raid retain a member (which may be a hero).
             int transferable = System.Math.Min(bodies.Count,
-                System.Math.Max(0, candidate.MemberCount - 1));
+                System.Math.Max(0, candidate.MemberCount - (allowCompleteTransfer && candidate.MemberCount == 1 ? 0 : 1)));
             if (transferable <= 0)
                 return false;
 
@@ -491,7 +489,8 @@ namespace Game.Ai.V2
             foreach (ArmySnapshot s in supportSnaps)
             {
                 ArmyData live = LiveArmy(s);
-                List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(live);
+                List<UnitData> sparable = GroundCombatReinforcement.SparableSupportBodies(live,
+                    allowCompleteTransfer: true);
                 if (live == null || sparable.Count == 0)
                     continue;
                 int turns = AiV2Util.CeilDiv(HexGridMath.Distance(s.Hex, host.Hex),
