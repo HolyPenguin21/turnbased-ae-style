@@ -171,7 +171,8 @@ namespace Game.Ai.V2
             // Does the projected delivered roster actually improve the primary's odds? The SAME
             // WorthIt projection provisioning/execution will use, never a separate estimator.
             if (!GroundCombatReinforcement.ImprovesOdds(primary, support, opposition,
-                    defenderHexDefenseBonus, out string why, allowCommandHandover))
+                    defenderHexDefenseBonus, out string why, allowCommandHandover,
+                    allowCompleteTransfer: allowCommandHandover))
                 return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                     ProvisionFailure.AssemblyInfeasible(
                         $"{lane} reinforcement #{support.Id} -> #{primary.Id} would not improve the primary's odds: {why}")));
@@ -197,7 +198,8 @@ namespace Game.Ai.V2
             if (atRendezvous)
             {
                 HandoffPlan plan = GroundCombatReinforcement.PlanHandoff(primary, support,
-                    allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out string planWhy);
+                    allowCommandHandover ? opposition : null, defenderHexDefenseBonus, out string planWhy,
+                    allowCompleteTransfer: allowCommandHandover);
                 if (plan == null)
                     return GroundCombatLegCheck.Failed(ProvisioningResult.Fail(
                         ProvisionFailure.NoExecutableStep(
@@ -268,7 +270,7 @@ namespace Game.Ai.V2
         // (CommandHandover)? A convoy that cannot help is never provisioned.
         internal static bool ImprovesOdds(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float defenderHexDefenseBonus,
-            out string why, bool allowCommandHandover = false)
+            out string why, bool allowCommandHandover = false, bool allowCompleteTransfer = false)
         {
             if (allowCommandHandover && CommandHandover(primary, support, opposition,
                     defenderHexDefenseBonus, null) != null)
@@ -276,7 +278,7 @@ namespace Game.Ai.V2
                 why = null;
                 return true;
             }
-            List<UnitData> sparable = SparableSupportBodies(support);
+            List<UnitData> sparable = SparableSupportBodies(support, allowCompleteTransfer);
             List<WorthIt.DefenderProfile> primaryBodies = primary.Members
                 .Where(u => AiArmyRoles.IsGroundBattleBody(u))
                 .Select(WorthIt.FromLiveUnit)
@@ -390,7 +392,7 @@ namespace Game.Ai.V2
         // body stronger than it that the armies can exchange). Null with `why` when nothing can go.
         internal static HandoffPlan PlanHandoff(ArmyData primary, ArmyData support,
             IReadOnlyList<WorthIt.DefendingArmy> commandOpposition, float commandHexBonus,
-            out string why)
+            out string why, bool allowCompleteTransfer = false)
         {
             why = "";
             if (primary == null || support == null)
@@ -414,7 +416,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            List<UnitData> sparable = SparableSupportBodies(support);
+            List<UnitData> sparable = SparableSupportBodies(support, allowCompleteTransfer);
             if (sparable.Count == 0)
             {
                 why += "support has no sparable body";
@@ -498,7 +500,7 @@ namespace Game.Ai.V2
 
         // A support container is never emptied and never gives up its own hero (a hero moves
         // only through CommandHandover).
-        internal static List<UnitData> SparableSupportBodies(ArmyData support)
+        internal static List<UnitData> SparableSupportBodies(ArmyData support, bool allowCompleteTransfer = false)
         {
             var list = new List<UnitData>();
             if (support == null)
@@ -508,8 +510,9 @@ namespace Game.Ai.V2
                 .OrderByDescending(GroundCombatDonorPolicy.UnitCombatValue)
                 .ThenBy(x => x.Name))
             {
-                if (support.Members.Count - list.Count <= 1)
-                    break;  // minimum-body invariant: leave at least one member behind
+                if (!(allowCompleteTransfer && support.Members.Count == 1)
+                    && support.Members.Count - list.Count <= 1)
+                    break;  // Only Attack's singleton body may drain its donor; other donors retain one member
                 if (!support.CanLeaveWithoutOvercrowding(u))
                     continue;
                 list.Add(u);
