@@ -416,11 +416,6 @@ namespace Game.Ai.V2
         private readonly AiAllocatorState _state;
         private readonly ApBudgetLedger _ledger;
         private readonly PlayerSetupData _player;
-        private readonly PlayerRoot _root;
-        private readonly AiTurnContext _ctx;
-        // Unpaid mandatory air-recovery Energy, re-read at the start of every Pack pass (landing,
-        // activation or loss releases it) — see PhysicalAvailableFor.
-        private float _recoveryEnergy;
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
             new Dictionary<StableMissionKey, ProvisionRequirement>();
@@ -473,8 +468,6 @@ namespace Game.Ai.V2
             PlayerSetupData player = null, PlayerRoot root = null, AiTurnContext ctx = null)
         {
             _player = player;
-            _root = root;
-            _ctx = ctx;
             _snap = snap;
             _missions = missions;
             _commitments = commitments;
@@ -593,7 +586,6 @@ namespace Game.Ai.V2
             foreach (LockedAllocation lc in _lockedClaims.Values)
                 lockedPhysical += lc.PhysicalClaim;
             ResourceVector physicalRemaining = (physicalPool - lockedPhysical).ClampLow0();
-            _recoveryEnergy = StrategicSpendability.OutstandingRecoveryEnergy(_player, _root, _ctx);
             alloc.PhysicalPool = physicalPool;
             alloc.PhysicalLocked = lockedPhysical;
 
@@ -948,8 +940,8 @@ namespace Game.Ai.V2
         }
 
         // ONE physical pool for every mission kind — the pool its own Provisioning gate measures
-        // with (StrategicSpendability): raw stock minus every explicit hold, minus the unpaid
-        // Energy of mandatory air recovery (StrategicSpendability.OutstandingRecoveryEnergy).
+        // with (StrategicSpendability): raw stock minus every explicit hold. Mandatory air recovery
+        // holds nothing — missions execute only after it has settled (AviationObligations).
         // An Economy build completes against FitsSpendableForEconomyCompletion's pool: other
         // builds' EconomyDeferredBuild rows and its own owner's rows are not held against it.
         // Economy audit B7 showed the failure of two pools: a candidate funded from a pool its
@@ -1000,7 +992,7 @@ namespace Game.Ai.V2
                 return Mathf.Max(0f, held);
             }
             var held = new ResourceVector(0f, Held(StrategicReservedResource.Human),
-                Held(StrategicReservedResource.Energy) + _recoveryEnergy,
+                Held(StrategicReservedResource.Energy),
                 Held(StrategicReservedResource.Materials),
                 Held(StrategicReservedResource.Tech));
             return (remaining - held).ClampLow0();

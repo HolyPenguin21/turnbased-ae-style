@@ -170,6 +170,7 @@ namespace Game.Setup
             // objects every match) but they would otherwise retain the previous match's players.
             Game.Ai.V2.StrategicInterruptRegistry.ClearAll();
             Game.Ai.V2.StrategicResourceReservationLedger.ClearAll();
+            Game.Ai.V2.ReservationInvariants.ClearAll();
             Game.Ai.V2.TurnResourceTelemetry.ClearAll();
             Game.Ai.V2.OperationContinuationWindow.ClearAll();
             Game.Ai.V2.StrategicTempoBudget.ClearAll();

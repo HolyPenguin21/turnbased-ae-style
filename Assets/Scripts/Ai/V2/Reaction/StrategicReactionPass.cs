@@ -222,6 +222,7 @@ namespace Game.Ai.V2
             yield return ReactionRoundExecutor.ExecuteRound(priorSnapshot, player, root, ctx,
                 result ?? new StrategicReactionResult(), 0,
                 carriedReservation ?? new MaterializationReservation());
+            ReservationInvariants.CheckBoundary(player, root, ctx, "reaction");
 
             // §4 — the pass has had its bounded round(s); any AP Phase B reserved for it
             // is now free (its own inner Phase B call already spent whatever it wanted).

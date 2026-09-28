@@ -175,10 +175,25 @@ namespace Game.Ai.V2
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
             //     The demand set can materialize only capability requested by a real axis.
+            //     Aviation obligations come first (AviationObligations): while a wing must still
+            //     return or rebase, Phase A is deferred and the loop below settles the wings; every
+            //     axis is then admitted in one re-admission pass.
             int handAtStart = hand?.Hand?.Count ?? 0;
-            StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
-                radar: radar, deferFreshZeroRadar: true);
+            var deferredAdmission = new DeferredStrategicAdmission();
+            StrategicPhaseResult phaseA;
+            if (AviationObligations.Pending(player, ctx))
+            {
+                phaseA = new StrategicPhaseResult();
+                deferredAdmission.Defer(demandAxes);
+                AiDebugLog.Write("[AI][V2] Phase A deferred — aviation obligations settle first");
+            }
+            else
+            {
+                phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
+                    ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
+                    radar: radar, deferFreshZeroRadar: true);
+                ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
+            }
 
             // S4. Analysis owns refresh granularity. The existing AiMapMemory revision decides
             //     whether honest knowledge/map facts changed; action kind is not used as a proxy.
@@ -379,12 +394,33 @@ namespace Game.Ai.V2
                 // Typed strategic re-admission uses the existing Phase-A owner, shared AP ledger and
                 // carried reservation. This is deliberately local orchestration, not a second
                 // manager or a new vertical layer.
+                // Aviation obligations first: while a wing must still return or rebase, the axes
+                // wait in `deferredAdmission`. The first call after the last obligation settles
+                // admits them together with its own. `flush` admits waiting axes with no new
+                // trigger once nothing is pending (loop top); `force` admits them even while an
+                // obligation is still pending (the loop is over and will not settle it).
                 bool ReenterStrategicAxes(StrategicInvalidationReason reasons,
-                    HashSet<DesireAxis> dirtyAxes)
+                    HashSet<DesireAxis> dirtyAxes, bool flush = false, bool force = false)
                 {
-                    if (reasons == StrategicInvalidationReason.None
-                        || dirtyAxes == null || dirtyAxes.Count == 0)
+                    bool triggered = reasons != StrategicInvalidationReason.None
+                        && dirtyAxes != null && dirtyAxes.Count > 0;
+                    if (!triggered && !((flush || force) && deferredAdmission.HasAxes))
                         return false;
+                    if (AviationObligations.Pending(player, ctx))
+                    {
+                        if (!force)
+                        {
+                            if (triggered)
+                                deferredAdmission.Defer(dirtyAxes);
+                            AiDebugLog.Write($"[AI][V2][Loop] strategic re-admission deferred — aviation "
+                                + $"obligations pending; axes={string.Join(",", deferredAdmission.Axes)}");
+                            return false;
+                        }
+                        AiDebugLog.Write("[AI][V2][Loop] aviation obligations still pending after the "
+                            + "loop — admitting the deferred axes anyway");
+                    }
+                    if (deferredAdmission.HasAxes)
+                        dirtyAxes = deferredAdmission.TakeWith(triggered ? dirtyAxes : null);
 
                     dirtyAxes.RemoveWhere(axis =>
                     {
@@ -431,6 +467,8 @@ namespace Game.Ai.V2
                         economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
                         deferFreshZeroRadar: true);
                     phaseA.Accumulate(followup);
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"phaseA reentry axes={string.Join(",", dirtyAxes)}");
                     if (followup.StateChanged)
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
@@ -501,6 +539,9 @@ namespace Game.Ai.V2
                         yield return null;
                         lastYieldTime = UnityEngine.Time.realtimeSinceStartup;
                     }
+                    // The last aviation obligation may have settled (or stalled) without a typed
+                    // trigger: admit the axes that waited for it before this admission.
+                    ReenterStrategicAxes(StrategicInvalidationReason.None, null, flush: true);
                     // Every admission reads a settled world. Strategic observations are refreshed
                     // here. The radar frame stays stable for this turn; typed Development facts
                     // re-enter the existing manager immediately after the settled task boundary.
@@ -545,9 +586,9 @@ namespace Game.Ai.V2
                             fundedKeysThisTurn.Add(StableMissionKey.For(fe.Mission));
 
                     // A multi-turn rebase is already airborne and committed to landing. Resume
-                    // one such obligation before discretionary mission progress; its activation
-                    // resources were protected by StrategicSpendability during the earlier
-                    // strategic phases. Route safety and destination validity are live-rechecked
+                    // one such obligation before discretionary mission progress; no card was played
+                    // yet while it was pending (AviationObligations), so its activation resources
+                    // are still there. Route safety and destination validity are live-rechecked
                     // inside ExecuteContinuation rather than trusting last turn's projection.
                     List<ArmyData> rebaseContinuations =
                         AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber);
@@ -573,6 +614,8 @@ namespace Game.Ai.V2
                         WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                             beforeRebase, afterRebase, null);
                         settledSteps++;
+                        ReservationInvariants.CheckBoundary(player, root, ctx,
+                            $"step {settledSteps} aviation-rebase #{rebaseWing.Id}");
                         TakeTypedTriggers(out StrategicInvalidationReason rebaseOperationalReasons,
                             out StrategicInvalidationReason rebaseStrategicReasons,
                             out HashSet<DesireAxis> rebaseDirtyAxes);
@@ -619,6 +662,8 @@ namespace Game.Ai.V2
                         WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                             beforeRecovery, afterRecovery, null);
                         settledSteps++;
+                        ReservationInvariants.CheckBoundary(player, root, ctx,
+                            $"step {settledSteps} recovery #{recovery.Id}");
                         bool recoveryProgress = recoveryResult.Mutated;
                         TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
                             out StrategicInvalidationReason recoveryStrategicReasons,
@@ -874,6 +919,8 @@ namespace Game.Ai.V2
                         player, root, hand, ctx);
 
                     settledSteps++;
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"step {settledSteps} task={selectedKey}");
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
                     TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
@@ -916,6 +963,8 @@ namespace Game.Ai.V2
                 if (noProgressCycles >= AiConfigV2.maxMidTurnNoProgressCycles)
                     AiDebugLog.Write($"[AI][V2][Loop] bounded stop — no progress cycles "
                         + $"{noProgressCycles}");
+                // Axes still waiting for aviation must not be lost when the loop ends first.
+                ReenterStrategicAxes(StrategicInvalidationReason.None, null, force: true);
 
                 }
 
@@ -953,6 +1002,8 @@ namespace Game.Ai.V2
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                         postCommitments, phaseB.Reservation ?? phaseA.Reservation,
                         phaseBRound, reconObjectives);
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"phaseB round {managementRound + 1}");
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     WorldAnalysis.StepObservationStamp afterManagement =
@@ -1144,6 +1195,7 @@ namespace Game.Ai.V2
             var housekeeping = new HousekeepingResult();
             yield return HousekeepingManager.RunHousekeeping(
                 snapshot, player, root, ctx, postCommitments, housekeeping, phaseB.Reservation);
+            ReservationInvariants.CheckBoundary(player, root, ctx, "housekeeping");
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
@@ -1188,6 +1240,7 @@ namespace Game.Ai.V2
             StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
                 StrategicReservationExpiry.EndOfTurn);
             StrategicResourceReservationLedger.AssertClearAtTurnEnd(player, ctx.TurnNumber);
+            ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;

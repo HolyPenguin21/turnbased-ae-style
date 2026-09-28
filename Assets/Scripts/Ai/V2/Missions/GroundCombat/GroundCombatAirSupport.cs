@@ -241,8 +241,8 @@ namespace Game.Ai.V2
         // wing any more (GroundCombatLegs.HeldAirSupportArmyId — the operation retired, released
         // the wing, or its leg failed), it is turned into the existing landing obligation: the
         // same sortie, homebound to its own landing base, continued by
-        // AviationRebasePlanner.FindMandatoryContinuations (whose activation StrategicSpendability
-        // already protects). Only this owner creates Strike sorties (GroundCombatLegStep).
+        // AviationRebasePlanner.FindMandatoryContinuations (settled before any card play —
+        // AviationObligations). Only this owner creates Strike sorties (GroundCombatLegStep).
         internal static void ReleaseOrphanStrikes(PlayerSetupData player, IEnumerable<MissionIntent> intents)
         {
             if (player == null)

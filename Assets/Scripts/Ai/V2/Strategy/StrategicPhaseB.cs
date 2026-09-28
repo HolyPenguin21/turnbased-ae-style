@@ -174,6 +174,9 @@ namespace Game.Ai.V2
                 int ap0 = root.ActionPoints;
                 int h0 = root.GetResource(Game.Economy.ResourceType.Human), e0 = root.GetResource(Game.Economy.ResourceType.Energy);
                 int m0 = root.GetResource(Game.Economy.ResourceType.Materials), t0 = root.GetResource(Game.Economy.ResourceType.Tech);
+                // A tempo action has no spend authority: it may spend only what is spendable now.
+                ReservationInvariants.SpendProbe spendProbe = ReservationInvariants.BeginSpend(
+                    player, root, ctx, $"phaseB {best.Kind} '{best.Label}'");
                 var exec = new TempoExecutionResult();
                 switch (best.Kind)
                 {
@@ -223,6 +226,7 @@ namespace Game.Ai.V2
                 exec.EnergySpent = Mathf.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy));
                 exec.MaterialsSpent = Mathf.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials));
                 exec.TechSpent = Mathf.Max(0, t0 - root.GetResource(Game.Economy.ResourceType.Tech));
+                ReservationInvariants.EndSpend(player, root, ctx, spendProbe);
 
                 iter++;
                 // Debit the turn budget only for an action that actually EXECUTED (progressed or
