@@ -54,19 +54,19 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void DerivedRecoveryClaim_CountsTowardCommittedCoverage()
+        public void DerivedContinuationClaim_CountsTowardCommittedCoverage()
         {
             var claims = new[]
             {
-                Claim(ResourceClaimKind.EconomyCompletion, StrategicReservedResource.Energy, 2f),
-                Claim(ResourceClaimKind.AirRecovery, StrategicReservedResource.Energy, 2f,
-                    TurnResourceBook.AirRecoveryOwner),
+                Claim(ResourceClaimKind.EconomyCompletion, StrategicReservedResource.ActionPoints, 2f),
+                Claim(ResourceClaimKind.OperationContinuation, StrategicReservedResource.ActionPoints,
+                    2f, TurnResourceBook.OperationContinuationOwner),
             };
 
             float[] held = ReservationInvariants.CommittedHeld(claims);
 
-            Assert.That(ReservationInvariants.Uncovered(held, V(energy: 3f)),
-                Is.EqualTo(new[] { StrategicReservedResource.Energy }));
+            Assert.That(ReservationInvariants.Uncovered(held, V(ap: 3f)),
+                Is.EqualTo(new[] { StrategicReservedResource.ActionPoints }));
         }
 
         [Test]

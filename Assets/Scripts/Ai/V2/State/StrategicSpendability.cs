@@ -61,50 +61,13 @@ namespace Game.Ai.V2
     // persistent-resource cost right now" question in the strategic + materialization + reaction
     // paths goes through SpendableAmount, which nets from the raw PlayerRoot stockpile:
     //   · StrategicResourceReservationLedger — the owner-aware explicit reservations (e.g. a
-    //     bounded reaction envelope), optionally excluding the caller's own owner key;
-    //   · the unpaid activation of mandatory air-recovery wings (OutstandingRecoveryActivation); and
+    //     bounded reaction envelope), optionally excluding the caller's own owner key; and
     //   · the unpaid activation of continuing Hard ground-combat operations
     //     (OutstandingOperationContinuationAp, AP only).
+    // Mandatory aviation (returns, committed rebases) holds nothing: it is settled before any card
+    // play of the turn (AviationObligations).
     public static class StrategicSpendability
     {
-        // An already-airborne wing whose canonical lifecycle projection demands Return, or whose
-        // live Rebase record still commits it to landing, is safety work rather than a new
-        // discretionary sortie. Phase A runs before operational admission, so the typed loop's
-        // continuation step alone cannot protect its first activation from earlier card spending.
-        // Read the SAME owner predicates the executors use and the wing's actual unpaid activation
-        // costs. Do not reserve a fixed amount per aircraft, future-turn AP, or already-paid costs.
-        // Re-evaluate against live actors: landing, activation, loss and lifecycle transitions
-        // release the protection immediately.
-        // The executor visits actors in ID order and stops when its recovery step cannot progress;
-        // protect only the prefix whose unpaid costs fit today's physical AP/Energy. An already
-        // unaffordable recovery must not freeze otherwise usable resources for the rest of the turn.
-        private static (float Ap, int Energy) OutstandingRecoveryActivation(
-            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
-        {
-            if (player == null || root == null || ctx?.Map == null)
-                return (0f, 0);
-            float ap = 0f;
-            int energy = 0;
-            IEnumerable<ArmyData> obligations =
-                ReconAirExecutor.FindMandatoryRecoveryActors(player, ctx)
-                    .Concat(AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber))
-                    .GroupBy(a => a.Id).Select(g => g.First()).OrderBy(a => a.Id);
-            foreach (ArmyData wing in obligations)
-            {
-                float activationAp = wing.HasActivatedThisTurn ? 0f
-                    : Mathf.Max(0, wing.ActivationApCost);
-                int activationEnergy = wing.HasActivatedThisTurn ? 0
-                    : Mathf.Max(0, wing.ActivationEnergyCost);
-                if (!CanFundRecoveryPrefix(root.ActionPoints,
-                    root.GetResource(ResourceType.Energy), ap, energy,
-                    activationAp, activationEnergy))
-                    break;
-                ap += activationAp;
-                energy += activationEnergy;
-            }
-            return (ap, energy);
-        }
-
         // A Hard ground-combat operation (Raid, Attack, ActiveDefence) is already underway: an
         // intercept has set out, an assault has started, supports are walking to a gather. Phase A
         // card play runs BEFORE the mission allocator funds commitments, so without protection a
@@ -114,14 +77,14 @@ namespace Game.Ai.V2
         // Reinforcement -> support; Attack Assault -> primary, Gather -> each walking support,
         // Reinforcement -> support; ActiveDefence Intercept -> primary) that can still act this
         // turn (has not activated, has movement). Lifecycle legs (returns, recovery) own no
-        // protection — they carry no operation value (MissionIntent.IsLifecycleLeg). Live, like
-        // OutstandingRecoveryActivation: activation, loss, a phase change or the end of the
-        // operation releases it at once; after the operational loop settles
-        // (OperationContinuationWindow) nothing is held. Only the prefix that fits today's AP left
-        // after air recovery is protected, so an unaffordable continuation never freezes the pool.
+        // protection — they carry no operation value (MissionIntent.IsLifecycleLeg). Live:
+        // activation, loss, a phase change or the end of the operation releases it at once; after
+        // the operational loop settles (OperationContinuationWindow) nothing is held. Only the
+        // prefix that fits today's AP is protected, so an unaffordable continuation never freezes
+        // the pool.
         // The mission allocator does not read this: it is the owner that funds these operations.
         private static float OutstandingOperationContinuationAp(PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, float apAlreadyProtected)
+            PlayerRoot root, AiTurnContext ctx)
         {
             if (player == null || root == null || ctx == null
                 || OperationContinuationWindow.IsSettled(player, ctx.TurnNumber))
@@ -137,7 +100,7 @@ namespace Game.Ai.V2
             }
             if (movers.Count == 0)
                 return 0f;
-            float available = Mathf.Max(0f, root.ActionPoints - apAlreadyProtected);
+            float available = Mathf.Max(0f, root.ActionPoints);
             float protectedAp = 0f;
             var live = new Dictionary<int, ArmyData>();
             foreach (ArmyData a in ArmyRegistry.AllForOwner(player))
@@ -187,38 +150,12 @@ namespace Game.Ai.V2
             }
         }
 
-        // The derived (non-ledger) holds: unpaid air-recovery activation (AP + Energy) and the
-        // next step of continuing Hard operations (AP). TurnResourceBook lists them as claims
-        // beside the ledger rows. `includeContinuation: false` skips the operation scan for a
-        // caller that needs only Energy.
-        internal static (float RecoveryAp, int RecoveryEnergy, float ContinuationAp) DerivedHolds(
-            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            bool includeContinuation = true)
-        {
-            if (player == null || root == null || ctx == null)
-                return (0f, 0, 0f);
-            (float ap, int energy) = OutstandingRecoveryActivation(player, root, ctx);
-            return (ap, energy, includeContinuation
-                ? OutstandingOperationContinuationAp(player, root, ctx, ap) : 0f);
-        }
-
-        // The Energy that protection subtracts, for a consumer that nets its own pool from a
-        // different base (ResourceAllocator funds Economy builds against the SAME pool
-        // FitsSpendableForEconomyCompletion checks them with).
-        internal static int OutstandingRecoveryEnergy(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx) => OutstandingRecoveryActivation(player, root, ctx).Energy;
-
-        internal static bool CanFundRecoveryPrefix(float availableAp, int availableEnergy,
-            float alreadyCommittedAp, int alreadyCommittedEnergy,
-            float nextActivationAp, int nextActivationEnergy) =>
-            alreadyCommittedAp + nextActivationAp <= availableAp
-            && alreadyCommittedEnergy + nextActivationEnergy <= availableEnergy;
-
-        // An existing owner-aware hold and the recovery obligation are independent claims on
-        // the SAME physical stock, so both are subtracted.
-        internal static float SpendableWithRecovery(float ownerAwareSpendable,
-            float unpaidRecoveryCost) =>
-            Mathf.Max(0f, ownerAwareSpendable - Mathf.Max(0f, unpaidRecoveryCost));
+        // The derived (non-ledger) hold: the next step of continuing Hard operations (AP).
+        // TurnResourceBook lists it as a claim beside the ledger rows.
+        internal static float OperationContinuationHold(PlayerSetupData player, PlayerRoot root,
+            AiTurnContext ctx) =>
+            player == null || root == null || ctx == null
+                ? 0f : OutstandingOperationContinuationAp(player, root, ctx);
 
         // Every Spendable* query below is TurnResourceBook.Free under a SpendAuthority: the
         // caller's own hold (excludeOwner) and, for a build completing now, other builds'

@@ -10,9 +10,10 @@ namespace Game.Ai.V2
     //  TURN RESOURCE BOOK — every claim on the physical stock in one list, one Free formula
     // ===========================================================================================
     //  A claim is either an explicit StrategicResourceReservationLedger row or a derived
-    //  obligation computed live (unpaid air-recovery activation, the next step of a continuing
-    //  Hard operation — see StrategicSpendability.DerivedHolds). Every "how much may THIS spender
-    //  use" question is
+    //  obligation computed live (the next step of a continuing Hard operation — see
+    //  StrategicSpendability.OperationContinuationHold). Mandatory aviation holds nothing: it is
+    //  settled before any card play (AviationObligations). Every "how much may THIS spender use"
+    //  question is
     //
     //      Free(r, authority) = Physical(r) - Σ claims(r) the authority may not draw on
     //
@@ -25,7 +26,6 @@ namespace Game.Ai.V2
         EconomyDeferred,        // a build still being delivered: shields H/E/M/T, never AP
         EconomyCompletion,      // a build Provisioning proved can finish this turn
         Reaction,               // the bounded reaction budget + envelope held through Phase B
-        AirRecovery,            // unpaid activation of airborne wings that must return / rebase
         OperationContinuation,  // unpaid activation of a continuing Hard operation's next leg
     }
 
@@ -51,8 +51,7 @@ namespace Game.Ai.V2
 
     internal static class TurnResourceBook
     {
-        // Owner keys of the derived claims. They never match a ledger owner or a SpendAuthority.
-        internal const string AirRecoveryOwner = "derived:air-recovery";
+        // Owner key of the derived claim. It never matches a ledger owner or a SpendAuthority.
         internal const string OperationContinuationOwner = "derived:operation-continuation";
 
         internal static ResourceClaimKind KindOf(StrategicReservationReason reason) => reason switch
@@ -100,7 +99,7 @@ namespace Game.Ai.V2
         }
 
         // Every claim of this turn. `only` limits the list to one resource, so a query for
-        // Materials does not pay for the live AP/Energy obligation scans.
+        // Materials does not pay for the live operation scan.
         internal static List<ResourceClaim> Claims(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, StrategicReservedResource? only = null)
         {
@@ -113,18 +112,10 @@ namespace Game.Ai.V2
                     claims.Add(new ResourceClaim(r.Owner, KindOf(r.Reason), r.Resource, r.Amount));
 
             bool wantAp = only == null || only.Value == StrategicReservedResource.ActionPoints;
-            bool wantEnergy = only == null || only.Value == StrategicReservedResource.Energy;
-            if ((!wantAp && !wantEnergy) || root == null)
+            if (!wantAp || root == null)
                 return claims;
-            (float recoveryAp, int recoveryEnergy, float continuationAp) =
-                StrategicSpendability.DerivedHolds(player, root, ctx, includeContinuation: wantAp);
-            if (wantAp && recoveryAp > 0f)
-                claims.Add(new ResourceClaim(AirRecoveryOwner, ResourceClaimKind.AirRecovery,
-                    StrategicReservedResource.ActionPoints, recoveryAp));
-            if (wantEnergy && recoveryEnergy > 0)
-                claims.Add(new ResourceClaim(AirRecoveryOwner, ResourceClaimKind.AirRecovery,
-                    StrategicReservedResource.Energy, recoveryEnergy));
-            if (wantAp && continuationAp > 0f)
+            float continuationAp = StrategicSpendability.OperationContinuationHold(player, root, ctx);
+            if (continuationAp > 0f)
                 claims.Add(new ResourceClaim(OperationContinuationOwner,
                     ResourceClaimKind.OperationContinuation,
                     StrategicReservedResource.ActionPoints, continuationAp));

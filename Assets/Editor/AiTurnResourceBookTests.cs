@@ -21,7 +21,6 @@ namespace Game.EditorTests
             Claim("buildB", ResourceClaimKind.EconomyCompletion, Materials, 2f),
             Claim("buildB", ResourceClaimKind.EconomyCompletion, Ap, 2f),
             Claim("reaction", ResourceClaimKind.Reaction, Ap, 1f),
-            Claim(TurnResourceBook.AirRecoveryOwner, ResourceClaimKind.AirRecovery, Ap, 1f),
             Claim(TurnResourceBook.OperationContinuationOwner,
                 ResourceClaimKind.OperationContinuation, Ap, 2f),
         };
@@ -30,7 +29,7 @@ namespace Game.EditorTests
         public void NoAuthority_SeesEveryClaim()
         {
             Assert.That(TurnResourceBook.Free(10f, Claims, Materials, default), Is.EqualTo(5f));
-            Assert.That(TurnResourceBook.Free(10f, Claims, Ap, default), Is.EqualTo(4f));
+            Assert.That(TurnResourceBook.Free(10f, Claims, Ap, default), Is.EqualTo(5f));
         }
 
         [Test]
@@ -39,8 +38,8 @@ namespace Game.EditorTests
             var buildB = new SpendAuthority("buildB", economyCompletesNow: false);
 
             Assert.That(TurnResourceBook.Free(10f, Claims, Materials, buildB), Is.EqualTo(7f));
-            Assert.That(TurnResourceBook.Free(10f, Claims, Ap, buildB), Is.EqualTo(6f),
-                "its own completion AP is usable; reaction, recovery and continuation are not");
+            Assert.That(TurnResourceBook.Free(10f, Claims, Ap, buildB), Is.EqualTo(7f),
+                "its own completion AP is usable; reaction and continuation are not");
         }
 
         [Test]
@@ -49,8 +48,8 @@ namespace Game.EditorTests
             var completesNow = new SpendAuthority("buildB", economyCompletesNow: true);
 
             Assert.That(TurnResourceBook.Free(10f, Claims, Materials, completesNow), Is.EqualTo(10f));
-            Assert.That(TurnResourceBook.Free(10f, Claims, Ap, completesNow), Is.EqualTo(6f),
-                "seniority over deferred holds grants nothing over reaction or recovery claims");
+            Assert.That(TurnResourceBook.Free(10f, Claims, Ap, completesNow), Is.EqualTo(7f),
+                "seniority over deferred holds grants nothing over reaction or continuation claims");
         }
 
         [Test]
