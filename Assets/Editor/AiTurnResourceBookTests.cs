@@ -67,6 +67,42 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void Outstanding_NetsAnOwnersHoldByWhatItsOwnWorkAlreadyDrew()
+        {
+            var claims = new[]
+            {
+                Claim("buildA", ResourceClaimKind.EconomyCompletion, Materials, 3f),
+                Claim("buildB", ResourceClaimKind.EconomyCompletion, Materials, 2f),
+            };
+            var draws = new System.Collections.Generic.Dictionary<string, float> { ["buildA"] = 2f };
+
+            Assert.That(TurnResourceBook.Outstanding(claims, Materials, default, draws), Is.EqualTo(3f),
+                "buildA drew 2 of its own 3 (1 still held) + buildB's untouched 2");
+        }
+
+        [Test]
+        public void Outstanding_ADrawBeyondTheHoldNeverGoesNegative()
+        {
+            var claims = new[] { Claim("buildA", ResourceClaimKind.EconomyCompletion, Materials, 3f) };
+            var draws = new System.Collections.Generic.Dictionary<string, float> { ["buildA"] = 5f };
+
+            Assert.That(TurnResourceBook.Outstanding(claims, Materials, default, draws), Is.Zero);
+        }
+
+        [Test]
+        public void Outstanding_DrawsOfOneOwnerDoNotReleaseAnothersHold()
+        {
+            var claims = new[]
+            {
+                Claim("buildA", ResourceClaimKind.EconomyCompletion, Materials, 3f),
+                Claim("reaction", ResourceClaimKind.Reaction, Materials, 2f),
+            };
+            var draws = new System.Collections.Generic.Dictionary<string, float> { ["buildB"] = 4f };
+
+            Assert.That(TurnResourceBook.Outstanding(claims, Materials, default, draws), Is.EqualTo(5f));
+        }
+
+        [Test]
         public void KindOf_MapsEveryLedgerReason()
         {
             Assert.That(TurnResourceBook.KindOf(StrategicReservationReason.EconomyDeferredBuild),

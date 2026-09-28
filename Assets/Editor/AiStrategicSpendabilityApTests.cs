@@ -141,10 +141,11 @@ namespace Game.EditorTests
             TentativeAllocation allocation = ResourceAllocator.BeginTurn(snap, Radar.Even(),
                 new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
 
-            Assert.That(StrategicResourceReservationLedger.SpendableAp(player, turn, 5f),
-                Is.EqualTo(1f));
-            Assert.That(StrategicResourceReservationLedger.SpendableExcludingOwner(player, turn,
-                    StrategicReservedResource.ActionPoints, 5f, "Economy:build"), Is.EqualTo(5f),
+            Assert.That(TurnResourceBook.Free(5f, TurnResourceBook.LedgerClaims(player, turn),
+                StrategicReservedResource.ActionPoints, default), Is.EqualTo(1f));
+            Assert.That(TurnResourceBook.Free(5f, TurnResourceBook.LedgerClaims(player, turn),
+                    StrategicReservedResource.ActionPoints, new SpendAuthority("Economy:build", false)),
+                Is.EqualTo(5f),
                 "the build must still be able to spend its own reservation");
             Assert.That(allocation.Funded.Select(f => f.Mission), Has.No.Member(scout));
             Assert.That(allocation.Deferred.Any(d => d.Mission == scout
@@ -442,7 +443,8 @@ namespace Game.EditorTests
             TentativeAllocation during = ResourceAllocator.BeginTurn(snap, Radar.Even(),
                 new List<MissionProposal> { scout }, new List<Commitment>(), player).Pack();
             Assert.That(during.Funded.Select(f => f.Mission), Has.Member(scout));
-            Assert.That(StrategicResourceReservationLedger.SpendableAp(player, turn, 5f),
+            Assert.That(TurnResourceBook.Free(5f, TurnResourceBook.LedgerClaims(player, turn),
+                StrategicReservedResource.ActionPoints, default),
                 Is.EqualTo(3f), "the Economy owner's two AP remain protected");
         }
 

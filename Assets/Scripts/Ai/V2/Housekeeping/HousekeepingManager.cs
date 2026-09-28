@@ -44,9 +44,12 @@ namespace Game.Ai.V2
             // Consume it here before maintenance, then refresh through Analysis' knowledge
             // revision: Reaction may change both own forces and honest map knowledge, but a full
             // world scan is unnecessary when the authoritative memory revision stayed fixed.
+            // Only the reaction's own AP counts: an Economy completion hold is not a reaction budget.
             float apReservedForReactionBefore = (player != null && ctx != null)
-                ? StrategicResourceReservationLedger.Active(
-                    player, ctx.TurnNumber, StrategicReservedResource.ActionPoints)
+                ? TurnResourceBook.LedgerClaims(player, ctx.TurnNumber,
+                        StrategicReservedResource.ActionPoints)
+                    .Where(c => c.Kind == ResourceClaimKind.Reaction)
+                    .Sum(c => System.Math.Max(0f, c.Amount))
                 : 0f;
             var reaction = new StrategicReactionResult();
             yield return StrategicReactionPass.ExecuteIfPending(

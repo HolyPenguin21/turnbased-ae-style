@@ -111,10 +111,9 @@ namespace Game.Ai.V2
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root);
             result.Demands += demands.Count;
 
-            ApBudgetLedger apLedger = ApBudgetLedger.Create(
-                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
+            PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);
+                ctx, apBudget, demands, actorCommitments, activeIntents, reconObjectives, carriedReservation, radar: radar);
             result.CardsPlayed += phaseA.CardsPlayed;
             result.StateChanged |= phaseA.StateChanged;
             bool aggressionPressureFresh = false;
@@ -169,7 +168,7 @@ namespace Game.Ai.V2
             outcomeLedger.RegisterCommitments(commitments);
 
             AllocationSession session = ResourceAllocator.BeginTurn(snapshot, radar, missions,
-                commitments, player, apLedger, root, ctx);
+                commitments, player);
             var provSession = new ProvisioningSession(snapshot);
             TentativeAllocation allocation = session.Pack();
             var provisioned = new List<ProvisionedMission>();

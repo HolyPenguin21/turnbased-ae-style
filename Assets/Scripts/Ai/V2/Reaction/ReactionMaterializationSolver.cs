@@ -31,6 +31,7 @@ namespace Game.Ai.V2
     {
         // Candidate-WIDTH DoS valve; at realistic hand sizes it never truncates.
         private const int reactionMatPoolCap = 24;
+        private const string ReactionOwner = "reaction-budget:MaterializeForDiscovery";
 
         internal static MaterializationClosure ProjectMaterializationClosure(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, WorldSnapshot snap, AiHandData hand,
@@ -41,7 +42,8 @@ namespace Game.Ai.V2
             if (!needPower && !needHero)
                 return null;
 
-            float apAvail = root != null ? Mathf.Max(0f, root.ActionPoints) : 0f;
+            // Other owners' AP holds are not the reaction's; its own envelope is.
+            float apAvail = StrategicSpendability.SpendableAp(player, root, ctx, ReactionOwner);
             float apCeiling = Mathf.Min(apAvail, (float)AiConfigV2.reactionReserveApCap);
             float downstreamAp = Mathf.Max(0f, AiConfigV2.reactionResponderMoveApEstimate);
             float prepCeiling = apCeiling - downstreamAp;
@@ -167,7 +169,7 @@ namespace Game.Ai.V2
                 .Take(reactionMatPoolCap).ToList();
 
             float needPowerAmt = needPower ? Mathf.Max(0f, readiness.NumericPowerDeficit) : 0f;
-            const string owner = "reaction-budget:MaterializeForDiscovery";
+            const string owner = ReactionOwner;
             var consumed = new MaterializationConsumptionState();
 
             float bestPrepAp = float.MaxValue, bestEnvSum = float.MaxValue;

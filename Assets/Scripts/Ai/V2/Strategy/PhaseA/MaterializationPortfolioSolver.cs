@@ -49,8 +49,8 @@ namespace Game.Ai.V2
         //  The cumulative AP / H-E-M-T / generation-attempt / physical-card / recipient-capacity
         //  draw of a multi-chain portfolio. BestInjectiveAssignment, EstimateLegalApWorkload and
         //  CountJointlyLegalFillersForRecipient all push/pop against ONE instance of this, so they
-        //  can never disagree about what a set of chains physically consumes. The AP pool nets the
-        //  HousekeepingManager reserve; the resource pool nets the owner-aware reservation ledger
+        //  can never disagree about what a set of chains physically consumes. The AP pool is the live
+        //  AP (each chain's guard applies holds); the resource pool nets the owner-aware claims
         //  (StrategicSpendability.SpendableAmount), exactly as the former inline `Fits` did.
         private sealed class JointFeasibility
         {
@@ -98,7 +98,7 @@ namespace Game.Ai.V2
                     }
 
                 _apPool = root != null
-                    ? root.ActionPoints - AiConfigV2.housekeepingApReserve : float.MaxValue;
+                    ? root.ActionPoints : float.MaxValue;
                 foreach (ResourceType t in ResourceBundle.All)
                     _resPool[t] = root != null
                         ? Mathf.Max(0, Mathf.FloorToInt(StrategicSpendability.SpendableAmount(player, root, ctx, t)))

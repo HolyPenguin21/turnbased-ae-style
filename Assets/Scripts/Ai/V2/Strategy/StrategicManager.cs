@@ -21,14 +21,14 @@ namespace Game.Ai.V2
     public static class StrategicManager
     {
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ApBudgetLedger ledger,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
             MaterializationReservation carriedReservation = null,
             bool economyAxisAuthoritative = true, Radar radar = null,
             bool deferFreshZeroRadar = false)
-            => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, ledger, demands, commitments,
+            => StrategicPhaseA.FulfillDemands(snap, player, root, hand, ctx, apBudget, demands, commitments,
                 activeIntents, reconObjectives, carriedReservation, economyAxisAuthoritative, radar,
                 deferFreshZeroRadar);
 

@@ -15,7 +15,7 @@ namespace Game.Ai.V2
     //  demands, BEFORE the Unit/Hero MaterializationCandidateBuilder loop.
     //
     //  ADMISSION ORDER (spec §1): build a candidate WITHOUT touching game state -> compute its
-    //  complete cost -> check the one shared ApBudgetLedger AP pool -> check live
+    //  complete cost -> check the live Phase A AP budget -> check live
     //  gameplay affordability -> ONLY THEN run the authoritative BuildingPlayExecutor transaction
     //  -> the caller debits the actual confirmed AP. A budget or affordability shortfall means the
     //  demand stays OPEN (nothing played, nothing spent) — Debit() is never used as after-the-fact
@@ -118,7 +118,7 @@ namespace Game.Ai.V2
 
         public static InfraFulfillResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            ApBudgetLedger ledger, MaterializationReservation reservation = null)
+            PhaseAApBudget apBudget, MaterializationReservation reservation = null)
         {
             if (demand == null || ctx == null || root == null || player == null)
                 return InfraFulfillResult.No("missing args");
@@ -143,9 +143,9 @@ namespace Game.Ai.V2
 
             // --- budget admission BEFORE any gameplay mutation (spec §1). Radar already affected
             //     demand value/priority; this admission reads the ONE unreserved AP pool. ---
-            if (ledger != null)
+            if (apBudget != null)
             {
-                float axisRoom = ledger.UnreservedBalance();
+                float axisRoom = apBudget.UnreservedBalance();
                 if (cand.ApCost > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return InfraFulfillResult.No(
                         $"shared AP pool {axisRoom:0.##} < {DesireAxes.Abbrev(demand.RequestingAxis)} demand cost {cand.ApCost:0.##}");

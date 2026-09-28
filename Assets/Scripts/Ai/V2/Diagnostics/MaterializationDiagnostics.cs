@@ -14,7 +14,7 @@ namespace Game.Ai.V2
     internal static class MaterializationDiagnostics
     {
         public static string ExplainNoChain(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, AxisDemand demand, ApBudgetLedger ledger,
+            AiHandData hand, AiTurnContext ctx, AxisDemand demand, PhaseAApBudget apBudget,
             ActorCommitments commitments, float reservedFollowup)
         {
             if (demand == null || hand == null)
@@ -151,8 +151,8 @@ namespace Game.Ai.V2
                 }
             }
 
-            float axis = ledger != null ? ledger.Balance() : 0f;
-            float discrete = ledger != null ? ledger.DiscreteAdmissionBudget() : axis;
+            float axis = apBudget != null ? apBudget.Balance() : 0f;
+            float discrete = apBudget != null ? apBudget.DiscreteAdmissionBudget() : axis;
             int ap = root != null ? root.ActionPoints : 0;
             string failText = failures.Count == 0
                 ? "-"
@@ -167,7 +167,7 @@ namespace Game.Ai.V2
                 float eps = AiConfigV2.allocatorSliceEpsilon;
                 if (minDirectNeed > discrete + eps)
                     postGate = "axis-budget";
-                else if (root != null && root.ActionPoints - minDirectNeed - AiConfigV2.housekeepingApReserve < -eps)
+                else if (root != null && root.ActionPoints - minDirectNeed < -eps)
                     postGate = "global-ap";
                 else
                     postGate = "direct-passes-post-preflight";

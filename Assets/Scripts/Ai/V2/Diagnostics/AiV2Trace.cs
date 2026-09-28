@@ -329,20 +329,17 @@ namespace Game.Ai.V2
                 Check("OK", attemptId, "ProvisionEnvelope", detail, cf, cm, cl);
         }
 
-        // §2.3 — a committed Phase-A action: three INDEPENDENTLY sourced facts must agree —
-        //  physicalDelta (root AP before/after), reportedSpend (the action's own ApSpent), and
-        //  axisDebit (the REAL shared ApBudgetLedger.Balance drop, labelled with the requesting axis,
-        //  the caller around ledger.Debit and BEFORE any discrete follow-up borrow). Catches a
-        //  missing Debit, a Debit to the wrong axis, or a Debit of the wrong amount.
-        //  ApBudgetLedger owns Phase-A shared-pool spend only; this is NOT compared against any
-        //  later mission execution spend (that is ResourceAllocator / _lockedClaims territory).
+        // §2.3 — a committed Phase-A action: two INDEPENDENTLY sourced facts must agree —
+        //  physicalDelta (root AP before/after) and reportedSpend (the action's own ApSpent).
+        //  Catches an action that misreports what it spent. Phase-A spend only; later mission
+        //  execution spend is the allocator's (_lockedClaims) territory.
         public static void CheckPhaseAAp(string demandTraceId, DesireAxis axis,
-            float physicalDelta, float reportedSpend, float axisDebit,
+            float physicalDelta, float reportedSpend,
             [CallerFilePath] string cf = "", [CallerMemberName] string cm = "", [CallerLineNumber] int cl = 0)
         {
             string detail = $"physicalDelta={Num(physicalDelta)} reported={Num(reportedSpend)} "
-                + $"axisDebit={Num(axisDebit)} axis={DesireAxes.Abbrev(axis)}";
-            if (Mathf.Abs(physicalDelta - reportedSpend) > Eps || Mathf.Abs(reportedSpend - axisDebit) > Eps)
+                + $"axis={DesireAxes.Abbrev(axis)}";
+            if (Mathf.Abs(physicalDelta - reportedSpend) > Eps)
                 Check("ERROR", demandTraceId, "PhaseAApMismatch", detail, cf, cm, cl);
             else
                 Check("OK", demandTraceId, "PhaseAApAccounting", detail, cf, cm, cl);

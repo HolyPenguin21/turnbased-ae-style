@@ -240,7 +240,7 @@ namespace Game.Ai.V2
 
         public static List<DemandCandidate> TopForDemand(WorldSnapshot snap,
             PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            ApBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
+            PhaseAApBudget apBudget, ActorCommitments commitments, float reservedFollowupAp,
             MaterializationReservation reservation, CapabilityInventory inv, bool hasCompetingHeroDemand,
             int k = 3,
             System.Collections.Generic.ISet<CardData> excludeCards = null,
@@ -251,7 +251,7 @@ namespace Game.Ai.V2
             var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, excludeCards, excludeGenKeys);
             var candidates = MaterializationFeasibility.FilterForDemand(
-                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp, snap);
+                raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap);
 
             if (candidates.Count == 0) return new List<DemandCandidate>();
 
@@ -527,13 +527,13 @@ namespace Game.Ai.V2
         // against the real workload.
         public static List<(MaterializationPlan plan, float followupAp)> AllFeasiblePlansForDemand(
             WorldSnapshot snap, PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx,
-            AxisDemand demand, ApBudgetLedger ledger, ActorCommitments commitments, float reservedFollowupAp,
+            AxisDemand demand, PhaseAApBudget apBudget, ActorCommitments commitments, float reservedFollowupAp,
             MaterializationReservation reservation)
         {
             var raw = RawForDemand(
                 snap, player, root, hand, ctx, demand, commitments, reservation, null, null);
             var candidates = MaterializationFeasibility.FilterForDemand(
-                raw, player, root, hand, ctx, demand, ledger, reservedFollowupAp, snap);
+                raw, player, root, hand, ctx, demand, apBudget, reservedFollowupAp, snap);
 
             var bySig = new Dictionary<string, (MaterializationPlan plan, float followupAp)>();
             foreach (var c in candidates)

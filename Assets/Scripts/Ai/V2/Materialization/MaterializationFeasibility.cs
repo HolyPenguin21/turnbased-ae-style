@@ -36,11 +36,11 @@ namespace Game.Ai.V2
         // (plan, followupAp, projected traits).
         internal static List<(MaterializationPlan plan, float followupAp, TraitPreference proj)> FilterForDemand(
             IReadOnlyList<MaterializationPlan> raw, PlayerSetupData player, PlayerRoot root, AiHandData hand,
-            AiTurnContext ctx, AxisDemand demand, ApBudgetLedger ledger, float reservedFollowupAp,
+            AiTurnContext ctx, AxisDemand demand, PhaseAApBudget apBudget, float reservedFollowupAp,
             WorldSnapshot snapshot = null)
         {
             float eps = AiConfigV2.allocatorSliceEpsilon;
-            float axisBudget = ledger.DiscreteAdmissionBudget();
+            float axisBudget = apBudget.DiscreteAdmissionBudget();
             int stealthSurcharge = (demand.RequiredTraits & TraitPreference.Stealth) != 0
                 ? AiConfigV2.scoutOptionalStealthAp : 0;
 
@@ -162,7 +162,7 @@ namespace Game.Ai.V2
             // to other builds' deferred holds; every other hold still counts.
             SpendAuthority authority = demand != null ? demand.SpendAuthority : default;
             if (StrategicSpendability.SpendableAp(player, root, ctx, authority)
-                    - need - AiConfigV2.housekeepingApReserve < -eps) return;
+                    - need < -eps) return;
             if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost,
                     authority)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;

@@ -11,7 +11,7 @@ namespace Game.Ai.V2
     //    garrison safety -> legality -> singleton count -> non-viable count
     //    -> command/leadership defects -> strongest-first EffectiveArmyPower profile
     //    -> canonical AiPower composition -> operation count.
-    //  Candidate generation is zero-AP only while housekeepingApReserve == 0.
+    //  Candidate generation is zero-AP: housekeeping holds no AP of its own.
     // ===========================================================================================
     public static partial class ArmyReorganizationPlanner
     {
