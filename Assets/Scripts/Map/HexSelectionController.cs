@@ -587,6 +587,7 @@ namespace Game.Map
                     continue;
 
                 _selectedHex = hex;
+                armyButtonRow?.Hide();
                 armyViewerModal.ShowReadOnly(army);
                 return true;
             }
@@ -604,6 +605,7 @@ namespace Game.Map
                     foreach (RememberedArmyVisual candidate in rememberedAtHex)
                         if (candidate.Snapshot != null && candidate.Snapshot.Owner == remembered.Snapshot.Owner)
                             siblings.Add(candidate.Snapshot);
+                    armyButtonRow?.Hide();
                     armyViewerModal.ShowLastSeen(remembered.Snapshot, siblings);
                     return true;
                 }
@@ -743,7 +745,13 @@ namespace Game.Map
             // (see its RefreshButtonRow) — never selectable for a move order from here, and never
             // worth a button of its own on the hex-side row at all.
             armies = armies.FindAll(a => !a.IsPrison);
-            if (armies.Count >= 2)
+            // Only worth showing with 2+ MOBILE armies to pick between (garrison/airfield/prison
+            // don't count), and never over an open army/base modal — both re-run SelectHex on
+            // close, which re-evaluates this.
+            int mobileArmies = armies.FindAll(a => !a.IsGarrison && !a.IsAirfield).Count;
+            bool modalShowing = (armyViewerModal != null && armyViewerModal.IsShowing)
+                || (baseViewerModal != null && baseViewerModal.IsShowing);
+            if (mobileArmies >= 2 && !modalShowing)
                 armyButtonRow.Show(armies, OnArmyButtonClicked, GetSelectedArmy(), showStats: true);
             else
                 armyButtonRow.Hide();

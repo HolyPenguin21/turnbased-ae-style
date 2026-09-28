@@ -50,6 +50,7 @@ namespace Game.Map
                     armyViewerModal.Hide();
                 if (researchProductionModal != null)
                     researchProductionModal.Hide();
+                armyButtonRow?.Hide();
                 baseViewerModal.ShowReadOnly(building);
                 return;
             }
