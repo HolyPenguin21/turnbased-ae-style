@@ -179,6 +179,15 @@ namespace Game.Ai.V2
                 // global collector counter would duplicate Economy's collection model.
                 delivered = leased.Count > 0 ? 1f : 0f;
             }
+            else if (demand?.Capability == CapabilityKind.GlobalResourceCarrier)
+            {
+                // The capability IS the pinned card in play: its PlayerGlobal effect counts in any
+                // own non-Prison army (GameTurnController.GrantApBonusActionPoints). Callers reach
+                // this only after the chain deployed, so the pinned base body IS now in play; no
+                // army shape or lease is involved.
+                CardData source = demand.EconomySourceCard;
+                delivered = source != null && plan?.BaseCardInHand == source ? 1f : 0f;
+            }
             else
                 delivered = DeliveredCapabilityAmount(demand, before, after);
             if (delivered <= AiConfigV2.allocatorSliceEpsilon)

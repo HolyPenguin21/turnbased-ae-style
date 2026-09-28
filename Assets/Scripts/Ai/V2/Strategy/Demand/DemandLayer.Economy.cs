@@ -118,12 +118,25 @@ namespace Game.Ai.V2
             int rejectedDeliveryValue = 0;
             int newHeroFallback = 0;
             int newHeroPaired = 0;
+            int rejectedSuppressed = 0;
+            // The delivery-failure streak Continuity records per (resource, site) — the SAME
+            // suppression Base candidates read in AddBaseCandidates. A project nobody could
+            // deliver for consecutive turns is not re-selected (and its H/E/M/T is not held)
+            // during its cooldown.
+            MissionIntentState intentState = player != null
+                ? MissionIntentRegistry.GetOrCreate(player) : null;
 
             foreach (EconomyExtractionOpportunity site in s.Economy.ExtractionOpportunities
                 ?? System.Array.Empty<EconomyExtractionOpportunity>())
             {
                 if (!standings.TryGetValue(site.ResourceType, out EconomyResourceStanding rs))
                     continue;
+                if (intentState != null && intentState.IsExtractionDeliverySuppressed(
+                        s.TurnNumber, site.ResourceType, site.Hex))
+                {
+                    rejectedSuppressed++;
+                    continue;
+                }
                 CardDefinition def = ExtractionDefinition(ctx, site.ResourceType);
                 if (ctx?.GameConfig != null && def == null)
                     continue;
@@ -248,6 +261,9 @@ namespace Game.Ai.V2
                 s, standings, player, activeIntents))
                 yield return collectorDemand;
 
+            foreach (AxisDemand sourceDemand in GlobalResourceSourceDemands(s))
+                yield return sourceDemand;
+
             string baseSummary = AddBaseCandidates(
                 s, candidates, player, ctx, activeIntents, commitments,
                 out int baseNoBuilder, out int baseStrategicValue,
@@ -351,18 +367,68 @@ namespace Game.Ai.V2
 
             AiDebugLog.WriteDeduped("base-summary", $"[AI][V2][Economy][BaseCandidates] {baseSummary}");
             int rejectionTotal = rejectedNoBuilder + baseNoBuilder + rejectedPayback + rejectedSurplus
+                + rejectedSuppressed
                 + rejectedStrategicValue + baseStrategicValue
                 + rejectedDeliveryValue + baseDeliveryValue + baseThreshold;
             AiDebugLog.WriteDeduped("rejections", $"[AI][V2][Economy][Rejections] no_builder={rejectedNoBuilder + baseNoBuilder} "
                 + $"payback={rejectedPayback} surplus={rejectedSurplus} strategic_value={rejectedStrategicValue + baseStrategicValue} "
                 + $"delivery_value={rejectedDeliveryValue + baseDeliveryValue} "
-                + $"threshold={baseThreshold} "
+                + $"threshold={baseThreshold} suppressed={rejectedSuppressed} "
                 + $"new_hero_fallback={newHeroFallback + baseNewHeroFallback} "
                 + $"new_hero_paired={newHeroPaired}");
             if (selected.Count == 0)
                 AiDebugLog.WriteDeduped("selected-none",
                     $"[AI][V2][Economy][Demand] selected=none rejected={rejectionTotal} "
                     + "reason=no_legal_valuable_site_or_base");
+        }
+
+        // Economy creates the budget of opportunities: a card in hand whose effective abilities
+        // carry a PlayerGlobal recurring-resource effect (ApBonus / Produce*) is a standing Economy
+        // obligation to put it into play, admitted in Phase A before operational missions spend
+        // the turn — not a Phase-B leftover. One demand per carrier card, pinned by
+        // EconomySourceCard: a Facility is placed by InfrastructureFulfillment, a Unit/Hero by the
+        // materialization chain (any placement — the effect works in any own non-Prison army).
+        // Base cards stay with the FoundBase pipeline (it already prices the same effect through
+        // GlobalCardEffect). The TaskScore carries the intrinsic slot only — the chain / facility
+        // play prices the card itself (StrategicCardEvaluator, ResourceGainRoleFit), exactly like
+        // a CollectorCapability demand.
+        internal static IEnumerable<AxisDemand> GlobalResourceSourceDemands(WorldSnapshot s)
+        {
+            foreach (CardData card in s?.Self?.Hand ?? System.Array.Empty<CardData>())
+            {
+                CardDefinition def = card?.Definition;
+                if (def == null || def.isAviation)
+                    continue;
+                CapabilityKind capability;
+                if (def.cardType == CardType.Facility)
+                    capability = CapabilityKind.GlobalResourceFacility;
+                else if (def.cardType == CardType.Unit || def.cardType == CardType.Hero)
+                    capability = CapabilityKind.GlobalResourceCarrier;
+                else
+                    continue;
+                IReadOnlyList<string> abilities =
+                    MaterializationChainMatching.EffectiveAbilities(def, card.Equipment);
+                if (!StrategicEffectRegistry.HasGlobalRecurringEffect(abilities))
+                    continue;
+
+                float global = TaskScoreEvaluator.GlobalCardEffectScoreUnits(
+                    StrategicCardEvaluator.GlobalEffectValue(s, def));
+                var score = new TaskScore(globalCardEffect: global);
+                AiDebugLog.WriteDeduped($"global-source|{def.authoredKey}|{capability}",
+                    $"[AI][V2][Economy][GlobalSource] decision=CREATE card={def.displayName} "
+                    + $"capability={capability} effects=[{string.Join(",", abilities)}] "
+                    + $"globalEffect={global:0.##}");
+                yield return new AxisDemand
+                {
+                    RequestingAxis = DesireAxis.Economy,
+                    Capability = capability,
+                    DesiredAmount = 1f,
+                    EconomySourceCard = card,
+                    WorldTaskScore = score,
+                    Value = score.Value,
+                    Explain = $"global source {def.displayName} ({def.cardType}) globalEffect={global:0.##}",
+                };
+            }
         }
 
         // A mobile collector card, materialized SOLO (see MaterializationChainEnumerator's

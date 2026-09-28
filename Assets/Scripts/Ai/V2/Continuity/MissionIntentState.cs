@@ -111,6 +111,16 @@ namespace Game.Ai.V2
             private readonly Dictionary<TKey, (int Turn, int Count)> _failures =
                 new Dictionary<TKey, (int, int)>();
             private readonly Dictionary<TKey, int> _suppressedUntilTurn = new Dictionary<TKey, int>();
+            // The last turn the project made real delivery progress. A turn with progress is never
+            // a failed turn, whatever order that turn's outcomes arrive in (a first attempt blocked,
+            // a later one delivered), and it ends the running streak.
+            private readonly Dictionary<TKey, int> _progressTurn = new Dictionary<TKey, int>();
+
+            public void RecordProgress(int turn, TKey key)
+            {
+                _progressTurn[key] = turn;
+                _failures.Remove(key);
+            }
 
             public bool IsSuppressed(int turn, TKey key) =>
                 _suppressedUntilTurn.TryGetValue(key, out int until) && turn < until;
@@ -119,6 +129,8 @@ namespace Game.Ai.V2
             {
                 if (IsSuppressed(turn, key))
                     return true;
+                if (_progressTurn.TryGetValue(key, out int progressTurn) && progressTurn == turn)
+                    return false;
                 bool hasRecord = _failures.TryGetValue(key, out (int Turn, int Count) rec);
                 bool consecutiveTurn = hasRecord && (rec.Turn == turn || rec.Turn == turn - 1);
                 int count = consecutiveTurn ? rec.Count : 0;
@@ -148,6 +160,17 @@ namespace Game.Ai.V2
         internal bool RecordBaseExpansionDeliveryFailure(int turn, CardData card, HexCoord? target) =>
             card != null && target.HasValue
             && _baseDeliveryFailures.Record(turn, (card, target.Value));
+
+        // Real delivery progress of one build project this turn — ends its failure streak. The ONE
+        // writer is MissionContinuityLayer.ReconcileOutcome.
+        internal void RecordBaseExpansionDeliveryProgress(int turn, CardData card, HexCoord? target)
+        {
+            if (card != null && target.HasValue)
+                _baseDeliveryFailures.RecordProgress(turn, (card, target.Value));
+        }
+
+        internal void RecordExtractionDeliveryProgress(int turn, ResourceType? resourceType, HexCoord target) =>
+            _extractionDeliveryFailures.RecordProgress(turn, (resourceType, target));
 
         internal bool IsExtractionDeliverySuppressed(int turn, ResourceType? resourceType, HexCoord target) =>
             _extractionDeliveryFailures.IsSuppressed(turn, (resourceType, target));

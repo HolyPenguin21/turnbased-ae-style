@@ -57,8 +57,9 @@ namespace Game.Ai.V2
             private readonly MaterializationConsumptionState _consumed = new MaterializationConsumptionState();
             private readonly ProjectedPhysicalState _physical = new ProjectedPhysicalState();
             private readonly Dictionary<ResourceType, int> _resPool = new Dictionary<ResourceType, int>();
-            // Per build owner: how much of each resource that owner's own hold adds back for its
-            // builder-hero chain (see Fits' ownHoldOwner).
+            // Per spend authority (SpendAuthority.Key): how much of each resource that authority adds
+            // back on top of the shared pool (a builder hero's own build hold, or other builds'
+            // deferred holds for an Economy action that completes now — see Fits' authority).
             private readonly Dictionary<string, Dictionary<ResourceType, int>> _ownHold =
                 new Dictionary<string, Dictionary<ResourceType, int>>();
             private readonly PlayerRoot _root;
@@ -108,10 +109,10 @@ namespace Game.Ai.V2
             public bool CardsDisjoint(MaterializationPlan p) => _consumed.CardsDisjoint(p);
 
             // Would this chain (+ its follow-up AP) still fit on top of everything already pushed?
-            // ownHoldOwner — the Economy build a builder-hero chain serves: that build's own deferred
-            // hold is available to this chain on top of the shared pool (conservative: what it
-            // draws is still counted against the pool for every later chain).
-            public bool Fits(MaterializationPlan plan, float followupAp, string ownHoldOwner = null)
+            // authority — the demand's SpendAuthority: the holds it may draw on are available to
+            // this chain on top of the shared pool (conservative: what it draws is still counted
+            // against the pool for every later chain).
+            public bool Fits(MaterializationPlan plan, float followupAp, SpendAuthority authority = default)
             {
                 float ap = (plan?.ApCost ?? 0f) + followupAp;
                 if (_enforceApPool && _consumed.ApUsed + ap > _apPool + AiConfigV2.allocatorSliceEpsilon)
@@ -121,25 +122,26 @@ namespace Game.Ai.V2
                 ResourceCost rc = plan?.ResCost;
                 if (rc != null)
                     foreach (ResourceType t in ResourceBundle.All)
-                        if (_consumed.ResourceUsed(t) + rc.Get(t) > _resPool[t] + OwnHold(ownHoldOwner, t))
+                        if (_consumed.ResourceUsed(t) + rc.Get(t) > _resPool[t] + OwnHold(authority, t))
                             return false;
                 if (!_physical.CanAdd(plan))
                     return false;
                 return true;
             }
 
-            private int OwnHold(string owner, ResourceType t)
+            private int OwnHold(SpendAuthority authority, ResourceType t)
             {
-                if (owner == null || _root == null)
+                if (authority.IsNone || _root == null)
                     return 0;
-                if (!_ownHold.TryGetValue(owner, out Dictionary<ResourceType, int> held))
+                string key = authority.Key;
+                if (!_ownHold.TryGetValue(key, out Dictionary<ResourceType, int> held))
                 {
                     held = new Dictionary<ResourceType, int>();
                     foreach (ResourceType r in ResourceBundle.All)
                         held[r] = Mathf.Max(0, Mathf.FloorToInt(
-                            StrategicSpendability.SpendableAmount(_player, _root, _ctx, r, owner))
+                            StrategicSpendability.SpendableAmount(_player, _root, _ctx, r, authority))
                             - _resPool[r]);
-                    _ownHold[owner] = held;
+                    _ownHold[key] = held;
                 }
                 return held[t];
             }
@@ -245,7 +247,7 @@ namespace Game.Ai.V2
                         continue;
                     if (!jf.CardsDisjoint(c.Plan))
                         continue;
-                    if (!jf.Fits(c.Plan, c.FollowupAp, d.Demand?.EconomyHeroBuildOwner))
+                    if (!jf.Fits(c.Plan, c.FollowupAp, d.Demand != null ? d.Demand.SpendAuthority : default))
                         continue;
                     JointFeasibility.Token token = jf.Push(c.Plan, c.FollowupAp);
 

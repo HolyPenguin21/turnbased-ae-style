@@ -1310,6 +1310,20 @@ namespace Game.Ai.V2
                 + (o.StructuralFailure ? " structural" : "")
                 + $" {o.IntentKey}");
 
+            // A build project that really progressed this turn is not failing to deliver: end its
+            // delivery-failure streak before any branch below may record a failure for it.
+            if (o.MissionKind == MissionKind.Economy
+                && (o.MadeProgress || o.Outcome == ExecutionOutcome.Completed)
+                && TryGetEconomyTarget(o, out EconomyMissionTarget progressed))
+            {
+                if (progressed.Kind == EconomyTaskKind.FoundBase)
+                    state.RecordBaseExpansionDeliveryProgress(
+                        turn, progressed.BuildCard, progressed.TargetHex);
+                else if (progressed.Kind == EconomyTaskKind.BuildExtraction)
+                    state.RecordExtractionDeliveryProgress(
+                        turn, progressed.ResourceType, progressed.TargetHex);
+            }
+
             // Strike force — a side leg (a gather donor walking home, the support wing's sortie) is
             // no step of the operation: whatever its outcome, the Attack intent's lifecycle
             // (progress, stall, suspension, retirement) is untouched. Arrival, landing or loss is
@@ -1506,19 +1520,27 @@ namespace Game.Ai.V2
                 // envelope that did not fit this pass, a stale plan or activation) ages it
                 // through StallTurns/ShouldReap like any idle intent (Economy audit B1/B2).
                 // ReturnBuilder (the return-trip leg) keeps its own preservation rule above.
-                bool capabilityFailure = o.ProvisionFailureKindValue == ProvisionFailureKind.NoMoverExists
-                    || o.ProvisionFailureKindValue == ProvisionFailureKind.MoverContended;
-
-                // P1 fix: a FoundBase project that never got far enough to become a durable intent
-                // (no actor at all — provisioning failed on the very first attempt) must still count
-                // toward the delivery-failure streak, or that project can retry forever without ever
-                // reaching AdvanceIntent's own call (below), which only fires once intent != null.
-                // This is the ONE registration point for the no-intent case; AdvanceIntent's call
-                // only fires for an existing intent, so the two never double-count the same outcome.
-                if (capabilityFailure && intent == null
-                    && TryGetEconomyTarget(o, out EconomyMissionTarget freshTarget)
-                    && freshTarget.Kind == EconomyTaskKind.FoundBase)
-                    state.RecordBaseExpansionDeliveryFailure(turn, freshTarget.BuildCard, freshTarget.TargetHex);
+                // P1 fix: a build project that never got far enough to become a durable intent
+                // must still count toward the delivery-failure streak, or that project can retry
+                // forever without ever reaching AdvanceIntent's own call (below), which only fires
+                // once intent != null. Every no-progress kind counts here, not only NoMoverExists /
+                // MoverContended: a fresh project blocked turn after turn by alternating reasons
+                // (no mover, then no AP envelope, then no step) is just as undeliverable, and while
+                // Demand keeps selecting it Phase A keeps its H/E/M/T frozen under an
+                // EconomyDeferredBuild hold. The streak is per project and consecutive-turn only,
+                // so a transient one-turn miss never suppresses anything. BuildExtraction is
+                // counted the same way as FoundBase. This is the ONE registration point for the
+                // no-intent case; the intent paths below only fire for an existing intent, so the
+                // two never double-count the same outcome.
+                if (intent == null && TryGetEconomyTarget(o, out EconomyMissionTarget freshTarget))
+                {
+                    if (freshTarget.Kind == EconomyTaskKind.FoundBase)
+                        state.RecordBaseExpansionDeliveryFailure(
+                            turn, freshTarget.BuildCard, freshTarget.TargetHex);
+                    else if (freshTarget.Kind == EconomyTaskKind.BuildExtraction)
+                        state.RecordExtractionDeliveryFailure(
+                            turn, freshTarget.ResourceType, freshTarget.TargetHex);
+                }
 
                 if (intent != null && !IsEconomyRouteFailure(o))
                 {

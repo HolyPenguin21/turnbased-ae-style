@@ -139,6 +139,8 @@ namespace Game.Ai.V2
             PlayerSetupData player, AiTurnContext ctx, WorldSnapshot snapshot = null)
         {
             bool upgrade = p != null && p.Kind == MaterializationChainKind.GenerateAttachUpgrade;
+            // A global-source carrier is delivered by being in play: no post-deploy movement.
+            bool noFollowup = upgrade || demand?.Capability == CapabilityKind.GlobalResourceCarrier;
             // Upgrade delivery is the attachment itself and has no post-deploy follow-up. Every
             // deploy chain keeps the canonical operational-delivery gate.
             if (!upgrade && !MaterializationDeliveryPolicy.CanDeliverDemandOperationally(p, demand, snapshot, player, ctx))
@@ -147,7 +149,7 @@ namespace Game.Ai.V2
             float activationAp = p != null && !upgrade
                 ? CapabilityQualityEvaluator.ProjectedActivationApCost(p)
                 : (baseDef != null ? baseDef.activationApCost : AiConfigV2.scoutNotionalActivationAp);
-            float followupAp = upgrade ? 0f
+            float followupAp = noFollowup ? 0f
                 : activationAp + stealthSurcharge + demand.MinimumFollowupAp;
             float need = p.ApCost + reservedFollowupAp + followupAp;
             if (need > axisBudget + eps) return;
@@ -155,12 +157,14 @@ namespace Game.Ai.V2
             // with (StrategicSpendability.ReservesOkAfterChain): another owner's AP hold (an Economy
             // completion, a reaction envelope) and unpaid air-recovery activation are not
             // available, so a chain is never admitted that execution must refuse.
-            // A builder-hero chain may use its own pending build's hold (see
-            // AxisDemand.EconomyHeroBuildOwner); every other owner's hold still counts.
-            if (StrategicSpendability.SpendableAp(player, root, ctx, demand?.EconomyHeroBuildOwner)
+            // The demand's ONE spend authority (AxisDemand.SpendAuthority): a builder-hero chain
+            // may use its own pending build's hold, an Economy action that completes now is senior
+            // to other builds' deferred holds; every other hold still counts.
+            SpendAuthority authority = demand != null ? demand.SpendAuthority : default;
+            if (StrategicSpendability.SpendableAp(player, root, ctx, authority)
                     - need - AiConfigV2.housekeepingApReserve < -eps) return;
             if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, p.ResCost,
-                    demand?.EconomyHeroBuildOwner)) return;
+                    authority)) return;
             if (p.HandSlotsNeededAtPeak > 0 && !hand.HasFreeSlot) return;
             sink.Add((p, followupAp, p.ExpectedTraits));
         }

@@ -63,12 +63,12 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void OutboundCap_PlaneReservesHalf_HelicopterMayEndAloft()
+        public void OutboundCap_EveryAircraftReservesHalf_ToLandTheSameTurn()
         {
-            Assert.That(ReconAirSortieState.OutboundCapFor(6, safeUnlandedEnds: 0), Is.EqualTo(3),
-                "plane: half the movement out, the other half back the same turn");
-            Assert.That(ReconAirSortieState.OutboundCapFor(6, safeUnlandedEnds: 1), Is.EqualTo(6),
-                "helicopter: full movement out, may end the turn aloft and return next turn");
+            Assert.That(ReconAirSortieState.OutboundCapFor(6), Is.EqualTo(3),
+                "half the movement out, the other half back the same turn");
+            Assert.That(ReconAirSortieState.OutboundCapFor(10), Is.EqualTo(5),
+                "a refuel margin is a recovery buffer, not an outbound budget: no planned overnight aloft");
         }
 
         private static MissionTurnOutcome Finalize(int? actualArmyId)

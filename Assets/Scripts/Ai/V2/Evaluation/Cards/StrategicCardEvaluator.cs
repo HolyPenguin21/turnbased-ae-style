@@ -364,7 +364,12 @@ namespace Game.Ai.V2
                 role, pabil, EffectiveMoveMax(plan), ectx, out string effDetail);
             bd.EffectDetail = JoinDetail(effDetail, heroCmdDetail);
 
-            bd.RoleFit = fit * (roleFitCore + ec.RoleFit) + ec.GlobalRoleFit;
+            // ResourceGain — the SAME rule as ScoreSurplusRole: ResourceGainRoleFit is the one value
+            // of a permanent PlayerGlobal source, so ec.RoleFit/ec.GlobalRoleFit would price that
+            // fact twice; and a PlayerGlobal effect has no target hex to fit.
+            bd.RoleFit = role == IntendedRole.ResourceGain
+                ? roleFitCore
+                : fit * (roleFitCore + ec.RoleFit) + ec.GlobalRoleFit;
             bd.ImmediateTempo = traitMatch + PlacementBonus(plan.Deploy.Kind)
                 + ec.ImmediateTempo + ec.GlobalImmediateTempo;
             bd.NextTurnPotential = NextTurnPotential(plan, role);
@@ -678,8 +683,11 @@ namespace Game.Ai.V2
                     break;
                 case NonCombatRole.Facility:
                     role = FacilityRole(def);
-                    bd.RoleFit = AiConfigV2.nonCombatFacilityValue
-                                 + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
+                    // A PlayerGlobal-source Facility takes ResourceGainRoleFit below — the one
+                    // value a Hero/Unit carrier of the same effect gets.
+                    bd.RoleFit = role == IntendedRole.ResourceGain ? 0f
+                        : AiConfigV2.nonCombatFacilityValue
+                          + (1f - eco) * AiConfigV2.nonCombatEconomyRunwayBonus;
                     break;
                 default:
                     role = IntendedRole.EquipmentUpgrade;
@@ -704,7 +712,10 @@ namespace Game.Ai.V2
             // not used in the non-combat lane: Aviation/Facility/Equipment are never
             // AntiAir/AntiArmor counters, so ncEc.CapabilityGap/ncEc.ThreatResponse fold into
             // RoleFit instead.
-            bd.RoleFit += ncEc.RoleFit + ncEc.GlobalRoleFit
+            // ResourceGain: same single-count rule as ScoreSurplusRole / ScoreForDemand.
+            bd.RoleFit += (role == IntendedRole.ResourceGain
+                    ? ResourceGainRoleFit(ncCtx)
+                    : ncEc.RoleFit + ncEc.GlobalRoleFit)
                 + ncEc.CapabilityGap + ncEc.GlobalCapabilityGap
                 + ncEc.ThreatResponse + ncEc.GlobalThreatResponse;
             bd.ForceGrowthValue += ncEc.ForceGrowth + ncEc.GlobalForceGrowth;
@@ -756,6 +767,8 @@ namespace Game.Ai.V2
             IReadOnlyList<string> ab = def?.grantedAbilities;
             if (ab != null && (ab.Contains(UnitAbilities.Research) || ab.Contains(UnitAbilities.Production)))
                 return IntendedRole.Development;
+            if (ab != null && StrategicEffectRegistry.HasGlobalRecurringEffect(ab))
+                return IntendedRole.ResourceGain;
             return IntendedRole.Economy;
         }
 
@@ -821,7 +834,7 @@ namespace Game.Ai.V2
             && (generation.CardDef.isAviation || generation.CardDef.cardType == CardType.Unit
                 || generation.CardDef.cardType == CardType.Hero);
 
-        private static ResourceCost AddResourceCosts(ResourceCost a, ResourceCost b)
+        internal static ResourceCost AddResourceCosts(ResourceCost a, ResourceCost b)
         {
             int h = (a?.human ?? 0) + (b?.human ?? 0);
             int e = (a?.energy ?? 0) + (b?.energy ?? 0);
@@ -960,6 +973,8 @@ namespace Game.Ai.V2
                 case CapabilityKind.EconomicInfrastructure: return IntendedRole.Economy;
                 case CapabilityKind.DevelopmentInfrastructure: return IntendedRole.Development;
                 case CapabilityKind.DevelopmentOperator: return IntendedRole.Development;
+                case CapabilityKind.GlobalResourceFacility:
+                case CapabilityKind.GlobalResourceCarrier: return IntendedRole.ResourceGain;
                 default: return IntendedRole.CombatBody;
             }
         }
@@ -1573,7 +1588,9 @@ namespace Game.Ai.V2
                     && !(inv != null && inv.StealthScouts > AiConfigV2.stratChainStealthScarceAt))
                     cost += AiConfigV2.stratChainScarcityPenalty;
             }
-            if (demand.Capability != CapabilityKind.Hero && demand.Capability != CapabilityKind.ScoutCapability)
+            // A global-source carrier hero is not spent: it stays in play as the source itself.
+            if (demand.Capability != CapabilityKind.Hero && demand.Capability != CapabilityKind.ScoutCapability
+                && demand.Capability != CapabilityKind.GlobalResourceCarrier)
             {
                 CardDefinition baseDef = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
                 if (baseDef != null && baseDef.cardType == CardType.Hero
@@ -1739,7 +1756,7 @@ namespace Game.Ai.V2
         internal static BaseSiteValue ScoreBaseSite(WorldSnapshot s, EconomyBaseOpportunity site,
             CardData card) => new BaseSiteValue(
                 BaseCardMarginalYield(s, site, card.Definition),
-                BaseGlobalEffectValue(s, card.Definition),
+                GlobalEffectValue(s, card.Definition),
                 BaseAirfieldValue(s, card.Definition, site.Hex));
 
         // One owner of the gameplay fact "what resource income can this exact Base card collect on
@@ -1780,7 +1797,9 @@ namespace Game.Ai.V2
                 remainingYield, 0, addedCapacity, ownArmyCollectors, armiesCanCollect);
         }
 
-        private static float BaseGlobalEffectValue(WorldSnapshot s, CardDefinition definition)
+        // The ONE Economy-side value of a card's PlayerGlobal effects, in TaskScore units: the
+        // FoundBase site score and the global-source demand (DemandLayer.Economy) both read it.
+        internal static float GlobalEffectValue(WorldSnapshot s, CardDefinition definition)
         {
             if (definition?.grantedAbilities == null)
                 return 0f;

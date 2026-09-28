@@ -97,7 +97,7 @@ namespace Game.Ai.V2
 
         public static MaterializationResult Execute(WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
             AiHandData hand, AiTurnContext ctx, MaterializationPlan plan, ActorCommitments commitments,
-            string ownHoldOwner = null)
+            SpendAuthority authority = default)
         {
             var res = new MaterializationResult();
             if (plan == null || player == null || root == null || hand == null || ctx == null)
@@ -110,7 +110,7 @@ namespace Game.Ai.V2
             // chain again BEFORE its first irreversible step so a mid-turn resource change cannot
             // make this executor spend another axis's newly protected resources. No substitute
             // budget model: the same ReservesOkAfterChain is used by feasibility.
-            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, ownHoldOwner))
+            if (!StrategicSpendability.ReservesOkAfterChain(root, ctx, plan, player, authority))
             {
                 res.FailReason = "chain no longer fits AP/spendable reserves";
                 return res;

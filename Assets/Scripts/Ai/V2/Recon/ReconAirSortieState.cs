@@ -56,9 +56,8 @@ namespace Game.Ai.V2
         public float BestOutboundStepScore;
 
         // Frozen launch profile. The outbound limit is derived once from the group's starting
-        // movement/endurance and never from the shrinking CurrentMovement value. A group that may
-        // safely end a turn aloft can spend its whole launch budget outbound; a same-turn-return
-        // group may spend at most floor(budget / 2), preserving the other half for recovery.
+        // movement and never from the shrinking CurrentMovement value: at most floor(budget / 2)
+        // outbound, the other half preserved to land the same turn (see OutboundCapFor).
         public int LaunchMovementBudget;
         public int OutboundMovementSpent;
         public int OutboundMovementCap;
@@ -75,19 +74,23 @@ namespace Game.Ai.V2
                 return;
             LaunchMovementBudget = System.Math.Max(0, airArmy.MaxMovement);
             LaunchSafeUnlandedEnds = AviationRange.SafeUnlandedEndsRemaining(airArmy);
-            OutboundMovementCap = OutboundCapFor(LaunchMovementBudget, LaunchSafeUnlandedEnds);
+            OutboundMovementCap = OutboundCapFor(LaunchMovementBudget);
             // A state can be reconstructed for an already-airborne wing. Account for movement
             // already spent this turn instead of granting a second outbound budget.
             OutboundMovementSpent = System.Math.Max(0,
                 LaunchMovementBudget - System.Math.Max(0, airArmy.CurrentMovement));
         }
 
-        // THE refuel-endurance rule for how deep one sortie flies outbound: a wing that must land
-        // the same turn (0 safe unlanded turn-ends — a plane) spends half its movement out and
-        // half back; a wing that may end a turn aloft (a helicopter) flies its whole movement out
-        // and returns next turn. Sortie execution and the AirSweep reach projection both read it.
-        public static int OutboundCapFor(int moveBudget, int safeUnlandedEnds) =>
-            safeUnlandedEnds > 0 ? System.Math.Max(0, moveBudget) : System.Math.Max(0, moveBudget) / 2;
+        // THE rule for how deep one recon sortie flies outbound: half its movement out, half back,
+        // landing the SAME turn — for every aircraft. A refuel margin (TurnsWithoutRefuel > 0) is a
+        // recovery safety buffer, not an outbound budget: planning to spend the whole move out and
+        // park aloft put the wing overnight at the deepest point of its route — next to the enemy
+        // Citadel/army it was sent to observe — for the enemy's whole turn, paid a second
+        // activation to come home and kept the aircraft out of service for two turns. Ending a
+        // turn aloft stays possible only as a forced recovery, and then only on a hex outside the
+        // enemy's next-turn anti-air reach (AiAirSortiePlanner.IsThreatenedAloftEnd). Sortie
+        // execution and the AirSweep reach projection both read it.
+        public static int OutboundCapFor(int moveBudget) => System.Math.Max(0, moveBudget) / 2;
 
         public void RecordOutboundMovement(int movementSpent)
         {
