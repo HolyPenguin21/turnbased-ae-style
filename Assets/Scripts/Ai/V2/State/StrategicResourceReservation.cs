@@ -213,6 +213,20 @@ namespace Game.Ai.V2
                     + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
         }
 
+        // Drops every row of `reason` except `keepOwner`'s — for a lifecycle owner that holds
+        // exactly ONE owner's rows of that reason at a time and is switching which owner that is.
+        // Other reasons (e.g. EconomyBuildCompletion) are never touched.
+        public static void ReleaseReasonExceptOwner(PlayerSetupData player, int turn,
+            StrategicReservationReason reason, string keepOwner)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return;
+            int removed = e.Reservations.RemoveAll(r => r.Reason == reason && r.Owner != keepOwner);
+            if (removed > 0)
+                AiDebugLog.Write($"[AI][V2] reservation - released {removed} ({reason}) "
+                    + $"not owned by {keepOwner ?? "none"}; active [{DebugLine(player, turn)}]");
+        }
+
         // Read-only enumeration of the owners holding rows of one reason, never a second
         // reservation ledger. Snapshot the keys before the lifecycle owner modifies its own rows.
         internal static IReadOnlyList<string> OwnersWithReason(PlayerSetupData player, int turn,

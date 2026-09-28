@@ -497,6 +497,12 @@ namespace Game.Ai.V2
             StrategicResourceReservationLedger.ReplaceReasonOwner(player, turn,
                 StrategicReservationReason.EconomyDeferredBuild, owner);
 
+        // Keep only `keepOwner`'s deferred Economy hold (StrategicPhaseA's single pre-intent hold).
+        internal static void RetainDeferredEconomyOwner(PlayerSetupData player, int turn,
+            string keepOwner) =>
+            StrategicResourceReservationLedger.ReleaseReasonExceptOwner(player, turn,
+                StrategicReservationReason.EconomyDeferredBuild, keepOwner);
+
         // One canonical writer for direct, deferred and provisioned Economy build reservations.
         // Provisioning adds AP only when completion is reachable this turn; Phase A protects only
         // persistent H/E/M/T while a confirmed route is still being delivered.

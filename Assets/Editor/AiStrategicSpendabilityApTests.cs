@@ -179,6 +179,40 @@ namespace Game.EditorTests
         // One physical pool for every mission kind: a non-Economy Energy draw is funded from the
         // same owner-aware spendable stock its Provisioning gate (AirSpendableEnergyLeft) uses,
         // so it never takes Energy another axis holds.
+        // Ysolde T3 (2026-09-28 log): three re-admission passes each protected a different Base
+        // site and all three deferred holds stacked. Switching the single pre-intent hold keeps
+        // only the new owner's deferred rows and never touches a completion hold.
+        [Test]
+        public void SwitchingDeferredEconomyHold_ReleasesPreviousOwnerOnly()
+        {
+            var player = new PlayerSetupData();
+            const int turn = 17;
+            StrategicResourceReservationLedger.BeginTurn(player, turn);
+            void Hold(string owner, StrategicReservationReason reason) =>
+                StrategicResourceReservationLedger.Upsert(player, turn,
+                    new StrategicResourceReservation
+                    {
+                        Owner = owner, Reason = reason,
+                        Resource = StrategicReservedResource.Human, Amount = 3f,
+                        ExpirationStage = StrategicReservationExpiry.EndOfTurn,
+                    });
+            Hold("Economy:siteA", StrategicReservationReason.EconomyDeferredBuild);
+            Hold("Economy:siteB", StrategicReservationReason.EconomyDeferredBuild);
+            Hold("Economy:done", StrategicReservationReason.EconomyBuildCompletion);
+
+            StrategicResourceReservationLedger.ReleaseReasonExceptOwner(player, turn,
+                StrategicReservationReason.EconomyDeferredBuild, "Economy:siteB");
+
+            Assert.That(StrategicResourceReservationLedger.HasOwnerReason(player, turn,
+                "Economy:siteA", StrategicReservationReason.EconomyDeferredBuild), Is.False);
+            Assert.That(StrategicResourceReservationLedger.HasOwnerReason(player, turn,
+                "Economy:siteB", StrategicReservationReason.EconomyDeferredBuild), Is.True);
+            Assert.That(StrategicResourceReservationLedger.HasOwnerReason(player, turn,
+                "Economy:done", StrategicReservationReason.EconomyBuildCompletion), Is.True);
+            Assert.That(StrategicResourceReservationLedger.Active(player, turn,
+                StrategicReservedResource.Human), Is.EqualTo(6f));
+        }
+
         [Test]
         public void OtherAxisPhysicalHold_BlocksNonEconomyMissionAtAllocatorAdmission()
         {

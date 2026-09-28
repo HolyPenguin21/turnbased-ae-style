@@ -306,6 +306,14 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (protectedEconomyBuild != null)
             {
+                // The single pre-intent Economy hold. No durable Economy build exists here
+                // (economyBuildObligations is empty whenever one does), so every deferred row is an
+                // earlier pass's demand hold; a re-admission pass that now protects a different
+                // site replaces it instead of stacking a second hold for the same build card.
+                InfrastructureFulfillment.RetainDeferredEconomyOwner(player, ctx.TurnNumber,
+                    protectedEconomyBuild.Capability == CapabilityKind.Hero
+                        ? InfrastructureFulfillment.EconomyHeroPrerequisiteOwner(protectedEconomyBuild)
+                        : InfrastructureFulfillment.EconomyReservationOwner(protectedEconomyBuild));
                 if (protectedEconomyBuild.Capability == CapabilityKind.Hero)
                     InfrastructureFulfillment.ReserveDeferredEconomyResourcesForPendingHero(
                         player, ctx.TurnNumber, protectedEconomyBuild);
