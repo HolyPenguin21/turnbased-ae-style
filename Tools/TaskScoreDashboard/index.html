@@ -78,7 +78,7 @@ code{font-family:Cascadia Code,Consolas,monospace;font-size:12px}.source{color:#
 <div id="calib" class="tabbody"><div class="matrix-note">What-if view computed by the real C# converters and the calibration table (AiConfigV2.TaskScore.cs). Regenerate after changing a constant: Unity → AI → TaskScore → Calibration Report, then Reload. Value = Benefit − Cost − Risk − Opportunity; one point is one AP-equivalent.</div><div id="calibmeta" class="matrix-note"></div><div class="wrap"><table><thead><tr><th>Family ceiling</th><th>Slots</th><th>Max benefit</th></tr></thead><tbody id="ceilbody"></tbody></table><table><thead><tr><th>Scenario</th><th>Family</th><th>Value</th><th>Benefit</th><th>Cost</th><th>Risk</th><th>Opportunity</th><th>Terms</th><th>Raw facts</th></tr></thead><tbody id="scenbody"></tbody></table></div></div>
 <div id="logview" class="tabbody"><div class="matrix-note">Distribution of the per-task [AI][V2][TaskScore] lines of Logs/AiDebug.log, per task family — the real-game data for cross-family calibration. Median / max over every scored proposal in the log.</div><div id="logmeta" class="matrix-note"></div><div class="wrap"><table><thead><tr><th>Family</th><th>Tasks</th><th>Value median (min..max)</th><th>Effective median</th><th>Benefit median / max</th><th>Cost median</th><th>Risk median</th><th>Heaviest terms (median / max)</th></tr></thead><tbody id="logbody"></tbody></table></div></div>
 <div id="pipeline" class="tabbody"><div class="matrix-note">How one task's final priority actually forms, cascaded from real Logs/AiDebug.log proposals: <b>Value</b> (this task's TaskScore — Benefit − Cost − Risk − Opportunity, its category terms below) is scaled once by that turn's Radar weight for the task's axis (<code>RadarScale = axisCount × radarWeight[axis]</code>, MissionProposal.cs / DesireEvaluators.cs) into <b>EffectiveValue</b> — the figure the allocator actually ranks cross-lane. RadarScale is read exactly (eff ÷ value from the same log line), never re-derived. A row expands to the category/slot breakdown that built Value.</div><div class="panel controls" style="margin-bottom:10px"><div class="grid"><label class="search"><span>Search rows</span><input id="pq" type="search" placeholder="Raid, Kryll, T12, key…"></label><label><span>Family</span><select id="pfamily"><option value="">All</option></select></label></div></div><div id="pipemeta" class="matrix-note"></div><div class="wrap"><table><thead><tr><th>Turn</th><th>Player</th><th>Task</th><th>Value</th><th>× RadarScale</th><th>= EffectiveValue</th><th>Benefit</th><th>Cost</th><th>Risk</th><th>Opportunity</th></tr></thead><tbody id="pipebody"></tbody></table></div></div>
-<div id="tuning" class="tabbody"><div class="matrix-note">Read-only preview only — nothing here writes to disk yet. Pick a config constant to see its exact converter formula (real C# source, not a copy), which task families are <b>shared</b> vs <b>local</b> to it, and its current value on real calibration scenarios / logged proposals. These constants are C# <code>const</code>: an eventual edit here could only ever work as write-to-source → Unity recompiles → Calibration Report regenerates → reload — never a live in-browser slider — so the workflow below previews that shape (an empty "After" column) without performing it.</div><div class="tunewrap"><div><div id="tunelistmeta" class="tunelistmeta"></div><div id="tunelist" class="tunelist"></div></div><div id="tunedetail" class="tunedetail"><div class="emptytune">Pick a parameter on the left.</div></div></div></div>
+<div id="tuning" class="tabbody"><div class="matrix-note">Nothing here writes to disk — there is no Apply button anywhere on this tab, on purpose. Pick a config constant to see its exact converter formula (real C# source, not a copy) and which task families are <b>shared</b> vs <b>local</b> to it. When the constant is a pure trailing multiplier in a slot's formula (no Clamp bound, no denominator, no other added term — the dashboard checks this per slot, not per parameter), the draft-value field recomputes every real logged proposal that used it EXACTLY (newTerm = oldTerm × draft/current, then re-folded the same way TaskScore does), grouped by player turn, showing whether the ranking of that turn's proposals would change. To actually change the constant, edit <code>AiConfigV2.TaskScore.cs</code> by hand, let Unity recompile, then Unity → AI → TaskScore → Calibration Report.</div><div class="tunewrap"><div><div id="tunelistmeta" class="tunelistmeta"></div><div id="tunelist" class="tunelist"></div></div><div id="tunedetail" class="tunedetail"><div class="emptytune">Pick a parameter on the left.</div></div></div></div>
 </section>
 </main>
 <script>
@@ -228,12 +228,6 @@ function renderPipeline(){const d=S.pipeline;
 // writes happen anywhere here — S.tuneSelected just drives which parameter's detail is shown.
 function tuneHighlight(formula,name){return e(formula).replace(new RegExp("AiConfigV2\\."+name,"g"),
  '<span class="const">AiConfigV2.'+name+"</span>")}
-function tuneAffectedRows(p){
- const scen=((S.calib&&S.calib.scenarios)||[]).filter(s=>p.tasksUsing.some(t=>s.name.toLowerCase().includes(t.toLowerCase())||s.family.toLowerCase()===t.toLowerCase()));
- const fromCalib=scen.map(s=>({label:s.name+" ("+s.family+")",before:s.value,src:"Calibration scenario"}));
- const fromLog=((S.pipeline&&S.pipeline.instances)||[]).filter(r=>p.tasksUsing.includes(r.kind)||Object.keys(r.terms||{}).some(t=>p.categories.includes(t)))
-  .slice(0,8).map(r=>({label:"T"+r.turn+" "+r.kind+" "+r.key,before:r.value,src:"Live log ("+r.player+")"}));
- return fromCalib.concat(fromLog)}
 function renderTuneList(){
  // Reacts to the SAME Task filter as Score matrix/categories (top controls bar): a parameter
  // touching a currently-enabled task sorts to the top and stays full-opacity; everything else
@@ -253,7 +247,6 @@ function renderTuneDetail(){
  const p=(S.data.parameters||[]).find(x=>x.name===S.tuneSelected);
  if(!p){$("tunedetail").innerHTML='<div class="emptytune">Pick a parameter on the left to see its formula, who else depends on it, and its current values before any edit.</div>';return}
  const formulas=p.categories.map(name=>{const c=S.data.categories.find(x=>x.name===name);return c&&c.formula?'<div class="muted" style="margin:10px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.05em">'+e(name)+'</div><div class="formula">'+tuneHighlight(c.formula,p.name)+'</div>':''}).join("");
- const affected=tuneAffectedRows(p);
  const warn=p.shared
   ?'<div class="tunewarn">⚠ Shared constant — changing it moves ALL '+p.tasksUsing.length+' tasks that read it, in the same direction, by the same shape: '
    +p.tasksUsing.map(t=>'<span class="badge task">'+e(t)+'</span>').join(" ")
@@ -262,15 +255,66 @@ function renderTuneDetail(){
    ?'<div class="tunewarn ok">✓ Local to '+e(p.families[0])+' — reaches '+p.tasksUsing.length+' task(s) in that family only: '
     +p.tasksUsing.map(t=>'<span class="badge task">'+e(t)+'</span>').join(" ")+'.</div>'
    :'<div class="tunewarn">This constant is not read by any TaskScore slot the scanner traced — check Config parameters for raw usage.</div>';
+ const linearSlots=linearSlotsFor(p);
  $("tunedetail").innerHTML='<h3 style="margin:0 0 4px;font-size:18px">'+e(p.name)+' '+dotTip(p)+'</h3>'
   +'<div class="muted">'+src(p.source,p.line)+' · used by '+p.references+' reference(s) across '+p.tasksUsing.length+' task(s)</div>'
   +warn
   +(formulas||'<p class="muted">No dedicated converter reads this constant by name in TaskScore.cs — check Config parameters for raw usage sites.</p>')
-  +'<div class="tuneedit"><span class="muted">Current value</span><input type="number" step="any" value="'+e(p.value)+'" disabled><span class="muted">→ draft value</span><input type="number" step="any" placeholder="(editing not wired up yet)" disabled><button class="apply" disabled title="Would write this literal into AiConfigV2.TaskScore.cs, wait for Unity to recompile, then re-run Calibration Report">Apply (not yet implemented)</button></div>'
-  +'<h3 style="margin:14px 0 6px;font-size:13px;color:var(--muted);text-transform:uppercase">Affected tasks — before / after</h3>'
-  +(affected.length?'<table class="affected"><thead><tr><th>Task</th><th>Source</th><th>Before</th><th>After</th></tr></thead><tbody>'
-    +affected.map(a=>"<tr><td>"+e(a.label)+"</td><td class=\"muted\">"+e(a.src)+"</td><td><b>"+f1(a.before)+"</b></td><td class=\"after\">— apply to compute —</td></tr>").join("")+"</tbody></table>"
-   :'<p class="muted">No calibration scenario or logged proposal currently exercises this parameter\'s slot(s).</p>')}
+  +'<div class="tuneedit"><span class="muted">Current value</span><b>'+e(p.value)+'</b><span class="muted">→ draft value (preview only, nothing is written anywhere)</span>'
+  +'<input id="tunedraft" type="number" step="any" value="'+e(p.value)+'"'+(linearSlots.length?'':' disabled title="No linear slot to preview — see note below"')+'></div>'
+  +(linearSlots.length?'<div class="muted" style="margin:-6px 0 10px;font-size:11.5px">Exact preview via '+linearSlots.map(s=>"<code>"+e(s)+"</code>").join(", ")+' — this constant is a pure trailing multiplier there, so scaling it scales the logged term by the exact same ratio. Other slot(s) this constant also feeds, if any, are not previewable (see warning above) and are left untouched in the numbers below.</div>'
+   :'<div class="tunewarn">No in-browser preview for this constant: in every slot it feeds, it is combined with something else (a Clamp bound, a denominator, an added term) — scaling it is not a simple ratio of the logged number. Real effect only via Unity → AI → TaskScore → Calibration Report.</div>')
+  +'<div id="tunewhatif"></div>';
+ if($("tunedraft"))$("tunedraft").addEventListener("input",renderTuneWhatIf);
+ renderTuneWhatIf()}
+function linearSlotsFor(p){return p.categories.filter(name=>{const c=S.data.categories.find(x=>x.name===name);return c&&c.linearParams&&c.linearParams.includes(p.name)})}
+// Rescale one logged proposal's terms by ratio=draft/current for every linear slot this
+// constant feeds that the proposal actually used, then re-fold Value the same way TaskScore
+// does (Benefit adds, Cost/Risk/Opportunity subtract — c.sign already encodes which) and carry
+// the same RadarScale through to EffectiveValue, since RadarScale comes from the Radar's desire
+// weights, not from TaskScore constants, so it does not change with this edit.
+function recomputeInstance(inst,linearSlots,ratio){
+ let delta=0,touched=false;
+ linearSlots.forEach(slot=>{
+  if(!inst.terms||!(slot in inst.terms))return;
+  const c=S.data.categories.find(x=>x.name===slot),oldTerm=inst.terms[slot],newTerm=oldTerm*ratio;
+  delta+=(c.sign==="-"?-1:1)*(newTerm-oldTerm);touched=true});
+ const newValue=inst.value+delta;
+ const newEffective=inst.radarScale!=null?newValue*inst.radarScale:inst.effective+delta;
+ return {newValue,newEffective,touched}}
+function rankOf(list,key){return list.slice().sort((a,b)=>b[key]-a[key]).map(x=>x.__id)}
+function renderTuneWhatIf(){
+ const p=(S.data.parameters||[]).find(x=>x.name===S.tuneSelected),input=$("tunedraft");
+ if(!p||!input||input.disabled){if($("tunewhatif"))$("tunewhatif").innerHTML="";return}
+ const draft=parseFloat(input.value);
+ const linearSlots=linearSlotsFor(p);
+ const insts=(S.pipeline&&S.pipeline.instances)||[];
+ if(isNaN(draft)||!insts.length||Math.abs(p.value)<1e-9){
+  $("tunewhatif").innerHTML=insts.length?'<p class="muted">Enter a number.</p>':'<p class="muted">No logged proposals loaded yet (Logs/AiDebug.log has no [AI][V2][TaskScore] lines) — nothing to preview against.</p>';return}
+ const ratio=draft/p.value;
+ // Every instance gets an id and its recompute; unaffected instances keep old==new so they
+ // still take part in the ranking (their neighbours may move around them).
+ const withId=insts.map((inst,i)=>Object.assign({__id:i},inst,recomputeInstance(inst,linearSlots,ratio)));
+ const groups=new Map();
+ withId.forEach(r=>{const k=r.turn+"|"+r.player;if(!groups.has(k))groups.set(k,[]);groups.get(k).push(r)});
+ const changedGroups=[...groups.entries()].filter(([,rows])=>rows.some(r=>r.touched))
+  .sort((a,b)=>{const [ta,pa]=a[0].split("|"),[tb,pb]=b[0].split("|");return (+ta-+tb)||pa.localeCompare(pb)});
+ if(!changedGroups.length){
+  $("tunewhatif").innerHTML='<p class="muted">No logged proposal used '+linearSlots.join("/")+' — nothing to preview in the current log.</p>';return}
+ const blocks=changedGroups.map(([key,rows])=>{
+  const oldRank=new Map(rankOf(rows,"value").map((id,i)=>[id,i+1]));
+  const newRank=new Map(rankOf(rows,"newValue").map((id,i)=>[id,i+1]));
+  const [turn,player]=key.split("|");
+  const sorted=rows.slice().sort((a,b)=>(oldRank.get(a.__id)-oldRank.get(b.__id)));
+  const body=sorted.map(r=>{
+   const or=oldRank.get(r.__id),nr=newRank.get(r.__id),moved=or!==nr;
+   const rankBadge=!moved?'<span class="muted">–</span>':(nr<or?'<span class="plus">▲ '+or+"→"+nr+"</span>":'<span class="minus">▼ '+or+"→"+nr+"</span>");
+   return "<tr"+(r.touched?"":' style="opacity:.55"')+"><td>"+(r.touched?"<b>":"")+e(r.kind)+" "+e(r.key)+(r.touched?"</b>":"")+'</td><td>'+f1(r.value)+(r.touched?" → <b>"+f1(r.newValue)+"</b>":"")+'</td><td>'+f1(r.effective)+(r.touched?" → <b>"+f1(r.newEffective)+"</b>":"")+"</td><td>"+rankBadge+"</td></tr>"}).join("");
+  return '<div class="muted" style="margin:14px 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:.05em">T'+e(turn)+" — "+e(player)+'</div>'
+   +'<table class="affected"><thead><tr><th>Task</th><th>Value</th><th>EffectiveValue</th><th>Rank this turn</th></tr></thead><tbody>'+body+"</tbody></table>"}).join("");
+ $("tunewhatif").innerHTML='<h3 style="margin:14px 0 2px;font-size:13px;color:var(--muted);text-transform:uppercase">What-if — logged proposals, grouped by player turn</h3>'
+  +'<div class="muted" style="font-size:11.5px;margin-bottom:4px">Ratio '+ratio.toFixed(3)+'× · '+changedGroups.length+' turn(s) with at least one affected proposal, sorted by turn. Rows outside the affected slot keep their old numbers but can still change RANK if a neighbour moved past them.</div>'
+  +blocks}
 async function loadTuning(){
  try{S.calib=await (await fetch("/api/calibration?"+Date.now(),{cache:"no-store"})).json()}catch(x){S.calib=null}
  if(!S.pipeline)try{S.pipeline=await (await fetch("/api/task-instances?"+Date.now(),{cache:"no-store"})).json()}catch(x){}

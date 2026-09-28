@@ -185,15 +185,86 @@ def component_sources(lines, i, arg_name, slot):
         return [expr[:100]]
     return []
 
+def top_level_additive(expr):
+    """True if expr has a +/- at paren depth 0 that is NOT a unary sign — i.e. the expression is
+    a SUM of parts, not one product/quotient chain. A constant can only be scaled by a simple
+    ratio (newTerm = oldTerm * draft/current) when it multiplies the WHOLE expression; if the
+    expression adds another part that does not involve the constant, that part would wrongly get
+    rescaled too (or not rescaled at all) by a naive ratio."""
+    depth = 0
+    for i, ch in enumerate(expr):
+        if ch in "([":
+            depth += 1
+        elif ch in ")]":
+            depth -= 1
+        elif ch in "+-" and depth == 0:
+            j = i - 1
+            while j >= 0 and expr[j] == " ":
+                j -= 1
+            prev = expr[j] if j >= 0 else ""
+            if prev in ("", "(", ",", "*", "/", "+", "-", "="):
+                continue  # unary sign, e.g. the "-1f" in a literal — not a binary split
+            return True
+    return False
+
+def linear_params(formula, param_names):
+    """Which of this converter's AiConfigV2 constants are a pure trailing multiplier (or bare
+    pass-through) of the WHOLE return expression — the only shape where the Tuning tab's
+    in-browser what-if preview can rescale a logged term exactly, with no other input needed.
+    Conservative by construction: anything not provably of this shape (a denominator, a Clamp
+    bound, one of several summed parts) is left out, so the preview only ever shows numbers it
+    can prove, never a plausible-looking guess."""
+    matches = list(re.finditer(r"(?:return\s+|=>\s*)([^;]+);", formula, re.S))
+    if not matches:
+        return []
+    expr = matches[-1].group(1).strip()
+    if top_level_additive(expr):
+        return []
+    out = []
+    for name in param_names:
+        occ = list(re.finditer(r"AiConfigV2\." + re.escape(name) + r"\b", expr))
+        if len(occ) != 1:
+            continue
+        m = occ[0]
+        bare = re.sub(r"\s+", "", expr) == "AiConfigV2." + name
+        j = m.start() - 1
+        while j >= 0 and expr[j] in " \t\r\n":
+            j -= 1
+        preceding = expr[j] if j >= 0 else ""
+        if bare or preceding == "*":
+            out.append(name)
+    return out
+
 def method_fragment(text, name):
+    """The exact source of one method — no more, no less. Brace-bodied methods are extracted by
+    counting braces to the matching close, not a flat character window: a flat window silently
+    swallowed whatever method happened to follow in the file, which both corrupted the formula
+    shown to the user and fed the wrong method's constants into linear_params."""
     m = re.search(rf"(?:internal|public|private)\s+static\s+float\s+{re.escape(name)}\s*\(", text)
     if not m: return ""
-    tail = text[m.start():m.start()+1800]
-    semi = tail.find(";")
-    brace = tail.find("{")
-    if "=>" in tail[:max(0, brace) if brace >= 0 else len(tail)] and semi >= 0:
-        return tail[:semi+1]
-    return tail
+    paren_start = text.index("(", m.start())
+    depth, i = 0, paren_start
+    while i < len(text):
+        if text[i] == "(": depth += 1
+        elif text[i] == ")":
+            depth -= 1
+            if depth == 0: break
+        i += 1
+    j = i + 1
+    while j < len(text) and text[j] in " \t\r\n": j += 1
+    if text[j:j+2] == "=>":
+        semi = text.find(";", j)
+        return text[m.start():semi+1] if semi >= 0 else ""
+    if j < len(text) and text[j] == "{":
+        depth, k = 0, j
+        while k < len(text):
+            if text[k] == "{": depth += 1
+            elif text[k] == "}":
+                depth -= 1
+                if depth == 0: break
+            k += 1
+        return text[m.start():k+1]
+    return ""
 
 def payload():
     score = read(SCORE)
@@ -230,11 +301,13 @@ def payload():
                 refs |= set(re.findall(r"AiConfigV2\.(\w+)", frag))
                 frags.append(frag.strip())
         converter_params = [param_map[r] for r in sorted(refs) if r in param_map]
+        formula = "\n\n".join(frags)
         cats.append({"name":name,"property":name,
             "category":property_category(name, code_cats.get(name, "Benefit")),
             "sign":signs.get(name,"?"),"converters":converters,
             "parameters":list(converter_params), "converterParameters":list(converter_params),
-            "formula":"\n\n".join(frags),
+            "formula":formula,
+            "linearParams":linear_params(formula, [p["name"] for p in converter_params]),
             "source":str(SCORE.relative_to(ROOT)).replace("\\","/"),
             "line":line_no(score,m.start()),"usages":[]})
 
