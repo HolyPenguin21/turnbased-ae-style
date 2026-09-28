@@ -367,7 +367,8 @@ namespace Game.EditorTests
             var proposals = new List<MissionProposal>();
 
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
-                new HashSet<int>(), proposals, null);
+                new HashSet<int>(), proposals, null,
+                new Dictionary<MissionIntentKey, string>());
 
             Assert.That(proposals.Count, Is.EqualTo(1));
             MissionProposal p = proposals[0];
@@ -391,7 +392,8 @@ namespace Game.EditorTests
             var proposals = new List<MissionProposal>();
 
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
-                new HashSet<int> { 7 }, proposals, null);
+                new HashSet<int> { 7 }, proposals, null,
+                new Dictionary<MissionIntentKey, string>());
 
             Assert.That(proposals, Is.Empty,
                 "actor contention is the allocator's problem, never a second Attack path");
@@ -407,7 +409,8 @@ namespace Game.EditorTests
 
             var fresh = new List<MissionProposal>();
             AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
-                new HashSet<int>(), fresh, null);
+                new HashSet<int>(), fresh, null,
+                new Dictionary<MissionIntentKey, string>());
             Assert.That(((AttackMissionTarget)fresh[0].Target).OpportunisticStrikeTurn,
                 Is.EqualTo(0),
                 "a fresh objective has taken no strike, and 0 can never equal a real turn");
@@ -416,7 +419,8 @@ namespace Game.EditorTests
             incumbent.Attack.LastOpportunisticStrikeTurn = snap.TurnNumber;
             var carried = new List<MissionProposal>();
             AggressionMissionLayer.AppendAttack(snap, new[] { incumbent },
-                new HashSet<int>(), carried, null);
+                new HashSet<int>(), carried, null,
+                new Dictionary<MissionIntentKey, string>());
 
             Assert.That(((AttackMissionTarget)carried[0].Target).OpportunisticStrikeTurn,
                 Is.EqualTo(snap.TurnNumber),
@@ -511,7 +515,8 @@ namespace Game.EditorTests
             var proposals = new List<MissionProposal>();
 
             AggressionMissionLayer.AppendAttack(snap, new[] { intent },
-                new HashSet<int> { 7 }, proposals, null);
+                new HashSet<int> { 7 }, proposals, null,
+                new Dictionary<MissionIntentKey, string>());
 
             MissionProposal leg = proposals.Find(p => p.Target is AttackMissionTarget t
                 && t.Phase == AttackMissionPhase.Reinforcement);
@@ -534,7 +539,8 @@ namespace Game.EditorTests
             var proposals = new List<MissionProposal>();
 
             AggressionMissionLayer.AppendAttack(snap, new[] { intent },
-                new HashSet<int> { 7 }, proposals, null);
+                new HashSet<int> { 7 }, proposals, null,
+                new Dictionary<MissionIntentKey, string>());
 
             Assert.That(proposals.Exists(p => p.Target is AttackMissionTarget t
                     && t.Phase == AttackMissionPhase.Reinforcement), Is.False,
