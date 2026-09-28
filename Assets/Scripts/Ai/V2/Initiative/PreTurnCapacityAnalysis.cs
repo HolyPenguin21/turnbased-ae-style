@@ -38,6 +38,7 @@ namespace Game.Ai.V2.Initiative
         public readonly int[] Available = new int[4];              // raw stockpile (PlayerRoot.GetResource)
         public readonly int[] IncomePerTurn = new int[4];
         public readonly int[] DeckDemand = new int[4];             // remaining-game resource appetite
+        public readonly int[] CommittedResourceFloor = new int[4]; // already accepted Economy builds; never spent on dice
 
         public static readonly ResourceType[] Types = InitiativeDeckDemand.Types;
 
@@ -68,7 +69,7 @@ namespace Game.Ai.V2.Initiative
         }
 
         public static PreTurnCapacityAnalysis Build(PlayerSetupData player, PlayerRoot root, HexMap map,
-            StartingDeckCatalog deckCatalog)
+            StartingDeckCatalog deckCatalog, IEnumerable<ResourceCost> committedBuildCosts = null)
         {
             var a = new PreTurnCapacityAnalysis { Player = player };
             if (player == null || root == null)
@@ -145,6 +146,21 @@ namespace Game.Ai.V2.Initiative
             {
                 a.Available[i] = Mathf.Max(0, root.GetResource(Types[i]));
                 a.IncomePerTurn[i] = Mathf.Max(0, IncomeProjection.IncomeFor(player, Types[i], map));
+            }
+
+            // A committed build needs its entire H/E/M/T vector. Deck appetite and six-turn
+            // projected income are useful prices, but neither can guarantee this turn's payment.
+            // Protect only physical stock: a commitment already in deficit must not let
+            // initiative deepen that deficit, while income remains available on future turns.
+            if (committedBuildCosts != null)
+            {
+                foreach (ResourceCost cost in committedBuildCosts)
+                {
+                    if (cost == null) continue;
+                    for (int i = 0; i < Types.Length; i++)
+                        a.CommittedResourceFloor[i] = Mathf.Min(a.Available[i],
+                            a.CommittedResourceFloor[i] + Mathf.Max(0, cost.Get(Types[i])));
+                }
             }
             return a;
         }
