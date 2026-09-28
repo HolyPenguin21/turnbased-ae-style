@@ -39,6 +39,7 @@ namespace Game.Ai.V2
     //     resource source put into play) is senior to OTHER builds' EconomyDeferredBuild holds,
     //     which only shield H/E/M/T from non-Economy spending. Every other hold still counts.
     // default == no special authority (the historical behaviour of every other spend).
+    // TurnResourceBook.MayDrawOn is the one place these two rules are applied to claims.
     public readonly struct SpendAuthority
     {
         public readonly string Owner;
@@ -51,8 +52,6 @@ namespace Game.Ai.V2
         }
 
         public bool IsNone => Owner == null && !EconomyCompletesNow;
-        public StrategicReservationReason? IgnoreReason => EconomyCompletesNow
-            ? StrategicReservationReason.EconomyDeferredBuild : (StrategicReservationReason?)null;
         // Identity for per-authority caches (MaterializationPortfolioSolver own-hold add-back).
         public string Key => (Owner ?? "-") + (EconomyCompletesNow ? "|now" : "");
         public override string ToString() => IsNone ? "none" : Key;
@@ -188,15 +187,19 @@ namespace Game.Ai.V2
             }
         }
 
-        // The derived (non-ledger) holds this seam subtracts, exactly as SpendableAp /
-        // SpendableAmount compute them — for ReservationInvariants, not a spend query.
+        // The derived (non-ledger) holds: unpaid air-recovery activation (AP + Energy) and the
+        // next step of continuing Hard operations (AP). TurnResourceBook lists them as claims
+        // beside the ledger rows. `includeContinuation: false` skips the operation scan for a
+        // caller that needs only Energy.
         internal static (float RecoveryAp, int RecoveryEnergy, float ContinuationAp) DerivedHolds(
-            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
+            bool includeContinuation = true)
         {
             if (player == null || root == null || ctx == null)
                 return (0f, 0, 0f);
             (float ap, int energy) = OutstandingRecoveryActivation(player, root, ctx);
-            return (ap, energy, OutstandingOperationContinuationAp(player, root, ctx, ap));
+            return (ap, energy, includeContinuation
+                ? OutstandingOperationContinuationAp(player, root, ctx, ap) : 0f);
         }
 
         // The Energy that protection subtracts, for a consumer that nets its own pool from a
@@ -217,56 +220,25 @@ namespace Game.Ai.V2
             float unpaidRecoveryCost) =>
             Mathf.Max(0f, ownerAwareSpendable - Mathf.Max(0f, unpaidRecoveryCost));
 
+        // Every Spendable* query below is TurnResourceBook.Free under a SpendAuthority: the
+        // caller's own hold (excludeOwner) and, for a build completing now, other builds'
+        // deferred holds are the only claims it may draw on.
         internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, string excludeOwner = null)
-        {
-            if (root == null)
-                return 0f;
-            if (player == null || ctx == null)
-                return Mathf.Max(0f, root.ActionPoints);
-            float strategic = excludeOwner == null
-                ? StrategicResourceReservationLedger.SpendableAp(
-                    player, ctx.TurnNumber, root.ActionPoints)
-                : StrategicResourceReservationLedger.SpendableExcludingOwner(
-                    player, ctx.TurnNumber, StrategicReservedResource.ActionPoints,
-                    root.ActionPoints, excludeOwner);
-            float recoveryAp = OutstandingRecoveryActivation(player, root, ctx).Ap;
-            float continuationAp = OutstandingOperationContinuationAp(player, root, ctx, recoveryAp);
-            return Mathf.Max(0f, strategic - recoveryAp - continuationAp);
-        }
+            AiTurnContext ctx, string excludeOwner = null) =>
+            SpendableAp(player, root, ctx, new SpendAuthority(excludeOwner, false));
 
-        // AP under an authority. EconomyDeferredBuild never holds AP (the ledger clamps it to 0),
-        // so only the own-owner exclusion changes the AP pool.
         internal static float SpendableAp(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, SpendAuthority authority) =>
-            SpendableAp(player, root, ctx, authority.Owner);
+            TurnResourceBook.Free(player, root, ctx, StrategicReservedResource.ActionPoints, authority);
 
+        // The canonical primitive: how much of resource `t` may actually be spent this turn.
         internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ResourceType t, SpendAuthority authority) =>
-            SpendableAmount(player, root, ctx, t, authority.Owner, authority.IgnoreReason);
+            AiTurnContext ctx, ResourceType t, SpendAuthority authority = default) =>
+            TurnResourceBook.Free(player, root, ctx, StrategicResourceReservationLedger.Map(t), authority);
 
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost, SpendAuthority authority) =>
-            FitsSpendable(player, root, ctx, cost, authority.Owner, authority.IgnoreReason);
-
-        // The canonical primitive: how much of resource `t` may actually be spent this turn.
-        internal static float SpendableAmount(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
-            ResourceType t, string excludeOwner = null,
-            StrategicReservationReason? ignoreReason = null)
-        {
-            if (root == null)
-                return 0f;
-            if (player == null || ctx == null)
-                return Mathf.Max(0f, root.GetResource(t));
-            StrategicReservedResource srr = StrategicResourceReservationLedger.Map(t);
-            float strategic = excludeOwner == null && ignoreReason == null
-                ? StrategicResourceReservationLedger.Spendable(player, ctx.TurnNumber, srr, root.GetResource(t))
-                : StrategicResourceReservationLedger.SpendableExcludingOwner(
-                    player, ctx.TurnNumber, srr, root.GetResource(t), excludeOwner, ignoreReason);
-            float recovery = t == ResourceType.Energy
-                ? OutstandingRecoveryActivation(player, root, ctx).Energy : 0f;
-            return SpendableWithRecovery(strategic, recovery);
-        }
+            FitsSpendable(player, root, ctx, cost, authority);
 
         // spec §6 — a spend candidate must fit SPENDABLE persistent resources, not just raw stock.
         // `excludeOwner` drops the caller's OWN reservation (by its EXACT Owner
@@ -274,7 +246,7 @@ namespace Game.Ai.V2
         // against itself and two owners sharing a Reason can't shadow each other's revalidation.
         internal static bool FitsSpendableResources(PlayerSetupData player, PlayerRoot root,
             AiTurnContext ctx, ResourceCost cost, string excludeOwner = null)
-            => FitsSpendable(player, root, ctx, cost, excludeOwner, ignoreReason: null);
+            => FitsSpendable(player, root, ctx, cost, new SpendAuthority(excludeOwner, false));
 
         // The Economy-completion gate: an Economy build that finishes THIS turn (Provisioning's
         // completion stage, its Execution re-check, or a Phase A on-hex build). Every other
@@ -285,12 +257,10 @@ namespace Game.Ai.V2
         // still count, so two builds completing in the same turn are ordered by whoever claims first.
         internal static bool FitsSpendableForEconomyCompletion(PlayerSetupData player,
             PlayerRoot root, AiTurnContext ctx, ResourceCost cost, string owner)
-            => FitsSpendable(player, root, ctx, cost, owner,
-                StrategicReservationReason.EconomyDeferredBuild);
+            => FitsSpendable(player, root, ctx, cost, new SpendAuthority(owner, true));
 
         private static bool FitsSpendable(PlayerSetupData player, PlayerRoot root,
-            AiTurnContext ctx, ResourceCost cost, string excludeOwner,
-            StrategicReservationReason? ignoreReason)
+            AiTurnContext ctx, ResourceCost cost, SpendAuthority authority)
         {
             if (cost == null)
                 return true;
@@ -299,7 +269,7 @@ namespace Game.Ai.V2
                 int need = cost.Get(t);
                 if (need <= 0)
                     continue;
-                if (SpendableAmount(player, root, ctx, t, excludeOwner, ignoreReason)
+                if (SpendableAmount(player, root, ctx, t, authority)
                     + AiConfigV2.allocatorSliceEpsilon < need)
                     return false;
             }

@@ -20,16 +20,18 @@ namespace Game.EditorTests
                 ExpirationStage = StrategicReservationExpiry.EndOfTurn,
             };
 
+        private static ResourceClaim Claim(ResourceClaimKind kind, StrategicReservedResource resource,
+            float amount, string owner = "o") => new ResourceClaim(owner, kind, resource, amount);
+
         [Test]
         public void DeferredBuildSavingBeyondStock_IsNotACommittedViolation()
         {
-            var rows = new[]
+            var claims = new[]
             {
-                Row(StrategicReservationReason.EconomyDeferredBuild,
-                    StrategicReservedResource.Materials, 10f),
+                Claim(ResourceClaimKind.EconomyDeferred, StrategicReservedResource.Materials, 10f),
             };
 
-            float[] held = ReservationInvariants.CommittedHeld(rows, derived: null);
+            float[] held = ReservationInvariants.CommittedHeld(claims);
 
             Assert.That(ReservationInvariants.Uncovered(held, V(materials: 4f)), Is.Empty,
                 "a deferred build saves up its full cost; exceeding the stock is its normal state");
@@ -38,15 +40,13 @@ namespace Game.EditorTests
         [Test]
         public void CompletionAndReactionHoldsBeyondStock_AreUncovered()
         {
-            var rows = new[]
+            var claims = new[]
             {
-                Row(StrategicReservationReason.EconomyBuildCompletion,
-                    StrategicReservedResource.ActionPoints, 3f, "build"),
-                Row(StrategicReservationReason.StrategicReactionPass,
-                    StrategicReservedResource.ActionPoints, 2f, "reaction"),
+                Claim(ResourceClaimKind.EconomyCompletion, StrategicReservedResource.ActionPoints, 3f, "build"),
+                Claim(ResourceClaimKind.Reaction, StrategicReservedResource.ActionPoints, 2f, "reaction"),
             };
 
-            float[] held = ReservationInvariants.CommittedHeld(rows, derived: null);
+            float[] held = ReservationInvariants.CommittedHeld(claims);
 
             Assert.That(ReservationInvariants.Uncovered(held, V(ap: 4f)),
                 Is.EqualTo(new[] { StrategicReservedResource.ActionPoints }));
@@ -54,15 +54,16 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void DerivedRecoveryHold_CountsTowardCommittedCoverage()
+        public void DerivedRecoveryClaim_CountsTowardCommittedCoverage()
         {
-            var rows = new[]
+            var claims = new[]
             {
-                Row(StrategicReservationReason.EconomyBuildCompletion,
-                    StrategicReservedResource.Energy, 2f),
+                Claim(ResourceClaimKind.EconomyCompletion, StrategicReservedResource.Energy, 2f),
+                Claim(ResourceClaimKind.AirRecovery, StrategicReservedResource.Energy, 2f,
+                    TurnResourceBook.AirRecoveryOwner),
             };
 
-            float[] held = ReservationInvariants.CommittedHeld(rows, derived: V(energy: 2f));
+            float[] held = ReservationInvariants.CommittedHeld(claims);
 
             Assert.That(ReservationInvariants.Uncovered(held, V(energy: 3f)),
                 Is.EqualTo(new[] { StrategicReservedResource.Energy }));

@@ -15,12 +15,12 @@ namespace Game.Ai.V2
     //  so a hold can be eaten on the N-th re-entry by a path no single diff review traces. These
     //  checks run at settled step boundaries and name the step that broke a rule:
     //
-    //    · CommittedHoldUncovered — the holds that must be honoured THIS turn exceed the physical
-    //      stock: explicit rows of every reason except EconomyDeferredBuild, plus the derived holds
-    //      StrategicSpendability subtracts (unpaid air-recovery activation, continuing Hard
-    //      operations). EconomyDeferredBuild is excluded on purpose: it holds a build's full cost
-    //      while the stock is still being saved up, so it may legitimately exceed it. Reported
-    //      once when a resource BECOMES uncovered, labelled with the step that did it.
+    //    · CommittedHoldUncovered — the claims that must be honoured THIS turn exceed the physical
+    //      stock: every TurnResourceBook claim except EconomyDeferred (ledger rows plus the derived
+    //      air-recovery and operation-continuation claims). EconomyDeferred is excluded on purpose:
+    //      it holds a build's full cost while the stock is still being saved up, so it may
+    //      legitimately exceed it. Reported once when a resource BECOMES uncovered, labelled with
+    //      the step that did it.
     //    · SpendExceededSpendable — one action with no spend authority (a Phase B tempo action)
     //      spent more of a resource than was spendable for it immediately before it ran.
     //    · DeferredApHold / NonPositiveHold — rows the ledger itself must never keep.
@@ -72,23 +72,19 @@ namespace Game.Ai.V2
         // Match-start reset (CitadelSetupController), alongside the other V2 registries.
         internal static void ClearAll() => ByPlayer.Clear();
 
-        // A hold that must be honoured this turn. A reason added later counts as committed until
+        // A claim that must be honoured this turn. A kind added later counts as committed until
         // it is explicitly classified otherwise.
-        internal static bool IsCommitted(StrategicReservationReason reason) =>
-            reason != StrategicReservationReason.EconomyDeferredBuild;
+        internal static bool IsCommitted(ResourceClaimKind kind) =>
+            kind != ResourceClaimKind.EconomyDeferred;
 
         // ---- pure rules (vectors are indexed by (int)StrategicReservedResource) ----------------
 
-        internal static float[] CommittedHeld(IEnumerable<StrategicResourceReservation> rows,
-            float[] derived)
+        internal static float[] CommittedHeld(IEnumerable<ResourceClaim> claims)
         {
             var held = new float[AllResources.Length];
-            foreach (StrategicResourceReservation r in rows ?? Enumerable.Empty<StrategicResourceReservation>())
-                if (r != null && IsCommitted(r.Reason))
-                    held[(int)r.Resource] += Mathf.Max(0f, r.Amount);
-            if (derived != null)
-                for (int i = 0; i < held.Length; i++)
-                    held[i] += Mathf.Max(0f, derived[i]);
+            foreach (ResourceClaim c in claims ?? Enumerable.Empty<ResourceClaim>())
+                if (IsCommitted(c.Kind))
+                    held[(int)c.Resource] += Mathf.Max(0f, c.Amount);
             return held;
         }
 
@@ -138,9 +134,8 @@ namespace Game.Ai.V2
             var v = new float[AllResources.Length];
             if (root == null)
                 return v;
-            v[(int)StrategicReservedResource.ActionPoints] = root.ActionPoints;
-            foreach (ResourceType t in ResourceBundle.All)
-                v[(int)StrategicResourceReservationLedger.Map(t)] = root.GetResource(t);
+            foreach (StrategicReservedResource res in AllResources)
+                v[(int)res] = TurnResourceBook.Physical(root, res);
             return v;
         }
 
@@ -172,13 +167,9 @@ namespace Game.Ai.V2
             foreach ((ReservationInvariantRule rule, StrategicResourceReservation row) in Structural(rows))
                 Report(player, turn, rule, row.Resource, label, row.ToString());
 
-            (float recoveryAp, int recoveryEnergy, float continuationAp) =
-                StrategicSpendability.DerivedHolds(player, root, ctx);
-            var derived = new float[AllResources.Length];
-            derived[(int)StrategicReservedResource.ActionPoints] = recoveryAp + continuationAp;
-            derived[(int)StrategicReservedResource.Energy] = recoveryEnergy;
+            List<ResourceClaim> claims = TurnResourceBook.Claims(player, root, ctx);
             float[] physical = Physical(root);
-            float[] held = CommittedHeld(rows, derived);
+            float[] held = CommittedHeld(claims);
             List<StrategicReservedResource> uncovered = Uncovered(held, physical);
             foreach (StrategicReservedResource res in AllResources)
             {
@@ -188,10 +179,8 @@ namespace Game.Ai.V2
                 if (!now || was)
                     continue;
                 Report(player, turn, ReservationInvariantRule.CommittedHoldUncovered, res, label,
-                    $"committed {F(held[(int)res])} > stock {F(physical[(int)res])}"
-                    + $" (recoveryAp {F(recoveryAp)} recoveryEnergy {recoveryEnergy}"
-                    + $" continuationAp {F(continuationAp)};"
-                    + $" {StrategicResourceReservationLedger.DebugLine(player, turn)})");
+                    $"committed {F(held[(int)res])} > stock {F(physical[(int)res])} (claims ["
+                    + string.Join(", ", claims.Where(c => c.Resource == res)) + "])");
             }
         }
 

@@ -332,7 +332,15 @@ namespace Game.Ai.V2
             player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Count > 0;
 
-        // Detached copies of this turn's rows — an inspection primitive for ReservationInvariants,
+        // This turn's live rows, for TurnResourceBook, which copies each value into a claim at
+        // once. Hot path (every spendability query): no copy here, and never hold on to the list.
+        internal static IReadOnlyList<StrategicResourceReservation> LiveRows(PlayerSetupData player,
+            int turn) =>
+            player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
+                ? e.Reservations
+                : (IReadOnlyList<StrategicResourceReservation>)System.Array.Empty<StrategicResourceReservation>();
+
+        // Detached copies of this turn's rows — an inspection primitive for tests and diagnostics,
         // never a spend query.
         internal static IReadOnlyList<StrategicResourceReservation> Rows(PlayerSetupData player, int turn)
         {
