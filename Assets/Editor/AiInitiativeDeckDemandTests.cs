@@ -61,6 +61,41 @@ namespace Game.EditorTests
 
             Assert.That(demand, Is.EqualTo(new[] { 0, 0, 0, 0 }));
         }
+        [Test]
+        public void FundingPreservesEachResourceOfAnAcceptedBuild()
+        {
+            // An accepted Concord Base costs 3H/2E/1M/2T. Other resources may still fund
+            // initiative; neither two affordable dice nor the greedy unit choice may eat the
+            // exact vector needed to complete that build.
+            var analysis = new PreTurnCapacityAnalysis();
+            int[] available = { 4, 3, 3, 4 };
+            int[] committed = { 3, 2, 1, 2 };
+            for (int i = 0; i < available.Length; i++)
+            {
+                analysis.Available[i] = available[i];
+                analysis.CommittedResourceFloor[i] = committed[i];
+            }
+
+            InitiativeFundingResult result = InitiativeFundingOptimizer.Plan(analysis, 0, 2);
+            Assert.That(result.Feasible, Is.True);
+            Assert.That(result.PaymentUnits.Count, Is.EqualTo(3));
+            for (int i = 0; i < available.Length; i++)
+            {
+                int paid = 0;
+                foreach (ResourceType unit in result.PaymentUnits)
+                    if (unit == InitiativeDeckDemand.Types[i]) paid++;
+                Assert.That(available[i] - paid, Is.GreaterThanOrEqualTo(committed[i]),
+                    $"Committed resource {InitiativeDeckDemand.Types[i]} was spent.");
+            }
+
+            var noSurplus = new PreTurnCapacityAnalysis();
+            for (int i = 0; i < available.Length; i++)
+            {
+                noSurplus.Available[i] = committed[i];
+                noSurplus.CommittedResourceFloor[i] = committed[i];
+            }
+            Assert.That(InitiativeFundingOptimizer.Plan(noSurplus, 0, 1).Feasible, Is.False);
+        }
     }
 }
 #endif

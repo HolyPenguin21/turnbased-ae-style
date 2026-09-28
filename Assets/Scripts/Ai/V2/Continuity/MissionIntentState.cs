@@ -185,6 +185,11 @@ namespace Game.Ai.V2
         private static readonly Dictionary<PlayerSetupData, MissionIntentState> ByPlayer =
             new Dictionary<PlayerSetupData, MissionIntentState>();
 
+        // Read-only pre-turn access: initiative may inspect existing commitments without
+        // creating a continuity state or advancing any of its clocks.
+        public static MissionIntentState Peek(PlayerSetupData player) =>
+            player != null && ByPlayer.TryGetValue(player, out MissionIntentState s) ? s : null;
+
         public static MissionIntentState GetOrCreate(PlayerSetupData player)
         {
             if (player == null)

@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
@@ -35,7 +36,19 @@ namespace Game.Ai.V2.Initiative
                     opponentDice.Add(Mathf.Clamp(est, InitiativeRules.BaseDice, InitiativeRules.MaxTotalDice));
                 }
 
-                PreTurnCapacityAnalysis analysis = PreTurnCapacityAnalysis.Build(p, root, map, deckCatalog);
+                // Only already accepted, still-held Economy builds are hard commitments.
+                // The canonical Continuity predicate owns validity of the site lease; merely
+                // owning an unselected card or a transient Phase A demand is not a commitment.
+                AiHandData hand = AiHandRegistry.Peek(p);
+                IEnumerable<ResourceCost> committedBuildCosts = MissionIntentRegistry.Peek(p)?.All
+                    .Where(MissionContinuityLayer.IsLiveEconomyBuild)
+                    .Where(i => i.Economy.BuildResourceCost != null
+                        && (i.Economy.Kind != EconomyTaskKind.FoundBase
+                            || (i.Economy.BuildCard != null
+                                && hand?.Hand?.Contains(i.Economy.BuildCard) == true)))
+                    .Select(i => i.Economy.BuildResourceCost);
+                PreTurnCapacityAnalysis analysis = PreTurnCapacityAnalysis.Build(
+                    p, root, map, deckCatalog, committedBuildCosts);
                 InitiativePlan plan = InitiativePlanner.Plan(analysis, opponentDice);
                 planned.Add((p, root, plan));
                 string bottleneck = InitiativeBottleneckDiagnostics.Describe(p, analysis);
@@ -45,6 +58,7 @@ namespace Game.Ai.V2.Initiative
                     + $"turnOrderPressure={analysis.TurnOrderPressure:0.00}, bottleneck={bottleneck}, "
                     + $"armies={analysis.ActionableFieldArmyCount} power={analysis.ActionableMilitaryPower:0.0} apCards={analysis.ApCostingActionsAvailable}, "
                     + $"avail H/E/M/T={analysis.Available[0]}/{analysis.Available[1]}/{analysis.Available[2]}/{analysis.Available[3]}, "
+                    + $"committed H/E/M/T={analysis.CommittedResourceFloor[0]}/{analysis.CommittedResourceFloor[1]}/{analysis.CommittedResourceFloor[2]}/{analysis.CommittedResourceFloor[3]}, "
                     + $"oppDice=[{string.Join(",", opponentDice)}] => plan: {plan.Rationale}");
             }
 
