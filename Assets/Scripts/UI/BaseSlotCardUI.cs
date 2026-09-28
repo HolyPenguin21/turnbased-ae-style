@@ -31,6 +31,9 @@ namespace Game.UI
         // The name's background plaque (nameText's parent) — hidden entirely for a locked or
         // empty cell so no empty banner shows behind the placeholder art.
         [SerializeField] private GameObject titleRoot;
+        // Abilities line, kept separate from nameText — same split as ArmyUnitCardUI's
+        // nameText/moveText. Hidden when there's nothing to show. Optional prefab ref.
+        [SerializeField] private TMP_Text skillsText;
         [SerializeField] private TMP_Text statusText;
         [SerializeField] private Button improveButton;
         [SerializeField] private Button repairButton;
@@ -96,11 +99,15 @@ namespace Game.UI
             GameConfig config = modal.GameConfig;
             string baseAbilities = config != null ? config.FormatAbilities(building.Abilities) : string.Join(" ", building.Abilities);
             string facilityAbilities = _facility != null ? (config != null ? config.FormatAbilities(_facility.Abilities) : string.Join(" ", _facility.Abilities)) : string.Empty;
-            _defaultNameText = isBaseCell
-                ? building.Name + (!string.IsNullOrEmpty(baseAbilities) ? "\n" + baseAbilities : string.Empty)
-                : _facility != null ? _facility.Name + (!string.IsNullOrEmpty(facilityAbilities) ? "\n" + facilityAbilities : string.Empty) : string.Empty;
+            _defaultNameText = isBaseCell ? building.Name : _facility != null ? _facility.Name : string.Empty;
+            string abilities = isBaseCell ? baseAbilities : facilityAbilities;
             if (nameText != null)
                 nameText.text = _defaultNameText;
+            if (skillsText != null)
+            {
+                skillsText.text = abilities;
+                skillsText.gameObject.SetActive(!string.IsNullOrEmpty(abilities));
+            }
             titleRoot?.SetActive(_occupied);
             if (artImage != null)
             {
