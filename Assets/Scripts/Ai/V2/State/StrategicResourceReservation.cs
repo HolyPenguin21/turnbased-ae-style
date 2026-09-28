@@ -332,6 +332,19 @@ namespace Game.Ai.V2
             player != null && ByPlayer.TryGetValue(player, out Entry e) && e.Turn == turn
             && e.Reservations.Count > 0;
 
+        // Detached copies of this turn's rows — an inspection primitive for ReservationInvariants,
+        // never a spend query.
+        internal static IReadOnlyList<StrategicResourceReservation> Rows(PlayerSetupData player, int turn)
+        {
+            if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
+                return System.Array.Empty<StrategicResourceReservation>();
+            return e.Reservations.Select(r => new StrategicResourceReservation
+            {
+                Owner = r.Owner, Reason = r.Reason, Resource = r.Resource,
+                Amount = r.Amount, ExpirationStage = r.ExpirationStage,
+            }).ToList();
+        }
+
         // spec §8 — nothing may survive turn end. Called at the very end of the AI turn: logs and
         // force-clears anything still standing (a leak — an owner that never released).
         public static void AssertClearAtTurnEnd(PlayerSetupData player, int turn)
@@ -342,6 +355,7 @@ namespace Game.Ai.V2
             {
                 AiDebugLog.Write($"[AI][V2][ERROR] reservation leak at turn end — [{DebugLine(player, turn)}] "
                     + "not released by its owner; force-clearing");
+                ReservationInvariants.RecordLeakAtTurnEnd(player, turn, DebugLine(player, turn));
                 e.Reservations.Clear();
             }
         }

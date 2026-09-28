@@ -179,6 +179,7 @@ namespace Game.Ai.V2
             StrategicPhaseResult phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
                 ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
                 radar: radar, deferFreshZeroRadar: true);
+            ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
 
             // S4. Analysis owns refresh granularity. The existing AiMapMemory revision decides
             //     whether honest knowledge/map facts changed; action kind is not used as a proxy.
@@ -431,6 +432,8 @@ namespace Game.Ai.V2
                         economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
                         deferFreshZeroRadar: true);
                     phaseA.Accumulate(followup);
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"phaseA reentry axes={string.Join(",", dirtyAxes)}");
                     if (followup.StateChanged)
                     {
                         snapshot = WorldAnalysis.RefreshStrategicKnowledge(
@@ -573,6 +576,8 @@ namespace Game.Ai.V2
                         WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                             beforeRebase, afterRebase, null);
                         settledSteps++;
+                        ReservationInvariants.CheckBoundary(player, root, ctx,
+                            $"step {settledSteps} aviation-rebase #{rebaseWing.Id}");
                         TakeTypedTriggers(out StrategicInvalidationReason rebaseOperationalReasons,
                             out StrategicInvalidationReason rebaseStrategicReasons,
                             out HashSet<DesireAxis> rebaseDirtyAxes);
@@ -619,6 +624,8 @@ namespace Game.Ai.V2
                         WorldAnalysis.PublishStepObservationDelta(player, ctx.TurnNumber,
                             beforeRecovery, afterRecovery, null);
                         settledSteps++;
+                        ReservationInvariants.CheckBoundary(player, root, ctx,
+                            $"step {settledSteps} recovery #{recovery.Id}");
                         bool recoveryProgress = recoveryResult.Mutated;
                         TakeTypedTriggers(out StrategicInvalidationReason recoveryOperationalReasons,
                             out StrategicInvalidationReason recoveryStrategicReasons,
@@ -874,6 +881,8 @@ namespace Game.Ai.V2
                         player, root, hand, ctx);
 
                     settledSteps++;
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"step {settledSteps} task={selectedKey}");
                     bool progressed = stepResults.Any(er =>
                         er != null && er.Outcome.StateChanged);
                     TakeTypedTriggers(out StrategicInvalidationReason operationalReasons,
@@ -953,6 +962,8 @@ namespace Game.Ai.V2
                     yield return StrategicManager.UseSurplus(snapshot, player, root, hand, ctx,
                         postCommitments, phaseB.Reservation ?? phaseA.Reservation,
                         phaseBRound, reconObjectives);
+                    ReservationInvariants.CheckBoundary(player, root, ctx,
+                        $"phaseB round {managementRound + 1}");
                     snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                         snapshot, player, root, hand, ctx);
                     WorldAnalysis.StepObservationStamp afterManagement =
@@ -1144,6 +1155,7 @@ namespace Game.Ai.V2
             var housekeeping = new HousekeepingResult();
             yield return HousekeepingManager.RunHousekeeping(
                 snapshot, player, root, ctx, postCommitments, housekeeping, phaseB.Reservation);
+            ReservationInvariants.CheckBoundary(player, root, ctx, "housekeeping");
             if (housekeeping.StateChanged)
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(
                     snapshot, player, root, hand, ctx);
@@ -1188,6 +1200,7 @@ namespace Game.Ai.V2
             StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
                 StrategicReservationExpiry.EndOfTurn);
             StrategicResourceReservationLedger.AssertClearAtTurnEnd(player, ctx.TurnNumber);
+            ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
             yield return null;

@@ -188,6 +188,17 @@ namespace Game.Ai.V2
             }
         }
 
+        // The derived (non-ledger) holds this seam subtracts, exactly as SpendableAp /
+        // SpendableAmount compute them — for ReservationInvariants, not a spend query.
+        internal static (float RecoveryAp, int RecoveryEnergy, float ContinuationAp) DerivedHolds(
+            PlayerSetupData player, PlayerRoot root, AiTurnContext ctx)
+        {
+            if (player == null || root == null || ctx == null)
+                return (0f, 0, 0f);
+            (float ap, int energy) = OutstandingRecoveryActivation(player, root, ctx);
+            return (ap, energy, OutstandingOperationContinuationAp(player, root, ctx, ap));
+        }
+
         // The Energy that protection subtracts, for a consumer that nets its own pool from a
         // different base (ResourceAllocator funds Economy builds against the SAME pool
         // FitsSpendableForEconomyCompletion checks them with).
