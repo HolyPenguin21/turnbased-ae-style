@@ -60,7 +60,8 @@ namespace Game.Ai.V2
 
         public static List<MissionProposal> Propose(WorldSnapshot snap, DesireBreakdown breakdown,
             IReadOnlyList<MissionIntent> activeIntents,
-            IReadOnlyList<AggressionObjective> frozenObjectives, AiTurnContext ctx = null)
+            IReadOnlyList<AggressionObjective> frozenObjectives, AiTurnContext ctx = null,
+            IDictionary<MissionIntentKey, string> deferredThisPass = null)
         {
             var proposals = new List<MissionProposal>();
             if (snap?.Self == null || breakdown == null)
@@ -140,10 +141,14 @@ namespace Game.Ai.V2
                         RaidCandidate? sup = ReinforcementCandidate(snap, intent, committed);
                         if (sup.HasValue) incumbents.Add(sup.Value);
                         else
+                        {
+                            if (deferredThisPass != null)
+                                deferredThisPass[intent.IntentKey] = "raid_waiting_for_support";
                             AiDebugLog.WriteDeduped(intent.IntentKey.ToString(),
                                 $"[AI][V2]   raid mission — HOLD {intent.IntentKey}: primary "
                                 + $"#{intent.Raid.PrimaryArmyId} waits in place; no support army assigned yet "
                                 + "(Aggression demand owns the request)");
+                        }
                         continue;
                     }
 
@@ -153,6 +158,8 @@ namespace Game.Ai.V2
                     {
                         if (!intent.Raid.OperationStarted)
                         {
+                            if (deferredThisPass != null)
+                                deferredThisPass[intent.IntentKey] = "raid_target_no_fresh_opportunity_before_start";
                             AiDebugLog.Write($"[AI][V2]   raid mission — DEFER {intent.IntentKey}: target has no fresh opportunity read and operation never started");
                             continue;
                         }
@@ -246,10 +253,10 @@ namespace Game.Ai.V2
                 AiDebugLog.WriteDeduped("none",
                     $"[AI][V2]   raid mission — NONE: {objectives.Count} frozen objective(s), no executable candidate survived beam/materialisation");
 
-            AppendActiveDefence(snap, activeIntents, committed, proposals);
+            AppendActiveDefence(snap, activeIntents, committed, proposals, deferredThisPass);
             // ATK §40 — Attack is a peer lane of the same Aggression planner, appended through the
             // same one entry point; it is never orchestrated separately (§81).
-            AppendAttack(snap, activeIntents, committed, proposals, ctx);
+            AppendAttack(snap, activeIntents, committed, proposals, ctx, deferredThisPass);
             return proposals;
         }
 
@@ -260,7 +267,8 @@ namespace Game.Ai.V2
         // convoy, no cross-hex gather, no borrowed offensive actor.
         private static void AppendActiveDefence(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ISet<int> committed,
-            List<MissionProposal> proposals)
+            List<MissionProposal> proposals,
+            IDictionary<MissionIntentKey, string> deferredThisPass)
         {
             // A Return already under way is finished by its own army, whatever became of the
             // threat that started it. Lifecycle work of a Hard obligation: neutral intrinsic score.
@@ -318,6 +326,8 @@ namespace Game.Ai.V2
                         AppendActiveDefenceIntercept(snap, objective, response, incumbent, proposals);
                         break;
                     case ActiveDefenceResponseKind.Defer:
+                        if (incumbent != null && deferredThisPass != null)
+                            deferredThisPass[incumbent.IntentKey] = response.Reason ?? "active_defence_deferred";
                         AiDebugLog.WriteDeduped(objective.Target.EnemyArmyId.ToString(),
                             $"[AI][V2][ActiveDefence][Admission] decision=DEFER enemy={objective.Target.EnemyArmyId} "
                             + $"reason={response.Reason}");
