@@ -122,28 +122,15 @@ namespace Game.Ai.V2
             AiDebugLog.Write($"[AI][V2] reservation + {r}; active [{DebugLine(player, turn)}]");
         }
 
+        // Σ of this turn's rows for one resource — an inspection primitive (tests, diagnostics).
+        // How much a spender may use is TurnResourceBook.Free, never this.
         public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res)
-            => Active(player, turn, res, (string)null);
-
-        // `ignoreOwner` excludes a caller's OWN reservation from the sum by
-        // its EXACT Owner key (not by the shared Reason), so a pass can re-check "would this still be
-        // affordable if MY hold weren't there" without tearing its reservation down (which would let
-        // another action grab the freed resource), AND two reaction owners that share
-        // Reason=StrategicReactionPass cannot shadow each other's revalidation. Used by the reaction
-        // feasibility probe / re-probe (StrategicReactionPass §P1).
-        // `ignoreReason` additionally drops every row of that reason, whoever owns it. Its one
-        // legitimate use is StrategicSpendability.FitsSpendableForEconomyCompletion: a build that
-        // completes NOW is senior to other builds' EconomyDeferredBuild holds, which by definition
-        // cannot complete this turn and exist only to shield H/E/M/T from non-Economy spending.
-        public static float Active(PlayerSetupData player, int turn, StrategicReservedResource res,
-            string ignoreOwner, StrategicReservationReason? ignoreReason = null)
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return 0f;
             float sum = 0f;
             foreach (StrategicResourceReservation r in e.Reservations)
-                if (r.Resource == res && (ignoreOwner == null || r.Owner != ignoreOwner)
-                    && (ignoreReason == null || r.Reason != ignoreReason.Value))
+                if (r.Resource == res)
                     sum += Mathf.Max(0f, r.Amount);
             return sum;
         }
@@ -226,23 +213,8 @@ namespace Game.Ai.V2
                 .Distinct().OrderBy(owner => owner).ToList();
         }
 
-        internal static float HoldForOwner(PlayerSetupData player, int turn, string owner,
-            StrategicReservationReason reason, StrategicReservedResource resource)
-        {
-            if (player == null || string.IsNullOrEmpty(owner)
-                || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
-                return 0f;
-            return e.Reservations.Where(r => r.Owner == owner && r.Reason == reason
-                    && r.Resource == resource)
-                .Sum(r => Mathf.Max(0f, r.Amount));
-        }
-
         internal static IReadOnlyList<string> CompletionOwners(PlayerSetupData player, int turn) =>
             OwnersWithReason(player, turn, StrategicReservationReason.EconomyBuildCompletion);
-
-        internal static float CompletionForOwner(PlayerSetupData player, int turn, string owner,
-            StrategicReservedResource resource) =>
-            HoldForOwner(player, turn, owner, StrategicReservationReason.EconomyBuildCompletion, resource);
 
         public static bool HasOwnerReason(PlayerSetupData player, int turn, string owner,
             StrategicReservationReason reason) =>

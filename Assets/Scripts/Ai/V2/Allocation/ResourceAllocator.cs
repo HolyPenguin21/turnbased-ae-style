@@ -533,39 +533,24 @@ namespace Game.Ai.V2
             }
             alloc.LockedClaim = new ResourceVector(lockedTotal);
 
-            // A completion reservation is still part of the physical AP pool. Credit only the
-            // portion already claimed by its own Economy mission; the rest must remain available
-            // to that owner alone. Other reservation reasons have no allocator mission owner.
+            // AP a candidate may still take: the pool minus everything already allocated minus the
+            // AP holds it may not draw on (TurnResourceBook.Outstanding). An Economy owner's hold is
+            // netted by what its own missions already drew in this pack, so those units are not
+            // subtracted twice; the candidate's own hold is its to use. With no AP hold at all the
+            // pack budget alone bounds the candidate.
             float ApAvailableFor(MissionProposal candidate)
             {
-                float allocated = lockedTotal + alloc.Funded.Sum(f => f.Tentative.Ap);
-                float held = StrategicResourceReservationLedger.Active(_player, turn,
-                    StrategicReservedResource.ActionPoints);
-                if (held <= eps)
+                List<ResourceClaim> apClaims = TurnResourceBook.LedgerClaims(
+                    _player, turn, StrategicReservedResource.ActionPoints);
+                if (apClaims.Sum(c => Mathf.Max(0f, c.Amount)) <= eps)
                     return float.PositiveInfinity;
-
-                string candidateOwner = candidate?.Kind == MissionKind.Economy
-                    ? EconomyMissionPlanner.OwnerKey(StableMissionKey.For(candidate)) : null;
-                float credited = 0f;
-                float ownUnclaimed = 0f;
-                foreach (string owner in StrategicResourceReservationLedger.CompletionOwners(_player, turn))
-                {
-                    float ownerHold = StrategicResourceReservationLedger.CompletionForOwner(
-                        _player, turn, owner, StrategicReservedResource.ActionPoints);
-                    float ownerClaim = 0f;
-                    foreach (LockedAllocation locked in _lockedClaims.Values)
-                        if (locked.Mission?.Kind == MissionKind.Economy
-                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(locked.Mission)) == owner)
-                            ownerClaim += Mathf.Min(locked.ClaimedAp, locked.GrantedAp);
-                    foreach (FundedEntry funded in alloc.Funded)
-                        if (funded.Mission?.Kind == MissionKind.Economy
-                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(funded.Mission)) == owner)
-                            ownerClaim += funded.Tentative.Ap;
-                    credited += Mathf.Min(ownerHold, ownerClaim);
-                    if (candidateOwner == owner)
-                        ownUnclaimed = Mathf.Max(0f, ownerHold - ownerClaim);
-                }
-                return Mathf.Max(0f, pool.Ap - allocated - held + credited + ownUnclaimed);
+                float allocated = lockedTotal + alloc.Funded.Sum(f => f.Tentative.Ap);
+                float outstanding = TurnResourceBook.Outstanding(apClaims,
+                    StrategicReservedResource.ActionPoints, AuthorityFor(candidate),
+                    EconomyDraws(alloc.Funded,
+                        locked => Mathf.Min(locked.ClaimedAp, locked.GrantedAp),
+                        funded => funded.Tentative.Ap));
+                return Mathf.Max(0f, pool.Ap - allocated - outstanding);
             }
 
             float budget = Mathf.Max(0f, pool.Ap - lockedStrict);
@@ -931,58 +916,57 @@ namespace Game.Ai.V2
                 Mathf.Max(baseMin.Tech, floor.Physical.Tech));
         }
 
+        // The allocator's spend authority for one candidate. An Economy build is funded against
+        // FitsSpendableForEconomyCompletion's pool: its own owner's rows and other builds'
+        // EconomyDeferredBuild rows are not held against it. Every other mission holds nothing of
+        // its own. The live OperationContinuation claim is never read here (LedgerClaims only):
+        // the allocator is the owner that funds those operations.
+        private static SpendAuthority AuthorityFor(MissionProposal m) =>
+            m?.Kind == MissionKind.Economy
+                ? new SpendAuthority(EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)),
+                    economyCompletesNow: true)
+                : default;
+
+        // Units each Economy owner's own missions already drew in this pack (locked or funded):
+        // TurnResourceBook.Outstanding nets that owner's hold by them.
+        private Dictionary<string, float> EconomyDraws(IReadOnlyList<FundedEntry> funded,
+            System.Func<LockedAllocation, float> lockedDraw, System.Func<FundedEntry, float> fundedDraw)
+        {
+            var draws = new Dictionary<string, float>();
+            void Add(MissionProposal mission, float amount)
+            {
+                if (mission?.Kind != MissionKind.Economy)
+                    return;
+                string owner = EconomyMissionPlanner.OwnerKey(StableMissionKey.For(mission));
+                draws.TryGetValue(owner, out float drawn);
+                draws[owner] = drawn + amount;
+            }
+            foreach (LockedAllocation locked in _lockedClaims.Values)
+                Add(locked.Mission, lockedDraw(locked));
+            foreach (FundedEntry entry in funded ?? (IReadOnlyList<FundedEntry>)System.Array.Empty<FundedEntry>())
+                Add(entry?.Mission, fundedDraw(entry));
+            return draws;
+        }
+
         // ONE physical pool for every mission kind — the pool its own Provisioning gate measures
-        // with (StrategicSpendability): raw stock minus every explicit hold. Mandatory air recovery
-        // holds nothing — missions execute only after it has settled (AviationObligations).
-        // An Economy build completes against FitsSpendableForEconomyCompletion's pool: other
-        // builds' EconomyDeferredBuild rows and its own owner's rows are not held against it.
-        // Economy audit B7 showed the failure of two pools: a candidate funded from a pool its
-        // gate does not use is rejected at Provisioning, repriced from the same pool again, and
-        // the bounded re-pack ends admission — and meanwhile it starves the candidates behind it.
-        // A hold whose owner's own Economy mission already drew those units in this pack (locked
-        // or funded) is credited once per owner, so the same units are never subtracted twice
-        // (once from `remaining`, once as a hold).
+        // with (StrategicSpendability): the remaining stock minus the holds this candidate may not
+        // draw on (TurnResourceBook.Outstanding under AuthorityFor). Economy audit B7 showed the
+        // failure of two pools: a candidate funded from a pool its gate does not use is rejected
+        // at Provisioning, repriced from the same pool again, and the bounded re-pack ends
+        // admission — and meanwhile it starves the candidates behind it. `remaining` has already
+        // lost every locked / funded draw, so an owner's hold is netted by its own missions' draws
+        // and the same units are never subtracted twice.
         private ResourceVector PhysicalAvailableFor(MissionProposal m, ResourceVector remaining,
             IReadOnlyList<FundedEntry> funded)
         {
             if (_player == null)
                 return remaining;
-            bool economy = m?.Kind == MissionKind.Economy;
-            string owner = economy ? EconomyMissionPlanner.OwnerKey(StableMissionKey.For(m)) : null;
-            StrategicReservationReason? ignored = economy
-                ? StrategicReservationReason.EconomyDeferredBuild : (StrategicReservationReason?)null;
-            var creditedReasons = new[]
-            {
-                StrategicReservationReason.EconomyBuildCompletion,
-                StrategicReservationReason.EconomyDeferredBuild,
-            }.Where(reason => reason != ignored).ToArray();
-            int turn = _snap?.TurnNumber ?? 0;
-            float Held(StrategicReservedResource r)
-            {
-                float held = StrategicResourceReservationLedger.Active(_player, turn, r, owner, ignored);
-                IEnumerable<string> owners = creditedReasons
-                    .SelectMany(reason => StrategicResourceReservationLedger.OwnersWithReason(
-                        _player, turn, reason))
-                    .Distinct();
-                foreach (string other in owners)
-                {
-                    if (other == owner) continue;
-                    float ownerHold = creditedReasons.Sum(reason =>
-                        StrategicResourceReservationLedger.HoldForOwner(_player, turn, other, reason, r));
-                    if (ownerHold <= 0f) continue;
-                    float claimed = 0f;
-                    foreach (LockedAllocation locked in _lockedClaims.Values)
-                        if (locked.Mission?.Kind == MissionKind.Economy
-                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(locked.Mission)) == other)
-                            claimed += PhysicalAmount(locked.PhysicalClaim, r);
-                    foreach (FundedEntry entry in funded)
-                        if (entry.Mission?.Kind == MissionKind.Economy
-                            && EconomyMissionPlanner.OwnerKey(StableMissionKey.For(entry.Mission)) == other)
-                            claimed += PhysicalAmount(entry.PhysicalDraw, r);
-                    held -= Mathf.Min(ownerHold, claimed);
-                }
-                return Mathf.Max(0f, held);
-            }
+            SpendAuthority authority = AuthorityFor(m);
+            List<ResourceClaim> claims = TurnResourceBook.LedgerClaims(_player, _snap?.TurnNumber ?? 0);
+            float Held(StrategicReservedResource r) =>
+                TurnResourceBook.Outstanding(claims, r, authority, EconomyDraws(funded,
+                    locked => PhysicalAmount(locked.PhysicalClaim, r),
+                    entry => PhysicalAmount(entry.PhysicalDraw, r)));
             var held = new ResourceVector(0f, Held(StrategicReservedResource.Human),
                 Held(StrategicReservedResource.Energy),
                 Held(StrategicReservedResource.Materials),

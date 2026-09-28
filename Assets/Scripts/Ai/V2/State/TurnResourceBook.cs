@@ -75,13 +75,35 @@ namespace Game.Ai.V2
         }
 
         internal static float Free(float physical, IEnumerable<ResourceClaim> claims,
-            StrategicReservedResource resource, SpendAuthority authority)
+            StrategicReservedResource resource, SpendAuthority authority) =>
+            Mathf.Max(0f, physical - Outstanding(claims, resource, authority));
+
+        // Σ of the claims `authority` may not draw on, each owner's net of what that owner has
+        // already drawn (`drawsByOwner` — units a planner has already given to that owner's own
+        // work and subtracted from the pool). Drawing on your own hold consumes it, so the same
+        // units are never counted twice: once as drawn, once as still held.
+        internal static float Outstanding(IEnumerable<ResourceClaim> claims,
+            StrategicReservedResource resource, SpendAuthority authority,
+            IReadOnlyDictionary<string, float> drawsByOwner = null)
         {
-            float held = 0f;
+            var heldByOwner = new Dictionary<string, float>();
             foreach (ResourceClaim c in claims)
-                if (c.Resource == resource && !MayDrawOn(authority, c))
-                    held += Mathf.Max(0f, c.Amount);
-            return Mathf.Max(0f, physical - held);
+            {
+                if (c.Resource != resource || MayDrawOn(authority, c))
+                    continue;
+                string key = c.Owner ?? string.Empty;
+                heldByOwner.TryGetValue(key, out float held);
+                heldByOwner[key] = held + Mathf.Max(0f, c.Amount);
+            }
+            float outstanding = 0f;
+            foreach (KeyValuePair<string, float> owner in heldByOwner)
+            {
+                float drawn = 0f;
+                if (drawsByOwner != null)
+                    drawsByOwner.TryGetValue(owner.Key, out drawn);
+                outstanding += Mathf.Max(0f, owner.Value - Mathf.Max(0f, drawn));
+            }
+            return outstanding;
         }
 
         internal static float Physical(PlayerRoot root, StrategicReservedResource resource)
