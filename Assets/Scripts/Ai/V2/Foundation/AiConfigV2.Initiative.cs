@@ -33,7 +33,7 @@ namespace Game.Ai.V2
 
         // Marginal resource opportunity-cost model (PreTurnCapacityAnalysis.MarginalCostAt).
         public const float initiativeDeckDemandWeight = 0.50f;   // fraction of remaining-deck appetite that counts as "future demand"
-        public const float initiativeIncomeHorizonTurns = 6f;    // income * this folded into effective supply
+        public const float initiativeIncomeHorizonTurns = 3f;    // near-term income only; six turns made scarce stock look freely replaceable
         public const float initiativeCostAtParity = 1.0f;        // one unit costs this when supply == demand
         public const float initiativeCoverageFloor = 0.25f;      // clamp on supply/demand ratio (scarce)
         public const float initiativeCoverageCeil = 4f;          // clamp on supply/demand ratio (abundant)
