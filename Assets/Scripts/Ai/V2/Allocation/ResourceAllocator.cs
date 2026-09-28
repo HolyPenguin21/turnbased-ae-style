@@ -396,14 +396,13 @@ namespace Game.Ai.V2
     internal static class ResourceAllocator
     {
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
-            List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player,
-            ApBudgetLedger ledger = null, PlayerRoot root = null, AiTurnContext ctx = null)
+            List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player)
         {
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),
-                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state, ledger,
-                player, root, ctx);
+                missions ?? new List<MissionProposal>(), commitments ?? new List<Commitment>(), state,
+                player);
         }
     }
 
@@ -413,7 +412,6 @@ namespace Game.Ai.V2
         private readonly List<MissionProposal> _missions;
         private readonly List<Commitment> _commitments;
         private readonly AiAllocatorState _state;
-        private readonly ApBudgetLedger _ledger;
         private readonly PlayerSetupData _player;
         private readonly HashSet<StableMissionKey> _rejectedThisTurn = new HashSet<StableMissionKey>();
         private readonly Dictionary<StableMissionKey, ProvisionRequirement> _repricedFloors =
@@ -463,15 +461,13 @@ namespace Game.Ai.V2
         public bool Converged { get; private set; }
 
         internal AllocationSession(WorldSnapshot snap, Radar radar, List<MissionProposal> missions,
-            List<Commitment> commitments, AiAllocatorState state, ApBudgetLedger ledger = null,
-            PlayerSetupData player = null, PlayerRoot root = null, AiTurnContext ctx = null)
+            List<Commitment> commitments, AiAllocatorState state, PlayerSetupData player = null)
         {
             _player = player;
             _snap = snap;
             _missions = missions;
             _commitments = commitments;
             _state = state;
-            _ledger = ledger;
         }
 
         public void RegisterProvisionFailure(FundedEntry funded, ProvisionFailure failure)
@@ -572,8 +568,7 @@ namespace Game.Ai.V2
                 return Mathf.Max(0f, pool.Ap - allocated - held + credited + ownUnclaimed);
             }
 
-            float entitlement = _ledger != null ? Mathf.Min(_ledger.Balance(), pool.Ap) : pool.Ap;
-            float budget = Mathf.Max(0f, entitlement - lockedStrict);
+            float budget = Mathf.Max(0f, pool.Ap - lockedStrict);
 
             ResourceBundle stock = _snap?.Self?.Stockpile ?? default;
             // Raw physical stock. Owner-aware ledger holds are netted per candidate in

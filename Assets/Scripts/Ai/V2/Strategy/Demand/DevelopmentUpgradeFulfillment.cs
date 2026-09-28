@@ -39,7 +39,7 @@ namespace Game.Ai.V2
 
         public static DevUpgradeResult TryFulfill(WorldSnapshot snap, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx, AxisDemand demand,
-            MaterializationPlan plan, ApBudgetLedger ledger)
+            MaterializationPlan plan, PhaseAApBudget apBudget)
         {
             DevelopmentOpportunity op = plan?.DevelopmentUpgrade ?? demand?.DevOpportunity;
             GenerationStep generation = plan?.Generation ?? op?.Generation;
@@ -71,9 +71,9 @@ namespace Game.Ai.V2
             int challengeAp = ResearchProductionSystem.AttemptApCost(op.Card);
             int attachAp = Mathf.Max(0, op.Card.activationApCost);
             int completeAp = challengeAp + attachAp;
-            if (ledger != null)
+            if (apBudget != null)
             {
-                float axisRoom = ledger.UnreservedBalance();
+                float axisRoom = apBudget.UnreservedBalance();
                 if (completeAp > axisRoom + AiConfigV2.allocatorSliceEpsilon)
                     return DevUpgradeResult.Skip(
                         $"axis_budget {axisRoom:0.##} < challenge+attach {completeAp}");

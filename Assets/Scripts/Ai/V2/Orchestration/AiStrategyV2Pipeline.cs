@@ -25,7 +25,7 @@ namespace Game.Ai.V2
     //    objective VALUE (EffectiveValue), never slices AP. Axes: Recon, Economy, Aggression,
     //    Development; ActiveDefence and Attack live inside Aggression, there is no Management axis.
     //  · Card play is a service: Phase A (StrategicPhaseA) fulfils AxisDemand capability gaps from
-    //    the one ApBudgetLedger pool; Phase B (UseSurplus) is the bounded end-of-turn tempo
+    //    the live AP pool (PhaseAApBudget); Phase B (UseSurplus) is the bounded end-of-turn tempo
     //    arbiter over genuinely remaining AP/resources; Housekeeping is the zero-AP reorg pass.
     //  · Mission<->axis is many-to-many: a MissionProposal carries an AxisContribution vector.
     //  · Re-allocate on provisioning failure is a HARD-BOUNDED loop (iteration cap, per-mission
@@ -165,13 +165,11 @@ namespace Game.Ai.V2
                 reconObjectives, aggressionObjectives, activeIntents, actorCommitments, player, ctx, root,
                 demandAxes);
 
-            // S2. The ONE per-turn AP pool: allocatable AP (real AP minus the
-            //     HousekeepingManager reserve). Radar scales objective value only; Strategic Manager
-            //     Phase A and the mission allocator spend the same scalar ledger. Round 3 — no recon-air AP carve-out any
-            //     more: Recon Air no longer gets a pre-funding reservation Phase A can't touch.
-            ApBudgetLedger apLedger = ApBudgetLedger.Create(
-                UnityEngine.Mathf.Max(0f, snapshot.Self?.ActionPoints ?? 0));
-            AiDebugLog.Write($"[AI][V2] {player.Nickname}: budget ledger — {apLedger.DebugLine()}");
+            // S2. Phase A's AP budget reads the player's live AP; its only own state is the
+            //     follow-up AP promised to capabilities it delivers. Radar scales objective value
+            //     only. Every other owner's hold is TurnResourceBook's, applied at each chain guard.
+            PhaseAApBudget apBudget = PhaseAApBudget.Create(root);
+            AiDebugLog.Write($"[AI][V2] {player.Nickname}: Phase A budget — {apBudget.DebugLine()}");
 
             // S3. Strategic Manager Phase A — demand-driven card play, before mission planning.
             //     The demand set can materialize only capability requested by a real axis.
@@ -190,7 +188,7 @@ namespace Game.Ai.V2
             else
             {
                 phaseA = StrategicManager.FulfillDemands(snapshot, player, root, hand,
-                    ctx, apLedger, demands, actorCommitments, activeIntents, reconObjectives,
+                    ctx, apBudget, demands, actorCommitments, activeIntents, reconObjectives,
                     radar: radar, deferFreshZeroRadar: true);
                 ReservationInvariants.CheckBoundary(player, root, ctx, "phaseA");
             }
@@ -461,7 +459,7 @@ namespace Game.Ai.V2
                     WorldAnalysis.StepObservationStamp beforeCapabilities =
                         WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                     StrategicPhaseResult followup = StrategicManager.FulfillDemands(
-                        snapshot, player, root, hand, ctx, apLedger, dirtyDemands,
+                        snapshot, player, root, hand, ctx, apBudget, dirtyDemands,
                         actorCommitments, activeIntents, reconObjectives,
                         phaseB.Reservation ?? phaseA.Reservation,
                         economyAxisAuthoritative: dirtyAxes.Contains(DesireAxis.Economy), radar: radar,
@@ -578,7 +576,7 @@ namespace Game.Ai.V2
                     cycleLedger.RegisterCommitments(cycleCommitments);
 
                     AllocationSession cycleSession = ResourceAllocator.BeginTurn(snapshot, radar,
-                        missions, cycleCommitments, player, apLedger, root, ctx);
+                        missions, cycleCommitments, player);
                     var cycleProvisioning = new ProvisioningSession(snapshot);
                     allocation = cycleSession.Pack();
                     foreach (FundedEntry fe in allocation.Funded)
@@ -1096,7 +1094,7 @@ namespace Game.Ai.V2
                         WorldAnalysis.StepObservationStamp beforeCold =
                             WorldAnalysis.CaptureStepObservation(root, hand, snapshot);
                         StrategicPhaseResult coldPass = StrategicManager.FulfillDemands(
-                            snapshot, player, root, hand, ctx, apLedger, coldDemands,
+                            snapshot, player, root, hand, ctx, apBudget, coldDemands,
                             actorCommitments, activeIntents, reconObjectives,
                             phaseB.Reservation ?? phaseA.Reservation,
                             economyAxisAuthoritative: coldAxes.Contains(DesireAxis.Economy),

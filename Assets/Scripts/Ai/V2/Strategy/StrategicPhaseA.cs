@@ -66,8 +66,8 @@ namespace Game.Ai.V2
     // planning. It orchestrates only; the algorithms it drives live in their own owners —
     // MaterializationCandidateBuilder (candidate chains), MaterializationPortfolioSolver (jointly
     // feasible set), MaterializationExecutor (play), CapabilityDeliveryEvaluator (delivered amount
-    // + lease), InfrastructureFulfillment (build lane). Charged to the requesting axis through the
-    // shared ApBudgetLedger. Body is unchanged from the former StrategicManager.FulfillDemands.
+    // + lease), InfrastructureFulfillment (build lane). Spends from the live AP pool
+    // (PhaseAApBudget). Body is unchanged from the former StrategicManager.FulfillDemands.
     public static class StrategicPhaseA
     {
         // economyAxisAuthoritative — true when `demands` reflects Economy's COMPLETE current view
@@ -78,7 +78,7 @@ namespace Game.Ai.V2
         // Economy demand means "not looked at", not "resolved", and must never be read as license
         // to drop the deferred-build hold. Defaults to true: both full-list callers rely on it.
         public static StrategicPhaseResult FulfillDemands(WorldSnapshot snap, PlayerSetupData player,
-            PlayerRoot root, AiHandData hand, AiTurnContext ctx, ApBudgetLedger ledger,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget,
             IReadOnlyList<AxisDemand> demands, ActorCommitments commitments,
             IReadOnlyList<MissionIntent> activeIntents = null,
             IReadOnlyList<ReconObjective> reconObjectives = null,
@@ -95,7 +95,7 @@ namespace Game.Ai.V2
             {
                 Reservation = carriedReservation ?? new MaterializationReservation()
             };
-            if (player == null || root == null || hand == null || ledger == null || ctx == null)
+            if (player == null || root == null || hand == null || apBudget == null || ctx == null)
                 return result;
             demands ??= System.Array.Empty<AxisDemand>();
             radar ??= Radar.Even();
@@ -394,7 +394,7 @@ namespace Game.Ai.V2
                     // result. A failed build that changed any of these is a rollback leak.
                     V2InfraWorldStamp infraBefore = AiV2Trace.InfraStamp(player, root);
                     InfraFulfillResult infra = InfrastructureFulfillment.TryFulfill(
-                        snap, player, root, hand, ctx, istate.Demand, ledger,
+                        snap, player, root, hand, ctx, istate.Demand, apBudget,
                         result.Reservation);
                     V2InfraWorldStamp infraAfter = AiV2Trace.InfraStamp(player, root);
                     if (infra.StateChanged)
@@ -428,17 +428,9 @@ namespace Game.Ai.V2
                     if (infra.Built || infra.GenerationAttempted
                         || (infra.StateChanged && infra.ApSpent > 0f))
                     {
-                        // Debit the ACTUAL confirmed AP the authoritative transaction spent — the
-                        // ledger records an already-permitted action, never grants overdraft.
-                        // §2.3 — measure the REAL ledger balance drop around Debit so the check
-                        // compares three independently sourced facts (physical / reported / ledger).
-                        float infraLedgerBefore = ledger.Balance();
-                        if (infra.ApSpent > 0f)
-                            ledger.Debit(infra.ApSpent);
-                        float infraLedgerAfter = ledger.Balance();
+                        // §2.3 — the physical AP drop must match what the transaction reports.
                         AiV2Trace.CheckPhaseAAp(istate.Demand.TraceId, istate.Demand.RequestingAxis,
-                            infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent,
-                            infraLedgerBefore - infraLedgerAfter);
+                            infraBefore.Resources.Ap - infraAfter.Resources.Ap, infra.ApSpent);
                         if (infra.Built)
                         {
                             istate.Remaining = Mathf.Max(0f, istate.Remaining - 1f);
@@ -487,7 +479,7 @@ namespace Game.Ai.V2
                 if (active.Count == 0)
                 {
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        ledger, commitments, result.Reservation, witnessedUsefulApDemand))
+                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand))
                         continue;
                     break;
                 }
@@ -517,8 +509,8 @@ namespace Game.Ai.V2
                     foreach (DemandState state in active)
                     {
                         var feas = MaterializationCandidateBuilder.AllFeasiblePlansForDemand(snap, player, root, hand,
-                            ctx, state.Demand, ledger, commitments,
-                            ledger.ReservedFollowup(), result.Reservation);
+                            ctx, state.Demand, apBudget, commitments,
+                            apBudget.ReservedFollowup(), result.Reservation);
                         if (feas.Count > 0)
                             measOptions[state] = feas;
                     }
@@ -553,7 +545,7 @@ namespace Game.Ai.V2
                             && other.Demand.Capability == CapabilityKind.Hero);
                     List<DemandCandidate> top =
                         MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand, ctx, state.Demand,
-                            ledger, commitments, ledger.ReservedFollowup(),
+                            apBudget, commitments, apBudget.ReservedFollowup(),
                             result.Reservation, inv, competingHeroDemand, AiConfigV2.phaseATopK,
                             witnessedUsefulApDemand: witnessedUsefulApDemand,
                             fillerUniverse: fillerUniverse);
@@ -616,7 +608,7 @@ namespace Game.Ai.V2
                     foreach (DemandState state in active)
                     {
                         AxisDemand d = state.Demand;
-                        float reserved = ledger.ReservedFollowup();
+                        float reserved = apBudget.ReservedFollowup();
                         if (options.TryGetValue(state, out var topOpts) && topOpts.Count > 0)
                         {
                             DemandCandidate b = topOpts[0];
@@ -626,10 +618,10 @@ namespace Game.Ai.V2
                             continue;
                         }
                         string diag = MaterializationDiagnostics.ExplainNoChain(
-                            snap, player, root, hand, ctx, d, ledger, commitments, reserved);
+                            snap, player, root, hand, ctx, d, apBudget, commitments, reserved);
                         AiDebugLog.WriteDedupedWithId(d.TraceId, $"[AI][V2]   strat.A — {d}: no feasible useful chain "
-                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(ledger.Balance())}, "
-                            + $"discrete {F(ledger.DiscreteAdmissionBudget())}, "
+                            + $"({DesireAxes.Abbrev(d.RequestingAxis)} entitlement {F(apBudget.Balance())}, "
+                            + $"discrete {F(apBudget.DiscreteAdmissionBudget())}, "
                             + $"followup reserved {F(reserved)}); {diag}");
 
                         // §17 — an unfulfilled Aggression/Recon capability demand plus an empty
@@ -643,7 +635,7 @@ namespace Game.Ai.V2
                     // to give up on real strategic work for this pass. Before it does, give any
                     // persistence-deferred demand its no-alternative-work chance (spec Rule 2).
                     if (TryPromotePersistenceDeferred(states, deferredStates, snap, player, root, hand, ctx,
-                        ledger, commitments, result.Reservation, witnessedUsefulApDemand))
+                        apBudget, commitments, result.Reservation, witnessedUsefulApDemand))
                         continue;
                     break;
                 }
@@ -671,20 +663,15 @@ namespace Game.Ai.V2
                 if (plan.Kind == MaterializationChainKind.GenerateAttachUpgrade)
                 {
                     DevUpgradeResult up = DevelopmentUpgradeFulfillment.TryFulfill(
-                        snap, player, root, hand, ctx, chosenDemand, plan, ledger);
+                        snap, player, root, hand, ctx, chosenDemand, plan, apBudget);
                     int upgradeApAfter = root.ActionPoints;
                     chainAttempts++;
                     result.MaterializationAttempts++;
                     result.EquipmentAssignmentAttempts++;
 
                     if (up.ApSpent > 0f)
-                    {
-                        float ledgerBefore = ledger.Balance();
-                        ledger.Debit(up.ApSpent);
-                        float ledgerAfter = ledger.Balance();
                         AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                            chainApBefore - upgradeApAfter, up.ApSpent, ledgerBefore - ledgerAfter);
-                    }
+                            chainApBefore - upgradeApAfter, up.ApSpent);
 
                     if (up.Executed)
                     {
@@ -755,15 +742,9 @@ namespace Game.Ai.V2
                 if (play.StateChanged)
                     result.StateChanged = true;
 
-                // §2.3 — measure the REAL ApBudgetLedger balance drop around Debit so the check
-                // has three independently sourced facts: physical AP delta, the chain's reported
-                // ApSpent, and the actual ledger debit (catches a missing / wrong-amount Debit).
-                float chainLedgerBefore = ledger.Balance();
-                if (play.ApSpent > 0f)
-                    ledger.Debit(play.ApSpent);
-                float chainLedgerAfter = ledger.Balance();
+                // §2.3 — the physical AP drop must match the chain's reported ApSpent.
                 AiV2Trace.CheckPhaseAAp(chosenDemand.TraceId, chosenDemand.RequestingAxis,
-                    chainApBefore - chainApAfter, play.ApSpent, chainLedgerBefore - chainLedgerAfter);
+                    chainApBefore - chainApAfter, play.ApSpent);
 
                 if (!play.Deployed)
                 {
@@ -794,7 +775,7 @@ namespace Game.Ai.V2
 
                 if (operationallyDelivered)
                 {
-                    ledger.ReserveFollowup(selected.FollowupAp);
+                    apBudget.ReserveFollowup(selected.FollowupAp);
                     selected.State.Remaining = Mathf.Max(0f, selected.State.Remaining - delivered);
                     result.CapabilityDeliveries++;
                 }
@@ -829,7 +810,7 @@ namespace Game.Ai.V2
                 result.Reservation.UnresolvedDemands.Add(CloneResidualDemand(cold));
 
             if (result.CardsPlayed > 0)
-                AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), ledger now " + ledger.DebugLine());
+                AiDebugLog.Write($"[AI][V2] strat.A — {result.CardsPlayed} chain(s), budget now " + apBudget.DebugLine());
             if (result.Reservation.UnresolvedDemands.Count > 0)
                 AiDebugLog.Write($"[AI][V2] strat.A — residual demands "
                     + string.Join(" | ", result.Reservation.UnresolvedDemands.Select(d => d.ToString())));
@@ -957,7 +938,7 @@ namespace Game.Ai.V2
         // capacity facts — those were already established once by the emitting axis (DemandLayer).
         private static bool TryPromotePersistenceDeferred(List<DemandState> states,
             List<DemandState> deferredStates, WorldSnapshot snap, PlayerSetupData player, PlayerRoot root,
-            AiHandData hand, AiTurnContext ctx, ApBudgetLedger ledger, ActorCommitments commitments,
+            AiHandData hand, AiTurnContext ctx, PhaseAApBudget apBudget, ActorCommitments commitments,
             MaterializationReservation reservation, float? witnessedUsefulApDemand)
         {
             if (deferredStates.Count == 0)
@@ -976,7 +957,7 @@ namespace Game.Ai.V2
                 // one every other demand answers the same way: is there a legal/affordable/
                 // deliverable candidate for it RIGHT NOW (AC7) — never a phantom fulfillment.
                 List<DemandCandidate> top = MaterializationCandidateBuilder.TopForDemand(snap, player, root, hand,
-                    ctx, ds.Demand, ledger, commitments, ledger.ReservedFollowup(),
+                    ctx, ds.Demand, apBudget, commitments, apBudget.ReservedFollowup(),
                     reservation, inv, hasCompetingHeroDemand: false, AiConfigV2.phaseATopK,
                     witnessedUsefulApDemand: witnessedUsefulApDemand);
                 if (top.Count == 0)
