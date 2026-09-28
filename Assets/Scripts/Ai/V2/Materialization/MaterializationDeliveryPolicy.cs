@@ -193,11 +193,19 @@ namespace Game.Ai.V2
                 case CapabilityKind.FieldCombatPower:
                 {
                     if (demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
+                    {
+                        // The garrison floor counts non-hero bodies only: a hero placed there
+                        // spends the card and never reduces the shortage.
+                        CardDefinition gd = p.BaseCardInHand?.Definition ?? p.GeneratedBaseDef;
+                        if (gd != null && gd.cardType == CardType.Hero)
+                            return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
+                                "garrison_floor_counts_non_hero_bodies");
                         return p.Deploy.Kind == DeploymentKind.Garrison && demand.TargetHex.HasValue
                             && p.Deploy.Hex.Equals(demand.TargetHex.Value)
                                 ? DeliveryAssessment.Ok
                                 : DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                                     $"garrison_at_target_required:{p.Deploy.Kind}");
+                    }
                     if (p.Deploy.Kind == DeploymentKind.Garrison)
                         return DeliveryAssessment.No(DeliveryFailureReason.WrongPlacement,
                             p.Deploy.Kind.ToString());

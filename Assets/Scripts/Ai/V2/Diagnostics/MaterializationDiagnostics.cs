@@ -72,6 +72,10 @@ namespace Game.Ai.V2
                             Deploy = opt,
                             FinalCapability = demand.Capability,
                         };
+                        // Same cost owner as the real builder, so price-based delivery gates
+                        // (EconomyNewHeroWorthIt) judge the diagnostic plan identically.
+                        MaterializationPlanFactory.FillCostsAndKey(diagnosticPlan, def, card,
+                            null, hand.Hand.IndexOf(card), -1, 0);
                         // §15 — mirror the REAL candidate builder's next gates so the reported
                         // postGate cannot say "passes" while every candidate is discarded here.
                         MaterializationDeliveryPolicy.DeliveryAssessment delivery =

@@ -83,9 +83,23 @@ namespace Game.Ai.V2
 
         internal static float DeliveredCapabilityAmount(AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after)
-            => demand == null
-                ? 0f
-                : DeliveredCapabilityAmount(demand.Capability, demand.RequiredTraits, before, after);
+        {
+            if (demand == null)
+                return 0f;
+            // A Garrison-shaped FieldCombatPower demand asks for non-hero bodies in the target
+            // garrison (its floor counts ArmySnapshot.Members). Field Raid supply excludes every
+            // garrison, so measuring it there could never register this delivery.
+            if (demand.Capability == CapabilityKind.FieldCombatPower
+                && demand.DeliveryShape == CapabilityDeliveryShape.Garrison)
+            {
+                if (before == null || after == null || !demand.TargetHex.HasValue)
+                    return 0f;
+                int added = after.GarrisonBodiesAt(demand.TargetHex.Value)
+                    - before.GarrisonBodiesAt(demand.TargetHex.Value);
+                return Mathf.Max(0, added) * AiConfigV2.combatPowerPerBodyEstimate;
+            }
+            return DeliveredCapabilityAmount(demand.Capability, demand.RequiredTraits, before, after);
+        }
 
         private static float DeliveredCapabilityAmount(CapabilityKind capability,
             TraitPreference requiredTraits, CapabilityInventory before, CapabilityInventory after)
