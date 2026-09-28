@@ -506,8 +506,9 @@ namespace Game.Ai.V2
                 int moveMax = projected.Select(AviationRules.EffectiveMoveMax)
                     .DefaultIfEmpty(1).Min();
                 int activationAp = projected.Sum(u => Mathf.Max(0, u.ActivationApCost));
-                TaskScore candidate = CopyReconScoreWithAirDelivery(objective.TaskScore,
-                    eta, routeCost, moveMax, activationAp,
+                int launchEnergy = projected.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+                TaskScore candidate = CopyReconScoreWithAirDelivery(snap, objective.TaskScore,
+                    eta, routeCost, moveMax, activationAp, launchEnergy,
                     TaskScoreEvaluator.HexThreatRisk(airfieldThreat));
                 if (candidate.Value > bestValue)
                 {
@@ -520,17 +521,22 @@ namespace Game.Ai.V2
             return coverage > 0 ? best : default;
         }
 
-        private static TaskScore CopyReconScoreWithAirDelivery(TaskScore s, int eta,
-            int routeCost, int moveMax, int activationAp, float airfieldThreatRisk)
+        private static TaskScore CopyReconScoreWithAirDelivery(WorldSnapshot snap, TaskScore s,
+            int eta, int routeCost, int moveMax, int activationAp, int launchEnergy,
+            float airfieldThreatRisk)
         {
             float movementShare = Mathf.Clamp01(Mathf.Max(0, routeCost)
                 / (float)Mathf.Max(1, moveMax * Mathf.Max(1, eta)));
             // The share of this turn's activation the sortie uses is the AP it spends now — a
-            // CardPrice fact of the aircraft, not the value of a task taken from it.
-            float activationShareNow = TaskScoreEvaluator.Price(movementShare * activationAp);
+            // CardPrice fact of the aircraft, not the value of a task taken from it. These
+            // aircraft replace the objective's own sortie price (notional or another wing's):
+            // execution slots are the serving actor's, never summed with a different actor's.
+            float sortieNow = TaskScoreEvaluator.Price(movementShare * activationAp
+                + ActionPrice.Resources(t => t == Game.Economy.ResourceType.Energy
+                    ? launchEnergy : 0f, snap));
             TaskScore sortie = TaskScoreEvaluator.WithExecution(s, new TaskScore(
                 winChance: s.WinChance,
-                cardPrice: s.CardPrice + activationShareNow,
+                cardPrice: sortieNow,
                 delivery: TaskScoreEvaluator.Price(ActionPrice.RecurringAp(Mathf.Max(0, activationAp), eta))));
             // The airfield the sortie launches from is part of this task's own exposure.
             return TaskScore.FromSlots(slot => slot == TaskSlot.HexThreatRisk

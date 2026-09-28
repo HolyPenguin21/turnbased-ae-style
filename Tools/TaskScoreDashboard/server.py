@@ -55,10 +55,12 @@ BENEFIT_FAMILY = {
     "GlobalCardEffect": "Economy", "EconomicExpansionValue": "Economy",
     "InfoGain": "Recon", "Staleness": "Recon", "ContactRelevance": "Recon",
     "RaidReward": "Military", "WinChance": "Military", "AttackReadiness": "Military",
-    "PreventedDamage": "Military", "StrategicRelevance": "Military", "ThreatDirection": "Military",
+    "PreventedDamage": "Military",
     "ForceAmplification": "Development",
     "FrontProgress": "Positional", "CorridorAlignment": "Positional",
     "OwnTerritoryProximity": "Positional", "TerrainDefense": "Positional",
+    # Shared by Recon, ActiveDefence and Attack: what the target is / where the enemy is.
+    "StrategicRelevance": "Positional", "ThreatDirection": "Positional",
 }
 CATEGORY_ORDER = ["Benefit · Economy", "Benefit · Recon", "Benefit · Military",
     "Benefit · Development", "Benefit · Positional", "Benefit · Other",

@@ -45,8 +45,6 @@ namespace Game.Ai.V2
         public const float taskScoreAttackReadinessMax = 5.4f;
         // Damage an ActiveDefence intercept keeps off the threatened asset.
         public const float taskScorePreventedDamageMax = 12f;
-        public const float taskScoreStrategicRelevanceMax = 6f;
-        public const float taskScoreThreatDirectionMax = 4f;
 
         // ---- BENEFIT · Development (Research / Production) -------------------------------------
         // The need-weighted force an output adds. Below WinChance: amplifying a fight is never
@@ -55,6 +53,10 @@ namespace Game.Ai.V2
         public const float taskScoreForceAmplificationFullBodies = 2f;    // shape: bodies of force for the full value
 
         // ---- BENEFIT · Positional (any family) -------------------------------------------------
+        // What the target is and whether it is where the enemy is — shared by Recon, ActiveDefence
+        // and Attack, so they live here rather than under one family.
+        public const float taskScoreStrategicRelevanceMax = 6f;
+        public const float taskScoreThreatDirectionMax = 4f;
         public const float taskScoreFrontProgressMax = 8f;
         public const float taskScoreCorridorAlignmentMax = 8f;
         public const float taskScoreTerrainDefenseMax = 4f;

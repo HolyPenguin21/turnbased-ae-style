@@ -365,11 +365,15 @@ namespace Game.Ai.V2
             int homeDistance = TaskScoreEvaluator.NearestOwnedHomeDistance(snap,
                 t.Contact.Position.Value);
             float assetNorm = t.Asset.Value / Mathf.Max(1f, AiConfigV2.assetValueCitadel);
+            // PotentialDamage is the chance the contact takes the asset (a 0..1 FRACTION of
+            // Asset.Value). The damage kept off is that fraction of this asset's value on the
+            // Citadel scale: a scout that would take an Extractor is not a Citadel-sized loss.
             return new TaskScore(
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(assetNorm),
                 threatDirection: TaskScoreEvaluator.ThreatDirection(
                     1f / (1f + t.EnemyEta.GetValueOrDefault())),
-                preventedDamage: TaskScoreEvaluator.PreventedDamage(t.PotentialDamage),
+                preventedDamage: TaskScoreEvaluator.PreventedDamage(
+                    t.PotentialDamage * Mathf.Clamp01(assetNorm)),
                 intelAgePenalty: TaskScoreEvaluator.IntelAgePenalty(
                     age / (float)Mathf.Max(1, AiConfigV2.scoutSurveilStaleTurnsHi)),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance));

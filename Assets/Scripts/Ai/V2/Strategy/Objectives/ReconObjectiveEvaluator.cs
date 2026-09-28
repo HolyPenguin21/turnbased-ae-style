@@ -203,9 +203,10 @@ namespace Game.Ai.V2
         // citadel). Its intrinsic value is what one deep pass along the corridor from our nearest
         // base toward the anchor would observe, on the existing Recon TaskScore slots: never-
         // observed hexes (InfoGain), relevance-weighted staleness (Staleness), what the anchor is
-        // (StrategicRelevance) and that it is where the enemy is (ThreatDirection). AP/Energy of
-        // the actual wing are priced by allocation/provisioning like every air sortie.
-        public static ReconObjective AirSweepOf(WorldSnapshot snap)
+        // (StrategicRelevance) and that it is where the enemy is (ThreatDirection). Like every
+        // other Recon task it also carries its own price: one sortie (activation AP + launch
+        // Energy) from ScoutCostModel — the incumbent wing's own figure when known, else notional.
+        public static ReconObjective AirSweepOf(WorldSnapshot snap, int? preferredMoverArmyId = null)
         {
             if (!WorldAnalysis.TryAirSweepAnchor(snap, out HexCoord anchor, out bool armyConcentration))
                 return null;
@@ -240,8 +241,10 @@ namespace Game.Ai.V2
             float infoGainRaw = neverObserved / (float)samples;
             float stalenessRaw = weight > 0f ? staleWeighted / weight : 0f;
             float threatDirectionRaw = armyConcentration ? 1f : 0.75f;
-            TaskScore score = BuildAirSweepScore(infoGainRaw, stalenessRaw,
-                anchorRelevance, threatDirectionRaw);
+            ScoutCostEstimate cost = MissionCost(snap, anchor, ScoutTargetKind.AirSweep,
+                StealthRequirement.None, 0f, preferredMoverArmyId);
+            TaskScore score = BuildAirSweepScore(snap, infoGainRaw, stalenessRaw,
+                anchorRelevance, threatDirectionRaw, cost);
 
             return new ReconObjective
             {
@@ -272,7 +275,7 @@ namespace Game.Ai.V2
                 case ScoutTargetKind.Surveil:
                     return SurveilOf(snap, ScoutObjectiveEvaluator.SurveilContact(snap, si.TrackedArmyId),
                         preferredMoverArmyId);
-                case ScoutTargetKind.AirSweep: return AirSweepOf(snap);
+                case ScoutTargetKind.AirSweep: return AirSweepOf(snap, preferredMoverArmyId);
                 default: return null;
             }
         }
@@ -342,22 +345,30 @@ namespace Game.Ai.V2
 
         // Each Recon task has one visible external-score assembly point. Helpers above/below provide
         // raw world/route facts only; conversion to score units happens here through TaskScoreEvaluator.
-        private static TaskScore BuildAirSweepScore(float infoGainRaw, float stalenessRaw,
-            float strategicRelevanceRaw, float threatDirectionRaw) =>
-            new TaskScore(
+        // The value is one pass (airSweepValueDepth hexes), so the price is one sortie: the
+        // activation AP it spends now plus its launch Energy — no multi-turn Delivery.
+        private static TaskScore BuildAirSweepScore(WorldSnapshot snap, float infoGainRaw,
+            float stalenessRaw, float strategicRelevanceRaw, float threatDirectionRaw,
+            ScoutCostEstimate cost)
+        {
+            float launchEnergy = Mathf.Max(0f, cost.EnergyDesired);
+            return new TaskScore(
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 staleness: TaskScoreEvaluator.PositiveStaleness(stalenessRaw),
                 strategicRelevance: TaskScoreEvaluator.StrategicRelevance(strategicRelevanceRaw),
-                threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw));
+                threatDirection: TaskScoreEvaluator.ThreatDirection(threatDirectionRaw),
+                cardPrice: TaskScoreEvaluator.Price(Mathf.Max(0f, cost.ActivationApNow)
+                    + ActionPrice.Resources(t => t == Game.Economy.ResourceType.Energy
+                        ? launchEnergy : 0f, snap)));
+        }
 
         private static TaskScore BuildExploreScore(WorldSnapshot snap, HexCoord hex,
             float infoGainRaw, int homeDistance, ScoutCostEstimate cost, float detectionRiskRaw)
         {
             float activationNow = Mathf.Max(0f, cost.ActivationApNow);
             float stealthEntryNow = Mathf.Max(0f, cost.ApDesired - activationNow);
-            IReadOnlyList<(float Gain, float Priority)> ruins = RuinsEventResourceFacts(snap, hex);
             return new TaskScore(
-                economicHexBenefit: TaskScoreEvaluator.EconomicHexBenefit(ruins),
+                strategicRelevance: TaskScoreEvaluator.StrategicRelevance(RuinsRelevance(snap, hex)),
                 infoGain: TaskScoreEvaluator.InfoGain(infoGainRaw),
                 ownTerritoryProximity: TaskScoreEvaluator.OwnTerritoryProximity(homeDistance),
                 cardPrice: TaskScoreEvaluator.Price(activationNow + stealthEntryNow),
@@ -431,23 +442,15 @@ namespace Game.Ai.V2
             };
         }
 
-        // A presumed Hex Event on an unvisited City-ruins focus pays resources (EventCatalog). It is
-        // priced in the SAME slot Economy prices a resource hex with, at resource-hex parity:
-        // reconRuinsEventIncomeEquivalent income-equivalent units spread evenly over the resource
-        // types (which type the event pays is unknown until visited), each at its canonical
-        // ResourcePriority — so a starving economy values ruins more, a saturated one less.
-        private static IReadOnlyList<(float Gain, float Priority)> RuinsEventResourceFacts(
-            WorldSnapshot snap, HexCoord hex)
+        // An unvisited City-ruins focus always holds a Hex Event (a public map rule). What a scout
+        // gains there is KNOWLEDGE of that site (its guard, its reward), not the reward itself: a
+        // scout declines the guard fight, and the reward is the Raid's (RaidReward) once the guard
+        // is known. So the ruins weight rides StrategicRelevance ("how much knowing this target
+        // matters"), never an Economy income slot.
+        private static float RuinsRelevance(WorldSnapshot snap, HexCoord hex)
         {
             ISet<HexCoord> ruins = snap?.MapKnowledge?.UnvisitedRuinsHexes;
-            IReadOnlyList<EconomyResourceStanding> perType = snap?.Economy?.PerType;
-            if (ruins == null || !ruins.Contains(hex) || perType == null || perType.Count == 0)
-                return System.Array.Empty<(float Gain, float Priority)>();
-            float share = AiConfigV2.reconRuinsEventIncomeEquivalent / perType.Count;
-            var perResource = new List<(float Gain, float Priority)>(perType.Count);
-            foreach (EconomyResourceStanding standing in perType)
-                perResource.Add((share, TaskScoreEvaluator.ResourcePriority(standing)));
-            return perResource;
+            return ruins != null && ruins.Contains(hex) ? AiConfigV2.reconRuinsRelevance : 0f;
         }
 
         // Average [floor..1] information-retention factor over the Explore focus and the unvisited,
