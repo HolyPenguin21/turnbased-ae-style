@@ -148,10 +148,14 @@ namespace Game.Aviation
 
         public static IEnumerator ResolveStationaryStrike(AviationCombatPresenter presenter, ArmyData airArmy,
             AviationCombatPresenter.AirStrikeResult result = null)
+            => ResolveStationaryStrike(presenter, airArmy, AirStrikePolicy.Standard, result);
+
+        public static IEnumerator ResolveStationaryStrike(AviationCombatPresenter presenter, ArmyData airArmy,
+            AirStrikePolicy policy, AviationCombatPresenter.AirStrikeResult result = null)
         {
             if (presenter == null || airArmy == null)
                 yield break;
-            yield return presenter.ResolveAirStrikeAtCurrentHex(airArmy, airArmy.Hex, result);
+            yield return presenter.ResolveAirStrikeAtCurrentHex(airArmy, airArmy.Hex, policy, result);
         }
 
         // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel
