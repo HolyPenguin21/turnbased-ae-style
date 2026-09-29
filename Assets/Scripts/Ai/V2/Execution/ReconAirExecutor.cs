@@ -324,15 +324,12 @@ namespace Game.Ai.V2
         // to the same one-command core used by the mid-turn loop.
         private static IEnumerator RunActor(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snapshot, ArmyData initial, AirReconExecutionResult result,
-            bool arrivalStrikeCheckPending = false, HexCoord? missionFocusHex = null,
+            HexCoord? missionFocusHex = null,
             ExecutionResult perMissionResult = null)
         {
             int armyId = initial.Id;
             int guard = Math.Max(4, initial.CurrentMovement + 5);
-            var control = new ActorStepControl { MovedAny = arrivalStrikeCheckPending };
-            if (arrivalStrikeCheckPending)
-                ReconAirSortieRegistry.GetOrCreate(player, armyId, initial.Hex)
-                    .ArrivalStrikeCheckPending = true;
+            var control = new ActorStepControl();
 
             ExecutionStopReason stop = ExecutionStopReason.OutOfMovement;
             while (guard-- > 0)
@@ -426,7 +423,7 @@ namespace Game.Ai.V2
             ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(
                 player, armyId, air.Hex);
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
-            bool hasDeparted = control.MovedAny || sortie.LaunchTurn >= 0 || sortie.Trail.Count > 1;
+            bool hasDeparted = control.MovedAny || sortie.Trail.Count > 1;
             if (ReconAirSortieLifecycle.CompletesAtAirfield(sortie, atAirfield, hasDeparted))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Landing at "
@@ -459,13 +456,10 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            ReconAirSortieLifecycle.Observe(sortie, air, ctx, atAirfield);
+            ReconAirSortieLifecycle.Observe(sortie, air);
             bool newTurn = ReconAirSortieLifecycle.BeginTurn(sortie, ctx.TurnNumber);
-            bool arrivalStrikeCheck = sortie.ArrivalStrikeCheckPending;
-            sortie.ArrivalStrikeCheckPending = false;
             AirReconStepDirector.StepDecision d = AirReconStepDirector.PlanStep(
-                player, root, ctx, snapshot, air, sortie, newTurn,
-                arrivalStrikeCheck, missionFocusHex);
+                player, root, ctx, snapshot, air, sortie, newTurn, missionFocusHex);
 
             if (d.Kind == AirReconStepDirector.StepKind.Stop)
             {
@@ -511,13 +505,18 @@ namespace Game.Ai.V2
             if (d.Kind == AirReconStepDirector.StepKind.Strike)
             {
                 control.CommandAttempted = true;
+                bool attacked = false;
                 yield return ExecuteOpportunisticStrike(
-                    player, ctx, air, sortie, result, perMissionResult);
-                ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-                control.CanContinue = Resolve(player, armyId) != null;
-                control.StopReason = control.CanContinue
+                    player, ctx, air, sortie, result, perMissionResult,
+                    didAttack => attacked = didAttack);
+                if (attacked)
+                    ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
+                control.CanContinue = attacked && Resolve(player, armyId) != null;
+                control.StopReason = Resolve(player, armyId) == null
+                    ? ExecutionStopReason.MoverLost
+                    : attacked
                     ? ExecutionStopReason.StepCompleted
-                    : ExecutionStopReason.MoverLost;
+                    : ExecutionStopReason.NoSafeStep;
                 yield break;
             }
 
@@ -550,7 +549,6 @@ namespace Game.Ai.V2
                 ReconAirSortieLifecycle.Apply(sortie, d);
                 ArmyData afterReturn = Resolve(player, armyId);
                 if (afterReturn != null) sortie.RecordStep(afterReturn.Hex);
-                sortie.ArrivalStrikeCheckPending = true;
                 ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                 control.CanContinue = true;
                 control.StopReason = ExecutionStopReason.StepCompleted;
@@ -588,7 +586,6 @@ namespace Game.Ai.V2
             if (afterStep != null)
                 sortie.RecordStep(afterStep.Hex);
             ReconAirSortieLifecycle.Apply(sortie, d);
-            sortie.ArrivalStrikeCheckPending = true;
             if (d.PivotToReturnAfterMove)
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Turning->Return pivot step taken");
             ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
@@ -613,19 +610,17 @@ namespace Game.Ai.V2
             }
         }
 
-        // §46 — EXECUTION of an opportunistic air strike the director already judged favourable and
+        // §46 — EXECUTION of an opportunistic air strike the director already judged legal and
         // safe. The executor re-guards CanStrikeAtCurrentHex (live), resolves the AviationActions
         // call, refreshes intel, then hands the post-strike phase decision back to the director.
         private static IEnumerator ExecuteOpportunisticStrike(PlayerSetupData player, AiTurnContext ctx,
             ArmyData air, ReconAirSortieState sortie, AirReconExecutionResult passResult,
-            ExecutionResult perMissionResult = null)
+            ExecutionResult perMissionResult = null, Action<bool> onResolved = null)
         {
             if (air == null || ctx == null || !AviationRules.IsValidAirArmy(air))
                 yield break;
 
-            AirReconStepDirector.StrikeAssessment assess =
-                AirReconStepDirector.EvaluateOpportunisticStrike(player, ctx, air);
-            if (!assess.Favourable)
+            if (!AirReconStepDirector.CanOpportunisticallyStrike(player, ctx, air))
                 yield break;
 
             AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;
@@ -633,11 +628,12 @@ namespace Game.Ai.V2
                 yield break;
 
             AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
-                + $"decision=STRIKE dmgFrac={assess.DamageFraction:0.00} killP={assess.KillProbability:0.00}");
+                + "decision=STRIKE reason=legal_and_recoverable");
             HashSet<int> enemyBefore = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
             HashSet<int> neutralBefore = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
             var strike = new AviationCombatPresenter.AirStrikeResult();
             yield return AviationActions.ResolveStationaryStrike(presenter, air, strike);
+            onResolved?.Invoke(strike.Attacked);
 
             if (strike.Attacked)
             {

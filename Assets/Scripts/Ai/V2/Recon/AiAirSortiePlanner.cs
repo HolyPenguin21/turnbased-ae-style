@@ -20,8 +20,8 @@ namespace Game.Ai.V2
     // through AiTurnController.MoveArmyRoutine. The physical half it builds on — airfield
     // capacity/range, plan data (Sortie / MultiTurnSortie), pure route-feasibility simulation —
     // lives in Game.Aviation (AviationRules, AviationSortiePlan / AviationRange). Was the
-    // namespace-neutral Game.Aviation.AviationSupport; moved here (ARCH-01) because AA memory,
-    // map knowledge, AiConfig radii and resource reservations make it AI planning, not domain.
+    // namespace-neutral Game.Aviation.AviationSupport; moved here (ARCH-01) because map
+    // knowledge, AiConfig radii and resource reservations make it AI planning, not domain.
     public static class AiAirSortiePlanner
     {
         public readonly struct RebaseRoute
@@ -127,8 +127,7 @@ namespace Game.Ai.V2
         //           lands within (SafeUnlandedEndsRemaining - 1) more unlanded turn-ends, each
         //           future turn simulated with the group's refreshed EffectiveMoveMax.
         //
-        // A plane (SafeUnlandedEndsRemaining == 0) always fails the first clause, so its existing
-        // single-turn boomerang model is completely untouched. Pure query — never mutates unit
+        // A wing with no safe unlanded ends always fails the first clause. Pure query — never mutates unit
         // state, re-derives everything from the live shared aviation rules.
         public static bool CanEndTurnHereAndRecover(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
@@ -320,8 +319,7 @@ namespace Game.Ai.V2
         // one needing 3, regardless of forwardness/cost), THEN forwardness, THEN cost — same
         // tie-break shape PlanSortieCore already uses, just with RequiredTurns as the new outermost
         // tier. Returns null outright whenever this group has no safe unlanded-end margin at all
-        // (SafeUnlandedEndsRemaining <= 0) — that's exactly a plane, and planes stay on
-        // PlanSortieCore's existing single-turn model untouched (spec point 6).
+        // (SafeUnlandedEndsRemaining <= 0) — such wings use the single-turn route proof.
         private static MultiTurnSortie? PlanMultiTurnSortieCore(HexCoord startHex, ArmyData excludingFromCapacity,
             IReadOnlyList<UnitData> aircraft, int firstTurnMovement, System.Func<HexPath, int> pathCost,
             int requiredSlots, int vacatingAtStart, HexCoord actionHex, HexMap map, PlayerSetupData owner)
@@ -427,7 +425,7 @@ namespace Game.Ai.V2
         //
         // TryReplan is ONLY called from ContinueSortie's two "heading home" branches — never from
         // the voluntary launch/outbound path, which keeps its own complete recoverability proof in
-        // PlanSortieCore/TryPlanSortiePreferForwardLanding. The return search ranks reachable
+        // PlanSortieCore/TryPlanSortie. The return search ranks reachable
         // airfields by route cost and then forward usefulness. Null means no owned airfield is
         // physically reachable this turn.
         // One shared gate for a stationary strike by an already-airborne wing. Striking costs
@@ -440,9 +438,15 @@ namespace Game.Ai.V2
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null
                 || !AviationActions.CanStrikeAtCurrentHex(airArmy))
                 return false;
-            return TryReplan(airArmy, map, owner).HasValue
-                || TryReplanMultiTurnReturn(airArmy, map, owner).HasValue;
+            return CanRecover(airArmy, map, owner);
         }
+
+        // A live landing route from the current hex, independent of why the wing is flying.
+        // The two planners share the same capacity and endurance rules as execution.
+        public static bool CanRecover(ArmyData airArmy, HexMap map, PlayerSetupData owner) =>
+            owner != null && map != null && AviationRules.IsValidAirArmy(airArmy)
+            && (TryReplan(airArmy, map, owner).HasValue
+                || TryReplanMultiTurnReturn(airArmy, map, owner).HasValue);
 
         public static HexCoord? TryReplan(ArmyData airArmy, HexMap map, PlayerSetupData owner)
         {
@@ -474,57 +478,10 @@ namespace Game.Ai.V2
             return best;
         }
 
-        // Same reachability math TryPlanSortie/PlanSortieCore apply for an already-airborne army
-        // (full round trip current hex -> actionHex -> a landing hex, all within
-        // airArmy.CurrentMovement) — used ONLY by ContinueSortie's outbound-leg re-evaluation.
-        // Every owned airfield is re-considered fresh on every step, so a safer/more-forward base
-        // can win at any point during the outbound leg, not only once the original choice breaks.
-        //
-        // Priority: more useful as a forward base, then lower total round-trip cost. Returns null
-        // whenever no owned airfield offers a real round trip; the caller's TryReplan fallback
-        // abandons the target and flies home.
-        public static Sortie? TryPlanSortiePreferForwardLanding(ArmyData airArmy, HexCoord actionHex, HexMap map, PlayerSetupData owner)
-        {
-            if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner || map == null)
-                return null;
-
-            HexPath outbound = HexPathfinder.FindPath(map, airArmy.Hex, actionHex, flatCost: true);
-            if (outbound == null)
-                return null;
-            int outboundCost = AviationRules.PathMoveCost(airArmy, outbound);
-            int movement = airArmy.CurrentMovement;
-
-            Sortie? best = null;
-            int bestForward = int.MaxValue;
-            int bestCost = int.MaxValue;
-            foreach (HexCoord landing in OwnedAirfieldHexes(owner))
-            {
-                if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
-                    continue;
-                HexPath ret = HexPathfinder.FindPath(map, actionHex, landing, flatCost: true);
-                if (ret == null)
-                    continue;
-                int totalCost = outboundCost + AviationRules.PathMoveCost(airArmy, ret);
-                if (totalCost > movement)
-                    continue; // not a real, complete round trip from here — never a candidate
-
-                int forward = NearestKnownEnemyDistance(owner, landing);
-                bool better = best == null || forward < bestForward
-                    || (forward == bestForward && totalCost < bestCost);
-                if (better)
-                {
-                    best = new Sortie(actionHex, landing, outbound, ret, totalCost);
-                    bestForward = forward;
-                    bestCost = totalCost;
-                }
-            }
-            return best;
-        }
-
         // How close `hex` is to the nearest known enemy reference — the enemy citadel if known,
         // else the nearest known enemy army sighting, whichever is closer (int.MaxValue if neither
         // is known). The one shared "how forward is this base" yardstick for
-        // TryReplan/TryPlanSortiePreferForwardLanding's tie-break and forward-landing scoring, so
+        // TryReplan/TryPlanSortie's tie-break and forward-landing scoring, so
         // the reads can never quietly disagree.
         public static int NearestKnownEnemyDistance(PlayerSetupData owner, HexCoord hex)
         {
@@ -542,7 +499,7 @@ namespace Game.Ai.V2
         // — so route/capacity logic exists exactly once.
         //
         // Re-validates the plan fresh every call (must recheck before it launches OR moves): the
-        // outbound leg re-searches every owned airfield via TryPlanSortiePreferForwardLanding on
+        // outbound leg re-searches every owned airfield via TryPlanSortie on
         // every step, the same "always re-derived" treatment the return leg gets via TryReplan.
         // Both legs use the same endurance/capacity proof; the outbound leg then prefers
         // forward usefulness over cost (it is choosing where to base next), while the return leg
@@ -601,11 +558,10 @@ namespace Game.Ai.V2
             HexCoord destination = task.TargetHex;
             if (task.Outbound)
             {
-                Sortie? sortie = TryPlanSortiePreferForwardLanding(task.Army, task.TargetHex, ctx.Map, player);
+                Sortie? sortie = TryPlanSortie(task.Army, task.TargetHex, ctx.Map, player);
                 if (sortie.HasValue)
                 {
                     task.LandingHex = sortie.Value.LandingHex;
-                    task.IsMultiTurn = false;
                     destination = task.TargetHex;
                 }
                 else
@@ -620,7 +576,6 @@ namespace Game.Ai.V2
                     if (multi.HasValue)
                     {
                         task.LandingHex = multi.Value.LandingHex;
-                        task.IsMultiTurn = true;
                         destination = task.TargetHex;
                         LogMultiTurnContinuation(player, task, logLabel, multi.Value, arrivingHome: false);
                     }
@@ -640,7 +595,6 @@ namespace Game.Ai.V2
                         }
                         task.Outbound = false;
                         HexCoord home = fallback ?? multiFallback.Value.LandingHex;
-                        task.IsMultiTurn = fallback == null;
                         task.LandingHex = home;
                         task.TargetHex = home;
                         destination = home;
@@ -660,7 +614,6 @@ namespace Game.Ai.V2
                     if (exact.HasValue)
                     {
                         task.TargetHex = task.LandingHex;
-                        task.IsMultiTurn = exact.Value.RequiredTurns > 1;
                         destination = task.LandingHex;
                         exactRebaseReady = true;
                     }
@@ -681,7 +634,6 @@ namespace Game.Ai.V2
                     {
                         task.LandingHex = confirmedLanding.Value;
                         task.TargetHex = confirmedLanding.Value;
-                        task.IsMultiTurn = false;
                         destination = confirmedLanding.Value;
                     }
                     else
@@ -695,7 +647,6 @@ namespace Game.Ai.V2
                         }
                         task.LandingHex = multiReturn.Value.LandingHex;
                         task.TargetHex = multiReturn.Value.LandingHex;
-                        task.IsMultiTurn = true;
                         destination = multiReturn.Value.LandingHex;
                         LogMultiTurnContinuation(player, task, logLabel, multiReturn.Value, arrivingHome: true);
                     }

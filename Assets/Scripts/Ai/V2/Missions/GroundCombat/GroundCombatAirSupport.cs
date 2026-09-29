@@ -280,30 +280,26 @@ namespace Game.Ai.V2
             nextTurnEnergy = 0f;
             nextTurnAp = 0f;
             int requiredTurns = 1;
-            if (w.Continuing)
+            if (w.Returning)
             {
-                landing = w.Active.LandingHex;
-                // Re-prove the remaining flight from the live position. A continuing support wing
-                // is still governed by the same endurance/resource contract as a new sortie.
-                Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
+                // The strike leg is over. Prove the remaining landing route without sending the
+                // wing back through the old combat target.
+                HexCoord? sameTurn = AiAirSortiePlanner.TryReplan(wing, ctx.Map, player);
                 MultiTurnSortie? multi = sameTurn.HasValue ? null
-                    : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
-                if (sameTurn.HasValue)
-                    landing = sameTurn.Value.LandingHex;
-                else if (multi.HasValue)
+                    : AiAirSortiePlanner.TryReplanMultiTurnReturn(wing, ctx.Map, player);
+                if (!sameTurn.HasValue && !multi.HasValue)
                 {
-                    landing = multi.Value.LandingHex;
-                    requiredTurns = multi.Value.RequiredTurns;
-                }
-                else
-                {
+                    landing = default;
                     failure = ProvisionFailure.NoExecutableStep(
-                        $"wing #{wing.Id} no longer has a recoverable route to the {lane} target");
+                        $"wing #{wing.Id} has no recoverable landing route after {lane} support");
                     return false;
                 }
+                landing = sameTurn ?? multi.Value.LandingHex;
+                requiredTurns = multi?.RequiredTurns ?? 1;
             }
             else
             {
+                // New and continuing outbound wings use the same live route proof.
                 Sortie? sameTurn = AiAirSortiePlanner.TryPlanSortie(wing, targetHex, ctx.Map, player);
                 MultiTurnSortie? multi = sameTurn.HasValue ? null
                     : AiAirSortiePlanner.TryPlanMultiTurnSortie(wing, targetHex, ctx.Map, player);
@@ -317,21 +313,24 @@ namespace Game.Ai.V2
                 landing = sameTurn?.LandingHex ?? multi.Value.LandingHex;
                 requiredTurns = sameTurn.HasValue ? 1 : multi.Value.RequiredTurns;
 
-                opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
-                List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
-                AviationCombatEstimator.AirStrikeEstimate estimate =
-                    AviationCombatEstimator.EstimateAirStrike(wing.Members, knownDefense, knownAttack,
-                        defenders, policy);
-                float beforeWin = winAgainst(opposition);
-                float afterWin = winAgainst(AfterStrike(opposition, estimate.ExpectedDefendersAfter,
-                    SourceIndices(estimate, defenders.Count)));
-                if (estimate.ExpectedDamage <= eps
-                    || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors
-                    || afterWin <= beforeWin + eps)
+                if (!w.Continuing)
                 {
-                    failure = ProvisionFailure.SortieNotWorthwhile(
-                        $"{lane} air support does not improve the primary's projected odds");
-                    return false;
+                    opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
+                    List<WorthIt.DefenderProfile> defenders = WorthIt.UnitsOf(opposition);
+                    AviationCombatEstimator.AirStrikeEstimate estimate =
+                        AviationCombatEstimator.EstimateAirStrike(wing.Members, knownDefense, knownAttack,
+                            defenders, policy);
+                    float beforeWin = winAgainst(opposition);
+                    float afterWin = winAgainst(AfterStrike(opposition, estimate.ExpectedDefendersAfter,
+                        SourceIndices(estimate, defenders.Count)));
+                    if (estimate.ExpectedDamage <= eps
+                        || estimate.ExpectedDefendersAfter.Count < policy.MinimumSurvivors
+                        || afterWin <= beforeWin + eps)
+                    {
+                        failure = ProvisionFailure.SortieNotWorthwhile(
+                            $"{lane} air support does not improve the primary's projected odds");
+                        return false;
+                    }
                 }
             }
 

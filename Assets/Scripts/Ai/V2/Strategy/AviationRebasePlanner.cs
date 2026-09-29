@@ -245,6 +245,7 @@ namespace Game.Ai.V2
             // landing is still recoverable inside live endurance, take the free stationary strike
             // first; movement remains untouched and the return continues below.
             if (!AviationRules.IsOwnedAirfieldAt(wing.Hex, player)
+                && AviationActions.CanActivateForStationaryStrike(wing)
                 && AiAirSortiePlanner.CanStrikeAndRecover(wing, ctx.Map, player))
             {
                 AviationCombatPresenter presenter = ctx.HexSelection?.AviationCombatPresenter;

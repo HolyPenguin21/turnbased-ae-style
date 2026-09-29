@@ -20,16 +20,16 @@ namespace Game.Ai.V2
 
     internal static partial class ProvisioningManager
     {
-        // Claim the air actor/subset Assignment already picked, THROUGH THE SAME generic
+        // Claim the existing air actor Assignment already picked through the same generic
         // funding/provisioning accounting Ground uses: the real AP/Energy Assignment resolved for
-        // this exact actor/subset (ScoutExecutionCandidate.RequiredAp/RequiredEnergy — see
+        // this exact actor (ScoutExecutionCandidate.RequiredAp/RequiredEnergy — see
         // ReconAssignmentPlanner.AppendAirCandidates) is checked against the envelope Funding
         // granted (funded.Tentative.Ap / funded.PhysicalDraw.Energy) and, if it fits, claimed as
         // ClaimedAp/ClaimedEnergy. If it does not fit, this returns the ordinary EnvelopeTooSmall
         // failure and the repack/reprice loop (ResourceAllocator.RegisterProvisionFailure) handles
         // it exactly like ground — no separate air ledger. The terminal air execution stage still
-        // re-checks LIVE HARD gates (AiAirSortiePlanner.CanAffordLaunch / CanIssueMoveNow / AA /
-        // safe return) against the post-ground-movement world before spending anything, but never
+        // re-checks live hard gates (CanIssueMoveNow / route and endurance / safe return)
+        // against the post-ground-movement world before spending anything, but never
         // re-runs strategic hand/deck/income economics: that decision is made once, here, by
         // AirSortieReservationAdmission.
         private static ProvisioningResult ProvisionAir(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
@@ -77,9 +77,6 @@ namespace Game.Ai.V2
             }
 
             int moverArmyId = wing.Id;
-            HexCoord airfieldHex = default;
-            List<UnitData> launchSubset = null;
-
             // The real, actor-specific cost Assignment already resolved for THIS
             // exact candidate (see AppendAirCandidates: a live Pick against the
             // bound mission target, not a generic "some useful step exists" probe). Compare against

@@ -27,11 +27,6 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal enum ReconAirPhase { Outbound, Turning, Hold, Return, Landing }
 
-    // AI-AIR-02 — what this sortie is actually for, so telemetry (and a later strike-first
-    // planner) can tell a pure recon flight from one that has already revealed itself with a
-    // strike. Never gates gameplay rules — those stay AviationRules'/AviationActions' job.
-    internal enum ReconAirMissionMode { Recon, Strike, ReconStrike }
-
     internal sealed class ReconAirSortieState
     {
         // Stable per-sortie identity (one launch -> landing arc). Used so AirReconCoverageRegistry
@@ -64,18 +59,11 @@ namespace Game.Ai.V2
         //  AI-AIR-02 PERSISTENT SORTIE PLAN — the durable bits of the spec's AirSortiePlan that
         //  are not already covered by an existing aviation rule. Endurance itself
         //  (TurnsWithoutRefuel / ConsecutiveUnlandedEnds / HasAirAttackedThisTurn) and landing
-        //  feasibility are NEVER duplicated here — they are read live from AviationRules /
-        //  AiAviationSupport every decision.
+        //  feasibility are never duplicated here — they are read live from AviationRange and
+        //  AiAirSortiePlanner every decision.
         // ===================================================================================
-        public int LaunchTurn = -1;                                 // AI turn the wing actually left the airfield (authoritative)
         public int LastProcessedTurn = -1;                          // last AI turn RunActor processed this sortie
-        public ReconAirMissionMode MissionMode = ReconAirMissionMode.Recon;
         public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
-
-        // Set only after a confirmed launch/move and consumed by the next admitted actor step.
-        // This makes the post-arrival opportunistic-strike check survive an orchestration boundary
-        // without asking the strategic layer to remember tactical coroutine-local state.
-        public bool ArrivalStrikeCheckPending;
 
         // True on the first call of an AI turn this sortie has not been processed in yet — lets the
         // caller re-open a Hold exactly once per turn.

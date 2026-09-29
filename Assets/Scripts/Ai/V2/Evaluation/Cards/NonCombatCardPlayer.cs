@@ -662,7 +662,7 @@ namespace Game.Ai.V2
         {
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
             ReconAirStepPlanner.StepChoice? step = ReconAirStepPlanner.PickFromStorage(
-                player, ctx, new AirLaunchCandidate(airfield, null, projected), snap, mode,
+                player, ctx, airfield, projected, snap, mode,
                 ctx.TurnNumber, missionFocusHex: focus);
             if (!step.HasValue || step.Value.Score < ReconAirStepPlanner.MinimumUsefulScore)
                 return false;

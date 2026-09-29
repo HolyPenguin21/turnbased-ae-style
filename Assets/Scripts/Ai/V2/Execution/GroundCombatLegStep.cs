@@ -97,10 +97,7 @@ namespace Game.Ai.V2
                     yield break;
                 }
                 var strike = new AviationCombatPresenter.AirStrikeResult();
-                wing.PendingAirStrikePolicy = policy;
-                yield return presenter.ResolveAirStrikeAtCurrentHex(wing, wing.Hex,
-                    wing.PendingAirStrikePolicy.Value, strike);
-                wing.PendingAirStrikePolicy = null;
+                yield return AviationActions.ResolveStationaryStrike(presenter, wing, policy, strike);
                 wing.LastAirStrikeHex = wing.Hex;
                 wing.LastAirStrikeAttacked = strike.Attacked;
                 result.CombatChanged |= strike.Attacked;

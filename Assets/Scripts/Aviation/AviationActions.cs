@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Cards;
+using Game.Economy;
 using Game.Map;
 using Game.Players;
 using Game.Units;
@@ -137,21 +138,50 @@ namespace Game.Aviation
         // calls the same two methods, so AP/targeting/HasAirAttackedThisTurn rules can never drift
         // between the two callers, same reason every other method in this class already lives here
         // rather than inside AiAggressionPlanner or a UI script.
-        public static bool CanStrikeAtCurrentHex(ArmyData airArmy)
+        public static bool CanStrikeAtCurrentHex(ArmyData airArmy) =>
+            CanStrikeAtCurrentHex(airArmy, AirStrikePolicy.Standard);
+
+        public static bool CanStrikeAtCurrentHex(ArmyData airArmy, AirStrikePolicy policy)
         {
             if (!AviationRules.IsValidAirArmy(airArmy))
                 return false;
             if (!airArmy.Members.Any(unit => !unit.HasAirAttackedThisTurn))
                 return false;
-            return AviationCombatPresenter.FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner).Count > 0;
+            return AviationCombatPresenter.FindAirStrikeTargetsAt(airArmy.Hex, airArmy.Owner,
+                policy.ExactTargetArmyId).Sum(target => target.Members.Count) > policy.MinimumSurvivors;
         }
 
         public static IEnumerator ResolveStationaryStrike(AviationCombatPresenter presenter, ArmyData airArmy,
-            AviationCombatPresenter.AirStrikeResult result = null)
+            AviationCombatPresenter.AirStrikeResult result = null) =>
+            ResolveStationaryStrike(presenter, airArmy, AirStrikePolicy.Standard, result);
+
+        // A stationary strike spends no MP, but it still activates the wing once this turn.
+        // Movement and stationary combat must pay the same AP/Energy before their first action.
+        public static bool CanActivateForStationaryStrike(ArmyData airArmy)
         {
-            if (presenter == null || airArmy == null)
+            if (!AviationRules.IsValidAirArmy(airArmy))
+                return false;
+            PlayerRoot root = PlayerRootRegistry.FindFor(airArmy.Owner);
+            return root != null && (airArmy.HasActivatedThisTurn
+                || (root.CanSpendActionPoints(airArmy.ActivationApCost)
+                    && root.GetResource(ResourceType.Energy) >= airArmy.ActivationEnergyCost));
+        }
+
+        public static IEnumerator ResolveStationaryStrike(AviationCombatPresenter presenter, ArmyData airArmy,
+            AirStrikePolicy policy, AviationCombatPresenter.AirStrikeResult result = null)
+        {
+            if (presenter == null || !CanActivateForStationaryStrike(airArmy)
+                || !CanStrikeAtCurrentHex(airArmy, policy))
                 yield break;
-            yield return presenter.ResolveAirStrikeAtCurrentHex(airArmy, airArmy.Hex, result);
+            if (!airArmy.HasActivatedThisTurn)
+            {
+                PlayerRoot root = PlayerRootRegistry.FindFor(airArmy.Owner);
+                root.SpendActionPoints(airArmy.ActivationApCost);
+                if (airArmy.ActivationEnergyCost > 0)
+                    root.AddResource(ResourceType.Energy, -airArmy.ActivationEnergyCost);
+                airArmy.MarkActivated();
+            }
+            yield return presenter.ResolveAirStrikeAtCurrentHex(airArmy, airArmy.Hex, policy, result);
         }
 
         // Kept as the shared landing entry point for future UI/AI callers. Landing is a refuel

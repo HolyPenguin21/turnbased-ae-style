@@ -29,10 +29,8 @@ namespace Game.Ai.V2
     internal static class ReconAirSortieLifecycle
     {
         // Idempotent facts about where the wing physically is right now — not a pending transition.
-        internal static void Observe(ReconAirSortieState sortie, ArmyData air, AiTurnContext ctx, bool atAirfield)
+        internal static void Observe(ReconAirSortieState sortie, ArmyData air)
         {
-            if (sortie.LaunchTurn < 0)
-                sortie.LaunchTurn = atAirfield ? ctx.TurnNumber : ctx.TurnNumber - 1;
             if (!air.Hex.Equals(sortie.LaunchHex))
             {
                 sortie.ClaimedSector = ReconDirectionModel.Sector(sortie.LaunchHex, air.Hex);
@@ -75,9 +73,8 @@ namespace Game.Ai.V2
     // used to live inside ReconAirExecutor.RunActor is here: phase state machine (Outbound /
     // Turning / Hold / Return), ReconMode resolution, the ReconAirStepPlanner.Pick call, the
     // Outbound->Turning->Return transitions, PickReturnStep + landing hysteresis, the activation
-    // energy / affordability gates, and the opportunistic-strike arbitration (favourable estimate,
-    // KNOWN-AA, safe-return proof). It reads LIVE world state on every call — live replanning is
-    // allowed, but it happens in the planner, not the executor. ReconAirExecutor only issues the
+    // energy / affordability gates, and recoverable opportunistic strikes. It reads live world
+    // state on every call. ReconAirExecutor only issues the
     // canonical Move / Strike / assignment-bookkeeping calls the returned decision names.
     internal static class AirReconStepDirector
     {
@@ -85,8 +82,8 @@ namespace Game.Ai.V2
         {
             Stop,          // sortie is done for this pass (see teardown flags)
             HoldEndTurn,   // a Hold set earlier this turn — end the sortie's turn aloft here
-            HoldReopen,    // a Hold set on a previous turn — run an arrival strike check, then resume ResumePhase
-            Strike,        // a favourable opportunistic strike exists at the current hex right now
+            HoldReopen,    // a Hold set on a previous turn — reopen and check for a strike
+            Strike,        // a legal recoverable strike exists at the current hex right now
             ReturnStep,    // one adjacent step toward the chosen landing airfield
             ForwardStep,   // one adjacent Outbound / Turning step toward useful information
         }
@@ -179,8 +176,8 @@ namespace Game.Ai.V2
         }
 
         // Decide the next thing this airborne wing should do — READ-ONLY. `newTurn` is the result
-        // of the executor's own sortie.BeginTurn(turn) lifecycle call; `arrivalStrikeCheck` is true
-        // right after the executor completed a move this pass (or a storage launch's first step).
+        // of the executor's own sortie.BeginTurn(turn) lifecycle call. Strike eligibility is read
+        // live on every step, including the first step of a new turn and the return leg.
         // PlanStep issues NO gameplay call and makes NO durable ReconAirSortieState change: any
         // Phase / reason / best-score transition it wants is returned on the StepDecision and
         // applied by ReconAirSortieLifecycle.Apply after a confirmed successful action. (The one
@@ -188,7 +185,7 @@ namespace Game.Ai.V2
         // finally before return — the scorer reads Phase, and it never survives the call.)
         internal static StepDecision PlanStep(PlayerSetupData player, PlayerRoot root, AiTurnContext ctx,
             WorldSnapshot snapshot, ArmyData air, ReconAirSortieState sortie, bool newTurn,
-            bool arrivalStrikeCheck, HexCoord? missionFocusHex = null)
+            HexCoord? missionFocusHex = null)
         {
             int armyId = air.Id;
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
@@ -221,8 +218,8 @@ namespace Game.Ai.V2
             }
 
             // ---- opportunistic strike at the current hex ------------------------------------
-            if (arrivalStrikeCheck && !atAirfield && EvaluateOpportunisticStrike(player, ctx, air).Favourable)
-                return StepDecision.Strike("favourable strike at current hex");
+            if (!atAirfield && CanOpportunisticallyStrike(player, ctx, air))
+                return StepDecision.Strike("recoverable strike at current hex");
 
             // ---- normal forward / return flow --------------------------------------------------
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snapshot);
@@ -332,40 +329,26 @@ namespace Game.Ai.V2
         //  OPPORTUNISTIC STRIKE  (spec §46) — the DECISION only. ReconAirExecutor executes the
         //  AviationActions call; AirReconStepDirector.ResolveAfterStrike stamps the post-strike phase.
         // ==========================================================================================
-        internal readonly struct StrikeAssessment
-        {
-            public readonly bool Favourable;
-            public readonly float DamageFraction;
-            public readonly float KillProbability;
-            public readonly string SkipReason;
-
-            public StrikeAssessment(bool favourable, float damageFraction, float killProbability, string skipReason)
-            {
-                Favourable = favourable;
-                DamageFraction = damageFraction;
-                KillProbability = killProbability;
-                SkipReason = skipReason;
-            }
-        }
-
-        internal static StrikeAssessment EvaluateOpportunisticStrike(PlayerSetupData player,
+        internal static bool CanOpportunisticallyStrike(PlayerSetupData player,
             AiTurnContext ctx, ArmyData air)
         {
-            if (air == null || ctx == null || !AviationRules.IsValidAirArmy(air)
+            if (air == null || ctx?.HexSelection?.AviationCombatPresenter == null
+                || !AviationRules.IsValidAirArmy(air)
+                || !AviationActions.CanActivateForStationaryStrike(air)
                 || !AviationActions.CanStrikeAtCurrentHex(air))
-                return new StrikeAssessment(false, 0f, 0f, "cannot_strike_here");
+                return false;
 
             if (!AiAirSortiePlanner.CanStrikeAndRecover(air, ctx.Map, player))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
                     + "decision=SKIP reason=no_recoverable_strike");
-                return new StrikeAssessment(false, 0f, 0f, "no_recoverable_strike");
+                return false;
             }
 
             // Once an airborne recon wing physically meets an enemy, the strike is free in MP.
             // Do not invent a second strategic worth-it threshold here: if the attack is legal and
             // a landing remains feasible inside the live endurance budget, attack and then replan.
-            return new StrikeAssessment(true, 0f, 0f, null);
+            return true;
         }
 
         // Post-strike flight decision. A strike costs no movement and therefore never ends the
@@ -377,11 +360,8 @@ namespace Game.Ai.V2
         {
             if (sortie == null)
                 return;
-            sortie.MissionMode = ReconAirMissionMode.ReconStrike;
 
-            bool safeReturnGone = air == null || !AviationRules.IsValidAirArmy(air)
-                || (!AiAirSortiePlanner.TryReplan(air, ctx.Map, player).HasValue
-                    && !AiAirSortiePlanner.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue);
+            bool safeReturnGone = air == null || !AiAirSortiePlanner.CanRecover(air, ctx.Map, player);
             if (safeReturnGone)
             {
                 sortie.Phase = ReconAirPhase.Return;
