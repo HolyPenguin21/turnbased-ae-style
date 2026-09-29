@@ -19,13 +19,13 @@ namespace Game.Ai.V2
     //  cannot drift:
     //    · MaxAirReconActorsPerTurn — the per-turn air-recon actor slot cap (was
     //      ReconAirExecutor.MaxAirActorsPerTurn, a private const the snapshot could not see);
-    //    · SelectReconLaunchSubset + AiConfig.aviationLaunchMinReadyAircraft — a storage sortie is
-    //      one minimum aircraft subset, never the whole hangar;
-    //    · AiAirSortiePlanner.CanAffordLaunch semantics — AP + reservation-net Energy;
-    //    · a ready standalone wing is on an owned airfield with NO AiTask and MP left.
+    //    · a ready standalone wing is on an owned airfield with no active sortie and MP left;
+    //    · an airborne recon wing is an already-formed air army continuing its flight.
     //
-    //  EvaluateDetailed() enumerates the concrete air slots (airborne wings, then ready standalone
-    //  wings, then storage launch subsets) plus a loose WorldAnalysis-only fallback count from a
+    //  Recon NEVER forms aircraft from an airfield container. Aircraft materialization belongs to
+    //  the independent card/score layer; this capacity owner enumerates existing air armies only.
+    //  EvaluateDetailed() enumerates airborne wings, then ready standalone wings, plus a loose
+    //  WorldAnalysis-only fallback count from a
     //  raw-stockpile greedy. It is STRUCTURAL throughout: no hand/deck/income reserve, no
     //  "is spending it worthwhile" judgement. That strategic decision has exactly one owner —
     //  ProvisioningManager.AirSortieReservationAdmission -> AviationSortieReservationEvaluator.
@@ -50,8 +50,8 @@ namespace Game.Ai.V2
     // slots so ReconAirReservationPrepass can pin specific actors and protect their exact AP/Energy.
     internal readonly struct AirObservationSlot
     {
-        public readonly int? ActorId;       // a ready standalone wing's army id; null for a hangar launch subset
-        public readonly HexCoord AirfieldHex; // the launching airfield when ActorId is null; default otherwise
+        public readonly int? ActorId;       // existing air army id (nullable only for legacy/test construction)
+        public readonly HexCoord AirfieldHex; // legacy field; production Recon does not launch from storage
         public readonly int Ap;
         public readonly int Energy;
 
@@ -69,8 +69,8 @@ namespace Game.Ai.V2
         // Executor-operational in-flight recon wings (Controller != null && CurrentMovement > 0),
         // in the executor's own order, each carrying the first-activation AP/Energy it still owes.
         public readonly List<AirObservationSlot> AirborneWings = new List<AirObservationSlot>();
-        // Every ready-standalone-wing then hangar-launch-subset candidate, in the exact order the
-        // executor would try them. NOT budget-filtered and NOT capped — ReconAirReservationPrepass
+        // Every ready standalone wing, in the exact order the executor would try them.
+        // NOT budget-filtered and NOT capped — ReconAirReservationPrepass
         // runs the ONE authoritative greedy (cumulative AP/Energy + AIR-01 route + energy policy)
         // so a route-invalid earlier candidate cannot hide a valid later aircraft.
         public readonly List<AirObservationSlot> SpareCandidatesInOrder = new List<AirObservationSlot>();
@@ -102,14 +102,17 @@ namespace Game.Ai.V2
                && o.Kind == ReconObjectiveKind.AirSweep
                && !o.NeedsStealth;
 
-        // How far one sortie of these aircraft reaches outbound, by the same-turn round-trip rule
-        // (ReconAirSortieState.OutboundCapFor): half the slowest aircraft's movement.
+        // Coarse score-layer reach only. Runtime feasibility is always re-proved by AviationRange.
+        // If the group had to return to the same point, its usable outward distance is half of all
+        // MP available across the turns its live TurnsWithoutRefuel permits. This preserves the
+        // familiar move/2 value for endurance 0 without storing a parallel outbound cap.
         internal static int SweepReach(IReadOnlyList<UnitData> aircraft)
         {
             if (aircraft == null || aircraft.Count == 0)
                 return 0;
             int move = aircraft.Select(AviationRules.EffectiveMoveMax).DefaultIfEmpty(0).Min();
-            return ReconAirSortieState.OutboundCapFor(move);
+            int flightTurns = AviationRange.SafeUnlandedEndsRemaining(aircraft) + 1;
+            return Mathf.Max(0, move * flightTurns) / 2;
         }
 
         // The farthest point of a sweep from `from` toward `anchor`: walk the straight hex line
@@ -205,9 +208,8 @@ namespace Game.Ai.V2
             detail.ApBudgetBase = Mathf.Max(0, root.ActionPoints);
             detail.EnergyBudgetBase = Mathf.Max(0, root.GetResource(ResourceType.Energy));
 
-            // Spare candidates in the EXACT order ReconAirExecutor tries them: ready standalone
-            // wings first (executor sort), then one hangar launch subset per owned airfield in
-            // OwnedAirfieldHexes order. Not budget-filtered / not capped — the prepass owns that.
+            // Spare candidates in the exact order ReconAirExecutor tries them: already-formed,
+            // ready standalone wings only. Not budget-filtered / not capped — the prepass owns that.
             foreach (ArmyData a in ownAir
                 .Where(a => IsReadyStandaloneWing(player, a))
                 .OrderBy(a => a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost))
@@ -219,19 +221,7 @@ namespace Game.Ai.V2
                     a.HasActivatedThisTurn ? 0 : Mathf.Max(0, a.ActivationEnergyCost)));
             }
 
-            foreach (HexCoord hex in AiAirSortiePlanner.OwnedAirfieldHexes(player))
-            {
-                ArmyData airfield = AviationRules.FindAirfieldAt(hex, player);
-                if (airfield == null
-                    || airfield.Members.Count < Mathf.Max(1, AiConfig.aviationLaunchMinReadyAircraft))
-                    continue;
-                List<UnitData> subset = SelectReconLaunchSubset(airfield.Members);
-                if (subset.Count == 0)
-                    continue;
-                detail.SpareCandidatesInOrder.Add(new AirObservationSlot(null, hex,
-                    subset.Sum(u => Mathf.Max(0, u.ActivationApCost)),
-                    subset.Sum(u => Mathf.Max(0, u.LaunchEnergyCost))));
-            }
+            // No hangar candidates here: Recon consumes only already-formed air armies.
 
             // Loose fallback count (WorldAnalysis only): simple cumulative-budget greedy, no route,
             // no strategic reserve — just "how many more sorties do the raw stockpile + slot cap
