@@ -85,9 +85,11 @@ namespace Game.UI
         private static string BuildDescription(HexEventRegistry.Entry entry)
         {
             string description = entry?.Definition?.description ?? string.Empty;
-            int targetCount = entry?.ResolvedGuardMembers?
-                .Where(member => member.Item1 != null && member.Item2 > 0)
-                .Sum(member => member.Item2) ?? 0;
+            int targetCount = 0;
+            if (entry?.ResolvedGuardMembers != null)
+                targetCount = entry.ResolvedGuardMembers
+                    .Where(member => member.Item1 != null && member.Item2 > 0)
+                    .Sum(member => member.Item2);
 
             if (targetCount <= 0)
                 return description;
