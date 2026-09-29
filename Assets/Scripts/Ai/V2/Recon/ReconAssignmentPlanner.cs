@@ -344,29 +344,9 @@ namespace Game.Ai.V2
             return list;
         }
 
-        // AIR CANDIDATES. WHICH air actor/airfield executes a funded Observation mission is decided
-        // by the SAME Assignment owner as Ground. Hard invariants: air never satisfies
-        // Explore/GroundTraversal (never reached — caller filters) and never a stealth-Required /
-        // positive-DetectionRisk mission (air cannot go hidden). `airPool` is the SAME ordered,
-        // per-pass-capped candidate pool (ready standalone wings, then one hangar launch subset per
-        // owned airfield, capped to ReconAirCapacityPolicy.MaxAirReconActorsPerTurn minus wings
-        // already continuing a prior sortie) AssignFunded computes ONCE for the whole batch via
-        // ReconAirCapacityPolicy.EvaluateDetailed — the same primitive capacity sizing uses, so the
-        // pool Assignment considers can never diverge from what the capacity signal promised
-        // Demand.
-        //
-        // Feasibility is proven against THIS mission's actual target, not the generic SlotWouldFly
-        // probe (that stays correct for capacity SIZING, a structural "can anything useful happen"
-        // question): Pick/PickFromStorage is called with the mission's FocusHex (Refresh) or best
-        // reachable vantage (Surveil, AirExisting only) as the mission-focus anchor, and the
-        // resulting step must make GENUINE progress toward that target (strictly closer, or the
-        // target already falls within the resulting vision). RequiredEnergy is populated from the
-        // SAME Pick result.
-        //
-        // Scope: an AirLaunch candidate (no live ArmyData yet) is restricted to Refresh-kind
-        // targets — FocusHex is used directly. Surveil vantage selection
-        // (SurveilVantageSelector.Rank) needs a real ArmySnapshot position/vision, which only
-        // AirExisting has.
+        // AIR CANDIDATES. Recon may bind only already-formed aviation armies.
+        // Feasibility is proven against this AirSweep's actual focus by the same live route/
+        // endurance planner execution will use; no hangar subset or synthetic actor exists here.
         private static void AppendAirCandidates(List<ScoutExecutionCandidate> list, WorldSnapshot snap,
             AiTurnContext ctx, PlayerSetupData player, PlayerRoot root, ScoutMissionTarget target,
             ISet<int> excludeArmyIds, IReadOnlyList<AirObservationSlot> airPool)
@@ -666,27 +646,20 @@ namespace Game.Ai.V2
         // The batch solve's CUMULATIVE air constraints, enforced HERE (not just as a
         // per-pool sizing cap) so no combination the solver could pick ever exceeds what a shared
         // physical resource can actually support across the WHOLE batch at once:
-        //   · one actor/subset -> at most one mission (usedArmyIds — pre-existing, ActorKey already
-        //     disambiguates AirLaunch by airfield, so this doubles as "one airfield subset -> at most
-        //     one mission" too).
-        //   · airActorCap — total DISTINCT air actors (AirExisting + AirLaunch) chosen across the
+        //   · one existing actor -> at most one mission (usedArmyIds).
+        //   · airActorCap — total DISTINCT AirExisting actors chosen across the
         //     whole batch never exceeds ReconAirCapacityPolicy.MaxAirReconActorsPerTurn (minus wings
         //     already continuing a prior sortie). Defence in depth on top of the pool already being
         //     sized to this same cap (BuildFeasibleAirPool) — a batch can never pick MORE distinct
         //     air actors than the pool holds, but this makes the invariant explicit and unit-testable
         //     independent of pool construction.
-        //   · airEnergyBudget — the cumulative Energy TWO OR MORE AirLaunch candidates would consume
-        //     together is checked against ONE shared budget, not against the full stockpile
-        //     independently per mission (two launches can be individually but not jointly
-        //     affordable). This is a SOFT, best-effort guard — Provisioning + Generic Funding remain the
-        //     real resource authority (ProvisioningManager.ProvisionAir / ProvisioningSession.
-        //     EnergyClaimed do the authoritative, sequential real check) — this only stops Assignment
-        //     from greedily proposing a combination Provisioning is certain to reject.
+        // Energy affordability is not duplicated in the solver; Provisioning + Generic Funding are
+        // the authoritative sequential resource owners for already-existing wings.
         private static void RecurseScout(int i, List<FundedEntry> open, List<List<ScoutExecutionCandidate>> cands,
             int[] chosen, HashSet<int> usedArmyIds, ref long[] bestKey, int[] best,
             float airEnergyBudget, int airActorCap, int groundActorCap,
             IReadOnlyList<HexCoord> fixedGroundFoci,
-            float usedAirLaunchEnergy = 0f, int usedAirActors = 0, int usedGroundActors = 0)
+            float unusedAirLaunchEnergy = 0f, int usedAirActors = 0, int usedGroundActors = 0)
         {
             if (i == open.Count)
             {
@@ -703,7 +676,7 @@ namespace Game.Ai.V2
             RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
                 airEnergyBudget, airActorCap, groundActorCap,
                 fixedGroundFoci,
-                usedAirLaunchEnergy, usedAirActors, usedGroundActors);
+                unusedAirLaunchEnergy, usedAirActors, usedGroundActors);
             for (int c = 0; c < cands[i].Count; c++)
             {
                 ScoutExecutionCandidate cand = cands[i][c];
@@ -754,22 +727,13 @@ namespace Game.Ai.V2
                     if (tooCloseToChosenGround)
                         continue;
                 }
-                bool isAirLaunch = cand.ExecutorKind == ScoutExecutorKind.AirLaunch;
-                float nextAirLaunchEnergy = usedAirLaunchEnergy + (isAirLaunch ? cand.RequiredEnergy : 0f);
-                // Round 8 (Problem 3) — AssignFunded now passes airEnergyBudget = int.MaxValue: Energy
-                // affordability is ProvisioningManager + ResourceAllocator's job alone, never a second
-                // Recon-scoped admission decision here. Guard kept (not deleted) so AssignFromCandidates'
-                // signature and its focused test stay stable; it simply never fires in production.
-                if (isAirLaunch && nextAirLaunchEnergy > airEnergyBudget + AiConfigV2.allocatorSliceEpsilon)
-                    continue;
-
                 usedArmyIds.Add(aid);
                 if (hasGarrisonSource)
                     usedArmyIds.Add(sourceId);
                 chosen[i] = c;
                 RecurseScout(i + 1, open, cands, chosen, usedArmyIds, ref bestKey, best,
                     airEnergyBudget, airActorCap, groundActorCap, fixedGroundFoci,
-                    nextAirLaunchEnergy,
+                    unusedAirLaunchEnergy,
                     usedAirActors + (isAir ? 1 : 0), usedGroundActors + (isAir ? 0 : 1));
                 usedArmyIds.Remove(aid);
                 if (hasGarrisonSource)
