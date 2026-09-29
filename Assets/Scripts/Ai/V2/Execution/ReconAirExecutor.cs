@@ -80,7 +80,7 @@ namespace Game.Ai.V2
                 result.StateVersionAfter = V2StateVersion.Current;
                 yield break;
             }
-            AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation)) AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
             int apBefore = root.ActionPoints;
             int h0 = root.GetResource(Game.Economy.ResourceType.Human);
             int e0 = root.GetResource(Game.Economy.ResourceType.Energy);
@@ -670,8 +670,9 @@ namespace Game.Ai.V2
             LogVisitedInvariant(player, next, visitedBefore, "live-step");
             if (!after.Equals(before))
                 StampObservedFootprint(player, ctx, air, after);
-            AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
-                + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation))
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
+                    + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
         }
 
         private static AirSortie EnsureAirReconReservation(PlayerSetupData player, ArmyData air,

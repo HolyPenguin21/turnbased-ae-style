@@ -22,12 +22,12 @@ namespace Game.Ai.V2
         {
             if (snap?.Self?.Armies == null)
             {
-                AiDebugLog.Write("[AI][V2][Demand][Recon] decision=NONE reason=no_self_army_snapshot");
+                AiDebugLog.WriteRepeatSuppressed("[AI][V2][Demand][Recon] decision=NONE reason=no_self_army_snapshot");
                 yield break;
             }
             if (objectives == null || objectives.Count == 0)
             {
-                AiDebugLog.Write("[AI][V2][Demand][Recon] decision=NONE reason=no_frozen_recon_objectives");
+                AiDebugLog.WriteRepeatSuppressed("[AI][V2][Demand][Recon] decision=NONE reason=no_frozen_recon_objectives");
                 yield break;
             }
 
@@ -67,7 +67,7 @@ namespace Game.Ai.V2
                 .ToList();
             if (uncovered.Count == 0)
             {
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=SATISFIED reason=all_objectives_covered "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=SATISFIED reason=all_objectives_covered "
                     + $"objectives={objectives.Count} active={activeReconExecutions}");
                 yield break;
             }
@@ -82,18 +82,21 @@ namespace Game.Ai.V2
                 if (cooldownState.TryGetCooldown(key, turn, out MissionCooldownInfo cd))
                 {
                     blocked++;
-                    AiDebugLog.Write($"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
-                        + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(turn)}");
+                    if (AiDebugLog.IsVerbose(AiVerboseArea.Recon))
+                        AiDebugLog.WriteDeduped($"blocked|{key}",
+                            $"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
+                            + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(turn)}");
                     continue;
                 }
                 runnable.Add(o);
             }
 
-            AiDebugLog.Write($"[AI][V2][Demand][Recon] jobs raw={objectives.Count} covered={coveredKeys.Count} "
-                + $"uncovered={uncovered.Count} blocked={blocked} runnable={runnable.Count} active={activeReconExecutions}");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Recon))
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] jobs raw={objectives.Count} covered={coveredKeys.Count} "
+                    + $"uncovered={uncovered.Count} blocked={blocked} runnable={runnable.Count} active={activeReconExecutions}");
             if (runnable.Count == 0)
             {
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=all_uncovered_objectives_on_cooldown "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=DEFER reason=all_uncovered_objectives_on_cooldown "
                     + $"uncovered={uncovered.Count} blocked={blocked} runnable=0");
                 yield break;
             }
@@ -115,10 +118,11 @@ namespace Game.Ai.V2
             // canonical Assignment/capacity owner).
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
                 snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player);
-            AiDebugLog.Write($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
-                + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
-                + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "
-                + $"stealth={stealthRunnable.Count}) blocked={blocked}");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Recon))
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
+                    + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
+                    + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "
+                    + $"stealth={stealthRunnable.Count}) blocked={blocked}");
 
             // --- Stealth lane: its own value/coverage estimate vs free stealth-capable movers. Not
             //     persistence-gated (a stealth job with no stealth actor is a real capability gap,
@@ -203,14 +207,14 @@ namespace Game.Ai.V2
             int obsNew = obsBootstrap + (obsPersist ? Mathf.Max(0, obsEffectiveDeficit - obsBootstrap) : 0);
             int groundNew = groundBootstrap + (groundPersist ? Mathf.Max(0, groundEffectiveDeficit - groundBootstrap) : 0);
             if (groundBootstrap > 0)
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=GroundTraversal runnable={groundVisitRunnable.Count} "
                     + $"structuralSupply={capacity.StructuralGroundTraversalSupply} "
                     + $"rawSupply={capacity.GroundTraversalSupply} witnessedSupply={groundWitnessedSupply} "
                     + $"rawDeficit={capacity.GroundTraversalDeficit} effectiveDeficit={groundEffectiveDeficit} "
                     + $"bootstrapped={groundBootstrap}");
             if (obsBootstrap > 0)
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=PROMOTE previousGate=persistence "
                     + $"reason=zero_capacity_bootstrap class=Observation runnable={observationRunnable.Count} "
                     + $"structuralSupply={capacity.StructuralObservationSupply} "
                     + $"rawSupply={capacity.ObservationSupply} witnessedSupply={obsWitnessedSupply} "
@@ -262,7 +266,7 @@ namespace Game.Ai.V2
                             ? "capacity_deficit_not_yet_persistent"
                             : "concurrency_hard_cap_or_useful_ceiling_reached")
                         : "usable_capacity_covers_all_lanes";
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason={reason} "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=DEFER reason={reason} "
                     + $"obsDeficit(effective)={obsEffectiveDeficit}(raw={capacity.ObservationDeficit} "
                     + $"persist={(obsPersist ? 1 : 0)} streak={obsStreak}) "
                     + $"groundTraversalDeficit(effective)={groundEffectiveDeficit}(raw={capacity.GroundTraversalDeficit} "
@@ -279,7 +283,7 @@ namespace Game.Ai.V2
             {
                 ReconObjective best = groundVisitRunnable.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
                     + $"class=GroundTraversal persistenceDeferredEmitted=true desired={groundDeferred} "
                     + $"runnable={groundVisitRunnable.Count} witnessedSupply={groundWitnessedSupply} "
                     + $"streak={groundStreak}");
@@ -306,7 +310,7 @@ namespace Game.Ai.V2
             {
                 ReconObjective best = observationRunnable.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? observationRunnable.FirstOrDefault() ?? runnable[0];
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=DEFER reason=capacity_deficit_not_yet_persistent "
                     + $"class=Observation persistenceDeferredEmitted=true desired={obsDeferred} "
                     + $"runnable={observationRunnable.Count} witnessedSupply={obsWitnessedSupply} "
                     + $"streak={obsStreak}");
@@ -332,7 +336,7 @@ namespace Game.Ai.V2
             if (stealthNew > 0)
             {
                 ReconObjective best = stealthRunnable.FirstOrDefault() ?? runnable[0];
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=stealth desired={stealthNew} reason=insufficient_free_stealth_scouts "
                     + $"jobs={stealthRunnable.Count} desiredLanes={desiredStealthLanes} free={stealthFree} "
                     + $"runnable={runnable.Count} blocked={blocked} target=({best.FocusHex.Q},{best.FocusHex.R})");
@@ -356,7 +360,7 @@ namespace Game.Ai.V2
             {
                 ReconObjective best = groundVisitRunnable.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? groundVisitRunnable.FirstOrDefault() ?? runnable[0];
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=generic-ground desired={matGround} "
                     + $"reason={(groundPersist ? "persistent_ground_traversal_deficit" : "zero_capacity_bootstrap")} "
                     + $"groundTraversalDeficit(effective)={groundEffectiveDeficit}(streak={groundStreak}) "
@@ -384,7 +388,7 @@ namespace Game.Ai.V2
             {
                 ReconObjective best = observationRunnable.FirstOrDefault(o => !IsStealthObjective(o))
                     ?? observationRunnable.FirstOrDefault() ?? runnable[0];
-                AiDebugLog.Write($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=CREATE capability=ScoutCapability "
                     + $"profile=generic-observation desired={matObs} "
                     + $"reason={(obsPersist ? "persistent_observation_deficit" : "zero_capacity_bootstrap")} "
                     + $"obsDeficit(effective)={obsEffectiveDeficit}(streak={obsStreak}) "

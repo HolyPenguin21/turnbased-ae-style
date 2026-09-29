@@ -39,7 +39,7 @@ namespace Game.Ai.V2
         public static void TaskScores(Game.Players.PlayerSetupData player, int turn,
             IEnumerable<MissionProposal> missions)
         {
-            if (missions == null)
+            if (!AiConfigV2.frameLogEnabled || missions == null)
                 return;
             foreach (MissionProposal m in missions)
             {

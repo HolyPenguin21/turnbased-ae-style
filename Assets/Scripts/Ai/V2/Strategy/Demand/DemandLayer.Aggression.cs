@@ -22,8 +22,7 @@ namespace Game.Ai.V2
         {
             AggressionDemandEvaluation eval = AggressionDemandEvaluator.Build(
                 snap, objectives, activeIntents, commitments, player);
-            foreach (string line in eval.Diagnostics)
-                AiDebugLog.Write(line);
+            AiDebugLog.WriteBlockRepeatSuppressed("aggression", eval.Diagnostics);
             foreach (AxisDemand d in eval.Demands)
                 yield return d;
 
@@ -33,8 +32,7 @@ namespace Game.Ai.V2
                 AggressionDemandEvaluator.BuildActiveDefenceDemands(
                     snap, defenceObjectives, activeIntents, commitments, player,
                     out IReadOnlyList<string> defenceDiagnostics);
-            foreach (string line in defenceDiagnostics)
-                AiDebugLog.Write(line);
+            AiDebugLog.WriteBlockRepeatSuppressed("active-defence", defenceDiagnostics);
             foreach (AxisDemand d in defenceDemands)
                 yield return d;
         }

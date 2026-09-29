@@ -239,11 +239,15 @@ namespace Game.Ai.V2
         {
             if (player == null || !ByPlayer.TryGetValue(player, out Entry e) || e.Turn != turn)
                 return;
-            AiDebugLog.Write($"[AI][V2][INVARIANT] turn {turn} {player.Nickname}: checks={e.Checks} "
+            string summary = $"[AI][V2][INVARIANT] turn {turn} {player.Nickname}: checks={e.Checks} "
                 + $"violations={e.Violations.Count}"
                 + (e.Violations.Count == 0 ? "" : " ["
                     + string.Join(", ", e.Violations.GroupBy(v => v.Rule)
-                        .Select(g => $"{g.Key}×{g.Count()}")) + "]"));
+                        .Select(g => $"{g.Key}×{g.Count()}")) + "]");
+            if (e.Violations.Count == 0)
+                AiDebugLog.WriteVerbose(summary);
+            else
+                AiDebugLog.Write(summary);
         }
 
         private static void Report(PlayerSetupData player, int turn, ReservationInvariantRule rule,
