@@ -1,16 +1,17 @@
 #if UNITY_INCLUDE_TESTS
+using System.Collections.Generic;
 using System.Linq;
 using Game.Ai.V2;
+using Game.Aviation;
 using Game.HexGrid;
+using Game.Units;
 using NUnit.Framework;
 
 namespace Game.EditorTests
 {
-    // Recon S1/S5 — air-recon lifecycle facts that must reach Continuity honestly.
+    // Air-recon lifecycle facts that must reach Continuity honestly.
     public class AiReconAirLifecycleTests
     {
-        // S5 — an AirLaunch that never formed aircraft carries no durable mover: its synthetic
-        // per-airfield key is not an army and must never become an intent's PreferredMoverArmyId.
         [Test]
         public void UnlaunchedAirLaunch_ReportsNoMover_LaunchedOneReportsTheRealArmy()
         {
@@ -18,32 +19,18 @@ namespace Game.EditorTests
             Assert.That(Finalize(actualArmyId: 41).MoverArmyId, Is.EqualTo(41));
         }
 
-        // S1 — the used-up outbound leg is one rule on the sortie state.
-        [Test]
-        public void OutboundCapReached_IsTheSpentVersusCapRule()
-        {
-            var sortie = new ReconAirSortieState { OutboundMovementCap = 1, OutboundMovementSpent = 0 };
-            Assert.That(sortie.OutboundCapReached, Is.False);
-            sortie.OutboundMovementSpent = 1;
-            Assert.That(sortie.OutboundCapReached, Is.True, "a launch step can already spend a small cap");
-        }
-
-        // Owned airfield + departed wing: only a wing turning for home lands there.
         [Test]
         public void OwnedAirfieldDuringOutbound_DoesNotCompleteSortie()
         {
-            var heli = new ReconAirSortieState
-            {
-                Phase = ReconAirPhase.Outbound, OutboundMovementCap = 6, OutboundMovementSpent = 2,
-            };
-            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(heli, atAirfield: true,
-                hasDeparted: true), Is.False, "intermediate airfield on the outbound route");
+            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Outbound };
+            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, atAirfield: true,
+                hasDeparted: true), Is.False, "an intermediate airfield does not end an outbound sortie");
         }
 
         [Test]
         public void ReturnPhaseAtOwnedAirfield_CompletesSortie()
         {
-            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Return, OutboundMovementCap = 6 };
+            var wing = new ReconAirSortieState { Phase = ReconAirPhase.Return };
             Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, true), Is.True);
             Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, hasDeparted: false),
                 Is.False, "a wing that never left its airfield has not flown a sortie");
@@ -51,24 +38,22 @@ namespace Game.EditorTests
                 Is.False);
         }
 
-        [Test]
-        public void OutboundCapUsedUpOnAnAirfield_CompletesSortie()
+        [TestCase(0, 0, 0)]
+        [TestCase(1, 0, 1)]
+        [TestCase(2, 0, 2)]
+        [TestCase(2, 1, 1)]
+        [TestCase(2, 2, 0)]
+        public void RemainingEndurance_IsDerivedOnlyFromTurnsWithoutRefuel(
+            int turnsWithoutRefuel, int unlandedEnds, int expected)
         {
-            var wing = new ReconAirSortieState
+            var unit = new UnitData
             {
-                Phase = ReconAirPhase.Outbound, OutboundMovementCap = 3, OutboundMovementSpent = 3,
+                IsAviation = true,
+                TurnsWithoutRefuel = turnsWithoutRefuel,
+                ConsecutiveUnlandedEnds = unlandedEnds,
             };
-            Assert.That(ReconAirSortieLifecycle.CompletesAtAirfield(wing, true, true), Is.True,
-                "PlanStep does not turn a wing for home while it stands on an airfield");
-        }
-
-        [Test]
-        public void OutboundCap_EveryAircraftReservesHalf_ToLandTheSameTurn()
-        {
-            Assert.That(ReconAirSortieState.OutboundCapFor(6), Is.EqualTo(3),
-                "half the movement out, the other half back the same turn");
-            Assert.That(ReconAirSortieState.OutboundCapFor(10), Is.EqualTo(5),
-                "a refuel margin is a recovery buffer, not an outbound budget: no planned overnight aloft");
+            Assert.That(AviationRange.SafeUnlandedEndsRemaining(
+                new List<UnitData> { unit }), Is.EqualTo(expected));
         }
 
         private static MissionTurnOutcome Finalize(int? actualArmyId)
