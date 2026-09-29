@@ -74,7 +74,7 @@ namespace Game.EditorTests
             BattleGrid grid = BattleGrid.FromArmies(army, null);
             BattleAi.ArrangeArmy(
                 grid, army, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow,
-                enemyArmy: null, AbilityMagnitudes.Default);
+                enemyArmy: null, magnitudes: AbilityMagnitudes.Default);
 
             Assert.That(grid.TryFindPosition(hero1, out int h1Row, out int h1Col), Is.True);
             Assert.That(grid.TryFindPosition(hero2, out int h2Row, out int h2Col), Is.True);
