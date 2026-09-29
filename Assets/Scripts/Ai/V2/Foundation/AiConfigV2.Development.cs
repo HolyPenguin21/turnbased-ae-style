@@ -17,6 +17,13 @@ namespace Game.Ai.V2
         // still outranks a bare path. Only applies when DevPathViable.
         public const float devLatentPotential = 0.5f;
 
+        // Dynamic force need from idle stock (ForceNeedModel.SurplusNeed): mean per-resource
+        // headroom (spendable / 2x income) ramped Lo..Hi, times the weight. The weight keeps an
+        // idle bank below a fight we cannot take (Offensive/Defensive may still reach 1).
+        public const float forceNeedSurplusRampLo = 0.35f;
+        public const float forceNeedSurplusRampHi = 0.90f;
+        public const float forceNeedSurplusWeight = 0.8f;
+
         // Investment window (DevelopmentInvestmentGate). Laboratory / Factory are a late resource
         // sink that must not compete with the main deck: a spend is allowed only when EVERY resource
         // it consumes has kept its headroom (spendable / 2x income) at or above the threshold for
@@ -31,6 +38,13 @@ namespace Game.Ai.V2
         // the operator walk), on which it then competes in the allocator. No EV -> world-value
         // conversion exists.
         public const float devEvMargin = 0.05f;        // keep an opportunity only if card EV exceeds this
+        // Staged PREPARE funding: today's stage is paid from spendable stock; the rest of the chain
+        // (operator, output) must fit spendable + this many turns of income. Facility -> hero ->
+        // Challenge -> attach naturally spans several turns.
+        public const int devChainFundingHorizonTurns = 5;
+        // Success weight of an operator still in the remaining deck (facility stage only): the
+        // draw is not certain, so its outputs count at this share.
+        public const float devDeckOperatorConfidence = 0.5f;
         // In the card-currency EV, prerequisite AP (facility / operator / hero travel) is priced
         // by ActionPrice in card units; equipment output value is
         // StrategicCardEvaluator.EquipmentUpgradeValue's (equipmentUpgradePersistence).

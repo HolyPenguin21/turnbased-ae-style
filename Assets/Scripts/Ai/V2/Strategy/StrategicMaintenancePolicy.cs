@@ -249,11 +249,10 @@ namespace Game.Ai.V2
                 DevelopmentOpportunity witness = NeedsDevelopment(bestFacility.Card)
                     ? preparation.FirstOrDefault(op => op.PreparationFacilityCard == bestFacility.Card
                         && op.FacilityHex.Equals(b.Hex)
+                        // The evaluator already proved the later stages fit projected income;
+                        // today only the tier and the facility stage are paid.
                         && !ResourceBundle.All.Any(t => (tier.cost?.Get(t) ?? 0)
-                            + (op.PreparationFacilityCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
-                            + (op.PreparationOperatorCard?.EffectivePlayResourceCost?.Get(t) ?? 0)
-                            + (op.PreparationOperatorGeneration?.GenerationResourceCost?.Get(t) ?? 0)
-                            + (op.Card?.resourceCost?.Get(t) ?? 0)
+                            + (op.StageResourceCost?.Get(t) ?? 0)
                             > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
                     : null;
                 if (NeedsDevelopment(bestFacility.Card) && witness == null)
