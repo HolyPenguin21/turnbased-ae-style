@@ -82,7 +82,8 @@ namespace Game.Ai.V2
                 if (cooldownState.TryGetCooldown(key, turn, out MissionCooldownInfo cd))
                 {
                     blocked++;
-                    AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
+                    AiDebugLog.WriteDeduped($"blocked|{key}",
+                        $"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
                         + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(turn)}");
                     continue;
                 }
