@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -24,9 +25,12 @@ namespace Game.Ai.V2
     {
         public ArmyData Army;
         public AirSortieKind Kind;
-        public HexCoord TargetHex;   // current travel destination: the action hex while Outbound, the landing hex after
+        public HexCoord TargetHex;   // current travel destination
+        public HexCoord ActionHex;   // stable action point for Strike; default for other kinds
         public HexCoord LandingHex;  // owned airfield this sortie is committed to landing at
-        public bool Outbound = true; // false from launch for Rebase: destination is its landing
+        public bool Outbound = true; // false while returning; Rebase starts false
+        public bool OnStation;       // Strike only: hold action hex for another turn's strike window
+        public AirStrikePolicy StrikePolicy; // Strike only; default(struct) == Standard
         public bool IsMultiTurn;
     }
 
