@@ -178,6 +178,7 @@ namespace Game.Ai.V2
                     opp => primary == null || defenders.Count == 0 ? 0f
                         : WorthIt.WinChance(primary, WorthIt.UnitsOf(opp), 0f, defenderCommander),
                     "raid", eps, out HexCoord landing, out float ap, out float energy,
+                    out float nextTurnEnergy, out float nextTurnAp,
                     out ProvisionFailure finishFailure))
                 return ProvisioningResult.Fail(finishFailure);
             ArmyData wing = w.Wing;
@@ -197,6 +198,8 @@ namespace Game.Ai.V2
                 RaidLastKnownHex = target.LastKnownHex,
                 RaidTargetIsNeutral = true,
                 ClaimedAp = ap, ClaimedEnergy = energy,
+                ClaimedNextTurnAirEnergy = nextTurnEnergy,
+                ClaimedNextTurnAirAp = nextTurnAp,
                 ClaimedPhysical = new ResourceVector(0f, 0f, energy, 0f, 0f),
             });
         }
