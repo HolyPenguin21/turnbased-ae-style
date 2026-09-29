@@ -874,6 +874,7 @@ namespace Game.Combat
             if (BattleDebugLog.Verbose) BattleDebugLog.Write($"[MoveDiag] actor {actor.Name} at ({actorRow},{actorCol}): no attack target in range, evaluating a move");
 
             bool alreadyExposed = IsExposedToEnemy(grid, actorRow, actorCol, actor);
+            bool isMelee = actor.Range <= 1;
             (int row, int col)? bestStep = FindBestAdvanceStep(grid, ownArmy, enemyArmy, actor, actorRow, actorCol, magnitudes,
                 battleDefender, battleDefenderDefenseBonus);
             (int row, int col)? step = bestStep ?? FindStepToward(grid, actor, actorRow, actorCol);
@@ -897,7 +898,23 @@ namespace Game.Combat
             // steps toward the same streak and, once it's exhausted, take a real closing step.
             int curDist = NearestEnemyManhattanDistance(grid, actor, actorRow, actorCol);
             bool closes = NearestEnemyManhattanDistance(grid, actor, step.Value.row, step.Value.col) < curDist;
-            if (!closes && forceAdvance)
+            // Once the army has chosen to keep fighting, a Range-1 unit's local tactical
+            // policy is commitment, not self-preservation: if ANY legal adjacent step reduces
+            // distance to a ground target, that closing step outranks a sideways/no-progress
+            // lookahead result immediately. Retreat remains an army-level decision made by
+            // AssessRetreat before the round; ChooseAction must not quietly undo it unit-by-unit.
+            if (isMelee && !closes)
+            {
+                (int row, int col)? toward = FindStepToward(grid, actor, actorRow, actorCol);
+                if (toward.HasValue && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
+                {
+                    step = toward;
+                    closes = true;
+                    if (BattleDebugLog.Verbose)
+                        BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: Range-1 commitment overrides non-closing lookahead -> {step.Value}");
+                }
+            }
+            else if (!closes && forceAdvance)
             {
                 (int row, int col)? toward = FindStepToward(grid, actor, actorRow, actorCol);
                 if (toward.HasValue && NearestEnemyManhattanDistance(grid, actor, toward.Value.row, toward.Value.col) < curDist)
@@ -914,7 +931,6 @@ namespace Game.Combat
             // a retreat for a melee actor (see their own isMelee handling), so this only ever
             // skips the WAIT-and-eat-the-risk-later behavior, never turns a real retreat into an
             // advance.
-            bool isMelee = actor.Range <= 1;
 
             if (BattleDebugLog.Verbose) BattleDebugLog.Write($"[MoveDiag] actor {actor.Name}: alreadyExposed={alreadyExposed} stepExposes={stepExposes} " +
                 $"waitStreak={streak} forceAdvance={forceAdvance} favorableFight={favorableFight} isMelee={isMelee} closes={closes} " +
@@ -1047,6 +1063,8 @@ namespace Game.Combat
             (int row, int col)? bestStep = null;
             float bestDamage = -1f;
             int bestDistance = int.MaxValue;
+            bool bestCloses = false;
+            bool bestCloses = false;
 
             for (int i = 0; i < 4; i++)
             {
@@ -1118,13 +1136,20 @@ namespace Game.Combat
                     $"candidate ({candRow},{candCol}) projectedDamageDealt={damage} distToNearestAfter={distance} " +
                     $"(closer={distance < curDistanceToNearest}, farther={distance > curDistanceToNearest}) survivedHp={hp[actor]}");
 
-                // Most damage dealt within the 2-round window wins; ties (usually both 0, nobody
-                // gets there in time) fall back to the same "closer to the nearest enemy" the old
-                // plain-greedy FindStepToward already used.
-                if (damage > bestDamage || (damage == bestDamage && distance < bestDistance))
+                // Range-1 commitment is lexicographic: a step that closes NOW always beats a
+                // sideways/no-progress step, regardless of projected two-round damage. Among two
+                // equally-closing (or equally-non-closing) candidates, retain the tactical
+                // lookahead: most projected damage first, then shortest resulting distance.
+                bool candidateCloses = immediateDistance < curDistanceToNearest;
+                bool betterClosingClass = isMelee && candidateCloses && !bestCloses;
+                bool sameClosingClass = !isMelee || candidateCloses == bestCloses;
+                if (betterClosingClass
+                    || (sameClosingClass && (damage > bestDamage
+                        || (damage == bestDamage && distance < bestDistance))))
                 {
                     bestDamage = damage;
                     bestDistance = distance;
+                    bestCloses = candidateCloses;
                     bestStep = (candRow, candCol);
                 }
             }
@@ -1223,10 +1248,19 @@ namespace Game.Combat
                         : immediateDistance;
                 }
 
-                if (damage > bestDamage || (damage == bestDamage && distance < bestDistance))
+                // Keep simulation behavior aligned with live ChooseAction: after the side has
+                // committed to the fight, Range-1 units prefer any immediate closing step over a
+                // no-progress step. This keeps ArrangeArmy/AssessRetreat projections honest.
+                bool candidateCloses = immediateDistance < curDistanceToNearest;
+                bool betterClosingClass = isMelee && candidateCloses && !bestCloses;
+                bool sameClosingClass = !isMelee || candidateCloses == bestCloses;
+                if (betterClosingClass
+                    || (sameClosingClass && (damage > bestDamage
+                        || (damage == bestDamage && distance < bestDistance))))
                 {
                     bestDamage = damage;
                     bestDistance = distance;
+                    bestCloses = candidateCloses;
                     bestStep = (candRow, candCol);
                 }
             }
