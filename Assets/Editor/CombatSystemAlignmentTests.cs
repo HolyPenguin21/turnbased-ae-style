@@ -37,6 +37,55 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void BattleGrid_DefaultPlacement_KeepsAllHeroesInBackRow()
+        {
+            var owner = new PlayerSetupData { Nickname = "A" };
+            var army = new ArmyData { Owner = owner, Name = "A" };
+            var hero1 = new UnitData { Owner = owner, IsHero = true, FateMax = 3, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var hero2 = new UnitData { Owner = owner, IsHero = true, FateMax = 2, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var body = Body(owner);
+            army.Members.Add(body);
+            army.Members.Add(hero1);
+            army.Members.Add(hero2);
+
+            BattleGrid grid = BattleGrid.FromArmies(army, null);
+
+            Assert.That(grid.TryFindPosition(hero1, out int h1Row, out _), Is.True);
+            Assert.That(grid.TryFindPosition(hero2, out int h2Row, out _), Is.True);
+            Assert.That(h1Row, Is.EqualTo(BattleGrid.AttackerBackRow));
+            Assert.That(h2Row, Is.EqualTo(BattleGrid.AttackerBackRow));
+            Assert.That(grid.TryFindPosition(body, out int bodyRow, out _), Is.True);
+            Assert.That(bodyRow, Is.EqualTo(BattleGrid.AttackerFrontRow));
+        }
+
+        [Test]
+        public void BattleAi_Arrangement_PreservesAllHeroesInBackRow()
+        {
+            var owner = new PlayerSetupData { Nickname = "A" };
+            var army = new ArmyData { Owner = owner, Name = "A" };
+            var hero1 = new UnitData { Owner = owner, IsHero = true, FateMax = 3, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var hero2 = new UnitData { Owner = owner, IsHero = true, FateMax = 2, HitPointsCurrent = 5, HitPointsMax = 5 };
+            var melee = Body(owner);
+            melee.Range = 1;
+            army.Members.Add(hero1);
+            army.Members.Add(melee);
+            army.Members.Add(hero2);
+
+            BattleGrid grid = BattleGrid.FromArmies(army, null);
+            BattleAi.ArrangeArmy(
+                grid, army, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow,
+                enemyArmy: null, AbilityMagnitudes.Default);
+
+            Assert.That(grid.TryFindPosition(hero1, out int h1Row, out int h1Col), Is.True);
+            Assert.That(grid.TryFindPosition(hero2, out int h2Row, out int h2Col), Is.True);
+            Assert.That(h1Row, Is.EqualTo(BattleGrid.AttackerBackRow));
+            Assert.That(h2Row, Is.EqualTo(BattleGrid.AttackerBackRow));
+            Assert.That(h1Col, Is.Not.EqualTo(h2Col));
+            Assert.That(grid.TryFindPosition(melee, out int meleeRow, out _), Is.True);
+            Assert.That(meleeRow, Is.EqualTo(BattleGrid.AttackerFrontRow));
+        }
+
+        [Test]
         public void Hero_IsOrdinaryGroundCombatTarget_WhenInRange()
         {
             var a = new PlayerSetupData { Nickname = "A" };
