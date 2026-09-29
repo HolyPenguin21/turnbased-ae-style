@@ -180,9 +180,8 @@ namespace Game.Ai.V2
         // WorthIt. Own armies: read live; an enemy contact: as observed (AiMapMemory). Default
         // when the army has no (visible) hero.
         public WorthIt.SideCommander Commander;
-        // HasAntiAir is DUAL-USE: for an own army it means "fields an AntiAir counter unit"; for an
-        // enemy contact it means "fields AA guns" (aviation-routing danger). Kept as its own field
-        // because the aviation path (AirReconRouteCandidate) reads it independently.
+        // HasAntiAir records the observed/live anti-air capability for gameplay/tactical systems.
+        // Strategic aviation route selection does not read it.
         public bool HasAntiAir;
         // The strategic ROLES this army covers for standing-
         // force readiness, derived DYNAMICALLY from its members' abilities + stats via
