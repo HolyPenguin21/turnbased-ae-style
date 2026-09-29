@@ -382,83 +382,56 @@ namespace Game.Ai.V2
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
             foreach (AirObservationSlot slot in airPool)
             {
-                if (slot.ActorId.HasValue)
+                if (!slot.ActorId.HasValue)
+                    continue; // missions never materialize aviation from storage
+
+                void Reject(string why) => AiDebugLog.WriteDeduped(
+                    $"air-cand|{slot.ActorId}|{target.FocusHex}",
+                    $"[AI][V2][Recon][Assignment][AirExisting] actor=#{slot.ActorId} "
+                    + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) decision=NO_CANDIDATE reason={why}");
+                if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId.Value))
                 {
-                    // Diagnostics only: why an existing (usually airborne) wing got no candidate.
-                    void Reject(string why) => AiDebugLog.WriteDeduped(
-                        $"air-cand|{slot.ActorId}|{target.FocusHex}",
-                        $"[AI][V2][Recon][Assignment][AirExisting] actor=#{slot.ActorId} "
-                        + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) decision=NO_CANDIDATE reason={why}");
-                    if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId.Value))
-                    {
-                        Reject("actor_excluded(claimed_elsewhere)");
-                        continue;
-                    }
-                    ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value);
-                    if (mover == null)
-                    {
-                        Reject("actor_not_in_snapshot");
-                        continue;
-                    }
-                    ArmyData live = ResolveArmy(player, slot.ActorId.Value);
-                    if (live == null)
-                    {
-                        Reject("actor_not_live");
-                        continue;
-                    }
-
-                    // Only AirSweep reaches here (gate above): its anchor IS the focus.
-                    HexCoord anchorTarget = target.FocusHex;
-
-                    var feasDiag = new List<string>();
-                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null, anchorTarget, feasDiag);
-                    if (!choice.Feasible)
-                    {
-                        Reject($"infeasible at ({live.Hex.Q},{live.Hex.R}) mp={live.CurrentMovement}: "
-                            + string.Join(" ", feasDiag));
-                        continue;
-                    }
-                    int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
-                        + AbilityParams.GetBestRecceRadius(live);
-                    if (!ReconAirStepPlanner.MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
-                    {
-                        Reject($"no_progress best ({choice.ChosenHex.Q},{choice.ChosenHex.R}) "
-                            + $"d={HexGridMath.Distance(choice.ChosenHex, anchorTarget)} vs from "
-                            + $"({live.Hex.Q},{live.Hex.R}) d={HexGridMath.Distance(live.Hex, anchorTarget)} "
-                            + $"vision={vision} | " + string.Join(" ", feasDiag));
-                        continue;
-                    }
-
-                    list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
-                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
-                        requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore,
-                        nextTurnEnergy: choice.NextTurnEnergy, nextTurnAp: choice.NextTurnAp));
+                    Reject("actor_excluded(claimed_elsewhere)");
+                    continue;
                 }
-                else
+                ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value);
+                if (mover == null)
                 {
-                    ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
-                    if (airfield == null)
-                        continue;
-                    List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                    if (subset.Count == 0)
-                        continue;
-
-                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null, target.FocusHex);
-                    if (!choice.Feasible)
-                        continue;
-                    int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
-                        + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-                    if (!ReconAirStepPlanner.MakesGenuineProgress(slot.AirfieldHex, choice.ChosenHex, target.FocusHex, vision))
-                        continue;
-
-                    list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.ActivationAp),
-                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirLaunch,
-                        slot.AirfieldHex, subset, requiredEnergy: choice.LaunchEnergy,
-                        routeScore: choice.RouteScore, nextTurnEnergy: choice.NextTurnEnergy,
-                        nextTurnAp: choice.NextTurnAp));
+                    Reject("actor_not_in_snapshot");
+                    continue;
                 }
+                ArmyData live = ResolveArmy(player, slot.ActorId.Value);
+                if (live == null)
+                {
+                    Reject("actor_not_live");
+                    continue;
+                }
+
+                HexCoord anchorTarget = target.FocusHex;
+                var feasDiag = new List<string>();
+                AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
+                    player, ctx, snap, mode, slot, null, anchorTarget, feasDiag);
+                if (!choice.Feasible)
+                {
+                    Reject($"infeasible at ({live.Hex.Q},{live.Hex.R}) mp={live.CurrentMovement}: "
+                        + string.Join(" ", feasDiag));
+                    continue;
+                }
+                int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
+                    + AbilityParams.GetBestRecceRadius(live);
+                if (!ReconAirStepPlanner.MakesGenuineProgress(live.Hex, choice.ChosenHex, anchorTarget, vision))
+                {
+                    Reject($"no_progress best ({choice.ChosenHex.Q},{choice.ChosenHex.R}) "
+                        + $"d={HexGridMath.Distance(choice.ChosenHex, anchorTarget)} vs from "
+                        + $"({live.Hex.Q},{live.Hex.R}) d={HexGridMath.Distance(live.Hex, anchorTarget)} "
+                        + $"vision={vision} | " + string.Join(" ", feasDiag));
+                    continue;
+                }
+
+                list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
+                    1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
+                    requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore,
+                    nextTurnEnergy: choice.NextTurnEnergy, nextTurnAp: choice.NextTurnAp));
             }
         }
 
