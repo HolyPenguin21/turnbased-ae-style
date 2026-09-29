@@ -100,6 +100,18 @@ namespace Game.Aviation
 
         public static int SafeUnlandedEndsRemaining(ArmyData airArmy) => SafeUnlandedEndsRemaining(airArmy?.Members);
 
+        // Coarse first-turn outbound budget for valuation before a concrete route is selected.
+        // Zero endurance must preserve enough of the same turn to fly home; positive endurance may
+        // use the full first-turn movement and recover on a later turn. Real step admission never
+        // trusts this estimate — TrySimulateHexSequence / sortie planners prove the whole route.
+        public static int FirstTurnOutboundBudget(IReadOnlyList<UnitData> aircraft)
+        {
+            if (aircraft == null || aircraft.Count == 0)
+                return 0;
+            int movement = aircraft.Min(AviationRules.EffectiveMoveMax);
+            return SafeUnlandedEndsRemaining(aircraft) > 0 ? movement : movement / 2;
+        }
+
         public static IReadOnlyList<HexCoord> CombineRoute(HexPath outbound, HexPath returnPath)
         {
             var hexes = new List<HexCoord>(outbound.Hexes);
