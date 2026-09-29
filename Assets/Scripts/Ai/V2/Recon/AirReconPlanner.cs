@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Game.Aviation;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
