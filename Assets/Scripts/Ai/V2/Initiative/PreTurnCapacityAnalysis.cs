@@ -38,7 +38,7 @@ namespace Game.Ai.V2.Initiative
         public readonly int[] Available = new int[4];              // raw stockpile (PlayerRoot.GetResource)
         public readonly int[] IncomePerTurn = new int[4];
         public readonly int[] DeckDemand = new int[4];             // remaining-game resource appetite
-        public readonly int[] CommittedResourceFloor = new int[4]; // already accepted Economy builds; never spent on dice
+        public readonly int[] CommittedResourceFloor = new int[4]; // accepted obligations; never spent on dice
 
         public static readonly ResourceType[] Types = InitiativeDeckDemand.Types;
 
@@ -69,7 +69,8 @@ namespace Game.Ai.V2.Initiative
         }
 
         public static PreTurnCapacityAnalysis Build(PlayerSetupData player, PlayerRoot root, HexMap map,
-            StartingDeckCatalog deckCatalog, IEnumerable<ResourceCost> committedBuildCosts = null)
+            StartingDeckCatalog deckCatalog, IEnumerable<ResourceCost> committedBuildCosts = null,
+            int committedAviationEnergy = 0)
         {
             var a = new PreTurnCapacityAnalysis { Player = player };
             if (player == null || root == null)
@@ -160,6 +161,21 @@ namespace Game.Ai.V2.Initiative
                     for (int i = 0; i < Types.Length; i++)
                         a.CommittedResourceFloor[i] = Mathf.Min(a.Available[i],
                             a.CommittedResourceFloor[i] + Mathf.Max(0, cost.Get(Types[i])));
+                }
+            }
+
+            // Airborne aviation is already a physical commitment. Its next activation happens
+            // before discretionary card play, but initiative purchases run even earlier; therefore
+            // Energy needed for that activation is part of the same pre-turn protected stock floor.
+            if (committedAviationEnergy > 0)
+            {
+                for (int i = 0; i < Types.Length; i++)
+                {
+                    if (Types[i] != ResourceType.Energy)
+                        continue;
+                    a.CommittedResourceFloor[i] = Mathf.Min(a.Available[i],
+                        a.CommittedResourceFloor[i] + Mathf.Max(0, committedAviationEnergy));
+                    break;
                 }
             }
             return a;
