@@ -98,8 +98,7 @@ namespace Game.Ai.V2
                 if (projected != null
                     && (projected.Phase == ReconAirPhase.Hold || projected.Phase == ReconAirPhase.Return))
                 {
-                    diagnostics?.Add($"phase={projected.Phase} outbound={projected.OutboundMovementSpent}/"
-                        + $"{projected.OutboundMovementCap}");
+                    diagnostics?.Add($"phase={projected.Phase}");
                     return AirStructuralFeasibility.No;
                 }
 
@@ -197,33 +196,14 @@ namespace Game.Ai.V2
                 proj.ClaimedSector = real.ClaimedSector;
                 proj.HasClaim = real.HasClaim;
                 proj.BestOutboundStepScore = real.BestOutboundStepScore;
-                proj.LaunchMovementBudget = real.LaunchMovementBudget;
-                proj.OutboundMovementSpent = real.OutboundMovementSpent;
-                proj.OutboundMovementCap = real.OutboundMovementCap;
-                proj.LaunchSafeUnlandedEnds = real.LaunchSafeUnlandedEnds;
-
                 bool wouldBeNewTurn = real.LastProcessedTurn != ctx.TurnNumber;
-                bool canRemain = ctx.Map != null
-                    && AiAirSortiePlanner.CanEndTurnHereAndRecover(wing, ctx.Map, player);
-                // Turn arithmetic, not a BeginTurn() increment — matches the executor's own
-                // AirborneTurnsElapsed model exactly (AI-AIR-02 review P1: no drift when a turn's
-                // RunActor pass is skipped).
-                int projIdx = real.AirborneTurnsElapsed(ctx.TurnNumber);
-                bool mustRecover = projIdx >= 1 && !canRemain;
+                int safeEnds = AviationRange.SafeUnlandedEndsRemaining(wing);
 
                 ReconAirPhase phase = real.Phase;
                 if (phase == ReconAirPhase.Hold)
                     phase = wouldBeNewTurn
-                        ? (mustRecover ? ReconAirPhase.Return : ReconAirPhase.Outbound)
+                        ? (safeEnds > 0 ? ReconAirPhase.Outbound : ReconAirPhase.Return)
                         : ReconAirPhase.Hold;
-                // Recon S1 — the same two "turn for home" triggers AirReconStepDirector.PlanStep
-                // applies: the endurance deadline and the used-up outbound leg. Without the second, a
-                // wing whose launch step already spent its cap projected as Outbound, so it was
-                // neither a mandatory recovery nor protected, and could end the turn aloft.
-                bool atAirfield = AviationRules.IsOwnedAirfieldAt(wing.Hex, player);
-                if (!atAirfield && phase == ReconAirPhase.Outbound
-                    && (mustRecover || real.OutboundCapReached))
-                    phase = ReconAirPhase.Return;
                 proj.Phase = phase;
             }
             else
@@ -231,7 +211,6 @@ namespace Game.Ai.V2
                 proj.Phase = ReconAirPhase.Outbound;
                 proj.LaunchHex = wing.Hex;
                 proj.Trail.Add(wing.Hex);
-                proj.EnsureLaunchProfile(wing);
             }
             return proj;
         }
