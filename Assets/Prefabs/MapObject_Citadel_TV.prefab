@@ -43,7 +43,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 9c0d1b988a8f435bba1f9bba9250091b, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.MapObjectVisual
   innerCircle: {fileID: 0}
   objectImage: {fileID: 0}
@@ -92,10 +92,10 @@ Transform:
   m_Children:
   - {fileID: 300051}
   - {fileID: 300061}
-  - {fileID: 300021}
   - {fileID: 300031}
   - {fileID: 300041}
   - {fileID: 300081}
+  - {fileID: 300021}
   - {fileID: 300071}
   m_Father: {fileID: 300001}
   m_LocalEulerAnglesHint: {x: 80, y: 0, z: 0}
@@ -217,7 +217,7 @@ Transform:
   m_GameObject: {fileID: 300030}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.0366, y: 0.0265, z: -0}
+  m_LocalPosition: {x: 0.0195, y: 0.0601, z: 0}
   m_LocalScale: {x: 0.015, y: 0.015, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -270,7 +270,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 7
+  m_SortingOrder: 4
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: c0849f0b8c0dc6c48b305537675d501a, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -310,7 +310,7 @@ Transform:
   m_GameObject: {fileID: 300040}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.0019, y: 0.0292, z: 0}
+  m_LocalPosition: {x: 0.0542, y: 0.0628, z: 0}
   m_LocalScale: {x: 0.025, y: 0.025, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -363,7 +363,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 7
+  m_SortingOrder: 4
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: 2cd6c53b558a94542b4e4d21436a92d5, type: 3}
   m_Color: {r: 0.15, g: 0.35, b: 0.8, a: 1}
@@ -386,7 +386,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 60fa19d347bd4bb78d4dfe91a7e4c213, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Game.Map.MapFlagAnimator
   targetRenderer: {fileID: 300042}
   frames:
@@ -726,7 +726,7 @@ Transform:
   m_GameObject: {fileID: 300080}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.0073, y: 0.0292, z: 0}
+  m_LocalPosition: {x: 0.0488, y: 0.0628, z: 0}
   m_LocalScale: {x: 0.025, y: 0.025, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -779,7 +779,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 9
+  m_SortingOrder: 5
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: 08f9cd2567b3420e9f53382645dadf76, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
