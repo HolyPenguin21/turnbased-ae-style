@@ -54,64 +54,6 @@ namespace Game.Ai.V2
                 .Select(building => building.Hex)
                 .Distinct();
 
-        // Coarse route-risk read — every known-AA-tagged enemy sighting
-        // (AiMapMemory.KnownEnemySighting.HasAntiAir, see that field's own comment) within
-        // raidThreatRadius of ANY hex the given leg crosses. Deliberately approximate (no per-unit
-        // AA radius is kept in memory, only the bool flag) — good enough to rank routes relative to
-        // each other, never meant as an exact prediction of what will actually react (that stays
-        // AntiAirRules' own live, honest-fog job at execution time). The one shared route-risk
-        // number for every sortie kind.
-        // THE "may an air army end a turn aloft on this hex" threat rule, read by every place a
-        // wing can plan to stay aloft overnight: a deliberate hold (CanEndTurnHereAndRecover), a
-        // multi-turn sortie's first turn-end (PlanMultiTurnSortieCore) and a second-strike hold
-        // (CanStrikeNextTurnAndLandCore). A parked wing is shot by a ground AA army that moves up
-        // during the enemy's turn (AntiAirRules.CollectGroundOpportunities), so the reach is move +
-        // radius (AiConfigV2.airAloftEnemyAaReach), not the flight-leg radius KnownAaExposure uses.
-        // Fog-honest sources: a KNOWN enemy army carrying AA, and a KNOWN enemy Base/Citadel —
-        // AA can be fielded there from hand and walk out, whatever its garrison showed. Emergency
-        // return searches (TryReplan*) never read it: a wing that must come home still does.
-        public static bool IsThreatenedAloftEnd(PlayerSetupData owner, HexCoord hex)
-        {
-            if (owner == null)
-                return false;
-            int reach = AiConfigV2.airAloftEnemyAaReach;
-            foreach (AiMapMemory.KnownEnemySighting s in AiMapMemory.AllKnownEnemySightings(owner))
-                if (s.HasAntiAir && HexGridMath.Distance(hex, s.Hex) <= reach)
-                    return true;
-            foreach (AiMapMemory.KnownBuilding b in AiMapMemory.AllKnownBuildings(owner))
-                if (b.Owner != null && b.Owner != owner && !b.Owner.IsNeutral
-                    && (b.IsBase || b.IsStartingCitadel)
-                    && HexGridMath.Distance(hex, b.Hex) <= reach)
-                    return true;
-            return false;
-        }
-
-        public static int KnownAaExposure(PlayerSetupData actor, HexPath leg) =>
-            leg == null ? 0 : KnownAaExposureOver(actor, leg.Hexes);
-
-        // Exposure already unavoidable given where the army is standing RIGHT NOW — e.g. AA that
-        // was only revealed once the strike itself landed on this hex. Used exclusively by the
-        // emergency-return searches below (TryReplan/TryReplanMultiTurnReturn) as a baseline: a
-        // route home necessarily starts inside whatever already covers the current hex, so that
-        // part of its exposure was never an avoidable choice and must not disqualify the route the
-        // way a genuinely NEW zone should — otherwise an aircraft that discovers AA only on arrival
-        // would have every route home rejected.
-        public static int KnownAaExposureAt(PlayerSetupData actor, HexCoord hex) =>
-            KnownAaExposureOver(actor, new[] { hex });
-
-        private static int KnownAaExposureOver(PlayerSetupData actor, IEnumerable<HexCoord> hexes)
-        {
-            int exposure = 0;
-            foreach (AiMapMemory.KnownEnemySighting sighting in AiMapMemory.AllKnownEnemySightings(actor))
-            {
-                if (!sighting.HasAntiAir)
-                    continue;
-                if (hexes.Any(hex => HexGridMath.Distance(hex, sighting.Hex) <= AiConfig.raidThreatRadius))
-                    exposure++;
-            }
-            return exposure;
-        }
-
         // How many MORE aircraft `hex` can actually receive right now. The engine itself only
         // capacity-checks the STORED container (new card deployment, see
         // AviationRules.FreeAirfieldCapacity/ArmyActions.DeployUnitFromCard) — a landed,
@@ -188,8 +130,6 @@ namespace Game.Ai.V2
         {
             if (!AviationRules.IsValidAirArmy(airArmy) || map == null || owner == null)
                 return false;
-            if (IsThreatenedAloftEnd(owner, airArmy.Hex))
-                return false; // a deliberate hold here would sit inside the enemy's anti-air reach
             int safeEnds = AviationRange.SafeUnlandedEndsRemaining(airArmy);
             if (safeEnds < 1)
                 return false; // ending this turn aloft is already illegal / would take fuel damage
@@ -199,8 +139,6 @@ namespace Game.Ai.V2
             int freshMovement = airArmy.Members.Min(AviationRules.EffectiveMoveMax);
             if (freshMovement <= 0)
                 return false;
-            int baselineExposure = KnownAaExposureAt(owner, airArmy.Hex);
-
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
             {
                 if (FreeLandingCapacity(landing, owner, airArmy) < airArmy.Members.Count)
@@ -208,9 +146,6 @@ namespace Game.Ai.V2
                 HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
                 if (path == null)
                     continue;
-                if (KnownAaExposure(owner, path) - baselineExposure > 0)
-                    continue; // recovery route would cross NEW known AA — not a safe deliberate hold
-
                 // Simulate the return starting NEXT turn from the current hex: firstTurnMovement is
                 // the refreshed EffectiveMoveMax (not this turn's spent CurrentMovement), and only
                 // marginForReturn further unlanded ends are allowed.
@@ -252,7 +187,7 @@ namespace Game.Ai.V2
         // Exact owned-airfield-to-owned-airfield relocation. Unlike an ordinary sortie, the
         // requested destination is not re-ranked to a different landing field: the strategic
         // caller has already proved that this exact Base serves current objectives better. The
-        // route still uses the canonical capacity, known-AA and fuel simulation gates.
+        // route still uses the canonical capacity, fuel simulation gates.
         public static RebaseRoute? TryPlanRebaseFromStorage(HexCoord sourceHex,
             IReadOnlyList<UnitData> aircraft, HexCoord destinationHex, HexMap map,
             PlayerSetupData owner)
@@ -270,13 +205,12 @@ namespace Game.Ai.V2
             if (!AviationRules.IsValidAirArmy(airArmy) || airArmy.Owner != owner)
                 return null;
             return PlanExactRebase(airArmy.Hex, airArmy, airArmy.Members,
-                airArmy.CurrentMovement, airArmy.Members.Count, destinationHex, map, owner,
-                allowExistingExposure: true);
+                airArmy.CurrentMovement, airArmy.Members.Count, destinationHex, map, owner);
         }
 
         private static RebaseRoute? PlanExactRebase(HexCoord startHex, ArmyData excluding,
             IReadOnlyList<UnitData> aircraft, int firstTurnMovement, int requiredSlots,
-            HexCoord destinationHex, HexMap map, PlayerSetupData owner, bool allowExistingExposure)
+            HexCoord destinationHex, HexMap map, PlayerSetupData owner)
         {
             if (map == null || owner == null || aircraft == null || aircraft.Count == 0
                 || !AviationRules.IsOwnedAirfieldAt(destinationHex, owner)
@@ -285,12 +219,6 @@ namespace Game.Ai.V2
             HexPath path = HexPathfinder.FindPath(map, startHex, destinationHex, flatCost: true);
             if (path == null)
                 return null;
-            int exposure = KnownAaExposure(owner, path);
-            if (allowExistingExposure)
-                exposure = Mathf.Max(0, exposure - KnownAaExposureAt(owner, startHex));
-            if (!IsVoluntaryRebaseRouteSafe(exposure))
-                return null;
-
             int cost = excluding != null
                 ? AviationRules.PathMoveCost(excluding, path)
                 : path.Hexes.Count - 1;
@@ -306,8 +234,6 @@ namespace Game.Ai.V2
             return new RebaseRoute(destinationHex, firstDestination, cost, turns);
         }
 
-        internal static bool IsVoluntaryRebaseRouteSafe(int knownAaExposure) =>
-            knownAaExposure <= 0;
 
         // requiredSlots: how many aircraft need a free landing slot together — the WHOLE group
         // lands as one stack, so a landing hex with fewer free slots than that is rejected
@@ -339,7 +265,6 @@ namespace Game.Ai.V2
             if (outbound == null)
                 return null;
             int outboundCost = pathCost(outbound);
-            int outboundExposure = KnownAaExposure(owner, outbound);
             int movement = movementBudget(excludingFromCapacity);
 
             Sortie? best = null;
@@ -358,9 +283,6 @@ namespace Game.Ai.V2
                 int totalCost = outboundCost + pathCost(ret);
                 if (totalCost > movement)
                     continue;
-                if (outboundExposure + KnownAaExposure(owner, ret) > 0)
-                    continue; // known AA on this route — never a candidate while a safe one might exist
-
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || forward < bestForward
                     || (forward == bestForward && totalCost < bestCost);
@@ -393,7 +315,7 @@ namespace Game.Ai.V2
                 aircraft.Count, aircraft.Count, actionHex, map, owner);
         }
 
-        // Same landing search as PlanSortieCore (capacity/AA hard filter/forward-then-cost ranking,
+        // Same landing search as PlanSortieCore (capacity/forward-then-cost ranking,
         // all through the exact same FreeLandingCapacity/KnownAaExposure/NearestKnownEnemyDistance
         // helpers) except the round-trip feasibility test is TrySimulateHexSequence's own turn-by-
         // turn simulation instead of a flat "outboundCost + returnCost <= movement" check. Ranks by
@@ -416,9 +338,6 @@ namespace Game.Ai.V2
             HexPath outbound = HexPathfinder.FindPath(map, startHex, actionHex, flatCost: true);
             if (outbound == null)
                 return null;
-            if (KnownAaExposure(owner, outbound) > 0)
-                return null; // known AA anywhere on the outbound leg — hard filter, whole-route (spec point 7)
-
             MultiTurnSortie? best = null;
             int bestTurns = int.MaxValue;
             int bestForward = int.MaxValue;
@@ -433,16 +352,10 @@ namespace Game.Ai.V2
                 HexPath ret = HexPathfinder.FindPath(map, actionHex, landing, flatCost: true);
                 if (ret == null)
                     continue;
-                if (KnownAaExposure(owner, ret) > 0)
-                    continue; // known AA on the return leg — same hard filter as the outbound leg
-
                 if (!AviationRange.TrySimulateHexSequence(AviationRange.CombineRoute(outbound, ret), outbound.Hexes.Count - 1, firstTurnMovement,
                     aircraft, safeRemaining, owner, out int requiredTurns, out int requiredUnlandedEnds,
                     out HexCoord turn1Destination, out bool reachesActionThisTurn, out bool landsThisTurn))
                     continue;
-                if (!landsThisTurn && IsThreatenedAloftEnd(owner, turn1Destination))
-                    continue; // the plan parks the group aloft inside the enemy's anti-air reach
-
                 int totalCost = pathCost(outbound) + pathCost(ret);
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || requiredTurns < bestTurns
@@ -506,8 +419,6 @@ namespace Game.Ai.V2
             landingHex = default;
             if (map == null || owner == null)
                 return false;
-            if (IsThreatenedAloftEnd(owner, currentHex))
-                return false; // the second-strike hold would park aloft inside enemy anti-air reach
             int nextTurnMovement = aircraft.Min(AviationRules.EffectiveMoveMax);
 
             HexCoord? best = null;
@@ -526,9 +437,6 @@ namespace Game.Ai.V2
                 int cost = path.Hexes.Count - 1; // flat 1 MP/hex, same rule AviationRules.PathMoveCost applies
                 if (cost > nextTurnMovement)
                     continue;
-                if (KnownAaExposure(owner, path) > 0)
-                    continue;
-
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || forward < bestForward || (forward == bestForward && cost < bestCost);
                 if (better)
@@ -560,11 +468,8 @@ namespace Game.Ai.V2
             int safeRemaining = AviationRange.SafeUnlandedEndsRemaining(airArmy.Members);
             if (safeRemaining <= 0)
                 return null;
-            int baselineExposure = KnownAaExposureAt(owner, airArmy.Hex);
-
             MultiTurnSortie? best = null;
             int bestTurns = int.MaxValue;
-            int bestExposure = int.MaxValue;
             int bestCost = int.MaxValue;
             int bestForward = int.MaxValue;
             foreach (HexCoord landing in OwnedAirfieldHexes(owner))
@@ -574,8 +479,6 @@ namespace Game.Ai.V2
                 HexPath path = HexPathfinder.FindPath(map, airArmy.Hex, landing, flatCost: true);
                 if (path == null)
                     continue;
-                int extraExposure = Mathf.Max(0, KnownAaExposure(owner, path) - baselineExposure);
-
                 if (!AviationRange.TrySimulateHexSequence(path.Hexes, 0, airArmy.CurrentMovement, airArmy.Members, safeRemaining, owner,
                     out int requiredTurns, out int requiredUnlandedEnds, out HexCoord turn1Destination, out _, out bool landsThisTurn))
                     continue;
@@ -583,15 +486,13 @@ namespace Game.Ai.V2
                 int cost = AviationRules.PathMoveCost(airArmy, path);
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || requiredTurns < bestTurns
-                    || (requiredTurns == bestTurns && extraExposure < bestExposure)
-                    || (requiredTurns == bestTurns && extraExposure == bestExposure && cost < bestCost)
-                    || (requiredTurns == bestTurns && extraExposure == bestExposure && cost == bestCost && forward < bestForward);
+                    || (requiredTurns == bestTurns && cost < bestCost)
+                    || (requiredTurns == bestTurns && cost == bestCost && forward < bestForward);
                 if (better)
                 {
                     best = new MultiTurnSortie(airArmy.Hex, landing, null, path, cost, requiredTurns,
                         requiredUnlandedEnds, turn1Destination, false, landsThisTurn);
                     bestTurns = requiredTurns;
-                    bestExposure = extraExposure;
                     bestCost = cost;
                     bestForward = forward;
                 }
@@ -639,16 +540,12 @@ namespace Game.Ai.V2
                 int cost = AviationRules.PathMoveCost(airArmy, path);
                 if (cost > airArmy.CurrentMovement)
                     continue;
-                int extraExposure = Mathf.Max(0, KnownAaExposure(owner, path) - baselineExposure);
-
                 int forward = NearestKnownEnemyDistance(owner, landing);
-                bool better = best == null || extraExposure < bestExposure
-                    || (extraExposure == bestExposure && cost < bestCost)
-                    || (extraExposure == bestExposure && cost == bestCost && forward < bestForward);
+                bool better = best == null || cost < bestCost
+                    || (cost == bestCost && forward < bestForward);
                 if (better)
                 {
                     best = landing;
-                    bestExposure = extraExposure;
                     bestCost = cost;
                     bestForward = forward;
                 }
@@ -678,7 +575,6 @@ namespace Game.Ai.V2
             if (outbound == null)
                 return null;
             int outboundCost = AviationRules.PathMoveCost(airArmy, outbound);
-            int outboundExposure = KnownAaExposure(owner, outbound);
             int movement = airArmy.CurrentMovement;
 
             Sortie? best = null;
@@ -694,9 +590,6 @@ namespace Game.Ai.V2
                 int totalCost = outboundCost + AviationRules.PathMoveCost(airArmy, ret);
                 if (totalCost > movement)
                     continue; // not a real, complete round trip from here — never a candidate
-
-                if (outboundExposure + KnownAaExposure(owner, ret) > 0)
-                    continue; // known AA on this route — never a candidate while a safe one might exist
 
                 int forward = NearestKnownEnemyDistance(owner, landing);
                 bool better = best == null || forward < bestForward
