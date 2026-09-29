@@ -11,13 +11,10 @@ namespace Game.Ai
     {
         None = 0,
         Recon = 1 << 0,
-        Aggression = 1 << 1,
-        Economy = 1 << 2,
-        Aviation = 1 << 3,
-        Reservations = 1 << 4,
-        Materialization = 1 << 5,
-        Correlation = 1 << 6,
-        All = Recon | Aggression | Economy | Aviation | Reservations | Materialization | Correlation,
+        Aviation = 1 << 1,
+        Reservations = 1 << 2,
+        Correlation = 1 << 3,
+        All = Recon | Aviation | Reservations | Correlation,
     }
 
     // A plain-text trace of every AI decision/action, wide enough to reconstruct a whole AI turn
