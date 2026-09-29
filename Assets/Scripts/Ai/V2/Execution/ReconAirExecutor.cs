@@ -92,7 +92,7 @@ namespace Game.Ai.V2
                 ProvisionedMission pm = skipped?.Mission;
                 if (pm == null || perMissionResults == null)
                     continue;
-                ExecutionResult er = NewPerMissionResult(pm, pm.AirfieldHex, -1);
+                ExecutionResult er = NewPerMissionResult(pm, pm.ExecutionHex, -1);
                 if (skipped.Reason != ExecutionStopReason.MoverLost && ObjectiveSatisfied(player, pm))
                     MarkSatisfiedNoOp(pm, er);
                 else
@@ -167,9 +167,6 @@ namespace Game.Ai.V2
                 }
             }
 
-            foreach (AirLaunchPlan lp in plan.Launches)
-                yield return LaunchOne(lp, player, root, ctx, snapshot, result, perMissionResults);
-
             result.ApSpent = Math.Max(0, apBefore - root.ActionPoints);
             int hSpent = Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human));
             int eSpent = Math.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy));
@@ -223,7 +220,7 @@ namespace Game.Ai.V2
             if (skipped?.Mission != null)
             {
                 ProvisionedMission pm = skipped.Mission;
-                ExecutionResult er = NewPerMissionResult(pm, pm.AirfieldHex, -1);
+                ExecutionResult er = NewPerMissionResult(pm, pm.ExecutionHex, -1);
                 if (skipped.Reason != ExecutionStopReason.MoverLost && ObjectiveSatisfied(player, pm))
                     MarkSatisfiedNoOp(pm, er);
                 else
@@ -263,235 +260,11 @@ namespace Game.Ai.V2
                 yield break;
             }
 
-            AirLaunchPlan launch = plan.Launches.FirstOrDefault();
-            if (launch != null)
-                yield return LaunchOneStep(launch, player, root, ctx, snapshot, result,
-                    perMissionResults);
-        }
-
-        // Fly one planned launch. The stale-plan guard (CanAffordLaunch re-check) mirrors §35: if
-        // an earlier sortie this pass consumed the AP/Energy, this launch is skipped and reported —
-        // the executor does NOT re-plan a different subset or airfield.
-        //
-        // Every exit path (including the early "skip, no replan" ones) reports a
-        // per-mission ExecutionResult when lp.Mission is set, so a ProvisionedMission that never
-        // actually launched still gets a real ledger row (StepsMoved=0, an honest StopReason)
-        // instead of silently vanishing from MissionOutcomeLedger/MissionContinuity.
-        // Compatibility adapter for the current terminal pass: launch atomically, then let the
-        // same actor consume its remaining movement through the bounded airborne adapter.
-        private static IEnumerator LaunchOne(AirLaunchPlan lp, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
-            AirReconExecutionResult result, List<ExecutionResult> perMissionResults = null)
-        {
-            yield return LaunchOneCore(lp, player, root, ctx, snapshot, result,
-                perMissionResults, continueAfterLaunch: true);
-        }
-
-        // One admitted launch task step. LaunchRoutine itself is intentionally indivisible:
-        // formation, activation-Energy reservation and the first move either all settle or the
-        // aircraft are returned to storage. No later airborne action is executed here.
-        internal static IEnumerator LaunchOneStep(AirLaunchPlan lp, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
-            AirReconExecutionResult result, List<ExecutionResult> perMissionResults = null)
-        {
-            result ??= new AirReconExecutionResult();
-            if (lp == null || player == null || root == null || ctx?.Map == null)
-            {
-                result.StateVersionAfter = V2StateVersion.Current;
-                yield break;
-            }
-            int apBefore = root.ActionPoints;
-            int h0 = root != null ? root.GetResource(Game.Economy.ResourceType.Human) : 0;
-            int e0 = root != null ? root.GetResource(Game.Economy.ResourceType.Energy) : 0;
-            int m0 = root != null ? root.GetResource(Game.Economy.ResourceType.Materials) : 0;
-            int t0 = root != null ? root.GetResource(Game.Economy.ResourceType.Tech) : 0;
-
-            yield return LaunchOneCore(lp, player, root, ctx, snapshot, result,
-                perMissionResults, continueAfterLaunch: false);
-
-            result.ApSpent = Math.Max(0f,
-                apBefore - (root != null ? root.ActionPoints : apBefore));
-            int hSpent = root != null ? Math.Max(0, h0 - root.GetResource(Game.Economy.ResourceType.Human)) : 0;
-            int eSpent = root != null ? Math.Max(0, e0 - root.GetResource(Game.Economy.ResourceType.Energy)) : 0;
-            int mSpent = root != null ? Math.Max(0, m0 - root.GetResource(Game.Economy.ResourceType.Materials)) : 0;
-            int tSpent = root != null ? Math.Max(0, t0 - root.GetResource(Game.Economy.ResourceType.Tech)) : 0;
-            result.ResourcesSpent = (hSpent | eSpent | mSpent | tSpent) != 0
-                ? new Game.Cards.ResourceCost
-                    { human = hSpent, energy = eSpent, materials = mSpent, tech = tSpent }
-                : null;
-            result.StateVersionAfter = V2StateVersion.Current;
-        }
-
-        private static IEnumerator LaunchOneCore(AirLaunchPlan lp, PlayerSetupData player,
-            PlayerRoot root, AiTurnContext ctx, WorldSnapshot snapshot,
-            AirReconExecutionResult result, List<ExecutionResult> perMissionResults,
-            bool continueAfterLaunch)
-        {
-            ProvisionedMission pm = lp?.Mission;
-            V2ResourceStamp resourcesBefore = root != null ? AiV2Trace.Stamp(root) : default;
-            void ReportNoLaunch(ExecutionStopReason why)
-            {
-                if (pm == null || perMissionResults == null) return;
-                ExecutionResult er = NewPerMissionResult(pm, lp.AirfieldHex, -1);
-                er.StopReason = why;
-                er.ResourcesBefore = resourcesBefore;
-                if (root != null) er.ResourcesAfter = AiV2Trace.Stamp(root);
-                er.StateVersionAfter = V2StateVersion.Current;
-                perMissionResults.Add(er);
-            }
-
-            if (lp?.Subset == null || lp.Subset.Count == 0)
-            {
-                ReportNoLaunch(ExecutionStopReason.TargetInvalidated);
-                yield break;
-            }
-            // Ground execution earlier in this batch may already have refreshed this objective.
-            // Revalidate before spending launch AP/Energy, matching TaskExecutor's live stale gate.
-            if (pm != null && ObjectiveSatisfied(player, pm))
-            {
-                if (perMissionResults != null)
-                {
-                    ExecutionResult stale = NewPerMissionResult(pm, lp.AirfieldHex, -1);
-                    MarkSatisfiedNoOp(pm, stale);
-                    stale.StateVersionAfter = V2StateVersion.Current;
-                    perMissionResults.Add(stale);
-                }
-                yield break;
-            }
-            if (!AiAirSortiePlanner.CanAffordLaunch(root, lp.Subset))
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
-                    + "— planned launch no longer affordable (earlier sortie spent it); skip, no replan");
-                // Recon S5 — the same verdict AirReconPlanner gives this condition: no executable
-                // step this pass, not a lost actor (MoverLost would retire the durable AirSweep).
-                ReportNoLaunch(ExecutionStopReason.NoSafeStep);
-                yield break;
-            }
-
-            // No strategic Energy re-evaluation here. ProvisioningManager.AirSortieReservationAdmission
-            // already decided (once, this turn) that this sortie is worth its Energy. Execution only
-            // enforces LIVE HARD gates — CanAffordLaunch (above), and CanIssueMoveNow / AA / safe
-            // return downstream in AirReconStepDirector.
-
-            bool firstVisitedBefore = VisionSystem.IsVisited(player, lp.FirstStepHex);
-            HashSet<int> enemyBeforeLaunch = KnownIds(AiMapMemory.AllKnownEnemySightings(player));
-            HashSet<int> neutralBeforeLaunch = KnownIds(AiMapMemory.AllKnownNeutralSightings(player));
-            var beforeIds = new HashSet<int>(ArmyRegistry.AllForOwner(player)
-                .Where(AviationRules.IsValidAirArmy).Select(a => a.Id));
-            var launchDecision = new AiDecision
-            {
-                Kind = AiActionKind.LaunchAirRecon,
-                ExistingArmy = null,
-                TargetHex = lp.AirfieldHex,
-                AircraftToLaunch = lp.Subset,
-                AirActionHex = lp.FirstStepHex,
-                AirLandingHex = lp.LandingHex,
-                Score = lp.Score,
-                Reason = $"V2 Air Recon — {lp.Mode} one-step launch; {lp.Reason}",
-            };
-
-            int apBeforeLaunch = root.ActionPoints;
-            var launchTrace = new AiMoveExecutionTrace();
-            yield return AiAirSortiePlanner.LaunchRoutine(
-                player, launchDecision, ctx, AirSortieKind.Recon, launchTrace);
-
-            ArmyData launched = ArmyRegistry.AllForOwner(player)
-                .Where(a => a != null && AviationRules.IsValidAirArmy(a) && !beforeIds.Contains(a.Id))
-                .OrderBy(a => a.Id)
-                .FirstOrDefault();
-            if (launched == null)
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] airfield=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) "
-                    + "— launch formed no aircraft");
-                ReportNoLaunch(ExecutionStopReason.MoverLost);
-                yield break;
-            }
-
-            if (launched.Hex.Equals(lp.AirfieldHex))
-            {
-                RemoveAirReconReservation(player, launched);
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Storage] actor=#{launched.Id} launch formed but "
-                    + "first step made no progress; V2 assignment not started");
-                ReportNoLaunch(ExecutionStopReason.NoSafeStep);
-                yield break;
-            }
-
-            // ARCH-02 §36 — a formed sortie that left the airfield is an authoritative mutation:
-            // the aircraft was created AND took its first movement step off the airfield.
-            V2StateVersion.Bump();
-            result.RecordLaunch();
-            result.RecordMove();
-
-            AirSortie reservationTask = AirSortieRegistry.ForArmy(player, launched);
-            if (reservationTask != null && reservationTask.Kind == AirSortieKind.Recon)
-            {
-                reservationTask.Outbound = true;
-                reservationTask.TargetHex = lp.FirstStepHex;
-                reservationTask.LandingHex = lp.LandingHex;
-            }
-
-            // Seed StrategicAnchor from the Assignment-bound mission target (pm.FocusHex), NOT the
-            // tactical first step. lp.FirstStepHex is where the wing is headed THIS step, not what
-            // it is flying FOR; using it would let the anchor drift into a moving tactical
-            // waypoint. Mirrors Ground's pattern
-            // (ReconGroundExecutor's `strategicAnchor` local = pm.FocusHex/ExecutionHex, re-affirmed
-            // identically every call) — fall back to the tactical step only when no mission is
-            // bound (should not normally happen for a fresh launch).
-            ReconPatrolState assignment = ReconPatrolStateRegistry.GetOrCreate(player, launched.Id,
-                lp.AirfieldHex, pm?.FocusHex ?? lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
-            ReconPatrolStateRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
-            ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
-            launchSortie.LaunchTurn = ctx.TurnNumber;
-            launchSortie.RecordStep(launched.Hex);
-            launchSortie.ArrivalStrikeCheckPending = true;
-            launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, lp.Score);
-            AiReconIntelMemory.ObserveCurrentVisibility(player, ctx.TurnNumber);
-            RecordDiscoveries(player, ctx.TurnNumber, launched.Id, enemyBeforeLaunch, neutralBeforeLaunch);
-            StampObservedFootprint(player, ctx, launched, launched.Hex);
-            LogVisitedInvariant(player, lp.FirstStepHex, firstVisitedBefore, "storage-launch-first-step");
-            AiDebugLog.Write($"[AI][V2][Recon][Air][Handoff] actor=#{launched.Id} "
-                + $"launch=({lp.AirfieldHex.Q},{lp.AirfieldHex.R}) first=({launched.Hex.Q},{launched.Hex.R}) "
-                + $"mode={assignment.Mode}; V1 task retained only as landing-slot reservation");
-
-            // The real ArmyId now exists. From here, the synthetic negative ActorKey
-            // Assignment used to hold the airfield's uniqueness claim is resolved to the real
-            // ArmyId — that real id is what the per-mission result (and, through it, Continuity)
-            // carries from now on, never the synthetic key.
-            ExecutionResult perMission = pm != null ? NewPerMissionResult(pm, lp.AirfieldHex, launched.Id) : null;
-            if (perMission != null)
-            {
-                perMission.StepsMoved = 1; // the launch's own first step, off the airfield
-                perMission.StartHex = lp.AirfieldHex;
-                perMission.ResourcesBefore = resourcesBefore;
-            }
-
-            if (continueAfterLaunch && launched.Controller != null && launched.CurrentMovement > 0
-                && !AviationRules.IsOwnedAirfieldAt(launched.Hex, player))
-                // Anchor further live replanning at the SAME Refresh target this
-                // launch was bound to (lp.Mission.FocusHex), not a fresh pick.
-                yield return RunActor(player, root, ctx, snapshot, launched, result,
-                    arrivalStrikeCheckPending: true, missionFocusHex: pm?.FocusHex, perMissionResult: perMission);
-
-            if (perMission != null)
-            {
-                perMission.ApSpent = Math.Max(0f, apBeforeLaunch - root.ActionPoints);
-                if (!continueAfterLaunch)
-                    perMission.StopReason = launchTrace.BattleOccurred
-                        ? ExecutionStopReason.BattleStarted
-                        : launchTrace.HexEventOccurred
-                            ? ExecutionStopReason.HexEventStarted
-                            : launched.CurrentMovement > 0
-                                ? ExecutionStopReason.StepCompleted
-                                : ExecutionStopReason.OutOfMovement;
-                perMission.ResourcesAfter = AiV2Trace.Stamp(root);
-                FinalizePerMissionResult(player, pm, perMission);
-                perMissionResults?.Add(perMission);
-            }
         }
 
         // Shared per-mission ExecutionResult scaffold, mirroring how
         // TaskExecutor/ReconGroundExecutor seed one: Key/Source/StartHex from the ProvisionedMission,
-        // ActualActorArmyId the REAL army id (>=0) once known (-1 = none yet / never materialised).
+        // ActualActorArmyId is the already-existing real aviation army id (or null if it vanished).
         private static ExecutionResult NewPerMissionResult(ProvisionedMission pm, HexCoord startHex, int actorArmyId) =>
             new ExecutionResult
             {
