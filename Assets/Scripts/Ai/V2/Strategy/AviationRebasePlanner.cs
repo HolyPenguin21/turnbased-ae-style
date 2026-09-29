@@ -50,7 +50,7 @@ namespace Game.Ai.V2
 
         // A launched multi-turn rebase is a physical landing obligation, not a fresh strategic
         // choice. It survives turn boundaries in AirSortieRegistry and is resumed before optional
-        // spending; the exact route, capacity, ownership, AA and fuel proof are still re-derived by
+        // spending; the exact route, capacity, ownership and fuel proof are still re-derived by
         // ContinueSortie on every step.
         // `turn` excludes a continuation that already could not take a step this turn (Recon audit
         // B1, AviationObligationStallRegistry); it is re-tried from the next turn.
