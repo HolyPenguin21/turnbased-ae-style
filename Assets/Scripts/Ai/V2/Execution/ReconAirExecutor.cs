@@ -441,9 +441,6 @@ namespace Game.Ai.V2
                 lp.AirfieldHex, pm?.FocusHex ?? lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
             ReconPatrolStateRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
             ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
-            launchSortie.EnsureLaunchProfile(launched);
-            launchSortie.OutboundMovementSpent = Math.Max(0,
-                launchSortie.LaunchMovementBudget - launched.CurrentMovement);
             launchSortie.LaunchTurn = ctx.TurnNumber;
             launchSortie.RecordStep(launched.Hex);
             launchSortie.ArrivalStrikeCheckPending = true;
