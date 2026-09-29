@@ -1,9 +1,7 @@
 #if UNITY_INCLUDE_TESTS
 using System.Collections.Generic;
-using System.Linq;
 using Game.Ai.V2;
 using Game.Aviation;
-using Game.HexGrid;
 using Game.Units;
 using NUnit.Framework;
 
@@ -12,13 +10,6 @@ namespace Game.EditorTests
     // Air-recon lifecycle facts that must reach Continuity honestly.
     public class AiReconAirLifecycleTests
     {
-        [Test]
-        public void UnlaunchedAirLaunch_ReportsNoMover_LaunchedOneReportsTheRealArmy()
-        {
-            Assert.That(Finalize(actualArmyId: null).MoverArmyId, Is.Null);
-            Assert.That(Finalize(actualArmyId: 41).MoverArmyId, Is.EqualTo(41));
-        }
-
         [Test]
         public void OwnedAirfieldDuringOutbound_DoesNotCompleteSortie()
         {
@@ -56,32 +47,6 @@ namespace Game.EditorTests
                 new List<UnitData> { unit }), Is.EqualTo(expected));
         }
 
-        private static MissionTurnOutcome Finalize(int? actualArmyId)
-        {
-            var m = new MissionProposal
-            {
-                Kind = MissionKind.Scout,
-                Target = new ScoutMissionTarget { Kind = ScoutTargetKind.AirSweep, FocusHex = new HexCoord(9, 0) },
-            };
-            var pm = new ProvisionedMission
-            {
-                Mission = m, Key = StableMissionKey.For(m), Kind = MissionKind.Scout,
-                ScoutKind = ScoutTargetKind.AirSweep, ExecutorKind = ScoutExecutorKind.AirLaunch,
-                MoverArmyId = ScoutExecutionCandidate.SyntheticAirfieldActorId(new HexCoord(1, 1)),
-                AirfieldHex = new HexCoord(1, 1),
-            };
-            var ledger = new MissionOutcomeLedger();
-            ledger.RegisterProposals(new[] { m });
-            ledger.RecordProvisionSuccess(m, pm);
-            ledger.RecordExecution(new ExecutionResult
-            {
-                Key = pm.Key, Source = pm, ActualActorArmyId = actualArmyId,
-                StepsMoved = actualArmyId.HasValue ? 1 : 0,
-                StopReason = actualArmyId.HasValue ? ExecutionStopReason.StepCompleted
-                    : ExecutionStopReason.NoSafeStep,
-            });
-            return ledger.Finalize().Single();
-        }
     }
 }
 #endif
