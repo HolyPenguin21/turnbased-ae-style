@@ -508,6 +508,93 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void RangeOneAi_ClosesDistanceImmediatelyWhenLegal()
+        {
+            var a = new PlayerSetupData { Nickname = "A" };
+            var d = new PlayerSetupData { Nickname = "D" };
+            var ownArmy = new ArmyData { Owner = a, Name = "Melee" };
+            var enemyArmy = new ArmyData { Owner = d, Name = "Enemy" };
+            UnitData melee = Body(a);
+            melee.Range = 1;
+            UnitData enemy = Body(d);
+            enemy.Range = 4;
+            ownArmy.Members.Add(melee);
+            enemyArmy.Members.Add(enemy);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerBackRow, 2, melee);
+            grid.Set(BattleGrid.DefenderFrontRow, 4, enemy);
+
+            int before = Math.Abs(BattleGrid.AttackerBackRow - BattleGrid.DefenderFrontRow)
+                + Math.Abs(2 - 4);
+            var waitStreak = new Dictionary<UnitData, int>();
+
+            BattleAi.AiAction action = BattleAi.ChooseAction(
+                grid, melee, waitStreak, ownArmy, enemyArmy, AbilityMagnitudes.Default,
+                new List<UnitData> { melee, enemy }, 0);
+
+            Assert.That(action.Kind, Is.EqualTo(BattleAi.AiActionKind.Move));
+            int after = Math.Abs(action.Row - BattleGrid.DefenderFrontRow)
+                + Math.Abs(action.Col - 4);
+            Assert.That(after, Is.LessThan(before),
+                "a Range-1 unit that stays in the fight must take a real closing step whenever one exists");
+        }
+
+        [Test]
+        public void RangeOneAi_DoesNotWaitToAvoidExposure()
+        {
+            var a = new PlayerSetupData { Nickname = "A" };
+            var d = new PlayerSetupData { Nickname = "D" };
+            var ownArmy = new ArmyData { Owner = a, Name = "Melee" };
+            var enemyArmy = new ArmyData { Owner = d, Name = "Ranged" };
+            UnitData melee = Body(a);
+            melee.Range = 1;
+            UnitData enemy = Body(d);
+            enemy.Range = 4;
+            ownArmy.Members.Add(melee);
+            enemyArmy.Members.Add(enemy);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerBackRow, 2, melee);
+            grid.Set(BattleGrid.DefenderFrontRow, 2, enemy);
+
+            var waitStreak = new Dictionary<UnitData, int>();
+            BattleAi.AiAction action = BattleAi.ChooseAction(
+                grid, melee, waitStreak, ownArmy, enemyArmy, AbilityMagnitudes.Default,
+                new List<UnitData> { melee, enemy }, 0);
+
+            Assert.That(action.Kind, Is.EqualTo(BattleAi.AiActionKind.Move),
+                "exposure caution must not make a committed Range-1 fighter wait instead of closing");
+            Assert.That(action.Row, Is.LessThan(BattleGrid.AttackerBackRow));
+        }
+
+        [Test]
+        public void RangeOneAi_AttacksWhenTargetIsAlreadyReachable()
+        {
+            var a = new PlayerSetupData { Nickname = "A" };
+            var d = new PlayerSetupData { Nickname = "D" };
+            var ownArmy = new ArmyData { Owner = a, Name = "Melee" };
+            var enemyArmy = new ArmyData { Owner = d, Name = "Enemy" };
+            UnitData melee = Body(a);
+            melee.Range = 1;
+            UnitData enemy = Body(d);
+            ownArmy.Members.Add(melee);
+            enemyArmy.Members.Add(enemy);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.NeutralRow, 2, melee);
+            grid.Set(BattleGrid.DefenderFrontRow, 2, enemy);
+
+            var waitStreak = new Dictionary<UnitData, int>();
+            BattleAi.AiAction action = BattleAi.ChooseAction(
+                grid, melee, waitStreak, ownArmy, enemyArmy, AbilityMagnitudes.Default,
+                new List<UnitData> { melee, enemy }, 0);
+
+            Assert.That(action.Kind, Is.EqualTo(BattleAi.AiActionKind.Attack));
+            Assert.That(action.Target, Is.SameAs(enemy));
+        }
+
+        [Test]
         public void ChallengeSession_FailedFateRerollEndsCurrentSpendChain()
         {
             int rollCall = 0;
