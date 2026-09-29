@@ -122,7 +122,7 @@ namespace Game.Ai.V2
             // a standing reservation. Tactical layers below MUST NOT re-run this economics — they are
             // limited to live hard/safety gates (CanAffordLaunch / CanIssueMoveNow / AA / safe return).
             ProvisionFailure? sortieDeclined = AirSortieReservationAdmission(
-                player, root, ctx, session, exec, moverArmyId, airfieldHex, realAp, realEnergy);
+                player, root, ctx, session, exec, moverArmyId, realAp, realEnergy);
             if (sortieDeclined.HasValue)
                 return ProvisioningResult.Fail(sortieDeclined.Value);
 
@@ -141,8 +141,6 @@ namespace Game.Ai.V2
                 StealthApReserved = false,
                 RequiresStealth = false,
                 ExecutorKind = exec.ExecutorKind,
-                AirfieldHex = airfieldHex,
-                LaunchSubset = launchSubset,
             });
         }
 
@@ -151,7 +149,7 @@ namespace Game.Ai.V2
         // failure (RetryNextTurn, no cooldown) when the canonical evaluator declines this turn.
         //
         // No generic air-route re-probe happens here: Assignment (ReconAssignmentPlanner.
-        // AppendAirCandidates) already picked this exact actor/airfield AND proved a mission-specific
+        // AppendAirCandidates) already picked this exact actor AND proved a mission-specific
         // route — the resulting AIR-01 route score and the exact per-actor AP/Energy ride in on the
         // ScoutExecutionCandidate. This method feeds those figures, plus what earlier missions this
         // pass have already claimed (session.ApClaimed/EnergyClaimed), straight into the canonical
@@ -172,14 +170,13 @@ namespace Game.Ai.V2
 
         private static ProvisionFailure? AirSortieReservationAdmission(
             PlayerSetupData player, PlayerRoot root, AiTurnContext ctx, ProvisioningSession session,
-            ScoutExecutionCandidate exec, int moverArmyId, HexCoord airfieldHex, float realAp, float realEnergy)
+            ScoutExecutionCandidate exec, int moverArmyId, float realAp, float realEnergy)
         {
             // Bare harness / no world to reason about — hard gates already passed, leave behaviour unchanged.
             if (ctx?.Map == null || session?.Snapshot == null)
                 return null;
 
-            bool existing = exec.ExecutorKind == ScoutExecutorKind.AirExisting;
-            string label = existing ? $"actor=#{moverArmyId}" : $"airfield=({airfieldHex.Q},{airfieldHex.R})";
+            string label = $"actor=#{moverArmyId}";
 
             AviationReservationDecision decision = AviationSortieReservationEvaluator.EvaluateRecon(
                 player, root, ctx.Map,
