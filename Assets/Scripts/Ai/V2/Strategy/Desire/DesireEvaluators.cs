@@ -130,6 +130,7 @@ namespace Game.Ai.V2
     {
         public static RadarAssessment Evaluate(WorldSnapshot snapshot, AiRadarState state)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Strategy.Evaluate");
             state = state ?? new AiRadarState();
             var breakdown = new DesireBreakdown();
             var desires = new DesireVector();
@@ -239,6 +240,7 @@ namespace Game.Ai.V2
         // Refresh perishable opportunity and force facts without advancing the turn's Radar.
         public static void RefreshAggressionOperationalFacts(WorldSnapshot snapshot, DesireBreakdown breakdown)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Strategy.RefreshAggressionFacts");
             if (snapshot?.Self == null || breakdown == null)
                 return;
 

@@ -246,6 +246,7 @@ namespace Game.Ai.V2
 
                 string StrategicAdmissionFingerprint(DesireAxis axis)
                 {
+                    using var __profile = new Game.Core.ProfileScope("AI/Pipeline.AdmissionFingerprint");
                     string resources = root == null ? "-" : string.Join(",",
                         ResourceBundle.All.Select(t => root.GetResource(t).ToString("0.###",
                             CultureInfo.InvariantCulture)));
@@ -1275,6 +1276,7 @@ namespace Game.Ai.V2
             AiTurnContext ctx, out Dictionary<MissionIntentKey, string> deferredThisPass,
             bool aggressionPressureAlreadyRefreshed = false)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Pipeline.BuildMissionSet");
             // Orchestration owns mid-turn sequencing: refresh only the Recon lane pressures from
             // the current snapshot right before Missions consumes them, so a frontier completion
             // earlier this same settled pass is reflected without Missions itself triggering

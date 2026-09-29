@@ -46,6 +46,7 @@ namespace Game.Ai.V2
     {
         public static WorldSnapshot Scan(PlayerSetupData player, PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Analysis.Scan");
             var snap = new WorldSnapshot
             {
                 Observer = player,
@@ -97,6 +98,7 @@ namespace Game.Ai.V2
         public static WorldSnapshot RefreshStrategicKnowledge(WorldSnapshot prev, PlayerSetupData player,
             PlayerRoot root, AiHandData hand, AiTurnContext ctx)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Analysis.RefreshStrategicKnowledge");
             if (prev == null || !object.ReferenceEquals(prev.Observer, player)
                 || ctx == null || prev.TurnNumber != ctx.TurnNumber)
                 return Scan(player, root, hand, ctx);

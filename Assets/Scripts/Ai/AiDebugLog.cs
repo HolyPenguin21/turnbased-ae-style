@@ -152,6 +152,7 @@ namespace Game.Ai
         private static void WriteCore(string message, string callerFile,
             string callerMember, int callerLine)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/DebugLog.Write");
             string source = string.IsNullOrEmpty(callerFile) ? "?" : Path.GetFileNameWithoutExtension(callerFile);
             string tagged = $"[{source}.{callerMember}:{callerLine}] {message}";
 

@@ -22,6 +22,7 @@ namespace Game.Ai.V2
             ActorCommitments commitments, PlayerSetupData player, AiTurnContext ctx = null,
             PlayerRoot root = null, ISet<DesireAxis> dirtyAxes = null)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Demand.Generate");
             var demands = new List<AxisDemand>();
             bool GenerateAxis(DesireAxis axis) => dirtyAxes == null || dirtyAxes.Contains(axis);
             // §17 — decay the resource-starvation feedback once per turn before it is read.
@@ -31,12 +32,19 @@ namespace Game.Ai.V2
             // (turn-start) snapshot, before any spender reads it.
             DevelopmentInvestmentGate.Observe(player, snap);
             if (GenerateAxis(DesireAxis.Recon))
+            {
+                using var __axis = new Game.Core.ProfileScope("AI/Demand.Recon");
                 demands.AddRange(ReconDemands(snap, objectives, activeIntents, commitments, player, ctx, root));
+            }
             if (GenerateAxis(DesireAxis.Aggression))
+            {
+                using var __axis = new Game.Core.ProfileScope("AI/Demand.Aggression");
                 demands.AddRange(AggressionDemands(snap, breakdown, aggressionObjectives, activeIntents, commitments, player));
+            }
             // There is no Defence axis: ActiveDefence lives inside Aggression.
             if (GenerateAxis(DesireAxis.Economy))
             {
+                using var __axis = new Game.Core.ProfileScope("AI/Demand.Economy");
                 var timer = System.Diagnostics.Stopwatch.StartNew();
                 demands.AddRange(EconomyDemands(snap, breakdown, player, ctx, root,
                     activeIntents, commitments));
@@ -44,7 +52,10 @@ namespace Game.Ai.V2
                     $"[AI][V2][Timing] EconomyDemands elapsedMs={timer.ElapsedMilliseconds}");
             }
             if (GenerateAxis(DesireAxis.Development))
+            {
+                using var __axis = new Game.Core.ProfileScope("AI/Demand.Development");
                 demands.AddRange(DevelopmentDemands(snap, activeIntents, player, ctx, root));
+            }
             // Correlation: one DemandTraceId per demand for this pass, in deterministic list order
             // (AiV2Trace scope was opened by the orchestrator). Rides on AxisDemand.TraceId /
             // ToString from here — into Phase A and every [CHECK] line raised for the demand.

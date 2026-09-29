@@ -191,6 +191,7 @@ namespace Game.Ai
         }
         private static HexPath GetRoute(HexMap map, PlayerSetupData owner, HexCoord from, HexCoord targetHex, int? maxMovement)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Pathing.GetRoute");
             PlayerRouteCache cache = EnsureCacheState(map, owner);
             var key = (from, targetHex, maxMovement);
             if (cache.Routes.TryGetValue(key, out HexPath cached)) return cached;

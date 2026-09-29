@@ -86,6 +86,7 @@ namespace Game.Ai.V2
             bool economyAxisAuthoritative = true, Radar radar = null,
             bool deferFreshZeroRadar = false)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Strategic.FulfillDemands");
             if (player != null && root != null && ctx != null)
                 TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
 

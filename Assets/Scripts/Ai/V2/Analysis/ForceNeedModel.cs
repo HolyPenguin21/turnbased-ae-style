@@ -128,6 +128,7 @@ namespace Game.Ai.V2
 
         private static ForceNeed Compute(WorldSnapshot snap)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/ForceNeed.Compute");
             bool witnessed = HasMilitaryWitness(snap);
             if (!witnessed)
                 return new ForceNeed(0f, 0f, 0f, false);

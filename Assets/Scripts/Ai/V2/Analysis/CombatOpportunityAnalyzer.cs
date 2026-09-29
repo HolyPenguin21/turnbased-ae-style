@@ -77,6 +77,7 @@ namespace Game.Ai.V2
 
         public static CombatOpportunityReport Analyze(WorldSnapshot snap)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/CombatOpportunity.Analyze");
             var report = new CombatOpportunityReport();
             if (snap?.Self == null || snap.Known == null)
                 return report;

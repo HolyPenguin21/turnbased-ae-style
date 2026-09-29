@@ -398,6 +398,7 @@ namespace Game.Ai.V2
         public static AllocationSession BeginTurn(WorldSnapshot snapshot, Radar radar,
             List<MissionProposal> missions, List<Commitment> commitments, PlayerSetupData player)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Allocator.BeginTurn");
             AiAllocatorState state = AiAllocatorStateRegistry.GetOrCreate(player);
             state.PurgeExpired(snapshot?.TurnNumber ?? 0);
             return new AllocationSession(snapshot, radar ?? Radar.Even(),

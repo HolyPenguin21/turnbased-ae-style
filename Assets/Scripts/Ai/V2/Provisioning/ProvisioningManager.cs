@@ -235,6 +235,7 @@ namespace Game.Ai.V2
         public static ProvisioningResult Provision(PlayerSetupData player, PlayerRoot root, AiHandData hand,
             AiTurnContext ctx, ProvisioningSession session, FundedEntry funded)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Provisioning.Provision");
             MissionProposal m = funded?.Mission;
             if (m == null || ctx?.Map == null || root == null)
                 return ProvisioningResult.Fail(ProvisionFailure.AssemblyInfeasible("no mission / map / root"));

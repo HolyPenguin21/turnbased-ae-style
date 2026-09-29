@@ -73,6 +73,7 @@ namespace Game.Ai.V2
     {
         public static List<ReconObjective> Enumerate(WorldSnapshot snap)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Objectives.Recon");
             var list = new List<ReconObjective>();
             if (snap?.Self == null || snap.MapKnowledge == null)
                 return list;

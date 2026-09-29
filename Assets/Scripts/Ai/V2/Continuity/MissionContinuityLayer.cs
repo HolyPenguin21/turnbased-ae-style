@@ -383,6 +383,7 @@ namespace Game.Ai.V2
             IReadOnlyList<AggressionObjective> aggressionObjectives = null,
             AiTurnContext ctx = null)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Continuity.ResolveActive");
             var active = new List<MissionIntent>();
             Func<HexCoord, HexCoord, int, int> safeRouteCost = ctx?.Map == null ? null
                 : (Func<HexCoord, HexCoord, int, int>)((from, to, maxMovement) =>

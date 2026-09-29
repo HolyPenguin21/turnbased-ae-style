@@ -125,6 +125,7 @@ namespace Game.Ai.V2
     {
         public static List<AggressionObjective> Enumerate(WorldSnapshot snap, CombatOpportunityReport report)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Objectives.Aggression");
             var list = new List<AggressionObjective>();
             if (snap?.Self == null)
             {

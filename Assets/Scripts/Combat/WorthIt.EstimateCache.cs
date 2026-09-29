@@ -103,6 +103,7 @@ namespace Game.Combat
         private static BattleEstimate CachedEstimate(int kind, int seed, AbilityMagnitudes magnitudes,
             Action<List<int>> appendKey, Func<BattleEstimate> compute)
         {
+            using var __profile = new Game.Core.ProfileScope("Combat/WorthIt.Estimate");
             if (!EstimateCacheActive)
                 return compute();
 
@@ -125,7 +126,9 @@ namespace Game.Combat
 
             _estimateCacheStats.Misses++;
             long start = System.Diagnostics.Stopwatch.GetTimestamp();
-            BattleEstimate result = compute();
+            BattleEstimate result;
+            using (new Game.Core.ProfileScope("Combat/WorthIt.Simulate"))
+                result = compute();
             _estimateCacheStats.MissMilliseconds += (System.Diagnostics.Stopwatch.GetTimestamp() - start)
                 * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
             if (EstimateCacheEntries.Count >= EstimateCacheMaxEntries)

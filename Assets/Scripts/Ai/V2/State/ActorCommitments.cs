@@ -41,6 +41,7 @@ namespace Game.Ai.V2
         public static ActorCommitments FromIntents(IEnumerable<MissionIntent> intents,
             WorldSnapshot snap, IReadOnlyList<ReconObjective> reconObjectives)
         {
+            using var __profile = new Game.Core.ProfileScope("AI/Commitments.FromIntents");
             var c = new ActorCommitments();
             if (intents == null || snap?.Self?.Armies == null)
                 return c;
