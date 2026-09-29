@@ -44,6 +44,20 @@ namespace Game.EditorTests
             Assert.That(AviationRange.SafeUnlandedEndsRemaining(wing), Is.EqualTo(1));
         }
 
+        [TestCase(2f, 1f, 2, 2, 1, true)]
+        [TestCase(2f, 2f, 2, 2, 2, true)]
+        [TestCase(2f, 1f, 2, 2, 2, false)]
+        [TestCase(3f, 3f, 3, 3, 3, true)]
+        public void AviationEnergyRunway_RequiresEveryActivationBeforeLanding(
+            float stock, float income, int currentCost, int recurringCost,
+            int requiredTurns, bool expected)
+        {
+            bool funded = AviationSortieReservationEvaluator.CanFundActivationSchedule(
+                stock, income, currentCost, recurringCost, requiredTurns, out _);
+
+            Assert.That(funded, Is.EqualTo(expected));
+        }
+
         [Test]
         public void MobileCollection_SelectsBestCollectorByCanonicalTaskScore()
         {
