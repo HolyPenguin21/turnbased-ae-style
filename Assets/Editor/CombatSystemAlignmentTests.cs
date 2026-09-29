@@ -537,6 +537,63 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void FinalizeEncounter_HeroPlusSummons_PreservesHeroArmyAsSurvivor()
+        {
+            var attackerOwner = new PlayerSetupData { Nickname = "A" };
+            var defenderOwner = new PlayerSetupData { Nickname = "D" };
+            var attackerArmy = new ArmyData { Owner = attackerOwner, Name = "A" };
+            var defenderArmy = new ArmyData { Owner = defenderOwner, Name = "D" };
+            var hero = new UnitData
+            {
+                Owner = attackerOwner, IsHero = true, Fate = 3, FateMax = 3,
+                HitPointsCurrent = 5, HitPointsMax = 5,
+            };
+            var summon = Body(attackerOwner);
+            summon.IsSummoned = true;
+            attackerArmy.Members.Add(hero);
+            attackerArmy.Members.Add(summon);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerBackRow, 0, hero);
+            grid.Set(BattleGrid.AttackerFrontRow, 0, summon);
+            var state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
+
+            BattleEncounterFinalization result =
+                BattleEngine.FinalizeEncounter(state, hexSelectionController: null);
+
+            Assert.That(result.Survivor, Is.SameAs(attackerArmy));
+            Assert.That(result.AttackerHere, Is.True);
+            Assert.That(result.DefenderHere, Is.False);
+            Assert.That(attackerArmy.Members.Count, Is.EqualTo(1));
+            Assert.That(attackerArmy.Members[0], Is.SameAs(hero));
+            Assert.That(grid.TryFindPosition(summon, out _, out _), Is.False);
+        }
+
+        [Test]
+        public void FinalizeEncounter_SummonsOnly_DoesNotCreatePersistentSurvivor()
+        {
+            var attackerOwner = new PlayerSetupData { Nickname = "A" };
+            var defenderOwner = new PlayerSetupData { Nickname = "D" };
+            var attackerArmy = new ArmyData { Owner = attackerOwner, Name = "A" };
+            var defenderArmy = new ArmyData { Owner = defenderOwner, Name = "D" };
+            var summon = Body(attackerOwner);
+            summon.IsSummoned = true;
+            attackerArmy.Members.Add(summon);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerFrontRow, 0, summon);
+            var state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
+
+            BattleEncounterFinalization result =
+                BattleEngine.FinalizeEncounter(state, hexSelectionController: null);
+
+            Assert.That(result.Survivor, Is.Null);
+            Assert.That(result.AttackerHere, Is.False);
+            Assert.That(attackerArmy.Members, Is.Empty);
+            Assert.That(grid.TryFindPosition(summon, out _, out _), Is.False);
+        }
+
+        [Test]
         public void CaptureKillSequence_RetreatsOnlyAfterLastHeroOfArmy()
         {
             var hunterOwner = new PlayerSetupData { Nickname = "Hunter" };
