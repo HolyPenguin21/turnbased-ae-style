@@ -441,10 +441,6 @@ namespace Game.Ai.V2
                 lp.AirfieldHex, pm?.FocusHex ?? lp.FirstStepHex, lp.Mode, ctx.TurnNumber);
             ReconPatrolStateRegistry.MarkProgress(player, launched.Id, ctx.TurnNumber);
             ReconAirSortieState launchSortie = ReconAirSortieRegistry.GetOrCreate(player, launched.Id, lp.AirfieldHex);
-            launchSortie.EnsureLaunchProfile(launched);
-            launchSortie.OutboundMovementSpent = Math.Max(0,
-                launchSortie.LaunchMovementBudget - launched.CurrentMovement);
-            launchSortie.LaunchTurn = ctx.TurnNumber;
             launchSortie.RecordStep(launched.Hex);
             launchSortie.ArrivalStrikeCheckPending = true;
             launchSortie.BestOutboundStepScore = Math.Max(launchSortie.BestOutboundStepScore, lp.Score);
@@ -656,7 +652,7 @@ namespace Game.Ai.V2
             ReconAirSortieState sortie = ReconAirSortieRegistry.GetOrCreate(
                 player, armyId, air.Hex);
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
-            bool hasDeparted = control.MovedAny || sortie.LaunchTurn >= 0 || sortie.Trail.Count > 1;
+            bool hasDeparted = control.MovedAny || sortie.Trail.Count > 1;
             if (ReconAirSortieLifecycle.CompletesAtAirfield(sortie, atAirfield, hasDeparted))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Landing at "
@@ -690,35 +686,6 @@ namespace Game.Ai.V2
                 control.StopReason = ExecutionStopReason.NoSafeStep;
                 yield break;
             }
-            if (d.Kind == AirReconStepDirector.StepKind.HoldEndTurn)
-            {
-                control.StopReason = ExecutionStopReason.OutOfMovement;
-                yield break;
-            }
-
-            if (d.Kind == AirReconStepDirector.StepKind.HoldReopen)
-            {
-                control.CommandAttempted = true;
-                yield return ExecuteOpportunisticStrike(
-                    player, ctx, air, sortie, result, perMissionResult);
-                ArmyData afterHoldStrike = Resolve(player, armyId);
-                if (afterHoldStrike == null || !AviationRules.IsValidAirArmy(afterHoldStrike)
-                    || afterHoldStrike.Controller == null)
-                {
-                    ReconPatrolStateRegistry.Retire(player, armyId, "air mover lost / invalid");
-                    ReconAirSortieRegistry.Retire(player, armyId);
-                    control.StopReason = ExecutionStopReason.MoverLost;
-                    yield break;
-                }
-                if (sortie.Phase == ReconAirPhase.Hold)
-                    sortie.Phase = d.ResumePhase;
-                ReconAirSortieLifecycle.Apply(sortie, d);
-                ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
-                control.CanContinue = true;
-                control.StopReason = ExecutionStopReason.StepCompleted;
-                yield break;
-            }
-
             if (d.Kind == AirReconStepDirector.StepKind.Strike)
             {
                 control.CommandAttempted = true;
@@ -780,7 +747,6 @@ namespace Game.Ai.V2
             }
 
             bool stepMoved = false;
-            int movementBeforeStep = air.CurrentMovement;
             control.CommandAttempted = true;
             yield return MoveOne(player, ctx, air, d.Step,
                 $"V2 Air Recon — {assignment.Mode} {sortie.Phase} one-step live replan",
@@ -797,11 +763,7 @@ namespace Game.Ai.V2
             if (perMissionResult != null) perMissionResult.StepsMoved++;
             ArmyData afterStep = Resolve(player, armyId);
             if (afterStep != null)
-            {
                 sortie.RecordStep(afterStep.Hex);
-                sortie.RecordOutboundMovement(Math.Max(1,
-                    movementBeforeStep - afterStep.CurrentMovement));
-            }
             ReconAirSortieLifecycle.Apply(sortie, d);
             sortie.ArrivalStrikeCheckPending = true;
             if (d.PivotToReturnAfterMove)
