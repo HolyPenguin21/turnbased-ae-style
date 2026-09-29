@@ -80,7 +80,7 @@ namespace Game.Ai.V2
                 result.StateVersionAfter = V2StateVersion.Current;
                 yield break;
             }
-            AiDebugLog.Write($"[AI][V2][Recon][Air] exec — {plan.Summary}");
+            AiDebugLog.WriteVerbose($"[AI][V2][Recon][Air] exec — {plan.Summary}");
             int apBefore = root.ActionPoints;
             int h0 = root.GetResource(Game.Economy.ResourceType.Human);
             int e0 = root.GetResource(Game.Economy.ResourceType.Energy);
