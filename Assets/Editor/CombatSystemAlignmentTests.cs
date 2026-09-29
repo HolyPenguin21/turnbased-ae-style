@@ -37,10 +37,12 @@ namespace Game.EditorTests
         }
 
         [Test]
-        public void HeroIsNotOrdinaryGroundCombatTarget()
+        public void Hero_IsOrdinaryGroundCombatTarget_WhenInRange()
         {
             var a = new PlayerSetupData { Nickname = "A" };
             var b = new PlayerSetupData { Nickname = "B" };
+            var attackerArmy = new ArmyData { Owner = a, Name = "A" };
+            var defenderArmy = new ArmyData { Owner = b, Name = "B" };
             var attacker = new UnitData
             {
                 Owner = a, Attack = 4, Defense = 1, Range = 4,
@@ -51,15 +53,79 @@ namespace Game.EditorTests
                 Owner = b, IsHero = true, Fate = 4, FateMax = 4,
                 HitPointsCurrent = 6, HitPointsMax = 6,
             };
+            attackerArmy.Members.Add(attacker);
+            defenderArmy.Members.Add(hero);
+
             var grid = new BattleGrid();
             grid.Set(BattleGrid.AttackerFrontRow, 2, attacker);
             grid.Set(BattleGrid.DefenderBackRow, 2, hero);
+            var state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
+            var engine = new BattleEngine(state, AbilityMagnitudes.Default, new System.Random(1));
+
+            Assert.That(engine.CanGroundAttack(attacker, hero), Is.True);
 
             bool found = BattleTargetSelector.TryChooseAttackTarget(
                 grid, attacker, BattleGrid.AttackerFrontRow, 2, AbilityMagnitudes.Default,
-                new List<UnitData> { attacker }, 0, out _);
+                new List<UnitData> { attacker }, 0, out BattleAi.AiAction action);
 
-            Assert.That(found, Is.False);
+            Assert.That(found, Is.True);
+            Assert.That(action.Kind, Is.EqualTo(BattleAi.AiActionKind.Attack));
+            Assert.That(action.Target, Is.SameAs(hero));
+        }
+
+        [Test]
+        public void HeroGroundDefense_UsesFateMaxInsteadOfDefenseStat()
+        {
+            var attacker = new UnitData
+            {
+                Attack = 5, Range = 4, HitPointsCurrent = 4, HitPointsMax = 4,
+            };
+            var hero = new UnitData
+            {
+                IsHero = true, Defense = 0, Fate = 1, FateMax = 4,
+                HitPointsCurrent = 6, HitPointsMax = 6,
+            };
+            var ordinary = new UnitData
+            {
+                Defense = 4, HitPointsCurrent = 6, HitPointsMax = 6,
+            };
+
+            BattleCombatOdds.ExchangeOdds heroOdds = BattleCombatOdds.Evaluate(
+                attacker, hero, 0, AbilityMagnitudes.Default, hero.HitPointsCurrent);
+            BattleCombatOdds.ExchangeOdds defenseFourOdds = BattleCombatOdds.Evaluate(
+                attacker, ordinary, 0, AbilityMagnitudes.Default, ordinary.HitPointsCurrent);
+
+            Assert.That(heroOdds.ExpectedDamage, Is.EqualTo(defenseFourOdds.ExpectedDamage).Within(0.00001f));
+            Assert.That(heroOdds.HitProbability, Is.EqualTo(defenseFourOdds.HitProbability).Within(0.00001f));
+        }
+
+        [Test]
+        public void KillingHeroWithGroundAttack_RemovesHeroFromGridAndArmy()
+        {
+            var a = new PlayerSetupData { Nickname = "A" };
+            var b = new PlayerSetupData { Nickname = "B" };
+            var attackerArmy = new ArmyData { Owner = a, Name = "A" };
+            var defenderArmy = new ArmyData { Owner = b, Name = "B" };
+            var attacker = Body(a);
+            var hero = new UnitData
+            {
+                Owner = b, IsHero = true, Fate = 3, FateMax = 3,
+                HitPointsCurrent = 2, HitPointsMax = 2,
+            };
+            attackerArmy.Members.Add(attacker);
+            defenderArmy.Members.Add(hero);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerFrontRow, 2, attacker);
+            grid.Set(BattleGrid.DefenderBackRow, 2, hero);
+            var state = new BattleState(default, attackerArmy, defenderArmy, grid, 123);
+            var engine = new BattleEngine(state, AbilityMagnitudes.Default, new System.Random(1));
+
+            BattleAttackApplication result = engine.ApplyGroundAttack(attacker, hero, 2);
+
+            Assert.That(result.DefenderDied, Is.True);
+            Assert.That(defenderArmy.Members.Contains(hero), Is.False);
+            Assert.That(grid.TryFindPosition(hero, out _, out _), Is.False);
         }
 
         [Test]
