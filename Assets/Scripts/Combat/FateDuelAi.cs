@@ -122,7 +122,7 @@ namespace Game.Combat
         // policy below ever needs to read about the two units.
         private readonly struct Matchup
         {
-            private readonly HashSet<string> _attackerAbilities;
+            private readonly IEnumerable<string> _attackerAbilities;
             private readonly IReadOnlyCollection<UnitTypeTag> _defenderTypeTags;
             private readonly IEnumerable<string> _defenderAbilities;
             private readonly AbilityMagnitudes _magnitudes;
@@ -131,14 +131,28 @@ namespace Game.Combat
                 IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
                 AbilityMagnitudes magnitudes)
             {
-                _attackerAbilities = attackerAbilities == null
-                    ? new HashSet<string>() : new HashSet<string>(attackerAbilities);
+                // Membership reads only — no HashSet copy (it was allocated on every Fate decision
+                // inside WorthIt's Monte Carlo).
+                _attackerAbilities = attackerAbilities ?? System.Array.Empty<string>();
                 _defenderTypeTags = defenderTypeTags ?? System.Array.Empty<UnitTypeTag>();
                 _defenderAbilities = defenderAbilities ?? System.Array.Empty<string>();
                 _magnitudes = magnitudes;
             }
 
-            public bool AttackerHas(string ability) => _attackerAbilities.Contains(ability);
+            public bool AttackerHas(string ability)
+            {
+                if (_attackerAbilities is IReadOnlyList<string> list)
+                {
+                    for (int i = 0; i < list.Count; i++)
+                        if (list[i] == ability)
+                            return true;
+                    return false;
+                }
+                foreach (string a in _attackerAbilities)
+                    if (a == ability)
+                        return true;
+                return false;
+            }
             public bool DefenderIs(UnitTypeTag tag) => System.Linq.Enumerable.Contains(_defenderTypeTags, tag);
             public int Damage(int rawDamage) => ChallengeResult.ApplyAbilityModifiers(rawDamage,
                 _attackerAbilities, _defenderTypeTags, _defenderAbilities, _magnitudes);

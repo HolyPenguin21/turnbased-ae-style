@@ -350,9 +350,21 @@ namespace Game.Combat
             AbilityMagnitudes? magnitudesOverride = null)
         {
             AbilityMagnitudes magnitudes = magnitudesOverride ?? AbilityMagnitudes.Default;
+            // Per-battle scratch collections, cleared each round/turn instead of re-allocated
+            // (same contents, same order, same RNG draws — only the garbage is gone).
+            var order = new List<(bool isAttacker, int index)>(attackers.Count + defenders.Count);
+            var acted = new HashSet<(bool isAttacker, int index)>();
+            var suppressed = new HashSet<(bool isAttacker, int index)>();
+            var livingTargets = new List<int>(System.Math.Max(attackers.Count, defenders.Count));
+            System.Comparison<(bool isAttacker, int index)> byInitiativeDescending = (a, b) =>
+            {
+                int ai = a.isAttacker ? attackers[a.index].Initiative : defenders[a.index].Initiative;
+                int bi = b.isAttacker ? attackers[b.index].Initiative : defenders[b.index].Initiative;
+                return bi.CompareTo(ai);
+            };
             for (int round = 0; round < MaxSimulatedRounds && AnyAlive(attackers) && AnyAlive(defenders); round++)
             {
-                var order = new List<(bool isAttacker, int index)>(attackers.Count + defenders.Count);
+                order.Clear();
                 for (int i = 0; i < attackers.Count; i++) order.Add((true, i));
                 for (int i = 0; i < defenders.Count; i++) order.Add((false, i));
 
@@ -364,15 +376,10 @@ namespace Game.Combat
                     int j = rng.Next(i + 1);
                     (order[i], order[j]) = (order[j], order[i]);
                 }
-                order.Sort((a, b) =>
-                {
-                    int ai = a.isAttacker ? attackers[a.index].Initiative : defenders[a.index].Initiative;
-                    int bi = b.isAttacker ? attackers[b.index].Initiative : defenders[b.index].Initiative;
-                    return bi.CompareTo(ai);
-                });
+                order.Sort(byInitiativeDescending);
 
-                var acted = new HashSet<(bool isAttacker, int index)>();
-                var suppressed = new HashSet<(bool isAttacker, int index)>();
+                acted.Clear();
+                suppressed.Clear();
                 foreach ((bool isAttacker, int index) turn in order)
                 {
                     List<BattleUnit> ownList = turn.isAttacker ? attackers : defenders;
@@ -389,7 +396,7 @@ namespace Game.Combat
                         continue; // ShockAttack removed this not-yet-taken action from the round
                     }
 
-                    var livingTargets = new List<int>();
+                    livingTargets.Clear();
                     for (int i = 0; i < enemyList.Count; i++)
                         if (enemyList[i].Hp > 0f)
                             livingTargets.Add(i);

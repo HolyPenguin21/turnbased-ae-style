@@ -181,6 +181,13 @@ namespace Game.Combat
         {
             if (abilities == null)
                 return false;
+            if (abilities is IReadOnlyList<string> list)
+            {
+                for (int i = 0; i < list.Count; i++)
+                    if (list[i] == ability)
+                        return true;
+                return false;
+            }
             foreach (string value in abilities)
                 if (value == ability)
                     return true;

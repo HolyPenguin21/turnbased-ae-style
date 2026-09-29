@@ -48,8 +48,8 @@ namespace Game.Combat
         public static int ApplyAbilityModifiers(int rawDamage, IEnumerable<string> attackerAbilities,
             IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
             AbilityMagnitudes magnitudes)
-            => ApplyAbilityModifiers(rawDamage, attackerAbilities, defenderTypeTags, defenderAbilities,
-                magnitudes, out _);
+            => ApplyAbilityModifiersCore(rawDamage, attackerAbilities, defenderTypeTags, defenderAbilities,
+                magnitudes, null);
 
         public static int ApplyAbilityModifiers(int rawDamage, UnitData attacker, UnitData defender,
             AbilityMagnitudes magnitudes, out List<string> appliedAbilities)
@@ -61,28 +61,38 @@ namespace Game.Combat
             AbilityMagnitudes magnitudes, out List<string> appliedAbilities)
         {
             appliedAbilities = new List<string>();
+            return ApplyAbilityModifiersCore(rawDamage, attackerAbilities, defenderTypeTags,
+                defenderAbilities, magnitudes, appliedAbilities);
+        }
+
+        // `appliedAbilities` null: the caller only wants the number (Monte Carlo, Fate-spend
+        // prediction) — no list is allocated on that hot path.
+        private static int ApplyAbilityModifiersCore(int rawDamage, IEnumerable<string> attackerAbilities,
+            IReadOnlyCollection<UnitTypeTag> defenderTypeTags, IEnumerable<string> defenderAbilities,
+            AbilityMagnitudes magnitudes, List<string> appliedAbilities)
+        {
             int damage = rawDamage;
             if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.CriticalDamage))
             {
                 damage = Mathf.RoundToInt(damage * magnitudes.CriticalDamageMultiplier);
-                appliedAbilities.Add(UnitAbilities.CriticalDamage);
+                appliedAbilities?.Add(UnitAbilities.CriticalDamage);
             }
             if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Hyperkinetic)
                 && HasTag(defenderTypeTags, UnitTypeTag.Armored))
             {
                 damage += magnitudes.HyperkineticBonusDamage;
-                appliedAbilities.Add(UnitAbilities.Hyperkinetic);
+                appliedAbilities?.Add(UnitAbilities.Hyperkinetic);
             }
             if (damage > 0 && HasAbility(attackerAbilities, UnitAbilities.Pyrokinetic)
                 && HasTag(defenderTypeTags, UnitTypeTag.Bio))
             {
                 damage += magnitudes.PyrokineticBonusDamage;
-                appliedAbilities.Add(UnitAbilities.Pyrokinetic);
+                appliedAbilities?.Add(UnitAbilities.Pyrokinetic);
             }
             if (damage > 0 && HasAbility(defenderAbilities, UnitAbilities.CeramicArmor))
             {
                 damage = Mathf.Max(0, damage - magnitudes.CeramicArmorReduction);
-                appliedAbilities.Add(UnitAbilities.CeramicArmor);
+                appliedAbilities?.Add(UnitAbilities.CeramicArmor);
             }
             return damage;
         }
@@ -113,6 +123,15 @@ namespace Game.Combat
         {
             if (abilities == null)
                 return false;
+            // Indexed walk for the usual list shapes: foreach through the interface would box the
+            // enumerator (an allocation per check on the Monte Carlo hot path).
+            if (abilities is IReadOnlyList<string> list)
+            {
+                for (int i = 0; i < list.Count; i++)
+                    if (list[i] == wanted)
+                        return true;
+                return false;
+            }
             foreach (string ability in abilities)
                 if (ability == wanted)
                     return true;
@@ -123,6 +142,13 @@ namespace Game.Combat
         {
             if (tags == null)
                 return false;
+            if (tags is IReadOnlyList<UnitTypeTag> list)
+            {
+                for (int i = 0; i < list.Count; i++)
+                    if (list[i] == wanted)
+                        return true;
+                return false;
+            }
             foreach (UnitTypeTag tag in tags)
                 if (tag == wanted)
                     return true;
