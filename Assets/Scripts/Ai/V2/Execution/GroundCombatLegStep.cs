@@ -112,6 +112,16 @@ namespace Game.Ai.V2
                 sortie.Outbound = false;
                 sortie.TargetHex = sortie.LandingHex;
                 result.ActualActorArmyId = wing.Id;
+
+                // Immediate handoff: the support mission is finished, but the generic aviation
+                // recovery obligation must be allowed to consume the wing's remaining MP THIS turn.
+                // This is essential for TurnsWithoutRefuel=0 and avoids wasting movement for every
+                // endurance value.
+                yield return AviationRebasePlanner.ExecuteContinuation(
+                    player, root, ctx, wing, _ => { });
+                ArmyData recovered = AiV2Util.ResolveArmy(player, wing.Id);
+                if (recovered != null)
+                    result.FinalHex = recovered.Hex;
                 result.StopReason = ExecutionStopReason.StepCompleted;
                 yield break;
             }
@@ -137,17 +147,28 @@ namespace Game.Ai.V2
                 result.StepsMoved++;
             result.FinalHex = final;
             result.ActualActorArmyId = pm.MoverArmyId;
-            if (after != null && after.LastAirStrikeHex.HasValue
-                && after.LastAirStrikeHex.Value.Equals(targetHex)
-                && after.LastAirStrikeAttacked)
+            // Reaching the support target ends mission ownership even when no defender was
+            // actually attackable on arrival. A successful automatic arrival strike is reported,
+            // but either way the remaining flight becomes generic recovery immediately.
+            if (after != null && final.Equals(targetHex))
             {
-                result.CombatChanged = true;
-                result.AirSupportStrikeSucceeded = true;
+                bool attacked = after.LastAirStrikeHex.HasValue
+                    && after.LastAirStrikeHex.Value.Equals(targetHex)
+                    && after.LastAirStrikeAttacked;
+                result.CombatChanged |= attacked;
+                result.AirSupportStrikeSucceeded |= attacked;
                 sortie.Kind = AirSortieKind.Rebase;
                 sortie.Outbound = false;
                 sortie.TargetHex = sortie.LandingHex;
+
+                yield return AviationRebasePlanner.ExecuteContinuation(
+                    player, root, ctx, after, _ => { });
+                after = AiV2Util.ResolveArmy(player, pm.MoverArmyId);
+                if (after != null)
+                    result.FinalHex = after.Hex;
             }
-            if (!sortie.Outbound && final.Equals(sortie.LandingHex))
+
+            if (after != null && after.Hex.Equals(sortie.LandingHex))
             {
                 AirSortieRegistry.Remove(player, sortie);
                 result.ReachedGoal = true;
