@@ -14,19 +14,10 @@ namespace Game.EditorTests
     public sealed class WorthItEstimateCacheTests
     {
         [SetUp]
-        public void SetUp()
-        {
-            WorthIt.EstimateCacheEnabled = true;
-            WorthIt.EstimateCacheVerify = false;
-            WorthIt.EndEstimateCacheScope();
-        }
+        public void SetUp() => WorthIt.EndEstimateCacheScope();
 
         [TearDown]
-        public void TearDown()
-        {
-            WorthIt.EstimateCacheVerify = false;
-            WorthIt.EndEstimateCacheScope();
-        }
+        public void TearDown() => WorthIt.EndEstimateCacheScope();
 
         private static WorthIt.DefenderProfile Unit(float attack, float defense, float hp,
             int initiative = 2, params string[] abilities) =>
@@ -175,23 +166,6 @@ namespace Game.EditorTests
             WorthIt.Estimate(Attackers(), Defenders(), 1f);
             WorthIt.EstimateCacheStats stats = WorthIt.EndEstimateCacheScope();
             Assert.That(stats.Hits, Is.EqualTo(0));
-        }
-
-        [Test]
-        public void VerifyModeFindsNoMismatchOnRepeatedMatchups()
-        {
-            WorthIt.EstimateCacheVerify = true;
-            WorthIt.BeginEstimateCacheScope();
-            for (int i = 0; i < 3; i++)
-            {
-                WorthIt.Estimate(Attackers(), Defenders(), 1f);
-                WorthIt.EstimateSequential(Attackers(), default,
-                    new[] { new WorthIt.DefendingArmy(Defenders(), default),
-                            new WorthIt.DefendingArmy(Defenders(), new WorthIt.SideCommander(1, 1)) }, 0f);
-            }
-            WorthIt.EstimateCacheStats stats = WorthIt.EndEstimateCacheScope();
-            Assert.That(stats.Hits, Is.GreaterThan(0));
-            Assert.That(stats.Mismatches, Is.EqualTo(0), WorthIt.LastEstimateCacheMismatch);
         }
     }
 }

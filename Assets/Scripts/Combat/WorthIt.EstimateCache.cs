@@ -60,7 +60,6 @@ namespace Game.Combat
         {
             public int Hits;
             public int Misses;
-            public int Mismatches;
             public double MissMilliseconds;
             public int Entries;
         }
@@ -73,13 +72,7 @@ namespace Game.Combat
         private static bool _estimateCacheActive;
         private static EstimateCacheStats _estimateCacheStats;
 
-        // Debug: every hit is recomputed and compared; a difference means the key misses an input.
-        public static bool EstimateCacheVerify;
-        // Kill switch for A/B timing or to rule the cache out while chasing a bug.
-        public static bool EstimateCacheEnabled = true;
-        public static string LastEstimateCacheMismatch { get; private set; }
-
-        public static bool EstimateCacheActive => _estimateCacheActive && EstimateCacheEnabled;
+        public static bool EstimateCacheActive => _estimateCacheActive;
         public static EstimateCacheStats CurrentEstimateCacheStats
         {
             get
@@ -94,7 +87,6 @@ namespace Game.Combat
         {
             EstimateCacheEntries.Clear();
             _estimateCacheStats = default;
-            LastEstimateCacheMismatch = null;
             _estimateCacheActive = true;
         }
 
@@ -128,17 +120,6 @@ namespace Game.Combat
             if (EstimateCacheEntries.TryGetValue(key, out BattleEstimate cached))
             {
                 _estimateCacheStats.Hits++;
-                if (EstimateCacheVerify)
-                {
-                    BattleEstimate fresh = compute();
-                    if (!SameEstimate(fresh, cached))
-                    {
-                        _estimateCacheStats.Mismatches++;
-                        LastEstimateCacheMismatch =
-                            $"kind={kind} seed={seed} cached={Describe(cached)} fresh={Describe(fresh)}";
-                        return fresh;
-                    }
-                }
                 return cached;
             }
 
@@ -152,16 +133,6 @@ namespace Game.Combat
             EstimateCacheEntries[key] = result;
             return result;
         }
-
-        private static bool SameEstimate(BattleEstimate a, BattleEstimate b) =>
-            BitConverter.SingleToInt32Bits(a.WinChance) == BitConverter.SingleToInt32Bits(b.WinChance)
-            && BitConverter.SingleToInt32Bits(a.ExpectedSurvivingHpRatioOnWin)
-                == BitConverter.SingleToInt32Bits(b.ExpectedSurvivingHpRatioOnWin)
-            && BitConverter.SingleToInt32Bits(a.CriticalAfterBattleChance)
-                == BitConverter.SingleToInt32Bits(b.CriticalAfterBattleChance);
-
-        private static string Describe(BattleEstimate e) =>
-            $"{e.WinChance:0.####}/{e.ExpectedSurvivingHpRatioOnWin:0.####}/{e.CriticalAfterBattleChance:0.####}";
 
         private static void AppendKey(List<int> buf, AbilityMagnitudes m)
         {

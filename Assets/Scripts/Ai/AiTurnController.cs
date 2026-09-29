@@ -241,10 +241,7 @@ namespace Game.Ai
             Game.Combat.WorthIt.EstimateCacheStats battleStats = Game.Combat.WorthIt.EndEstimateCacheScope();
             AiDebugLog.Write($"[AI][Timing] {player.Nickname}: WorthIt cache hits={battleStats.Hits} "
                 + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
-                + $"entries={battleStats.Entries}"
-                + (Game.Combat.WorthIt.EstimateCacheVerify
-                    ? $" verifyMismatches={battleStats.Mismatches} last={Game.Combat.WorthIt.LastEstimateCacheMismatch ?? "-"}"
-                    : string.Empty));
+                + $"entries={battleStats.Entries}");
             onDone?.Invoke();
             yield break;
         }
