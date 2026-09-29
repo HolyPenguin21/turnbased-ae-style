@@ -1198,7 +1198,7 @@ namespace Game.Ai.V2
             int mInfra = phaseA.InfrastructureBuilt + phaseB.InfrastructureBuilt;
             int mDrawn = phaseA.CardsDrawn + phaseB.CardsDrawn;
             int handEnd = hand?.Hand?.Count ?? 0;
-            AiDebugLog.Write($"[AI][V2][StrategicManager][Summary] handStart={handAtStart} "
+            if (AiDebugLog.Verbose) AiDebugLog.Write($"[AI][V2][StrategicManager][Summary] handStart={handAtStart} "
                 + $"played={mPlayed} (phaseA {phaseA.CardsPlayed}, phaseB {phaseB.CardsPlayed}) "
                 + $"generated={mGen} equipAttached={mEquip} infraBuilt={mInfra} drawn={mDrawn} "
                 + $"handEnd={handEnd} remaining={System.Math.Max(0, handEnd)} "
@@ -1251,12 +1251,6 @@ namespace Game.Ai.V2
             main.EquipmentAssignmentsSucceeded = phaseA.EquipmentAssignmentsSucceeded + phaseB.EquipmentAssignmentsSucceeded;
             main.CapabilityDeliveries = phaseA.CapabilityDeliveries + phaseB.CapabilityDeliveries;
 
-            AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
-                + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
-                + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
-                + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
-            V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
-
             // No strategic resource reservation may survive turn end. Anything still
             // standing is an owner that failed to release; log it and force-clear.
             StrategicResourceReservationLedger.ExpireStage(player, ctx.TurnNumber,
@@ -1265,6 +1259,14 @@ namespace Game.Ai.V2
             ReservationInvariants.LogTurnSummary(player, ctx.TurnNumber);
 
             RecordInitiativeAnalytics(player, root, hand, initiativeStartAp, initiativeBaseAp, initiativeActionableAtStart);
+
+            // Emit the canonical turn summary only after every turn-scoped cleanup/invariant check
+            // has completed, so [TURN-END] really is the final strategic lifecycle marker.
+            if (AiDebugLog.Verbose) AiDebugLog.Write($"[AI][V2] === {player.Nickname} — V2 turn ends "
+                + $"(demands {demands.Count}, stratA {phaseA.CardsPlayed}, missions {missions.Count}, "
+                + $"lastPackFunded {allocation.Funded.Count}, turnFundedUnique {fundedKeysThisTurn.Count}, "
+                + $"provisioned {provisioned.Count}, executed {allExecuted.Count}, stratB {phaseB.CardsPlayed}) ===");
+            V2TurnActivityTelemetry.LogSummary(player, ctx.TurnNumber);
             yield return null;
         }
 

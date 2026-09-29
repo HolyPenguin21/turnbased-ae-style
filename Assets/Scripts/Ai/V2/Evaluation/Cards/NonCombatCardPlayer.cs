@@ -518,7 +518,7 @@ namespace Game.Ai.V2
             }
             foreach (AiMapMemory.KnownBuilding b in snap?.Known?.Buildings
                 ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)System.Array.Empty<AiMapMemory.KnownBuilding>())
-                if (AttackObjectiveEvaluator.IsHostileAttackStructure(b, player)
+                if (AttackObjectiveEvaluator.IsHostileStrategicStructure(b, player)
                     && AttackObjectiveEvaluator.KnownSiteDefenders(snap, b.Hex).Count > 0
                     && !targets.Contains(b.Hex))
                     targets.Add(b.Hex);

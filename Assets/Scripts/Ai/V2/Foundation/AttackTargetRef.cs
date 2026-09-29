@@ -4,12 +4,9 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // ATK §21 — the two kinds of hostile strategic structure an Attack may be mounted against.
+    // The two kinds of hostile stronghold an Attack may be mounted against.
     // Metadata, not identity: see AttackTargetRef.Equals below.
-    // Facility — a hostile non-Base structure (extractor, lab, factory). Walking onto it
-    // undefended DESTROYS it (BuildingRegistry.CaptureOrDestroy), denying the owner its output;
-    // it is an objective whether defended or not (AttackObjectiveEvaluator.Enumerate).
-    public enum AttackTargetKind { Base, Citadel, Facility }
+    public enum AttackTargetKind { Base, Citadel }
 
     // ===========================================================================================
     //  ATK §21 — THE canonical identity of one Attack objective. One object, never a hex field and

@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Game.Economy;
 using Game.Players;
 using UnityEngine;
@@ -105,7 +106,7 @@ namespace Game.Ai.V2
                 if (existing != null)
                 {
                     e.Reservations.Remove(existing);
-                    AiDebugLog.Write($"[AI][V2] reservation 0 -> drop {existing}; active [{DebugLine(player, turn)}]");
+                    LogChange(player, turn, $"[AI][V2][Reservation] DROP {existing}");
                 }
                 return;
             }
@@ -115,11 +116,11 @@ namespace Game.Ai.V2
                     return;
                 existing.Amount = r.Amount;
                 existing.ExpirationStage = r.ExpirationStage;
-                AiDebugLog.Write($"[AI][V2] reservation ~ {existing}; active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] UPDATE {existing}");
                 return;
             }
             e.Reservations.Add(r);
-            AiDebugLog.Write($"[AI][V2] reservation + {r}; active [{DebugLine(player, turn)}]");
+            LogChange(player, turn, $"[AI][V2][Reservation] ADD {r}");
         }
 
         // Σ of this turn's rows for one resource — an inspection primitive (tests, diagnostics).
@@ -150,8 +151,7 @@ namespace Game.Ai.V2
                 return false;
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason);
             if (removed > 0)
-                AiDebugLog.Write($"[AI][V2] reservation - released {removed} ({reason}); "
-                    + $"active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] RELEASE count={removed} reason={reason}");
             return removed > 0;
         }
 
@@ -180,11 +180,9 @@ namespace Game.Ai.V2
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason
                 && (string.IsNullOrEmpty(owner) || r.Owner == owner));
             if (downgraded > 0)
-                AiDebugLog.Write($"[AI][V2] reservation - downgraded {downgraded} completion row(s) "
-                    + $"to deferred owner={owner}; active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] DOWNGRADE count={downgraded} owner={owner}");
             if (removed > 0)
-                AiDebugLog.Write($"[AI][V2] reservation - replaced {removed} ({reason}) "
-                    + $"owner={owner ?? "none"}; active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] REPLACE count={removed} reason={reason} owner={owner ?? "none"}");
         }
 
         // Drops every row of `reason` except `keepOwner`'s — for a lifecycle owner that holds
@@ -197,8 +195,7 @@ namespace Game.Ai.V2
                 return;
             int removed = e.Reservations.RemoveAll(r => r.Reason == reason && r.Owner != keepOwner);
             if (removed > 0)
-                AiDebugLog.Write($"[AI][V2] reservation - released {removed} ({reason}) "
-                    + $"not owned by {keepOwner ?? "none"}; active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] RELEASE count={removed} reason={reason} exceptOwner={keepOwner ?? "none"}");
         }
 
         // Read-only enumeration of the owners holding rows of one reason, never a second
@@ -261,8 +258,7 @@ namespace Game.Ai.V2
                 return false;
             int removed = e.Reservations.RemoveAll(r => r.Owner == owner);
             if (removed > 0)
-                AiDebugLog.Write($"[AI][V2] reservation - released {removed} owner={owner}; "
-                    + $"active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] RELEASE count={removed} owner={owner}");
             return removed > 0;
         }
 
@@ -273,8 +269,7 @@ namespace Game.Ai.V2
                 return false;
             int removed = e.Reservations.RemoveAll(r => r.ExpirationStage == stage);
             if (removed > 0)
-                AiDebugLog.Write($"[AI][V2] reservation - expired {removed} at {stage}; "
-                    + $"active [{DebugLine(player, turn)}]");
+                LogChange(player, turn, $"[AI][V2][Reservation] EXPIRE count={removed} stage={stage}");
             return removed > 0;
         }
 
@@ -327,6 +322,17 @@ namespace Game.Ai.V2
                 return string.Empty;
             return string.Join(";", e.Reservations.Where(r => r.Reason == reason)
                 .Select(r => r.ToString()).OrderBy(x => x, System.StringComparer.Ordinal));
+        }
+
+        private static void LogChange(PlayerSetupData player, int turn, string compact,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            AiDebugLog.Write(compact, callerFile, callerMember, callerLine);
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Reservations))
+                AiDebugLog.Write($"[AI][V2][Reservation][STATE] {DebugLine(player, turn)}",
+                    callerFile, callerMember, callerLine);
         }
 
         public static string DebugLine(PlayerSetupData player, int turn)

@@ -150,8 +150,7 @@ namespace Game.Ai.V2
             List<string> diag, List<AxisDemand> demands)
         {
             AttackObjective objective = AttackObjectiveEvaluator.Enumerate(snap)
-                .FirstOrDefault(o => o.Target.Kind != AttackTargetKind.Facility
-                    && !(activeIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i != null
+                .FirstOrDefault(o => !(activeIntents ?? System.Array.Empty<MissionIntent>()).Any(i => i != null
                         && i.Status == IntentStatus.Active && i.Kind == MissionKind.Attack
                         && i.Attack != null && i.Attack.Target.Equals(o.Target)));
             if (objective == null)
@@ -180,10 +179,25 @@ namespace Game.Ai.V2
                     + "reason=unbound_attack_takeable_by_existing_force");
                 return;
             }
+            // This is a capability question, not a nomination for a move this turn. A
+            // sufficient field army with spent MP is available again next turn.
+            ArmySnapshot futureActor = GroundCombatActorEligibility.EligibleArmies(snap, claimed,
+                    requireMovementNow: false)
+                .Where(a => a.CurrentMovement <= 0)
+                .FirstOrDefault(a => GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
+                    objective.Opposition, a.ArmyId,
+                    GroundCombatAdmissionPolicy.AttackWinChanceFloor, hexBonus).Feasible);
+            if (futureActor != null)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
+                    + $"actor={futureActor.ArmyId} reason=unbound_attack_existing_force_waits_for_movement");
+                return;
+            }
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
                 objective.Opposition, hexBonus, objective.Hex, claimed,
                 GroundCombatAdmissionPolicy.AttackWinChanceFloor,
-                donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents));
+                donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
+                requireMovementNow: false);
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "

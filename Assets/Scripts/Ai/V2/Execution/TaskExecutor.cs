@@ -1479,8 +1479,9 @@ namespace Game.Ai.V2
                             ? ExecutionStopReason.StepCompleted : ExecutionStopReason.MoveRejected;
             result.NeedsReplan = army == null || result.StepsMoved == 0;
             result.ApSpent = Mathf.Max(0f, apBefore - (root != null ? root.ActionPoints : apBefore));
-            AiDebugLog.Write($"[AI][V2] {label} move {pm.Key} "
-                + $"({before.Q},{before.R})->({after.Q},{after.R})");
+            if (AiDebugLog.Verbose)
+                AiDebugLog.Write($"[AI][V2] {label} move {pm.Key} "
+                    + $"({before.Q},{before.R})->({after.Q},{after.R})");
         }
 
         private static void ReleaseEconomyReservation(PlayerSetupData player, AiTurnContext ctx,

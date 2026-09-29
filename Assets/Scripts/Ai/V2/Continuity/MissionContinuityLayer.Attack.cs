@@ -33,8 +33,11 @@ namespace Game.Ai.V2
             }
 
             // ---- §25/§61 target status, from honest knowledge only -----------------------------
-            AttackObjectiveEvaluator.AttackTargetStatus status =
-                AttackObjectiveEvaluator.EvaluateTarget(snap, a.Target);
+            // Once withdrawal has begun, its destination is our own base. Changes to the
+            // former enemy site must not release the recovering army mid-route.
+            AttackObjectiveEvaluator.AttackTargetStatus status = a.Phase == AttackMissionPhase.RecoveryReturn
+                ? AttackObjectiveEvaluator.AttackTargetStatus.Continue
+                : AttackObjectiveEvaluator.EvaluateTarget(snap, a.Target);
             if (status == AttackObjectiveEvaluator.AttackTargetStatus.Captured)
             {
                 success = true;

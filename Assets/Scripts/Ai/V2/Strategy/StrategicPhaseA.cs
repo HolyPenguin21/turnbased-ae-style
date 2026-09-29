@@ -87,9 +87,6 @@ namespace Game.Ai.V2
             bool deferFreshZeroRadar = false)
         {
             using var __profile = new Game.Core.ProfileScope("AI/Strategic.FulfillDemands");
-            if (player != null && root != null && ctx != null)
-                TurnResourceTelemetry.CaptureStart(player, root, ctx.TurnNumber);
-
             // One turn-scoped identity set must survive main, reaction and housekeeping entries:
             // a failed generator/card pair is not a fresh candidate merely because Phase A re-entered.
             var result = new StrategicPhaseResult
