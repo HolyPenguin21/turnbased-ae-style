@@ -47,8 +47,9 @@ namespace Game.Ai.V2.Initiative
                             || (i.Economy.BuildCard != null
                                 && hand?.Hand?.Contains(i.Economy.BuildCard) == true)))
                     .Select(i => i.Economy.BuildResourceCost);
+                int committedAviationEnergy = AviationObligations.NextActivationEnergyCommitment(p);
                 PreTurnCapacityAnalysis analysis = PreTurnCapacityAnalysis.Build(
-                    p, root, map, deckCatalog, committedBuildCosts);
+                    p, root, map, deckCatalog, committedBuildCosts, committedAviationEnergy);
                 InitiativePlan plan = InitiativePlanner.Plan(analysis, opponentDice);
                 planned.Add((p, root, plan));
                 string bottleneck = InitiativeBottleneckDiagnostics.Describe(p, analysis);
@@ -58,7 +59,8 @@ namespace Game.Ai.V2.Initiative
                     + $"turnOrderPressure={analysis.TurnOrderPressure:0.00}, bottleneck={bottleneck}, "
                     + $"armies={analysis.ActionableFieldArmyCount} power={analysis.ActionableMilitaryPower:0.0} apCards={analysis.ApCostingActionsAvailable}, "
                     + $"avail H/E/M/T={analysis.Available[0]}/{analysis.Available[1]}/{analysis.Available[2]}/{analysis.Available[3]}, "
-                    + $"committed H/E/M/T={analysis.CommittedResourceFloor[0]}/{analysis.CommittedResourceFloor[1]}/{analysis.CommittedResourceFloor[2]}/{analysis.CommittedResourceFloor[3]}, "
+                    + $"committed H/E/M/T={analysis.CommittedResourceFloor[0]}/{analysis.CommittedResourceFloor[1]}/{analysis.CommittedResourceFloor[2]}/{analysis.CommittedResourceFloor[3]} "
+                    + $"(airNextE={committedAviationEnergy}), "
                     + $"oppDice=[{string.Join(",", opponentDice)}] => plan: {plan.Rationale}");
             }
 
