@@ -670,8 +670,9 @@ namespace Game.Ai.V2
             LogVisitedInvariant(player, next, visitedBefore, "live-step");
             if (!after.Equals(before))
                 StampObservedFootprint(player, ctx, air, after);
-            AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
-                + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Aviation))
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Observe] actor=#{air.Id} "
+                    + $"({before.Q},{before.R})->({after.Q},{after.R}) intel refreshed; groundVisitedWrite=0");
         }
 
         private static AirSortie EnsureAirReconReservation(PlayerSetupData player, ArmyData air,
