@@ -19,13 +19,13 @@ namespace Game.Ai.V2
     {
         public readonly WorldSnapshot Snapshot;
         public float ApClaimed { get; private set; }
-        // The cumulative real Energy every AirLaunch mission provisioned so far THIS pass has
-        // claimed. Mirrors ApClaimed's role for AP: without this, two separate
-        // AirLaunch missions provisioned sequentially within the same pass each check affordability
-        // against the SAME unmutated root Energy stock independently, so both can pass even though
-        // launching both together would exceed it (ProvisioningManager.ProvisionAir checks against
-        // this before accepting a launch).
+        // Cumulative current-turn aviation Energy claimed in this planning pass.
         public float EnergyClaimed { get; private set; }
+        // Cumulative NEXT-turn activation promised by multi-turn aviation admitted earlier in the
+        // same pass. This prevents several wings from independently spending the same projected
+        // Energy/AP. It is ephemeral; next round derives the real bank from live airborne armies.
+        public float NextTurnAirEnergyClaimed { get; private set; }
+        public float NextTurnAirApClaimed { get; private set; }
         public readonly HashSet<int> ClaimedArmyIds = new HashSet<int>();
         // Durable ownership is distinct from same-pass claims. Provisioning must preserve both:
         // the batch solvers filter with this set, and Raid live revalidation uses it for hosts and
@@ -60,6 +60,8 @@ namespace Game.Ai.V2
             _successful[k] = m;
             ApClaimed += m.ClaimedAp;
             EnergyClaimed += m.ClaimedEnergy;
+            NextTurnAirEnergyClaimed += m.ClaimedNextTurnAirEnergy;
+            NextTurnAirApClaimed += m.ClaimedNextTurnAirAp;
             ClaimedArmyIds.Add(m.MoverArmyId);
             // A deferred garrison-extraction mission's MoverArmyId is a synthetic negative id; the
             // garrison and the chosen container (if one already exists — Shell/Host tiers) are the
