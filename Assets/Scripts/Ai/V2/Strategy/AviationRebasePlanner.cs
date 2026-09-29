@@ -117,6 +117,13 @@ namespace Game.Ai.V2
 
                         int ap = group.Sum(u => Mathf.Max(0, u.ActivationApCost));
                         int energy = group.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+                        float spendableEnergy = StrategicSpendability.SpendableAmount(
+                            player, root, ctx, ResourceType.Energy);
+                        if (route.Value.RequiredTurns > 1
+                            && !AviationContinuationBudget.CanGuaranteeNextActivation(
+                                player, ctx.Map, spendableEnergy - energy, energy, ap, out _))
+                            continue;
+
                         TaskScore score = ScoreImprovement(
                             sourceService, destinationService, ap, energy,
                             route.Value.RequiredTurns);
@@ -152,10 +159,26 @@ namespace Game.Ai.V2
                 yield break;
             ArmyData source = AviationRules.FindAirfieldAt(plan.SourceHex, player);
             if (source == null || plan.Aircraft.Any(u => !source.Members.Contains(u))
-                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft)
-                || !AiAirSortiePlanner.TryPlanRebaseFromStorage(plan.SourceHex, plan.Aircraft,
-                    plan.DestinationHex, ctx.Map, player).HasValue)
+                || !AiAirSortiePlanner.CanAffordLaunch(root, plan.Aircraft))
                 yield break;
+
+            AiAirSortiePlanner.RebaseRoute? liveRoute =
+                AiAirSortiePlanner.TryPlanRebaseFromStorage(plan.SourceHex, plan.Aircraft,
+                    plan.DestinationHex, ctx.Map, player);
+            if (!liveRoute.HasValue)
+                yield break;
+
+            int liveAp = plan.Aircraft.Sum(u => Mathf.Max(0, u.ActivationApCost));
+            int liveEnergy = plan.Aircraft.Sum(u => Mathf.Max(0, u.LaunchEnergyCost));
+            float spendableEnergy = StrategicSpendability.SpendableAmount(
+                player, root, ctx, ResourceType.Energy);
+            if (liveRoute.Value.RequiredTurns > 1
+                && !AviationContinuationBudget.CanGuaranteeNextActivation(
+                    player, ctx.Map, spendableEnergy - liveEnergy, liveEnergy, liveAp, out string block))
+            {
+                AiDebugLog.Write($"[AI][V2][Aviation][Rebase] cancelled — future activation not guaranteed ({block})");
+                yield break;
+            }
 
             var before = new HashSet<int>(ArmyRegistry.AllForOwner(player).Select(a => a.Id));
             var decision = new AiDecision
