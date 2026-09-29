@@ -23,7 +23,7 @@ namespace Game.Ai.V2
             AggressionDemandEvaluation eval = AggressionDemandEvaluator.Build(
                 snap, objectives, activeIntents, commitments, player);
             foreach (string line in eval.Diagnostics)
-                AiDebugLog.WriteRepeatSuppressed(line);
+                AiDebugLog.WriteDeduped(line, line);
             foreach (AxisDemand d in eval.Demands)
                 yield return d;
 
@@ -34,7 +34,7 @@ namespace Game.Ai.V2
                     snap, defenceObjectives, activeIntents, commitments, player,
                     out IReadOnlyList<string> defenceDiagnostics);
             foreach (string line in defenceDiagnostics)
-                AiDebugLog.WriteRepeatSuppressed(line);
+                AiDebugLog.WriteDeduped(line, line);
             foreach (AxisDemand d in defenceDemands)
                 yield return d;
         }
