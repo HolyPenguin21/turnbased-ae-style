@@ -361,6 +361,47 @@ namespace Game.EditorTests
                 Is.False, "no own base left to withdraw to");
         }
 
+        [TestCase(false)]
+        [TestCase(true)]
+        public void RecoveryReturn_ContinuesWhenFormerTargetChanges(bool capturedByUs)
+        {
+            MissionIntent intent = AttackIntent(AttackMissionPhase.RecoveryReturn, 7,
+                recoveryBase: OurBase);
+            WorldSnapshot snap = Snap(
+                capturedByUs ? new[] { Building(RedBase, Us) }
+                    : new[] { Building(RedBase, Blue) },
+                capturedByUs ? new[] { OurBase, RedBase } : new[] { OurBase },
+                new[] { Army(7, EnRoute, Weak()) });
+
+            bool keep = MissionContinuityLayer.ResolveAttackIntent(Us, snap, intent,
+                intent.Attack, null, out bool success);
+
+            Assert.That(keep, Is.True, "withdrawal follows its own base destination");
+            Assert.That(success, Is.False);
+            Assert.That(intent.Attack.Phase, Is.EqualTo(AttackMissionPhase.RecoveryReturn));
+            Assert.That(intent.Attack.RecoveryBaseHex, Is.EqualTo(OurBase));
+        }
+
+        [Test]
+        public void UnboundAttack_SpentMovementIsNotACombatPowerShortage()
+        {
+            ArmySnapshot actor = Army(7, EnRoute, Strong());
+            actor.CurrentMovement = 0;
+            WorldSnapshot snap = Snap(new[] { Building(RedBase, Red) },
+                new[] { OurBase }, new[] { actor });
+            snap.Self.BestStackPotential = 20f;
+            snap.Self.FieldPotential = 1f;
+            var demands = new List<AxisDemand>();
+            var diagnostics = new List<string>();
+
+            AggressionDemandEvaluator.AppendAttackDemands(snap, Array.Empty<MissionIntent>(),
+                null, null, diagnostics, demands);
+
+            Assert.That(demands, Is.Empty);
+            Assert.That(diagnostics.Exists(line =>
+                line.Contains("existing_force_waits_for_movement")), Is.True);
+        }
+
         [Test]
         public void SupportReturn_ReleasesTheSupportAndResumesTheAssault()
         {

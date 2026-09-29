@@ -1412,7 +1412,7 @@ namespace Game.Ai.V2
                 }
 
                 // ATK §7/§8 — an Attack that reached its objective is DONE. One intent is one
-                // target structure (Base/Citadel captured, Facility destroyed), so there is
+                // target stronghold (Base/Citadel captured), so there is
                 // deliberately no re-orient here: the army stays where it
                 // is, the claim is released, and the next global replan decides what the new
                 // topology is worth. An intent that still exists is advanced so ResolveActive

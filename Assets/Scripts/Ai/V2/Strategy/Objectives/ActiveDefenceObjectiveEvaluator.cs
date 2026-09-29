@@ -137,12 +137,10 @@ namespace Game.Ai.V2
         }
 
         // An enemy standing on a structure this player remembers as someone else's is never an
-        // intercept. Winning a fight on a hostile structure captures/destroys it — that is the
-        // Attack objective for the site (AttackObjectiveEvaluator.IsHostileAttackStructure, which
-        // takes the enemy as part of the site's one defender package, §31). Any other foreign
-        // owner is refused by the ground-move gate for a Combat step anyway (the structure reads
-        // as an undefended foreign takeover). Deciding it here, at admission, keeps the planner,
-        // Demand and Continuity on one answer: no objective, no shortage, no pursuit.
+        // intercept. A fight there could capture/destroy the building; Attack owns only hostile
+        // Bases/Citadels (AttackObjectiveEvaluator.IsHostileStrategicStructure). The ground-move gate also
+        // refuses a foreign takeover by an Intercept. Deciding it here, at admission, keeps
+        // the planner, Demand and Continuity on one answer: no objective, no pursuit.
         internal static bool OnKnownForeignStructure(WorldSnapshot snap, HexCoord hex)
         {
             IReadOnlyList<AiMapMemory.KnownBuilding> buildings = snap?.Known?.Buildings;
