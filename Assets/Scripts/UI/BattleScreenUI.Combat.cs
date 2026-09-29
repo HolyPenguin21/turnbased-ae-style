@@ -789,6 +789,7 @@ namespace Game.UI
 
             FireBattleEndThought(_attacker, attackerAlive);
             FireBattleEndThought(_defender, defenderAlive);
+            Game.Ai.AiMatchStats.RecordBattle(_attacker?.Owner, _defender?.Owner, attackerAlive, defenderAlive);
 
             // Whichever side's army is now completely gone (Members.Count == 0, not just
             // BattleInitiator.IsCombatCapable — a hero-only remnant would still pass that, but

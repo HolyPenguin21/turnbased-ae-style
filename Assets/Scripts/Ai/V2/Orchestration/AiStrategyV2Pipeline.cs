@@ -1326,6 +1326,7 @@ namespace Game.Ai.V2
                 new Game.Ai.V2.Initiative.InitiativeTurnRecord(
                     baseAp, startAp, apSpent, endAp,
                     actionableAtStart, unactivatedActionable, hadPotentialWork));
+            AiMatchStats.RecordAiTurn(player, startAp, apSpent, endAp);
         }
 
         // Armies whose POSITION/movement/activation can change an Economy decision (the Economy

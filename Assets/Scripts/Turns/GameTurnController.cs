@@ -318,6 +318,7 @@ namespace Game.Turns
             if (player == null || player.IsEliminated)
                 return;
             player.IsEliminated = true;
+            Game.Ai.AiMatchStats.RecordElimination(player);
 
             if (player.CitadelHexQ.HasValue && player.CitadelHexR.HasValue)
                 ReleasePrisoners(player, new HexCoord(player.CitadelHexQ.Value, player.CitadelHexR.Value));
@@ -331,6 +332,7 @@ namespace Game.Turns
                 return;
 
             _gameOver = true;
+            Game.Ai.AiMatchStats.RecordGameOver(survivors.Count == 1 ? survivors[0] : null);
             ShowSpawnHint(survivors.Count == 1 ? $"{survivors[0].Nickname} wins!" : "Draw — no citadels remain.");
         }
 
@@ -490,6 +492,7 @@ namespace Game.Turns
             }
             TurnNumber = 0;
             _completedTurns.Clear();
+            Game.Ai.AiMatchStats.BeginMatch(GameSession.Players);
             // StealthSystem is otherwise turn-controller-agnostic (the stealth sim drives it
             // by hand) — hand it the live completed-turn count now that a real game is starting.
             Game.Map.StealthSystem.CompletedTurnsProvider = CompletedTurnsFor;
@@ -696,6 +699,7 @@ namespace Game.Turns
 
             TurnNumber++;
             TurnStarted?.Invoke(TurnNumber);
+            Game.Ai.AiMatchStats.OnRoundStarted(TurnNumber);
             CurrentPlayer = null; // no one's turn during the dice-off itself
             TurnStateChanged?.Invoke();
 

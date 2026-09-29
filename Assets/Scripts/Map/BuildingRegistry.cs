@@ -40,6 +40,7 @@ namespace Game.Map
         public static void Register(HexCoord hex, BuildingData building)
         {
             ByHex[hex] = building;
+            AiMatchStats.RecordBuilt(building);
             VisionSystem.RecomputeFor(building?.Owner);
             VisionSystem.NotifyContentChanged(hex);
         }
@@ -114,6 +115,7 @@ namespace Game.Map
                 VisionSystem.NotifyContentChanged(building.Hex);
                 AiDebugLog.Write($"[BUILDING] Base \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) captured: "
                     + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} → {(newOwner != null ? newOwner.Nickname : "nobody")}.");
+                AiMatchStats.RecordBuildingTaken(true, previousOwner, newOwner);
             }
             else
             {
@@ -123,6 +125,7 @@ namespace Game.Map
                     UnityEngine.Object.Destroy(building.Visual.gameObject);
                 AiDebugLog.Write($"[BUILDING] Facility \"{building.Name}\" at ({building.Hex.Q},{building.Hex.R}) owned by "
                     + $"{(previousOwner != null ? previousOwner.Nickname : "nobody")} destroyed by {(newOwner != null ? newOwner.Nickname : "nobody")}.");
+                AiMatchStats.RecordBuildingTaken(false, previousOwner, newOwner);
             }
 
             // 2026-08-26 fix (project owner's own report): this is the one authoritative method
