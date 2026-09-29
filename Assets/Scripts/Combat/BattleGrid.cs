@@ -144,15 +144,26 @@ namespace Game.Combat
                     unplaced.Add(member);
             }
 
-            int frontCol = 0;
-            int backCol = 1; // column 0 of the back row is the hero slot by default
+            // Place every hero before ordinary units. Heroes are legal only in the Back row,
+            // so a second (or later) hero must never fall through the generic Front-first
+            // fallback. Column 0 remains only the first/default hero preference.
+            int heroCol = HeroColumn;
             foreach (UnitData member in unplaced)
             {
-                if (member.IsHero && grid.Get(backRow, HeroColumn) == null)
-                {
-                    grid.Set(backRow, HeroColumn, member);
+                if (!member.IsHero)
                     continue;
-                }
+                while (heroCol < Columns && grid.Get(backRow, heroCol) != null)
+                    heroCol++;
+                if (heroCol < Columns)
+                    grid.Set(backRow, heroCol++, member);
+            }
+
+            int frontCol = 0;
+            int backCol = 0;
+            foreach (UnitData member in unplaced)
+            {
+                if (member.IsHero)
+                    continue;
                 while (frontCol < Columns && grid.Get(frontRow, frontCol) != null)
                     frontCol++;
                 while (backCol < Columns && grid.Get(backRow, backCol) != null)
@@ -161,8 +172,9 @@ namespace Game.Combat
                     grid.Set(frontRow, frontCol++, member);
                 else if (backCol < Columns)
                     grid.Set(backRow, backCol++, member);
-                // Beyond 5 front + 4 back slots there's nowhere left on this grid — not reachable
-                // today (ArmyData.Capacity caps well under 9), so no overflow handling.
+                // Beyond the two deployment rows there is nowhere left on this grid. Hero slots
+                // are never borrowed from the Front row; an invalid oversized roster stays
+                // visibly incomplete rather than violating BattlePlacementRules.
             }
         }
     }
