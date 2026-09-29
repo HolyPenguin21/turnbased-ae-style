@@ -223,6 +223,13 @@ namespace Game.UI
         // Arrangement/Round-start, before any round has actually begun.
         private UnitData _currentActingUnit;
         private Coroutine _aiAutoPassRoutine;
+        // A battle with no human participant resolves its actions back to back with no pacing beat,
+        // and each action re-enters AutoActAfterDelay synchronously — without this the whole fight
+        // (every action's grid/queue rebuild) landed in ONE frame (~230 ms profiled). Same
+        // wall-clock budget idea as the AI turn loop: keep acting until the budget is spent, then
+        // hand one frame back to the engine.
+        private const float UnpacedBattleFrameBudgetSeconds = 0.008f;
+        private float _unpacedBattleFrameStart = -1f;
         private bool _isAnimatingMove;
         private Canvas _canvas;
         // Anti-stalling counter for BattleAi.ChooseAction — how many turns in a row a given AI
@@ -688,6 +695,13 @@ namespace Game.UI
             // that human's own opponent "thinking" on-screen.
             if (_localArmy != null && aiActionDelay > 0f)
                 yield return new WaitForSeconds(aiActionDelay);
+            else if (_unpacedBattleFrameStart < 0f
+                || Time.realtimeSinceStartup - _unpacedBattleFrameStart >= UnpacedBattleFrameBudgetSeconds)
+            {
+                if (_unpacedBattleFrameStart >= 0f)
+                    yield return null;
+                _unpacedBattleFrameStart = Time.realtimeSinceStartup;
+            }
             _aiAutoPassRoutine = null;
             if (_grid == null || actor == null || actor != _currentActingUnit)
                 yield break;
