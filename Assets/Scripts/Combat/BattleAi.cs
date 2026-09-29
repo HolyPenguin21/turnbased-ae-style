@@ -304,12 +304,16 @@ namespace Game.Combat
             }
 
             int placedHeroes = Mathf.Min(heroes.Count, heroColumns.Count);
+            var occupiedHeroColumns = new HashSet<int>();
             for (int i = 0; i < placedHeroes; i++)
+            {
                 SetDeploymentUnit(grid, heroes[i], backRow, heroColumns[i], frontRow, backRow);
+                occupiedHeroColumns.Add(heroColumns[i]);
+            }
 
             var backColumns = new List<int>();
             for (int c = 0; c < BattleGrid.Columns; c++)
-                if (!heroColumns.Contains(c) || heroColumns.IndexOf(c) >= placedHeroes)
+                if (!occupiedHeroColumns.Contains(c))
                     backColumns.Add(c);
 
             // A roster can field more ranged-plus-held-back members than the back row has room
