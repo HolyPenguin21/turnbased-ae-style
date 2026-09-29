@@ -9,15 +9,13 @@ using Game.Players;
 
 namespace Game.Ai.V2
 {
-    // One way a free wing could support a ground fight: fly to the target hex, strike its
-    // defenders (once, or twice when it can hold unlanded overnight) and land at an own base.
+    // One way an already-fielded free wing can support a ground fight: fly to the target hex,
+    // strike its defenders and keep its physical flight lifecycle independent of the ground mission.
     internal readonly struct AirSupportOption
     {
         internal readonly int WingArmyId;
         internal readonly HexCoord LandingHex;
-        // The wing's own sortie turns, the second strike included.
         internal readonly int EtaTurns;
-        // The turns the first strike alone takes (EtaTurns − 1 when a second strike is planned).
         internal readonly int FirstStrikeEta;
         internal readonly float WinAfter;
         // Activation AP now (0 when already paid this turn) and per extra turn.
@@ -39,7 +37,6 @@ namespace Game.Ai.V2
             Resources = resources;
         }
 
-        internal bool SecondStrike => EtaTurns > FirstStrikeEta;
     }
 
     // A resolved wing and its current sortie state, for the provisioning half below.
@@ -64,9 +61,9 @@ namespace Game.Ai.V2
     //  THE ONE AIR SUPPORT OF A GROUND FIGHT — shared by Raid (a recovery option of its
     //  AirSupport phase) and Attack (a strike on the site's defenders before the assault).
     //  Each lane keeps its own target identity, its own before/after win read (`winAgainst`), its
-    //  own strike policy and its own lifecycle; the wing choice, the strike estimate, the second
-    //  strike, the landing base, the leg's requirements, the sortie provisioning and the flight
-    //  step (GroundCombatLegStep.AirStrikeSortie) exist once.
+    //  own strike policy and its own lifecycle; the wing choice, strike estimate, landing base,
+    //  leg requirements, sortie provisioning and flight step exist once. Repeat strikes are NOT
+    //  estimated here: they belong to the common airborne lifecycle and TurnsWithoutRefuel.
     // ===========================================================================================
     internal static class GroundCombatAirSupport
     {
@@ -118,42 +115,11 @@ namespace Game.Ai.V2
 
                 int eta = SortieEta(wing, targetHex);
 
-                // A wing with real endurance (helicopter-class TurnsWithoutRefuel) that reaches
-                // THIS turn can hold position unlanded overnight and strike again next turn before
-                // heading home, instead of every sortie being forced into a same-turn round trip.
-                // The second strike is priced by extending eta by one turn — the lane's delivery
-                // term already charges exactly one extra recurring activation for that.
                 float finalAfter = after;
                 int finalEta = eta;
-                if (eta <= 1 && wing.SafeUnlandedEndsRemaining >= 1)
-                {
-                    AviationCombatEstimator.AirStrikeEstimate second =
-                        AviationCombatEstimator.EstimateAirStrike(attacks,
-                            estimate.ExpectedDefenseAfter, estimate.ExpectedAttackAfter,
-                            estimate.ExpectedDefendersAfter, policy);
-                    if (second.ExpectedDamage > AiConfigV2.allocatorSliceEpsilon
-                        && second.ExpectedDefendersAfter.Count >= policy.MinimumSurvivors)
-                    {
-                        IReadOnlyList<int> secondSources = SourceIndices(second,
-                                estimate.ExpectedDefendersAfter.Count)
-                            .Select(i => firstSources[i]).ToList();
-                        float after2 = winAgainst(AfterStrike(opposition,
-                            second.ExpectedDefendersAfter, secondSources));
-                        if (after2 > finalAfter + AiConfigV2.allocatorSliceEpsilon)
-                        {
-                            finalAfter = after2;
-                            finalEta = eta + 1;
-                        }
-                    }
-                }
 
                 float ap = wing.HasActivatedThisTurn ? 0f : wing.ActivationApCost;
                 float energy = wing.HasActivatedThisTurn ? 0f : wing.ActivationEnergyCost;
-                // The second strike is a SEPARATE turn's activation (ArmyData.ActivationEnergyCost
-                // is charged per activation, same rule as ActivationApCost) — its own fresh launch
-                // energy is real and must be priced too, not just the recurring AP fee.
-                if (finalEta > eta)
-                    energy += wing.ActivationEnergyCost;
                 result.Add(new AirSupportOption(wing.ArmyId, landing.Value, finalEta, eta,
                     finalAfter, ap, wing.ActivationApCost,
                     new ResourceVector(0f, 0f, energy, 0f, 0f)));
