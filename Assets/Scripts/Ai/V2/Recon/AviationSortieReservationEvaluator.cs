@@ -3,6 +3,7 @@ using Game.Ai;
 using Game.Economy;
 using Game.Map;
 using Game.Players;
+using Game.Turns;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -122,6 +123,33 @@ namespace Game.Ai.V2
             EnergyHeadroom(player, map, availableEnergyAfterPlay) + AiConfigV2.allocatorSliceEpsilon
                 >= Mathf.Max(0, launchEnergyCost);
 
+        // Physical resource runway for a complete flight. Current activation is paid from the live
+        // spendable stock; every later activation is funded by what remains plus guaranteed income
+        // collected before the next initiative phase. This is deliberately a projection, not a
+        // second reservation ledger.
+        internal static bool CanFundActivationSchedule(float spendableEnergyNow, float energyIncomePerTurn,
+            int currentEnergyCost, int recurringEnergyCost, int requiredTurns, out float projectedEnergyAfter)
+        {
+            projectedEnergyAfter = Mathf.Max(0f, spendableEnergyNow);
+            int turns = Mathf.Max(1, requiredTurns);
+            int now = Mathf.Max(0, currentEnergyCost);
+            int recurring = Mathf.Max(0, recurringEnergyCost);
+            float eps = AiConfigV2.allocatorSliceEpsilon;
+
+            if (now > projectedEnergyAfter + eps)
+                return false;
+            projectedEnergyAfter -= now;
+
+            for (int turn = 1; turn < turns; turn++)
+            {
+                projectedEnergyAfter += Mathf.Max(0f, energyIncomePerTurn);
+                if (recurring > projectedEnergyAfter + eps)
+                    return false;
+                projectedEnergyAfter -= recurring;
+            }
+            return true;
+        }
+
         // Only Recon sorties are evaluated for now — Combat sortie value is a follow-up addition.
         // launchApCost / launchEnergyCost — this candidate sortie's own first-activation cost.
         // reconInformationValue — the AIR-01 route score for this candidate (already the full
@@ -133,7 +161,8 @@ namespace Game.Ai.V2
         // extraCommittedAp — AP already claimed by earlier candidates reserved in the SAME planning
         // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
-            HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
+            HexMap map, int launchApCost, int launchEnergyCost, int recurringApCost,
+            int recurringEnergyCost, int requiredTurns, float reconInformationValue,
             float airSpendableEnergy, int extraCommittedAp)
         {
             if (player == null || root == null)
@@ -148,6 +177,15 @@ namespace Game.Ai.V2
             int apStock = Mathf.Max(0, root.ActionPoints);
             int committedAp = Mathf.Max(0, extraCommittedAp);
             int availableAp = Mathf.Max(0, apStock - committedAp);
+
+            requiredTurns = Mathf.Max(1, requiredTurns);
+            // Any later turn may receive the minimum initiative AP allocation. A multi-turn sortie
+            // is admitted only if its recurring activation fits that guaranteed floor.
+            int guaranteedFutureAp = InitiativeRules.ApForRank(2);
+            if (requiredTurns > 1 && recurringApCost > guaranteedFutureAp)
+                return AviationReservationDecision.Rejected(AviationSortieType.Recon, energyHeadroom,
+                    0f, 0f, 0, reconInformationValue, 0f, reconInformationValue, 0f,
+                    "future_ap_not_guaranteed");
 
             // ---- Stage 2: Hand + Deck Energy Pressure ----
             // Both terms reuse ReconAirEnergyPolicy's existing generic (name-free) hand/deck scan —
@@ -178,22 +216,27 @@ namespace Game.Ai.V2
                     combatUtility, selectedUtility, 0f, "insufficient_ap_headroom");
 
             float spendableEnergy = Mathf.Max(0f, availableEnergy - protectedCardEnergy);
-            if (launchEnergyCost > spendableEnergy)
+            if (!CanFundActivationSchedule(spendableEnergy, expectedEnergyIncome,
+                    launchEnergyCost, recurringEnergyCost, requiredTurns, out float projectedAfter))
             {
-                string blockedReason = protectedCardEnergy <= 0
-                    ? "insufficient_energy_headroom"
-                    : handEnergyPressure >= deckEnergyPressure ? "energy_needed_by_hand" : "future_energy_pressure";
+                string blockedReason = requiredTurns > 1
+                    ? "future_activation_energy_not_guaranteed"
+                    : protectedCardEnergy <= 0
+                        ? "insufficient_energy_headroom"
+                        : handEnergyPressure >= deckEnergyPressure
+                            ? "energy_needed_by_hand" : "future_energy_pressure";
                 return AviationReservationDecision.Rejected(sortieType, energyHeadroom,
                     handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
                     combatUtility, selectedUtility, 0f, blockedReason);
             }
 
-            // Soft opportunity term — a marginal sortie is trimmed when spendable Energy is thin
-            // relative to near-term income; a healthy runway makes the same sortie cheap. Mirrors
-            // the shape of the retired ReconAirEnergyPolicy soft term, now folded into ONE staged
-            // decision instead of a second independent gate.
-            float effectiveSpendable = spendableEnergy + expectedEnergyIncome * AiConfigV2.aviationReserveIncomeHorizon;
-            float opportunityCost = (launchEnergyCost / Mathf.Max(1f, effectiveSpendable))
+            // Price the whole flight, not only take-off. The route proof already owns RequiredTurns,
+            // so economics cannot quietly pretend a multi-turn wing is a one-turn action.
+            int totalEnergyCost = Mathf.Max(0, launchEnergyCost)
+                + Mathf.Max(0, requiredTurns - 1) * Mathf.Max(0, recurringEnergyCost);
+            float effectiveSpendable = spendableEnergy
+                + expectedEnergyIncome * Mathf.Max(0, requiredTurns - 1);
+            float opportunityCost = (totalEnergyCost / Mathf.Max(1f, effectiveSpendable))
                 * AiConfigV2.aviationReserveOpportunityWeight;
             float netUtility = selectedUtility - opportunityCost;
 
