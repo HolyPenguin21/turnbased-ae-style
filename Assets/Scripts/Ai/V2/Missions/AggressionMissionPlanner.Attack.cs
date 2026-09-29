@@ -23,7 +23,7 @@ namespace Game.Ai.V2
             List<MissionProposal> proposals, AiTurnContext ctx,
             IDictionary<MissionIntentKey, string> deferredThisPass)
         {
-            if (snap?.Self == null)
+            if (snap?.Self == null || snap.Self.TotalMilitaryPotential <= 0f)
                 return;
 
             // ---- durable legs that carry their own pinned actor and destination ---------------
@@ -78,7 +78,9 @@ namespace Game.Ai.V2
                     new GroundCombatAssemblyRequest
                     {
                         Opposition = opposition,
-                        WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                        WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                        MinimumArmyPower = incumbent?.Attack?.AssaultStarted == true
+                            ? 0f : 0.80f * snap.Self.TotalMilitaryPotential,
                         PreferredPrimaryArmyId = pinnedActor,
                         PinToPreferred = pinnedActor.HasValue,
                         ExcludedArmyIds = excluded,
@@ -88,7 +90,7 @@ namespace Game.Ai.V2
                 if (!plan.Feasible)
                 {
                     // Audit F7 — a FRESH objective no single army nor same-hex package can take
-                    // may still be taken by free armies spread over several hexes: gather them.
+                    // may still be formed by free armies spread over several hexes: gather them.
                     if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
                             hexBonus, excluded, proposals))
                         continue;
@@ -117,11 +119,7 @@ namespace Game.Ai.V2
                 TaskScore score = AttackObjectiveEvaluator.WithResponse(objective, actor,
                     plan.ProjectedWinChance, eta, 0f, projectedAp);
 
-                // Strike force step 5 — a fresh operation may instead gather the fist to its peak
-                // first: that gather competes with this direct assault on the same TaskScore.
-                if (incumbent == null && TryAppendFreshAttackGather(snap, objective, opposition,
-                        hexBonus, excluded, proposals, score.Value))
-                    continue;
+                // Once the assembled actor strictly clears the force threshold, it may march.
 
                 var target = new AttackMissionTarget
                 {
@@ -133,6 +131,7 @@ namespace Game.Ai.V2
                     DefenderCount = objective.DefenderCount,
                     ProjectedWinChance = plan.ProjectedWinChance,
                     CoversAllDefenders = plan.CoversAllDefenders,
+                    ForceCommitted = incumbent?.Attack?.AssaultStarted == true,
                     EstimatedEta = eta,
                     // §17 — carry the operation's own once-per-turn side-strike marker into the leg
                     // the executor will run. A fresh objective has no incumbent and therefore no
@@ -190,16 +189,16 @@ namespace Game.Ai.V2
         // intent (§70) carrying the frozen plan, after which the remaining legs are proposed as
         // durable lifecycle work by AppendAttackGather. The lead leg is the critical path: the
         // support with the longest walk that can act this turn.
-        // `mustBeat` — the score of a direct assault the gather must out-score (null: none exists).
         private static bool TryAppendFreshAttackGather(WorldSnapshot snap, AttackObjective objective,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float hexBonus, ISet<int> excluded,
-            List<MissionProposal> proposals, float? mustBeat = null)
+            List<MissionProposal> proposals)
         {
             Dictionary<int, float> donorValues = GroundCombatDonorPolicy.BorrowableDonorValues(
                 snap.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All);
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
-                donorValues: donorValues);
+                hexBonus, objective.Hex, excluded, GroundCombatAdmissionPolicy.AttackCoverageGate,
+                donorValues: donorValues,
+                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
             if (!gather.Feasible || gather.SupportArmyIds.Count == 0)
             {
                 AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
@@ -230,14 +229,6 @@ namespace Game.Ai.V2
                 gather.ProjectedWinChance, gather.CurrentTurnAp,
                 AiV2Util.CeilDiv(gather.FutureAp, eta), eta,
                 moverOpportunityCost: gather.DisplacedValue);
-            if (mustBeat.HasValue && score.Value <= mustBeat.Value)
-            {
-                AiDebugLog.WriteDeduped(objective.Target.DiagnosticLabel + "#gather",
-                    $"[AI][V2][Attack][Gather] decision=SKIP target={objective.Target.DiagnosticLabel} "
-                    + $"host={host.ArmyId} win={F(gather.ProjectedWinChance)} score={F(score.Value)} "
-                    + $"reason=direct_assault_scores_higher({F(mustBeat.Value)})");
-                return false;
-            }
             MissionProposal proposal = BuildAttackGatherLeg(objective.Target, host, lead,
                 gather.SupportArmyIds, hexBonus, objective.DefenderCount, gather.ProjectedWinChance,
                 gather.CoversAllDefenders, 0, score, null);

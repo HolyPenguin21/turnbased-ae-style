@@ -118,6 +118,9 @@ namespace Game.Ai.V2
         public ResearchProductionMode? DevelopmentOperatorMode;
 
         public float RequiredCapabilityPower;
+        // Unbound Attack only: the actual free field army this hand card must strengthen.
+        // A separate purchased container does not satisfy this request.
+        public int? AttackFistArmyId;
         public bool IsPersistenceDeferred;
 
         // For an Economy Hero-prerequisite demand (the builder hero a pending build still needs):

@@ -335,8 +335,7 @@ namespace Game.Ai.V2
     }
 
     // ATK §22 — the durable Attack operation. ONE intent is ONE target structure (§7): a hostile
-    // Base/Citadel, which winning captures, or a hostile Facility, which winning destroys
-    // (BuildingRegistry.CaptureOrDestroy). Either result changes the map's topology — a capture
+    // Base/Citadel, which winning captures. The result changes the map's topology — a capture
     // brings a new home anchor, recovery point, garrison asset and distances — so an automatic
     // retarget inside the same intent would be planning the next war with the previous war's
     // world. Completion, a global replan, and then a FRESH objective is the only correct chain.
@@ -356,6 +355,9 @@ namespace Game.Ai.V2
         // there is nothing to protect and the objective may be freely re-picked — same rule the
         // Raid lane uses for OperationStarted.
         public bool OperationStarted;
+        // Gather support movement starts the intent, but the force threshold remains live
+        // until the primary actually starts the assault march.
+        public bool AssaultStarted;
         public int? PrimaryArmyId { get; set; }
         public int? SupportArmyId { get; set; }
         // Gather phase only: supports still walking to (or about to hand off at) the primary.

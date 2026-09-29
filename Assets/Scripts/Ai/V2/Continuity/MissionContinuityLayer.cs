@@ -1690,6 +1690,8 @@ namespace Game.Ai.V2
             {
                 AttackIntent ai = intent.Attack;
                 ai.OperationStarted |= o.OperationStarted;
+                if (o.OperationStarted && o.AttackTarget.Phase == AttackMissionPhase.Assault)
+                    ai.AssaultStarted = true;
                 if (o.AttackTarget.Phase == AttackMissionPhase.Gather)
                 {
                     // Audit F7 — an attempted handoff (full, partial or rejected) ends that

@@ -66,10 +66,10 @@ namespace Game.Ai.V2
 
             opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>();
             List<int> ids = EnumerateEligible(snap, opposition, unavailableArmyIds,
-                GroundCombatAdmissionPolicy.AttackWinChanceFloor, defenderHexDefenseBonus);
-            ApplyDurableIncumbentPin(proposal, snap, opposition, defenderHexDefenseBonus, ids,
-                GroundCombatAdmissionPolicy.AttackWinChanceFloor,
-                "AttackAdmission", target.Target.DiagnosticLabel);
+                GroundCombatAdmissionPolicy.AttackCoverageGate, defenderHexDefenseBonus,
+                pinnedArmyId: target.ForceCommitted ? target.PrimaryArmyId : null,
+                minimumArmyPower: target.ForceCommitted ? 0f
+                    : 0.80f * snap.Self.TotalMilitaryPotential);
 
             ByProposal.Remove(proposal);
             ByProposal.Add(proposal, new Entry(ids));
@@ -80,13 +80,15 @@ namespace Game.Ai.V2
         // WorthIt rules as Plan). This wrapper only fixes the lane-agnostic request shape.
         private static List<int> EnumerateEligible(WorldSnapshot snap,
             IReadOnlyList<WorthIt.DefendingArmy> opposition, ISet<int> unavailableArmyIds,
-            float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null) =>
+            float winChanceGate, float defenderHexDefenseBonus, int? pinnedArmyId = null,
+            float minimumArmyPower = 0f) =>
             GroundCombatAssemblyPlanner.EligibleActorIds(snap, new GroundCombatAssemblyRequest
             {
                 Opposition = opposition ?? Array.Empty<WorthIt.DefendingArmy>(),
                 WinChanceGate = winChanceGate,
                 ExcludedArmyIds = unavailableArmyIds,
                 DefenderHexDefenseBonus = defenderHexDefenseBonus,
+                MinimumArmyPower = minimumArmyPower,
                 PreferredPrimaryArmyId = pinnedArmyId,
                 PinToPreferred = pinnedArmyId.HasValue,
             });

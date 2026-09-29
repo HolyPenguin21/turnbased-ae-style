@@ -100,6 +100,52 @@ namespace Game.EditorTests
             }
         }
 
+        [Test]
+        public void AttackGather_ReservesOnlyLiveWalkingSupportAndReleasesAtSettlement()
+        {
+            var player = new PlayerSetupData();
+            var rootObject = new GameObject("attack-gather-bank-test");
+            try
+            {
+                PlayerRoot root = rootObject.AddComponent<PlayerRoot>();
+                root.ActionPoints = 5;
+                var ctx = new AiTurnContext { TurnNumber = 22 };
+                var support = new ArmyData { Owner = player, Hex = new HexCoord(1, 0) };
+                support.Members.Add(new UnitData
+                {
+                    Owner = player, ActivationApCost = 3, MoveMax = 2, MoveCurrent = 2,
+                });
+                ArmyRegistry.Register(support);
+                var intent = new MissionIntent
+                {
+                    Kind = MissionKind.Attack,
+                    Status = IntentStatus.Active,
+                    Funding = CommitmentTier.Hard,
+                    Objective = new AttackIntent
+                    {
+                        Target = AttackTargetRef.For(new HexCoord(5, 0),
+                            new PlayerSetupData(), AttackTargetKind.Base),
+                        Phase = AttackMissionPhase.Gather,
+                        OperationStarted = true,
+                        GatherSupportArmyIds = new List<int> { support.Id },
+                    },
+                };
+                intent.IntentKey = MissionIntentKey.For(intent);
+                MissionIntentRegistry.GetOrCreate(player).Put(intent);
+
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(2f));
+                support.Members[0].MoveCurrent = 0;
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f));
+                support.Members[0].MoveCurrent = 2;
+                OperationContinuationWindow.Settle(player, ctx.TurnNumber);
+                Assert.That(StrategicSpendability.SpendableAp(player, root, ctx), Is.EqualTo(5f));
+            }
+            finally
+            {
+                Object.DestroyImmediate(rootObject);
+            }
+        }
+
         [TestCase(StrategicReservationReason.EconomyBuildCompletion)]
         [TestCase(StrategicReservationReason.StrategicReactionPass)]
         public void OtherOwnerApHold_BlocksMissionAtAllocatorAdmission(

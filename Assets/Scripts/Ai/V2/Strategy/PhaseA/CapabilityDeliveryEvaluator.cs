@@ -130,7 +130,7 @@ namespace Game.Ai.V2
         internal static bool FinalizeOperationalDelivery(PlayerSetupData player, AiTurnContext ctx,
             WorldSnapshot afterSnap, MaterializationPlan plan, AxisDemand demand,
             CapabilityInventory before, CapabilityInventory after, HashSet<int> armyIdsBefore,
-            out float delivered)
+            out float delivered, WorldSnapshot beforeSnap = null)
         {
             IReadOnlyList<int> leased = OperationalLeaseArmyIds(armyIdsBefore, afterSnap, plan, demand);
             delivered = 0f;
@@ -201,6 +201,19 @@ namespace Game.Ai.V2
                 // army shape or lease is involved.
                 CardData source = demand.EconomySourceCard;
                 delivered = source != null && plan?.BaseCardInHand == source ? 1f : 0f;
+            }
+            else if (demand?.AttackFistArmyId.HasValue == true)
+            {
+                // This demand names one free strike army. A rise in global field inventory from
+                // an unrelated new container cannot close it; measure the exact recipient instead.
+                int id = demand.AttackFistArmyId.Value;
+                float previous = beforeSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id)
+                    ?.EffectiveArmyPower ?? 0f;
+                float current = afterSnap?.Self?.Armies?.FirstOrDefault(a => a.ArmyId == id)
+                    ?.EffectiveArmyPower ?? 0f;
+                delivered = beforeSnap != null && plan?.Deploy.Kind == DeploymentKind.ExistingArmy
+                    && plan.Deploy.Army?.Id == id
+                    ? Mathf.Max(0f, current - previous) : 0f;
             }
             else
                 delivered = DeliveredCapabilityAmount(demand, before, after);

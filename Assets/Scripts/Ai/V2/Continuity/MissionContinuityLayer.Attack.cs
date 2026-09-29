@@ -377,7 +377,7 @@ namespace Game.Ai.V2
         // GatherSupportArmyIds walks to it and hands over (AdvanceIntent drops a support once its
         // handoff was attempted, and it walks home). Strike force step 5: the gather builds the
         // fist to its PEAK, so the host marches once every planned support is spent and it clears
-        // Attack's floor — or earlier, when it already clears and a leg has stalled. When every
+        // the current force threshold — or earlier, when it already clears and a leg has stalled. When every
         // planned support is spent and the host still falls short, the gather is re-planned around
         // the same host from what is free now; if nothing can complete it, the existing
         // Reinforcement path takes over (partial improvement, then the Production demand, then
@@ -430,9 +430,10 @@ namespace Game.Ai.V2
                 ? new HashSet<int>() : new HashSet<int>(unavailableArmyIds);
             unavailable.Remove(a.PrimaryArmyId.Value);
             GroundCombatGatherPlan plan = GroundCombatAssemblyPlanner.PlanGather(snap, opposition,
-                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                hexBonus, a.Target.Hex, unavailable, GroundCombatAdmissionPolicy.AttackCoverageGate,
                 a.PrimaryArmyId, GroundCombatDonorPolicy.BorrowableDonorValues(
-                    snap?.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All));
+                    snap?.Observer == null ? null : MissionIntentRegistry.GetOrCreate(snap.Observer).All),
+                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
             if (plan.Feasible && plan.SupportArmyIds.Count > 0)
             {
                 a.GatherSupportArmyIds.AddRange(plan.SupportArmyIds);
@@ -452,7 +453,7 @@ namespace Game.Ai.V2
         }
 
         // Does the bound primary, on its own, still clear the target site? The SAME shared estimator
-        // and the SAME honest hex-defence read the mission layer used, at Attack's one floor.
+        // and the SAME honest hex-defence read the mission layer used, with known defender coverage; before the march it also checks the current force threshold.
         private static bool AttackPrimaryClearsTarget(WorldSnapshot snap, AttackIntent a)
         {
             if (!a.PrimaryArmyId.HasValue)
@@ -465,7 +466,11 @@ namespace Game.Ai.V2
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, a.Target.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(
                 snap, opposition, a.PrimaryArmyId.Value,
-                GroundCombatAdmissionPolicy.AttackWinChanceFloor, hexBonus);
+                GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus);
+            if (!a.AssaultStarted && (!plan.Feasible
+                || !AttackObjectiveEvaluator.ForceReady(plan.ProjectedPower,
+                    snap.Self.TotalMilitaryPotential)))
+                return false;
             if (plan.Feasible)
             {
                 a.ProjectedWinChance = plan.ProjectedWinChance;
@@ -503,6 +508,7 @@ namespace Game.Ai.V2
                 Target = t.Target,
                 Phase = t.Phase,
                 OperationStarted = true,
+                AssaultStarted = t.Phase == AttackMissionPhase.Assault,
                 PrimaryArmyId = t.PrimaryArmyId ?? o.MoverArmyId,
                 // A Gather leg's mover is one of several supports, never the Reinforcement support.
                 SupportArmyId = t.Phase == AttackMissionPhase.Gather ? null : t.SupportArmyId,
