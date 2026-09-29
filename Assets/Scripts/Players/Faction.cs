@@ -1,6 +1,6 @@
 namespace Game.Players
 {
-    // IronConcord and Ashen are the player-selectable factions. Random is a placeholder
+    // IronConcord, Ashen and Vessels are the player-selectable factions. Random is a placeholder
     // selection that resolves to one of them later (see GameSetupController.
     // ResolveRandomFactions). None is for card data that isn't any faction's own — e.g.
     // GameConfig.extractionFacilityCards, which every player can build regardless of faction —
@@ -16,6 +16,7 @@ namespace Game.Players
         Random,
         None,
         Neutral,
-        Ashen
+        Ashen,
+        Vessels
     }
 }

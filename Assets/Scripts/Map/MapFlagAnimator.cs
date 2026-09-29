@@ -12,10 +12,11 @@ namespace Game.Map
         [SerializeField] private Sprite[] frames;
         [SerializeField] private SpriteRenderer logoRenderer;
         // Emblem frames per player-selectable faction, each matching `frames` one-to-one.
-        // logoFrames is the default (IronConcord) set; SetFaction picks ashenLogoFrames for
-        // Ashen owners, falling back to the default when that set is missing or mis-sized.
+        // Each emblem set follows the same seven cloth frames. A missing faction set
+        // leaves the emblem blank rather than showing another faction's mark.
         [SerializeField] private Sprite[] logoFrames;
         [SerializeField] private Sprite[] ashenLogoFrames;
+        [SerializeField] private Sprite[] vesselsLogoFrames;
         [SerializeField, Min(0.1f)] private float framesPerSecond = 3.5f;
         [SerializeField] private bool randomizePhase = true;
 
@@ -35,9 +36,13 @@ namespace Game.Map
         public void SetFaction(Faction faction)
         {
             int frameCount = frames != null ? frames.Length : 0;
-            activeLogoFrames = faction == Faction.Ashen && ashenLogoFrames != null && ashenLogoFrames.Length == frameCount
-                ? ashenLogoFrames
-                : logoFrames;
+            Sprite[] selected = faction switch
+            {
+                Faction.Ashen => ashenLogoFrames,
+                Faction.Vessels => vesselsLogoFrames,
+                _ => logoFrames
+            };
+            activeLogoFrames = selected != null && selected.Length == frameCount ? selected : null;
             ApplyFrame(frameCount);
         }
 
@@ -69,9 +74,8 @@ namespace Game.Map
 
             // The neutral emblem follows the exact same phase as the tinted cloth. A second
             // animator would randomize independently and make the printed mark slide over it.
-            Sprite[] logos = activeLogoFrames ?? logoFrames;
-            if (logoRenderer != null && logos != null && logos.Length == frameCount)
-                logoRenderer.sprite = logos[frameIndex];
+            if (logoRenderer != null)
+                logoRenderer.sprite = activeLogoFrames != null ? activeLogoFrames[frameIndex] : null;
         }
     }
 }

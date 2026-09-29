@@ -8,7 +8,7 @@ namespace Game.Cards
     // this asset's own cardCatalogs" idea as EventCatalog.RewardEntry, plus a per-entry faction
     // gate. `factionRestriction`:
     //   Faction.None  — every playable faction may pick this card
-    //   Faction.IronConcord / Faction.Ashen — only that faction's own player may pick it
+    //   a playable faction — only that faction's own player may pick it
     // Drawn as a single inspector row by ResearchProductionEntryDrawer (Assets/Editor): a card
     // dropdown on the left (built from this asset's cardCatalogs, same as DeckCardEntryDrawer)
     // and a faction popup on the right.
