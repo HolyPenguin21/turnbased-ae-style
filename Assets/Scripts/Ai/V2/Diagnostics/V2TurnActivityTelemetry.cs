@@ -143,8 +143,11 @@ namespace Game.Ai.V2
             if (!ByPlayer.TryGetValue(player, out V2TurnActivity a) || a.Turn != turn)
                 return;
             V2PhaseActivity total = a.Total();
-            AiDebugLog.WriteVerbose($"[AI][V2] {player.Nickname}: activity main    — {a.Main.Line()}");
-            AiDebugLog.WriteVerbose($"[AI][V2] {player.Nickname}: activity reaction — {a.Reaction.Line()}");
+            if (AiDebugLog.Verbose)
+            {
+                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity main    — {a.Main.Line()}");
+                AiDebugLog.Write($"[AI][V2] {player.Nickname}: activity reaction — {a.Reaction.Line()}");
+            }
             AiDebugLog.Write($"[AI][V2][TURN-END] {player.Nickname}: {total.Line()}");
             ByPlayer.Remove(player);
         }
