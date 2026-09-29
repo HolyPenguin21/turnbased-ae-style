@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Game.Economy;
 using Game.Players;
 using UnityEngine;
@@ -323,11 +324,15 @@ namespace Game.Ai.V2
                 .Select(r => r.ToString()).OrderBy(x => x, System.StringComparer.Ordinal));
         }
 
-        private static void LogChange(PlayerSetupData player, int turn, string compact)
+        private static void LogChange(PlayerSetupData player, int turn, string compact,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
         {
-            AiDebugLog.Write(compact);
+            AiDebugLog.Write(compact, callerFile, callerMember, callerLine);
             if (AiDebugLog.Verbose)
-                AiDebugLog.Write($"[AI][V2][Reservation][STATE] {DebugLine(player, turn)}");
+                AiDebugLog.Write($"[AI][V2][Reservation][STATE] {DebugLine(player, turn)}",
+                    callerFile, callerMember, callerLine);
         }
 
         public static string DebugLine(PlayerSetupData player, int turn)
