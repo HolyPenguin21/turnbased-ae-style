@@ -81,7 +81,7 @@ namespace Game.Ai.V2
             List<UnitData> launchSubset = null;
 
             // The real, actor-specific cost Assignment already resolved for THIS
-            // exact candidate (see AppendAirCandidates: a live Pick/PickFromStorage against the
+            // exact candidate (see AppendAirCandidates: a live Pick against the
             // bound mission target, not a generic "some useful step exists" probe). Compare against
             // the envelope Funding granted; claim for real only if it fits.
             float eps = AiConfigV2.allocatorSliceEpsilon;
