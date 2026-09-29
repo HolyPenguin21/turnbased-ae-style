@@ -961,7 +961,9 @@ namespace Game.Combat
         {
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (candidate.Owner == actor.Owner)
+                // Heroes may be attacked, but never take a BattleTurnOrder action of their own,
+                // so they must not make another unit think a destination is under return fire.
+                if (!candidate.IsGroundCombatant || candidate.Owner == actor.Owner)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                     continue;
@@ -975,7 +977,7 @@ namespace Game.Combat
         // BattleScreenUI.IsAdjacentMoveTarget enforces for the human, per the user's own report
         // that a Range-1 unit could never reach the enemy's Back row because it could never step
         // past the Neutral row into the enemy's own Front row first) toward whichever enemy
-        // non-hero unit is currently closest. Null if there's nowhere legal to go.
+        // tactical target (combatant or hero) is currently closest. Null if there's nowhere legal to go.
         private static (int row, int col)? FindStepToward(BattleGrid grid, UnitData actor, int actorRow, int actorCol)
         {
             UnitData nearestEnemy = null;
