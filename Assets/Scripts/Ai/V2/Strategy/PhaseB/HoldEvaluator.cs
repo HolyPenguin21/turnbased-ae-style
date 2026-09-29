@@ -56,7 +56,11 @@ namespace Game.Ai.V2
                 if (onlyConsumed != null && onlyConsumed.Get(rt) <= 0)
                     continue;
                 anyInScope = true;
-                int stock = root.GetResource(rt);
+                // The discretionary pool — what TurnResourceBook lets this spender use. Stock a
+                // build or reaction already holds is not Phase B's to keep or spend.
+                float stock = player != null && ctx != null
+                    ? StrategicSpendability.SpendableAmount(player, root, ctx, rt)
+                    : root.GetResource(rt);
                 minStockNorm = Mathf.Min(minStockNorm, Mathf.Clamp01(stock / comfortable));
 
                 float incomeTarget = snap?.Economy?.IncomeTarget.Get(rt) ?? 0f;

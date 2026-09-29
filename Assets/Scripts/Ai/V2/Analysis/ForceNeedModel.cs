@@ -20,22 +20,30 @@ namespace Game.Ai.V2
         public readonly float Enemy;
         // Share of the defensive reserve known threats demand that our total force cannot cover.
         public readonly float Defensive;
+        // Idle stock the deck is not absorbing (DevelopmentReadiness.InvestmentSurplusByType, mean
+        // over H/E/M/T, ramped and weighted). Rises while resources pile up and falls as they are
+        // spent, so Production arms in advance for the next Attack instead of banking stock.
+        public readonly float Surplus;
         public readonly bool Witnessed;
 
-        public ForceNeed(float offensive, float enemy, float defensive, bool witnessed)
+        public ForceNeed(float offensive, float enemy, float defensive, bool witnessed,
+            float surplus = 0f)
         {
             Offensive = offensive;
             Enemy = enemy;
             Defensive = defensive;
+            Surplus = surplus;
             Witnessed = witnessed;
         }
 
         // [0..1]. Zero without a military witness: Production never creates a need.
-        public float Total => Witnessed ? Mathf.Clamp01(Mathf.Max(Offensive, Mathf.Max(Enemy, Defensive))) : 0f;
+        public float Total => Witnessed
+            ? Mathf.Clamp01(Mathf.Max(Mathf.Max(Offensive, Surplus), Mathf.Max(Enemy, Defensive)))
+            : 0f;
 
         public override string ToString() =>
             $"need={Total:0.00} (offensive={Offensive:0.00} enemy={Enemy:0.00} "
-            + $"defensive={Defensive:0.00} witnessed={(Witnessed ? 1 : 0)})";
+            + $"defensive={Defensive:0.00} surplus={Surplus:0.00} witnessed={(Witnessed ? 1 : 0)})";
     }
 
     internal static class ForceNeedModel
@@ -144,7 +152,21 @@ namespace Game.Ai.V2
             float defensive = threatReserve <= AiConfigV2.allocatorSliceEpsilon ? 0f
                 : Mathf.Clamp01((threatReserve - Mathf.Max(0f, snap.Self.TotalPower)) / threatReserve);
 
-            return new ForceNeed(offensive, enemy, defensive, true);
+            return new ForceNeed(offensive, enemy, defensive, true, SurplusNeed(snap));
+        }
+
+        // Dynamic force need from resources the deck leaves idle. Mean (not min) headroom: one
+        // exhausted resource must not hide three piling up. Capped by forceNeedSurplusWeight so
+        // an idle bank alone never outranks a fight we cannot take.
+        internal static float SurplusNeed(WorldSnapshot snap)
+        {
+            DevelopmentReadiness rd = snap?.Development;
+            if (rd == null)
+                return 0f;
+            float mean = ResourceBundle.All.Average(t =>
+                Mathf.Clamp01(rd.InvestmentSurplusByType.Get(t)));
+            return AiConfigV2.forceNeedSurplusWeight * Curves.Ramp(mean,
+                AiConfigV2.forceNeedSurplusRampLo, AiConfigV2.forceNeedSurplusRampHi);
         }
     }
 }

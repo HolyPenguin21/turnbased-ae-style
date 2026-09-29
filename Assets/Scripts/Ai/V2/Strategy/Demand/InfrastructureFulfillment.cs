@@ -484,10 +484,61 @@ namespace Game.Ai.V2
                     && route != int.MaxValue && route <= actor.CurrentMovement
                     && liveAp + AiConfigV2.allocatorSliceEpsilon
                         >= build.BuildApCost + (route > 0 ? activationAp : 0f)
-                    && (build.BuildResourceCost == null || build.BuildResourceCost.CanAfford(root));
+                    // Through TurnResourceBook: its own hold and other builds' deferred holds are
+                    // drawable, another owner's completion or the reaction envelope is not.
+                    && StrategicSpendability.FitsSpendableForEconomyCompletion(
+                        player, root, ctx, build.BuildResourceCost, owner);
                 ReconcileEconomyCompletionOwner(player, turn, owner, intent, true,
                     completionThisTurn);
             }
+        }
+
+        // Called ONCE per turn (each Phase B entry path of AiStrategyV2Pipeline.RunTurn), after the operational loop has settled and every surviving
+        // Completion owner has been reconciled — i.e. at the point where each remaining
+        // EconomyDeferredBuild owner is proven NOT to complete this turn. Such a build is paid from
+        // the stock of a later turn, and that stock always includes at least one more income tick
+        // (IncomeProjection.IncomeFor — the same number the round-start grant pays). Holding the
+        // full vector from today's stock froze exactly that part for Phase B while the build
+        // could not use it anyway. The tick is shared by every deferred owner (deterministic owner
+        // order), never counted twice. Next turn's Phase A re-writes the full vector
+        // (OwnerReasonMatches mismatch), before Provisioning can promote it to Completion, so the
+        // build turn still sees its whole cost protected. Phase A never calls this: there the
+        // deferred stage is not yet proof that completion is impossible this turn.
+        internal static void ReleaseDeferredEconomyIncomeCover(PlayerSetupData player,
+            AiTurnContext ctx)
+        {
+            if (player == null || ctx?.Map == null)
+                return;
+            int turn = ctx.TurnNumber;
+            IReadOnlyList<string> owners = StrategicResourceReservationLedger.OwnersWithReason(
+                player, turn, StrategicReservationReason.EconomyDeferredBuild);
+            if (owners.Count == 0)
+                return;
+            List<StrategicResourceReservation> rows = StrategicResourceReservationLedger
+                .Rows(player, turn)
+                .Where(r => r.Reason == StrategicReservationReason.EconomyDeferredBuild)
+                .OrderBy(r => r.Owner, System.StringComparer.Ordinal)
+                .ToList();
+            foreach (ResourceType type in ResourceBundle.All)
+            {
+                float cover = IncomeProjection.IncomeFor(player, type, ctx.Map);
+                StrategicReservedResource resource = StrategicResourceReservationLedger.Map(type);
+                foreach (StrategicResourceReservation row in rows.Where(r => r.Resource == resource))
+                {
+                    if (cover <= 0f)
+                        break;
+                    float released = UnityEngine.Mathf.Min(cover, row.Amount);
+                    cover -= released;
+                    StrategicResourceReservationLedger.Upsert(player, turn,
+                        new StrategicResourceReservation
+                        {
+                            Owner = row.Owner, Reason = row.Reason, Resource = row.Resource,
+                            Amount = row.Amount - released, ExpirationStage = row.ExpirationStage,
+                        });
+                }
+            }
+            AiDebugLog.Write($"[AI][V2][Economy][DeferredIncomeCover] turn={turn} owners={owners.Count} "
+                + $"active [{StrategicResourceReservationLedger.DebugLine(player, turn)}]");
         }
 
         // owner == null is the whole-reason reset (no Economy obligation survived this pass); an
@@ -657,6 +708,7 @@ namespace Game.Ai.V2
                 .ToList();
             CapabilityInventory inv = CapabilityInventory.Build(snap, player, null);
             var legal = new List<InfraCandidate>();
+            var rejected = new List<string>();
             foreach ((CardData card, int ordinal) in cards)
             {
                 StrategicCardUseCandidate use = StrategicCardEvaluator.ScoreNonCombat(
@@ -665,26 +717,61 @@ namespace Game.Ai.V2
                 {
                     if (demand.TargetHex.HasValue && !demand.TargetHex.Value.Equals(baseHex))
                         continue;
-                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex, out _))
+                    string at = $"{card.Definition.displayName}@({baseHex.Q},{baseHex.R})";
+                    BuildingData upgradeBase = null;
+                    BaseUpgradeTier upgradeTier = null;
+                    if (!BuildingPlayExecutor.CanPlaceFacilityAt(player, hand, ctx, card, baseHex,
+                            out string placeReason))
+                    {
+                        // A full Base is a preparation stage of its own: the admitted opportunity
+                        // bought its tier into the stage; re-derive it from live state here.
+                        if (placeReason == InfrastructureActions.NoFreeFacilitySlotReason
+                            && demand.DevOpportunity?.PreparationCapacityTier != null)
+                        {
+                            upgradeBase = BuildingRegistry.FindAt(baseHex);
+                            upgradeTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(upgradeBase, ctx);
+                        }
+                        if (upgradeTier == null)
+                        {
+                            rejected.Add($"{at}:{placeReason}");
+                            continue;
+                        }
+                    }
+                    ResourceCost stageCost = StrategicCardEvaluator.AddResourceCosts(
+                        card.EffectivePlayResourceCost, upgradeTier?.cost);
+                    int stageAp = card.EffectivePlayApCost + (upgradeTier?.apCost ?? 0);
+                    if (upgradeTier != null && StrategicSpendability.SpendableAp(player, root, ctx)
+                            + AiConfigV2.allocatorSliceEpsilon < stageAp)
+                    {
+                        rejected.Add($"{at}:not enough action points for upgrade+facility ({stageAp})");
                         continue;
-                    if (!StrategicSpendability.FitsSpendableResources(
-                            player, root, ctx, card.EffectivePlayResourceCost))
+                    }
+                    if (!StrategicSpendability.FitsSpendableResources(player, root, ctx, stageCost))
+                    {
+                        rejected.Add($"{at}:spendable_resources");
                         continue;
+                    }
                     CardData selectedCard = card;
                     HexCoord selectedHex = baseHex;
+                    BuildingData buildingToUpgrade = upgradeBase;
+                    BaseUpgradeTier tierToBuy = upgradeTier;
                     legal.Add(new InfraCandidate
                     {
-                        ApCost = selectedCard.EffectivePlayApCost,
-                        ResCost = selectedCard.EffectivePlayResourceCost,
+                        ApCost = stageAp,
+                        ResCost = stageCost,
                         DecisionScore = use.NetScore,
                         HandOrdinal = ordinal,
                         TargetHex = selectedHex,
-                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})",
-                        Execute = () => BuildingPlayExecutor.PlayFacilityCard(
-                            player, root, hand, ctx, selectedCard, selectedHex),
+                        Explain = $"Facility {selectedCard.Definition.displayName} into Base @({selectedHex.Q},{selectedHex.R})"
+                            + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : ""),
+                        Execute = () => PlaceFacilityAfterOptionalUpgrade(
+                            player, root, hand, ctx, selectedCard, selectedHex, buildingToUpgrade, tierToBuy),
                     });
                 }
             }
+            if (legal.Count == 0 && rejected.Count > 0)
+                AiDebugLog.Write($"[AI][V2]   infra — DevelopmentInfrastructure rejected: "
+                    + string.Join(" | ", rejected));
             return BestDevelopmentCandidate(legal);
         }
 
@@ -734,10 +821,7 @@ namespace Game.Ai.V2
                 NonCombatRole.Facility, card, snap, CapabilityInventory.Build(snap, player, null),
                 hand, bestEquipmentUpgrade: 0f);
             // The upgrade is priced once, on the canonical AP/resource price table.
-            float upgradePrice = upgradeTier != null
-                ? ActionPrice.ToCardScore(ActionPrice.Ap(upgradeTier.apCost)
-                    + ActionPrice.Resources(upgradeTier.cost, snap))
-                : 0f;
+            float upgradePrice = StrategicMaintenancePolicy.CapacityTierPrice(upgradeTier, snap);
             float net = use.NetScore - upgradePrice;
             if (net <= AiConfigV2.allocatorSliceEpsilon)
             {
@@ -760,27 +844,34 @@ namespace Game.Ai.V2
                     + $"@({hex.Q},{hex.R})"
                     + (tierToBuy != null ? $" after capacity upgrade to level {buildingToUpgrade.Level + 1}" : "")
                     + $" net={net:0.00}",
-                Execute = () =>
-                {
-                    if (tierToBuy == null)
-                        return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
-                    int apBefore = root.ActionPoints;
-                    if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(
-                            player, root, ctx, buildingToUpgrade, tierToBuy))
-                        return BuildingPlayResult.Fail("capacity upgrade refused");
-                    int upgradeVersion = V2StateVersion.Bump();
-                    BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
-                        player, root, hand, ctx, card, hex);
-                    // The upgrade is a real mutation even if the placement then fails.
-                    placed.StateChanged = true;
-                    placed.ApSpent = apBefore - root.ActionPoints;
-                    placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
-                        placed.ResourcesSpent, tierToBuy.cost);
-                    if (placed.StateVersionAfter < upgradeVersion)
-                        placed.StateVersionAfter = upgradeVersion;
-                    return placed;
-                },
+                Execute = () => PlaceFacilityAfterOptionalUpgrade(
+                    player, root, hand, ctx, card, hex, buildingToUpgrade, tierToBuy),
             };
+        }
+
+        // One action: buy `tier` on `building` (when a slot must be unlocked first), then place the
+        // Facility. Shared by every infrastructure path whose facility carries its own capacity
+        // prerequisite (global resource source, Development facility stage).
+        private static BuildingPlayResult PlaceFacilityAfterOptionalUpgrade(PlayerSetupData player,
+            PlayerRoot root, AiHandData hand, AiTurnContext ctx, CardData card, HexCoord hex,
+            BuildingData building, BaseUpgradeTier tier)
+        {
+            if (tier == null)
+                return BuildingPlayExecutor.PlayFacilityCard(player, root, hand, ctx, card, hex);
+            int apBefore = root.ActionPoints;
+            if (!StrategicMaintenancePolicy.ExecuteCapacityUpgrade(player, root, ctx, building, tier))
+                return BuildingPlayResult.Fail("capacity upgrade refused");
+            int upgradeVersion = V2StateVersion.Bump();
+            BuildingPlayResult placed = BuildingPlayExecutor.PlayFacilityCard(
+                player, root, hand, ctx, card, hex);
+            // The upgrade is a real mutation even if the placement then fails.
+            placed.StateChanged = true;
+            placed.ApSpent = apBefore - root.ActionPoints;
+            placed.ResourcesSpent = StrategicCardEvaluator.AddResourceCosts(
+                placed.ResourcesSpent, tier.cost);
+            if (placed.StateVersionAfter < upgradeVersion)
+                placed.StateVersionAfter = upgradeVersion;
+            return placed;
         }
 
         // DEV OPERATOR — a hand card carrying the mode's role ability (Researcher / Assembler),

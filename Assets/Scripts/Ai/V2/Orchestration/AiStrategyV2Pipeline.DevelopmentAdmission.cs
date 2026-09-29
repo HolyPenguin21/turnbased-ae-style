@@ -25,7 +25,9 @@ namespace Game.Ai.V2
     //   * every own army's composition (any unit may be the best Equipment recipient) and, for
     //     Research/Production operator armies, their position (remote-hero delivery cost);
     //   * actor occupancy (which heroes are free to travel to a facility);
-    //   * the composition of every known threat EquipmentMatchupFit evaluates against.
+    //   * the composition of every known threat EquipmentMatchupFit evaluates against;
+    //   * ForceNeedModel.JustifiedForceNeed (asset threats, edge, idle-stock surplus) — the need
+    //     every minted-output score and the deck-operator facility stage are weighted by.
     public static partial class Pipeline
     {
         // AP enters as the set of affordability thresholds Development can cross, not a raw number:
@@ -41,7 +43,9 @@ namespace Game.Ai.V2
             + $"|apfit={DevelopmentApAffordability(snapshot, hand, actionPoints)}"
             + $"|res={resources}"
             + $"|price={DevelopmentPriceInputs(snapshot, player, root, ctx)}"
-            + $"|hand={handVersion}|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
+            + $"|hand={handVersion}"
+            + $"|need={(snapshot != null ? ForceNeedModel.JustifiedForceNeed(snapshot).Total : 0f).ToString("0.###", CultureInfo.InvariantCulture)}"
+            + $"|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current
         // verified starvation block — every resource fact the canonical card price reads.
@@ -126,7 +130,14 @@ namespace Game.Ai.V2
                 }));
             string bases = string.Join(";", (snapshot?.Self?.BaseHexes
                     ?? System.Array.Empty<Game.HexGrid.HexCoord>())
-                .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h => $"{h.Q},{h.R}"));
+                .OrderBy(h => h.Q).ThenBy(h => h.R).Select(h =>
+                {
+                    // Level and a free unlocked slot decide whether a facility stage must first
+                    // buy a capacity tier (StrategicMaintenancePolicy.CapacityUnlockTierAt).
+                    BuildingData b = BuildingRegistry.FindAt(h);
+                    return b == null ? $"{h.Q},{h.R}"
+                        : $"{h.Q},{h.R}:{b.Level}:{(b.FindFirstAvailableFacilitySlot() >= 0 ? 1 : 0)}";
+                }));
             // Actor occupancy: preparation builds ActorCommitments over ALL intents, so each kind
             // contributes only the inputs that produce a claim — never intent identity.
             string claims = string.Join(";", (activeIntents ?? new List<MissionIntent>())

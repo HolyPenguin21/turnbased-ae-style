@@ -990,6 +990,9 @@ namespace Game.Ai.V2
                 // admission occurs: Phase B must see AP that no actor can spend on a build.
                 InfrastructureFulfillment.ReconcileEconomyCompletionReservations(
                     player, root, hand, ctx);
+                // Every build still deferred now cannot complete this turn: release the part of
+                // its hold the next income tick covers, so Phase B may spend it.
+                InfrastructureFulfillment.ReleaseDeferredEconomyIncomeCover(player, ctx);
                 // Continuing Hard operations had their funding chance in the loop above; their
                 // Phase-A protection ends here so Phase B sees every AP nobody will spend.
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
@@ -1169,6 +1172,7 @@ namespace Game.Ai.V2
             // the pre-execution Known/MapKnowledge layers.
             if (!phaseBHandled)
             {
+                InfrastructureFulfillment.ReleaseDeferredEconomyIncomeCover(player, ctx);
                 OperationContinuationWindow.Settle(player, ctx.TurnNumber);
                 snapshot = WorldAnalysis.RefreshStrategicKnowledge(snapshot, player, root, hand, ctx);
                 reconObjectives = ReconObjectiveEvaluator.Enumerate(snapshot);

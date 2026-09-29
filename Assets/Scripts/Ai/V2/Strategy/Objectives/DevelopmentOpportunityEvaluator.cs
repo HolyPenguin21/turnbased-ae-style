@@ -32,7 +32,9 @@ namespace Game.Ai.V2
     //  Two currencies, each for its own decision — a PREPARE must pass both:
     //    Ev       — card currency: is the card chain worth its cards (output card score -
     //               Challenge - facility/operator cards, priced by StrategicCardEvaluator, the only
-    //               place a chain is charged for cost). Also read by the capacity-upgrade look-ahead.
+    //               place a chain is charged for cost). The facility/operator investment is spread
+    //               over devFacilityExpectedUses outputs: one output carries only its share.
+    //               Also read by the capacity-upgrade look-ahead.
     //    WorldTaskScore — world-task currency (TaskScore): what the demand/mission competes with
     //               in the allocator next to Raid, Recon and Economy. Intrinsic ForceAmplification
     //               (the need-weighted force the output adds) plus the execution of the world task
@@ -55,6 +57,12 @@ namespace Game.Ai.V2
         public float SuccessChance;
         // READY only: the exact facility/operator source. null => a PREPARE opportunity.
         public GenerationStep Generation;
+        // PREPARE only: the H/E/M/T THIS pass's stage consumes (facility, else operator; null for a
+        // walking hero). The one staged-funding fact — later stages fit projected income instead.
+        public ResourceCost StageResourceCost;
+        // PREPARE facility stage only: the Base tier bought with the facility because every
+        // unlocked slot of FacilityHex is taken (already inside StageResourceCost).
+        public BaseUpgradeTier PreparationCapacityTier;
         public CardData PreparationFacilityCard;
         public CardData PreparationOperatorCard;
         // Only an existing, eligible staffed source can mint an operator. The resulting card
@@ -218,6 +226,17 @@ namespace Game.Ai.V2
                 .FirstOrDefault();
             if (!facilityReady && facility == null)
                 return "reason=no_facility_card";
+            // Every unlocked slot of this Base is taken: the next Base tier is this site's first
+            // preparation stage, bought together with the facility (StrategicMaintenancePolicy owns
+            // which tier opens a slot). No unlockable tier left -> the site cannot host it.
+            BaseUpgradeTier capacityTier = null;
+            if (facility != null && BuildingRegistry.FindAt(hex)?.FindFirstAvailableFacilitySlot() < 0)
+            {
+                capacityTier = StrategicMaintenancePolicy.CapacityUnlockTierAt(
+                    BuildingRegistry.FindAt(hex), ctx);
+                if (capacityTier == null)
+                    return "reason=no_facility_slot";
+            }
             ArmyData garrison = ArmyRegistry.AllAt(hex)
                 .FirstOrDefault(a => a.Owner == player && a.IsGarrison && !a.IsPrison);
             CardData operatorCard = actor != null ? null : hand.Hand
@@ -319,14 +338,30 @@ namespace Game.Ai.V2
                     .ThenBy(g => g.CardKey, System.StringComparer.Ordinal)
                     .FirstOrDefault();
             }
-            if (actor == null && operatorCard == null && remote == null && generatedOperator == null)
+            // Facility stage only: the qualified Hero may still be in the remaining deck. Building
+            // the facility now and drawing its operator on a later turn is a normal staged plan;
+            // the operator stage itself still needs a real operator (hand, map or Challenge).
+            // One deck promise at a time: while any facility already waits for its operator, a
+            // second facility must not be built on the same future draw.
+            CardDefinition deckOperator = null;
+            if (!facilityReady && actor == null && operatorCard == null && remote == null
+                && generatedOperator == null && !snap.Development.AnyOperatorlessFacility)
+                deckOperator = snap.Self.Deck?
+                    .Where(d => d != null && d.cardType == CardType.Hero
+                        && MaterializationChainMatching.EffectiveAbilities(d, null)
+                            .Contains(ResearchProductionSystem.RoleAbility(mode)))
+                    .OrderBy(d => StrategicCardEvaluator.StrategicResourceCostValue(d.resourceCost, snap))
+                    .ThenBy(d => d.authoredKey, System.StringComparer.Ordinal)
+                    .FirstOrDefault();
+            if (actor == null && operatorCard == null && remote == null && generatedOperator == null
+                && deckOperator == null)
                 return "reason=no_operator";
 
             UnitData projectedActor = actor ?? remote;
             if (projectedActor == null)
             {
                 CardDefinition operatorDefinition = operatorCard?.Definition
-                    ?? generatedOperator.CardDef;
+                    ?? generatedOperator?.CardDef ?? deckOperator;
                 CardDefinition operatorEquipment = operatorCard?.Equipment;
                 int fate = operatorDefinition.fate;
                 if (operatorEquipment?.equipment != null)
@@ -364,14 +399,46 @@ namespace Game.Ai.V2
                         generatedOperator.GenerationResourceCost, snap);
                 operatorChance = Mathf.Clamp01(generatedOperator.SuccessChance);
             }
+            if (deckOperator != null)
+            {
+                // Its card is paid on the later operator stage; drawing it is not certain.
+                preparationCost += ActionPrice.ToCardScore(new CardData(deckOperator).EffectivePlayApCost)
+                    + StrategicCardEvaluator.StrategicResourceCostValue(deckOperator.resourceCost, snap);
+                operatorChance = AiConfigV2.devDeckOperatorConfidence;
+            }
+
+            // Staged funding: only THIS pass's stage (facility, else the operator) is paid from
+            // today's spendable stock and judged by the investment window; the rest of the chain
+            // (operator, output) must fit today's stock plus devChainFundingHorizonTurns of income.
+            // Demand emits one stage per pass and each stage's executor re-checks its own cost.
+            ResourceCost operatorResourceCost = operatorCard?.EffectivePlayResourceCost
+                ?? generatedOperator?.GenerationResourceCost ?? deckOperator?.resourceCost;
+            // The tier is a one-time investment like the facility, priced once (the same price the
+            // global-source upgrade path charges).
+            preparationCost += StrategicMaintenancePolicy.CapacityTierPrice(capacityTier, snap);
+            ResourceCost stageCost = facility != null
+                ? StrategicCardEvaluator.AddResourceCosts(facility.EffectivePlayResourceCost,
+                    capacityTier?.cost)
+                : actor == null && remote == null ? operatorResourceCost : null;
+            List<ResourceType> stageShort = ResourceBundle.All.Where(t => (stageCost?.Get(t) ?? 0)
+                > StrategicSpendability.SpendableAmount(player, root, ctx, t)).ToList();
+            if (stageShort.Count > 0)
+                return $"reason=stage_unaffordable({ResourceList(stageShort)})";
+            List<ResourceType> stageClosed = DevelopmentInvestmentGate.ClosedResources(
+                player, snap.TurnNumber, stageCost);
+            if (stageClosed.Count > 0)
+                return $"reason=window_closed({ResourceList(stageClosed)})";
             float operatorDisplaced = remoteArmyId.HasValue
                 ? MissionIntent.DisplacementValueOf(activeIntents, remoteArmyId.Value) : 0f;
             ForceNeed forceNeed = ForceNeedModel.JustifiedForceNeed(snap);
+            // The facility and its operator are a one-time investment the site then reuses for
+            // every later Challenge; one output carries only its share of that investment.
+            float preparationShare = preparationCost / Mathf.Max(1, AiConfigV2.devFacilityExpectedUses);
 
             int outputs = 0, admitted = 0;
-            float bestValue = float.NegativeInfinity;
+            float bestValue = float.NegativeInfinity, bestEv = float.NegativeInfinity;
             string bestRejected = null;
-            var windowClosed = new HashSet<ResourceType>();
+            var unaffordable = new HashSet<ResourceType>();
             foreach (CardDefinition card in ResearchProductionSystem.OfferedCards(
                 ctx.ResearchProductionCatalog, mode, player.Faction))
             {
@@ -381,25 +448,23 @@ namespace Game.Ai.V2
                     continue;
                 outputs++;
                 ResourceCost chainCost = SumCost(facility?.EffectivePlayResourceCost,
-                    operatorCard?.EffectivePlayResourceCost,
-                    generatedOperator?.GenerationResourceCost, card.resourceCost);
-                if (ResourceBundle.All.Any(t => chainCost.Get(t)
-                        > StrategicSpendability.SpendableAmount(player, root, ctx, t)))
-                    continue;
-                List<ResourceType> closed = DevelopmentInvestmentGate.ClosedResources(
-                    player, snap.TurnNumber, chainCost);
-                if (closed.Count > 0)
+                    operatorResourceCost, card.resourceCost, capacityTier?.cost);
+                List<ResourceType> shortfall = ResourceBundle.All.Where(t => chainCost.Get(t)
+                    > StrategicSpendability.SpendableAmount(player, root, ctx, t)
+                        + AiConfigV2.devChainFundingHorizonTurns
+                            * Mathf.Max(0f, snap.Self.PerTurnIncome.Get(t))).ToList();
+                if (shortfall.Count > 0)
                 {
-                    windowClosed.UnionWith(closed);
+                    unaffordable.UnionWith(shortfall);
                     continue;
                 }
 
                 DevelopmentOpportunity op = card.isAviation
                         || card.cardType == CardType.Unit || card.cardType == CardType.Hero
                     ? PrepareDeployable(card, mode, hex, projectedActor, operatorChance,
-                        preparationCost, snap, inv, occupied, player, root, hand, ctx)
+                        preparationShare, snap, inv, occupied, player, root, hand, ctx)
                     : PrepareEquipment(card, mode, hex, projectedActor, operatorChance,
-                        preparationCost, snap, inv, player, root, hand, ctx);
+                        preparationShare, snap, inv, player, root, hand, ctx);
                 if (op == null)
                     continue;
                 // Every output term is conditional on first winning a generated operator.
@@ -413,12 +478,15 @@ namespace Game.Ai.V2
                 if (op.BaseValue > bestValue)
                 {
                     bestValue = op.BaseValue;
+                    bestEv = op.Ev;
                     bestRejected = card.displayName;
                 }
                 // Card chain worth its cards (card currency) AND a positive world task.
                 if (op.Ev <= AiConfigV2.devEvMargin
                     || op.BaseValue <= AiConfigV2.allocatorSliceEpsilon)
                     continue;
+                op.StageResourceCost = stageCost;
+                op.PreparationCapacityTier = capacityTier;
                 op.PreparationFacilityCard = facility;
                 op.PreparationOperatorCard = operatorCard;
                 op.PreparationOperatorGeneration = generatedOperator;
@@ -434,14 +502,14 @@ namespace Game.Ai.V2
                 result.Add(op);
                 admitted++;
             }
-            string need = $"need[{(facility != null ? "facility" : "")}"
-                + $"{(actor == null ? (remote != null ? " hero-travel" : operatorCard != null ? " hero-card" : " hero-generate") : "")}]";
+            string need = $"need[{(capacityTier != null ? "upgrade " : "")}{(facility != null ? "facility" : "")}"
+                + $"{(actor == null ? (remote != null ? " hero-travel" : operatorCard != null ? " hero-card" : deckOperator != null ? " hero-deck" : " hero-generate") : "")}]";
             return $"{need} outputs={outputs} admitted={admitted}"
                 + (admitted == 0
                     ? (bestRejected != null
-                        ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##})"
-                        : windowClosed.Count > 0
-                            ? $" reason=window_closed({ResourceList(windowClosed)})"
+                        ? $" reason=ev_or_task_value_not_positive(best '{bestRejected}' task={bestValue:0.##} ev={bestEv:0.##} prepShare={preparationShare:0.##})"
+                        : unaffordable.Count > 0
+                            ? $" reason=chain_unaffordable({ResourceList(unaffordable)})"
                             : " reason=no_valuable_output")
                     : "");
         }

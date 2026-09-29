@@ -148,6 +148,39 @@ namespace Game.EditorTests
             Assert.That(need.Total, Is.Zero);
         }
 
+        private static DevelopmentReadiness IdleStock(float h, float e, float m, float t)
+        {
+            DevelopmentReadiness rd = ReadyOffering();
+            rd.InvestmentSurplusByType.Add(Game.Economy.ResourceType.Human, h);
+            rd.InvestmentSurplusByType.Add(Game.Economy.ResourceType.Energy, e);
+            rd.InvestmentSurplusByType.Add(Game.Economy.ResourceType.Materials, m);
+            rd.InvestmentSurplusByType.Add(Game.Economy.ResourceType.Tech, t);
+            return rd;
+        }
+
+        [Test]
+        public void IdleStockRaisesForceNeedEvenWhenTheThreatIsCovered()
+        {
+            WorldSnapshot spent = Snapshot(IdleStock(0f, 0f, 0f, 0f));
+            WorldSnapshot banked = Snapshot(IdleStock(1f, 0f, 1f, 1f));
+            spent.Self.TotalPower = banked.Self.TotalPower = 100f;
+
+            Assert.That(ForceNeedModel.JustifiedForceNeed(spent).Total, Is.Zero);
+            ForceNeed need = ForceNeedModel.JustifiedForceNeed(banked);
+            Assert.That(need.Surplus, Is.GreaterThan(0f),
+                "three resources piling up are a need even with one exhausted resource");
+            Assert.That(need.Total, Is.EqualTo(need.Surplus).Within(0.0001f));
+            Assert.That(need.Total, Is.LessThanOrEqualTo(AiConfigV2.forceNeedSurplusWeight + 0.0001f),
+                "an idle bank alone never outranks a fight we cannot take");
+        }
+
+        [Test]
+        public void IdleStockWithoutMilitaryWitnessIsStillNoNeed()
+        {
+            WorldSnapshot snapshot = Snapshot(IdleStock(1f, 1f, 1f, 1f), witnessedNeed: false);
+            Assert.That(ForceNeedModel.JustifiedForceNeed(snapshot).Total, Is.Zero);
+        }
+
         [Test]
         public void CombatOpportunityViability_IsOneRule()
         {

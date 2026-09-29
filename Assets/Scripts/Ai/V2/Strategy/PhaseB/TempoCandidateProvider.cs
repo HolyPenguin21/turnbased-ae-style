@@ -209,7 +209,7 @@ namespace Game.Ai.V2
             list.Add(new TempoCandidate
             {
                 Kind = TempoKind.Hold, ActionKey = "hold",
-                Utility = HoldEvaluator.HoldResourcesUtility(root, snap),
+                Utility = HoldEvaluator.HoldResourcesUtility(root, snap, null, player, ctx),
                 Label = "keep unspent resources for future turns",
             });
             list.Add(new TempoCandidate
