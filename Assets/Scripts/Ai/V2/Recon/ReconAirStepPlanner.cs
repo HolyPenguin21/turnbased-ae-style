@@ -17,7 +17,7 @@ namespace Game.Ai.V2
     //
     // Safety is deliberately delegated to AiAviationSupport: a voluntary step survives only when
     // the shared aviation layer can prove a complete step -> owned-airfield sortie with capacity
-    // and no KNOWN-AA exposure. Multi-turn sorties are admitted only through the existing fuel
+    // and a complete recovery route. Multi-turn sorties are admitted only through the existing fuel
     // simulation, so helicopters may use their real TurnsWithoutRefuel margin while planes keep
     // the same-turn boomerang invariant. The storage overload uses the exact matching
     // TryPlan*FromStorage primitives before AviationActions has created an ArmyData.
