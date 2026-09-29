@@ -15,14 +15,11 @@ namespace Game.Ai.V2
     //  AI-RECON-02 — AIR OBSERVATION CAPACITY  (the single shared air-recon capacity authority)
     // ===========================================================================================
     //  ONE place decides how much air OBSERVATION capacity actually exists this turn, using the
-    //  exact primitives ReconAirExecutor launches against so the capacity model and the executor
-    //  cannot drift:
-    //    · MaxAirReconActorsPerTurn — the per-turn air-recon actor slot cap (was
-    //      ReconAirExecutor.MaxAirActorsPerTurn, a private const the snapshot could not see);
-    //    · SelectReconLaunchSubset + AiConfig.aviationLaunchMinReadyAircraft — a storage sortie is
-    //      one minimum aircraft subset, never the whole hangar;
-    //    · AiAirSortiePlanner.CanAffordLaunch semantics — AP + reservation-net Energy;
-    //    · a ready standalone wing is on an owned airfield with NO AiTask and MP left.
+    //  exact primitives ReconAirExecutor uses so the capacity model and executor cannot drift:
+    //    · MaxAirReconActorsPerTurn — the per-turn air-recon actor slot cap;
+    //    · only already-formed AirExisting wings are candidates;
+    //    · activation AP/Energy come from that concrete wing;
+    //    · a ready standalone wing is on an owned airfield with no active sortie and MP left.
     //
     //  EvaluateDetailed() enumerates the concrete air slots (airborne wings, then ready standalone
     //  wings only) plus a loose WorldAnalysis-only fallback count from a
