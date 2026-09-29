@@ -145,15 +145,50 @@ namespace Game.Ai.V2
                     unwinnable++;
             }
             float offensive = known == 0 ? 0f : unwinnable / (float)known;
+            CheapTerms(snap, out float enemy, out float defensive, out float surplus);
+            return new ForceNeed(offensive, enemy, defensive, true, surplus);
+        }
 
+        // Everything JustifiedForceNeed depends on, without running the Monte Carlo behind its
+        // Offensive term: that term is stood in for by its exact inputs
+        // (CombatOpportunityAnalyzer.ViabilityInputsFingerprint). Equal key => equal ForceNeed.
+        // For callers that only ask "did the need change" (the Development admission fingerprint).
+        internal static string ChangeKey(WorldSnapshot snap)
+        {
+            if (snap?.Self == null)
+                return "none";
+            if (!HasMilitaryWitness(snap))
+                return "unwitnessed";
+            CheapTerms(snap, out float enemy, out float defensive, out float surplus);
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            return $"enemy={enemy.ToString("R", inv)}|def={defensive.ToString("R", inv)}"
+                + $"|surplus={surplus.ToString("R", inv)}"
+                + $"|offensive={Fnv64(CombatOpportunityAnalyzer.ViabilityInputsFingerprint(snap)):x16}";
+        }
+
+        // 64-bit FNV-1a: keeps the (roster-long) viability inputs out of the admission log line.
+        private static ulong Fnv64(string text)
+        {
+            ulong hash = 14695981039346656037UL;
+            foreach (char c in text)
+            {
+                hash ^= c;
+                hash *= 1099511628211UL;
+            }
+            return hash;
+        }
+
+        // The need terms that are cheap to compute (no Monte Carlo).
+        private static void CheapTerms(WorldSnapshot snap, out float enemy, out float defensive,
+            out float surplus)
+        {
             bool enemyIntel = (snap.Known?.EnemyKnownStrength ?? 0f) >= 1f;
-            float enemy = enemyIntel ? 1f - RelativeEdge(snap) : 0f;
+            enemy = enemyIntel ? 1f - RelativeEdge(snap) : 0f;
 
             float threatReserve = DefensiveReserveForThreats(snap.Threat?.Threats);
-            float defensive = threatReserve <= AiConfigV2.allocatorSliceEpsilon ? 0f
+            defensive = threatReserve <= AiConfigV2.allocatorSliceEpsilon ? 0f
                 : Mathf.Clamp01((threatReserve - Mathf.Max(0f, snap.Self.TotalPower)) / threatReserve);
-
-            return new ForceNeed(offensive, enemy, defensive, true, SurplusNeed(snap));
+            surplus = SurplusNeed(snap);
         }
 
         // Dynamic force need from resources the deck leaves idle. Mean (not min) headroom: one

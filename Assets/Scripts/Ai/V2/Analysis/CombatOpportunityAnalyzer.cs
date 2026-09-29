@@ -82,36 +82,13 @@ namespace Game.Ai.V2
             if (snap?.Self == null || snap.Known == null)
                 return report;
 
-            // Everything that could form the assemblable roster: bodies on the map and in hand.
-            var assemblableBodies = new List<WorthIt.DefenderProfile>();
-            foreach (ArmySnapshot a in snap.Self.Armies)
-            {
-                if (a == null || a.IsPrison) continue;
-                if (a.Members != null) assemblableBodies.AddRange(a.Members);
-            }
-            foreach (CardData card in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
-            {
-                CardDefinition d = card?.Definition;
-                if (d != null && d.cardType == CardType.Unit)
-                    assemblableBodies.Add(AiPower.ToDefenderProfile(d));
-            }
-
-            // Its commander options: heroes on the map and in hand. Which one leads is decided per
-            // fight by HeroRoleEvaluator (BestAssembly).
-            List<HeroRoleEvaluator.HeroProfile> commanders = (snap.Self.CommandHeroes
-                    ?? (IReadOnlyList<OwnCommandHero>)System.Array.Empty<OwnCommandHero>())
-                .Where(h => h.Source != ForceSource.Deck)
-                .Select(h => h.Profile)
-                .ToList();
+            List<WorthIt.DefenderProfile> assemblableBodies = AssemblableBodies(snap);
+            List<HeroRoleEvaluator.HeroProfile> commanders = Commanders(snap);
             report.HeroAvailable = commanders.Count > 0;
             report.AssemblableCap = commanders.Count > 0
                 ? commanders.Max(h => h.CommandRating) : NoHeroStackCapacity;
 
-            ArmySnapshot bestReadyArmy = snap.Self.Armies
-                .Where(a => a.IsStructuralRaidActor && a.Members != null && a.Members.Count > 0)
-                .OrderByDescending(a => a.EffectiveArmyPower)
-                .ThenBy(a => a.ArmyId)
-                .FirstOrDefault();
+            ArmySnapshot bestReadyArmy = BestReadyArmy(snap);
             List<WorthIt.DefenderProfile> readyRoster = bestReadyArmy?.Members?.ToList()
                 ?? new List<WorthIt.DefenderProfile>();
             // The ready army fights under its own commander.
@@ -245,6 +222,122 @@ namespace Game.Ai.V2
                     .ThenByDescending(o => o.AssemblableWinChance).First()
                 : CombatOpportunity.None;
             return report;
+        }
+
+        // Everything that could form the assemblable roster: bodies on the map and in hand.
+        private static List<WorthIt.DefenderProfile> AssemblableBodies(WorldSnapshot snap)
+        {
+            var bodies = new List<WorthIt.DefenderProfile>();
+            foreach (ArmySnapshot a in snap.Self.Armies)
+            {
+                if (a == null || a.IsPrison) continue;
+                if (a.Members != null) bodies.AddRange(a.Members);
+            }
+            foreach (CardData card in snap.Self.Hand ?? (IReadOnlyList<CardData>)System.Array.Empty<CardData>())
+            {
+                CardDefinition d = card?.Definition;
+                if (d != null && d.cardType == CardType.Unit)
+                    bodies.Add(AiPower.ToDefenderProfile(d));
+            }
+            return bodies;
+        }
+
+        // Its commander options: heroes on the map and in hand. Which one leads is decided per
+        // fight by HeroRoleEvaluator (BestAssembly).
+        private static List<HeroRoleEvaluator.HeroProfile> Commanders(WorldSnapshot snap) =>
+            (snap.Self.CommandHeroes ?? (IReadOnlyList<OwnCommandHero>)System.Array.Empty<OwnCommandHero>())
+                .Where(h => h.Source != ForceSource.Deck)
+                .Select(h => h.Profile)
+                .ToList();
+
+        private static ArmySnapshot BestReadyArmy(WorldSnapshot snap) =>
+            snap.Self.Armies
+                .Where(a => a.IsStructuralRaidActor && a.Members != null && a.Members.Count > 0)
+                .OrderByDescending(a => a.EffectiveArmyPower)
+                .ThenBy(a => a.ArmyId)
+                .FirstOrDefault();
+
+        // Every input CombatOpportunity.IsViable depends on, exactly and in order: the ready
+        // roster and its commander, the assemblable bodies, the commander options, and per target
+        // (enemy sightings, neutral sightings, event guards - Analyze's order) its defenders,
+        // commander and hex defence. Equal fingerprint => every IsViable verdict is equal, with no
+        // Monte Carlo run. Distance, confidence and value are left out on purpose: IsViable never
+        // reads them. If Analyze's viability ever reads a new input, add it here.
+        internal static string ViabilityInputsFingerprint(WorldSnapshot snap)
+        {
+            if (snap?.Self == null || snap.Known == null)
+                return "none";
+            var sb = new System.Text.StringBuilder(512);
+            ArmySnapshot ready = BestReadyArmy(snap);
+            sb.Append("ready=");
+            AppendCommander(sb, ready?.Commander ?? default);
+            AppendProfiles(sb, ready?.Members);
+            sb.Append("|bodies=");
+            AppendProfiles(sb, AssemblableBodies(snap));
+            sb.Append("|cmd=");
+            foreach (HeroRoleEvaluator.HeroProfile h in Commanders(snap))
+            {
+                sb.Append(h.CommandRating).Append(',').Append(h.RolePreference).Append(',')
+                    .Append(Exact(h.Leadership)).Append(',').Append(h.StableKey).Append(',');
+                AppendCommander(sb, h.Commander);
+                sb.Append(';');
+            }
+            AppendSightings(sb, snap, snap.Known.EnemySightings);
+            AppendSightings(sb, snap, snap.Known.NeutralSightings);
+            if (snap.Known.EventGuards != null)
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
+                {
+                    sb.Append("|g=").Append(g.Hex.Q).Append(',').Append(g.Hex.R).Append(',')
+                        .Append(Exact(AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, g.Hex, defendingOwner: null)));
+                    AppendCommander(sb, g.Commander);
+                    AppendProfiles(sb, g.Defenders);
+                }
+            return sb.ToString();
+        }
+
+        private static void AppendSightings(System.Text.StringBuilder sb, WorldSnapshot snap,
+            IReadOnlyList<AiMapMemory.KnownEnemySighting> sightings)
+        {
+            if (sightings == null)
+                return;
+            foreach (AiMapMemory.KnownEnemySighting t in sightings)
+            {
+                sb.Append("|t=").Append(t.Hex.Q).Append(',').Append(t.Hex.R).Append(',')
+                    .Append(Exact(AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, t.Hex, t.Owner)));
+                AppendCommander(sb, t.Commander);
+                AppendProfiles(sb, t.Defenders);
+            }
+        }
+
+        private static string Exact(float value) =>
+            value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
+
+        private static void AppendCommander(System.Text.StringBuilder sb, WorthIt.SideCommander c) =>
+            sb.Append('<').Append(c.Present ? 1 : 0).Append(',').Append(c.Initiative).Append(',')
+                .Append(c.Fate).Append('>');
+
+        // Order-preserving and full precision: the simulation (and its seed) depends on both.
+        private static void AppendProfiles(System.Text.StringBuilder sb,
+            IReadOnlyCollection<WorthIt.DefenderProfile> profiles)
+        {
+            sb.Append('[');
+            if (profiles != null)
+                foreach (WorthIt.DefenderProfile p in profiles)
+                {
+                    sb.Append(Exact(p.Attack)).Append('/').Append(Exact(p.Defense)).Append('/')
+                        .Append(Exact(p.HitPoints)).Append('/').Append(Exact(p.MaxHitPoints)).Append('/')
+                        .Append(p.Initiative).Append('/').Append(p.HasCeramicArmor ? 1 : 0)
+                        .Append(p.IsGroundCombatant ? 1 : 0).Append('/');
+                    if (p.TypeTags != null)
+                        foreach (UnitTypeTag tag in p.TypeTags)
+                            sb.Append((int)tag).Append(',');
+                    sb.Append('/');
+                    if (p.Abilities != null)
+                        foreach (string ability in p.Abilities)
+                            sb.Append(ability).Append(',');
+                    sb.Append(';');
+                }
+            sb.Append(']');
         }
 
         // The assemblable roster under the commander HeroRoleEvaluator picks for THIS fight: the

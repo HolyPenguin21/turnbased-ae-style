@@ -44,7 +44,9 @@ namespace Game.Ai.V2
             + $"|res={resources}"
             + $"|price={DevelopmentPriceInputs(snapshot, player, root, ctx)}"
             + $"|hand={handVersion}"
-            + $"|need={(snapshot != null ? ForceNeedModel.JustifiedForceNeed(snapshot).Total : 0f).ToString("0.###", CultureInfo.InvariantCulture)}"
+            // The need's exact inputs, not its value: computing the value runs the Monte Carlo
+            // behind every known fight, which this "did anything change" key must not pay for.
+            + $"|need={(snapshot != null ? ForceNeedModel.ChangeKey(snapshot) : "none")}"
             + $"|{DevelopmentAdmissionFacts(snapshot, activeIntents)}";
 
         // Per resource: spendable (stock net of other owners' holds), income, and the current
