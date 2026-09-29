@@ -1,4 +1,7 @@
 using System.Collections.Generic;
+using System.Linq;
+using Game.Aviation;
+using Game.Map;
 using Game.Players;
 
 namespace Game.Ai.V2
@@ -17,6 +20,20 @@ namespace Game.Ai.V2
     // ===========================================================================================
     internal static class AviationObligations
     {
+        // Initiative purchases happen after round income but before this player's first aviation
+        // obligation can execute. Protect exactly the NEXT activation Energy of every air army that
+        // ended the previous turn away from an owned airfield. The reservation is recomputed every
+        // round from live armies; nothing is stored cross-turn.
+        internal static int NextActivationEnergyCommitment(PlayerSetupData player)
+        {
+            if (player == null)
+                return 0;
+            return ArmyRegistry.AllForOwner(player)
+                .Where(a => AviationRules.IsValidAirArmy(a)
+                    && !AviationRules.IsOwnedAirfieldAt(a.Hex, player))
+                .Sum(a => System.Math.Max(0, a.ActivationEnergyCost));
+        }
+
         internal static bool Pending(PlayerSetupData player, AiTurnContext ctx) =>
             player != null && ctx != null
             && (AviationRebasePlanner.FindMandatoryContinuations(player, ctx.TurnNumber).Count > 0
