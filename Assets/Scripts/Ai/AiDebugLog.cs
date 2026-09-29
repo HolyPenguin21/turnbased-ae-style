@@ -128,15 +128,6 @@ namespace Game.Ai
             WriteCore(message, callerFile, callerMember, callerLine);
         }
 
-        public static void WriteVerbose(AiVerboseArea area, string message,
-            [CallerFilePath] string callerFile = "",
-            [CallerMemberName] string callerMember = "",
-            [CallerLineNumber] int callerLine = 0)
-        {
-            if (!IsVerbose(area)) return;
-            WriteCore(message, callerFile, callerMember, callerLine);
-        }
-
         // Suppress an unchanged recomputation from the same call site, while still emitting the
         // line again when its actual decision/details change later in the same turn scope.
         public static void WriteRepeatSuppressed(string message,
