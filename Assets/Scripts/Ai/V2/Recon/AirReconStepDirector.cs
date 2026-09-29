@@ -355,12 +355,11 @@ namespace Game.Ai.V2
                 || !AviationActions.CanStrikeAtCurrentHex(air))
                 return new StrikeAssessment(false, 0f, 0f, "cannot_strike_here");
 
-            if (!AiAirSortiePlanner.TryReplan(air, ctx.Map, player).HasValue
-                && !AiAirSortiePlanner.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue)
+            if (!AiAirSortiePlanner.CanStrikeAndRecover(air, ctx.Map, player))
             {
                 AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
-                    + "decision=SKIP reason=no_safe_return_before_strike");
-                return new StrikeAssessment(false, 0f, 0f, "no_safe_return_before_strike");
+                    + "decision=SKIP reason=no_recoverable_strike");
+                return new StrikeAssessment(false, 0f, 0f, "no_recoverable_strike");
             }
 
             // Once an airborne recon wing physically meets an enemy, the strike is free in MP.
