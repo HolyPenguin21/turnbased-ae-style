@@ -243,12 +243,12 @@ namespace Game.Combat
 
         // Tank-anchored shape: melee sorted tankiest-first, the top `frontMeleeCount` of them go
         // into `frontOrder` (so the tankiest lands on whichever column that order visits first),
-        // hero moved to stand directly behind that same column instead of the fixed
-        // BattleGrid.HeroColumn. Whichever melee DON'T make the front cut fall back into the same
+        // primary Commander hero moved to stand directly behind that same column instead of the
+        // fixed BattleGrid.HeroColumn; any additional heroes fill the remaining Back-row columns. Whichever melee DON'T make the front cut fall back into the same
         // back-row pool as the ranged members (see below) — see ArrangeArmy's own comment for why
         // that's a legal formation the search now considers, not just a leftover-overflow
-        // accident. If there's no melee member to anchor on, the hero just falls back to
-        // BattleGrid.HeroColumn.
+        // accident. If there's no melee member to anchor on, the Commander falls back to
+        // BattleGrid.HeroColumn and additional heroes remain beside it in the Back row.
         //
         // The front/back split itself is Range <= 2, not <= 1 — per the user's own report, a
         // Range-2 unit placed in the BACK row can't reach anything on round 1 at all (front row
@@ -262,15 +262,21 @@ namespace Game.Combat
         private static void PlaceTankAnchoredSplit(BattleGrid grid, ArmyData army, int frontRow, int backRow,
             FormationPattern pattern, ArmyData enemyArmy, int frontMeleeCount)
         {
-            UnitData hero = null;
+            var heroes = new List<UnitData>();
             var melee = new List<UnitData>();
             var ranged = new List<UnitData>();
             foreach (UnitData member in army.Members)
             {
-                if (member.IsHero) { hero = member; continue; }
+                if (member.IsHero) { heroes.Add(member); continue; }
                 if (member.Range <= 2) melee.Add(member);
                 else ranged.Add(member);
             }
+            // Commander keeps the primary protected/anchored hero position. Additional heroes are
+            // still real tactical pieces, but do not replace Commander for army-wide Fate/Initiative.
+            UnitData commander = army.Commander;
+            if (commander != null && heroes.Remove(commander))
+                heroes.Insert(0, commander);
+
             melee.Sort((a, b) => TankScore(b).CompareTo(TankScore(a)));
 
             int meleeToFront = Mathf.Clamp(frontMeleeCount, 0, melee.Count);
@@ -278,7 +284,7 @@ namespace Game.Combat
             List<UnitData> heldBackMelee = melee.GetRange(meleeToFront, melee.Count - meleeToFront);
 
             List<int> frontOrder = ColumnFillOrder(pattern);
-            int heroColumn = frontMelee.Count > 0 ? frontOrder[0] : BattleGrid.HeroColumn;
+            int primaryHeroColumn = frontMelee.Count > 0 ? frontOrder[0] : BattleGrid.HeroColumn;
 
             int frontIndex = 0;
             var overflow = new List<UnitData>();
@@ -288,12 +294,23 @@ namespace Game.Combat
                 else overflow.Add(member);
             }
 
-            if (hero != null)
-                SetDeploymentUnit(grid, hero, backRow, heroColumn, frontRow, backRow);
+            var heroColumns = new List<int>();
+            if (heroes.Count > 0)
+            {
+                heroColumns.Add(primaryHeroColumn);
+                foreach (int col in frontOrder)
+                    if (col != primaryHeroColumn)
+                        heroColumns.Add(col);
+            }
+
+            int placedHeroes = Mathf.Min(heroes.Count, heroColumns.Count);
+            for (int i = 0; i < placedHeroes; i++)
+                SetDeploymentUnit(grid, heroes[i], backRow, heroColumns[i], frontRow, backRow);
 
             var backColumns = new List<int>();
             for (int c = 0; c < BattleGrid.Columns; c++)
-                if (c != heroColumn) backColumns.Add(c);
+                if (!heroColumns.Contains(c) || heroColumns.IndexOf(c) >= placedHeroes)
+                    backColumns.Add(c);
 
             // A roster can field more ranged-plus-held-back members than the back row has room
             // for (a high-CommandRating hero fielding a mostly-ranged army — see
@@ -332,7 +349,8 @@ namespace Game.Combat
         }
 
         // Plain Range-forced shape with no tank-anchoring at all: melee front row left-to-right,
-        // ranged back row left-to-right, hero at the fixed BattleGrid.HeroColumn. Two jobs: (1)
+        // ranged back row left-to-right after all heroes, with Commander first at the fixed
+        // BattleGrid.HeroColumn. Two jobs: (1)
         // the safe zero-information fallback in ArrangeArmy when enemyArmy is null, and (2) the
         // hypothetical enemy layout ArrangeArmy simulates our own candidates against — which ROW
         // an enemy unit ends up in is forced by its own Range stat, not a guess about their
@@ -345,21 +363,28 @@ namespace Game.Combat
             if (army == null)
                 return;
 
-            UnitData hero = null;
+            var heroes = new List<UnitData>();
             var melee = new List<UnitData>();
             var ranged = new List<UnitData>();
             foreach (UnitData member in army.Members)
             {
-                if (member.IsHero) { hero = member; continue; }
+                if (member.IsHero) { heroes.Add(member); continue; }
                 if (member.Range <= 2) melee.Add(member);
                 else ranged.Add(member);
             }
+            UnitData commander = army.Commander;
+            if (commander != null && heroes.Remove(commander))
+                heroes.Insert(0, commander);
 
-            if (hero != null)
-                SetDeploymentUnit(grid, hero, backRow, BattleGrid.HeroColumn, frontRow, backRow);
+            int backCol = BattleGrid.HeroColumn;
+            foreach (UnitData hero in heroes)
+            {
+                if (backCol >= BattleGrid.Columns)
+                    break;
+                SetDeploymentUnit(grid, hero, backRow, backCol++, frontRow, backRow);
+            }
 
             int frontCol = 0;
-            int backCol = BattleGrid.HeroColumn + 1;
             var overflow = new List<UnitData>();
 
             foreach (UnitData member in melee)
