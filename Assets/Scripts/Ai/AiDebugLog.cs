@@ -191,10 +191,10 @@ namespace Game.Ai
         }
 
         // For a line that carries a per-pass correlation id (e.g. a demand's "[T4-P5-M-D39]"): the
-        // id changes every pass even when nothing else does, so WriteDeduped can never match it,
-        // and dropping the line would orphan every later line that references the id. Instead, a
-        // repeat of the same id-free content in the same scope prints one short line mapping the
-        // new id onto the id whose line already holds the full text.
+        // id changes every pass even when nothing else does, so ordinary dedup cannot match it.
+        // Compact mode emits the full content once per turn scope and suppresses identical
+        // recomputations. Correlation-verbose mode additionally prints a short alias mapping each
+        // fresh id to the first full line, preserving forensic grepability when explicitly needed.
         public static void WriteDedupedWithId(string id, string message,
             [CallerFilePath] string callerFile = "",
             [CallerMemberName] string callerMember = "",
