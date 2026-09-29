@@ -119,7 +119,7 @@ namespace Game.Map
         {
             if (mover.Owner != null && mover.Owner.IsHuman && eventChoicePopup != null)
             {
-                eventChoicePopup.Show(mover, entry.Definition,
+                eventChoicePopup.Show(mover, entry,
                     onExplore: () => ResolveEventExplore(mover, hex, entry),
                     // Marked right here, ahead of the caller's own onSkip (BeginCleanHexEvent's
                     // move-continuation vs. TriggerHexEventIfClear's no-op) — see
