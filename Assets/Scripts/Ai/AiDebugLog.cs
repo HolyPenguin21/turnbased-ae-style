@@ -44,6 +44,10 @@ namespace Game.Ai
         // default; flip on for a session where the live Console view is actually wanted.
         public static bool LogToUnityConsole = false;
 
+        // Compact is the default trace. Verbose keeps expensive/repetitive diagnostics available
+        // for focused investigations without paying their I/O/readability cost on every QA run.
+        public static bool Verbose = false;
+
         // BeforeSceneLoad fires exactly once per game run (Editor Play Mode entry, or a
         // standalone build's own launch), before anything else in the very first scene has had a
         // chance to log — guarantees the file exists and is fresh no matter which scene/object
@@ -98,6 +102,29 @@ namespace Game.Ai
             [CallerMemberName] string callerMember = "",
             [CallerLineNumber] int callerLine = 0)
             => WriteCore(message, callerFile, callerMember, callerLine);
+
+        public static void WriteVerbose(string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            if (!Verbose) return;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        // Suppress an unchanged recomputation from the same call site, while still emitting the
+        // line again when its actual decision/details change later in the same turn scope.
+        public static void WriteRepeatSuppressed(string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            string fullKey = $"{callerFile}:{callerLine}|repeat";
+            if (_dedupLastByKey.TryGetValue(fullKey, out string last) && last == message)
+                return;
+            _dedupLastByKey[fullKey] = message;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
 
         // dedupKey identifies WHICH recurring thing this line is about (e.g. a target id, an actor
         // id, an allocator pass name) — distinct keys at the same call site are tracked and printed
