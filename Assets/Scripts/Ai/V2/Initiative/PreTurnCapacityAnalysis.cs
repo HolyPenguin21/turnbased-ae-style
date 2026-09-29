@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Aviation;
 using Game.Cards;
 using Game.Economy;
 using Game.Map;
@@ -161,6 +162,24 @@ namespace Game.Ai.V2.Initiative
                         a.CommittedResourceFloor[i] = Mathf.Min(a.Available[i],
                             a.CommittedResourceFloor[i] + Mathf.Max(0, cost.Get(Types[i])));
                 }
+            }
+
+            // Cross-turn aviation obligation. The strategic reservation ledger is deliberately
+            // turn-scoped and cannot carry a row across initiative. An air army that ended the
+            // previous turn away from an owned airfield, however, MUST be able to activate before
+            // discretionary play on its next turn. Income has already been credited when this
+            // analysis runs, so protecting one activation's Energy in the initiative floor is the
+            // correct physical bank: bonus-die purchases cannot consume it, while no second ledger
+            // or speculative mission reservation is introduced.
+            int energyIndex = System.Array.IndexOf(Types, ResourceType.Energy);
+            if (energyIndex >= 0)
+            {
+                int airborneActivationEnergy = ArmyRegistry.AllForOwner(player)
+                    .Where(AviationRules.IsAirArmy)
+                    .Where(army => !AviationRules.IsOwnedAirfieldAt(army.Hex, player))
+                    .Sum(army => Mathf.Max(0, army.ActivationEnergyCost));
+                a.CommittedResourceFloor[energyIndex] = Mathf.Min(a.Available[energyIndex],
+                    a.CommittedResourceFloor[energyIndex] + airborneActivationEnergy);
             }
             return a;
         }
