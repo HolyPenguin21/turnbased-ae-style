@@ -698,6 +698,11 @@ namespace Game.Ai.V2
 
             if (d.Kind == AirReconStepDirector.StepKind.HoldReopen)
             {
+                // Re-open the physical flight BEFORE checking the stationary strike. A successful
+                // strike may put the sortie back into Hold (when endurance remains) or Return (last
+                // safe airborne end consumed). Doing this first preserves that post-strike decision
+                // instead of overwriting it with the generic resume phase afterwards.
+                sortie.Phase = d.ResumePhase;
                 control.CommandAttempted = true;
                 yield return ExecuteOpportunisticStrike(
                     player, ctx, air, sortie, result, perMissionResult);
@@ -710,8 +715,6 @@ namespace Game.Ai.V2
                     control.StopReason = ExecutionStopReason.MoverLost;
                     yield break;
                 }
-                if (sortie.Phase == ReconAirPhase.Hold)
-                    sortie.Phase = d.ResumePhase;
                 ReconAirSortieLifecycle.Apply(sortie, d);
                 ReconPatrolStateRegistry.MarkProgress(player, armyId, ctx.TurnNumber);
                 control.CanContinue = true;
@@ -797,11 +800,7 @@ namespace Game.Ai.V2
             if (perMissionResult != null) perMissionResult.StepsMoved++;
             ArmyData afterStep = Resolve(player, armyId);
             if (afterStep != null)
-            {
                 sortie.RecordStep(afterStep.Hex);
-                sortie.RecordOutboundMovement(Math.Max(1,
-                    movementBeforeStep - afterStep.CurrentMovement));
-            }
             ReconAirSortieLifecycle.Apply(sortie, d);
             sortie.ArrivalStrikeCheckPending = true;
             if (d.PivotToReturnAfterMove)
