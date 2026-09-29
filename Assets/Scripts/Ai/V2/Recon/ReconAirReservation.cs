@@ -19,7 +19,7 @@ namespace Game.Ai.V2
     //  What remains HERE is ONLY the STRUCTURAL feasibility primitive both the capability-sizing
     //  pass (ReconAssignmentPlanner.MeasureAirCapacity) and real per-mission Assignment
     //  (ReconAssignmentPlanner.AppendAirCandidates) need to agree on: "would the AIR-01 route scorer
-    //  produce ANY useful step for this slot right now" — a `Pick` / `PickFromStorage` whose score
+    //  produce ANY useful step for this slot right now" — a `Pick` whose score
     //  clears `MinimumUsefulScore`. NO AP, NO Energy, NO hand/deck/income judgement. The strategic
     //  "is this sortie worth paying for" question has exactly one owner —
     //  ProvisioningManager.AirSortieReservationAdmission -> AviationSortieReservationEvaluator.
@@ -35,7 +35,7 @@ namespace Game.Ai.V2
         public readonly float ActivationAp;
         public readonly int LaunchEnergy;   // this candidate's own real launch/activation Energy cost
         public readonly float RouteScore;   // AIR-01 route score — an ECONOMICS input, carried through
-        public readonly int ExcludeArmyId;  // the actor being evaluated (-1 for a not-yet-formed launch)
+        public readonly int ExcludeArmyId;  // the actor being evaluated (real existing actor)
         public readonly int RequiredTurns;
         public readonly int NextTurnEnergy; // one activation protected if this candidate ends airborne
         public readonly int NextTurnAp;     // fresh activation AP required on that next turn
@@ -73,18 +73,10 @@ namespace Game.Ai.V2
             List<string> diagnostics = null)
         {
             if (ctx?.Map == null)
-                return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId ?? -1); // bare harness
-
-            // Recon missions consume only already-formed aviation armies. A null ActorId is a
-            // storage/materialization request and is intentionally not a legal Recon executor.
-            if (!slot.ActorId.HasValue)
-            {
-                diagnostics?.Add("mission_side_air_launch_forbidden");
-                return AirStructuralFeasibility.No;
-            }
+                return new AirStructuralFeasibility(true, default, 0, 0f, slot.ActorId); // bare harness
 
             ArmyData wing = ArmyRegistry.AllForOwner(player)
-                .FirstOrDefault(a => a != null && a.Id == slot.ActorId.Value);
+                .FirstOrDefault(a => a != null && a.Id == slot.ActorId);
             if (wing == null)
                 return AirStructuralFeasibility.No;
 
