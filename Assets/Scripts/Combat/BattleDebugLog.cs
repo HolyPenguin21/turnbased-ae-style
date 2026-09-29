@@ -107,15 +107,6 @@ namespace Game.Combat
             [CallerLineNumber] int callerLine = 0)
             => WriteCore(message, callerFile, callerMember, callerLine);
 
-        public static void WriteVerbose(string message,
-            [CallerFilePath] string callerFile = "",
-            [CallerMemberName] string callerMember = "",
-            [CallerLineNumber] int callerLine = 0)
-        {
-            if (!Verbose) return;
-            WriteCore(message, callerFile, callerMember, callerLine);
-        }
-
         private static void WriteCore(string message, string callerFile, string callerMember, int callerLine)
         {
             string source = string.IsNullOrEmpty(callerFile) ? "?" : Path.GetFileNameWithoutExtension(callerFile);
