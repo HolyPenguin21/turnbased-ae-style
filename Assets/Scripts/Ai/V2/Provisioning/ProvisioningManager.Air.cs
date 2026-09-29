@@ -187,6 +187,7 @@ namespace Game.Ai.V2
                 Mathf.CeilToInt(Mathf.Max(0f, realEnergy)),
                 exec.RouteScore,
                 exec.NextTurnEnergy,
+                exec.NextTurnAp,
                 AirSpendableEnergyLeft(player, root, ctx, session),
                 Mathf.CeilToInt(Mathf.Max(0f, session.ApClaimed)));
             AiDebugLog.Write(decision.ToLog(label));
