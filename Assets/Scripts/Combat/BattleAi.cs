@@ -522,12 +522,12 @@ namespace Game.Combat
                 foreach (UnitData unit in ownUnits)
                 {
                     simulatedAttack[unit] = unit.Attack;
-                    simulatedDefense[unit] = unit.Defense;
+                    simulatedDefense[unit] = unit.IsHero ? Mathf.Max(0, unit.FateMax) : unit.Defense;
                 }
                 foreach (UnitData unit in enemyUnits)
                 {
                     simulatedAttack[unit] = unit.Attack;
-                    simulatedDefense[unit] = unit.Defense;
+                    simulatedDefense[unit] = unit.IsHero ? Mathf.Max(0, unit.FateMax) : unit.Defense;
                 }
 
                 var fateByArmy = new Dictionary<ArmyData, int>
@@ -637,7 +637,8 @@ namespace Game.Combat
                         int transientAttack = simulatedAttack != null
                             && simulatedAttack.TryGetValue(target, out int atk) ? atk : target.Attack;
                         int transientDefense = simulatedDefense != null
-                            && simulatedDefense.TryGetValue(target, out int def) ? def : target.Defense;
+                            && simulatedDefense.TryGetValue(target, out int def)
+                            ? def : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
                         BattleSimulationKernel.ApplyPrimaryOutcome(
                             exchange, actor.Abilities, target.Abilities,
                             ref targetHp, ref transientAttack, ref transientDefense,
@@ -688,7 +689,7 @@ namespace Game.Combat
             int attackPool = simulatedAttack != null && simulatedAttack.TryGetValue(actor, out int simAtk)
                 ? simAtk : actor.Attack;
             int defensePool = simulatedDefense != null && simulatedDefense.TryGetValue(target, out int simDef)
-                ? simDef : target.Defense;
+                ? simDef : (target.IsHero ? Mathf.Max(0, target.FateMax) : target.Defense);
             defensePool += BattleProtectionRules.GetTotalDefenseBonus(
                 grid, target, battleDefender, battleDefenderDefenseBonus);
 
@@ -799,7 +800,9 @@ namespace Game.Combat
                 return;
             foreach (UnitData member in army.Members)
             {
-                if (!member.IsGroundCombatant || member.HitPointsCurrent <= 0) // heroes never attack
+                // Heroes are passive tactical targets: present in the shadow grid/HP model and
+                // attackable, while BattleTurnOrder still excludes them from taking actions.
+                if (member.HitPointsCurrent <= 0)
                     continue;
                 if (!liveGrid.TryFindPosition(member, out int row, out int col))
                     continue;
@@ -819,7 +822,7 @@ namespace Game.Combat
             if (army == null)
                 return total;
             foreach (UnitData member in army.Members)
-                if (member.IsGroundCombatant)
+                if (member.HitPointsCurrent > 0)
                     total += member.HitPointsCurrent;
             return total;
         }
@@ -958,7 +961,7 @@ namespace Game.Combat
         {
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (!candidate.IsGroundCombatant || candidate.Owner == actor.Owner)
+                if (candidate.Owner == actor.Owner)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                     continue;
@@ -980,7 +983,7 @@ namespace Game.Combat
             int nearestDist = int.MaxValue;
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (!candidate.IsGroundCombatant || candidate.Owner == actor.Owner)
+                if (candidate.Owner == actor.Owner)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol))
                     continue;
