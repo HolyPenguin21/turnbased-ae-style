@@ -44,67 +44,41 @@ namespace Game.Ai.V2
             HexCoord focus = target.FocusHex;
             HexCoord executionHex = exec.ExecutionHex;
 
-            int moverArmyId;
+            if (exec.ExecutorKind != ScoutExecutorKind.AirExisting || exec.Army == null)
+                return ProvisioningResult.Fail(ProvisionFailure.NoMoverExists(
+                    "air missions may use only an already-formed aviation army"));
+
+            ArmyData wing = ResolveArmy(player, exec.Army.ArmyId);
+            if (wing == null || wing.Owner != player || !AviationRules.IsValidAirArmy(wing)
+                || wing.CurrentMovement <= 0)
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"assigned air actor #{exec.Army.ArmyId} is no longer a usable air wing"));
+
+            AirSortie liveSortie = AirSortieRegistry.ForArmy(player, wing);
+            bool ready = ReconAirCapacityPolicy.IsReadyStandaloneWing(player, wing);
+            bool continuing = ReconAirCapacityPolicy.IsAirborneReconWing(player, wing)
+                && liveSortie != null
+                && liveSortie.Kind == AirSortieKind.Recon;
+
+            if (continuing)
+            {
+                ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, wing);
+                if (projected == null)
+                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                        $"continuing air actor #{wing.Id} has no valid live Recon sortie state"));
+                if (projected.Phase == ReconAirPhase.Return || projected.Phase == ReconAirPhase.Hold)
+                    return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
+                        $"continuing air actor #{wing.Id} is Return/Hold-bound this turn (recovery, not fresh Recon progress)"));
+            }
+            else if (!ready)
+            {
+                return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
+                    $"assigned air actor #{wing.Id} is neither a ready standalone wing nor a valid continuing Recon sortie"));
+            }
+
+            int moverArmyId = wing.Id;
             HexCoord airfieldHex = default;
             List<UnitData> launchSubset = null;
-
-            if (exec.ExecutorKind == ScoutExecutorKind.AirExisting)
-            {
-                ArmyData wing = ResolveArmy(player, exec.Army.ArmyId);
-                if (wing == null || wing.Owner != player || !AviationRules.IsValidAirArmy(wing)
-                    || wing.CurrentMovement <= 0)
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"assigned air actor #{exec.Army.ArmyId} is no longer a usable air wing"));
-
-                // Round 8 (Problem 1) — ProvisionAir validates the SAME two air-actor states the pool
-                // ReconAssignmentPlanner.AssignFunded now offers (detail.AirborneWings first, then
-                // ready spares); the old code accepted only the first and rejected every continuing
-                // wing an incumbent ScoutIntent had just re-won a FRESH funded mission for, so the
-                // continuation architecture was wired end to end but never executable. The two states
-                // are EXPLICITLY MUTUALLY EXCLUSIVE — computed once from one live-sortie lookup, not
-                // an airfield check in one branch and a registry check in the other:
-                //   · ReadyAirExisting      = own airfield  + NO live sortie: about to start one.
-                //   · ContinuingAirExisting = airborne + a LIVE Recon sortie + a durable
-                //     ReconPatrolState + a non-null projected sortie state whose phase is not
-                //     Return/Hold. It is mid-sortie by definition, so the ready-idle-wing shape is not
-                //     demanded of it; it is rejected only when forced into recovery this turn (that
-                //     lifecycle is Mandatory Flight Recovery's — ReconAirExecutor flies it
-                //     unconditionally, outside funding — never strategic Recon progress). A null
-                //     projected state is NOT a silent pass: no valid live Recon sortie => reject.
-                AirSortie liveSortie = AirSortieRegistry.ForArmy(player, wing);
-                bool ready = ReconAirCapacityPolicy.IsReadyStandaloneWing(player, wing);
-                bool continuing = ReconAirCapacityPolicy.IsAirborneReconWing(player, wing)
-                    && liveSortie != null
-                    && liveSortie.Kind == AirSortieKind.Recon;
-
-                if (continuing)
-                {
-                    ReconAirSortieState projected = ReconAirReservationPrepass.ProjectScoringSortie(player, ctx, wing);
-                    if (projected == null)
-                        return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                            $"continuing air actor #{wing.Id} has no valid live Recon sortie state"));
-                    if (projected.Phase == ReconAirPhase.Return || projected.Phase == ReconAirPhase.Hold)
-                        return ProvisioningResult.Fail(ProvisionFailure.NoExecutableStep(
-                            $"continuing air actor #{wing.Id} is Return/Hold-bound this turn (recovery, not fresh Recon progress)"));
-                }
-                else if (!ready)
-                {
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"assigned air actor #{wing.Id} is neither a ready standalone wing nor a valid continuing Recon sortie"));
-                }
-                moverArmyId = wing.Id;
-            }
-            else // AirLaunch
-            {
-                ArmyData airfield = AviationRules.FindAirfieldAt(exec.AirfieldHex, player);
-                if (airfield == null || exec.LaunchSubset == null || exec.LaunchSubset.Count == 0
-                    || !AiAirSortiePlanner.CanAffordLaunch(root, exec.LaunchSubset))
-                    return ProvisioningResult.Fail(ProvisionFailure.MoverContended(
-                        $"assigned launch airfield ({exec.AirfieldHex.Q},{exec.AirfieldHex.R}) no longer has an affordable subset"));
-                moverArmyId = exec.ActorKey;
-                airfieldHex = exec.AirfieldHex;
-                launchSubset = new List<UnitData>(exec.LaunchSubset);
-            }
 
             // The real, actor-specific cost Assignment already resolved for THIS
             // exact candidate (see AppendAirCandidates: a live Pick/PickFromStorage against the
