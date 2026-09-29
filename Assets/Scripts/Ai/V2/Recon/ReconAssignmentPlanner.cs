@@ -362,25 +362,22 @@ namespace Game.Ai.V2
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
             foreach (AirObservationSlot slot in airPool)
             {
-                if (!slot.ActorId.HasValue)
-                    continue; // missions never materialize aviation from storage
-
                 void Reject(string why) => AiDebugLog.WriteDeduped(
                     $"air-cand|{slot.ActorId}|{target.FocusHex}",
                     $"[AI][V2][Recon][Assignment][AirExisting] actor=#{slot.ActorId} "
                     + $"focus=({target.FocusHex.Q},{target.FocusHex.R}) decision=NO_CANDIDATE reason={why}");
-                if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId.Value))
+                if (excludeArmyIds != null && excludeArmyIds.Contains(slot.ActorId))
                 {
                     Reject("actor_excluded(claimed_elsewhere)");
                     continue;
                 }
-                ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value);
+                ArmySnapshot mover = snap.Self.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId);
                 if (mover == null)
                 {
                     Reject("actor_not_in_snapshot");
                     continue;
                 }
-                ArmyData live = ResolveArmy(player, slot.ActorId.Value);
+                ArmyData live = ResolveArmy(player, slot.ActorId);
                 if (live == null)
                 {
                     Reject("actor_not_live");
@@ -1099,13 +1096,12 @@ namespace Game.Ai.V2
                         consumedObjectiveKeys, provisionalWedges, out _, stuckDiag))
                 {
                     airborneWitnessed++;
-                    if (wing.ActorId.HasValue)
-                        reservedActorIds.Add(wing.ActorId.Value);
+                    reservedActorIds.Add(wing.ActorId);
                 }
                 else
                 {
                     airborneStuck++;   // recovery protected / flyable elsewhere, but not observation capacity
-                    ArmyData stuckLive = wing.ActorId.HasValue ? ResolveArmy(player, wing.ActorId.Value) : null;
+                    ArmyData stuckLive = ResolveArmy(player, wing.ActorId);
                     AiDebugLog.WriteDeduped($"air-stuck|{wing.ActorId}",
                         $"[AI][V2][ReconAirCap][Stuck] actor=#{wing.ActorId} "
                         + $"at ({stuckLive?.Hex.Q},{stuckLive?.Hex.R}) mp={stuckLive?.CurrentMovement} "
@@ -1126,17 +1122,14 @@ namespace Game.Ai.V2
                         consumedObjectiveKeys, provisionalWedges, out HexCoord chosenHex, rejectDiag))
                 {
                     launchRejected++;
-                    string who = slot.ActorId.HasValue
-                        ? $"actor=#{slot.ActorId}"
-                        : $"hangar=({slot.AirfieldHex.Q},{slot.AirfieldHex.R})";
+                    string who = $"actor=#{slot.ActorId}";
                     AiDebugLog.WriteDeduped($"air-launch-rejected|{who}",
                         $"[AI][V2][ReconAirCap][LaunchRejected] {who} reasons: {string.Join(" ; ", rejectDiag)}");
                     continue;
                 }
                 spareLaunchWitnessed++;
                 slotsUsed++;
-                if (slot.ActorId.HasValue)
-                    reservedActorIds.Add(slot.ActorId.Value);
+                reservedActorIds.Add(slot.ActorId);
                 if (ctx?.Map != null)
                     provisionalWedges.Add(ReconDirectionModel.Sector(citadelHex, chosenHex));
             }
@@ -1157,9 +1150,8 @@ namespace Game.Ai.V2
         // primitives AppendAirCandidates binds a real funded mission with:
         //   · Refresh objective -> anchor = its FocusHex.
         //   · Surveil objective -> anchor = best reachable vantage (needs a live wing position/vision,
-        //     so a not-yet-launched hangar subset is Refresh-only, mirroring AppendAirCandidates'
-        //     round-4 scope note).
-        //   · ReconAirStepPlanner.Pick / PickFromStorage with missionFocusHex = anchor, score must
+        //     so a already-formed wing is evaluated at its live position.
+        //   · ReconAirStepPlanner.Pick with missionFocusHex = anchor, score must
         //     clear MinimumUsefulScore, and the resulting step must MakesGenuineProgress toward the
         //     anchor (strictly closer, or the anchor already falls inside the resulting vision).
         // Objectives already witnessed by an earlier actor this call are struck off (one actor <=
@@ -1187,38 +1179,18 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            ArmyData live = slot.ActorId.HasValue ? ResolveArmy(player, slot.ActorId.Value) : null;
-            ArmySnapshot mover = slot.ActorId.HasValue
-                ? snap?.Self?.Armies?.FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId.Value)
-                : null;
-            if (slot.ActorId.HasValue && (live == null || mover == null))
+            ArmyData live = ResolveArmy(player, slot.ActorId);
+            ArmySnapshot mover = snap?.Self?.Armies?
+                .FirstOrDefault(a => a != null && a.ArmyId == slot.ActorId);
+            if (live == null || mover == null)
             {
                 diagnostics?.Add(live == null ? "actor_not_live" : "actor_not_in_snapshot");
                 return false;
             }
 
-            List<UnitData> subset = null;
-            if (!slot.ActorId.HasValue)
-            {
-                ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
-                if (airfield == null)
-                {
-                    diagnostics?.Add("no_airfield");
-                    return false;
-                }
-                subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                if (subset.Count == 0)
-                {
-                    diagnostics?.Add("no_launch_subset");
-                    return false;
-                }
-            }
-
             int baseVision = ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0;
-            int vision = live != null
-                ? baseVision + AbilityParams.GetBestRecceRadius(live)
-                : baseVision + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-            HexCoord from = live != null ? live.Hex : slot.AirfieldHex;
+            int vision = baseVision + AbilityParams.GetBestRecceRadius(live);
+            HexCoord from = live.Hex;
 
             foreach (ReconObjective o in obsRunnable)
             {
