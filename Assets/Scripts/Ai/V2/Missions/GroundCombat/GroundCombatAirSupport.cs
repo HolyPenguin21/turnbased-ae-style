@@ -271,12 +271,14 @@ namespace Game.Ai.V2
             IReadOnlyList<WorthIt.DefendingArmy> opposition, float knownDefense, float knownAttack,
             AirStrikePolicy policy, Func<IReadOnlyList<WorthIt.DefendingArmy>, float> winAgainst,
             string lane, float eps, out HexCoord landing, out float ap, out float energy,
-            out ProvisionFailure failure)
+            out float nextTurnEnergy, out float nextTurnAp, out ProvisionFailure failure)
         {
             ArmyData wing = w.Wing;
             failure = default;
             ap = 0f;
             energy = 0f;
+            nextTurnEnergy = 0f;
+            nextTurnAp = 0f;
             int requiredTurns = 1;
             if (w.Continuing)
             {
@@ -345,15 +347,20 @@ namespace Game.Ai.V2
                 return false;
             }
 
-            if (requiredTurns > 1
-                && !AviationContinuationBudget.CanGuaranteeNextActivation(
-                    player, ctx.Map, energyLeft - energy,
-                    Mathf.Max(0, wing.ActivationEnergyCost),
-                    Mathf.Max(0, wing.ActivationApCost), out string continuationBlock))
+            if (requiredTurns > 1)
             {
-                failure = ProvisionFailure.NoExecutableStep(
-                    $"{lane} support wing #{wing.Id} cannot guarantee next-turn activation ({continuationBlock})");
-                return false;
+                nextTurnEnergy = Mathf.Max(0, wing.ActivationEnergyCost);
+                nextTurnAp = Mathf.Max(0, wing.ActivationApCost);
+                if (!AviationContinuationBudget.CanGuaranteeNextActivation(
+                        player, ctx.Map, energyLeft - energy,
+                        session.NextTurnAirEnergyClaimed + nextTurnEnergy,
+                        session.NextTurnAirApClaimed + nextTurnAp,
+                        out string continuationBlock))
+                {
+                    failure = ProvisionFailure.NoExecutableStep(
+                        $"{lane} support wing #{wing.Id} cannot guarantee next-turn activation ({continuationBlock})");
+                    return false;
+                }
             }
             return true;
         }
