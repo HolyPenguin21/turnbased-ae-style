@@ -120,7 +120,7 @@ namespace Game.Ai.V2
             // the mission-specific route score Assignment already resolved (ScoutExecutionCandidate),
             // never a fresh air-route re-probe. Recomputed every turn: an idle aircraft never yields
             // a standing reservation. Tactical layers below MUST NOT re-run this economics — they are
-            // limited to live hard/safety gates (CanAffordLaunch / CanIssueMoveNow / AA / safe return).
+            // limited to live hard/safety gates (CanAffordLaunch / CanIssueMoveNow / endurance / safe return).
             ProvisionFailure? sortieDeclined = AirSortieReservationAdmission(
                 player, root, ctx, session, exec, moverArmyId, realAp, realEnergy);
             if (sortieDeclined.HasValue)
