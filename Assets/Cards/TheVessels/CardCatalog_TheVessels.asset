@@ -11,7 +11,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 6b8ee3a273e056e4ea1f2a042382c3fa, type: 3}
   m_Name: CardCatalog_TheVessels
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   faction: 5
   displayName: The Vessels
   logo: {fileID: 21300000, guid: 461ffe05ef1546b89f48571470da4004, type: 3}
@@ -19,8 +19,8 @@ MonoBehaviour:
   - id: 0
     authoredKey: vessels.00.vessel-citadel
     displayName: Vessel Citadel
-    art: {fileID: 21300000, guid: 85e9656aac644d5bbd7570b4d6f23d2f, type: 3}
-    detailArt: {fileID: 21300000, guid: 85e9656aac644d5bbd7570b4d6f23d2f, type: 3}
+    art: {fileID: 21300000, guid: 0e32f17d83271e24799145848b953a8f, type: 3}
+    detailArt: {fileID: 21300000, guid: da0d54dcbe205ce489ece2c9e8a23ff2, type: 3}
     faction: 5
     cardType: 3
     apCost: 4
@@ -29,7 +29,7 @@ MonoBehaviour:
       energy: 6
       materials: 6
       tech: 6
-    requiredBuildingAbility: Barracks
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 2
@@ -38,14 +38,14 @@ MonoBehaviour:
     defenseRating: 2
     resistanceRating: 4
     range: 0
-    hitPoints: 10
+    hitPoints: 9
     initiative: 0
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 8
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities:
     - Barracks
     - CollectHuman
@@ -58,17 +58,17 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 1
     authoredKey: vessels.01.relay-base
     displayName: Relay Base
-    art: {fileID: 21300000, guid: 5c90d432806949eeb8f0233ca8548e04, type: 3}
-    detailArt: {fileID: 21300000, guid: 5c90d432806949eeb8f0233ca8548e04, type: 3}
+    art: {fileID: 21300000, guid: 3e071df6b72a18f4b90fcb9c049e9e81, type: 3}
+    detailArt: {fileID: 21300000, guid: bf21b67d522ea064fa490539b2cb0a55, type: 3}
     faction: 5
     cardType: 3
     apCost: 4
@@ -93,7 +93,7 @@ MonoBehaviour:
     turnsWithoutRefuel: 0
     antiAirRadius: 1
     airfieldCapacity: 4
-    unitTypeTags:
+    unitTypeTags: 
     grantedAbilities:
     - Barracks
     - CollectHuman
@@ -107,17 +107,17 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 2
     authoredKey: vessels.02.mara-the-archivist
     displayName: Mara the Archivist
-    art: {fileID: 21300000, guid: 5171ac9b3b544dbf9b3de493f9e52298, type: 3}
-    detailArt: {fileID: 21300000, guid: 5171ac9b3b544dbf9b3de493f9e52298, type: 3}
+    art: {fileID: 21300000, guid: 11e5c3321b61c6a4db9bcb5d8e511606, type: 3}
+    detailArt: {fileID: 21300000, guid: 59d77303432e0654597b2db7f2d902cd, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -151,17 +151,17 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 3
-    authoredKey: vessels.03.orr-the-keeper
-    displayName: Orr the Keeper
-    art: {fileID: 21300000, guid: 6b5a1805b27443b681d0f864b8074bb7, type: 3}
-    detailArt: {fileID: 21300000, guid: 6b5a1805b27443b681d0f864b8074bb7, type: 3}
+    authoredKey: vessels.09.edda-the-conductor
+    displayName: Edda the Conductor
+    art: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
+    detailArt: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -171,40 +171,85 @@ MonoBehaviour:
       materials: 0
       tech: 0
     requiredBuildingAbility: Barracks
-    moveMax: 3
+    moveMax: 2
     activationApCost: 1
-    commandRating: 6
-    fate: 5
+    commandRating: 8
+    fate: 2
     attack: 0
     defenseRating: 0
     resistanceRating: 0
     range: 0
     hitPoints: 6
-    initiative: 2
+    initiative: 1
     isAviation: 0
     launchEnergyCost: 0
     turnsWithoutRefuel: 0
-    antiAirRadius: 1
+    antiAirRadius: 0
     airfieldCapacity: 0
     unitTypeTags: 0100000008000000
-    grantedAbilities: []
+    grantedAbilities:
+    - ProduceTech
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 4
+    authoredKey: vessels.08.thren-the-scholar
+    displayName: Thren the Scholar
+    art: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
+    detailArt: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 2
+    activationApCost: 1
+    commandRating: 3
+    fate: 3
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 1
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities:
+    - Researcher
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 5
     authoredKey: vessels.04.vale-the-machinist
     displayName: Vale the Machinist
-    art: {fileID: 21300000, guid: de5636e4aa6d4198bfa86d40430a77cc, type: 3}
-    detailArt: {fileID: 21300000, guid: de5636e4aa6d4198bfa86d40430a77cc, type: 3}
+    art: {fileID: 21300000, guid: c48831f6287269b4984ca899855f45c1, type: 3}
+    detailArt: {fileID: 21300000, guid: d9d228f694ab7bc4c91b2cd5acb62bf4, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -238,13 +283,56 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 5
+  - id: 6
+    authoredKey: vessels.03.orr-the-keeper
+    displayName: Orr the Keeper
+    art: {fileID: 21300000, guid: 60b355088ca34f34bb59c3ce984813d2, type: 3}
+    detailArt: {fileID: 21300000, guid: 4dd249ca9c014d3439c9a49c16eed89a, type: 3}
+    faction: 5
+    cardType: 0
+    apCost: 1
+    resourceCost:
+      human: 0
+      energy: 1
+      materials: 0
+      tech: 0
+    requiredBuildingAbility: Barracks
+    moveMax: 3
+    activationApCost: 1
+    commandRating: 6
+    fate: 5
+    attack: 0
+    defenseRating: 0
+    resistanceRating: 0
+    range: 0
+    hitPoints: 6
+    initiative: 2
+    isAviation: 0
+    launchEnergyCost: 0
+    turnsWithoutRefuel: 0
+    antiAirRadius: 1
+    airfieldCapacity: 0
+    unitTypeTags: 0100000008000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 7
     authoredKey: vessels.05.ilex-the-surveyor
     displayName: Ilex the Surveyor
     art: {fileID: 21300000, guid: b00ee0855fa14acfaef9c1551cae2b01, type: 3}
@@ -283,13 +371,13 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 6
+  - id: 8
     authoredKey: vessels.06.sol-the-warden
     displayName: Sol the Warden
     art: {fileID: 21300000, guid: bae9939d2ee04511b9e29a55347fc742, type: 3}
@@ -327,17 +415,17 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
-  - id: 7
+  - id: 9
     authoredKey: vessels.07.nyx-the-cartographer
     displayName: Nyx the Cartographer
-    art: {fileID: 21300000, guid: 56602526c0c04e8f82d8836442c9eb5d, type: 3}
-    detailArt: {fileID: 21300000, guid: 56602526c0c04e8f82d8836442c9eb5d, type: 3}
+    art: {fileID: 21300000, guid: 9f98cdb77c73767438073303e658eff7, type: 3}
+    detailArt: {fileID: 21300000, guid: 505d8b70a72fe274d9868de714c42c5e, type: 3}
     faction: 5
     cardType: 0
     apCost: 1
@@ -364,104 +452,16 @@ MonoBehaviour:
     airfieldCapacity: 0
     unitTypeTags: 0100000008000000
     grantedAbilities:
-    - r1s6
+    - ApBonus
     resourceYield:
       human: 0
       energy: 0
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 8
-    authoredKey: vessels.08.thren-the-scholar
-    displayName: Thren the Scholar
-    art: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
-    detailArt: {fileID: 21300000, guid: 89de029c520646d99a5ec4797f67c8de, type: 3}
-    faction: 5
-    cardType: 0
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 0
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 3
-    fate: 3
-    attack: 0
-    defenseRating: 0
-    resistanceRating: 0
-    range: 0
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000008000000
-    grantedAbilities:
-    - Researcher
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 9
-    authoredKey: vessels.09.edda-the-conductor
-    displayName: Edda the Conductor
-    art: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
-    detailArt: {fileID: 21300000, guid: a883646ec39a49cb96447db4905ba187, type: 3}
-    faction: 5
-    cardType: 0
-    apCost: 1
-    resourceCost:
-      human: 0
-      energy: 1
-      materials: 0
-      tech: 0
-    requiredBuildingAbility: Barracks
-    moveMax: 2
-    activationApCost: 1
-    commandRating: 8
-    fate: 2
-    attack: 0
-    defenseRating: 0
-    resistanceRating: 0
-    range: 0
-    hitPoints: 6
-    initiative: 1
-    isAviation: 0
-    launchEnergyCost: 0
-    turnsWithoutRefuel: 0
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000008000000
-    grantedAbilities:
-    - ProduceTech
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -504,9 +504,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -548,9 +548,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -592,9 +592,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -636,9 +636,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -679,9 +679,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -722,9 +722,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -766,9 +766,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -810,9 +810,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -854,9 +854,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -898,9 +898,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -941,9 +941,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -984,9 +984,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -1028,9 +1028,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -1072,9 +1072,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -1116,9 +1116,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
@@ -1161,17 +1161,17 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 26
     authoredKey: vessels.26.skimmer
     displayName: Skimmer
-    art: {fileID: 21300000, guid: f10589a34b774feb9d38204d5e91f829, type: 3}
-    detailArt: {fileID: 21300000, guid: f10589a34b774feb9d38204d5e91f829, type: 3}
+    art: {fileID: 21300000, guid: 059e1487f79aace4497aed88942c1373, type: 3}
+    detailArt: {fileID: 21300000, guid: 0759e5a2604d95142ad2e2436b65363d, type: 3}
     faction: 5
     cardType: 1
     apCost: 2
@@ -1181,11 +1181,11 @@ MonoBehaviour:
       materials: 0
       tech: 2
     requiredBuildingAbility: Barracks
-    moveMax: 10
+    moveMax: 12
     activationApCost: 1
     commandRating: 0
     fate: 2
-    attack: 7
+    attack: 9
     defenseRating: 4
     resistanceRating: 2
     range: 2
@@ -1205,17 +1205,60 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []
   - id: 27
+    authoredKey: vessels.28.dreadnought
+    displayName: Dreadnought
+    art: {fileID: 21300000, guid: 2486b42d5617b784188165166284338d, type: 3}
+    detailArt: {fileID: 21300000, guid: c01965a8b73307e4797d3c7d744f00d7, type: 3}
+    faction: 5
+    cardType: 1
+    apCost: 3
+    resourceCost:
+      human: 0
+      energy: 3
+      materials: 3
+      tech: 2
+    requiredBuildingAbility: Barracks
+    moveMax: 5
+    activationApCost: 1
+    commandRating: 0
+    fate: 0
+    attack: 5
+    defenseRating: 4
+    resistanceRating: 2
+    range: 3
+    hitPoints: 8
+    initiative: 1
+    isAviation: 1
+    launchEnergyCost: 3
+    turnsWithoutRefuel: 2
+    antiAirRadius: 0
+    airfieldCapacity: 0
+    unitTypeTags: 0100000006000000
+    grantedAbilities: []
+    resourceYield:
+      human: 0
+      energy: 0
+      materials: 0
+      tech: 0
+    equipment:
+      hostTypeTags: 
+      hostKinds: 00000000
+      clearAbilityFamilies: 
+      removeAbilities: []
+      addAbilities: []
+      statChanges: []
+  - id: 28
     authoredKey: vessels.27.gyrocopter
     displayName: Gyrocopter
-    art: {fileID: 21300000, guid: ea6a44384da346b895e387ff9e80cc48, type: 3}
-    detailArt: {fileID: 21300000, guid: ea6a44384da346b895e387ff9e80cc48, type: 3}
+    art: {fileID: 21300000, guid: 80f64de2c9bea04469b7a0eb38de442c, type: 3}
+    detailArt: {fileID: 21300000, guid: 6f9bf8d5d1e6be644882257e28418780, type: 3}
     faction: 5
     cardType: 1
     apCost: 2
@@ -1249,52 +1292,9 @@ MonoBehaviour:
       materials: 0
       tech: 0
     equipment:
-      hostTypeTags:
+      hostTypeTags: 
       hostKinds: 00000000
-      clearAbilityFamilies:
-      removeAbilities: []
-      addAbilities: []
-      statChanges: []
-  - id: 28
-    authoredKey: vessels.28.dreadnought
-    displayName: Dreadnought
-    art: {fileID: 21300000, guid: 804e049187774e9da157a49745dd42d4, type: 3}
-    detailArt: {fileID: 21300000, guid: 804e049187774e9da157a49745dd42d4, type: 3}
-    faction: 5
-    cardType: 1
-    apCost: 3
-    resourceCost:
-      human: 0
-      energy: 3
-      materials: 3
-      tech: 2
-    requiredBuildingAbility: Barracks
-    moveMax: 5
-    activationApCost: 1
-    commandRating: 0
-    fate: 0
-    attack: 5
-    defenseRating: 4
-    resistanceRating: 2
-    range: 3
-    hitPoints: 8
-    initiative: 1
-    isAviation: 1
-    launchEnergyCost: 3
-    turnsWithoutRefuel: 2
-    antiAirRadius: 0
-    airfieldCapacity: 0
-    unitTypeTags: 0100000006000000
-    grantedAbilities: []
-    resourceYield:
-      human: 0
-      energy: 0
-      materials: 0
-      tech: 0
-    equipment:
-      hostTypeTags:
-      hostKinds: 00000000
-      clearAbilityFamilies:
+      clearAbilityFamilies: 
       removeAbilities: []
       addAbilities: []
       statChanges: []

@@ -25,11 +25,11 @@ MonoBehaviour:
     cardType: 3
     apCost: 4
     resourceCost:
-      human: 1
-      energy: 1
-      materials: 1
-      tech: 1
-    requiredBuildingAbility: Barracks
+      human: 6
+      energy: 6
+      materials: 6
+      tech: 6
+    requiredBuildingAbility: 
     moveMax: 0
     activationApCost: 0
     commandRating: 2
@@ -38,7 +38,7 @@ MonoBehaviour:
     defenseRating: 2
     resistanceRating: 1
     range: 0
-    hitPoints: 8
+    hitPoints: 10
     initiative: 0
     isAviation: 0
     launchEnergyCost: 0
