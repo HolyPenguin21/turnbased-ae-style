@@ -949,7 +949,7 @@ namespace Game.Combat
             for (int i = 0; i < 4; i++)
             {
                 UnitData unit = _state.Grid.Get(row + dr[i], col + dc[i]);
-                if (unit != null && unit.IsGroundCombatant && unit != attacker && unit != defender)
+                if (unit != null && unit != attacker && unit != defender)
                     neighbours.Add(unit);
             }
             if (neighbours.Count == 0)
