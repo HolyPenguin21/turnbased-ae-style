@@ -422,7 +422,7 @@ namespace Game.Combat
 
         public bool CanGroundAttack(UnitData attacker, UnitData defender)
         {
-            if (attacker == null || defender == null || !defender.IsGroundCombatant
+            if (attacker == null || defender == null
                 || attacker.Owner == defender.Owner || _state.Grid == null
                 || !_state.Grid.TryFindPosition(attacker, out int ar, out int ac)
                 || !_state.Grid.TryFindPosition(defender, out int dr, out int dc))
