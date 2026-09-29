@@ -5,6 +5,23 @@ using Game.Players;
 
 namespace Game.Combat
 {
+    public readonly struct BattleEncounterContinuation
+    {
+        public readonly bool HexPending;
+        public readonly BattleEncounterContext NextEncounter;
+        public readonly bool CanTriggerEvent;
+
+        public bool HasNextEncounter => NextEncounter != null;
+
+        public BattleEncounterContinuation(bool hexPending,
+            BattleEncounterContext nextEncounter, bool canTriggerEvent)
+        {
+            HexPending = hexPending;
+            NextEncounter = nextEncounter;
+            CanTriggerEvent = canTriggerEvent;
+        }
+    }
+
     // STEALTH-COMBAT-01: the one authoritative lifecycle boundary between "contact just
     // happened" and "any battle/pre-battle UI is allowed to show". Every entry point that's
     // about to display a Fight/Delay popup, a delayed-battle "Continue" popup, a Tactical
@@ -59,6 +76,36 @@ namespace Game.Combat
                 if (army?.Owner != null && army.Owner.IsHuman)
                     return army.Owner;
             return null;
+        }
+
+        public static bool HasContinuation(HexCoord hex, ArmyData survivor)
+        {
+            if (survivor?.Owner == null || DelayedBattleRegistry.IsHexPending(hex))
+                return false;
+            return BattleInitiator.FindEnemyAt(hex, survivor) != null;
+        }
+
+        // Domain continuation after one encounter has fully finalized. Finds and commits the next
+        // hostile pairing, if any; UI only decides how to present this already-resolved context.
+        public static BattleEncounterContinuation ResolveContinuation(HexCoord hex, ArmyData survivor)
+        {
+            bool hexPending = DelayedBattleRegistry.IsHexPending(hex);
+            if (survivor?.Owner == null)
+                return new BattleEncounterContinuation(hexPending, null, false);
+
+            ArmyData nextEnemy = !hexPending
+                ? BattleInitiator.FindEnemyAt(hex, survivor)
+                : null;
+            if (nextEnemy != null)
+            {
+                var participants = new List<ArmyData> { survivor, nextEnemy };
+                BattleEncounterContext context = PrepareCommittedEncounter(
+                    hex, participants, survivor.Owner);
+                return new BattleEncounterContinuation(hexPending, context, false);
+            }
+
+            bool canTriggerEvent = !hexPending && !survivor.Owner.IsNeutral;
+            return new BattleEncounterContinuation(hexPending, null, canTriggerEvent);
         }
     }
 }

@@ -27,9 +27,9 @@ namespace Game.Map
         // status as BaseViewerModalUI's own Repair button.
         public static event Action<BuildingData> BuildingDestroyed;
         // Fired after the building's visible state changes but before that change can remove its
-        // former owner's own vision source. HumanVisualMemory uses this narrow pre-recompute
-        // window to record a capture/destruction the player was genuinely watching, without
-        // changing AiMapMemory's existing VisibilityChanged-driven decision data.
+        // former owner's own vision source. HumanVisualMemory and AiMapMemory both use this
+        // narrow pre-recompute window to record a capture/destruction the player was genuinely
+        // watching; after the recompute that honest observation may already be under fog.
         public static event Action<HexCoord, BuildingData> VisualStateChanged;
 
         public static void Clear()

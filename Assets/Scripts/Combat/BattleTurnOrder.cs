@@ -30,21 +30,48 @@ namespace Game.Combat
         // the enemy's rows — most visibly, the defending side's Round 2+ initiative roster
         // going blank once its melee units had crossed over.
         public static List<UnitData> BuildOrder(BattleGrid grid, ArmyData attacker, ArmyData defender)
+            => BuildOrder(grid, attacker, defender, 0);
+
+        // Explicit deterministic tie-break. Equal effective Initiative is extremely common in the
+        // authored decks, so relying on List.Sort's incidental ordering made first-strike results
+        // depend on roster/list history. A round-specific seed gives a pseudo-random but fully
+        // reproducible order for logs/tests while preserving Initiative as the primary rule.
+        public static List<UnitData> BuildOrder(BattleGrid grid, ArmyData attacker, ArmyData defender, int tieBreakSeed)
         {
             UnitData attackerHero = attacker?.Commander;
             UnitData defenderHero = defender?.Commander;
 
             var order = new List<UnitData>(grid.AllUnits().Where(u => u.IsGroundCombatant));
-            order.Sort((a, b) => EffectiveInitiative(b, attacker, defender, attackerHero, defenderHero)
-                .CompareTo(EffectiveInitiative(a, attacker, defender, attackerHero, defenderHero)));
+            order.Sort((a, b) =>
+            {
+                int initiativeCompare = EffectiveInitiative(b, attacker, defender, attackerHero, defenderHero)
+                    .CompareTo(EffectiveInitiative(a, attacker, defender, attackerHero, defenderHero));
+                if (initiativeCompare != 0)
+                    return initiativeCompare;
+                return TieBreakKey(a, tieBreakSeed).CompareTo(TieBreakKey(b, tieBreakSeed));
+            });
             return order;
+        }
+
+        private static int TieBreakKey(UnitData unit, int seed)
+        {
+            unchecked
+            {
+                int x = unit?.RuntimeId ?? 0;
+                x ^= seed + (int)0x9e3779b9;
+                x ^= x << 13;
+                x ^= x >> 17;
+                x ^= x << 5;
+                return x;
+            }
         }
 
         // One side's roster for the Round-start popup: its hero (if any, shown as its own
         // "bonus" line rather than mixed into the acting list) plus every acting member sorted
         // by descending effective initiative — same ordering BuildOrder itself uses, just split
         // per side instead of merged across both.
-        public static (UnitData hero, List<(UnitData unit, int initiative)> acting) BuildSideSummary(BattleGrid grid, ArmyData attacker, ArmyData defender, bool attackerSide)
+        public static (UnitData hero, List<(UnitData unit, int initiative)> acting) BuildSideSummary(BattleGrid grid, ArmyData attacker, ArmyData defender, bool attackerSide,
+            int tieBreakSeed = 0)
         {
             UnitData attackerHero = attacker?.Commander;
             UnitData defenderHero = defender?.Commander;
@@ -58,7 +85,13 @@ namespace Game.Combat
                     continue;
                 acting.Add((unit, EffectiveInitiative(unit, attacker, defender, attackerHero, defenderHero)));
             }
-            acting.Sort((a, b) => b.Item2.CompareTo(a.Item2));
+            acting.Sort((a, b) =>
+            {
+                int initiativeCompare = b.Item2.CompareTo(a.Item2);
+                if (initiativeCompare != 0)
+                    return initiativeCompare;
+                return TieBreakKey(a.Item1, tieBreakSeed).CompareTo(TieBreakKey(b.Item1, tieBreakSeed));
+            });
             return (hero, acting);
         }
 

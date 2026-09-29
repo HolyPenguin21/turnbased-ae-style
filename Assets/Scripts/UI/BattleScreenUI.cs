@@ -124,10 +124,16 @@ namespace Game.UI
         // reading it back off _attacker/_defender afterward silently returns the wrong hex
         // whenever the ATTACKER is the one who retreated — see OnBattleOutcomeAcknowledged's own
         // former "HexCoord hex = _attacker != null ? _attacker.Hex : ..." line.
-        private HexCoord _battleHex;
-        private BattleGrid _grid;
-        private ArmyData _attacker;
-        private ArmyData _defender;
+        // BattleState is the single mutable source of truth for one tactical encounter.
+        // The aliases below exist only to keep the presentation code readable; none stores a
+        // second copy of domain state.
+        private BattleState _battleState;
+        private BattleEngine _battleEngine;
+        private HexCoord _battleHex => _battleState?.BattleHex ?? default;
+        private BattleGrid _grid => _battleState?.Grid;
+        private ArmyData _attacker => _battleState?.Attacker;
+        private ArmyData _defender => _battleState?.Defender;
+        private int _battleSeed => _battleState?.BattleSeed ?? 0;
         // Whichever participant belongs to the local human player, if any (see Show) — the only
         // side that ever gets a visible Arrangement phase; the other side keeps whatever
         // BattleGrid.FromArmies placed it at (its own saved arrangement or the plain default).
@@ -138,7 +144,11 @@ namespace Game.UI
         // side's units are excluded from the acting turn order (see OnStartRoundClicked) for one
         // final "grace round" that lets the OTHER side get a last hit in before the army actually
         // leaves, per the user's own spec.
-        private ArmyData _retreatingArmy;
+        private ArmyData _retreatingArmy
+        {
+            get => _battleState?.RetreatingArmy;
+            set { if (_battleState != null) _battleState.RetreatingArmy = value; }
+        }
 
         // Enqueued by PerformRetreat whenever a retreating army lands on a hex held by an
         // engageable hostile army/garrison — consumed one at a time by
@@ -175,6 +185,8 @@ namespace Game.UI
         // grid row, which flipped to the wrong side once that unit had moved into enemy rows.
         private ArmyData OwningArmy(UnitData unit)
         {
+            if (_battleState != null)
+                return _battleState.OwningArmy(unit);
             if (unit == null)
                 return null;
             if (_attacker != null && _attacker.Members.Contains(unit))
@@ -192,9 +204,21 @@ namespace Game.UI
         // stays gated behind Ok so the player can't start rearranging while that popup is still
         // covering part of the screen.
         private bool _arrangeInteractive;
-        private List<UnitData> _turnOrder;
-        private int _turnIndex;
-        private int _round;
+        private List<UnitData> _turnOrder
+        {
+            get => _battleState?.TurnOrder;
+            set { if (_battleState != null) _battleState.TurnOrder = value ?? new List<UnitData>(); }
+        }
+        private int _turnIndex
+        {
+            get => _battleState?.TurnIndex ?? 0;
+            set { if (_battleState != null) _battleState.TurnIndex = value; }
+        }
+        private int _round
+        {
+            get => _battleState?.Round ?? 1;
+            set { if (_battleState != null) _battleState.Round = value; }
+        }
         // Whoever's currently up in the turn order (see RefreshTurnOrder) — null during
         // Arrangement/Round-start, before any round has actually begun.
         private UnitData _currentActingUnit;
@@ -280,7 +304,6 @@ namespace Game.UI
         public void Show(HexCoord hex, List<ArmyData> participants, Action onClosed)
         {
             _onClosed = onClosed;
-            _battleHex = hex;
             if (panelRoot != null)
                 panelRoot.SetActive(true);
             VisibilityChanged?.Invoke();
@@ -292,8 +315,24 @@ namespace Game.UI
             cardHand?.Hide();
             rtsCamera?.SetPanningEnabled(false);
 
-            _attacker = participants != null && participants.Count > 0 ? participants[0] : null;
-            _defender = participants != null && participants.Count > 1 ? participants[1] : null;
+            ArmyData attacker = participants != null && participants.Count > 0 ? participants[0] : null;
+            ArmyData defender = participants != null && participants.Count > 1 ? participants[1] : null;
+            int battleSeed;
+            unchecked
+            {
+                battleSeed = 17;
+                battleSeed = battleSeed * 31 + hex.Q;
+                battleSeed = battleSeed * 31 + hex.R;
+                battleSeed = battleSeed * 31 + (attacker?.Id ?? 0);
+                battleSeed = battleSeed * 31 + (defender?.Id ?? 0);
+            }
+
+            BattleGrid grid = BattleGrid.FromArmies(attacker, defender);
+            _battleState = new BattleState(hex, attacker, defender, grid, battleSeed);
+            AbilityMagnitudes battleMagnitudes = attackPopup != null
+                ? attackPopup.Magnitudes : AbilityMagnitudes.Default;
+            _battleEngine = new BattleEngine(_battleState, battleMagnitudes,
+                new System.Random(battleSeed));
 
             // STEALTH-COMBAT-01: reveal is no longer primarily done here — every real entry
             // point (HexSelectionController.Movement.cs's TryBeginBattleAt, BattleScreenUI.
@@ -312,7 +351,6 @@ namespace Game.UI
             Game.Map.StealthSystem.RevealArmy(_attacker);
             Game.Map.StealthSystem.RevealArmy(_defender);
 
-            _grid = BattleGrid.FromArmies(_attacker, _defender);
             _round = 1;
 
             // UnitAbilities.RaiseTheRots — conjure each side's summoner-granted extra units onto
@@ -352,11 +390,12 @@ namespace Game.UI
             // opposing army is passed only for its current STATS (see ArrangeArmy's own
             // comment), never its placement — both sides' arrangement happens in this same call,
             // before either one has a layout to look at.
-            AbilityMagnitudes arrangeMagnitudes = attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default;
             if (_attacker?.Owner != null && !_attacker.Owner.IsHuman)
-                BattleAi.ArrangeArmy(_grid, _attacker, BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, _defender, arrangeMagnitudes);
+                _battleEngine.ArrangeAiArmy(_attacker, _defender,
+                    BattleGrid.AttackerFrontRow, BattleGrid.AttackerBackRow, map);
             if (_defender?.Owner != null && !_defender.Owner.IsHuman)
-                BattleAi.ArrangeArmy(_grid, _defender, BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, _attacker, arrangeMagnitudes);
+                _battleEngine.ArrangeAiArmy(_defender, _attacker,
+                    BattleGrid.DefenderFrontRow, BattleGrid.DefenderBackRow, map);
 
             _localArmy = null;
             if (_attacker?.Owner != null && _attacker.Owner.IsHuman)
@@ -466,7 +505,9 @@ namespace Game.UI
             if (roundStartPopup != null && _localArmy != null)
                 roundStartPopup.Show(_round, _grid, _attacker, _defender,
                     ResolveCatalog(_attacker?.Owner)?.logo, ResolveCatalog(_defender?.Owner)?.logo,
-                    canRetreat, OnStartRoundClicked, OnRetreatClicked, _retreatingArmy?.Name);
+                    canRetreat, OnStartRoundClicked, OnRetreatClicked, _retreatingArmy?.Name,
+                    unchecked(_battleSeed * 31 + _round),
+                    canRetreat && _round > 1 ? DescribeRetreatPreview(_localArmy) : null);
             else
                 OnStartRoundClicked();
         }
@@ -515,21 +556,9 @@ namespace Game.UI
             if (army == null || army.Owner == null || army.Owner.IsHuman || army.IsGarrison || army.Owner.IsNeutral)
                 return false;
 
-            // IsStartingCitadel, not UnitAbilities.IsFullCitadel — the "never retreat" rule has
-            // to key off the actual main/starting citadel (the one building whose loss ends the
-            // game for this owner, see BuildingData.IsStartingCitadel's own comment), not off
-            // "has all 4 resource-collection facilities built". Per the user's own report: an AI
-            // army retreated OUT of its own main citadel because IsFullCitadel doesn't require
-            // IsStartingCitadel at all (a citadel not yet fully upgraded with every facility type
-            // failed this check, and a random fully-upgraded Base elsewhere would have wrongly
-            // PASSED it) — either way the wrong building decided whether retreat was allowed,
-            // when retreating out of the actual main citadel is never sensible: losing it loses
-            // the game outright.
-            BuildingData building = BuildingRegistry.FindAt(army.Hex);
-            bool defendingOwnCitadel = building != null && building.Owner == army.Owner && building.IsStartingCitadel;
-
-            BattleAi.RetreatAssessment assessment = BattleAi.AssessRetreat(_grid, army, enemy, defendingOwnCitadel,
-                attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default);
+            BattleAi.RetreatAssessment assessment = _battleEngine != null
+                ? _battleEngine.AssessAiRetreat(army, enemy, map)
+                : default;
             _aiFavorableThisRound[army] = assessment.FavorableForAdvance;
             UnitData sideHero = army.Commander;
 
@@ -541,6 +570,10 @@ namespace Game.UI
             if (assessment.ShouldRetreat)
             {
                 _retreatingArmy = army;
+                if (_battleEngine != null)
+                {
+                    _battleEngine.CommitRetreat(army);
+                }
                 aiThoughts?.Show(sideHero, BattleAiPhraseBank.GetRandomPhrase(AiThoughtCategory.RetreatDecision, hasHero: sideHero != null));
                 return true;
             }
@@ -550,13 +583,9 @@ namespace Game.UI
 
         private void OnStartRoundClicked()
         {
-            _turnOrder = BattleTurnOrder.BuildOrder(_grid, _attacker, _defender);
-            // The retreating side gets no more actions this round (see _retreatingArmy's own
-            // comment) — everyone else still acts normally, giving them one last chance to hit
-            // the fleeing army before ResolveRetreat actually moves/destroys it at round's end.
-            if (_retreatingArmy != null)
-                _turnOrder = _turnOrder.Where(u => u.Owner != _retreatingArmy.Owner).ToList();
-            _turnIndex = 0;
+            if (_battleEngine == null)
+                return;
+            _battleEngine.StartRound();
             RefreshTurnOrder();
         }
 
@@ -569,6 +598,10 @@ namespace Game.UI
             if (_localArmy == null || _localArmy.IsGarrison)
                 return;
             _retreatingArmy = _localArmy;
+            if (_battleEngine != null)
+            {
+                _battleEngine.CommitRetreat(_localArmy);
+            }
             OnStartRoundClicked();
         }
 
@@ -584,22 +617,21 @@ namespace Game.UI
         {
             if (_turnOrder == null || _turnOrder.Count == 0)
                 return;
-            _turnIndex++;
-            if (_turnIndex >= _turnOrder.Count)
+
+            if (_battleEngine == null)
+                return;
+            BattleTurnAdvance advance = _battleEngine.AdvanceTurn();
+            switch (advance)
             {
-                // The grace round just finished — resolve the retreat now instead of starting
-                // a further round (see _retreatingArmy's own comment).
-                if (_retreatingArmy != null)
-                {
+                case BattleTurnAdvance.ResolveRetreat:
                     ResolveRetreat();
-                    return;
-                }
-                _round++;
-                BeginRound();
-            }
-            else
-            {
-                RefreshTurnOrder();
+                    break;
+                case BattleTurnAdvance.NextRound:
+                    BeginRound();
+                    break;
+                case BattleTurnAdvance.NextUnit:
+                    RefreshTurnOrder();
+                    break;
             }
         }
 
@@ -663,9 +695,10 @@ namespace Game.UI
             ArmyData ownArmy = _attacker != null && _attacker.Owner == actor.Owner ? _attacker : _defender;
             ArmyData enemyArmy = ownArmy == _attacker ? _defender : _attacker;
             bool favorableFight = ownArmy != null && _aiFavorableThisRound.TryGetValue(ownArmy, out bool favorable) && favorable;
-            BattleAi.AiAction action = BattleAi.ChooseAction(_grid, actor, _aiWaitStreak, ownArmy, enemyArmy,
-                attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
-                _turnOrder, _turnIndex, favorableFight);
+            BattleAi.AiAction action = _battleEngine != null
+                ? _battleEngine.ChooseAiAction(actor, _aiWaitStreak, ownArmy, enemyArmy,
+                    _turnOrder, _turnIndex, favorableFight, map)
+                : default;
             ShowAiThought(actor, action.Reason, action.Target?.Name);
 
             switch (action.Kind)
@@ -722,8 +755,8 @@ namespace Game.UI
             // them out of both armies while _grid/_turnOrder are still valid, so nothing summoned
             // ever survives back onto the strategic map (the retreat path strips the retreating
             // army earlier, in PerformRetreat, before it relocates).
-            StripSummonedUnits(_attacker);
-            StripSummonedUnits(_defender);
+            BattleEngine.StripSummonedUnits(_battleState, _attacker);
+            BattleEngine.StripSummonedUnits(_battleState, _defender);
 
             if (panelRoot != null)
                 panelRoot.SetActive(false);
@@ -738,11 +771,12 @@ namespace Game.UI
             outcomePopup?.Hide();
             UIListUtility.DestroyAndClear(_cells);
             UIListUtility.DestroyAndClear(_queueIcons);
-            _grid = null;
             _turnOrder = null;
+            _retreatingArmy = null;
+            _battleEngine = null;
+            _battleState = null;
             _currentActingUnit = null;
             _localArmy = null;
-            _retreatingArmy = null;
             _arranging = false;
             _arrangeInteractive = false;
             _aiWaitStreak.Clear();

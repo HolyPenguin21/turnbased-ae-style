@@ -26,24 +26,6 @@ namespace Game.UI
     {
         private bool IsLocalRow(int row) => _localArmy != null && (row == _localFrontRow || row == _localBackRow);
 
-        // Orthogonally adjacent to the actor's own current cell — any empty cell on the grid is a
-        // legal move destination during the Round's movement step, per the user's own call: the
-        // Attacker/Defender row split only matters for initial Arrangement placement, not for
-        // where a unit can walk once the battle is under way. Previously restricted to the
-        // actor's own two rows plus the shared Neutral row, which meant a Range-1 unit could
-        // never step into the enemy's own Front row and so could never get within range of
-        // anything sitting in the enemy's Back row — see the user's own report. The Arrangement
-        // phase's own drag-and-drop keeps its own separate same-side restriction (initial
-        // placement is a different rule from mid-battle movement); this is round movement only.
-        // Row/adjacency helpers live on BattleGrid itself (shared with BattleAi's own movement
-        // logic, see BattleAi.FindStepToward).
-        private bool IsAdjacentMoveTarget(UnitData actor, int row, int col)
-        {
-            if (actor == null || _grid == null || !_grid.TryFindPosition(actor, out int actorRow, out int actorCol))
-                return false;
-            return BattleGrid.IsOrthogonallyAdjacent(actorRow, actorCol, row, col);
-        }
-
         private void RefreshGrid()
         {
             UIListUtility.DestroyAndClear(_cells);
@@ -55,9 +37,6 @@ namespace Game.UI
             // hint at.
             bool canAct = !_arranging && _currentActingUnit != null
                 && _currentActingUnit.Owner != null && _currentActingUnit.Owner.IsHuman;
-            int actorRow = -1, actorCol = -1;
-            if (canAct)
-                _grid.TryFindPosition(_currentActingUnit, out actorRow, out actorCol);
 
             for (int row = 0; row < BattleGrid.Rows; row++)
                 for (int col = 0; col < BattleGrid.Columns; col++)
@@ -71,9 +50,10 @@ namespace Game.UI
                     bool draggable = _arranging && _arrangeInteractive && IsLocalRow(row) && unit != null;
                     bool isActingUnit = unit != null && unit == _currentActingUnit;
 
-                    bool isLegalMoveTarget = canAct && unit == null && IsAdjacentMoveTarget(_currentActingUnit, row, col);
-                    bool isLegalAttackTarget = canAct && unit != null && unit.Owner != _currentActingUnit.Owner
-                        && BattleGrid.IsInRange(actorRow, actorCol, row, col, _currentActingUnit.Range);
+                    bool isLegalMoveTarget = canAct && unit == null && _battleEngine != null
+                        && _battleEngine.CanMoveUnit(_currentActingUnit, row, col);
+                    bool isLegalAttackTarget = canAct && unit != null && _battleEngine != null
+                        && _battleEngine.CanGroundAttack(_currentActingUnit, unit);
 
                     BattleGridCellUI cell = Instantiate(gridCellPrefab, gridContainer);
                     cell.Setup(this, unit, row, col, draggable, isActingUnit, isLegalMoveTarget, isLegalAttackTarget);
@@ -109,19 +89,18 @@ namespace Game.UI
                 return;
             if (_currentActingUnit.Owner == null || !_currentActingUnit.Owner.IsHuman)
                 return;
-            if (!_grid.TryFindPosition(_currentActingUnit, out int actorRow, out int actorCol))
+            if (_battleEngine == null
+                || !_grid.TryFindPosition(_currentActingUnit, out int actorRow, out int actorCol))
                 return;
 
             if (cell.Unit == null)
             {
-                if (IsAdjacentMoveTarget(_currentActingUnit, cell.Row, cell.Col))
+                if (_battleEngine.CanMoveUnit(_currentActingUnit, cell.Row, cell.Col))
                     PerformMove(actorRow, actorCol, cell.Row, cell.Col);
                 return;
             }
 
-            if (cell.Unit.Owner == _currentActingUnit.Owner)
-                return;
-            if (BattleGrid.IsInRange(actorRow, actorCol, cell.Row, cell.Col, _currentActingUnit.Range))
+            if (_battleEngine.CanGroundAttack(_currentActingUnit, cell.Unit))
                 BeginAttack(_currentActingUnit, cell.Unit);
         }
 
@@ -167,7 +146,13 @@ namespace Game.UI
                     layoutGroup.enabled = true;
             }
 
-            _grid.Swap(fromRow, fromCol, toRow, toCol);
+            if (_battleEngine == null
+                || !_battleEngine.TryMoveUnit(_currentActingUnit, fromRow, fromCol, toRow, toCol))
+            {
+                _isAnimatingMove = false;
+                RefreshGrid();
+                yield break;
+            }
             _isAnimatingMove = false;
             RefreshGrid();
             EndTurn();
@@ -191,8 +176,10 @@ namespace Game.UI
                     continue;
                 if (!RectTransformUtility.RectangleContainsScreenPoint(cell.RectTransform, screenPosition, cam))
                     continue;
-
-                _grid.Swap(dragged.Row, dragged.Col, cell.Row, cell.Col);
+                if (_battleEngine == null
+                    || !_battleEngine.TrySwapDeployment(dragged.Row, dragged.Col, cell.Row, cell.Col,
+                        _localFrontRow, _localBackRow))
+                    continue;
                 RefreshGrid();
                 return;
             }

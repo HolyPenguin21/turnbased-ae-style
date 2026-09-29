@@ -41,6 +41,18 @@ namespace Game.EditorTests
             Assert.That(AiMapMemory.RouteMemoryVersionFor(player), Is.Not.EqualTo(beforeClear),
                 "A new memory session must never reuse an old route-cache revision.");
         }
+
+        [Test]
+        public void NoOpVisibilityRefresh_DoesNotInvalidateKnowledgeVersion()
+        {
+            var player = new PlayerSetupData();
+            int before = AiMapMemory.KnowledgeVersionFor(player);
+
+            AiMapMemory.RefreshVisibleForTest(player);
+
+            Assert.That(AiMapMemory.KnowledgeVersionFor(player), Is.EqualTo(before),
+                "A visibility/stealth event with no observed data delta must not invalidate this player's strategic snapshot.");
+        }
     }
 }
 #endif

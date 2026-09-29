@@ -97,12 +97,13 @@ namespace Game.UI
         // default 0): when the hex is contributing to this side's pool, the count alone doesn't
         // say why it's bigger than the unit's own stat, so the prefix spells out the breakdown
         // instead (per the user's own request) — plain "Dice: {count}" otherwise, unchanged.
-        public void SetDicePoolSize(int count, int terrainBonus = 0, int constructionBonus = 0, int baseDefense = 0)
+        public void SetDicePoolSize(int count, int terrainBonus = 0, int constructionBonus = 0,
+            int baseDefense = 0, int formationBonus = 0)
         {
             if (diceCountText == null)
                 return;
 
-            if (terrainBonus == 0 && constructionBonus == 0)
+            if (terrainBonus == 0 && constructionBonus == 0 && formationBonus == 0)
             {
                 diceCountText.text = $"Dice: {count}";
                 return;
@@ -113,6 +114,8 @@ namespace Game.UI
                 parts.Add($"Terrain({terrainBonus})");
             if (constructionBonus != 0)
                 parts.Add($"Construction({constructionBonus})");
+            if (formationBonus != 0)
+                parts.Add($"Guarded({formationBonus})");
             parts.Add($"Defence({baseDefense})");
             diceCountText.text = $"{string.Join(" + ", parts)}, Dices: {count}";
         }
@@ -128,6 +131,15 @@ namespace Game.UI
         public void OnFateSpent()
         {
             RefreshFate();
+        }
+
+        // Ground/Capture Kill duel presentation uses a local Fate counter owned by the popup.
+        // Research/Production still uses OnFateSpent() above because that challenge deliberately
+        // snapshots/restores the live hero Fate in its own isolated flow.
+        public void SetFateDisplay(int fate)
+        {
+            if (fateText != null)
+                fateText.text = _sideHero != null ? $"FATE: {Mathf.Max(0, fate)}" : string.Empty;
         }
 
         public void SetSpendInteractable(bool interactable)

@@ -36,8 +36,16 @@ namespace Game.Ai.V2
                 // The bonus WorthIt will actually add to every defending unit's Defense has to be
                 // in the pre-filter's defender power too, or this cheap cutoff would answer a
                 // different matchup than the estimator it stands in for.
-                float defenderPower = PowerSum(defenders)
-                    + System.Math.Max(0f, defenderHexDefenseBonus) * defenders.Count;
+                float defenderPower = 0f;
+                foreach (WorthIt.DefendingArmy defendingArmy in opposition)
+                {
+                    float bonus = System.Math.Max(0f,
+                        defendingArmy.DefenseBonus(defenderHexDefenseBonus));
+                    foreach (WorthIt.DefenderProfile profile in defendingArmy.Units)
+                        defenderPower += WorthIt.CombatValue(
+                            profile.Attack, profile.Defense + bonus,
+                            profile.HitPoints, profile.Initiative);
+                }
                 if (defenderPower > 0f
                     && attackerPower / defenderPower < AiConfigV2.raidPowerRatioPreFilter)
                 {
@@ -47,7 +55,7 @@ namespace Game.Ai.V2
                 }
             }
 
-            cover = WorthIt.CanDamageAll(attackers, defenders, defenderHexDefenseBonus);
+            cover = WorthIt.CanDamageAll(attackers, opposition, defenderHexDefenseBonus);
             win = defenders.Count == 0
                 ? 1f
                 : WorthIt.EstimateSequential(attackers, attackerCommander, opposition,

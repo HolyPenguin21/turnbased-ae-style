@@ -136,11 +136,12 @@ namespace Game.Ai.V2
                 IReadOnlyList<WorthIt.DefenderProfile> defenders = t.Defenders
                     ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
                 // The target defends on its own hex: terrain (and any known structure) counts.
-                float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap.Observer, t.Hex);
+                float hexBonus = AiMapMemory.KnownHexDefenseBonusFor(
+                    snap.Observer, t.Hex, t.Owner);
                 float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, hexBonus,
                     readyCommander, t.Commander);
                 HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
-                    new[] { new WorthIt.DefendingArmy(defenders, t.Commander) }, hexBonus);
+                    new[] { new WorthIt.DefendingArmy(defenders, t.Commander, hexBonus) }, hexBonus);
                 float asmWin = assembly.WinChance;
                 bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
                 int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, t.Hex)) : 99;
@@ -184,11 +185,12 @@ namespace Game.Ai.V2
                 {
                     IReadOnlyList<WorthIt.DefenderProfile> defenders = g.Defenders
                         ?? (IReadOnlyList<WorthIt.DefenderProfile>)System.Array.Empty<WorthIt.DefenderProfile>();
-                    float hexBonus = AiMapMemory.KnownHexDefenseBonus(snap.Observer, g.Hex);
+                    float hexBonus = AiMapMemory.KnownHexDefenseBonusFor(
+                        snap.Observer, g.Hex, defendingOwner: null);
                     float readyWin = WorthIt.WinChance(readyRoster, (IReadOnlyCollection<WorthIt.DefenderProfile>)defenders, hexBonus,
                         readyCommander, g.Commander);
                     HeroRoleEvaluator.CommandProjection assembly = BestAssembly(commanders, assemblableBodies,
-                        new[] { new WorthIt.DefendingArmy(defenders, g.Commander) }, hexBonus);
+                        new[] { new WorthIt.DefendingArmy(defenders, g.Commander, hexBonus) }, hexBonus);
                     float asmWin = assembly.WinChance;
                     bool cover = WorthIt.CanDamageAll(assembly.Roster, defenders, hexBonus);
                     int minDist = fromHexes.Count > 0 ? fromHexes.Min(h => HexGridMath.Distance(h, g.Hex)) : 99;

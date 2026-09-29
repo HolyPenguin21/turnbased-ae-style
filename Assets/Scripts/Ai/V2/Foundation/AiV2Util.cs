@@ -80,7 +80,9 @@ namespace Game.Ai.V2
                 if (snap.Known.EventGuards != null)
                     foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards)
                         if (g.Hex.Equals(target.Hex))
-                            return new[] { new WorthIt.DefendingArmy(g.Defenders, g.Commander) };
+                            return new[] { new WorthIt.DefendingArmy(g.Defenders, g.Commander,
+                                Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
+                                    snap.Observer, g.Hex, defendingOwner: null)) };
                 return System.Array.Empty<WorthIt.DefendingArmy>();
             }
 
@@ -89,7 +91,9 @@ namespace Game.Ai.V2
                 .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
                 if (s.ArmyId == target.ArmyId)
-                    return new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander) };
+                    return new[] { new WorthIt.DefendingArmy(s.Defenders, s.Commander,
+                        Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
+                            snap.Observer, s.Hex, s.Owner)) };
             return System.Array.Empty<WorthIt.DefendingArmy>();
         }
 
@@ -102,13 +106,15 @@ namespace Game.Ai.V2
             if (snap?.Known == null || !target.HasValue)
                 return 0f;
             if (target.Kind == RaidTargetKind.EventGuard)
-                return Game.Ai.AiMapMemory.KnownHexDefenseBonus(snap.Observer, target.Hex);
+                return Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
+                    snap.Observer, target.Hex, defendingOwner: null);
             IEnumerable<Game.Ai.AiMapMemory.KnownEnemySighting> all =
                 (snap.Known.EnemySightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>())
                 .Concat(snap.Known.NeutralSightings ?? Enumerable.Empty<Game.Ai.AiMapMemory.KnownEnemySighting>());
             foreach (Game.Ai.AiMapMemory.KnownEnemySighting s in all)
                 if (s.ArmyId == target.ArmyId)
-                    return Game.Ai.AiMapMemory.KnownHexDefenseBonus(snap.Observer, s.Hex);
+                    return Game.Ai.AiMapMemory.KnownHexDefenseBonusFor(
+                        snap.Observer, s.Hex, s.Owner);
             return 0f;
         }
 

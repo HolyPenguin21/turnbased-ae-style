@@ -1,6 +1,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using Game.Combat;
 using Game.HexGrid;
 using Game.Map;
 using Game.Players;
@@ -149,10 +150,14 @@ namespace Game.Aviation
             UnitData aaHero = reaction.AaArmy.Members.Find(unit => unit.IsHero);
             bool resolved = false;
             attackPopup.Begin(reaction.AaUnit, aaHero, target, null, null, null,
-                onResolved: (damage, died) =>
+                onResolved: roll =>
                 {
+                    BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
+                        reaction.AaUnit, target, roll,
+                        attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
+                        aaHero, null);
                     resolved = true;
-                    if (died)
+                    if (application.DefenderDied)
                     {
                         airArmy.Members.Remove(target);
                         Game.Map.StealthSystem.OnUnitRemoved(target);
@@ -199,12 +204,16 @@ namespace Game.Aviation
 
                 bool resolved = false;
                 attackPopup.Begin(aircraft, null, target, defenderHero, null, null,
-                    onResolved: (damage, died) =>
+                    onResolved: roll =>
                     {
+                        BattleAttackApplication application = BattleEngine.ResolveStandaloneAttack(
+                            aircraft, target, roll,
+                            attackPopup != null ? attackPopup.Magnitudes : AbilityMagnitudes.Default,
+                            null, defenderHero);
                         resolved = true;
                         if (result != null)
-                            result.DamageDealt += Mathf.Max(0, damage);
-                        if (died)
+                            result.DamageDealt += Mathf.Max(0, application.Damage);
+                        if (application.DefenderDied)
                         {
                             targetArmy.Members.Remove(target);
                             Game.Map.StealthSystem.OnUnitRemoved(target);

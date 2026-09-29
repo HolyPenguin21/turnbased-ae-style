@@ -137,7 +137,7 @@ namespace Game.Combat
             foreach (UnitData member in army.Members)
             {
                 if (army.SavedArrangement.TryGetValue(member, out var slot)
-                    && (slot.row == frontRow || slot.row == backRow)
+                    && BattlePlacementRules.CanPlace(member, slot.row, slot.col, frontRow, backRow)
                     && grid.Get(slot.row, slot.col) == null)
                     grid.Set(slot.row, slot.col, member);
                 else

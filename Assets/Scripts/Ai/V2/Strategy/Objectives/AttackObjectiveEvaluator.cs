@@ -265,7 +265,9 @@ namespace Game.Ai.V2
             return sightings
                 .Where(s => s.Hex.Equals(hex) && s.Defenders != null)
                 .OrderBy(s => s.ArmyId)
-                .Select(s => new WorthIt.DefendingArmy(s.Defenders, s.Commander))
+                .Select(s => new WorthIt.DefendingArmy(
+                    s.Defenders, s.Commander,
+                    AiMapMemory.KnownHexDefenseBonusFor(snap.Observer, hex, s.Owner)))
                 .ToList();
         }
 

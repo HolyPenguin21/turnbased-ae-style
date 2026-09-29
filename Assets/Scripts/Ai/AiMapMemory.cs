@@ -435,6 +435,10 @@ namespace Game.Ai
                 return;
             VisionSystem.VisibilityChanged += OnVisibilityChanged;
             VisionSystem.VisibleContentChanged += OnVisibleContentChanged;
+            // Capture/destruction publishes this BEFORE the former owner's building-derived
+            // vision is recomputed away. Consume that honest observation window so fog memory
+            // records the new owner/destruction instead of preserving the old owner forever.
+            BuildingRegistry.VisualStateChanged += OnBuildingVisualStateChanged;
             // A hidden unit entering/leaving stealth, or a personal detection lapsing, changes
             // what each player can honestly see without any vision-radius change — re-snapshot
             // so a now-hidden enemy drops out of current sightings and a freshly-revealed one
@@ -455,6 +459,16 @@ namespace Game.Ai
         private static void OnVisibleContentChanged(PlayerSetupData player, HexCoord hex)
         {
             OnVisibilityChanged(player);
+        }
+
+        private static void OnBuildingVisualStateChanged(HexCoord hex, BuildingData building)
+        {
+            // VisualStateChanged is deliberately emitted before BuildingRegistry recomputes the
+            // old/new owners' vision. Only players whose CURRENT pre-change visibility includes
+            // this hex receive the memory write; players out of sight learn nothing.
+            foreach (PlayerSetupData player in Game.Core.GameSession.Players ?? new List<PlayerSetupData>())
+                if (player != null && VisionSystem.IsVisible(player, hex))
+                    OnVisibleContentChanged(player, hex);
         }
 
         private static void OnStealthChanged()
@@ -654,6 +668,70 @@ namespace Game.Ai
                 && currentTurn - turn < cooldownTurns;
         }
 
+        private static bool SameEnemySighting(EnemySighting a, EnemySighting b)
+        {
+            if (a == null || b == null) return a == b;
+            if (a.ArmyId != b.ArmyId || !a.Hex.Equals(b.Hex) || a.Owner != b.Owner
+                || a.Name != b.Name || a.MemberCount != b.MemberCount
+                || a.DefenseSum != b.DefenseSum || a.AttackSum != b.AttackSum
+                || a.HasAntiAir != b.HasAntiAir || a.SeenTurn != b.SeenTurn
+                || a.RecceRadius != b.RecceRadius || a.RecceSpotStrength != b.RecceSpotStrength
+                || a.IsGarrison != b.IsGarrison || !a.Commander.Equals(b.Commander))
+                return false;
+            return SameProfiles(a.Defenders, b.Defenders);
+        }
+
+        private static bool SameGuardStrength(GuardStrength a, GuardStrength b) =>
+            a.Defense == b.Defense && a.Attack == b.Attack && a.Name == b.Name
+            && a.Commander.Equals(b.Commander) && SameProfiles(a.Defenders, b.Defenders);
+
+        private static bool SameProfiles(IReadOnlyList<WorthIt.DefenderProfile> a,
+            IReadOnlyList<WorthIt.DefenderProfile> b)
+        {
+            int ac = a?.Count ?? 0;
+            int bc = b?.Count ?? 0;
+            if (ac != bc) return false;
+            for (int i = 0; i < ac; i++)
+            {
+                WorthIt.DefenderProfile x = a[i];
+                WorthIt.DefenderProfile y = b[i];
+                if (x.Attack != y.Attack || x.Defense != y.Defense
+                    || x.HitPoints != y.HitPoints || x.MaxHitPoints != y.MaxHitPoints
+                    || x.Initiative != y.Initiative || x.HasCeramicArmor != y.HasCeramicArmor
+                    || !(x.TypeTags ?? System.Array.Empty<UnitTypeTag>())
+                        .SequenceEqual(y.TypeTags ?? System.Array.Empty<UnitTypeTag>())
+                    || !(x.Abilities ?? System.Array.Empty<string>())
+                        .SequenceEqual(y.Abilities ?? System.Array.Empty<string>()))
+                    return false;
+            }
+            return true;
+        }
+
+        private static bool SameBuildingSighting(BuildingSighting a, BuildingSighting b)
+        {
+            if (a == null || b == null) return a == b;
+            return a.Hex.Equals(b.Hex) && a.Owner == b.Owner
+                && a.IsStartingCitadel == b.IsStartingCitadel && a.IsBase == b.IsBase
+                && a.Defense == b.Defense && a.SeenTurn == b.SeenTurn
+                && a.FreeFacilitySlots == b.FreeFacilitySlots
+                && (a.FacilityAbilities ?? new HashSet<string>())
+                    .SetEquals(b.FacilityAbilities ?? new HashSet<string>())
+                && (a.CollectedAmounts ?? System.Array.Empty<int>())
+                    .SequenceEqual(b.CollectedAmounts ?? System.Array.Empty<int>());
+        }
+
+        private static bool SameResourceHex(KnownResourceHex a, KnownResourceHex b) =>
+            a.Hex.Equals(b.Hex) && a.DominantType == b.DominantType
+            && (a.Yield?.human ?? 0) == (b.Yield?.human ?? 0)
+            && (a.Yield?.energy ?? 0) == (b.Yield?.energy ?? 0)
+            && (a.Yield?.materials ?? 0) == (b.Yield?.materials ?? 0)
+            && (a.Yield?.tech ?? 0) == (b.Yield?.tech ?? 0);
+
+#if UNITY_INCLUDE_TESTS
+        internal static void RefreshVisibleForTest(PlayerSetupData player) =>
+            OnVisibilityChanged(player);
+#endif
+
         private static void OnVisibilityChanged(PlayerSetupData player)
         {
             if (player == null)
@@ -691,6 +769,7 @@ namespace Game.Ai
             bool sightingsChanged = false;
             bool buildingsChanged = false;
             bool eventGuardsChanged = false;
+            bool knowledgeChanged = false;
             foreach (HexCoord hex in VisionSystem.VisibleHexesFor(player))
             {
                 ResourceType? dominant = Game.Map.HexResourceProfile.DominantResourceType(hex);
@@ -699,7 +778,11 @@ namespace Game.Ai
                 {
                     ResourceYields observed = HexResourceCalculator.GetEffectiveYield(
                         terrain, HexResourceBonusRegistry.GetBonus(hex));
-                    resources[hex] = new KnownResourceHex(hex, dominant.Value, observed);
+                    var nextResource = new KnownResourceHex(hex, dominant.Value, observed);
+                    if (!resources.TryGetValue(hex, out KnownResourceHex previousResource)
+                        || !SameResourceHex(previousResource, nextResource))
+                        knowledgeChanged = true;
+                    resources[hex] = nextResource;
                 }
 
                 // A hex can contain several armies (ArmyRegistry's explicit contract). Observe
@@ -730,7 +813,7 @@ namespace Game.Ai
                     // but invalidate routes only when its presence/position changes.
                     if (!wasKnown || !previous.Hex.Equals(hex))
                         sightingsChanged = true;
-                    sightings[enemy.Id] = new EnemySighting
+                    var nextSighting = new EnemySighting
                     {
                         ArmyId = enemy.Id,
                         Hex = hex,
@@ -770,6 +853,9 @@ namespace Game.Ai
                         RecceSpotStrength = enemy.Members.Where(m => !StealthSystem.IsHiddenFrom(m, player))
                             .Select(m => AbilityParams.GetBestRecceSpotStrength(m)).DefaultIfEmpty(0).Max(),
                     };
+                    if (!wasKnown || !SameEnemySighting(previous, nextSighting))
+                        knowledgeChanged = true;
+                    sightings[enemy.Id] = nextSighting;
                 }
 
                 // A fresh observation of THIS hex invalidates every old identity no longer
@@ -787,9 +873,10 @@ namespace Game.Ai
                             + $"({hex.Q},{hex.R}) corrected (gone on re-observation).");
                     sightings.Remove(staleId);
                     sightingsChanged = true;
+                    knowledgeChanged = true;
                 }
 
-                bool hadEventGuard = eventGuards.ContainsKey(hex);
+                bool hadEventGuard = eventGuards.TryGetValue(hex, out GuardStrength previousEventGuard);
                 HexEventRegistry.Entry eventEntry = HexEventRegistry.HasActiveEvent(hex) ? HexEventRegistry.FindAt(hex) : null;
                 if (eventEntry != null && eventEntry.ResolvedGuardMembers.Count > 0)
                 {
@@ -822,8 +909,16 @@ namespace Game.Ai
                 }
                 // A known event guard changes whether an otherwise undefended foreign
                 // structure is a safe transit hex (KnownGroundArrival).
-                if (hadEventGuard != eventGuards.ContainsKey(hex))
+                bool hasEventGuardNow = eventGuards.TryGetValue(hex, out GuardStrength currentEventGuard);
+                if (hadEventGuard != hasEventGuardNow)
+                {
                     eventGuardsChanged = true;
+                    knowledgeChanged = true;
+                }
+                else if (hadEventGuard && !SameGuardStrength(previousEventGuard, currentEventGuard))
+                {
+                    knowledgeChanged = true;
+                }
 
                 // Building snapshot (2026-08-24, section 3.2 fix — see KnownBuildings' own class
                 // comment) — a real, direct read of BuildingRegistry, but only ever for a hex this
@@ -850,7 +945,7 @@ namespace Game.Ai
                     var collectedAmounts = new int[UnitAbilities.CollectAbilities.Length];
                     for (int i = 0; i < collectedAmounts.Length; i++)
                         collectedAmounts[i] = building.CollectedAmount((ResourceType)i);
-                    buildings[hex] = new BuildingSighting
+                    var nextBuilding = new BuildingSighting
                     {
                         Hex = hex,
                         Owner = building.Owner,
@@ -867,6 +962,9 @@ namespace Game.Ai
                         // real observation turn, not a bookkeeping default.
                         SeenTurn = _currentTurn,
                     };
+                    if (!wasKnown || !SameBuildingSighting(previousBuilding, nextBuilding))
+                        knowledgeChanged = true;
+                    buildings[hex] = nextBuilding;
                 }
                 else
                 {
@@ -874,6 +972,7 @@ namespace Game.Ai
                     {
                         AiDebugLog.Write($"[AI] {player.Nickname}: memory — building at ({hex.Q},{hex.R}) corrected (gone on re-observation).");
                         buildingsChanged = true;
+                        knowledgeChanged = true;
                     }
                     buildings.Remove(hex);
                 }
@@ -882,7 +981,8 @@ namespace Game.Ai
             // purpose — resource/building/event observations matter to it even when nothing
             // route-relevant changed. The player-scoped route revision only bumps when this
             // observer's own blocker memory actually changed.
-            BumpKnowledgeVersion(player);
+            if (knowledgeChanged)
+                BumpKnowledgeVersion(player);
             if (sightingsChanged || buildingsChanged || eventGuardsChanged)
                 BumpRouteMemoryVersion(player);
         }
@@ -1067,6 +1167,39 @@ namespace Game.Ai
         // to (EnsureSubscribed) — terrain never changes, so it is the same answer a map holder gets.
         public static float KnownHexDefenseBonus(PlayerSetupData actor, HexCoord hex) =>
             KnownHexDefenseBonus(actor, _map, hex);
+
+        // Combat-owner-aware form: terrain belongs to the hex and applies to every defender,
+        // while a Base's structural Defense applies only to an army owned by that Base's owner.
+        // A null defendingOwner intentionally means terrain only (for example an event guard).
+        public static float KnownHexDefenseBonusFor(PlayerSetupData actor, HexCoord hex,
+            PlayerSetupData defendingOwner) =>
+            KnownHexDefenseBonusFor(actor, _map, hex, defendingOwner);
+
+        public static float KnownHexDefenseBonusFor(PlayerSetupData actor, HexMap map, HexCoord hex,
+            PlayerSetupData defendingOwner)
+        {
+            float bonus = 0f;
+            if (map != null && map.TryGetTerrainAt(hex, out var terrain) && terrain != null)
+                bonus += terrain.defenseModifier;
+
+            if (actor == null)
+                return bonus;
+
+            if (VisionSystem.IsVisible(actor, hex))
+            {
+                BuildingData live = BuildingRegistry.FindAt(hex);
+                if (defendingOwner != null && live != null && live.IsBase
+                    && live.Owner == defendingOwner)
+                    bonus += live.Defense;
+                return bonus;
+            }
+
+            KnownBuilding? remembered = KnownBuildingAt(actor, hex);
+            if (defendingOwner != null && remembered.HasValue && remembered.Value.IsBase
+                && remembered.Value.Owner == defendingOwner)
+                bonus += remembered.Value.Defense;
+            return bonus;
+        }
 
         public static float KnownHexDefenseBonus(PlayerSetupData actor, HexMap map, HexCoord hex)
         {

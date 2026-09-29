@@ -96,13 +96,15 @@ namespace Game.Combat
             if (victim == null || !victim.HasAbility(UnitAbilities.Berserk))
                 return false;
 
-            victim.Attack += magnitudes.BerserkAttackGain;
-            int defenseLoss = Mathf.Min(magnitudes.BerserkDefenseLoss, Mathf.Max(0, victim.Defense - 1));
-            if (defenseLoss > 0)
-            {
-                victim.Defense -= defenseLoss;
-                victim.BerserkDefenseLost += defenseLoss;
-            }
+            int oldDefense = victim.Defense;
+            int attack = victim.Attack;
+            int defense = victim.Defense;
+            BattleSimulationKernel.ApplyBerserkIfHit(
+                true, victim.Abilities, ref attack, ref defense, magnitudes);
+
+            victim.Attack = attack;
+            victim.Defense = defense;
+            victim.BerserkDefenseLost += Mathf.Max(0, oldDefense - defense);
             victim.BerserkStacks++;
             return true;
         }

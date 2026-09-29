@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using Game.Combat;
 using UnityEngine;
 
 namespace Game.Cards
@@ -92,6 +93,12 @@ namespace Game.Cards
         // How many copies EACH carrier of UnitAbilities.RaiseTheRots on a side summons at the
         // start of a battle (capped by the free space actually left on that side of the grid).
         public int raiseTheRotsUnitsPerSummoner = 2;
+
+        // Canonical authored combat magnitudes. Every live battle/simulation/strategic estimate
+        // should consume this bundle rather than re-reading the individual fields independently.
+        public AbilityMagnitudes Magnitudes => new AbilityMagnitudes(
+            criticalDamageMultiplier, hyperkineticBonusDamage, ceramicArmorReduction,
+            pyrokineticBonusDamage, berserkAttackGain, berserkDefenseLoss);
 
         // Null if the catalog isn't wired or the key no longer resolves — BattleScreenUI just
         // logs and skips the summon in that case.

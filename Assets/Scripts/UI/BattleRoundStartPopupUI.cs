@@ -61,7 +61,8 @@ namespace Game.UI
         // dismiss before the grace round plays out, guaranteeing they see it in time to matter.
         public void Show(int round, BattleGrid grid, ArmyData attacker, ArmyData defender,
             Sprite attackerFactionLogo, Sprite defenderFactionLogo,
-            bool canRetreat, Action onStartRound, Action onRetreat, string retreatingArmyName = null)
+            bool canRetreat, Action onStartRound, Action onRetreat, string retreatingArmyName = null,
+            int initiativeTieBreakSeed = 0, string retreatPreview = null)
         {
             _onStartRound = onStartRound;
             _onRetreat = onRetreat;
@@ -76,9 +77,12 @@ namespace Game.UI
                     _defaultTitleColor = roundTitleText.color;
 
                 bool retreating = !string.IsNullOrEmpty(retreatingArmyName);
-                roundTitleText.text = retreating
+                string title = retreating
                     ? $"Round {round} — {retreatingArmyName} is retreating this round!"
                     : $"Round {round}";
+                if (!retreating && !string.IsNullOrEmpty(retreatPreview))
+                    title += $"\n{retreatPreview}";
+                roundTitleText.text = title;
                 // A plain colour change alone was still easy to miss folded into the title (see
                 // the user's own report) — worth calling out visually, not just via wording.
                 roundTitleText.color = retreating ? TechnicalColors.RetreatWarning : _defaultTitleColor.Value;
@@ -102,9 +106,11 @@ namespace Game.UI
                 defenderNameText.text = defender != null ? defender.Name : string.Empty;
 
             if (attackerRosterText != null)
-                attackerRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(grid, attacker, defender, attackerSide: true));
+                attackerRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(
+                    grid, attacker, defender, attackerSide: true, tieBreakSeed: initiativeTieBreakSeed));
             if (defenderRosterText != null)
-                defenderRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(grid, attacker, defender, attackerSide: false));
+                defenderRosterText.text = FormatRoster(BattleTurnOrder.BuildSideSummary(
+                    grid, attacker, defender, attackerSide: false, tieBreakSeed: initiativeTieBreakSeed));
         }
 
         private static string FormatRoster((UnitData hero, List<(UnitData unit, int initiative)> acting) side)
