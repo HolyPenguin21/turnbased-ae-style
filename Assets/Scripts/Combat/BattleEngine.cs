@@ -717,14 +717,26 @@ namespace Game.Combat
 
             ReplenishFate(state.Attacker);
             ReplenishFate(state.Defender);
+
+            // Determine which side actually won while battle-only summons still exist. A side may
+            // legitimately finish the tactical battle with Hero + summoned combatants: stripping
+            // those temporary bodies first would make IsCombatCapable false and lose the winner
+            // before continuation/building/event resolution gets a chance to see it.
+            HexCoord hex = state.BattleHex;
+            bool attackerWonBattle = state.Attacker != null && state.Attacker.Hex.Equals(hex)
+                && BattleInitiator.IsCombatCapable(state.Attacker);
+            bool defenderWonBattle = state.Defender != null && state.Defender.Hex.Equals(hex)
+                && BattleInitiator.IsCombatCapable(state.Defender);
+
             StripSummonedUnits(state, state.Attacker);
             StripSummonedUnits(state, state.Defender);
 
-            HexCoord hex = state.BattleHex;
-            bool attackerHere = state.Attacker != null && state.Attacker.Hex.Equals(hex)
-                && BattleInitiator.IsCombatCapable(state.Attacker);
-            bool defenderHere = state.Defender != null && state.Defender.Hex.Equals(hex)
-                && BattleInitiator.IsCombatCapable(state.Defender);
+            // After stripping, only a real persistent member may carry the army back to the map.
+            // Hero + summons therefore preserves the hero army as survivor; summons-only does not.
+            bool attackerHere = attackerWonBattle && state.Attacker != null
+                && state.Attacker.Hex.Equals(hex) && state.Attacker.Members.Count > 0;
+            bool defenderHere = defenderWonBattle && state.Defender != null
+                && state.Defender.Hex.Equals(hex) && state.Defender.Members.Count > 0;
             ArmyData survivor = attackerHere != defenderHere
                 ? (attackerHere ? state.Attacker : state.Defender)
                 : null;
