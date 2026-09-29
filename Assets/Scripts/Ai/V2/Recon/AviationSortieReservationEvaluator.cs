@@ -3,6 +3,7 @@ using Game.Ai;
 using Game.Economy;
 using Game.Map;
 using Game.Players;
+using Game.Turns;
 using UnityEngine;
 
 namespace Game.Ai.V2
@@ -134,7 +135,7 @@ namespace Game.Ai.V2
         // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            float nextTurnEnergyCost, float airSpendableEnergy, int extraCommittedAp)
+            float nextTurnEnergyCost, float nextTurnApCost, float airSpendableEnergy, int extraCommittedAp)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
@@ -199,6 +200,16 @@ namespace Game.Ai.V2
                 return AviationReservationDecision.Rejected(sortieType, energyHeadroom,
                     handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
                     combatUtility, selectedUtility, 0f, "insufficient_next_turn_air_energy");
+
+            // AP cannot be banked across rounds. The only unconditional next-turn capacity is
+            // the minimum initiative-rank allocation (rank 2+ => 6 AP); prison/ability bonuses can
+            // only increase it. A multi-turn sortie whose fresh activation costs more than that is
+            // not guaranteed recoverable and therefore is not admitted.
+            int guaranteedNextTurnAp = InitiativeRules.ApForRank(2);
+            if (nextTurnApCost > guaranteedNextTurnAp + AiConfigV2.allocatorSliceEpsilon)
+                return AviationReservationDecision.Rejected(sortieType, energyHeadroom,
+                    handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
+                    combatUtility, selectedUtility, 0f, "insufficient_guaranteed_next_turn_ap");
 
             // Soft opportunity term — a marginal sortie is trimmed when spendable Energy is thin
             // relative to near-term income; a healthy runway makes the same sortie cheap. Mirrors
