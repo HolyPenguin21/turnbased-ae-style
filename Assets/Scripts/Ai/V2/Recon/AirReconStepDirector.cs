@@ -31,7 +31,6 @@ namespace Game.Ai.V2
         // Idempotent facts about where the wing physically is right now — not a pending transition.
         internal static void Observe(ReconAirSortieState sortie, ArmyData air, AiTurnContext ctx, bool atAirfield)
         {
-            sortie.EnsureLaunchProfile(air);
             if (sortie.LaunchTurn < 0)
                 sortie.LaunchTurn = atAirfield ? ctx.TurnNumber : ctx.TurnNumber - 1;
             if (!air.Hex.Equals(sortie.LaunchHex))
@@ -48,7 +47,7 @@ namespace Game.Ai.V2
         internal static bool CompletesAtAirfield(ReconAirSortieState sortie, bool atAirfield,
             bool hasDeparted) =>
             sortie != null && atAirfield && hasDeparted
-            && (sortie.Phase == ReconAirPhase.Return || sortie.OutboundCapReached);
+            && sortie.Phase == ReconAirPhase.Return;
 
         // Mark this AI turn as processed for the sortie (Hold-reopen-once semantics). Executor-owned.
         internal static bool BeginTurn(ReconAirSortieState sortie, int turn) => sortie.BeginTurn(turn);
@@ -193,7 +192,7 @@ namespace Game.Ai.V2
         {
             int armyId = air.Id;
             bool atAirfield = AviationRules.IsOwnedAirfieldAt(air.Hex, player);
-            int airborneTurns = sortie.AirborneTurnsElapsed(ctx.TurnNumber);
+            int safeUnlandedEnds = AviationRange.SafeUnlandedEndsRemaining(air);
 
             ReconAirPhase workingPhase = sortie.Phase;
             string decisionReason = null;
@@ -202,13 +201,6 @@ namespace Game.Ai.V2
 
             bool canRemainAirborne = !atAirfield
                 && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
-            bool mustRecoverThisTurn = !atAirfield && airborneTurns >= 1 && !canRemainAirborne;
-
-            if (!atAirfield && workingPhase == ReconAirPhase.Outbound && sortie.OutboundCapReached)
-            {
-                workingPhase = ReconAirPhase.Return;
-                decisionReason = "outbound_cap_reached";
-            }
 
             // ---- Hold resolution -------------------------------------------------------------
             if (workingPhase == ReconAirPhase.Hold)
@@ -219,20 +211,16 @@ namespace Game.Ai.V2
                         + $"airborneTurns={airborneTurns} reason={sortie.LastDecisionReason}");
                     return StepDecision.HoldEndTurn("hold set earlier this turn");
                 }
-                ReconAirPhase resume = mustRecoverThisTurn ? ReconAirPhase.Return : ReconAirPhase.Outbound;
-                if (mustRecoverThisTurn)
-                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold->Return reason=must_recover "
-                        + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
+                ReconAirPhase resume = safeUnlandedEnds > 0
+                    ? ReconAirPhase.Outbound
+                    : ReconAirPhase.Return;
+                if (resume == ReconAirPhase.Return)
+                    AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold->Return "
+                        + $"reason=endurance_deadline safeEnds={safeUnlandedEnds}");
                 return StepDecision.HoldReopen(resume,
-                    mustRecoverThisTurn ? "must_recover: endurance deadline after hold" : "hold reopened on fresh turn");
-            }
-
-            if (mustRecoverThisTurn && workingPhase == ReconAirPhase.Outbound)
-            {
-                workingPhase = ReconAirPhase.Return;
-                decisionReason = "must_recover: endurance deadline / no recovery plan remains";
-                AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Outbound->Return reason=must_recover "
-                    + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)} airborneTurns={airborneTurns}");
+                    resume == ReconAirPhase.Return
+                        ? "endurance deadline after hold"
+                        : "hold reopened on fresh turn");
             }
 
             // ---- opportunistic strike at the current hex ------------------------------------
@@ -257,29 +245,10 @@ namespace Game.Ai.V2
                     && choice.Value.Score <= AiConfigV2.airReconTurningMarginalGainFloor * bestOutbound;
                 bool returnReserve = choice.Value.RequiredTurns <= 1
                     && mpSlackAfterStep <= AiConfigV2.airReconTurningMpReserveSlack;
-                int stepCost = 1; // aviation movement is flat-cost per adjacent step
-                int spentAfterStep = sortie.OutboundMovementSpent + stepCost;
-                bool wouldExceedOutboundCap = spentAfterStep > sortie.OutboundMovementCap;
-                bool reachesOutboundCap = spentAfterStep >= sortie.OutboundMovementCap;
-
-                // The frozen launch cap, not diminishing CurrentMovement, owns normal route depth.
-                // Before that cap a score drop is only a tie-break signal; hard safety/no-value
-                // rejection is still owned by Pick and the recovery planner.
-                if (wouldExceedOutboundCap)
-                {
-                    workingPhase = ReconAirPhase.Return;
-                    decisionReason = "outbound_cap_preserves_recovery";
-                }
-                else if (reachesOutboundCap)
-                {
-                    pivotAfterForward = true;
-                    decisionReason = "outbound_cap_reached_after_step";
-                }
-                else
-                {
-                    marginalDrop = false;
-                    returnReserve = false;
-                }
+                // No Recon-specific distance cap: the route planner already proves after every
+                // adjacent step that a landing remains reachable inside the live endurance budget.
+                // For TurnsWithoutRefuel=0 this naturally preserves a same-turn round trip; positive
+                // endurance may use later turns without a parallel move/2 rule.
 
                 if (workingPhase == ReconAirPhase.Outbound && (marginalDrop || returnReserve))
                 {
@@ -389,13 +358,6 @@ namespace Game.Ai.V2
                 || !AviationActions.CanStrikeAtCurrentHex(air))
                 return new StrikeAssessment(false, 0f, 0f, "cannot_strike_here");
 
-            if (AiAirSortiePlanner.KnownAaExposureAt(player, air.Hex) > 0)
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
-                    + "decision=SKIP reason=known_aa_on_hex");
-                return new StrikeAssessment(false, 0f, 0f, "known_aa_on_hex");
-            }
-
             if (!AiAirSortiePlanner.TryReplan(air, ctx.Map, player).HasValue
                 && !AiAirSortiePlanner.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue)
             {
@@ -404,38 +366,10 @@ namespace Game.Ai.V2
                 return new StrikeAssessment(false, 0f, 0f, "no_safe_return_before_strike");
             }
 
-            float bestDamageFraction = 0f;
-            float bestKillProb = 0f;
-            foreach (ArmyData target in AviationCombatPresenter.FindAirStrikeTargetsAt(air.Hex, player))
-            {
-                if (target?.Owner == null || target.Owner == player)
-                    continue;
-                var visible = StealthSystem.TargetableMembersFor(target, player).ToList();
-                if (visible.Count == 0)
-                    continue;
-                float totalHp = visible.Sum(m => Math.Max(1f, m.HitPointsCurrent));
-                var profiles = visible.Select(WorthIt.FromLiveUnit).ToList();
-                AviationCombatEstimator.AirStrikeEstimate est = AviationCombatEstimator.EstimateAirStrike(
-                    air.Members, WorthIt.DefenseSum(visible), WorthIt.AttackSum(visible), profiles);
-                float damageFraction = totalHp > 0.01f
-                    ? (float)Math.Max(0.0, Math.Min(1.0, est.ExpectedDamage / totalHp))
-                    : 0f;
-                if (damageFraction > bestDamageFraction)
-                {
-                    bestDamageFraction = damageFraction;
-                    bestKillProb = est.KillAnyProbability;
-                }
-            }
-
-            bool favourable = bestDamageFraction >= AiConfigV2.airReconOpportunisticMinDamageFraction
-                && bestKillProb >= AiConfigV2.airReconOpportunisticMinKillProbability;
-            if (!favourable)
-            {
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} hex=({air.Hex.Q},{air.Hex.R}) "
-                    + $"decision=SKIP reason=estimate_unfavourable dmgFrac={bestDamageFraction:0.00} killP={bestKillProb:0.00}");
-                return new StrikeAssessment(false, bestDamageFraction, bestKillProb, "estimate_unfavourable");
-            }
-            return new StrikeAssessment(true, bestDamageFraction, bestKillProb, null);
+            // Once an airborne recon wing physically meets an enemy, the strike is free in MP.
+            // Do not invent a second strategic worth-it threshold here: if the attack is legal and
+            // a landing remains feasible inside the live endurance budget, attack and then replan.
+            return new StrikeAssessment(true, 0f, 0f, null);
         }
 
         // Post-strike phase decision (spec §46 / AI-AIR-02). Called by the executor right after it
