@@ -74,6 +74,36 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void HeroTarget_RemainsPassiveInBattleTurnOrder()
+        {
+            var a = new PlayerSetupData { Nickname = "A" };
+            var b = new PlayerSetupData { Nickname = "B" };
+            var aa = new ArmyData { Owner = a, Name = "A" };
+            var bb = new ArmyData { Owner = b, Name = "B" };
+            var attacker = Body(a);
+            var defender = Body(b);
+            var hero = new UnitData
+            {
+                Owner = b, IsHero = true, Fate = 4, FateMax = 4,
+                Initiative = 99, HitPointsCurrent = 5, HitPointsMax = 5,
+            };
+            aa.Members.Add(attacker);
+            bb.Members.Add(defender);
+            bb.Members.Add(hero);
+
+            var grid = new BattleGrid();
+            grid.Set(BattleGrid.AttackerFrontRow, 2, attacker);
+            grid.Set(BattleGrid.DefenderFrontRow, 2, defender);
+            grid.Set(BattleGrid.DefenderBackRow, 2, hero);
+
+            List<UnitData> order = BattleTurnOrder.BuildOrder(grid, aa, bb, 123);
+
+            CollectionAssert.Contains(order, attacker);
+            CollectionAssert.Contains(order, defender);
+            CollectionAssert.DoesNotContain(order, hero);
+        }
+
+        [Test]
         public void HeroGroundDefense_UsesFateMaxInsteadOfDefenseStat()
         {
             var attacker = new UnitData
