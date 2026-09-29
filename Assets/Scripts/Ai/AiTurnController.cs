@@ -233,7 +233,15 @@ namespace Game.Ai
             // AiMapMemory.OnTurnStarted + hand creation so V2 inherits the freshly-expired memory
             // and the capacity-capped hand. The legacy V1 turn body that used to follow this point
             // is deleted in ARCH-01 01D; nothing routes to it any more.
+            // WorthIt's exact Monte Carlo memo lives for this one AI turn (see
+            // WorthIt.EstimateCache.cs). Begin always starts empty, so a stopped coroutine that
+            // never reaches End cannot leak entries into a later turn.
+            Game.Combat.WorthIt.BeginEstimateCacheScope();
             yield return Game.Ai.V2.Pipeline.RunTurn(player, root, hand, ctx);
+            Game.Combat.WorthIt.EstimateCacheStats battleStats = Game.Combat.WorthIt.EndEstimateCacheScope();
+            AiDebugLog.Write($"[AI][Timing] {player.Nickname}: WorthIt cache hits={battleStats.Hits} "
+                + $"misses={battleStats.Misses} simulatedMs={battleStats.MissMilliseconds:0} "
+                + $"entries={battleStats.Entries}");
             onDone?.Invoke();
             yield break;
         }

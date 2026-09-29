@@ -28,7 +28,7 @@ namespace Game.Combat
     //    able to scratch it (the same expected-damage read BattleTargetSelector uses), because a
     //    win chance alone can overstate a fight nothing in the roster can actually hurt.
     //  · CombatValue — the quick body value every strongest-first roster pick uses.
-    public static class WorthIt
+    public static partial class WorthIt
     {
         // Attack-sum of `army`'s own non-hero members — the same side of the comparison every
         // caller here always uses for the ATTACKING army (heroes never counted, matching every
@@ -632,6 +632,31 @@ namespace Game.Combat
             foreach (DefendingArmy a in order)
                 if (a.Commander.Present)
                     seed = unchecked((seed * 31 + a.Commander.Initiative) * 31 + a.Commander.Fate);
+            AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
+            // Each defending army converted once; every trial fights a fresh copy (same values the
+            // per-trial conversion produced).
+            var defenderTemplates = order
+                .Select(a => ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative))
+                .ToList();
+            return CachedEstimate(2, seed, m,
+                buf =>
+                {
+                    AppendKey(buf, attackerCommander);
+                    AppendKey(buf, baseline);
+                    buf.Add(order.Count);
+                    for (int i = 0; i < order.Count; i++)
+                    {
+                        AppendKey(buf, order[i].Commander);
+                        AppendKey(buf, defenderTemplates[i]);
+                    }
+                },
+                () => SimulateSequential(baseline, order, defenderTemplates, seed, attackerCommander, m));
+        }
+
+        private static BattleEstimate SimulateSequential(List<BattleUnit> baseline,
+            List<DefendingArmy> order, List<List<BattleUnit>> defenderTemplates, int seed,
+            SideCommander attackerCommander, AbilityMagnitudes magnitudes)
+        {
             var rng = new System.Random(seed);
             float startHp = baseline.Sum(u => u.Hp);
             int wins = 0, draws = 0, criticalOnWin = 0;
@@ -641,10 +666,11 @@ namespace Game.Combat
                 var attackers = new List<BattleUnit>(baseline);
                 var entryStats = new List<BattleUnit>(baseline);
                 int result = 1;
-                foreach (DefendingArmy a in order)
+                for (int ai = 0; ai < order.Count; ai++)
                 {
+                    DefendingArmy a = order[ai];
                     result = SimulateOneBattle(attackers,
-                        ToBattleUnits(a.Units, a.DefenseBonus(hexDefenseBonus), a.Commander.Initiative), rng,
+                        new List<BattleUnit>(defenderTemplates[ai]), rng,
                         attackerCommander.Fate, a.Commander.Fate, magnitudes);
                     if (result <= 0)
                         break;
@@ -688,6 +714,27 @@ namespace Game.Combat
             SideCommander attackerCommander, SideCommander defenderCommander,
             AbilityMagnitudes? magnitudes)
         {
+            AbilityMagnitudes m = magnitudes ?? AbilityMagnitudes.Default;
+            // Converted once; every trial fights a fresh copy (same values the per-trial conversion
+            // produced).
+            List<BattleUnit> defenderTemplate =
+                ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative);
+            return CachedEstimate(1, seed, m,
+                buf =>
+                {
+                    AppendKey(buf, attackerCommander);
+                    AppendKey(buf, baseline);
+                    AppendKey(buf, defenderCommander);
+                    AppendKey(buf, defenderTemplate);
+                },
+                () => SimulateSingle(baseline, defenderTemplate, seed, attackerCommander,
+                    defenderCommander, m));
+        }
+
+        private static BattleEstimate SimulateSingle(List<BattleUnit> baseline,
+            List<BattleUnit> defenderTemplate, int seed, SideCommander attackerCommander,
+            SideCommander defenderCommander, AbilityMagnitudes magnitudes)
+        {
             var rng = new System.Random(seed);
             float startHp = baseline.Sum(u => u.Hp);
 
@@ -697,7 +744,7 @@ namespace Game.Combat
             {
                 var attackers = new List<BattleUnit>(baseline);
                 int result = SimulateOneBattle(attackers,
-                    ToBattleUnits(defenderUnits, hexDefenseBonus, defenderCommander.Initiative), rng,
+                    new List<BattleUnit>(defenderTemplate), rng,
                     attackerCommander.Fate, defenderCommander.Fate, magnitudes);
                 if (result > 0)
                 {
