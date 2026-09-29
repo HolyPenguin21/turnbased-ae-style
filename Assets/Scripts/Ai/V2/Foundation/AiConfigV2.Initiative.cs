@@ -41,7 +41,7 @@ namespace Game.Ai.V2
         public const float initiativeLowStockPenalty = 2.0f;
 
         // Value model — converts expected-AP / earliness gains into resource-comparable units.
-        public const float initiativeApBenefitPerExpectedAp = 3.5f;   // one expected AP is worth ~this many resource units at full pressure
+        public const float initiativeApBenefitPerExpectedAp = 2.0f;   // one expected AP is worth ~this many resource units at full pressure
         public const float initiativeTempoBenefitPerEarliness = 3.0f; // full [0..1] earliness swing is worth ~this at full tempo pressure
         public const float initiativeNetValueEpsilon = 0.01f;         // candidates within this net value are "effectively equal"
 
