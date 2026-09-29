@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 300001}
   - component: {fileID: 300002}
   m_Layer: 0
-  m_Name: MapObject_Citadel_Base
+  m_Name: MapObject_Base
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -92,10 +92,10 @@ Transform:
   m_Children:
   - {fileID: 300051}
   - {fileID: 300061}
-  - {fileID: 156887078126570935}
   - {fileID: 300031}
   - {fileID: 300041}
   - {fileID: 300081}
+  - {fileID: 156887078126570935}
   - {fileID: 300071}
   m_Father: {fileID: 300001}
   m_LocalEulerAnglesHint: {x: 80, y: 0, z: 0}
@@ -125,7 +125,7 @@ Transform:
   m_GameObject: {fileID: 300030}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.0438, y: 0.0243, z: -0}
+  m_LocalPosition: {x: 0.0015, y: 0.0495, z: 0}
   m_LocalScale: {x: 0.015, y: 0.015, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -178,7 +178,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 7
+  m_SortingOrder: 4
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: c0849f0b8c0dc6c48b305537675d501a, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
@@ -218,7 +218,7 @@ Transform:
   m_GameObject: {fileID: 300040}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.0091, y: 0.027, z: 0}
+  m_LocalPosition: {x: 0.0362, y: 0.0522, z: -0}
   m_LocalScale: {x: 0.025, y: 0.025, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -271,7 +271,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 7
+  m_SortingOrder: 4
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: 2cd6c53b558a94542b4e4d21436a92d5, type: 3}
   m_Color: {r: 0.15, g: 0.35, b: 0.8, a: 1}
@@ -634,7 +634,7 @@ Transform:
   m_GameObject: {fileID: 300080}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: -0.0145, y: 0.027, z: 0}
+  m_LocalPosition: {x: 0.0308, y: 0.0522, z: -0}
   m_LocalScale: {x: 0.024999999, y: 0.025, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -687,7 +687,7 @@ SpriteRenderer:
   m_GlobalIlluminationMeshLod: 0
   m_SortingLayerID: 0
   m_SortingLayer: 0
-  m_SortingOrder: 9
+  m_SortingOrder: 5
   m_MaskInteraction: 0
   m_Sprite: {fileID: 21300000, guid: 0cca0a00c957c5f4ba4a68bd677cf746, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
