@@ -669,6 +669,22 @@ namespace Game.Ai.V2
             }
             if (air.CurrentMovement <= 0)
             {
+                if (!atAirfield)
+                {
+                    // Hold is an actual end-of-turn state, never a side effect of attacking.
+                    // Record it only when the wing really has no movement left and can legally
+                    // spend this end-turn aloft; next turn reopens from live TurnsWithoutRefuel.
+                    if (AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player))
+                    {
+                        sortie.Phase = ReconAirPhase.Hold;
+                        sortie.LastDecisionReason = "end_turn_aloft: movement exhausted";
+                    }
+                    else
+                    {
+                        sortie.Phase = ReconAirPhase.Return;
+                        sortie.LastDecisionReason = "movement exhausted: return required";
+                    }
+                }
                 control.StopReason = ExecutionStopReason.OutOfMovement;
                 yield break;
             }
