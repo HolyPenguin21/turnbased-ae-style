@@ -431,7 +431,7 @@ namespace Game.Ai.V2
                     }
 
                     list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
-                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
+                        choice.RequiredTurns, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
                         requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore));
                 }
                 else
@@ -453,7 +453,7 @@ namespace Game.Ai.V2
                         continue;
 
                     list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.ActivationAp),
-                        1, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirLaunch,
+                        choice.RequiredTurns, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirLaunch,
                         slot.AirfieldHex, subset, requiredEnergy: choice.LaunchEnergy,
                         routeScore: choice.RouteScore));
                 }
