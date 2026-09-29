@@ -82,16 +82,18 @@ namespace Game.Ai.V2
                 if (cooldownState.TryGetCooldown(key, turn, out MissionCooldownInfo cd))
                 {
                     blocked++;
-                    AiDebugLog.WriteDeduped($"blocked|{key}",
-                        $"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
-                        + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(turn)}");
+                    if (AiDebugLog.IsVerbose(AiVerboseArea.Recon))
+                        AiDebugLog.WriteDeduped($"blocked|{key}",
+                            $"[AI][V2][Demand][Recon] blocked {key} reason={cd.Reason} "
+                            + $"start=t{cd.StartedTurn} until=t{cd.UntilTurn} remaining={cd.RemainingAt(turn)}");
                     continue;
                 }
                 runnable.Add(o);
             }
 
-            AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] jobs raw={objectives.Count} covered={coveredKeys.Count} "
-                + $"uncovered={uncovered.Count} blocked={blocked} runnable={runnable.Count} active={activeReconExecutions}");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Recon))
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] jobs raw={objectives.Count} covered={coveredKeys.Count} "
+                    + $"uncovered={uncovered.Count} blocked={blocked} runnable={runnable.Count} active={activeReconExecutions}");
             if (runnable.Count == 0)
             {
                 AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] decision=DEFER reason=all_uncovered_objectives_on_cooldown "
@@ -116,10 +118,11 @@ namespace Game.Ai.V2
             // canonical Assignment/capacity owner).
             ReconCapacitySnapshot capacity = ReconCapacitySnapshot.Build(
                 snap, observationRunnable, groundVisitRunnable, activeIntents, commitments, player);
-            AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
-                + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
-                + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "
-                + $"stealth={stealthRunnable.Count}) blocked={blocked}");
+            if (AiDebugLog.IsVerbose(AiVerboseArea.Recon))
+                AiDebugLog.WriteRepeatSuppressed($"[AI][V2][Demand][Recon] capacity {capacity.Explain} "
+                    + $"active={activeReconExecutions} hard={ReconConcurrencyPolicy.HardCap} "
+                    + $"runnable={runnable.Count} (obs={observationRunnable.Count} groundVisit={groundVisitRunnable.Count} "
+                    + $"stealth={stealthRunnable.Count}) blocked={blocked}");
 
             // --- Stealth lane: its own value/coverage estimate vs free stealth-capable movers. Not
             //     persistence-gated (a stealth job with no stealth actor is a real capability gap,
