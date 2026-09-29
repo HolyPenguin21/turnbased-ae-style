@@ -138,7 +138,7 @@ namespace Game.Combat
             float bestScore = float.NegativeInfinity;
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (!candidate.IsGroundCombatant || candidate.Owner == actor.Owner
+                if (candidate.Owner == actor.Owner
                     || !hp.TryGetValue(candidate, out float candidateHp) || candidateHp <= 0f)
                     continue;
                 if (!grid.TryFindPosition(candidate, out int candRow, out int candCol)
@@ -186,11 +186,6 @@ namespace Game.Combat
 
             foreach (UnitData candidate in grid.AllUnits())
             {
-                if (!candidate.IsGroundCombatant)
-                {
-                    BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: hero/non-combatant is protected during Ground Combat");
-                    continue;
-                }
                 if (candidate.Owner == actor.Owner)
                 {
                     BattleDebugLog.Write($"[TargetDiag] skip {candidate.Name}: same owner as actor {actor.Name}");
