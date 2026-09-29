@@ -70,7 +70,6 @@ namespace Game.Ai.V2
         public int LaunchTurn = -1;                                 // AI turn the wing actually left the airfield (authoritative)
         public int LastProcessedTurn = -1;                          // last AI turn RunActor processed this sortie
         public ReconAirMissionMode MissionMode = ReconAirMissionMode.Recon;
-        public bool MustRecoverThisTurn;                            // real endurance deadline reached — Return is a hard priority this turn
         public string LastDecisionReason;                           // one-line "why" for the last airborne decision (telemetry)
 
         // Set only after a confirmed launch/move and consumed by the next admitted actor step.
