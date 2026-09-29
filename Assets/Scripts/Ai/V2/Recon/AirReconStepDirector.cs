@@ -199,16 +199,13 @@ namespace Game.Ai.V2
             float? nextBestOutboundScore = null;
             bool pivotAfterForward = false;
 
-            bool canRemainAirborne = !atAirfield
-                && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
-
             // ---- Hold resolution -------------------------------------------------------------
             if (workingPhase == ReconAirPhase.Hold)
             {
                 if (!newTurn)
                 {
                     AiDebugLog.Write($"[AI][V2][Recon][Air] actor=#{armyId} phase=Hold — ending turn aloft; "
-                        + $"airborneTurns={airborneTurns} reason={sortie.LastDecisionReason}");
+                        + $"safeEnds={safeUnlandedEnds} reason={sortie.LastDecisionReason}");
                     return StepDecision.HoldEndTurn("hold set earlier this turn");
                 }
                 ReconAirPhase resume = safeUnlandedEnds > 0
@@ -372,9 +369,10 @@ namespace Game.Ai.V2
             return new StrikeAssessment(true, 0f, 0f, null);
         }
 
-        // Post-strike phase decision (spec §46 / AI-AIR-02). Called by the executor right after it
-        // resolves the strike, on fully-settled live state. A second strike next turn is only an
-        // OPTION: if the wing can still prove a safe airborne EndTurn + recovery, Hold; else Return.
+        // Post-strike flight decision. A strike costs no movement and therefore never ends the
+        // flight by itself. If a recoverable route still exists, preserve the current flight
+        // direction (Outbound keeps exploring/supporting, Return keeps returning). Hold is set only
+        // by the executor when the wing actually ends its turn aloft.
         internal static void ResolveAfterStrike(PlayerSetupData player, AiTurnContext ctx, ArmyData air,
             ReconAirSortieState sortie, bool attacked)
         {
@@ -385,26 +383,21 @@ namespace Game.Ai.V2
             bool safeReturnGone = air == null || !AviationRules.IsValidAirArmy(air)
                 || (!AiAirSortiePlanner.TryReplan(air, ctx.Map, player).HasValue
                     && !AiAirSortiePlanner.TryReplanMultiTurnReturn(air, ctx.Map, player).HasValue);
-            bool canRemainAfterStrike = !safeReturnGone
-                && AiAirSortiePlanner.CanEndTurnHereAndRecover(air, ctx.Map, player);
-
-            if (canRemainAfterStrike)
-            {
-                sortie.Phase = ReconAirPhase.Hold;
-                sortie.LastDecisionReason = "hold_airborne_after_strike: second-strike window re-evaluated next turn";
-            }
-            else
+            if (safeReturnGone)
             {
                 sortie.Phase = ReconAirPhase.Return;
-                sortie.LastDecisionReason = "return_after_strike: no safe airborne window remains";
+                sortie.LastDecisionReason = "return_after_strike: no recoverable route remains";
+                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air?.Id} attacked={attacked}; "
+                    + "WARN no recoverable route after strike — turning home");
+                return;
             }
 
-            if (safeReturnGone)
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air?.Id} attacked={attacked}; "
-                    + "WARN no safe return after strike — next iteration will hold/seek any airfield");
-            else
-                AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} attacked={attacked}; "
-                    + $"safe return preserved, sortie now {(canRemainAfterStrike ? "Hold (2-turn strike window)" : "Return")}");
+            if (sortie.Phase != ReconAirPhase.Return)
+                sortie.Phase = ReconAirPhase.Outbound;
+            sortie.LastDecisionReason = "continue_after_strike: strike spent no movement";
+            AiDebugLog.Write($"[AI][V2][Recon][Air][Opportunity] actor=#{air.Id} attacked={attacked}; "
+                + $"flight continues phase={sortie.Phase} mp={air.CurrentMovement} "
+                + $"safeEnds={AviationRange.SafeUnlandedEndsRemaining(air)}");
         }
 
         // ==========================================================================================
