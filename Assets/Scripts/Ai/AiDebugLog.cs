@@ -6,6 +6,20 @@ using UnityEngine;
 
 namespace Game.Ai
 {
+    [Flags]
+    public enum AiVerboseArea
+    {
+        None = 0,
+        Recon = 1 << 0,
+        Aggression = 1 << 1,
+        Economy = 1 << 2,
+        Aviation = 1 << 3,
+        Reservations = 1 << 4,
+        Materialization = 1 << 5,
+        Correlation = 1 << 6,
+        All = Recon | Aggression | Economy | Aviation | Reservations | Materialization | Correlation,
+    }
+
     // A plain-text trace of every AI decision/action, wide enough to reconstruct a whole AI turn
     // after the fact — separate from Unity's own Console (which is only ever live for as long as
     // the Editor/game stays open, and resets on every domain reload) so the project owner can
@@ -47,6 +61,10 @@ namespace Game.Ai
         // Compact is the default trace. Verbose keeps expensive/repetitive diagnostics available
         // for focused investigations without paying their I/O/readability cost on every QA run.
         public static bool Verbose = false;
+        public static AiVerboseArea VerboseAreas = AiVerboseArea.None;
+
+        public static bool IsVerbose(AiVerboseArea area) =>
+            Verbose || (VerboseAreas & area) != 0;
 
         // BeforeSceneLoad fires exactly once per game run (Editor Play Mode entry, or a
         // standalone build's own launch), before anything else in the very first scene has had a
@@ -70,6 +88,7 @@ namespace Game.Ai
                 Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? root);
                 _writer = new StreamWriter(_path, append: false) { AutoFlush = true };
                 _writer.WriteLine($"=== AI debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
+                Application.quitting -= CloseSession;
                 Application.quitting += CloseSession;
             }
             catch (Exception e)
@@ -109,6 +128,15 @@ namespace Game.Ai
             [CallerLineNumber] int callerLine = 0)
         {
             if (!Verbose) return;
+            WriteCore(message, callerFile, callerMember, callerLine);
+        }
+
+        public static void WriteVerbose(AiVerboseArea area, string message,
+            [CallerFilePath] string callerFile = "",
+            [CallerMemberName] string callerMember = "",
+            [CallerLineNumber] int callerLine = 0)
+        {
+            if (!IsVerbose(area)) return;
             WriteCore(message, callerFile, callerMember, callerLine);
         }
 
@@ -180,8 +208,9 @@ namespace Game.Ai
             string contentKey = $"{callerFile}:{callerLine}|{message.Replace(id, "#")}";
             if (_firstIdByContent.TryGetValue(contentKey, out string firstId))
             {
-                WriteCore($"[AI][V2]   {id} = {firstId} (same line as earlier this turn)",
-                    callerFile, callerMember, callerLine);
+                if (IsVerbose(AiVerboseArea.Correlation))
+                    WriteCore($"[AI][V2]   {id} = {firstId} (same line as earlier this turn)",
+                        callerFile, callerMember, callerLine);
                 return;
             }
             _firstIdByContent[contentKey] = id;
