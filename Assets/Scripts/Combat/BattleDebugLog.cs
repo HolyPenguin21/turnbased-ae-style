@@ -18,7 +18,6 @@ namespace Game.Combat
     public static class BattleDebugLog
     {
         private const string RelativePath = "Logs/BattleDebug.log";
-        private static string _path;
         private static StreamWriter _writer;
         public static bool LogToUnityConsole = false;
         public static bool Verbose = false;
@@ -37,9 +36,9 @@ namespace Game.Combat
             try
             {
                 string root = Directory.GetParent(Application.dataPath)?.FullName ?? Application.dataPath;
-                _path = Path.Combine(root, RelativePath);
-                Directory.CreateDirectory(Path.GetDirectoryName(_path) ?? root);
-                _writer = new StreamWriter(_path, append: false) { AutoFlush = true };
+                string path = Path.Combine(root, RelativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(path) ?? root);
+                _writer = new StreamWriter(path, append: false) { AutoFlush = true };
                 _writer.WriteLine($"=== Battle debug log — session started {DateTime.Now:yyyy-MM-dd HH:mm:ss} ===");
                 Application.quitting -= CloseSession;
                 Application.quitting += CloseSession;
@@ -47,7 +46,6 @@ namespace Game.Combat
             catch (Exception e)
             {
                 Debug.LogWarning($"BattleDebugLog: couldn't open log file — {e.Message}");
-                _path = null;
                 _writer = null;
             }
         }
@@ -94,7 +92,6 @@ namespace Game.Combat
             {
                 Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
                 CloseSession();
-                _path = null;
             }
         }
 
@@ -119,7 +116,6 @@ namespace Game.Combat
             {
                 Debug.LogWarning($"BattleDebugLog: write failed, logging to file disabled for the rest of this session — {e.Message}");
                 CloseSession();
-                _path = null;
             }
         }
 
