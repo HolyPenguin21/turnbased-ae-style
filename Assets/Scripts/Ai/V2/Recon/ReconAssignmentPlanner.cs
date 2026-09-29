@@ -346,11 +346,9 @@ namespace Game.Ai.V2
 
         // AIR CANDIDATES. WHICH air actor/airfield executes a funded Observation mission is decided
         // by the SAME Assignment owner as Ground. Hard invariants: air never satisfies
-        // Explore/GroundTraversal (never reached — caller filters) and never a stealth-Required /
-        // positive-DetectionRisk mission (air cannot go hidden). `airPool` is the SAME ordered,
-        // per-pass-capped candidate pool (ready standalone wings, then one hangar launch subset per
-        // owned airfield, capped to ReconAirCapacityPolicy.MaxAirReconActorsPerTurn minus wings
-        // already continuing a prior sortie) AssignFunded computes ONCE for the whole batch via
+        // Explore/GroundTraversal and never a stealth-Required job. `airPool` contains only
+        // already-formed ready/airborne air armies; Recon never creates a wing from hangar cards.
+        // AssignFunded computes the pool once for the whole batch via
         // ReconAirCapacityPolicy.EvaluateDetailed — the same primitive capacity sizing uses, so the
         // pool Assignment considers can never diverge from what the capacity signal promised
         // Demand.
@@ -382,7 +380,8 @@ namespace Game.Ai.V2
             ReconMode mode = AirReconModePolicy.RequestedMode(player, snap);
             foreach (AirObservationSlot slot in airPool)
             {
-                if (slot.ActorId.HasValue)
+                if (!slot.ActorId.HasValue)
+                    continue;
                 {
                     // Diagnostics only: why an existing (usually airborne) wing got no candidate.
                     void Reject(string why) => AiDebugLog.WriteDeduped(
@@ -433,29 +432,6 @@ namespace Game.Ai.V2
                     list.Add(new ScoutExecutionCandidate(mover, anchorTarget, Mathf.RoundToInt(choice.ActivationAp),
                         choice.RequiredTurns, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirExisting,
                         requiredEnergy: choice.LaunchEnergy, routeScore: choice.RouteScore));
-                }
-                else
-                {
-                    ArmyData airfield = AviationRules.FindAirfieldAt(slot.AirfieldHex, player);
-                    if (airfield == null)
-                        continue;
-                    List<UnitData> subset = ReconAirCapacityPolicy.SelectReconLaunchSubset(airfield.Members);
-                    if (subset.Count == 0)
-                        continue;
-
-                    AirStructuralFeasibility choice = ReconAirReservationPrepass.EvaluateAirStructuralFeasibility(
-                        player, ctx, snap, mode, slot, null, target.FocusHex);
-                    if (!choice.Feasible)
-                        continue;
-                    int vision = (ctx.GameConfig != null ? ctx.GameConfig.armyVisionRadius : 0)
-                        + subset.Select(AbilityParams.GetBestRecceRadius).DefaultIfEmpty(0).Max();
-                    if (!ReconAirStepPlanner.MakesGenuineProgress(slot.AirfieldHex, choice.ChosenHex, target.FocusHex, vision))
-                        continue;
-
-                    list.Add(new ScoutExecutionCandidate(null, target.FocusHex, Mathf.RoundToInt(choice.ActivationAp),
-                        choice.RequiredTurns, 0, 0f, 0, false, choice.ActivationAp, ScoutExecutorKind.AirLaunch,
-                        slot.AirfieldHex, subset, requiredEnergy: choice.LaunchEnergy,
-                        routeScore: choice.RouteScore));
                 }
             }
         }
