@@ -170,7 +170,8 @@ namespace Game.Ai.V2
         // pass this turn (several sorties must not each evaluate against the full AP pool).
         public static AviationReservationDecision EvaluateRecon(PlayerSetupData player, PlayerRoot root,
             HexMap map, int launchApCost, int launchEnergyCost, float reconInformationValue,
-            float nextTurnEnergyCost, float nextTurnApCost, float airSpendableEnergy, int extraCommittedAp)
+            float nextTurnEnergyCost, float nextTurnApCost, float airSpendableEnergy, int extraCommittedAp,
+            float alreadyCommittedNextTurnEnergy = 0f, float alreadyCommittedNextTurnAp = 0f)
         {
             if (player == null || root == null)
                 return AviationReservationDecision.None("missing_player_or_root");
@@ -227,7 +228,9 @@ namespace Game.Ai.V2
             // Cross-turn affordability is mission-neutral. Recon feeds its post-current-spend
             // Energy into the same physical continuation gate Attack/Raid support and Rebase use.
             if (!AviationContinuationBudget.CanGuaranteeNextActivation(player, map,
-                    spendableEnergy - launchEnergyCost, nextTurnEnergyCost, nextTurnApCost,
+                    spendableEnergy - launchEnergyCost,
+                    alreadyCommittedNextTurnEnergy + nextTurnEnergyCost,
+                    alreadyCommittedNextTurnAp + nextTurnApCost,
                     out string continuationBlock))
                 return AviationReservationDecision.Rejected(sortieType, energyHeadroom,
                     handEnergyPressure, deckEnergyPressure, protectedCardEnergy, reconUtility,
