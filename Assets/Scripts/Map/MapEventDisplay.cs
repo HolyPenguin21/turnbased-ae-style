@@ -83,7 +83,9 @@ namespace Game.Map
 
             // Whatever image the prefab already has baked onto its own SpriteRenderer is what
             // shows — no per-event sprite lookup, per the project owner's own call.
-            EventMarkerVisual marker = Instantiate(gameConfig.eventMarkerPrefab, map.transform);
+            EventMarkerVisual marker;
+            using (new Game.Core.ProfileScope("Map/Instantiate.EventMarker"))
+                marker = Instantiate(gameConfig.eventMarkerPrefab, map.transform);
             marker.transform.position = map.HexToWorld(hex) + ToWorldOffset(gameConfig.eventIconOffset, map.OuterRadius);
             marker.SetSortingOrder(MapSortingOrder.EventIcon);
             // A hex whose event was just skipped is, by definition, the one the mover is

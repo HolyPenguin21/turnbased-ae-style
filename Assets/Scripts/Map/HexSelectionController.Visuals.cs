@@ -98,8 +98,10 @@ namespace Game.Map
             }
             if (!alreadyRemembered || remembered == null || remembered.Visual == null)
             {
-                MapObjectVisual visual = Instantiate(source.Controller.Visual, source.Controller.transform.position,
-                    source.Controller.transform.rotation, transform);
+                MapObjectVisual visual;
+                using (new Game.Core.ProfileScope("Map/Instantiate.RememberedArmy"))
+                    visual = Instantiate(source.Controller.Visual, source.Controller.transform.position,
+                        source.Controller.transform.rotation, transform);
                 visual.name = source.Controller.Visual.name + " (Last Seen)";
                 remembered = new RememberedArmyVisual { Visual = visual };
                 visuals[source.Id] = remembered;
@@ -285,7 +287,8 @@ namespace Game.Map
             }
             if (!visuals.TryGetValue(hex, out MapObjectVisual snapshot) || snapshot == null)
             {
-                snapshot = Instantiate(source, source.transform.position, source.transform.rotation, transform);
+                using (new Game.Core.ProfileScope("Map/Instantiate.RememberedBuilding"))
+                    snapshot = Instantiate(source, source.transform.position, source.transform.rotation, transform);
                 snapshot.name = source.name + " (Last Seen)";
                 // A remembered marker is a frozen sighting. Its cloned flag animator has no
                 // owner selected, so leaving it running would clear the copied emblem next frame.

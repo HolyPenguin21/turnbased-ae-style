@@ -69,7 +69,9 @@ namespace Game.Map
             MapObjectVisual prefab = AviationRules.IsAirArmy(army) && ownerCatalog.airArmyPrefab != null
                 ? ownerCatalog.airArmyPrefab
                 : ownerCatalog.armyPrefab;
-            MapObjectVisual marker = Instantiate(prefab);
+            MapObjectVisual marker;
+            using (new Game.Core.ProfileScope("Map/Instantiate.ArmyMarker"))
+                marker = Instantiate(prefab);
             ArmyController controller = marker.gameObject.AddComponent<ArmyController>();
             controller.SetData(army);
             army.Controller = controller;
@@ -160,7 +162,9 @@ namespace Game.Map
 
         private MapObjectVisual CreateBuildingMarker(HexCoord hex, PlayerSetupData owner, MapObjectVisual prefab, Sprite icon = null)
         {
-            MapObjectVisual marker = Instantiate(prefab);
+            MapObjectVisual marker;
+            using (new Game.Core.ProfileScope("Map/Instantiate.BuildingMarker"))
+                marker = Instantiate(prefab);
             PlayerRoot root = PlayerRootRegistry.FindFor(owner);
             if (root != null)
                 marker.transform.SetParent(root.transform, worldPositionStays: true);

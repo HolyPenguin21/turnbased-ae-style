@@ -161,7 +161,9 @@ namespace Game.Map
             {
                 (ResourceType type, int amount) = present[i];
                 float x = startX + i * gameConfig.resourceIconSpacing;
-                ResourceIconVisual icon = Instantiate(gameConfig.resourceIconPrefab, map.transform);
+                ResourceIconVisual icon;
+                using (new Game.Core.ProfileScope("Map/Instantiate.ResourceIcon"))
+                    icon = Instantiate(gameConfig.resourceIconPrefab, map.transform);
                 icon.transform.position = center + new Vector3(x * radius, 0f, gameConfig.resourceRowOffset * radius);
                 icon.SetResource(type, amount, amountKnown);
                 // A hex re-yielded mid-game (see RefreshHex's own callers, e.g. a citadel bonus

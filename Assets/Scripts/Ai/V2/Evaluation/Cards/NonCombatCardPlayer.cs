@@ -495,10 +495,27 @@ namespace Game.Ai.V2
         // structure with a known garrison (AttackObjectiveEvaluator.KnownSiteDefenders).
         private static List<HexCoord> KnownStrikeTargets(WorldSnapshot snap, PlayerSetupData player)
         {
+            // The same target set CombatOpportunityAnalyzer.Analyze(snap).All enumerates (enemy
+            // sightings, neutral sightings, event guards — in that order), read directly: only the
+            // hex and "has known defenders" matter here, so running its Monte Carlo was pure cost.
             var targets = new List<HexCoord>();
-            foreach (CombatOpportunity o in CombatOpportunityAnalyzer.Analyze(snap).All)
-                if (o.HasTarget && o.DefenderCount > 0 && !targets.Contains(o.TargetHex))
-                    targets.Add(o.TargetHex);
+            void AddSighting(HexCoord hex, int defenderCount)
+            {
+                if (defenderCount > 0 && !targets.Contains(hex))
+                    targets.Add(hex);
+            }
+            if (snap?.Self != null && snap.Known != null)
+            {
+                foreach (AiMapMemory.KnownEnemySighting t in snap.Known.EnemySightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    AddSighting(t.Hex, t.Defenders?.Count ?? 0);
+                foreach (AiMapMemory.KnownEnemySighting t in snap.Known.NeutralSightings
+                    ?? (IReadOnlyList<AiMapMemory.KnownEnemySighting>)System.Array.Empty<AiMapMemory.KnownEnemySighting>())
+                    AddSighting(t.Hex, t.Defenders?.Count ?? 0);
+                foreach (KnownEventGuardSnapshot g in snap.Known.EventGuards
+                    ?? (IReadOnlyList<KnownEventGuardSnapshot>)System.Array.Empty<KnownEventGuardSnapshot>())
+                    AddSighting(g.Hex, g.Defenders?.Count ?? 0);
+            }
             foreach (AiMapMemory.KnownBuilding b in snap?.Known?.Buildings
                 ?? (IReadOnlyList<AiMapMemory.KnownBuilding>)System.Array.Empty<AiMapMemory.KnownBuilding>())
                 if (AttackObjectiveEvaluator.IsHostileAttackStructure(b, player)
