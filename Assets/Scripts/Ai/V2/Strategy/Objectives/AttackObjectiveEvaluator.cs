@@ -65,6 +65,7 @@ namespace Game.Ai.V2
         public int DefenderCount;
         public float ProjectedWinChance;
         public bool CoversAllDefenders;
+        public bool ForceCommitted;
         public int EstimatedEta;
         // ATK §17 — the game turn on which this operation last took an opportunistic side strike,
         // copied here from the durable AttackIntent so the executor reads a FROZEN fact like every
@@ -401,6 +402,11 @@ namespace Game.Ai.V2
             return Curves.Ramp(assembly, AiConfigV2.attackAssemblyReadyLo, AiConfigV2.attackAssemblyReadyHi)
                 * Curves.Ramp(deployment, AiConfigV2.attackDeploymentReadyLo, AiConfigV2.attackDeploymentReadyHi);
         }
+
+        // Admission uses the current ground-only deck/map ceiling. Strict inequality is
+        // intentional: an army at exactly four fifths still prepares.
+        internal static bool ForceReady(float attackArmyPower, float currentDeckPeakPower) =>
+            currentDeckPeakPower > 0f && attackArmyPower > 0.80f * currentDeckPeakPower;
 
         // §66 — a stamp of 0 means the record predates observation stamping, which must read as
         // "age unknown", i.e. maximally stale, never as "observed on turn 0".

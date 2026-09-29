@@ -13,11 +13,11 @@ namespace Game.Ai.V2
     //  A mechanical partial of the existing Aggression demand owner. Two things may create a
     //  demand here:
     //    * a PROVEN structural shortage of a bound, live Attack operation: its primary no longer
-    //      clears Attack's floor against the target site — the same gate the phase machine turns
+    //      cannot reach the current force threshold or cover the known defenders — the same gate the phase machine turns
     //      to Reinforcement on (one owner), so a delivered support is really used — and no
     //      existing free army could fix that by joining it;
     //    * strike force step 4 — the best known Base/Citadel objective that no army can take even
-    //      at Attack's floor, while cards in hand could still strengthen the fist
+    //      at the current force threshold, while cards in hand could still strengthen the fist
     //      (AppendUnboundAttackDemand). The target is a real, known structure, so this names a
     //      real objective, not an invented war (§43).
     //
@@ -78,10 +78,10 @@ namespace Game.Ai.V2
                     ai.ReinforcementRequestedTurn,
                     AttackObjectiveEvaluator.KnownSiteOpposition(snap, ai.Target.Hex),
                     AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, ai.Target.Hex),
-                    // The same floor the phase machine turns to Reinforcement on (one owner).
-                    GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                    // Coverage is independent of the dynamic force requirement.
+                    GroundCombatAdmissionPolicy.AttackCoverageGate,
                     () => AttackObjectiveEvaluator.ForTrackedTarget(snap, ai.Target)?.TaskScore ?? default,
-                    diag);
+                    diag, ai.AssaultStarted ? 0f : 0.80f * snap.Self.TotalMilitaryPotential);
                 if (attackShortage != null)
                     demands.Add(attackShortage);
             }
@@ -142,9 +142,9 @@ namespace Game.Ai.V2
 
         // Strike force step 4 — the Attack objective with no operation yet. Only the best known
         // Base/Citadel (the same TaskScore the mission layer ranks by) and only when no free army,
-        // same-hex package nor cross-hex gather can take it even at Attack's floor. The fist (the strongest free
-        // field army) is what the hand should strengthen, and only a hand that can actually add
-        // to the best stack (BestStackPotential > FieldPotential) is asked.
+        // same-hex package nor cross-hex gather can take it above the current force threshold.
+        // A card already in hand can strengthen the free fist through Phase A; an undrawn card
+        // remains Phase B's Draw responsibility.
         private static void AppendUnboundAttackDemand(WorldSnapshot snap,
             IReadOnlyList<MissionIntent> activeIntents, ActorCommitments commitments,
             List<string> diag, List<AxisDemand> demands)
@@ -155,20 +155,14 @@ namespace Game.Ai.V2
                         && i.Attack != null && i.Attack.Target.Equals(o.Target)));
             if (objective == null)
                 return;
-            if (snap.Self.BestStackPotential <= snap.Self.FieldPotential + AiConfigV2.allocatorSliceEpsilon)
-            {
-                diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={objective.Target.DiagnosticLabel} "
-                    + "reason=unbound_attack_hand_adds_nothing_to_the_fist");
-                return;
-            }
-
             ISet<int> claimed = commitments?.ClaimedArmyIdSet;
             float hexBonus = AttackObjectiveEvaluator.KnownSiteDefenceBonus(snap, null, objective.Hex);
             GroundCombatAssemblyPlan plan = GroundCombatAssemblyPlanner.Plan(snap,
                 new GroundCombatAssemblyRequest
                 {
                     Opposition = objective.Opposition,
-                    WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    MinimumArmyPower = 0.80f * snap.Self.TotalMilitaryPotential,
                     ExcludedArmyIds = claimed,
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -186,7 +180,9 @@ namespace Game.Ai.V2
                 .Where(a => a.CurrentMovement <= 0)
                 .FirstOrDefault(a => GroundCombatAssemblyPlanner.PlanForArmyAtThreshold(snap,
                     objective.Opposition, a.ArmyId,
-                    GroundCombatAdmissionPolicy.AttackWinChanceFloor, hexBonus).Feasible);
+                    GroundCombatAdmissionPolicy.AttackCoverageGate, hexBonus).Feasible
+                    && AttackObjectiveEvaluator.ForceReady(a.EffectiveArmyPower,
+                        snap.Self.TotalMilitaryPotential));
             if (futureActor != null)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -195,9 +191,10 @@ namespace Game.Ai.V2
             }
             GroundCombatGatherPlan gather = GroundCombatAssemblyPlanner.PlanGather(snap,
                 objective.Opposition, hexBonus, objective.Hex, claimed,
-                GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                GroundCombatAdmissionPolicy.AttackCoverageGate,
                 donorValues: GroundCombatDonorPolicy.BorrowableDonorValues(activeIntents),
-                requireMovementNow: false);
+                requireMovementNow: false,
+                minimumArmyPower: 0.80f * snap.Self.TotalMilitaryPotential);
             if (gather.Feasible)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SATISFIED target={objective.Target.DiagnosticLabel} "
@@ -212,7 +209,8 @@ namespace Game.Ai.V2
                 new GroundCombatAssemblyRequest
                 {
                     Opposition = objective.Opposition,
-                    WinChanceGate = GroundCombatAdmissionPolicy.AttackWinChanceFloor,
+                    WinChanceGate = GroundCombatAdmissionPolicy.AttackCoverageGate,
+                    MinimumArmyPower = 0.80f * snap.Self.TotalMilitaryPotential,
                     ExcludedArmyIds = new HashSet<int>(),
                     DefenderHexDefenseBonus = hexBonus,
                 });
@@ -223,28 +221,48 @@ namespace Game.Ai.V2
                 return;
             }
 
+            // Hand and remaining deck are different: Phase A can materialize a card already
+            // held; Phase B's Draw candidate handles cards that still need to be drawn.
+            if (snap.Self.Hand == null || !snap.Self.Hand.Any(h => h?.Definition != null
+                && !h.Definition.isAviation
+                && (h.Definition.cardType == Game.Cards.CardType.Unit
+                    || h.Definition.cardType == Game.Cards.CardType.Hero)))
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
+                    + "reason=attack_ground_card_still_in_deck_or_unavailable");
+                return;
+            }
+
             ArmySnapshot fist = snap.Self.Armies?
                 .Where(a => a != null && a.IsStructuralRaidActor
+                    && snap.Self.BaseHexes.Contains(a.Hex)
                     && (claimed == null || !claimed.Contains(a.ArmyId)))
                 .OrderByDescending(a => a.EffectiveArmyPower).ThenBy(a => a.ArmyId)
                 .FirstOrDefault();
-            float required = RequiredSitePower(objective.Opposition, hexBonus);
+            if (fist == null)
+            {
+                diag.Add($"[AI][V2][Demand][Aggression] decision=DEFER target={objective.Target.DiagnosticLabel} "
+                    + "reason=no_free_base_fist_for_direct_card_delivery");
+                return;
+            }
+            float required = 0.80f * snap.Self.TotalMilitaryPotential;
             float have = fist?.EffectiveArmyPower ?? 0f;
             // §11 — a fist that already has the numbers yet misses the gate is an assembly /
             // composition gap: strengthening it by a phantom +1 from hand closes nothing.
-            if (required - have <= AiConfigV2.allocatorSliceEpsilon)
+            if (have > required)
             {
                 diag.Add($"[AI][V2][Demand][Aggression] decision=SKIP target={objective.Target.DiagnosticLabel} "
                     + $"fist={(fist?.ArmyId ?? 0)} required={required:0.#} have={have:0.#} hexDef={hexBonus:0.#} "
                     + "reason=unbound_attack_power_suffices_gate_missed");
                 return;
             }
-            float deficit = required - have;
+            float deficit = Mathf.Max(AiConfigV2.allocatorSliceEpsilon, required - have
+                + AiConfigV2.allocatorSliceEpsilon);
             TaskScore score = objective.TaskScore;
             diag.Add($"[AI][V2][Demand][Aggression] decision=CREATE target={objective.Target.DiagnosticLabel} "
                 + $"capability=FieldCombatPower shape=Any desired={deficit:0.#} fist={(fist?.ArmyId ?? 0)} "
                 + $"required={required:0.#} have={have:0.#} hexDef={hexBonus:0.#} "
-                + $"task={score.Value:0.##} reason=unbound_attack_no_force_clears_the_floor");
+                + $"task={score.Value:0.##} reason=unbound_attack_force_below_threshold");
             demands.Add(new AxisDemand
             {
                 RequestingAxis = DesireAxis.Aggression,
@@ -253,12 +271,13 @@ namespace Game.Ai.V2
                 ConsumerMissionKind = MissionKind.Attack,
                 DesiredAmount = deficit,
                 RequiredCapabilityPower = deficit,
+                AttackFistArmyId = fist.ArmyId,
                 RequiredTraits = TraitPreference.None,
                 MinimumFollowupAp = 0f,
                 TargetHex = fist?.Hex,
                 WorldTaskScore = score,
                 Value = score.Value,
-                Explain = $"attack {objective.Target.DiagnosticLabel}: no force clears the Attack floor "
+                Explain = $"attack {objective.Target.DiagnosticLabel}: no legal force exceeds the current 80% threshold "
                     + $"({have:0.#} of {required:0.#}, hex defence {hexBonus:0.#}); strengthen the fist "
                     + $"#{(fist?.ArmyId ?? 0)} from hand; task={score.Value:0.##}",
             });

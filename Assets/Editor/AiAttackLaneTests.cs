@@ -203,6 +203,24 @@ namespace Game.EditorTests
             Assert.That(needsHelp.Attack.ReinforcementRequestedTurn, Is.EqualTo(-1));
         }
 
+        [Test]
+        public void RewardAfterMarch_DoesNotRecallACombatCapablePrimary()
+        {
+            ArmySnapshot actor = Army(7, EnRoute, Strong());
+            WorldSnapshot snap = DefendedSite(new[] { actor }, new[] { OurBase });
+            snap.Self.TotalMilitaryPotential = actor.EffectiveArmyPower * 5f;
+            MissionIntent marching = AttackIntent(AttackMissionPhase.Assault, 7);
+            Assert.That(MissionContinuityLayer.ResolveAttackIntent(Us, snap, marching,
+                marching.Attack, null, out _), Is.True);
+            Assert.That(marching.Attack.Phase, Is.EqualTo(AttackMissionPhase.Assault));
+
+            MissionIntent staging = AttackIntent(AttackMissionPhase.Assault, 7);
+            staging.Attack.AssaultStarted = false;
+            MissionContinuityLayer.ResolveAttackIntent(Us, snap, staging,
+                staging.Attack, null, out _);
+            Assert.That(staging.Attack.Phase, Is.EqualTo(AttackMissionPhase.Reinforcement));
+        }
+
         [TestCase(AttackMissionPhase.Assault)]
         [TestCase(AttackMissionPhase.Reinforcement)]
         [TestCase(AttackMissionPhase.SupportReturn)]
@@ -403,6 +421,54 @@ namespace Game.EditorTests
         }
 
         [Test]
+        public void UnboundAttackDelivery_CountsOnlyPowerAddedToItsNamedFist()
+        {
+            var demand = new AxisDemand
+            {
+                RequestingAxis = DesireAxis.Aggression,
+                Capability = CapabilityKind.FieldCombatPower,
+                ConsumerMissionKind = MissionKind.Attack,
+            };
+            var fist = new ArmyData { Owner = Us, Hex = OurBase };
+            ArmyRegistry.Register(fist);
+            int fistId = fist.Id;
+            demand.AttackFistArmyId = fistId;
+            var other = new ArmyData { Owner = Us, Hex = OurBase };
+            ArmyRegistry.Register(other);
+            var before = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[]
+            {
+                new ArmySnapshot { ArmyId = fistId, EffectiveArmyPower = 10f },
+            } } };
+            var after = new WorldSnapshot { Self = new SelfSnapshot { Armies = new[]
+            {
+                new ArmySnapshot { ArmyId = fistId, EffectiveArmyPower = 15f },
+                new ArmySnapshot { ArmyId = other.Id, EffectiveArmyPower = 30f },
+            } } };
+            var wrong = new MaterializationPlan
+            {
+                Deploy = new PlacementOption(OurBase, DeploymentKind.ExistingArmy, other),
+            };
+            var right = new MaterializationPlan
+            {
+                Deploy = new PlacementOption(OurBase, DeploymentKind.ExistingArmy, fist),
+            };
+            var ctx = new AiTurnContext { TurnNumber = 30 };
+            Assert.That(MaterializationDeliveryPolicy.AssessDemandOperationally(
+                wrong, demand, after, Us, ctx).FailureReason,
+                Is.EqualTo(MaterializationDeliveryPolicy.DeliveryFailureReason.AttackFistNotStrengthened));
+            Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(
+                Us, ctx, after, wrong, demand, new CapabilityInventory(),
+                new CapabilityInventory(), new HashSet<int> { fistId, other.Id },
+                out float unrelated, before), Is.False);
+            Assert.That(unrelated, Is.Zero);
+            Assert.That(CapabilityDeliveryEvaluator.FinalizeOperationalDelivery(
+                Us, ctx, after, right, demand, new CapabilityInventory(),
+                new CapabilityInventory(), new HashSet<int> { fistId, other.Id },
+                out float added, before), Is.True);
+            Assert.That(added, Is.EqualTo(5f));
+        }
+
+        [Test]
         public void SupportReturn_ReleasesTheSupportAndResumesTheAssault()
         {
             MissionIntent intent = AttackIntent(AttackMissionPhase.SupportReturn, 7, supportId: 8);
@@ -418,6 +484,22 @@ namespace Game.EditorTests
         }
 
         // ---- §40 the mission proposal, and §83 R one army one mission ---------------------
+
+        [TestCase(0.79f, false)]
+        [TestCase(0.81f, true)]
+        public void FreshAssault_WaitsForTheDynamicForceThreshold(float share, bool expected)
+        {
+            ArmySnapshot actor = Army(7, EnRoute, Strong());
+            WorldSnapshot snap = DefendedSite(new[] { actor }, new[] { OurBase },
+                alsoOwnBuilding: true);
+            snap.Self.TotalMilitaryPotential = actor.EffectiveArmyPower / share;
+            var proposals = new List<MissionProposal>();
+            AggressionMissionLayer.AppendAttack(snap, Array.Empty<MissionIntent>(),
+                new HashSet<int>(), proposals, null,
+                new Dictionary<MissionIntentKey, string>());
+            Assert.That(proposals.Any(p => p.Target is AttackMissionTarget t
+                && t.Phase == AttackMissionPhase.Assault), Is.EqualTo(expected));
+        }
 
         [Test]
         public void AppendAttack_ProducesOneProposalNamingTheAssignedPrimaryAndTheSite()
@@ -665,6 +747,7 @@ namespace Game.EditorTests
         {
             ArmyId = id, Owner = Us, Hex = hex, IsStructuralRaidActor = true,
             MemberCount = members.Count, MaxMovement = 3, CurrentMovement = 3, Members = members,
+            EffectiveArmyPower = AiPower.EffectiveArmyPowerFromProfiles(members),
             ReachableOwnBaseHexes = new[] { OurBase, AltBase },
         };
 
@@ -679,6 +762,8 @@ namespace Game.EditorTests
                 BaseHexes = new List<HexCoord>(ownBases),
                 Citadel = OurBase,
                 Armies = new List<ArmySnapshot>(armies),
+                TotalMilitaryPotential = armies.Select(a => a.EffectiveArmyPower)
+                    .DefaultIfEmpty(0f).Max(),
             },
             Known = new KnownSnapshot
             {
@@ -735,6 +820,7 @@ namespace Game.EditorTests
                 Target = AttackTargetRef.For(RedBase, Red, AttackTargetKind.Base),
                 Phase = phase,
                 OperationStarted = started,
+                AssaultStarted = started && phase != AttackMissionPhase.Gather,
                 PrimaryArmyId = primaryId,
                 SupportArmyId = supportId,
                 RecoveryBaseHex = recoveryBase,

@@ -183,12 +183,11 @@ namespace Game.Ai.V2
             List<AiPower.PowerUnit> withUnits = mapPool.Concat(handUnits).Concat(deckUnits).ToList();
             float unitsCeiling = AiPower.BestStackPotential(withUnits, mapCap);
 
-            self.FieldPotential = AiPower.BestStackPotential(mapPool, mapCap);
-            self.BestStackPotential = AiPower.BestStackPotential(
-                mapPool.Concat(handUnits).Concat(handHeroes).ToList(), Mathf.Max(mapCap, handCap));
+            self.FieldPotential = AiPower.TotalMilitaryPotential(mapPool);
+            self.BestStackPotential = AiPower.TotalMilitaryPotential(
+                mapPool.Concat(handUnits).Concat(handHeroes).ToList());
             self.TotalMilitaryPotential = AiPower.TotalMilitaryPotential(
-                withUnits.Concat(handHeroes).Concat(deckHeroes).ToList(),
-                Mathf.Max(mapCap, Mathf.Max(handCap, deckCap)));
+                withUnits.Concat(handHeroes).Concat(deckHeroes).ToList());
             self.FistPower = self.Armies.Where(a => a.IsStructuralRaidActor)
                 .Select(a => a.EffectiveArmyPower).DefaultIfEmpty(0f).Max();
             self.StartPotential = ForceBaselineRegistry.TryGetStart(player, out float start)

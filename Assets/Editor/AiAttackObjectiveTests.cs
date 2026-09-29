@@ -21,6 +21,58 @@ namespace Game.EditorTests
     // ===========================================================================================
     public class AiAttackObjectiveTests
     {
+        [TestCase(79f, false)]
+        [TestCase(80f, false)]
+        [TestCase(80.001f, true)]
+        public void FreshAttack_RequiresStrictlyMoreThanFourFifthsOfCurrentPeak(
+            float armyPower, bool expected)
+        {
+            Assert.That(AttackObjectiveEvaluator.ForceReady(armyPower, 100f), Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void CurrentPeak_UsesCapacityOfTheHeroActuallyInTheStack()
+        {
+            var pool = new List<AiPower.PowerUnit>
+            {
+                new AiPower.PowerUnit(40f, null, 1, true, 2),
+                new AiPower.PowerUnit(1f, null, 1, true, 5),
+                new AiPower.PowerUnit(30f, null, 1, false),
+                new AiPower.PowerUnit(29f, null, 1, false),
+                new AiPower.PowerUnit(28f, null, 1, false),
+                new AiPower.PowerUnit(27f, null, 1, false),
+            };
+            float peak = AiPower.TotalMilitaryPotential(pool);
+            float impossible = AiPower.EffectiveArmyPower(
+                AiPower.ComposeStack(pool, 5));
+            Assert.That(peak, Is.LessThan(impossible),
+                "the strong two-slot hero cannot command the five-slot roster");
+            Assert.That(AiPower.TotalMilitaryPotential(pool.Skip(1).ToList()), Is.LessThan(peak),
+                "losing a hero changes the current peak");
+        }
+
+        [Test]
+        public void CurrentPeak_FollowsLossAndRewardButNotCardLocation()
+        {
+            var hero = new AiPower.PowerUnit(10f, null, 1, true, 3);
+            var body = new AiPower.PowerUnit(20f, null, 1, false);
+            var reward = new AiPower.PowerUnit(100f, null, 1, false);
+            var map = new List<AiPower.PowerUnit> { hero };
+            var hand = new List<AiPower.PowerUnit> { body };
+            var deck = new List<AiPower.PowerUnit>();
+            float initial = AiPower.TotalMilitaryPotential(map.Concat(hand).Concat(deck).ToList());
+            hand.Remove(body);
+            deck.Add(body);
+            Assert.That(AiPower.TotalMilitaryPotential(map.Concat(hand).Concat(deck).ToList()),
+                Is.EqualTo(initial));
+            deck.Remove(body);
+            map.Add(body);
+            Assert.That(AiPower.TotalMilitaryPotential(map.Concat(hand).Concat(deck).ToList()),
+                Is.EqualTo(initial));
+            Assert.That(AiPower.TotalMilitaryPotential(map.Take(1).ToList()), Is.LessThan(initial));
+            deck.Add(reward);
+            Assert.That(AiPower.TotalMilitaryPotential(map.Concat(deck).ToList()), Is.GreaterThan(initial));
+        }
         private static readonly PlayerSetupData Us =
             new PlayerSetupData { Nickname = "Us", ColorIndex = 1 };
         private static readonly PlayerSetupData Red =

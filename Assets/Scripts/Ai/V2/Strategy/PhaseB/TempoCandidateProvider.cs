@@ -257,11 +257,27 @@ namespace Game.Ai.V2
             float continuityBonus = lastCardPlayWouldStrandDraw
                 ? AiConfigV2.tempoDrawLastCardContinuityBonus : 0f;
 
+            // A known stronghold and a missing ground card give the existing Draw action a
+            // concrete Attack use. This affects tempo ranking, never force admission.
+            bool attackNeedsDeck = snap?.Self != null && snap.Observer != null
+                && snap.Known?.Buildings != null
+                && snap.Known.Buildings.Any(b =>
+                    AttackObjectiveEvaluator.IsHostileStrategicStructure(b, snap.Observer))
+                && !AttackObjectiveEvaluator.ForceReady(snap.Self.FistPower,
+                    snap.Self.TotalMilitaryPotential)
+                && deck != null && deck.Any(d => !d.isAviation
+                    && (d.cardType == CardType.Unit || d.cardType == CardType.Hero));
+            float attackDrawBonus = attackNeedsDeck
+                ? AiConfigV2.tempoDrawDeckValueWeight * Mathf.Clamp01(
+                    (0.80f * snap.Self.TotalMilitaryPotential - snap.Self.FistPower)
+                    / Mathf.Max(1f, snap.Self.TotalMilitaryPotential)) : 0f;
+
             float u = expectedDeckValue * fill - blockRisk - apOpp - handQualityPenalty
-                + continuityBonus;
+                + continuityBonus + attackDrawBonus;
             diag = $"expDeckVal {F(expectedDeckValue)} (mean {F(deckMean)} taper {F(thinTaper)}) freeSlots {freeSlots} "
                 + $"fill {F(fill)} blockRisk {F(blockRisk)} apOpp {F(apOpp)} handQualPen {F(handQualityPenalty)} "
-                + $"continuity +{F(continuityBonus)} (selectablePlay {F(bestSelectablePlay)}) => draw {F(u)}";
+                + $"continuity +{F(continuityBonus)} attackDeck +{F(attackDrawBonus)} "
+                + $"(selectablePlay {F(bestSelectablePlay)}) => draw {F(u)}";
             return u;
         }
 

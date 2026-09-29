@@ -74,6 +74,10 @@ namespace Game.Ai.V2
             if (prev == null || !object.ReferenceEquals(prev.Observer, player)
                 || ctx == null || prev.TurnNumber != ctx.TurnNumber)
                 return Scan(player, root, hand, ctx);
+            // Some callers refresh only operational facts between Phase-B actions. A play may
+            // also reveal a site or defender: never pair fresh Self with a stale Known cache.
+            if (prev.KnowledgeVersion != AiMapMemory.KnowledgeVersionFor(player))
+                return RefreshStrategicKnowledge(prev, player, root, hand, ctx);
 
             var snap = new WorldSnapshot
             {
