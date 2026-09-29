@@ -555,16 +555,8 @@ namespace Game.Ai.V2
             }
             routeObs *= AiConfigV2.airReconRouteObservationWeight;
 
-            // Return path contributes ONLY known-AA proximity to RecoveryRisk (spec §4) — no
-            // observation / facility / combat credit.
-            int aaAdjacentHexes = 0;
-            foreach (HexCoord h in routeHexes)
-                if (AiAirSortiePlanner.KnownAaExposureAt(x.Player, h) > 0)
-                    aaAdjacentHexes++;
-            if (x.ReturnHexes != null)
-                foreach (HexCoord h in x.ReturnHexes)
-                    if (!h.Equals(x.From) && AiAirSortiePlanner.KnownAaExposureAt(x.Player, h) > 0)
-                        aaAdjacentHexes++;
+            // Return path carries no observation/combat value. Anti-air is deliberately not a
+            // strategic scoring input; the live reaction system resolves it during execution.
 
             // --- FriendlyFacilityCoverValue — forward corridor sweeps a stale own-facility
             //     perimeter (outbound hexes only after the P0 fix). --------------------------------
@@ -596,7 +588,7 @@ namespace Game.Ai.V2
                     foreach (HexCoord h in routeHexes)
                         if (HexGridMath.Distance(h, s.Hex) <= 1) { near = true; break; }
                     if (near)
-                        combatOpp += AiConfigV2.airReconCombatOpportunityWeight * (s.HasAntiAir ? 0.5f : 1f);
+                        combatOpp += AiConfigV2.airReconCombatOpportunityWeight;
                 }
                 combatOpp = Mathf.Min(combatOpp, AiConfigV2.airReconCombatOpportunityCap);
             }
@@ -607,8 +599,7 @@ namespace Game.Ai.V2
             float activationCost = AiConfigV2.airReconActivationApPenalty * x.ActivationAp
                 + AiConfigV2.airReconActivationEnergyPenalty * x.ActivationEnergy;
             float recoveryRisk = AiConfigV2.airReconRecoveryRiskWeight
-                * (Math.Max(0, x.RequiredTurns - 1) + 0.5f * Math.Max(0, x.RequiredUnlandedEnds)
-                   + aaAdjacentHexes);
+                * (Math.Max(0, x.RequiredTurns - 1) + 0.5f * Math.Max(0, x.RequiredUnlandedEnds));
 
             // --- RedundancyPenalty (spec §5): recent air-coverage overlap + outbound-trail hug +
             //     coarse-sector coverage already held by another Recon actor. --------------------
