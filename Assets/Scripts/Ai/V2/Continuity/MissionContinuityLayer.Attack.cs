@@ -348,7 +348,7 @@ namespace Game.Ai.V2
             a.AirSupportSortieSeen = false;
             AiDebugLog.Write($"[AI][V2][Attack][AirSupport] {intent.IntentKey} bound wing "
                 + $"#{best.WingArmyId} for {a.Target.DiagnosticLabel}: win {current:0.00} -> "
-                + $"{best.WinAfter:0.00} ({(best.SecondStrike ? "two strikes" : "one strike")}), "
+                + $"{best.WinAfter:0.00} (immediate strike only), "
                 + $"eta {best.EtaTurns}, landing ({best.LandingHex.Q},{best.LandingHex.R})");
         }
 
