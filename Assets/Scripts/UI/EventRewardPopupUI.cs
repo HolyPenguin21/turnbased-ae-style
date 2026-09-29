@@ -76,7 +76,7 @@ namespace Game.UI
         private static string BuildSummary(HexEventRegistry.Entry entry, ArmyData recipient)
         {
             string armyName = recipient?.Name ?? "The army";
-            string resourceList = DescribeResources(entry.Definition.rewards);
+            string resourceList = DescribeResources(entry.SelectedRewards);
             string cardList = string.Join(" and ", entry.ResolvedCardRewards
                 .Where(r => r.card != null).Select(r => r.card.displayName));
 

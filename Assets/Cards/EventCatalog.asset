@@ -20,252 +20,408 @@ MonoBehaviour:
   events:
   - name: Oasis outpost
     image: {fileID: 21300000, guid: a8ff5139211963a4ba9c4071e7ad163c, type: 3}
-    description: You found a dried-up oasis outpost, once a thriving desert trading
-      hub built around a deep well, now reduced to a circle of sun-bleached adobe
-      buildings and dead palm trees half-choked by the dunes.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 2
-        energy: 0
-        materials: 0
-        tech: 0
-      cardKey: 
+    description: The dry oasis outpost still has a deep well beneath its collapsed adobe courtyard. Its cistern and storehouse may hold useful supplies.
+    variants:
+    - guardArmyName: Event Light 01
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 04
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 08
+      resourceCount: 4
+      rewards: []
   - name: Solar farm
     image: {fileID: 21300000, guid: b8125e3b9e589a2438d6e66d8c80f7e8, type: 3}
-    description: You found an abandoned solar farm stretching across miles of flat
-      desert, where tens of thousands of massive, black photovoltaic mirrors face
-      the sky like a silent, dead army.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 2
-        materials: 0
-        tech: 0
-      cardKey: 
+    description: Rows of dead photovoltaic mirrors cover the salt flats. A few intact converters remain behind the perimeter fence.
+    variants:
+    - guardArmyName: Event Light 02
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 05
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 09
+      resourceCount: 4
+      rewards: []
   - name: Crashed cargo blimp
     image: {fileID: 21300000, guid: d3d2a7273506a574da64907964c0f68e, type: 3}
-    description: You found a crashed cargo blimp, a massive pre-war luxury airship
-      that deflated and draped its colossal, sun-bleached fabric hull over a cluster
-      of jagged desert rocks.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 0
-        materials: 2
-        tech: 0
-      cardKey: 
+    description: A cargo blimp lies tangled among desert rocks. Its torn hold has exposed sealed crates beneath the sun-bleached envelope.
+    variants:
+    - guardArmyName: Event Light 03
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 06
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 10
+      resourceCount: 4
+      rewards: []
   - name: Orbital satellite
     image: {fileID: 21300000, guid: e110a89a93bed9345a939fd80bd2d6aa, type: 3}
-    description: You found a crashed orbital satellite that plummeted from the sky
-      years ago, carving a massive scar through the desert dunes and now resting
-      like a shattered titanium spear in the sand.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 0
-        materials: 0
-        tech: 2
-      cardKey: 
+    description: A fallen orbital satellite has carved a long scar through the dunes. Its surviving instruments may still be worth salvaging.
+    variants:
+    - guardArmyName: Event Light 04
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 07
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 01
+      resourceCount: 4
+      rewards: []
   - name: Abandoned warehouse
     image: {fileID: 21300000, guid: a220bd1f5f6eb7a4fbd3c515e0e6df1a, type: 3}
-    description: 'An abandoned warehouse has been discovered: a decaying structure
-      with a rusted sign and a heavy iron door sealed by a massive padlock. The air
-      inside smells of dampness, machine oil, and centuries-old dust. Looks like
-      someone is inside: 3 targets.'
-    guardArmyName: 'Scrap-Haulers '
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 1
-        materials: 1
-        tech: 0
-      cardKey: 
-    - type: 1
-      resources:
-        human: 0
-        energy: 1
-        materials: 2
-        tech: 0
-      cardKey: Iron Concord/Scrapper
+    description: A locked warehouse stands beside an old freight road. Movement behind the shutters suggests that its stock is still claimed.
+    variants:
+    - guardArmyName: Event Light 05
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Iron Concord/Scrapper
+    - guardArmyName: Event Medium 08
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Heavy MG
+    - guardArmyName: Event Heavy 02
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Ashen/MI Iron Husk
   - name: Concrete bunker
     image: {fileID: 21300000, guid: de6a3cf512d99a442aa3dfad897b3902, type: 3}
-    description: 'Your group has discovered a massive reinforced concrete bunker
-      with a faded "Logistics & Supply" sign, hidden beneath the ruins of an old
-      highway. Looks like someone is inside: 3 targets.'
-    guardArmyName: Deserters
-    rewards:
-    - type: 0
-      resources:
-        human: 1
-        energy: 0
-        materials: 0
-        tech: 1
-      cardKey: 
+    description: A reinforced logistics bunker hides beneath a ruined highway. Its supply vaults are occupied.
+    variants:
+    - guardArmyName: Event Light 06
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 09
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 03
+      resourceCount: 4
+      rewards: []
   - name: Resort settlement
     image: {fileID: 21300000, guid: e899db11b325dca4abbf7d226647091f, type: 3}
-    description: 'You found a mirage town - a pre-war resort settlement entirely
-      constructed from heavy glass and polished steel, now half-buried by the desert
-      dunes and perfectly preserving a surreal, frozen moment in time. Looks like
-      someone is inside: 3 targets.'
-    guardArmyName: Inhabitants
-    rewards:
-    - type: 0
-      resources:
-        human: 1
-        energy: 1
-        materials: 1
-        tech: 0
-      cardKey: 
+    description: Glass-fronted resort houses emerge from the dunes. Their current inhabitants have secured the most useful rooms.
+    variants:
+    - guardArmyName: Event Light 07
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 10
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 04
+      resourceCount: 4
+      rewards: []
   - name: Auto repair shop
     image: {fileID: 21300000, guid: f182ac5c45a6b894ba60e907bc147d9e, type: 3}
-    description: 'Your combat group has stumbled upon a collapsed auto repair shop
-      with a rusted, half-open roller shutter. Inside, the skeleton of an old pickup
-      truck rests on a mechanical lift, frozen in time, providing temporary cover
-      for your squad. Looks like someone is inside: 3 targets.'
-    guardArmyName: 'Scrap-Haulers '
-    rewards:
-    - type: 0
-      resources:
-        human: 1
-        energy: 1
-        materials: 1
-        tech: 0
-      cardKey: 
-    - type: 1
-      resources:
-        human: 0
-        energy: 0
-        materials: 1
-        tech: 0
-      cardKey: Iron Concord/RC Vehicle
+    description: An old repair shop shelters a pickup truck and racks of spare parts. Salvagers are working behind the half-open shutters.
+    variants:
+    - guardArmyName: Event Light 08
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Iron Concord/RC Vehicle
+    - guardArmyName: Event Medium 01
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Armor Plate
+    - guardArmyName: Event Heavy 05
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Vessels/Bastion Frame
   - name: Nuclear silo
     image: {fileID: 21300000, guid: 26e3f7db440643843a22bba89cad625f, type: 3}
-    description: 'You found a sunken nuclear silo whose massive concrete dome cracked
-      and sunk halfway into a dry desert lakebed, leaving the gaping missile hatch
-      exposed to the sky like a hollow stone well. Looks like someone is inside:
-      3 targets.'
-    guardArmyName: 'Brutes '
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 1
-        materials: 1
-        tech: 2
-      cardKey: 
+    description: A sunken missile silo opens into a dry lakebed. Scavengers have fortified the surviving service tunnels.
+    variants:
+    - guardArmyName: Event Light 09
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it AT Launcher
+    - guardArmyName: Event Medium 02
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Vessels/Bulwark Vessel
+    - guardArmyName: Event Heavy 06
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Nuclear Engine
   - name: Research bunker
     image: {fileID: 21300000, guid: 85edf3db83d3c224b930518884495ef7, type: 3}
-    description: 'Your combat group has halted before a heavily fortified, underground
-      research bunker, its entrance disguised as an ordinary sewer treatment substation.
-      Looks like someone is inside: 1 target. '
-    guardArmyName: Wrecker
-    rewards:
-    - type: 0
-      resources:
-        human: 2
-        energy: 0
-        materials: 1
-        tech: 1
-      cardKey: 
-    - type: 1
-      resources:
-        human: 2
-        energy: 0
-        materials: 1
-        tech: 1
-      cardKey: Neutral/Wrecker
+    description: A disguised research bunker lies under a treatment station. Its sealed laboratories remain under guard.
+    variants:
+    - guardArmyName: Event Light 10
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Plasma Gun
+    - guardArmyName: Event Medium 03
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Vessels/Arc Sentry
+    - guardArmyName: Event Heavy 07
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/Wrecker
   - name: Factory
     image: {fileID: 21300000, guid: 5b8041f5d35ba1445b31169b8b12c6e0, type: 3}
-    description: Your combat group has secured the perimeter of a sprawling, monolithic
-      manufacturing plant with collapsed brick walls and towering, dead smokestacks.
-      The heavy steel blast doors have been breached by past artillery fire, opening
-      a path into the shadowy, cavernous assembly floor.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 1
-        energy: 1
-        materials: 2
-        tech: 1
-      cardKey: 
+    description: The dead smokestacks of a manufacturing plant rise above the sand. Its assembly floor still contains recoverable machinery.
+    variants:
+    - guardArmyName: Event Light 01
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 04
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 08
+      resourceCount: 4
+      rewards: []
   - name: Airplane boneyard
     image: {fileID: 21300000, guid: 163172a6c2e2e93409c7f956e041a13a, type: 3}
-    description: You found a sprawling airplane boneyard on the edge of the desert,
-      where the skeletal remains of commercial airliners and military transport jets
-      sit half-buried in the shifting sands.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 0
-        materials: 1
-        tech: 1
-      cardKey: 
+    description: Stripped airliners and transport craft rest half-buried in the desert. Their sheltered compartments may hide spare parts.
+    variants:
+    - guardArmyName: Event Light 02
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 05
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 09
+      resourceCount: 4
+      rewards: []
   - name: Tunnel
     image: {fileID: 21300000, guid: 705ae8d5867e0f349a77e77ee190e92b, type: 3}
-    description: 'You found a blocked mountain tunnel that once served as a major
-      trade route, now choked with a massive pile-up of rusted cars, armored transport
-      trucks, and collapsed granite boulders. Looks like someone is inside: 2 targets.'
-    guardArmyName: Dune Wanderers
-    rewards:
-    - type: 0
-      resources:
-        human: 2
-        energy: 0
-        materials: 1
-        tech: 0
-      cardKey: 
+    description: A mountain tunnel is blocked by rusted vehicles and fallen stone. A route through the wrecks leads toward abandoned cargo.
+    variants:
+    - guardArmyName: Event Light 03
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 06
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 10
+      resourceCount: 4
+      rewards: []
   - name: Train station
     image: {fileID: 21300000, guid: 334db0f20a20a304390f75bc764d8e33, type: 3}
-    description: You found a buried train station in the heart of the desert, where
-      a high-speed railway line has been completely swallowed by shifting sand dunes,
-      leaving only the concrete roof structure visible above the surface.
-    guardArmyName: 
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 1
-        materials: 1
-        tech: 0
-      cardKey: 
+    description: Only the concrete roof of a buried railway station remains visible. Its platforms and service rooms are still accessible.
+    variants:
+    - guardArmyName: Event Light 04
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Iron Concord/Scout
+    - guardArmyName: Event Medium 07
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Double Barrel
+    - guardArmyName: Event Heavy 01
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Ashen/Scav Carrier
   - name: Oil refinery
     image: {fileID: 21300000, guid: 2789e4f57f3425e46a0b28cfb9ef0da7, type: 3}
-    description: 'You found an abandoned oil refinery shimmering in the desert heat,
-      its twisted maze of pipelines, massive storage tanks, and rusted cracking towers
-      surrounded by a sea of black, hardened sludge. Looks like someone is there:
-      3 targets.'
-    guardArmyName: Sand Fin
-    rewards:
-    - type: 0
-      resources:
-        human: 0
-        energy: 2
-        materials: 1
-        tech: 0
-      cardKey: 
-  - name: "\u0421asino resort"
+    description: Pipelines and storage tanks mark an abandoned refinery. The remaining fuel stores have drawn a local patrol.
+    variants:
+    - guardArmyName: Event Light 05
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 08
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 02
+      resourceCount: 4
+      rewards: []
+  - name: Casino resort
     image: {fileID: 21300000, guid: e0d33263f0ad6694594ce8ba63bbd50b, type: 3}
-    description: 'You found a looted casino resort rising from the desert dunes like
-      a neon-lit ghost town, its massive glass towers shattered and its grand entrance
-      half-buried in the shifting sands. Looks like someone is inside: 5 targets.'
-    guardArmyName: Cactus-Pickers
-    rewards:
-    - type: 0
-      resources:
-        human: 2
-        energy: 1
-        materials: 2
-        tech: 1
-      cardKey: 
+    description: A looted casino resort rises above the dunes. Its service vaults and private rooms may still hold valuables.
+    variants:
+    - guardArmyName: Event Light 06
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 09
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 03
+      resourceCount: 4
+      rewards: []
+  - name: Radio observatory
+    image: {fileID: 21300000, guid: 0cc82e1994ea4e57b96fb45fc6e78a19, type: 3}
+    description: Dish antennas surround a silent desert observatory. The control room may contain intact signal equipment.
+    variants:
+    - guardArmyName: Event Light 07
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Vessels/Whisper Scout
+    - guardArmyName: Event Medium 10
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Plasma Cannon
+    - guardArmyName: Event Heavy 04
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Iron Concord/Watcher Drone
+  - name: Water purification plant
+    image: {fileID: 21300000, guid: 437b6d78e5d54b548e524634ef384cd9, type: 3}
+    description: A water purification plant stands behind cracked settling pools. Its filters and reserve tanks have become valuable territory.
+    variants:
+    - guardArmyName: Event Light 08
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 01
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 05
+      resourceCount: 4
+      rewards: []
+  - name: Armored convoy wreck
+    image: {fileID: 21300000, guid: 4581641ff37c44368a1c3a78c634d0c5, type: 3}
+    description: An armored convoy lies scattered across an old causeway. Sealed transport cases remain among the burnt-out vehicles.
+    variants:
+    - guardArmyName: Event Light 09
+      resourceCount: 2
+      rewards: []
+    - guardArmyName: Event Medium 02
+      resourceCount: 3
+      rewards: []
+    - guardArmyName: Event Heavy 06
+      resourceCount: 4
+      rewards: []
+  - name: Underground archive
+    image: {fileID: 21300000, guid: 6999513a02774353868c09d5e84715dc, type: 3}
+    description: A buried archive can be reached through a collapsed access shaft. Shelved records and preserved equipment wait below.
+    variants:
+    - guardArmyName: Event Light 10
+      resourceCount: 2
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Ashen/Dust Runner
+    - guardArmyName: Event Medium 03
+      resourceCount: 3
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: Neutral/it Armor Plate
+    - guardArmyName: Event Heavy 07
+      resourceCount: 4
+      rewards:
+      - type: 1
+        resources:
+          human: 0
+          energy: 0
+          materials: 0
+          tech: 0
+        cardKey: The Vessels/Heavy Sentinel

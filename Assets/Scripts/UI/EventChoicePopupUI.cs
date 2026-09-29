@@ -56,6 +56,7 @@ namespace Game.UI
             if (eventArtImage != null)
             {
                 eventArtImage.sprite = definition.image;
+                eventArtImage.preserveAspect = true;
                 eventArtImage.gameObject.SetActive(definition.image != null);
             }
             if (descriptionText != null)

@@ -16,13 +16,15 @@ namespace Game.Cards
     }
 
     // One named, pre-composed neutral army — e.g. a map-guard force or an Events guard army
-    // (see EventDefinition.guardArmyName), as opposed to GenerateNeutralArmies' fully random
-    // rolls. `name` is shown as this entry's own label in the catalog's `armies` list (see
-    // ArmyDefinitionDrawer) instead of Unity's default "Element N".
+    // (see EventVariant.guardArmyName), as opposed to ordinary map neutral rolls. `name` is
+    // shown as this entry's own label in the catalog's `armies` list. Event-only guards
+    // are excluded from ordinary map generation.
     [System.Serializable]
     public class ArmyDefinition
     {
         public string name;
+        // Event guards are chosen by EventCatalog and must not enter ordinary map rolls.
+        public bool eventOnly;
         public List<ArmyUnitEntry> members = new List<ArmyUnitEntry>();
     }
 
@@ -36,6 +38,8 @@ namespace Game.Cards
     {
         public List<FactionCardCatalog> cardCatalogs = new List<FactionCardCatalog>();
         public List<ArmyDefinition> armies = new List<ArmyDefinition>();
+        public IEnumerable<ArmyDefinition> MapArmies =>
+            armies?.Where(a => a != null && !a.eventOnly) ?? Enumerable.Empty<ArmyDefinition>();
 
         // Scans `cardCatalogs` for the card named by cardKey ("<catalog.displayName>/<card.
         // displayName>") — null if the catalog or the card inside it can no longer be found (a

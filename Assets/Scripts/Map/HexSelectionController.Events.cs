@@ -324,7 +324,7 @@ namespace Game.Map
 
             PlayerRoot root = PlayerRootRegistry.FindFor(recipient.Owner);
             var grantedText = new List<string>();
-            foreach (RewardEntry reward in entry.Definition.rewards)
+            foreach (RewardEntry reward in entry.SelectedRewards)
             {
                 if (reward.type != RewardType.Resources)
                     continue;
